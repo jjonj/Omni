@@ -91,19 +91,3 @@ All tasks defined in the "Implementation Guidelines" (Phase 1, 2, 3, and 4) with
 *   **User Priority (Security):** Explicitly documented in `design.txt` and reflected in the implementation (e.g., simple API key authentication, internal error logging over user-facing friction).
 
 ---
-
-## 5. Next Steps
-
-**5.1. Resolve Git Synchronization on PC:**
-The most critical immediate next step is to enable Git operations on the PC. Currently, attempting any `git` command within the cloned repository on the PC via SSH (`git status`, `git pull`, `git push`) results in "Access is denied." This needs to be resolved to allow local development and synchronization with the GitHub remote.
-
-**5.2. Continue with Development Tasks (once Git is functional on PC):**
-*   **Build Windows Hub Project:** After Git is fully functional and the project is synced, attempt to build the Windows Hub project (`OmniSync.Hub`) to confirm all code (including fixes to `Program.cs` and `Worker.cs`) compiles.
-*   **Flesh out the UI for `DashboardScreen`.**
-*   **Add more commands to the `CommandDispatcher`** (e.g., for media control based on volume button presses).
-*   **Add more robust error handling and retry mechanisms** where appropriate (especially for network operations).
-*   **Implement unit and integration tests** for both Windows Hub and Android Client.
-*   **Set up comprehensive build and deployment workflows.**
-*   **Implement the Firefox extension** as another client.
-*   **Consider UI separation for the Windows Hub** as a future extensibility point.
-*   **Thorough testing** of all integrated features in a real environment.

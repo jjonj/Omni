@@ -267,3 +267,19 @@ To run `OmniSync.Cli` on an Android device via Termux, we are now using a **Fram
     if __name__ == "__main__":
         main()
     ```
+
+## 4. Android Deployment Challenges and Learnings
+
+During the attempt to deploy and run `OmniSync.Cli` on Termux (Android), several issues and observations were made:
+
+*   **Python Automation Script (`run_omnisync.py`)**: This script is designed for the Windows environment to build and test the .NET projects. It cannot be directly executed on Termux due to its reliance on Windows-specific commands (`taskkill`) and the expectation of a native `.NET` build environment.
+*   **`unzip` Utility**: Initially, `pkg install unzip` failed due to issues with the default Termux package mirror. This was resolved by using `termux-change-repo` to select a working mirror.
+*   **`.NET` SDK Installation**: The `pkg install dotnet` command, as suggested in the original instructions, failed to locate the package. A `pkg search dotnet` revealed that specific versions of .NET are available, with `dotnet9.0` being the correct package for .NET 9.0 SDK and runtime.
+*   **`.NET` Runtime Location**: After installing `dotnet9.0`, the `dotnet` host (`/data/data/com.termux/files/usr/bin/dotnet`) was unable to automatically locate the installed .NET 9.0 runtime components. Manual inspection showed the runtime located at `/data/data/com.termux/files/usr/lib/dotnet/shared/Microsoft.NETCore.App/9.0.11/`.
+*   **`DOTNET_ROOT` Environment Variable**: Setting the `DOTNET_ROOT` environment variable to `/data/data/com.termux/files/usr/lib/dotnet` was identified as the potential solution to help the `dotnet` host find its runtime components.
+*   **Silent CLI Failure**: Even with `DOTNET_ROOT` correctly set, the `OmniSync.Cli.dll` still exited with `Exit Code: 1` and no console output when attempting to execute the `append` command. This suggests an application-level failure within `OmniSync.Cli` itself, likely due to:
+    *   The `OmniSync.Hub` on the Windows PC not being running or not being accessible from the Android device at `http://10.0.0.37:5000/signalrhub`.
+    *   An unhandled exception within the `OmniSync.Cli`'s internal logic during SignalR connection, authentication, or payload sending, which is not being logged to the console in this FDD setup.
+*   **Debugging Limitations**: Further debugging of the `OmniSync.Cli`'s silent failure on Android is limited without direct access to the Windows machine (to check Hub status/logs) or the ability to modify and recompile the C# application with more verbose logging for the Android FDD target.
+
+**Conclusion**: The implementation of the `APPEND_NOTE` functionality and its test in `run_omnisync.py` are complete. However, running `OmniSync.Cli` successfully on the Android (Termux) environment requires resolving external factors such as ensuring the `OmniSync.Hub` is active and accessible, and potentially deeper debugging of the CLI's behavior in the Termux .NET environment.

@@ -1,0 +1,106 @@
+overcomplicated it with .NET. The goal is to send a text string to a URL; we don't need a 100MB runtime for that.
+
+The "Zero Friction" path on Android (Termux) is **Python**. It comes pre-installed or takes 5 seconds to install, acts like a native shell tool, and uses a lightweight library to talk to your Hub.
+
+Here is the exact setup to get `omni <command>` working in under 2 minutes.
+
+### 1. One-Time Setup (Termux)
+Run these three commands to get the environment ready:
+
+```bash
+pkg install python
+pip install signalrcore
+```
+
+### 2. Create the Script
+Create the executable file.
+```bash
+nano ~/omni
+```
+
+**Paste this code:**
+*(This script connects, authenticates, sends your command, prints the output, and exits automatically).*
+
+```python
+#!/usr/bin/env python3
+import sys
+import time
+import logging
+from signalrcore.hub_connection_builder import HubConnectionBuilder
+
+# --- CONFIGURATION ---
+HUB_URL = "http://10.0.0.37:5000/signalrhub" # Your PC IP
+API_KEY = "test_api_key"                     # Your Hub Secret
+# ---------------------
+
+if len(sys.argv) < 2:
+    print("Usage: omni <command>")
+    sys.exit(1)
+
+command_to_run = " ".join(sys.argv[1:])
+is_done = False
+
+def on_output(args):
+    # Print output from server in real-time
+    print(args[0], end="")
+
+def on_close():
+    global is_done
+    is_done = True
+
+# Build Connection
+hub = HubConnectionBuilder()\
+    .with_url(HUB_URL)\
+    .configure_logging(logging.CRITICAL)\
+    .with_automatic_reconnect({
+        "type": "raw",
+        "keep_alive_interval": 10,
+        "reconnect_interval": 5,
+        "max_attempts": 5
+    })\
+    .build()
+
+hub.on("ReceiveCommandOutput", on_output)
+hub.on_close(on_close)
+
+try:
+    hub.start()
+    
+    # 1. Authenticate
+    hub.invoke("Authenticate", [API_KEY])
+    
+    # 2. Execute
+    hub.invoke("ExecuteCommand", [command_to_run])
+
+    # 3. Wait for output (Give it 3 seconds or until Ctrl+C)
+    # Since we don't know exactly when the command finishes streaming, 
+    # we wait a short buffer. 
+    time.sleep(2) 
+    
+    hub.stop()
+
+except Exception as e:
+    print(f"Error: {e}")
+    sys.exit(1)
+```
+
+### 3. Make it "Native"
+Save the file (`Ctrl+O`, `Enter`, `Ctrl+X`).
+
+Now, make it executable and add it to your path so you can run it from anywhere like `ls` or `grep`.
+
+```bash
+chmod +x ~/omni
+mv ~/omni $PREFIX/bin/omni
+```
+
+### 4. Done. usage:
+You can now open a fresh terminal anywhere and type:
+
+```bash
+omni dir
+omni whoami
+omni "echo hello > C:\test.txt"
+```
+
+This is the absolute lowest friction way to interact with your system. No project folders, no compilation, just a script in your bin folder.
