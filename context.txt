@@ -41,22 +41,14 @@ This document contains the necessary context and instructions to resume developm
 
 ## 2. Instructions for Android Deployment (Termux)
 
-To build and run `OmniSync.Cli` on an Android device via Termux:
+To run `OmniSync.Cli` on an Android device via Termux, we are now using a **Framework-Dependent Deployment (FDD)** approach. This is due to limitations with creating a self-contained single-file executable for the `android-arm64` runtime identifier (`NETSDK1084` error). With FDD, you will need to install the .NET runtime (SDK) directly within your Termux environment.
 
-1.  **Publish OmniSync.Cli for Android:**
-    *   On your PC, open a terminal (PowerShell/CMD).
-    *   Navigate to the `OmniSync.Cli` project directory:
+1.  **Publish OmniSync.Cli for Android (FDD):**
+    *   This step is already completed. The published FDD binaries for `android-arm64` have been zipped into `OmniSync.Cli_Android_FDD.zip` and committed to the Git repository.
+    *   The command used to generate these was:
         ```bash
-        cd B:\GDrive\SharedWithPhone\Omni\OmniSync.Cli
+        dotnet publish B:\GDrive\SharedWithPhone\Omni\OmniSync.Cli\OmniSync.Cli.csproj --runtime android-arm64 -o C:\temp\OmniSync.Cli_Android_FDD
         ```
-    *   Publish the application for a common Android architecture (e.g., `android-arm64`). This creates a self-contained executable.
-        ```bash
-        dotnet publish -c Release --runtime android-arm64 --self-contained true -p:PublishSingleFile=true -o C:\temp\OmniSync.Cli_Android
-        ```
-        *   **`--runtime android-arm64`**: Target for most modern Android devices.
-        *   **`--self-contained true`**: Includes the .NET runtime, so Termux doesn't need to install it separately.
-        *   **`-p:PublishSingleFile=true`**: (Optional but recommended) Packs everything into a single executable.
-        *   **`-o C:\temp\OmniSync.Cli_Android`**: Output directory on your PC.
 
 2.  **Install Termux on Android:**
     *   Download and install Termux from F-Droid or Google Play Store on your Android device.
@@ -67,27 +59,39 @@ To build and run `OmniSync.Cli` on an Android device via Termux:
     *   Grant "Storage" permission (or "Files and media" access).
     *   In Termux, run `termux-setup-storage` and grant access when prompted.
 
-4.  **Transfer the Executable to Android:**
-    *   Connect your Android device to your PC.
-    *   Copy the `OmniSync.Cli` executable (from `C:\temp\OmniSync.Cli_Android`) to a user-accessible directory on your Android device (e.g., the `Download` folder on your internal storage). Let's assume you place it in `/sdcard/Download/`.
-    *   Alternatively, use `adb push` from your PC if ADB is set up:
+4.  **Transfer and Unzip the Executable to Android:**
+    *   **Clone the Git Repository:** The `OmniSync.Cli_Android_FDD.zip` file is committed in the Git repository. Clone the repository in Termux or transfer the zip file manually.
         ```bash
-        adb push C:\temp\OmniSync.Cli_Android\OmniSync.Cli /sdcard/Download/OmniSync.Cli
+        # If Git is installed in Termux
+        pkg install git
+        git clone <repository_url>
+        cd Omni # Or wherever you cloned it
+        ```
+    *   **Unzip the Binaries:**
+        *   Install unzip in Termux: `pkg install unzip`
+        *   Unzip the `OmniSync.Cli_Android_FDD.zip` file:
+            ```bash
+            unzip OmniSync.Cli_Android_FDD.zip -d OmniSync.Cli_Android_FDD
+            ```
+            This will create a folder named `OmniSync.Cli_Android_FDD` containing all the DLLs.
+
+5.  **Install .NET SDK in Termux:**
+    *   Run the following command in Termux to install the .NET SDK (which includes the `dotnet` runtime host):
+        ```bash
+        pkg install dotnet
+        ```
+    *   **Note**: Termux's package repository might not have the absolute latest .NET 9.0 preview. It might install an older stable version (e.g., .NET 6 or 7). If there's a version mismatch, you might need to adjust the `TargetFramework` in `OmniSync.Cli.csproj` on the PC to match the available .NET version in Termux, then republish the FDD binaries.
+
+6.  **Navigate to the Application Directory:**
+    *   Change to the directory where you unzipped the `OmniSync.Cli_Android_FDD` files:
+        ```bash
+        cd OmniSync.Cli_Android_FDD
         ```
 
-5.  **Run OmniSync.Cli in Termux:**
-    *   Open the Termux app on your Android device.
-    *   Navigate to the directory where you placed the executable:
+7.  **Execute OmniSync.Cli:**
+    *   Now that `dotnet` is installed in Termux, you can run the application using the `dotnet` host:
         ```bash
-        cd ~/storage/shared/Download  # Or your chosen path
-        ```
-    *   Make the executable runnable:
-        ```bash
-        chmod +x OmniSync.Cli
-        ```
-    *   Execute a command against your PC's OmniSync Hub:
-        ```bash
-        ./OmniSync.Cli "ls -la" "http://<PC_IP_ADDRESS>:5000/signalrhub" "test_api_key"
+        dotnet OmniSync.Cli.dll "ls -la" "http://<PC_IP_ADDRESS>:5000/signalrhub" "test_api_key"
         ```
         *   **Important**: Replace `<PC_IP_ADDRESS>` with the actual local IP address of your Windows PC (e.g., `192.168.1.100`). `localhost` will not work from your Android device.
         *   Ensure your PC's firewall allows incoming connections on port `5000`.
