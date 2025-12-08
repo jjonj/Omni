@@ -47,3 +47,6 @@ temp_speech.wav
 # Dependency directories
 packages/
 node_modules/
+
+# Zip files
+*.zip
