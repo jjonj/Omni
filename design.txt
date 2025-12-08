@@ -1,0 +1,165 @@
+# OmniSync: System Architecture Specification
+**Version:** 1.0
+**Date:** December 8, 2025
+**Status:** Approved for Implementation
+
+## 1. Executive Summary
+**OmniSync** is a local-first, high-privilege personal ecosystem designed to integrate a Windows PC, an Android Device, and a Web Browser. It functions as a private "nervous system" for the user's devices, enabling real-time automation, clipboard synchronization, file access, and remote input control.
+
+Unlike commercial alternatives, OmniSync prioritizes **latency, privacy, and raw system access** over ease of mass distribution. It operates entirely over a private VPN mesh (Tailscale), requiring no public cloud servers. it is a custom system designed for a single users custom needs only, not broad user friendliness and must be highly extensible 
+
+## 2. Design Principles
+1.  **Local Authority:** The Windows PC is the "Source of Truth" and the central Hub. It does not rely on external cloud APIs for its core functionality.
+2.  **High Privilege:** The system intentionally bypasses standard security sandboxes (using Accessibility Services on Android and User32.dll hooks on Windows) to enable "Power User" automation.
+3.  **Modular Monolith:** The codebase will be structured as distinct services within a single executable/APK to allow for easy extensibility without the complexity of microservices.
+4.  **Low Friction Deployment:** Build processes will be headless (CLI-based) to minimize manual configuration.
+
+---
+
+## 3. Technology Stack
+
+### A. The Hub (Windows PC)
+*   **Runtime:** .NET 9.0 (C#)
+*   **Application Type:** Windows Worker Service with System Tray support (Windows Forms/WPF integration for UI).
+*   **Network Transport:** SignalR (ASP.NET Core).
+*   **System Integration:** P/Invoke (Win32 APIs) for Input and Clipboard management.
+*   **Distribution:** Single-file Executable (`.exe`).
+
+### B. The Remote (Android)
+*   **Language:** Kotlin (Native).
+*   **UI Framework:** Jetpack Compose.
+*   **Core Components:**
+    *   `ForegroundService` (Connection persistence).
+    *   `AccessibilityService` (Automation/Input injection).
+    *   `WorkManager` (Deferrable background tasks).
+*   **Build System:** Gradle (Headless/CLI).
+
+### C. The Network Layer
+*   **Topology:** Peer-to-Peer via VPN Mesh.
+*   **Infrastructure:** Tailscale (Pre-requisite).
+*   **Protocol:** SignalR (WebSockets + Long Polling fallback) with Protocol Buffers or JSON serialization.
+*   **Security:** Header-based Authentication (Static Pre-Shared Key).
+
+---
+
+## 4. System Architecture Layers
+
+### 4.1. The Windows Hub Architecture
+The Windows application is the brain. It is structured into three vertical layers using Dependency Injection (DI).
+
+**Layer 1: The Presentation (UI & Network)**
+*   **`TrayIconManager`:** Manages the System Tray icon, Context Menu (Exit, Settings), and balloon notifications.
+*   **`RpcApiHub`:** The endpoint for Clients. It exposes methods like `SendPayload()` and broadcasts events like `ClipboardUpdated`.
+
+**Layer 2: The Logic (Services)**
+*   **`CommandDispatcher`:** Receives generic commands (e.g., "CMD_PASTE", "CMD_OPEN_NOTE") and routes them to the correct service.
+*   **`AuthService`:** Validates the GUID token from incoming connections.
+
+**Layer 3: The Infrastructure (Hardware/OS Adapters)**
+*   **`InputService`:** Wraps `user32.dll`. Handles `SendInput` (Keyboards/Mouse) to simulate physical hardware events.
+*   **`ClipboardService`:** Wraps `Ole32.dll`. Monitors the system clipboard chain and handles read/write operations safely.
+*   **`FileService`:** Provides safe I/O access to the specific Obsidian directory. Handles "Read" and "Append" logic.
+
+### 4.2. The Android Client Architecture
+The Android app is the primary sensor and remote control.
+
+**Layer 1: The UI (View)**
+*   **`DashboardScreen`:** Buttons for triggers (Macros, Wake-on-LAN replacement).
+*   **`TrackpadScreen`:** Captures touch gestures and converts them to relative mouse coordinates.
+*   **`NoteViewerScreen`:** Renders Markdown received from the Hub.
+
+**Layer 2: The ViewModel (State)**
+*   **`MainViewModel`:** Holds the state (Connected/Disconnected, Current Clipboard content).
+
+**Layer 3: The Repository (Data/Network)**
+*   **`SignalRClient`:** Singleton. Manages the WebSocket connection, auto-reconnect policy, and incoming message parsing.
+
+**Layer 4: System Services**
+*   **`OmniAccessibilityService`:** Listens for volume button presses (hardware macros) and injects text into other apps.
+*   **`ClipboardWatcher`:** Uses system hooks (where allowed) or Accessibility node reading to detect copy events.
+
+---
+
+## 5. Data & Communication Protocol
+
+### 5.1. The Payload Contract
+To ensure extensibility, we will not create unique endpoints for every feature. We will use a **Command Pattern**.
+
+All SignalR messages will follow this generic envelope:
+
+```json
+{
+  "Target": "Windows",       // or "Android", "Firefox"
+  "Command": "INPUT_KEYPRESS",
+  "Payload": {               // Dynamic JSON object based on Command
+    "Key": "MEDIA_NEXT_TRACK",
+    "Modifier": "CTRL"
+  },
+  "Timestamp": 1700000000
+}
+```
+
+### 5.2. Core Command Registry
+The system will initially support these command sets:
+
+| Domain | Command | Payload Example | Direction |
+| :--- | :--- | :--- | :--- |
+| **System** | `PING` | `{}` | Bi-directional |
+| **Input** | `MOUSE_MOVE` | `{ "x": 10, "y": -5 }` | Android -> Windows |
+| **Input** | `KEY_PRESS` | `{ "keyCode": 65 }` | Android -> Windows |
+| **Clipboard** | `UPDATE_CLIP` | `{ "text": "Hello World" }` | Bi-directional |
+| **Files** | `GET_NOTE` | `{ "filename": "ToDo.md" }` | Android -> Windows |
+| **Files** | `APPEND_NOTE`| `{ "filename": "Log.md", "content": "..." }` | Android -> Windows |
+
+### 5.3. Conflict Resolution Strategy
+*   **Clipboard:** Last Write Wins. If the PC and Phone copy text at the exact same second, the one that arrives at the Hub last overwrites the buffer.
+*   **Files:**
+    *   **Reading:** The PC reads the file from the disk *at the moment of request*.
+    *   **Writing:** The Android app is restricted to **Append Only** or **Create New**. It cannot overwrite existing lines in Markdown files to prevent corrupting Obsidian's own sync process.
+
+---
+
+## 6. Implementation Guidelines (For AI)
+
+### Phase 1: The Backbone
+1.  Initialize the **.NET 9 Worker Service**. Implement the `RpcApiHub`.
+2.  Initialize the **Android Project**. Add `Retrofit` and `SignalR-Client` dependencies.
+3.  Establish the "Handshake": Android connects to Windows IP, sends Auth Token, Windows logs "Client Connected."
+
+### Phase 2: Remote Control (Input)
+1.  Implement `InputService.cs` in C# using `P/Invoke`. Create a safe wrapper for `SendInput`.
+2.  Create the Android `Trackpad` UI. Send relative X/Y coordinates via SignalR.
+3.  Tune latency: Ensure UDP-like performance over SignalR (use `FireAndForget` for mouse movement).
+
+### Phase 3: Clipboard Sync
+1.  Implement `ClipboardMonitor` in C#. Needs to be on a generic Thread with an ApartmentState of `STA` (Single Threaded Apartment) to access OLE Clipboard.
+2.  Implement `ForegroundService` in Android.
+3.  Wire up the events: PC Copy -> SignalR -> Android Paste.
+
+### Phase 4: File Access
+1.  Implement `FileService.cs` in C# with a hardcoded `RootPath` (e.g., User's Documents/Obsidian).
+2.  Add logic to sanitize file paths (prevent ".." directory traversal attacks).
+3.  Build the Android "Note List" UI that queries the server.
+
+---
+
+## 7. Security & Deployment
+
+### Security
+*   **User Priority:** Security measures should never introduce friction or inconvenience for the user. Ease of use and seamless operation take precedence over stringent security protocols.
+*   **Transport:** Traffic is encrypted by the Tailscale tunnel (WireGuard).
+*   **Application:** A `secrets.json` file on the PC will hold a generated API Key.
+*   **Android:** The API Key must be entered once in the App Settings.
+
+### Deployment Workflow
+*   **Windows:**
+    *   Run `dotnet publish -c Release`.
+    *   Output: `OmniSync.exe`.
+    *   Action: User places it in `shell:startup` for auto-boot.
+*   **Android:**
+    *   Run `.\deploy.bat` (Encapsulates `gradlew installDebug`).
+    *   Action: Pushes APK via USB and launches it.
+
+## 8. Future Extensibility
+*   **Firefox:** The browser extension will act as just another "Client" connecting to the same RPC API Hub.
+*   **UI Separation:** The C# "Server" logic is decoupled from the UI. In the future, we can move the UI to a separate WPF app that communicates with the Service via Named Pipes, leaving the Service headless.
