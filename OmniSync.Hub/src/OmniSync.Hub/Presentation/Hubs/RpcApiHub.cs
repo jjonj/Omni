@@ -9,41 +9,37 @@ using OmniSync.Hub.Infrastructure.Services; // Added for FileService
 
 namespace OmniSync.Hub.Presentation.Hubs
 {
-    public class RpcApiHub : Hub
+    public class RpcApiHub : Microsoft.AspNetCore.SignalR.Hub
     {
         private readonly AuthService _authService;
         private readonly FileService _fileService;
         private readonly ClipboardService _clipboardService;
         private readonly CommandDispatcher _commandDispatcher;
         private readonly ProcessService _processService;
+        private readonly HubEventSender _hubEventSender;
 
-        public RpcApiHub(AuthService authService, FileService fileService, ClipboardService clipboardService, CommandDispatcher commandDispatcher, ProcessService processService)
+        public RpcApiHub(AuthService authService, FileService fileService, ClipboardService clipboardService, CommandDispatcher commandDispatcher, ProcessService processService, HubEventSender hubEventSender)
         {
             _authService = authService;
             _fileService = fileService;
             _clipboardService = clipboardService;
             _commandDispatcher = commandDispatcher;
             _processService = processService;
+            _hubEventSender = hubEventSender;
         }
 
         public override async Task OnConnectedAsync()
         {
             System.Console.WriteLine($"Client connected: {Context.ConnectionId}. Awaiting authentication.");
+            _hubEventSender.SubscribeForCommandOutput(Context.UserIdentifier ?? Context.ConnectionId, Context.ConnectionId);
             await base.OnConnectedAsync();
-            _processService.CommandOutputReceived += OnCommandOutputReceived;
         }
 
         public override async Task OnDisconnectedAsync(Exception exception)
         {
             System.Console.WriteLine($"Client disconnected: {Context.ConnectionId}");
-            _processService.CommandOutputReceived -= OnCommandOutputReceived;
+            _hubEventSender.UnsubscribeFromCommandOutput(Context.UserIdentifier ?? Context.ConnectionId);
             await base.OnDisconnectedAsync(exception);
-        }
-
-
-        private async void OnCommandOutputReceived(object sender, string output)
-        {
-            await Clients.Caller.SendAsync("ReceiveCommandOutput", output);
         }
 
         public bool Authenticate(string apiKey)

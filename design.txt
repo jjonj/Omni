@@ -160,6 +160,21 @@ The system will initially support these command sets:
     *   Run `.\deploy.bat` (Encapsulates `gradlew installDebug`).
     *   Action: Pushes APK via USB and launches it.
 
-## 8. Future Extensibility
-*   **Firefox:** The browser extension will act as just another "Client" connecting to the same RPC API Hub.
-*   **UI Separation:** The C# "Server" logic is decoupled from the UI. In the future, we can move the UI to a separate WPF app that communicates with the Service via Named Pipes, leaving the Service headless.
+
+
+### Command-line Client for Remote Execution (Omni CLI)
+
+**Purpose:** To provide a lightweight, cross-platform command-line interface (CLI) that enables remote execution of commands on connected OmniSync clients (e.g., from an Android device to a Windows PC). This client aims to offer an "SSH-like" experience for convenience and rapid interaction, prioritizing ease of use over robust security, given its intended use within a trusted personal network.
+
+**Key Features:**
+- **Cross-Platform:** Support for both Windows and Android environments.
+- **Remote Command Execution:** Ability to send arbitrary shell commands to a remote OmniSync instance for execution.
+- **Simplified Setup:** Minimal configuration, designed for "no hassle" operation.
+- **No inherent security:** Relies on network-level trust; no authentication or encryption built-in. (User's discretion to use within secure local networks).
+
+**Usage Example (Conceptual):**
+```bash
+omni-cli <target_device_id> <command_to_execute>
+# e.g., omni-cli my_pc "ls -la C:\Users\Public"
+# e.g., omni-cli my_android_phone "termux-open-url https://google.com"
+```

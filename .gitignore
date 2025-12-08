@@ -1,0 +1,49 @@
+# Git ignore file for OmniSync project
+
+# Build artifacts
+[Bb]in/
+[Oo]bj/
+publish/
+
+# Visual Studio files
+.vs/
+*.suo
+*.user
+*.log
+*.pdb
+*.opendata
+*.sqlite
+*.bak
+*.dll
+*.exe
+
+# Rider files
+.idea/
+
+# Miscellaneous
+*.tmp
+*.user
+*.cache
+*.exp
+*.lib
+*.so
+*.dylib
+*.a
+*.pyc
+*.pyo
+*.ncb
+*.sdf
+*.vshost.*
+*.fsx.fsi
+*.fsproj.user
+*.dbmdl
+
+# Logs
+*.log
+cli_output.log
+hub_output.log
+temp_speech.wav
+
+# Dependency directories
+packages/
+node_modules/
