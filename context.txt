@@ -1,0 +1,265 @@
+# OmniSync Project Development Context and Instructions
+
+This document contains the necessary context and instructions to resume development of the OmniSync project, particularly focusing on the Omni CLI and its integration with the OmniSync Hub. This is prepared in anticipation of a memory wipe when switching to an Android environment.
+
+## 1. Current Project Status (Windows Development)
+
+**Goal Achieved:** An `OmniSync.Cli` (C# console application) successfully connects to `OmniSync.Hub` (ASP.NET Core SignalR Hub) and executes arbitrary commands on the Windows PC. We successfully demonstrated this by having the CLI execute `echo "hello world" > test_omni.txt`, creating a file in the Hub's current working directory.
+
+**Key Components and Their Status:**
+
+*   **OmniSync.Hub (Windows)**:
+    *   **Project SDK**: `Microsoft.NET.Sdk.Web` (changed from `Worker` to support ASP.NET Core web features).
+    *   **SignalR Package**: `Microsoft.AspNetCore.SignalR.Common` version `9.0.0-preview.3.24172.9` (updated from old `1.1.0`).
+    *   **Authentication**: Uses `AuthService` with an API key (`test_api_key`) read from `appsettings.json`.
+    *   **Configuration Loading**: `appsettings.json` is explicitly loaded in `Program.cs` using `Path.Combine(Directory.GetCurrentDirectory(), "..", "..", "appsettings.json")`.
+    *   **Remote Command Execution**: Handled by `RpcApiHub.ExecuteCommand` which uses `ProcessService.ExecuteCommand` (`cmd.exe /c ...`).
+    *   **Output Streaming**: Refactored to use `HubEventSender` (a singleton service) to relay command output from `ProcessService` back to connected clients, resolving `ObjectDisposedException`.
+    *   **Listening Address**: `http://localhost:5000`.
+
+*   **OmniSync.Cli (C# Console Application)**:
+    *   **Purpose**: To connect to `OmniSync.Hub`, authenticate, and send commands for remote execution.
+    *   **SignalR Client**: Uses `Microsoft.AspNetCore.SignalR.Client`.
+    *   **Authentication**: Sends `test_api_key` to the Hub.
+    *   **Command Sending**: Invokes `RpcApiHub.ExecuteCommand` with the command string.
+    *   **Output Receiving**: Subscribes to `ReceiveCommandOutput` and prints to console.
+    *   **Non-blocking Exit**: Replaced `Console.ReadLine()` with `Task.Delay(TimeSpan.FromSeconds(5))` to allow the CLI to exit gracefully in automated scripts.
+
+*   **Automation Script (`run_omnisync.py`)**:
+    *   **Location**: Root of the project (`B:\GDrive\SharedWithPhone\Omni\`).
+    *   **Functionality**:
+        *   Clears previous log files (`hub_output.log`, `cli_output.log`).
+        *   Kills existing `OmniSync.Hub.exe` processes using `taskkill`.
+        *   Builds `OmniSync.Hub`.
+        *   Starts `OmniSync.Hub` in the background (detached process).
+        *   Builds `OmniSync.Cli`.
+        *   Runs `OmniSync.Cli` with a test command, Hub URL, and API key.
+        *   Collects output of Hub and CLI into respective log files.
+        *   Ensures `hub_log_file` is closed using `try...finally`.
+        *   Kills the background `OmniSync.Hub.exe` process at the end.
+    *   **Last Test Command**: `echo "hello world" > test_omni.txt` (creates `test_omni.txt` in `B:\GDrive\SharedWithPhone\Omni\OmniSync.Hub\src\OmniSync.Hub`).
+
+## 2. Instructions for Android Deployment (Termux)
+
+To build and run `OmniSync.Cli` on an Android device via Termux:
+
+1.  **Publish OmniSync.Cli for Android:**
+    *   On your PC, open a terminal (PowerShell/CMD).
+    *   Navigate to the `OmniSync.Cli` project directory:
+        ```bash
+        cd B:\GDrive\SharedWithPhone\Omni\OmniSync.Cli
+        ```
+    *   Publish the application for a common Android architecture (e.g., `android-arm64`). This creates a self-contained executable.
+        ```bash
+        dotnet publish -c Release --runtime android-arm64 --self-contained true -p:PublishSingleFile=true -o C:\temp\OmniSync.Cli_Android
+        ```
+        *   **`--runtime android-arm64`**: Target for most modern Android devices.
+        *   **`--self-contained true`**: Includes the .NET runtime, so Termux doesn't need to install it separately.
+        *   **`-p:PublishSingleFile=true`**: (Optional but recommended) Packs everything into a single executable.
+        *   **`-o C:\temp\OmniSync.Cli_Android`**: Output directory on your PC.
+
+2.  **Install Termux on Android:**
+    *   Download and install Termux from F-Droid or Google Play Store on your Android device.
+
+3.  **Grant Termux Storage Permissions:**
+    *   In your Android device's settings, find "Apps" or "Applications".
+    *   Locate "Termux" and go to "Permissions".
+    *   Grant "Storage" permission (or "Files and media" access).
+    *   In Termux, run `termux-setup-storage` and grant access when prompted.
+
+4.  **Transfer the Executable to Android:**
+    *   Connect your Android device to your PC.
+    *   Copy the `OmniSync.Cli` executable (from `C:\temp\OmniSync.Cli_Android`) to a user-accessible directory on your Android device (e.g., the `Download` folder on your internal storage). Let's assume you place it in `/sdcard/Download/`.
+    *   Alternatively, use `adb push` from your PC if ADB is set up:
+        ```bash
+        adb push C:\temp\OmniSync.Cli_Android\OmniSync.Cli /sdcard/Download/OmniSync.Cli
+        ```
+
+5.  **Run OmniSync.Cli in Termux:**
+    *   Open the Termux app on your Android device.
+    *   Navigate to the directory where you placed the executable:
+        ```bash
+        cd ~/storage/shared/Download  # Or your chosen path
+        ```
+    *   Make the executable runnable:
+        ```bash
+        chmod +x OmniSync.Cli
+        ```
+    *   Execute a command against your PC's OmniSync Hub:
+        ```bash
+        ./OmniSync.Cli "ls -la" "http://<PC_IP_ADDRESS>:5000/signalrhub" "test_api_key"
+        ```
+        *   **Important**: Replace `<PC_IP_ADDRESS>` with the actual local IP address of your Windows PC (e.g., `192.168.1.100`). `localhost` will not work from your Android device.
+        *   Ensure your PC's firewall allows incoming connections on port `5000`.
+        *   If using Tailscale/VPN, ensure both devices are connected to the same Tailnet and use the Tailscale IP of your PC.
+
+## 3. Important Files and Configurations
+
+*   **OmniSync.Hub/appsettings.json**:
+    ```json
+    {
+      "Logging": {
+        "LogLevel": {
+          "Default": "Information",
+          "Microsoft": "Warning",
+          "Microsoft.Hosting.Lifetime": "Information"
+        }
+      },
+      "SignalR": {
+        "Url": "http://localhost:5000"
+      },
+      "AuthApiKey": "test_api_key" // Used by OmniSync.Cli for authentication
+    }
+    ```
+
+*   **Python Automation Script (`run_omnisync.py`) Content**:
+    ```python
+    import subprocess
+    import time
+    import os
+    import sys
+
+    # Define directories and executable path
+    HUB_DIR = "B:/GDrive/SharedWithPhone/Omni/OmniSync.Hub/src/OmniSync.Hub"
+    CLI_DIR = "B:/GDrive/SharedWithPhone/Omni/OmniSync.Cli"
+    HUB_EXE_PATH = os.path.join(HUB_DIR, "bin", "Debug", "net9.0", "OmniSync.Hub.exe") 
+
+    def run_command(command, cwd=None, shell=False, capture_output=False, log_file=None):
+        """
+        Runs a shell command and optionally logs its output.
+        """
+        print(f"Executing: {command}")
+        
+        process = None
+        stdout_redir = subprocess.PIPE if capture_output or log_file else None
+        stderr_redir = subprocess.PIPE if capture_output or log_file else None
+
+        # Handle shell for Windows specific commands like taskkill
+        if "taskkill" in command.lower() or "wmic" in command.lower():
+            shell = True
+
+        try:
+            process = subprocess.run(
+                command,
+                cwd=cwd,
+                shell=shell,
+                capture_output=True, # Always capture to write to log or print
+                text=True,
+                encoding="utf-8",
+                errors="replace" # Handle decoding errors gracefully
+            )
+
+            if log_file:
+                with open(log_file, "a", encoding="utf-8") as f:
+                    f.write(f"--- Command: {command} (CWD: {cwd}) ---\n")
+                    f.write("--- STDOUT ---\n")
+                    f.write(process.stdout)
+                    f.write("--- STDERR ---\n")
+                    f.write(process.stderr)
+                    f.write(f"--- Exit Code: {process.returncode} ---\n\n")
+            else:
+                print(process.stdout, end='')
+                print(process.stderr, end='')
+
+            if process.returncode != 0:
+                print(f"Command failed with exit code {process.returncode}. See {log_file if log_file else 'output above'} for details.")
+            
+            return process
+
+        except FileNotFoundError:
+            print(f"Error: Command '{command.split()[0]}' not found.")
+            return None
+        except Exception as e:
+            print(f"An error occurred while running command '{command}': {e}")
+            return None
+
+    def kill_hub_process():
+        """
+        Kills any running OmniSync.Hub.exe processes.
+        """
+        print("Attempting to kill OmniSync.Hub.exe processes...")
+        if sys.platform == "win32":
+            kill_cmd = "taskkill /IM OmniSync.Hub.exe /F"
+            result = run_command(kill_cmd, shell=True, capture_output=True)
+            if result:
+                if "No tasks are running" in result.stdout or "process not found" in result.stderr:
+                    print("OmniSync.Hub.exe was not running or could not be found.")
+                elif result.returncode == 0:
+                    print("OmniSync.Hub.exe processes killed successfully.")
+                else:
+                    print(f"Failed to kill OmniSync.Hub.exe: {result.stderr}")
+        else:
+            # For non-Windows, assume 'pkill' or similar if available, or just warn.
+            print("Warning: Process killing not implemented for non-Windows platforms.")
+
+    def main():
+        hub_log_path = "hub_output.log"
+        cli_log_path = "cli_output.log"
+
+        # Clear previous logs
+        for log_file in [hub_log_path, cli_log_path]:
+            if os.path.exists(log_file):
+                try:
+                    os.remove(log_file)
+                except OSError as e:
+                    print(f"Error deleting {log_file}: {e}. Please ensure no other process is using it.")
+                    # Attempt to proceed, but user might need to intervene
+                    time.sleep(1)
+
+        kill_hub_process()
+
+        hub_log_file = None # Initialize to None outside try block
+        try:
+            print("\n--- Building OmniSync.Hub ---")
+            build_hub_result = run_command("dotnet build", cwd=HUB_DIR, log_file=hub_log_path)
+            if build_hub_result is None or build_hub_result.returncode != 0:
+                print("OmniSync.Hub build failed. Aborting. Check hub_output.log for details.")
+                return # Exit if build failed
+            time.sleep(1) # Give it a moment
+
+            print("\n--- Starting OmniSync.Hub in background ---")
+            
+            hub_log_file = open(hub_log_path, "a", encoding="utf-8", errors="replace") # Open the file once and keep it open
+            hub_log_file.write(f"\n--- Starting OmniSync.Hub (PID will be known after Popen) ---\n")
+
+            # Ensure that the executable exists before trying to run it
+            if not os.path.exists(HUB_EXE_PATH):
+                print(f"Error: Hub executable not found at {HUB_EXE_PATH}. Did the build fail?")
+                return
+
+            # Use Popen to start the hub process in a detached way
+            hub_process = subprocess.Popen(
+                [HUB_EXE_PATH], # Run the compiled executable directly
+                cwd=HUB_DIR,
+                stdout=hub_log_file, # Redirect stdout to the open file
+                stderr=hub_log_file, # Redirect stderr to the open file
+                creationflags=subprocess.DETACHED_PROCESS if sys.platform == "win32" else 0, # For Windows, run truly detached
+                shell=False # Don't use shell if running exe directly
+            )
+            print(f"OmniSync.Hub started with PID: {hub_process.pid}")
+            
+            time.sleep(5) # Give the hub some time to start up
+
+            print("\n--- Building OmniSync.Cli ---")
+            build_cli_result = run_command("dotnet build", cwd=CLI_DIR, log_file=cli_log_path)
+            if build_cli_result is None or build_cli_result.returncode != 0:
+                print("OmniSync.Cli build failed. Aborting. Check cli_output.log for details.")
+                return # Exit if build failed
+            time.sleep(1)
+
+            print("\n--- Running OmniSync.Cli ---")
+            # Ensure that --project is used correctly and the path is escaped if needed
+            cli_command = f"dotnet run --project \"{CLI_DIR}\" -- \"echo \\\"hello world\\\" > test_omni.txt\" \"http://localhost:5000/signalrhub\" \"test_api_key\""
+            run_command(cli_command, cwd=CLI_DIR, log_file=cli_log_path)
+
+            print("\nAutomation complete. Check hub_output.log and cli_output.log for details.")
+            
+        finally:
+            if hub_log_file and not hub_log_file.closed: # Check if file is open before closing
+                hub_log_file.close()
+            # Always attempt to kill the hub process at the end
+            kill_hub_process() 
+
+    if __name__ == "__main__":
+        main()
+    ```
