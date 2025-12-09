@@ -2,22 +2,28 @@ import subprocess
 import time
 import os
 import sys
+import ctypes # Import ctypes
 
 # Define directories and executable path
 HUB_DIR = "B:/GDrive/SharedWithPhone/Omni/OmniSync.Hub/src/OmniSync.Hub"
-CLI_DIR = "B:/GDrive/SharedWithPhone/Omni/OmniSync.Cli"
 HUB_EXE_PATH = os.path.join(HUB_DIR, "bin", "Debug", "net9.0", "OmniSync.Hub.exe") 
 
-def run_command(command, cwd=None, shell=False, capture_output=False, log_file=None):
+def is_admin():
     """
-    Runs a shell command and optionally logs its output.
+    Checks if the current process has administrator privileges on Windows.
+    """
+    try:
+        return ctypes.windll.shell32.IsUserAnAdmin()
+    except:
+        return False
+
+def run_command(command, cwd=None, shell=False, capture_output=False):
+    """
+    Runs a shell command and prints its output.
     """
     print(f"Executing: {command}")
     
     process = None
-    stdout_redir = subprocess.PIPE if capture_output or log_file else None
-    stderr_redir = subprocess.PIPE if capture_output or log_file else None
-
     # Handle shell for Windows specific commands like taskkill
     if "taskkill" in command.lower() or "wmic" in command.lower():
         shell = True
@@ -27,26 +33,17 @@ def run_command(command, cwd=None, shell=False, capture_output=False, log_file=N
             command,
             cwd=cwd,
             shell=shell,
-            capture_output=True, # Always capture to write to log or print
+            capture_output=capture_output,
             text=True,
             encoding="utf-8",
             errors="replace" # Handle decoding errors gracefully
         )
-
-        if log_file:
-            with open(log_file, "a", encoding="utf-8") as f:
-                f.write(f"--- Command: {command} (CWD: {cwd}) ---\n")
-                f.write("--- STDOUT ---\n")
-                f.write(process.stdout)
-                f.write("--- STDERR ---\n")
-                f.write(process.stderr)
-                f.write(f"--- Exit Code: {process.returncode} ---\n\n")
-        else:
+        if capture_output:
             print(process.stdout, end='')
             print(process.stderr, end='')
 
         if process.returncode != 0:
-            print(f"Command failed with exit code {process.returncode}. See {log_file if log_file else 'output above'} for details.")
+            print(f"Command failed with exit code {process.returncode}.")
         
         return process
 
@@ -73,75 +70,45 @@ def kill_hub_process():
             else:
                 print(f"Failed to kill OmniSync.Hub.exe: {result.stderr}")
     else:
-        # For non-Windows, assume 'pkill' or similar if available, or just warn.
         print("Warning: Process killing not implemented for non-Windows platforms.")
 
 def main():
-    hub_log_path = "hub_output.log"
-    cli_log_path = "cli_output.log"
-
-    # Clear previous logs
-    for log_file in [hub_log_path, cli_log_path]:
-        if os.path.exists(log_file):
-            try:
-                os.remove(log_file)
-            except OSError as e:
-                print(f"Error deleting {log_file}: {e}. Please ensure no other process is using it.")
-                # Attempt to proceed, but user might need to intervene
-                time.sleep(1)
+    if sys.platform == "win32" and not is_admin():
+        print("This script needs to be run with Administrator privileges.")
+        print("Please restart your terminal/IDE as Administrator and try again.")
+        sys.exit(1)
 
     kill_hub_process()
 
-    hub_log_file = None # Initialize to None outside try block
-    try:
-        print("\n--- Building OmniSync.Hub ---")
-        build_hub_result = run_command("dotnet build", cwd=HUB_DIR, log_file=hub_log_path)
-        if build_hub_result is None or build_hub_result.returncode != 0:
-            print("OmniSync.Hub build failed. Aborting. Check hub_output.log for details.")
-            return # Exit if build failed
-        time.sleep(1) # Give it a moment
+    print("\n--- Building OmniSync.Hub ---")
+    build_hub_result = run_command("dotnet build", cwd=HUB_DIR)
+    if build_hub_result is None or build_hub_result.returncode != 0:
+        print("OmniSync.Hub build failed. Aborting.")
+        return # Exit if build failed
+    time.sleep(1) # Give it a moment
 
-        print("\n--- Starting OmniSync.Hub in background ---")
-        
-        hub_log_file = open(hub_log_path, "a", encoding="utf-8", errors="replace") # Open the file once and keep it open
-        hub_log_file.write(f"\n--- Starting OmniSync.Hub (PID will be known after Popen) ---\n")
+    print("\n--- Starting OmniSync.Hub in background ---")
+    
+    # Ensure the executable exists before trying to run it
+    if not os.path.exists(HUB_EXE_PATH):
+        print(f"Error: Hub executable not found at {HUB_EXE_PATH}. Did the build fail?")
+        return
 
-        # Ensure the executable exists before trying to run it
-        if not os.path.exists(HUB_EXE_PATH):
-            print(f"Error: Hub executable not found at {HUB_EXE_PATH}. Did the build fail?")
-            return
-
-        # Use Popen to start the hub process in a detached way
-        hub_process = subprocess.Popen(
-            [HUB_EXE_PATH], # Run the compiled executable directly
-            cwd=HUB_DIR,
-            stdout=hub_log_file, # Redirect stdout to the open file
-            stderr=hub_log_file, # Redirect stderr to the open file
-            creationflags=subprocess.DETACHED_PROCESS if sys.platform == "win32" else 0, # For Windows, run truly detached
-            shell=False # Don't use shell if running exe directly
-        )
-        print(f"OmniSync.Hub started with PID: {hub_process.pid}")
-        
-        time.sleep(5) # Give the hub some time to start up
-
-        print("\n--- Building OmniSync.Cli ---")
-        build_cli_result = run_command("dotnet build", cwd=CLI_DIR, log_file=cli_log_path)
-        if build_cli_result is None or build_cli_result.returncode != 0:
-            print("OmniSync.Cli build failed. Aborting. Check cli_output.log for details.")
-            return # Exit if build failed
-        time.sleep(1)
-
-        print("Running OmniSync.Cli...")
-        cli_command = f"dotnet run --project \"{CLI_DIR}\" -- \"echo \\\"hello world\\\" > test_omni.txt\" \"http://localhost:5000/signalrhub\" \"test_api_key\""
-        run_command(cli_command, cwd=CLI_DIR, log_file=cli_log_path)
-
-        print("\nAutomation complete. Check hub_output.log and cli_output.log for details.")
-        
-    finally:
-        if hub_log_file and not hub_log_file.closed: # Check if file is open before closing
-            hub_log_file.close()
-        # Always attempt to kill the hub process at the end
-        kill_hub_process() 
+    # Use Popen to start the hub process in a detached way
+    # If the script itself is run as admin, subprocess.Popen will inherit those rights.
+    hub_process = subprocess.Popen(
+        [HUB_EXE_PATH], # Run the compiled executable directly
+        cwd=HUB_DIR,
+        creationflags=subprocess.DETACHED_PROCESS if sys.platform == "win32" else 0, # For Windows, run truly detached
+        shell=False # Don't use shell if running exe directly
+    )
+    print(f"OmniSync.Hub started with PID: {hub_process.pid}")
+    
+    print("\nOmniSync.Hub is running in the background.")
+    print("Use 'python run_omnisync.py --kill' to stop it, or manually kill the process if needed.")
 
 if __name__ == "__main__":
-    main()
+    if "--kill" in sys.argv:
+        kill_hub_process()
+    else:
+        main()

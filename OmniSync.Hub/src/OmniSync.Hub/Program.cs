@@ -9,6 +9,7 @@ using System;
 using System.IO; // Added for Path.Combine and Directory.GetCurrentDirectory()
 
 var builder = WebApplication.CreateBuilder(args);
+builder.WebHost.UseUrls("http://0.0.0.0:5000");
 
 // Explicitly load appsettings.json using absolute path
 string appSettingsPath = Path.Combine(Directory.GetCurrentDirectory(), "..", "..", "appsettings.json");

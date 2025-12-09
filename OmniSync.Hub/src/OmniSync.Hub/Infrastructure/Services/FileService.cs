@@ -35,6 +35,12 @@ namespace OmniSync.Hub.Infrastructure.Services
             File.AppendAllText(fullPath, content);
         }
 
+        public void WriteFile(string filePath, string content)
+        {
+            var fullPath = SanitizeAndGetFullPath(filePath);
+            File.WriteAllText(fullPath, content);
+        }
+
         private string SanitizeAndGetFullPath(string filePath)
         {
             // IMPORTANT: This is a critical security measure to prevent directory traversal attacks.

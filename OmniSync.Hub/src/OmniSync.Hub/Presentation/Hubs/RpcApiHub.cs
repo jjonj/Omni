@@ -96,7 +96,29 @@ namespace OmniSync.Hub.Presentation.Hubs
                 {
                     throw new UnauthorizedAccessException("Client is not authenticated.");
                 }
-                await _processService.ExecuteCommand(command);
+
+                (string commandName, List<string> args) = ParseCommand(command);
+
+                switch (commandName.ToLowerInvariant())
+                {
+                    case "write_file":
+                        if (args.Count == 2)
+                        {
+                            // Special handling for write_file if needed
+                            _fileService.WriteFile(args[0], args[1]);
+                            await Clients.Caller.SendAsync("ReceiveCommandOutput", $"File '{args[0]}' written successfully.");
+                        }
+                        else
+                        {
+                            await Clients.Caller.SendAsync("ReceiveCommandOutput", "Usage: write_file \"filepath\" \"content\"");
+                        }
+                        break;
+                    // Add other commands here
+                    default:
+                        // Fallback to process service for unrecognized commands
+                        await _processService.ExecuteCommand(command);
+                        break;
+                }
             }
             catch (Exception ex)
             {
@@ -179,6 +201,61 @@ namespace OmniSync.Hub.Presentation.Hubs
                 Console.WriteLine($"Error getting note content for '{filename}': {ex.Message}");
                 return $"Error: Could not retrieve content for '{filename}'.";
             }
+        }
+
+        private (string commandName, List<string> args) ParseCommand(string commandString)
+        {
+            var parts = new List<string>();
+            var inQuote = false;
+            var currentPart = new System.Text.StringBuilder();
+
+            for (int i = 0; i < commandString.Length; i++)
+            {
+                if (commandString[i] == '"')
+                {
+                    inQuote = !inQuote;
+                    // If we just closed a quote, and the current part has content, add it.
+                    // This handles cases like `command "arg1" "arg2"`
+                    if (!inQuote && currentPart.Length > 0)
+                    {
+                        parts.Add(currentPart.ToString());
+                        currentPart.Clear();
+                    }
+                    else if (inQuote && currentPart.Length > 0)
+                    {
+                        // If we just opened a quote, and there's content, that means it's a command name followed by a space then a quote
+                        parts.Add(currentPart.ToString());
+                        currentPart.Clear();
+                    }
+                }
+                else if (commandString[i] == ' ' && !inQuote)
+                {
+                    if (currentPart.Length > 0)
+                    {
+                        parts.Add(currentPart.ToString());
+                        currentPart.Clear();
+                    }
+                }
+                else
+                {
+                    currentPart.Append(commandString[i]);
+                }
+            }
+
+            if (currentPart.Length > 0)
+            {
+                parts.Add(currentPart.ToString());
+            }
+
+            if (parts.Count == 0)
+            {
+                return (string.Empty, new List<string>());
+            }
+
+            string commandName = parts[0];
+            List<string> args = parts.Count > 1 ? parts.GetRange(1, parts.Count - 1) : new List<string>();
+
+            return (commandName, args);
         }
     }
 }
