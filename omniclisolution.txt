@@ -1,31 +1,9 @@
-overcomplicated it with .NET. The goal is to send a text string to a URL; we don't need a 100MB runtime for that.
-
-The "Zero Friction" path on Android (Termux) is **Python**. It comes pre-installed or takes 5 seconds to install, acts like a native shell tool, and uses a lightweight library to talk to your Hub.
-
-Here is the exact setup to get `omni <command>` working in under 2 minutes.
-
-### 1. One-Time Setup (Termux)
-Run these three commands to get the environment ready:
-
-```bash
-pkg install python
-pip install signalrcore
-```
-
-### 2. Create the Script
-Create the executable file.
-```bash
-nano ~/omni
-```
-
-**Paste this code:**
-*(This script connects, authenticates, sends your command, prints the output, and exits automatically).*
-
-```python
 #!/usr/bin/env python3
 import sys
 import time
 import logging
+import asyncio 
+import traceback 
 from signalrcore.hub_connection_builder import HubConnectionBuilder
 
 # --- CONFIGURATION ---
@@ -38,69 +16,97 @@ if len(sys.argv) < 2:
     sys.exit(1)
 
 command_to_run = " ".join(sys.argv[1:])
-is_done = False
+
+is_done = False 
+connection_started = False 
+
+# Configure logging for signalrcore
+logging.basicConfig(level=logging.DEBUG, 
+                    format='%(asctime)s - %(levelname)s - %(message)s')
 
 def on_output(args):
-    # Print output from server in real-time
     print(args[0], end="")
 
 def on_close():
-    global is_done
+    global is_done, connection_started 
+    print("Connection closed.")
     is_done = True
+    connection_started = False
 
-# Build Connection
-hub = HubConnectionBuilder()\
-    .with_url(HUB_URL)\
-    .configure_logging(logging.CRITICAL)\
-    .with_automatic_reconnect({
-        "type": "raw",
-        "keep_alive_interval": 10,
-        "reconnect_interval": 5,
-        "max_attempts": 5
-    })\
-    .build()
+def on_open():
+    global connection_started
+    print("Connection opened.")
+    connection_started = True
 
-hub.on("ReceiveCommandOutput", on_output)
-hub.on_close(on_close)
+def on_error(error):
+    print(f"Connection error: {error}")
 
-try:
-    hub.start()
-    
-    # 1. Authenticate
-    hub.invoke("Authenticate", [API_KEY])
-    
-    # 2. Execute
-    hub.invoke("ExecuteCommand", [command_to_run])
+async def main():
+    global is_done, connection_started 
 
-    # 3. Wait for output (Give it 3 seconds or until Ctrl+C)
-    # Since we don't know exactly when the command finishes streaming, 
-    # we wait a short buffer. 
-    time.sleep(2) 
-    
-    hub.stop()
+    # Start the stopwatch immediately at the beginning of the main function
+    total_execution_start_time = time.time() 
 
-except Exception as e:
-    print(f"Error: {e}")
-    sys.exit(1)
-```
+    hub = HubConnectionBuilder()\
+        .with_url(HUB_URL)\
+        .configure_logging(logging.DEBUG, socket_trace=True)\
+        .with_automatic_reconnect({
+            "type": "raw",
+            "keep_alive_interval": 10,
+            "reconnect_interval": 5,
+            "max_attempts": 5
+        }).build() # .build() moved to the same line
 
-### 3. Make it "Native"
-Save the file (`Ctrl+O`, `Enter`, `Ctrl+X`).
+    hub.on("ReceiveCommandOutput", on_output)
+    hub.on_close(on_close) 
+    hub.on_open(on_open)   
+    hub.on_error(on_error) 
 
-Now, make it executable and add it to your path so you can run it from anywhere like `ls` or `grep`.
+    try:
+        print(f"Attempting to connect to {HUB_URL}...")
+        hub.start() 
+        print("hub.start() initiated (without await).")
 
-```bash
-chmod +x ~/omni
-mv ~/omni $PREFIX/bin/omni
-```
+        timeout = 15 
+        start_time = time.time()
+        while not connection_started and (time.time() - start_time) < timeout:
+            print(f"Waiting for connection... ({int(time.time() - start_time)}s/{timeout}s)")
+            await asyncio.sleep(1) 
+        
+        if not connection_started:
+            print("Failed to establish connection within timeout.")
+            hub.stop() 
+            sys.exit(1)
 
-### 4. Done. usage:
-You can now open a fresh terminal anywhere and type:
+        print("Connection established. Authenticating and executing command...")
+        hub.send("Authenticate", [API_KEY]) 
+        print("Authentication sent.")
+        
+        hub.send("ExecuteCommand", [command_to_run]) 
+        print("Command execution sent.")
 
-```bash
-omni dir
-omni whoami
-omni "echo hello > C:\test.txt"
-```
+        start_time = time.time()
+        while not is_done and (time.time() - start_time) < 30: 
+             await asyncio.sleep(0.5)
 
-This is the absolute lowest friction way to interact with your system. No project folders, no compilation, just a script in your bin folder.
+        if not is_done:
+            print("Command output might not have completed within timeout or connection hung.")
+        
+        hub.stop() 
+        print("Connection stopped.")
+
+    except Exception as e: 
+        print(f"Error during execution: {e}") 
+        traceback.print_exc() 
+        try:
+            hub.stop()
+        except Exception as stop_e:
+            print(f"Error stopping hub: {stop_e}")
+        sys.exit(1)
+    finally:
+        elapsed_time = time.time() - total_execution_start_time
+        print(f"Total script execution duration: {elapsed_time:.2f} seconds")
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
