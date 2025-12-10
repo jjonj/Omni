@@ -1,5 +1,6 @@
 ﻿using Microsoft.AspNetCore.SignalR.Client;
 using System;
+using System.Diagnostics;
 using System.Threading.Tasks;
 
 namespace OmniSync.Cli
@@ -8,9 +9,14 @@ namespace OmniSync.Cli
     {
         private static string _hubUrl = "http://localhost:5000/signalrhub"; // Default Hub URL
         private static string _apiKey = "test_api_key"; // Placeholder API Key
+        private static TaskCompletionSource<bool> _commandCompletionSource;
 
         static async Task Main(string[] args)
         {
+            var stopwatch = new Stopwatch();
+            stopwatch.Start();
+            _commandCompletionSource = new TaskCompletionSource<bool>();
+
             if (args.Length < 1)
             {
                 Console.WriteLine("Usage: OmniSync.Cli <command_to_execute> [hub_url] [api_key]");
@@ -38,11 +44,17 @@ namespace OmniSync.Cli
                 Console.Write(output);
             });
 
+            connection.On<string>("CommandExecutionCompleted", (command) =>
+            {
+                Console.WriteLine($"Command '{command}' completed.");
+                _commandCompletionSource.TrySetResult(true);
+            });
+
             connection.Closed += async (error) =>
             {
                 Console.WriteLine($"Connection closed due to an error: {error?.Message}");
-                await Task.Delay(5000);
-                // Optionally, try to reconnect here
+                _commandCompletionSource.TrySetResult(false);
+                await Task.Delay(1000);
             };
 
             try
@@ -50,7 +62,6 @@ namespace OmniSync.Cli
                 await connection.StartAsync();
                 Console.WriteLine("Connected to OmniSync Hub.");
 
-                // Authenticate
                 var isAuthenticated = await connection.InvokeAsync<bool>("Authenticate", _apiKey);
 
                 if (isAuthenticated)
@@ -59,8 +70,7 @@ namespace OmniSync.Cli
                     Console.WriteLine($"Executing command: {commandToExecute}");
                     await connection.InvokeAsync("ExecuteCommand", commandToExecute);
                     
-                    // Wait for a short period to allow output to be received, then exit.
-                    await Task.Delay(TimeSpan.FromSeconds(5)); // Wait 5 seconds
+                    await _commandCompletionSource.Task;
                 }
                 else
                 {
@@ -76,8 +86,9 @@ namespace OmniSync.Cli
                 if (connection.State == HubConnectionState.Connected)
                 {
                     await connection.StopAsync();
-                    Console.WriteLine("Disconnected from OmniSync Hub.");
                 }
+                stopwatch.Stop();
+                Console.WriteLine($"Total execution time: {stopwatch.ElapsedMilliseconds} ms");
             }
         }
     }

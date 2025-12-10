@@ -113,10 +113,20 @@ namespace OmniSync.Hub.Presentation.Hubs
                             await Clients.Caller.SendAsync("ReceiveCommandOutput", "Usage: write_file \"filepath\" \"content\"");
                         }
                         break;
+                    case "list_notes":
+                        var files = Directory.GetFiles(_fileService.GetRootPath(), "*.md", SearchOption.TopDirectoryOnly);
+                        var fileNames = new List<string>();
+                        foreach (var file in files)
+                        {
+                            fileNames.Add(Path.GetFileName(file));
+                        }
+                        await Clients.Caller.SendAsync("ReceiveCommandOutput", string.Join("\n", fileNames));
+                        break;
                     // Add other commands here
                     default:
                         // Fallback to process service for unrecognized commands
                         await _processService.ExecuteCommand(command);
+                        await Clients.Caller.SendAsync("CommandExecutionCompleted", command);
                         break;
                 }
             }
@@ -158,30 +168,6 @@ namespace OmniSync.Hub.Presentation.Hubs
             {
                 Console.WriteLine($"Error killing process {processId}: {ex.Message}");
                 return false;
-            }
-        }
-
-        public IEnumerable<string> ListNotes()
-        {
-            try
-            {
-                if (!Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) || !(bool)isAuthenticated)
-                {
-                    throw new UnauthorizedAccessException("Client is not authenticated.");
-                }
-
-                var files = Directory.GetFiles(_fileService.GetRootPath(), "*.md", SearchOption.TopDirectoryOnly);
-                var fileNames = new List<string>();
-                foreach (var file in files)
-                {
-                    fileNames.Add(Path.GetFileName(file));
-                }
-                return fileNames;
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Error listing notes: {ex.Message}");
-                return new List<string>(); // Return empty list on error
             }
         }
 

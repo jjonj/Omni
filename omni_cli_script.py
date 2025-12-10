@@ -20,6 +20,11 @@ command_to_run = " ".join(sys.argv[1:])
 is_done = False 
 connection_started = False 
 
+def on_command_completed(args):
+    global is_done
+    print(f"Command '{args[0]}' completed.")
+    is_done = True
+
 # Configure logging for signalrcore
 logging.basicConfig(level=logging.DEBUG, 
                     format='%(asctime)s - %(levelname)s - %(message)s')
@@ -58,6 +63,7 @@ async def main():
         }).build()
 
     hub.on("ReceiveCommandOutput", on_output)
+    hub.on("CommandExecutionCompleted", on_command_completed)
     hub.on_close(on_close) 
     hub.on_open(on_open)   
     hub.on_error(on_error) 
