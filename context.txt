@@ -1,118 +1,14 @@
-# OmniSync Project Development Context and Instructions
+## 9. Automated Testing Methodology (Agent-Driven)
+During the development and debugging of the OmniSync.Hub, particularly for the WPF monitoring UI, the following methodology was employed to test functionality without requiring direct user interaction for each verification step:
 
-**Last Updated:** December 10, 2025
-
-This document contains the necessary context and instructions to resume development of the OmniSync project, particularly focusing on the Omni CLI and its integration with the OmniSync Hub.
-
-## 1. Overall Project Status
-All tasks defined in the "Implementation Guidelines" (Phase 1, 2, 3, and 4) within the `design.txt` have been coded. Additionally, the `CommandDispatcher` has been fully implemented, bi-directional clipboard synchronization is complete (including self-update prevention), the `OmniAccessibilityService` has been fleshed out, general error handling has been improved, and a significant new feature for remote command and process management has been added.
-
-**Current State of PC Control:**
-*   SSH connectivity to the PC (`gemini@10.0.0.37` with password `1234`) is established and functional for executing shell commands.
-*   The project directory `G:\SharedWithPhone\Omni` on the PC has been (manually by user) cloned from `https://github.com/jjonj/Omni.git`.
-*   **Critical Unresolved Issue: Git Operations on PC:** The status of this issue is unknown, but previously, performing *any* Git operation (`git status`, `git pull`, `git push`) from the PC via SSH within the cloned repository `G:\SharedWithPhone\Omni` resulted in "Access is denied." This prevents local development flow via SSH.
-
-## 2. Windows Hub (`OmniSync.Hub`)
-
-### 2.1. Project Setup and Structure
-*   **Initialized .NET 9 Worker Service:** The project (`OmniSync.Hub.csproj`) has been set up with the correct target framework (`net9.0-windows`) and includes necessary dependencies. The project SDK was changed from `Worker` to `Microsoft.NET.Sdk.Web` to support ASP.NET Core web features.
-*   **Modular Folder Structure:** A layered folder structure (`Presentation`, `Logic`, `Infrastructure`) has been established to support extensibility and maintain separation of concerns as a "Modular Monolith."
-*   **Configuration Files:** `appsettings.json` (for general configuration) and `secrets.json` (for the API key) have been created. `.gitignore` has been configured to exclude `secrets.json`. `appsettings.json` is explicitly loaded in `Program.cs`.
-*   **Listening Address**: `http://localhost:5000`.
-
-### 2.2. Core Components and Services
-*   **`RpcApiHub`:** The central communication endpoint.
-    *   **Authentication:** Integrated `AuthService` for client authentication using an API key.
-    *   **Payload Handling:** Uses `CommandDispatcher` to route incoming commands.
-    *   **File Access Methods:** Exposes `ListNotes()` to get a list of Markdown files and `GetNoteContent(filename)` to retrieve file content, utilizing `FileService`.
-    *   **Remote Command & Process Management:** Exposes `ExecuteCommand(string command)`, `ListProcesses()`, and `KillProcess(int processId)` methods, utilizing `ProcessService`. Streams command output to the client via `ReceiveCommandOutput` event. A `CommandExecutionCompleted` event has been added to signal the end of a command.
-    *   **Clipboard Update:** Exposes `UpdateClipboard(string text)` method to set the clipboard on the Windows machine, utilizing `ClipboardService`.
-    *   **Monitoring Events:** Exposes static events `AnyCommandReceived`, `ClientConnectedEvent`, and `ClientDisconnectedEvent` to notify monitoring services of Hub activity.
-*   **`AuthService`:** Implemented to validate client API keys against a configured secret.
-*   **`InputService`:** Implemented using `P/Invoke` to interact with `user32.dll` for simulating mouse movements (`MoveMouse`) and keyboard presses (`SendKeyPress`).
-*   **`ClipboardService`:** Implemented using `P/Invoke` to monitor and set the system clipboard on a dedicated STA (Single Threaded Apartment) thread. Correctly uses Win32 API functions.
-*   **`ClipboardHostedService`:** A background service (`IHostedService`) responsible for managing the lifecycle of `ClipboardService` and broadcasting `ClipboardUpdated` events to connected `RpcApiHub` clients.
-*   **`FileService`:** Implemented with a hardcoded `RootPath` (User's Documents/Obsidian) and robust path sanitization. Includes `GetRootPath()` method.
-*   **`ProcessService`:** Implemented to execute CMD commands (`ExecuteCommand`), list running processes (`ListProcesses`), and kill processes (`KillProcess`) using `System.Diagnostics.Process`. Streams command output via `CommandOutputReceived` event.
-*   **`CommandDispatcher`:** Fully implemented to receive generic commands and route them to the appropriate `InputService`, `FileService`, or other services.
-*   **`TrayIconManager`:** Manages the system tray icon, context menu (Show Window, Hide Window, Exit), and orchestrates the display of the WPF `MainWindow`.
-*   **`MainWindow` (WPF UI):** The primary monitoring dashboard for the Hub.
-    *   Displays real-time lists of active client connections.
-    *   Shows a scrolling log of Hub events, including command receipts and connection changes.
-    *   Highlights the last incoming command.
-*   **`HubMonitorService`:** A background hosted service (`IHostedService`) that acts as the data provider for the WPF `MainWindow`. It subscribes to `RpcApiHub` events (`AnyCommandReceived`, `ClientConnectedEvent`, `ClientDisconnectedEvent`) and exposes collected data (ActiveConnections, LogMessages, LastIncomingCommand) via `INotifyPropertyChanged` and events to the `MainWindow`.
-
-### 2.3. Dependency Injection
-*   `Program.cs` is configured to set up the SignalR host and register all necessary services.
-
-### 2.4. Error Handling
-*   Enhanced with `try-catch` blocks in `RpcApiHub` methods for better logging of internal server errors and more explicit unauthorized access handling.
-
-## 3. CLI
-
-### DEPRECATION NOTICE: C# CLI
-The original C# CLI (`OmniSync.Cli`) is now deprecated. Its functionality is superseded by the more versatile and cross-platform Python CLI (`omni_cli_script.py`). The code for the C# CLI has been moved to a `deprecated` subfolder within `OmniSync.Cli` for historical reference.
-
-### 3.1. C# CLI (Deprecated: `OmniSync.Cli/deprecated`)
-*   **Purpose**: To connect to `OmniSync.Hub`, authenticate, and send commands for remote execution.
-*   **SignalR Client**: Uses `Microsoft.AspNetCore.SignalR.Client`.
-*   **Functionality**:
-    *   Sends `test_api_key` to the Hub for authentication.
-    *   Invokes `RpcApiHub.ExecuteCommand` with the command string.
-    *   Subscribes to `ReceiveCommandOutput` and `CommandExecutionCompleted` to print output and gracefully exit.
-    *   Includes a `Stopwatch` to measure and report total execution time.
-
-### 3.2. Python CLI (`omni_cli_script.py`)
-*   **Purpose**: A robust Python-based alternative to the C# CLI for connecting to `OmniSync.Hub` and executing commands. It now supports multiple modes of operation for diverse use cases.
-*   **Location**: `OmniSync.Cli/omni_cli_script.py`.
-*   **SignalR Client**: Uses the `signalrcore` library.
-*   **Modes and Functionality**:
-    *   **Single Command Mode (Default)**: Connects to the Hub, authenticates, executes a single command provided as a command-line argument, receives and prints streamed output, waits for `CommandExecutionCompleted`, and then gracefully disconnects. Includes a stopwatch for total execution time.
-    *   **Sequence Command Mode (`--sequence "cmd1;cmd2;..."`)**: Connects once, authenticates, then executes a series of semicolon-separated commands. For each command, it sends the command, waits for its `CommandExecutionCompleted` event, and proceeds to the next. After all commands are processed, it disconnects. This mode is optimized for rapid, successive command execution and provides a robust way to test the speed and function of the system under load. Performance measurements for 100 commands show an average execution time of ~35ms per command.
-    *   **Persistent Interactive Mode (`--persistent`)**: Establishes a long-lived connection and authentication session. It then enters an interactive loop, prompting the user for commands via standard input. Commands are sent and executed without disconnecting. Special commands `_SLEEP_X_` (to pause for X seconds) and `_QUIT_` (to terminate the session) are supported.
-*   **Performance Note**: Significant performance improvements have been achieved for rapid command execution in Sequence and Persistent modes by optimizing the asynchronous event handling within the client.
-*   **Note on Persistent Interactive Mode**: While `asyncio.to_thread(input)` is used to offload blocking input operations, the interactive loop's responsiveness can still be perceived as sluggish if there are long pauses between user inputs. This is due to the nature of event loop scheduling when blocking I/O is involved, but does not impact the speed of command delivery once input is provided.
-
-## 4. Android Client (`OmniSync.Android`)
-
-### 5.1. Project Setup and Structure
-*   **Initialized Android Project:** Basic project structure created for a Kotlin/Jetpack Compose application.
-*   **Gradle Configuration:** `build.gradle.kts` (project and app level) and `settings.gradle.kts` are configured with necessary Android, Kotlin, Compose, SignalR Client, and Retrofit dependencies.
-*   **`AndroidManifest.xml`:** Configured with required permissions, declared `MainActivity`, `OmniAccessibilityService`, and `ForegroundService`.
-
-### 5.2. Core Components and Services
-*   **`OmniSyncApplication`:** Manages singletons like `MainViewModel`, `SignalRClient`, and `ClipboardWatcher`.
-*   **`ForegroundService`:** Ensures the Android application remains active in the background for stable SignalR connectivity.
-*   **`MainViewModel`:** Manages application state and provides navigation logic.
-*   **`SignalRClient`:** Manages the WebSocket connection to the `RpcApiHub`.
-*   **`OmniAccessibilityService`:** Fleshed out to detect volume button presses and to inject text.
-*   **`ClipboardWatcher`:** Monitors local clipboard changes and sends them to the `RpcApiHub`, preventing self-updates.
-
-### 5.3. User Interface (Jetpack Compose)
-*   **`MainActivity`:** Handles app initialization, service startup, and screen navigation.
-*   **`DashboardScreen`, `TrackpadScreen`, `NoteViewerScreen`, `ProcessScreen`:** Basic UI screens are in place for core functionality.
-
-## 6. Automation and Testing
-
-*   **`start_omnihub_background.py`**: A Python script to build the `OmniSync.Hub`, kill any existing instances, and start it in a detached background process.
-*   **`run_omnihub.py`**: *DEPRECATED.* This script previously built both the Hub and the C# CLI, started the Hub, ran a test command with the C# CLI, logged the output, and then killed the Hub process. Its functionality is now largely covered by `start_omnihub_background.py` and direct use of `omni_cli_script.py`.
-*   **`run_omnisync.py`**: This script is **deleted** and has been replaced by the above scripts.
-
-## 7. Android Deployment
-
-### DEPRECATION NOTICE
-The `OmniSync.Cli` FDD (Framework-Dependent Deployment) for Android is now considered **deprecated**. The focus will be on the native Android application (`OmniSync.Android`) for all Android-side functionality. The instructions below are for historical reference only.
-
-1.  **Publish OmniSync.Cli for Android (FDD):**
-    *   The published FDD binaries for `android-arm64` were previously zipped into `OmniSync.Cli_Android_FDD.zip`.
-2.  **Install Termux on Android**
-3.  **Grant Termux Storage Permissions**
-4.  **Transfer and Unzip the Executable to Android**
-5.  **Install .NET SDK in Termux**
-6.  **Navigate to the Application Directory**
-7.  **Execute OmniSync.Cli:**
-    *   `dotnet OmniSync.Cli.dll "ls -la" "http://<PC_IP_ADDRESS>:5000/signalrhub" "test_api_key"`
-
-## 8. Known Issues and Challenges
-*   **`git` Access via SSH:** The status of this issue is unknown. It was previously not possible to run `git` commands on the Windows host via an SSH connection.
-*   **Android Deployment:** The `.NET` FDD approach for Android was proving to be complex and is now deprecated.
+1.  **Hub Lifecycle Management:**
+    *   The `start_omnihub_background.py` script was used extensively. This script handles:
+        *   Terminating any existing `OmniSync.Hub.exe` processes (via `taskkill`).
+        *   Building the `OmniSync.Hub` project (via `dotnet build`).
+        *   Launching the `OmniSync.Hub.exe` in a detached background process, capturing its output to `hub_output.log`.
+2.  **Simulating Client Activity:**
+    *   The `omni_cli_script.py` was executed in "sequence mode" (e.g., `python omni_cli_script.py --sequence "echo first;echo second"`) to simulate a client connecting, authenticating, sending multiple commands, and then disconnecting. This allowed for rapid, automated generation of client-side activity.
+3.  **Log Analysis for Debugging:**
+    *   The `hub_output.log` file was the primary source for debugging. After each run of `start_omnihub_background.py` and `omni_cli_script.py`, `Get-Content -Path "hub_output.log"` was used to inspect the Hub's console output.
+    *   Specific debug `Console.WriteLine` statements were strategically added to the Hub's C# code (e.g., in `RpcApiHub.cs`, `MainWindow.xaml.cs`) to trace the flow of events and data through the system (e.g., `AnyCommandReceived`, `ClientConnectedEvent`, `ConnectionAdded`). These debug statements provided real-time confirmation of event firing, data propagation, and thread marshaling within the Hub's internal logic, which was then visible in the `hub_output.log`.
+4.  **Iterative Refinement:** Based on the analysis of the `hub_output.log` (including any build errors, runtime exceptions, or custom debug messages), code modifications were made iteratively. This allowed for precise identification and resolution of issues like ambiguous references, incorrect event subscriptions, and cross-thread UI update violations.
