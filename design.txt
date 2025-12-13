@@ -162,19 +162,16 @@ The system will initially support these command sets:
 
 
 
-### Command-line Client for Remote Execution (Omni CLI)
+### D. The Omni CLI (Python Script)
+*   **Purpose:** A versatile Python command-line interface designed to interact with the OmniSync Hub. It can execute single commands, send a sequence of commands, or operate in a persistent interactive mode.
+*   **Modes of Operation:**
+    *   **Single Command Mode:** Connects to the Hub, sends a single command, waits for completion, and disconnects.
+    *   **Sequence Command Mode:** Connects to the Hub, sends a series of semicolon-separated commands, waiting for each to complete before sending the next, and then disconnects. This mode is ideal for automated testing and rapid execution of predefined command chains.
+    *   **Persistent Interactive Mode:** Establishes a long-lived connection to the Hub, allowing the user to type and send commands interactively without reconnecting.
+*   **Network Transport:** Uses the `signalrcore` library to connect to the OmniSync Hub.
+*   **Key Design Consideration:** Prioritizes responsiveness and low-latency command dispatch over explicit command tracking in persistent mode.
+*   **Note on Interactive Mode:** Due to the blocking nature of standard input (`input()`) in Python, even when offloaded to a separate thread via `asyncio.to_thread`, continuous interaction is required to prevent potential perceived unresponsiveness or timeouts of the underlying SignalR connection. This is a current limitation for purely interactive usage but does not affect the speed of command delivery once input is provided.
 
-**Purpose:** To provide a lightweight, cross-platform command-line interface (CLI) that enables remote execution of commands on connected OmniSync clients (e.g., from an Android device to a Windows PC). This client aims to offer an "SSH-like" experience for convenience and rapid interaction, prioritizing ease of use over robust security, given its intended use within a trusted personal network.
+---
 
-**Key Features:**
-- **Cross-Platform:** Support for both Windows and Android environments.
-- **Remote Command Execution:** Ability to send arbitrary shell commands to a remote OmniSync instance for execution.
-- **Simplified Setup:** Minimal configuration, designed for "no hassle" operation.
-- **No inherent security:** Relies on network-level trust; no authentication or encryption built-in. (User's discretion to use within secure local networks).
-
-**Usage Example (Conceptual):**
-```bash
-omni-cli <target_device_id> <command_to_execute>
-# e.g., omni-cli my_pc "ls -la C:\Users\Public"
-# e.g., omni-cli my_android_phone "termux-open-url https://google.com"
-```
+## 4. System Architecture Layers

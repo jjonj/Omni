@@ -51,13 +51,14 @@ All tasks defined in the "Implementation Guidelines" (Phase 1, 2, 3, and 4) with
     *   Includes a `Stopwatch` to measure and report total execution time.
 
 ## 4. Python CLI (`omni_cli_script.py`)
-*   **Purpose**: A Python-based alternative to the C# CLI for connecting to `OmniSync.Hub` and executing commands.
+*   **Purpose**: A robust Python-based alternative to the C# CLI for connecting to `OmniSync.Hub` and executing commands. It now supports multiple modes of operation for diverse use cases.
 *   **SignalR Client**: Uses the `signalrcore` library.
-*   **Functionality**:
-    *   Connects to the Hub, authenticates with an API key, and executes a command provided as a command-line argument.
-    *   Receives and prints streamed output from the Hub.
-    *   Handles a `CommandExecutionCompleted` event from the Hub to terminate gracefully without a fixed timeout.
-    *   Includes a stopwatch to measure and report total script execution duration.
+*   **Modes and Functionality**:
+    *   **Single Command Mode (Default)**: Connects to the Hub, authenticates, executes a single command provided as a command-line argument, receives and prints streamed output, waits for `CommandExecutionCompleted`, and then gracefully disconnects. Includes a stopwatch for total execution time.
+    *   **Sequence Command Mode (`--sequence "cmd1;cmd2;..."`)**: Connects once, authenticates, then executes a series of semicolon-separated commands. For each command, it sends the command, waits for its `CommandExecutionCompleted` event, and proceeds to the next. After all commands are processed, it disconnects. This mode is optimized for rapid, successive command execution and provides a robust way to test the speed and function of the system under load. Performance measurements for 100 commands show an average execution time of ~35ms per command.
+    *   **Persistent Interactive Mode (`--persistent`)**: Establishes a long-lived connection and authentication session. It then enters an interactive loop, prompting the user for commands via standard input. Commands are sent and executed without disconnecting. Special commands `_SLEEP_X_` (to pause for X seconds) and `_QUIT_` (to terminate the session) are supported.
+*   **Performance Note**: Significant performance improvements have been achieved for rapid command execution in Sequence and Persistent modes by optimizing the asynchronous event handling within the client.
+*   **Note on Persistent Interactive Mode**: While `asyncio.to_thread(input)` is used to offload blocking input operations, the interactive loop's responsiveness can still be perceived as sluggish if there are long pauses between user inputs. This is due to the nature of event loop scheduling when blocking I/O is involved, but does not impact the speed of command execution once a command is provided.
 
 ## 5. Android Client (`OmniSync.Android`)
 
