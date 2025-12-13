@@ -3,15 +3,22 @@ package com.omni.sync.viewmodel
 import androidx.lifecycle.ViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import android.app.Application // New import
+import android.content.Context // New import
+import androidx.lifecycle.AndroidViewModel // Change base class
 
 enum class AppScreen {
     DASHBOARD,
-    TRACKPAD,
+    REMOTECONTROL, // Renamed from TRACKPAD
     NOTEVIEWER,
-    PROCESS
+    PROCESS,
+    FILES
 }
 
-class MainViewModel : ViewModel() {
+// Change from ViewModel() to AndroidViewModel(application)
+class MainViewModel(application: Application) : AndroidViewModel(application) {
+    // Expose application context
+    val applicationContext: Context = application.applicationContext
     private val _isConnected = MutableStateFlow(false)
     val isConnected: StateFlow<Boolean> = _isConnected
 

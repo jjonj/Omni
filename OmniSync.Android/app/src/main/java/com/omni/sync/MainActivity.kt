@@ -18,10 +18,15 @@ import com.omni.sync.service.ForegroundService
 import com.omni.sync.ui.screen.DashboardScreen
 import com.omni.sync.ui.screen.NoteViewerScreen
 import com.omni.sync.ui.screen.ProcessScreen
-import com.omni.sync.ui.screen.TrackpadScreen
+import com.omni.sync.ui.screen.RemoteControlScreen // Updated import
 import com.omni.sync.ui.theme.OmniSyncTheme
 import com.omni.sync.viewmodel.AppScreen
 import com.omni.sync.viewmodel.MainViewModel
+import com.omni.sync.ui.screen.FilesScreen
+import com.omni.sync.viewmodel.FilesViewModel
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.omni.sync.viewmodel.FilesViewModelFactory
+
 
 class MainActivity : ComponentActivity() {
     private lateinit var mainViewModel: MainViewModel
@@ -49,14 +54,19 @@ class MainActivity : ComponentActivity() {
                 ) {
                     val currentScreen by mainViewModel.currentScreen.collectAsState()
                     val signalRClient = omniSyncApplication.signalRClient
+                    
+                    // Create an instance of FilesViewModel using the factory
+                    val filesViewModel: FilesViewModel = viewModel(
+                        factory = FilesViewModelFactory(application, signalRClient, mainViewModel)
+                    )
 
                     Column {
                         Row {
                             Button(onClick = { mainViewModel.navigateTo(AppScreen.DASHBOARD) }) {
                                 Text("Dashboard")
                             }
-                            Button(onClick = { mainViewModel.navigateTo(AppScreen.TRACKPAD) }) {
-                                Text("Trackpad")
+                            Button(onClick = { mainViewModel.navigateTo(AppScreen.REMOTECONTROL) }) { // Updated enum
+                                Text("Remote Control") // Updated button text
                             }
                             Button(onClick = { mainViewModel.navigateTo(AppScreen.NOTEVIEWER) }) {
                                 Text("Notes")
@@ -64,13 +74,18 @@ class MainActivity : ComponentActivity() {
                             Button(onClick = { mainViewModel.navigateTo(AppScreen.PROCESS) }) {
                                 Text("Process")
                             }
+                            // New Files Button
+                            Button(onClick = { mainViewModel.navigateTo(AppScreen.FILES) }) {
+                                Text("Files")
+                            }
                         }
 
                         when (currentScreen) {
                             AppScreen.DASHBOARD -> DashboardScreen(signalRClient = signalRClient)
-                            AppScreen.TRACKPAD -> TrackpadScreen(signalRClient = signalRClient)
+                            AppScreen.REMOTECONTROL -> RemoteControlScreen(signalRClient = signalRClient) // Updated screen
                             AppScreen.NOTEVIEWER -> NoteViewerScreen(signalRClient = signalRClient)
                             AppScreen.PROCESS -> ProcessScreen(signalRClient = signalRClient)
+                            AppScreen.FILES -> FilesScreen(filesViewModel = filesViewModel) // Display FilesScreen
                         }
                     }
                 }

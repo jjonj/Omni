@@ -204,6 +204,49 @@ namespace OmniSync.Hub.Presentation.Hubs
             }
         }
 
+        public async Task<IEnumerable<OmniSync.Hub.Models.FileSystemEntry>> ListDirectory(string relativePath)
+        {
+            try
+            {
+                if (!Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) || !(bool)isAuthenticated)
+                {
+                    throw new UnauthorizedAccessException("Client is not authenticated.");
+                }
+
+                // Invoke the event for ListDirectory commands
+                AnyCommandReceived?.Invoke(this, $"ListDirectory: {relativePath}");
+
+                return _fileService.ListDirectoryContents(relativePath);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error listing directory '{relativePath}': {ex.Message}");
+                // Return an empty list or throw a more specific exception that the client can handle
+                throw new HubException($"Error listing directory: {ex.Message}", ex);
+            }
+        }
+
+        public async Task<byte[]> GetFileChunk(string filePath, long offset, int chunkSize)
+        {
+            try
+            {
+                if (!Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) || !(bool)isAuthenticated)
+                {
+                    throw new UnauthorizedAccessException("Client is not authenticated.");
+                }
+
+                // Invoke the event for GetFileChunk commands
+                AnyCommandReceived?.Invoke(this, $"GetFileChunk: {filePath} Offset: {offset} Size: {chunkSize}");
+
+                return _fileService.GetFileChunk(filePath, offset, chunkSize);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error getting file chunk for '{filePath}': {ex.Message}");
+                throw new HubException($"Error getting file chunk: {ex.Message}", ex);
+            }
+        }
+
         private (string commandName, List<string> args) ParseCommand(string commandString)
         {
             var parts = new List<string>();

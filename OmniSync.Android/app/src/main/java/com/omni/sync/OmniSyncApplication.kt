@@ -16,7 +16,7 @@ class OmniSyncApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
-        mainViewModel = MainViewModel()
+        mainViewModel = MainViewModel(this) // Pass the Application instance
         // TODO: Replace with actual Hub URL and API Key from a secure source
         signalRClient = SignalRClient(
             context = applicationContext,

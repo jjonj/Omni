@@ -1,14 +1,67 @@
-## 9. Automated Testing Methodology (Agent-Driven)
-During the development and debugging of the OmniSync.Hub, particularly for the WPF monitoring UI, the following methodology was employed to test functionality without requiring direct user interaction for each verification step:
 
-1.  **Hub Lifecycle Management:**
-    *   The `start_omnihub_background.py` script was used extensively. This script handles:
-        *   Terminating any existing `OmniSync.Hub.exe` processes (via `taskkill`).
-        *   Building the `OmniSync.Hub` project (via `dotnet build`).
-        *   Launching the `OmniSync.Hub.exe` in a detached background process, capturing its output to `hub_output.log`.
-2.  **Simulating Client Activity:**
-    *   The `omni_cli_script.py` was executed in "sequence mode" (e.g., `python omni_cli_script.py --sequence "echo first;echo second"`) to simulate a client connecting, authenticating, sending multiple commands, and then disconnecting. This allowed for rapid, automated generation of client-side activity.
-3.  **Log Analysis for Debugging:**
-    *   The `hub_output.log` file was the primary source for debugging. After each run of `start_omnihub_background.py` and `omni_cli_script.py`, `Get-Content -Path "hub_output.log"` was used to inspect the Hub's console output.
-    *   Specific debug `Console.WriteLine` statements were strategically added to the Hub's C# code (e.g., in `RpcApiHub.cs`, `MainWindow.xaml.cs`) to trace the flow of events and data through the system (e.g., `AnyCommandReceived`, `ClientConnectedEvent`, `ConnectionAdded`). These debug statements provided real-time confirmation of event firing, data propagation, and thread marshaling within the Hub's internal logic, which was then visible in the `hub_output.log`.
-4.  **Iterative Refinement:** Based on the analysis of the `hub_output.log` (including any build errors, runtime exceptions, or custom debug messages), code modifications were made iteratively. This allowed for precise identification and resolution of issues like ambiguous references, incorrect event subscriptions, and cross-thread UI update violations.
+## 10. Implemented Features (December 13, 2025)
+
+### 10.1. File System Browsing and Streaming
+
+**Goal:** Enable streaming files from the Windows PC to the Android app, including viewing the full file system and streaming video files.
+
+**Hub-side Changes (OmniSync.Hub - C#):**
+-   **`OmniSync.Hub/src/OmniSync.Hub/Models/FileSystemEntry.cs`:** New DTO defined to represent file and directory information (Name, Path, IsDirectory, Size, LastModified).
+-   **`OmniSync.Hub/src/OmniSync.Hub/Infrastructure/Services/FileService.cs`:**
+    -   Modified constructor to allow configurable `_noteRootPath` (for Obsidian notes) and a broader `_browseRootPath` (for general file browsing).
+    -   Added `ListDirectoryContents(string relativePath)` method to list files and subdirectories within the `_browseRootPath`, returning `IEnumerable<FileSystemEntry>`.
+    -   Added `GetFileChunk(string filePath, long offset, int chunkSize)` method to read and return a specified chunk of a file as a byte array, enabling file streaming.
+    -   Enhanced path sanitization (`SanitizeAndGetNoteFullPath`, `SanitizeAndGetBrowseFullPath`) for secure access within defined root paths.
+-   **`OmniSync.Hub/src/OmniSync.Hub/Presentation/Hubs/RpcApiHub.cs`:**
+    -   Added `ListDirectory(string relativePath)` hub method to expose `FileService.ListDirectoryContents` to connected clients.
+    -   Added `GetFileChunk(string filePath, long offset, int chunkSize)` hub method to expose `FileService.GetFileChunk` for file streaming requests.
+-   **`OmniSync.Hub/src/OmniSync.Hub/Program.cs`:**
+    -   Updated `FileService` registration to use the new constructor, allowing `_browseRootPath` to be configured via `appsettings.json` or default to the user profile.
+-   **`OmniSync.Hub/appsettings.json`:** Added `FileService:BrowseRootPath` entry for configuration.
+
+**Android-side Changes (OmniSync.Android - Kotlin):**
+-   **`OmniSync.Android/app/src/main/java/com/omni/sync/data/model/FileSystemEntry.kt`:** New data class defined to mirror the C# `FileSystemEntry` DTO.
+-   **`OmniSync.Android/app/src/main/java/com/omni/sync/data/repository/SignalRClient.kt`:**
+    -   Added `listDirectory(relativePath: String)` method to call the Hub's `ListDirectory` method and deserialize the returned `FileSystemEntry` list.
+    -   Added `getFileChunk(filePath: String, offset: Long, chunkSize: Int)` method to call the Hub's `GetFileChunk` method.
+-   **`OmniSync.Android/app/src/main/java/com/omni/sync/viewmodel/FilesViewModel.kt`:**
+    -   New ViewModel for `FilesScreen` to manage directory state, file listings, and download/streaming logic.
+    -   Implemented `loadDirectory` to fetch file system entries.
+    -   Implemented `startFileDownload` to iteratively request file chunks, reassemble them, save to internal storage, and provide progress updates.
+    -   Added `playFile` function to launch an `Intent` for viewing downloaded files (including videos) using `FileProvider`.
+    -   Updated to extend `AndroidViewModel` to access application context for file operations.
+-   **`OmniSync.Android/app/src/main/java/com/omni/sync/viewmodel/FilesViewModelFactory.kt`:** New factory for `FilesViewModel` to handle its dependencies (SignalRClient, MainViewModel, Application).
+-   **`OmniSync.Android/app/src/main/java/com/omni/sync/ui/screen/FilesScreen.kt`:** New Jetpack Compose screen for displaying the PC's file system, allowing navigation and initiating file downloads/streaming. Displays download progress.
+-   **`OmniSync.Android/app/src/main/java/com/omni/sync/viewmodel/MainViewModel.kt`:** Added `AppScreen.FILES` enum entry.
+-   **`OmniSync.Android/app/src/main/java/com/omni/sync/MainActivity.kt`:**
+    -   Integrated `FilesScreen` into the navigation with a new "Files" button.
+    -   Updated `FilesViewModel` instantiation to use `FilesViewModelFactory`.
+-   **`OmniSync.Android/app/src/main/java/com/omni/sync/OmniSyncApplication.kt`:** Updated `MainViewModel` instantiation to pass the Application context.
+-   **`OmniSync.Android/app/src/main/AndroidManifest.xml`:** Added `FileProvider` definition to enable secure sharing of downloaded files for playback.
+-   **`OmniSync.Android/app/src/main/res/xml/file_paths.xml`:** Created to specify paths accessible by the `FileProvider`.
+
+### 10.2. Remote Control Tab (Trackpad and Keyboard)
+
+**Goal:** Implement a remote control tab on the Android app to control mouse movement and forward keyboard keystrokes to the Windows PC.
+
+**Hub-side Changes (OmniSync.Hub - C#):**
+-   **`OmniSync.Hub/src/OmniSync.Hub/Infrastructure/Services/InputService.cs`:**
+    -   Added `SendText(string text)` method to simulate typing Unicode characters using `KEYEVENTF_UNICODE`.
+    -   Added `KeyDown(ushort keyCode)` and `KeyUp(ushort keyCode)` methods for granular control of key presses (useful for modifier keys).
+    -   Defined common Windows Virtual Key Codes (VK_SHIFT, VK_CONTROL, VK_MENU, etc.) as constants.
+-   **`OmniSync.Hub/src/OmniSync.Hub/Logic/Services/CommandDispatcher.cs`:**
+    -   Added new commands: `INPUT_KEY_DOWN`, `INPUT_KEY_UP`, `INPUT_TEXT` to the `_commandMap`.
+    -   Mapped these commands to the corresponding `InputService` methods.
+    -   Renamed `KEY_PRESS` to `INPUT_KEY_PRESS` for consistency.
+
+**Android-side Changes (OmniSync.Android - Kotlin):**
+-   **`OmniSync.Android/app/src/main/java/com/omni/sync/ui/screen/RemoteControlScreen.kt`:**
+    -   Renamed from `TrackpadScreen.kt` to `RemoteControlScreen.kt`.
+    -   Existing `detectDragGestures` logic for relative mouse movement was retained.
+    -   Implemented automatic display of the Android soft keyboard (`LocalSoftwareKeyboardController`).
+    -   Captures keystrokes from the soft keyboard via a hidden `TextField` and sends them individually using `signalRClient.sendText("INPUT_TEXT", char.toString())`.
+    -   Added a row of buttons for special keys (Backspace, Enter, Tab, Delete) and togglable modifier keys (Shift, Ctrl, Alt). These buttons send `INPUT_KEY_PRESS`, `INPUT_KEY_DOWN`, or `INPUT_KEY_UP` commands via `signalRClient.sendKeyEvent`.
+    -   `DisposableEffect` added to ensure modifier keys are released when the screen is left.
+    -   Defined Kotlin constants for common Windows Virtual Key Codes to ensure consistent mapping.
+-   **`OmniSync.Android/app/src/main/java/com/omni/sync/viewmodel/MainViewModel.kt`:** Updated `AppScreen` enum: `TRACKPAD` renamed to `REMOTECONTROL`.
+-   **`OmniSync.Android/app/src/main/java/com/omni/sync/MainActivity.kt`:** Updated imports and navigation references from `TrackpadScreen` to `RemoteControlScreen`, and `AppScreen.TRACKPAD` to `AppScreen.REMOTECONTROL`.
