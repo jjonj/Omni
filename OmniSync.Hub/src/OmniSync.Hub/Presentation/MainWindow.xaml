@@ -1,0 +1,43 @@
+<Window x:Class="OmniSync.Hub.Presentation.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d"
+        Title="OmniSync Hub Control" Height="600" Width="900">
+    <Grid Margin="10">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="200"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+
+        <!-- Connections List -->
+        <Border Grid.Row="0" Grid.Column="0" Grid.RowSpan="2" BorderBrush="LightGray" BorderThickness="1" Margin="0,0,10,0">
+            <StackPanel>
+                <TextBlock Text="Active Connections" FontWeight="Bold" Margin="5"/>
+                <ListBox x:Name="ConnectionsListBox" ItemsSource="{Binding ActiveConnections}" />
+            </StackPanel>
+        </Border>
+
+        <!-- Log Output -->
+        <Border Grid.Row="0" Grid.Column="1" BorderBrush="LightGray" BorderThickness="1" Margin="0,0,0,10">
+            <StackPanel>
+                <TextBlock Text="Log Output" FontWeight="Bold" Margin="5"/>
+                <TextBox x:Name="LogTextBox" IsReadOnly="True" VerticalScrollBarVisibility="Auto" Text="{Binding LogOutput}" TextWrapping="Wrap" Height="250" />
+            </StackPanel>
+        </Border>
+
+        <!-- Incoming Command -->
+        <Border Grid.Row="2" Grid.Column="1" BorderBrush="LightGray" BorderThickness="1">
+            <StackPanel>
+                <TextBlock Text="Last Incoming Command" FontWeight="Bold" Margin="5"/>
+                <TextBlock x:Name="LastCommandTextBlock" Text="{Binding LastIncomingCommand}" TextWrapping="Wrap" Margin="5"/>
+            </StackPanel>
+        </Border>
+    </Grid>
+</Window>

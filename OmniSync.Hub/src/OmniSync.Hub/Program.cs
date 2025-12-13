@@ -6,6 +6,7 @@ using OmniSync.Hub.Logic.Services;
 using OmniSync.Hub.Infrastructure.Services;
 using OmniSync.Hub.Presentation.Hubs;
 using OmniSync.Hub.Presentation;
+using OmniSync.Hub.Logic.Monitoring; // For the new monitoring service
 using System;
 using System.IO; // Added for Path.Combine and Directory.GetCurrentDirectory()
 
@@ -25,6 +26,7 @@ builder.Services.AddSingleton<CommandDispatcher>();
 builder.Services.AddSingleton<ProcessService>();
 builder.Services.AddSingleton<InputService>();
 builder.Services.AddSingleton<HubEventSender>();
+builder.Services.AddSingleton<HubMonitorService>(); // Register the new monitoring service
 builder.Services.AddHostedService<TrayIconManager>();
 
 builder.Services.AddSignalR();

@@ -11,6 +11,13 @@ namespace OmniSync.Hub.Presentation.Hubs
 {
     public class RpcApiHub : Microsoft.AspNetCore.SignalR.Hub
     {
+        // New: Event to notify of any command received by the Hub
+        public static event EventHandler<string>? AnyCommandReceived;
+
+        // New: Events for client connection/disconnection
+        public static event EventHandler<string>? ClientConnectedEvent;
+        public static event EventHandler<string>? ClientDisconnectedEvent;
+
         private readonly AuthService _authService;
         private readonly FileService _fileService;
         private readonly ClipboardService _clipboardService;
@@ -31,6 +38,7 @@ namespace OmniSync.Hub.Presentation.Hubs
         public override async Task OnConnectedAsync()
         {
             System.Console.WriteLine($"Client connected: {Context.ConnectionId}. Awaiting authentication.");
+            ClientConnectedEvent?.Invoke(this, Context.ConnectionId); // New: Invoke event
             _hubEventSender.SubscribeForCommandOutput(Context.UserIdentifier ?? Context.ConnectionId, Context.ConnectionId);
             await base.OnConnectedAsync();
         }
@@ -38,6 +46,7 @@ namespace OmniSync.Hub.Presentation.Hubs
         public override async Task OnDisconnectedAsync(Exception exception)
         {
             System.Console.WriteLine($"Client disconnected: {Context.ConnectionId}");
+            ClientDisconnectedEvent?.Invoke(this, Context.ConnectionId); // New: Invoke event
             _hubEventSender.UnsubscribeFromCommandOutput(Context.UserIdentifier ?? Context.ConnectionId);
             await base.OnDisconnectedAsync(exception);
         }
@@ -61,6 +70,9 @@ namespace OmniSync.Hub.Presentation.Hubs
         {
             if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
             {
+                // Invoke the event for SendPayload commands
+                AnyCommandReceived?.Invoke(this, command);
+
                 try
                 {
                     _commandDispatcher.Dispatch(command, payload);
@@ -96,6 +108,9 @@ namespace OmniSync.Hub.Presentation.Hubs
                 {
                     throw new UnauthorizedAccessException("Client is not authenticated.");
                 }
+
+                // Invoke the event for ExecuteCommand commands
+                AnyCommandReceived?.Invoke(this, command);
 
                 (string commandName, List<string> args) = ParseCommand(command);
 
@@ -149,7 +164,7 @@ namespace OmniSync.Hub.Presentation.Hubs
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error listing processes: {ex.Message}");
+                    Console.WriteLine($"Error listing processes: {ex.Message}");
                 return new List<ProcessInfo>();
             }
         }
@@ -245,3 +260,4 @@ namespace OmniSync.Hub.Presentation.Hubs
         }
     }
 }
+
