@@ -29,16 +29,16 @@ namespace OmniSync.Hub.Infrastructure.Services
             return File.ReadAllText(fullPath);
         }
 
-        public void AppendToFile(string filePath, string content)
-        {
-            var fullPath = SanitizeAndGetFullPath(filePath);
-            File.AppendAllText(fullPath, content);
-        }
-
         public void WriteFile(string filePath, string content)
         {
             var fullPath = SanitizeAndGetFullPath(filePath);
             File.WriteAllText(fullPath, content);
+        }
+
+        public void AppendToFile(string filePath, string content)
+        {
+            var fullPath = SanitizeAndGetFullPath(filePath);
+            File.AppendAllText(fullPath, content);
         }
 
         private string SanitizeAndGetFullPath(string filePath)

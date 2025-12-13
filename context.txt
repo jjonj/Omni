@@ -1,285 +1,104 @@
 # OmniSync Project Development Context and Instructions
 
-This document contains the necessary context and instructions to resume development of the OmniSync project, particularly focusing on the Omni CLI and its integration with the OmniSync Hub. This is prepared in anticipation of a memory wipe when switching to an Android environment.
+**Last Updated:** December 10, 2025
 
-## 1. Current Project Status (Windows Development)
+This document contains the necessary context and instructions to resume development of the OmniSync project, particularly focusing on the Omni CLI and its integration with the OmniSync Hub.
 
-**Goal Achieved:** An `OmniSync.Cli` (C# console application) successfully connects to `OmniSync.Hub` (ASP.NET Core SignalR Hub) and executes arbitrary commands on the Windows PC. We successfully demonstrated this by having the CLI execute `echo "hello world" > test_omni.txt`, creating a file in the Hub's current working directory.
+## 1. Overall Project Status
+All tasks defined in the "Implementation Guidelines" (Phase 1, 2, 3, and 4) within the `design.txt` have been coded. Additionally, the `CommandDispatcher` has been fully implemented, bi-directional clipboard synchronization is complete (including self-update prevention), the `OmniAccessibilityService` has been fleshed out, general error handling has been improved, and a significant new feature for remote command and process management has been added.
 
-**Key Components and Their Status:**
+**Current State of PC Control:**
+*   SSH connectivity to the PC (`gemini@10.0.0.37` with password `1234`) is established and functional for executing shell commands.
+*   The project directory `G:\SharedWithPhone\Omni` on the PC has been (manually by user) cloned from `https://github.com/jjonj/Omni.git`.
+*   **Critical Unresolved Issue: Git Operations on PC:** The status of this issue is unknown, but previously, performing *any* Git operation (`git status`, `git pull`, `git push`) from the PC via SSH within the cloned repository `G:\SharedWithPhone\Omni` resulted in "Access is denied." This prevents local development flow via SSH.
 
-*   **OmniSync.Hub (Windows)**:
-    *   **Project SDK**: `Microsoft.NET.Sdk.Web` (changed from `Worker` to support ASP.NET Core web features).
-    *   **SignalR Package**: `Microsoft.AspNetCore.SignalR.Common` version `9.0.0-preview.3.24172.9` (updated from old `1.1.0`).
-    *   **Authentication**: Uses `AuthService` with an API key (`test_api_key`) read from `appsettings.json`.
-    *   **Configuration Loading**: `appsettings.json` is explicitly loaded in `Program.cs` using `Path.Combine(Directory.GetCurrentDirectory(), "..", "..", "appsettings.json")`.
-    *   **Remote Command Execution**: Handled by `RpcApiHub.ExecuteCommand` which uses `ProcessService.ExecuteCommand` (`cmd.exe /c ...`).
-    *   **Output Streaming**: Refactored to use `HubEventSender` (a singleton service) to relay command output from `ProcessService` back to connected clients, resolving `ObjectDisposedException`.
-    *   **Listening Address**: `http://localhost:5000`.
+## 2. Windows Hub (`OmniSync.Hub`)
 
-*   **OmniSync.Cli (C# Console Application)**:
-    *   **Purpose**: To connect to `OmniSync.Hub`, authenticate, and send commands for remote execution.
-    *   **SignalR Client**: Uses `Microsoft.AspNetCore.SignalR.Client`.
-    *   **Authentication**: Sends `test_api_key` to the Hub.
-    *   **Command Sending**: Invokes `RpcApiHub.ExecuteCommand` with the command string.
-    *   **Output Receiving**: Subscribes to `ReceiveCommandOutput` and prints to console.
-    *   **Non-blocking Exit**: Replaced `Console.ReadLine()` with `Task.Delay(TimeSpan.FromSeconds(5))` to allow the CLI to exit gracefully in automated scripts.
+### 2.1. Project Setup and Structure
+*   **Initialized .NET 9 Worker Service:** The project (`OmniSync.Hub.csproj`) has been set up with the correct target framework (`net9.0`) and includes necessary dependencies. The project SDK was changed from `Worker` to `Microsoft.NET.Sdk.Web` to support ASP.NET Core web features.
+*   **Modular Folder Structure:** A layered folder structure (`Presentation`, `Logic`, `Infrastructure`) has been established to support extensibility and maintain separation of concerns as a "Modular Monolith."
+*   **Configuration Files:** `appsettings.json` (for general configuration) and `secrets.json` (for the API key) have been created. `.gitignore` has been configured to exclude `secrets.json`. `appsettings.json` is explicitly loaded in `Program.cs`.
+*   **Listening Address**: `http://localhost:5000`.
 
-*   **Automation Script (`run_omnisync.py`)**:
-    *   **Location**: Root of the project (`B:\GDrive\SharedWithPhone\Omni\`).
-    *   **Functionality**:
-        *   Clears previous log files (`hub_output.log`, `cli_output.log`).
-        *   Kills existing `OmniSync.Hub.exe` processes using `taskkill`.
-        *   Builds `OmniSync.Hub`.
-        *   Starts `OmniSync.Hub` in the background (detached process).
-        *   Builds `OmniSync.Cli`.
-        *   Runs `OmniSync.Cli` with a test command, Hub URL, and API key.
-        *   Collects output of Hub and CLI into respective log files.
-        *   Ensures `hub_log_file` is closed using `try...finally`.
-        *   Kills the background `OmniSync.Hub.exe` process at the end.
-    *   **Last Test Command**: `echo "hello world" > test_omni.txt` (creates `test_omni.txt` in `B:\GDrive\SharedWithPhone\Omni\OmniSync.Hub\src\OmniSync.Hub`).
+### 2.2. Core Components and Services
+*   **`RpcApiHub`:** The central communication endpoint.
+    *   **Authentication:** Integrated `AuthService` for client authentication using an API key.
+    *   **Payload Handling:** Uses `CommandDispatcher` to route incoming commands.
+    *   **File Access Methods:** Exposes `ListNotes()` to get a list of Markdown files and `GetNoteContent(filename)` to retrieve file content, utilizing `FileService`.
+    *   **Remote Command & Process Management:** Exposes `ExecuteCommand(string command)`, `ListProcesses()`, and `KillProcess(int processId)` methods, utilizing `ProcessService`. Streams command output to the client via `ReceiveCommandOutput` event. A `CommandExecutionCompleted` event has been added to signal the end of a command.
+    *   **Clipboard Update:** Exposes `UpdateClipboard(string text)` method to set the clipboard on the Windows machine, utilizing `ClipboardService`.
+*   **`AuthService`:** Implemented to validate client API keys against a configured secret.
+*   **`InputService`:** Implemented using `P/Invoke` to interact with `user32.dll` for simulating mouse movements (`MoveMouse`) and keyboard presses (`SendKeyPress`).
+*   **`ClipboardService`:** Implemented using `P/Invoke` to monitor and set the system clipboard on a dedicated STA (Single Threaded Apartment) thread. Correctly uses Win32 API functions.
+*   **`ClipboardHostedService`:** A background service (`IHostedService`) responsible for managing the lifecycle of `ClipboardService` and broadcasting `ClipboardUpdated` events to connected `RpcApiHub` clients.
+*   **`FileService`:** Implemented with a hardcoded `RootPath` (User's Documents/Obsidian) and robust path sanitization. Includes `GetRootPath()` method.
+*   **`ProcessService`:** Implemented to execute CMD commands (`ExecuteCommand`), list running processes (`ListProcesses`), and kill processes (`KillProcess`) using `System.Diagnostics.Process`. Streams command output via `CommandOutputReceived` event.
+*   **`CommandDispatcher`:** Fully implemented to receive generic commands and route them to the appropriate `InputService`, `FileService`, or other services.
 
-## 2. Instructions for Android Deployment (Termux)
+### 2.3. Dependency Injection
+*   `Program.cs` is configured to set up the SignalR host and register all necessary services.
 
-To run `OmniSync.Cli` on an Android device via Termux, we are now using a **Framework-Dependent Deployment (FDD)** approach. This is due to limitations with creating a self-contained single-file executable for the `android-arm64` runtime identifier (`NETSDK1084` error). With FDD, you will need to install the .NET runtime (SDK) directly within your Termux environment.
+### 2.4. Error Handling
+*   Enhanced with `try-catch` blocks in `RpcApiHub` methods for better logging of internal server errors and more explicit unauthorized access handling.
+
+## 3. C# CLI (`OmniSync.Cli`)
+*   **Purpose**: To connect to `OmniSync.Hub`, authenticate, and send commands for remote execution.
+*   **SignalR Client**: Uses `Microsoft.AspNetCore.SignalR.Client`.
+*   **Functionality**:
+    *   Sends `test_api_key` to the Hub for authentication.
+    *   Invokes `RpcApiHub.ExecuteCommand` with the command string.
+    *   Subscribes to `ReceiveCommandOutput` and `CommandExecutionCompleted` to print output and gracefully exit.
+    *   Includes a `Stopwatch` to measure and report total execution time.
+
+## 4. Python CLI (`omni_cli_script.py`)
+*   **Purpose**: A Python-based alternative to the C# CLI for connecting to `OmniSync.Hub` and executing commands.
+*   **SignalR Client**: Uses the `signalrcore` library.
+*   **Functionality**:
+    *   Connects to the Hub, authenticates with an API key, and executes a command provided as a command-line argument.
+    *   Receives and prints streamed output from the Hub.
+    *   Handles a `CommandExecutionCompleted` event from the Hub to terminate gracefully without a fixed timeout.
+    *   Includes a stopwatch to measure and report total script execution duration.
+
+## 5. Android Client (`OmniSync.Android`)
+
+### 5.1. Project Setup and Structure
+*   **Initialized Android Project:** Basic project structure created for a Kotlin/Jetpack Compose application.
+*   **Gradle Configuration:** `build.gradle.kts` (project and app level) and `settings.gradle.kts` are configured with necessary Android, Kotlin, Compose, SignalR Client, and Retrofit dependencies.
+*   **`AndroidManifest.xml`:** Configured with required permissions, declared `MainActivity`, `OmniAccessibilityService`, and `ForegroundService`.
+
+### 5.2. Core Components and Services
+*   **`OmniSyncApplication`:** Manages singletons like `MainViewModel`, `SignalRClient`, and `ClipboardWatcher`.
+*   **`ForegroundService`:** Ensures the Android application remains active in the background for stable SignalR connectivity.
+*   **`MainViewModel`:** Manages application state and provides navigation logic.
+*   **`SignalRClient`:** Manages the WebSocket connection to the `RpcApiHub`.
+*   **`OmniAccessibilityService`:** Fleshed out to detect volume button presses and to inject text.
+*   **`ClipboardWatcher`:** Monitors local clipboard changes and sends them to the `RpcApiHub`, preventing self-updates.
+
+### 5.3. User Interface (Jetpack Compose)
+*   **`MainActivity`:** Handles app initialization, service startup, and screen navigation.
+*   **`DashboardScreen`, `TrackpadScreen`, `NoteViewerScreen`, `ProcessScreen`:** Basic UI screens are in place for core functionality.
+
+## 6. Automation and Testing
+
+*   **`start_omnihub_background.py`**: A Python script to build the `OmniSync.Hub`, kill any existing instances, and start it in a detached background process.
+*   **`run_omnihub.py`**: A more comprehensive test script that builds both the Hub and the C# CLI, starts the Hub, runs a test command with the CLI, logs the output, and then kills the Hub process.
+*   **`run_omnisync.py`**: This script is **deleted** and has been replaced by the above scripts.
+
+## 7. Android Deployment
+
+### DEPRECATION NOTICE
+The `OmniSync.Cli` FDD (Framework-Dependent Deployment) for Android is now considered **deprecated**. The focus will be on the native Android application (`OmniSync.Android`) for all Android-side functionality. The instructions below are for historical reference only.
 
 1.  **Publish OmniSync.Cli for Android (FDD):**
-    *   This step is already completed. The published FDD binaries for `android-arm64` have been zipped into `OmniSync.Cli_Android_FDD.zip` and committed to the Git repository.
-    *   The command used to generate these was:
-        ```bash
-        dotnet publish B:\GDrive\SharedWithPhone\Omni\OmniSync.Cli\OmniSync.Cli.csproj --runtime android-arm64 -o C:\temp\OmniSync.Cli_Android_FDD
-        ```
-
-2.  **Install Termux on Android:**
-    *   Download and install Termux from F-Droid or Google Play Store on your Android device.
-
-3.  **Grant Termux Storage Permissions:**
-    *   In your Android device's settings, find "Apps" or "Applications".
-    *   Locate "Termux" and go to "Permissions".
-    *   Grant "Storage" permission (or "Files and media" access).
-    *   In Termux, run `termux-setup-storage` and grant access when prompted.
-
-4.  **Transfer and Unzip the Executable to Android:**
-    *   **Clone the Git Repository:** The `OmniSync.Cli_Android_FDD.zip` file is committed in the Git repository. Clone the repository in Termux or transfer the zip file manually.
-        ```bash
-        # If Git is installed in Termux
-        pkg install git
-        git clone <repository_url>
-        cd Omni # Or wherever you cloned it
-        ```
-    *   **Unzip the Binaries:**
-        *   Install unzip in Termux: `pkg install unzip`
-        *   Unzip the `OmniSync.Cli_Android_FDD.zip` file:
-            ```bash
-            unzip OmniSync.Cli_Android_FDD.zip -d OmniSync.Cli_Android_FDD
-            ```
-            This will create a folder named `OmniSync.Cli_Android_FDD` containing all the DLLs.
-
-5.  **Install .NET SDK in Termux:**
-    *   Run the following command in Termux to install the .NET SDK (which includes the `dotnet` runtime host):
-        ```bash
-        pkg install dotnet
-        ```
-    *   **Note**: Termux's package repository might not have the absolute latest .NET 9.0 preview. It might install an older stable version (e.g., .NET 6 or 7). If there's a version mismatch, you might need to adjust the `TargetFramework` in `OmniSync.Cli.csproj` on the PC to match the available .NET version in Termux, then republish the FDD binaries.
-
-6.  **Navigate to the Application Directory:**
-    *   Change to the directory where you unzipped the `OmniSync.Cli_Android_FDD` files:
-        ```bash
-        cd OmniSync.Cli_Android_FDD
-        ```
-
+    *   The published FDD binaries for `android-arm64` were previously zipped into `OmniSync.Cli_Android_FDD.zip`.
+2.  **Install Termux on Android**
+3.  **Grant Termux Storage Permissions**
+4.  **Transfer and Unzip the Executable to Android**
+5.  **Install .NET SDK in Termux**
+6.  **Navigate to the Application Directory**
 7.  **Execute OmniSync.Cli:**
-    *   Now that `dotnet` is installed in Termux, you can run the application using the `dotnet` host:
-        ```bash
-        dotnet OmniSync.Cli.dll "ls -la" "http://<PC_IP_ADDRESS>:5000/signalrhub" "test_api_key"
-        ```
-        *   **Important**: Replace `<PC_IP_ADDRESS>` with the actual local IP address of your Windows PC (e.g., `192.168.1.100`). `localhost` will not work from your Android device.
-        *   Ensure your PC's firewall allows incoming connections on port `5000`.
-        *   If using Tailscale/VPN, ensure both devices are connected to the same Tailnet and use the Tailscale IP of your PC.
+    *   `dotnet OmniSync.Cli.dll "ls -la" "http://<PC_IP_ADDRESS>:5000/signalrhub" "test_api_key"`
 
-## 3. Important Files and Configurations
-
-*   **OmniSync.Hub/appsettings.json**:
-    ```json
-    {
-      "Logging": {
-        "LogLevel": {
-          "Default": "Information",
-          "Microsoft": "Warning",
-          "Microsoft.Hosting.Lifetime": "Information"
-        }
-      },
-      "SignalR": {
-        "Url": "http://localhost:5000"
-      },
-      "AuthApiKey": "test_api_key" // Used by OmniSync.Cli for authentication
-    }
-    ```
-
-*   **Python Automation Script (`run_omnisync.py`) Content**:
-    ```python
-    import subprocess
-    import time
-    import os
-    import sys
-
-    # Define directories and executable path
-    HUB_DIR = "B:/GDrive/SharedWithPhone/Omni/OmniSync.Hub/src/OmniSync.Hub"
-    CLI_DIR = "B:/GDrive/SharedWithPhone/Omni/OmniSync.Cli"
-    HUB_EXE_PATH = os.path.join(HUB_DIR, "bin", "Debug", "net9.0", "OmniSync.Hub.exe") 
-
-    def run_command(command, cwd=None, shell=False, capture_output=False, log_file=None):
-        """
-        Runs a shell command and optionally logs its output.
-        """
-        print(f"Executing: {command}")
-        
-        process = None
-        stdout_redir = subprocess.PIPE if capture_output or log_file else None
-        stderr_redir = subprocess.PIPE if capture_output or log_file else None
-
-        # Handle shell for Windows specific commands like taskkill
-        if "taskkill" in command.lower() or "wmic" in command.lower():
-            shell = True
-
-        try:
-            process = subprocess.run(
-                command,
-                cwd=cwd,
-                shell=shell,
-                capture_output=True, # Always capture to write to log or print
-                text=True,
-                encoding="utf-8",
-                errors="replace" # Handle decoding errors gracefully
-            )
-
-            if log_file:
-                with open(log_file, "a", encoding="utf-8") as f:
-                    f.write(f"--- Command: {command} (CWD: {cwd}) ---\n")
-                    f.write("--- STDOUT ---\n")
-                    f.write(process.stdout)
-                    f.write("--- STDERR ---\n")
-                    f.write(process.stderr)
-                    f.write(f"--- Exit Code: {process.returncode} ---\n\n")
-            else:
-                print(process.stdout, end='')
-                print(process.stderr, end='')
-
-            if process.returncode != 0:
-                print(f"Command failed with exit code {process.returncode}. See {log_file if log_file else 'output above'} for details.")
-            
-            return process
-
-        except FileNotFoundError:
-            print(f"Error: Command '{command.split()[0]}' not found.")
-            return None
-        except Exception as e:
-            print(f"An error occurred while running command '{command}': {e}")
-            return None
-
-    def kill_hub_process():
-        """
-        Kills any running OmniSync.Hub.exe processes.
-        """
-        print("Attempting to kill OmniSync.Hub.exe processes...")
-        if sys.platform == "win32":
-            kill_cmd = "taskkill /IM OmniSync.Hub.exe /F"
-            result = run_command(kill_cmd, shell=True, capture_output=True)
-            if result:
-                if "No tasks are running" in result.stdout or "process not found" in result.stderr:
-                    print("OmniSync.Hub.exe was not running or could not be found.")
-                elif result.returncode == 0:
-                    print("OmniSync.Hub.exe processes killed successfully.")
-                else:
-                    print(f"Failed to kill OmniSync.Hub.exe: {result.stderr}")
-        else:
-            # For non-Windows, assume 'pkill' or similar if available, or just warn.
-            print("Warning: Process killing not implemented for non-Windows platforms.")
-
-    def main():
-        hub_log_path = "hub_output.log"
-        cli_log_path = "cli_output.log"
-
-        # Clear previous logs
-        for log_file in [hub_log_path, cli_log_path]:
-            if os.path.exists(log_file):
-                try:
-                    os.remove(log_file)
-                except OSError as e:
-                    print(f"Error deleting {log_file}: {e}. Please ensure no other process is using it.")
-                    # Attempt to proceed, but user might need to intervene
-                    time.sleep(1)
-
-        kill_hub_process()
-
-        hub_log_file = None # Initialize to None outside try block
-        try:
-            print("\n--- Building OmniSync.Hub ---")
-            build_hub_result = run_command("dotnet build", cwd=HUB_DIR, log_file=hub_log_path)
-            if build_hub_result is None or build_hub_result.returncode != 0:
-                print("OmniSync.Hub build failed. Aborting. Check hub_output.log for details.")
-                return # Exit if build failed
-            time.sleep(1) # Give it a moment
-
-            print("\n--- Starting OmniSync.Hub in background ---")
-            
-            hub_log_file = open(hub_log_path, "a", encoding="utf-8", errors="replace") # Open the file once and keep it open
-            hub_log_file.write(f"\n--- Starting OmniSync.Hub (PID will be known after Popen) ---\n")
-
-            # Ensure that the executable exists before trying to run it
-            if not os.path.exists(HUB_EXE_PATH):
-                print(f"Error: Hub executable not found at {HUB_EXE_PATH}. Did the build fail?")
-                return
-
-            # Use Popen to start the hub process in a detached way
-            hub_process = subprocess.Popen(
-                [HUB_EXE_PATH], # Run the compiled executable directly
-                cwd=HUB_DIR,
-                stdout=hub_log_file, # Redirect stdout to the open file
-                stderr=hub_log_file, # Redirect stderr to the open file
-                creationflags=subprocess.DETACHED_PROCESS if sys.platform == "win32" else 0, # For Windows, run truly detached
-                shell=False # Don't use shell if running exe directly
-            )
-            print(f"OmniSync.Hub started with PID: {hub_process.pid}")
-            
-            time.sleep(5) # Give the hub some time to start up
-
-            print("\n--- Building OmniSync.Cli ---")
-            build_cli_result = run_command("dotnet build", cwd=CLI_DIR, log_file=cli_log_path)
-            if build_cli_result is None or build_cli_result.returncode != 0:
-                print("OmniSync.Cli build failed. Aborting. Check cli_output.log for details.")
-                return # Exit if build failed
-            time.sleep(1)
-
-            print("\n--- Running OmniSync.Cli ---")
-            # Ensure that --project is used correctly and the path is escaped if needed
-            cli_command = f"dotnet run --project \"{CLI_DIR}\" -- \"echo \\\"hello world\\\" > test_omni.txt\" \"http://localhost:5000/signalrhub\" \"test_api_key\""
-            run_command(cli_command, cwd=CLI_DIR, log_file=cli_log_path)
-
-            print("\nAutomation complete. Check hub_output.log and cli_output.log for details.")
-            
-        finally:
-            if hub_log_file and not hub_log_file.closed: # Check if file is open before closing
-                hub_log_file.close()
-            # Always attempt to kill the hub process at the end
-            kill_hub_process() 
-
-    if __name__ == "__main__":
-        main()
-    ```
-
-## 4. Android Deployment Challenges and Learnings
-
-During the attempt to deploy and run `OmniSync.Cli` on Termux (Android), several issues and observations were made:
-
-*   **Python Automation Script (`run_omnisync.py`)**: This script is designed for the Windows environment to build and test the .NET projects. It cannot be directly executed on Termux due to its reliance on Windows-specific commands (`taskkill`) and the expectation of a native `.NET` build environment.
-*   **`unzip` Utility**: Initially, `pkg install unzip` failed due to issues with the default Termux package mirror. This was resolved by using `termux-change-repo` to select a working mirror.
-*   **`.NET` SDK Installation**: The `pkg install dotnet` command, as suggested in the original instructions, failed to locate the package. A `pkg search dotnet` revealed that specific versions of .NET are available, with `dotnet9.0` being the correct package for .NET 9.0 SDK and runtime.
-*   **`.NET` Runtime Location**: After installing `dotnet9.0`, the `dotnet` host (`/data/data/com.termux/files/usr/bin/dotnet`) was unable to automatically locate the installed .NET 9.0 runtime components. Manual inspection showed the runtime located at `/data/data/com.termux/files/usr/lib/dotnet/shared/Microsoft.NETCore.App/9.0.11/`.
-*   **`DOTNET_ROOT` Environment Variable**: Setting the `DOTNET_ROOT` environment variable to `/data/data/com.termux/files/usr/lib/dotnet` was identified as the potential solution to help the `dotnet` host find its runtime components.
-*   **Silent CLI Failure**: Even with `DOTNET_ROOT` correctly set, the `OmniSync.Cli.dll` still exited with `Exit Code: 1` and no console output when attempting to execute the `append` command. This suggests an application-level failure within `OmniSync.Cli` itself, likely due to:
-    *   The `OmniSync.Hub` on the Windows PC not being running or not being accessible from the Android device at `http://10.0.0.37:5000/signalrhub`.
-    *   An unhandled exception within the `OmniSync.Cli`'s internal logic during SignalR connection, authentication, or payload sending, which is not being logged to the console in this FDD setup.
-*   **Debugging Limitations**: Further debugging of the `OmniSync.Cli`'s silent failure on Android is limited without direct access to the Windows machine (to check Hub status/logs) or the ability to modify and recompile the C# application with more verbose logging for the Android FDD target.
-
-**Conclusion**: The implementation of the `APPEND_NOTE` functionality and its test in `run_omnisync.py` are complete. However, running `OmniSync.Cli` successfully on the Android (Termux) environment requires resolving external factors such as ensuring the `OmniSync.Hub` is active and accessible, and potentially deeper debugging of the CLI's behavior in the Termux .NET environment.
+## 8. Known Issues and Challenges
+*   **`git` Access via SSH:** The status of this issue is unknown. It was previously not possible to run `git` commands on the Windows host via an SSH connection.
+*   **Android Deployment:** The `.NET` FDD approach for Android was proving to be complex and is now deprecated.
