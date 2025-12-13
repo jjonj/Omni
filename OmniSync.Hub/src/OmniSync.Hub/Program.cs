@@ -5,6 +5,7 @@ using Microsoft.Extensions.Configuration;
 using OmniSync.Hub.Logic.Services;
 using OmniSync.Hub.Infrastructure.Services;
 using OmniSync.Hub.Presentation.Hubs;
+using OmniSync.Hub.Presentation;
 using System;
 using System.IO; // Added for Path.Combine and Directory.GetCurrentDirectory()
 
@@ -24,6 +25,7 @@ builder.Services.AddSingleton<CommandDispatcher>();
 builder.Services.AddSingleton<ProcessService>();
 builder.Services.AddSingleton<InputService>();
 builder.Services.AddSingleton<HubEventSender>();
+builder.Services.AddHostedService<TrayIconManager>();
 
 builder.Services.AddSignalR();
 
