@@ -15,7 +15,7 @@ All tasks defined in the "Implementation Guidelines" (Phase 1, 2, 3, and 4) with
 ## 2. Windows Hub (`OmniSync.Hub`)
 
 ### 2.1. Project Setup and Structure
-*   **Initialized .NET 9 Worker Service:** The project (`OmniSync.Hub.csproj`) has been set up with the correct target framework (`net9.0`) and includes necessary dependencies. The project SDK was changed from `Worker` to `Microsoft.NET.Sdk.Web` to support ASP.NET Core web features.
+*   **Initialized .NET 9 Worker Service:** The project (`OmniSync.Hub.csproj`) has been set up with the correct target framework (`net9.0-windows`) and includes necessary dependencies. The project SDK was changed from `Worker` to `Microsoft.NET.Sdk.Web` to support ASP.NET Core web features.
 *   **Modular Folder Structure:** A layered folder structure (`Presentation`, `Logic`, `Infrastructure`) has been established to support extensibility and maintain separation of concerns as a "Modular Monolith."
 *   **Configuration Files:** `appsettings.json` (for general configuration) and `secrets.json` (for the API key) have been created. `.gitignore` has been configured to exclude `secrets.json`. `appsettings.json` is explicitly loaded in `Program.cs`.
 *   **Listening Address**: `http://localhost:5000`.
@@ -27,6 +27,7 @@ All tasks defined in the "Implementation Guidelines" (Phase 1, 2, 3, and 4) with
     *   **File Access Methods:** Exposes `ListNotes()` to get a list of Markdown files and `GetNoteContent(filename)` to retrieve file content, utilizing `FileService`.
     *   **Remote Command & Process Management:** Exposes `ExecuteCommand(string command)`, `ListProcesses()`, and `KillProcess(int processId)` methods, utilizing `ProcessService`. Streams command output to the client via `ReceiveCommandOutput` event. A `CommandExecutionCompleted` event has been added to signal the end of a command.
     *   **Clipboard Update:** Exposes `UpdateClipboard(string text)` method to set the clipboard on the Windows machine, utilizing `ClipboardService`.
+    *   **Monitoring Events:** Exposes static events `AnyCommandReceived`, `ClientConnectedEvent`, and `ClientDisconnectedEvent` to notify monitoring services of Hub activity.
 *   **`AuthService`:** Implemented to validate client API keys against a configured secret.
 *   **`InputService`:** Implemented using `P/Invoke` to interact with `user32.dll` for simulating mouse movements (`MoveMouse`) and keyboard presses (`SendKeyPress`).
 *   **`ClipboardService`:** Implemented using `P/Invoke` to monitor and set the system clipboard on a dedicated STA (Single Threaded Apartment) thread. Correctly uses Win32 API functions.
@@ -34,6 +35,12 @@ All tasks defined in the "Implementation Guidelines" (Phase 1, 2, 3, and 4) with
 *   **`FileService`:** Implemented with a hardcoded `RootPath` (User's Documents/Obsidian) and robust path sanitization. Includes `GetRootPath()` method.
 *   **`ProcessService`:** Implemented to execute CMD commands (`ExecuteCommand`), list running processes (`ListProcesses`), and kill processes (`KillProcess`) using `System.Diagnostics.Process`. Streams command output via `CommandOutputReceived` event.
 *   **`CommandDispatcher`:** Fully implemented to receive generic commands and route them to the appropriate `InputService`, `FileService`, or other services.
+*   **`TrayIconManager`:** Manages the system tray icon, context menu (Show Window, Hide Window, Exit), and orchestrates the display of the WPF `MainWindow`.
+*   **`MainWindow` (WPF UI):** The primary monitoring dashboard for the Hub.
+    *   Displays real-time lists of active client connections.
+    *   Shows a scrolling log of Hub events, including command receipts and connection changes.
+    *   Highlights the last incoming command.
+*   **`HubMonitorService`:** A background hosted service (`IHostedService`) that acts as the data provider for the WPF `MainWindow`. It subscribes to `RpcApiHub` events (`AnyCommandReceived`, `ClientConnectedEvent`, `ClientDisconnectedEvent`) and exposes collected data (ActiveConnections, LogMessages, LastIncomingCommand) via `INotifyPropertyChanged` and events to the `MainWindow`.
 
 ### 2.3. Dependency Injection
 *   `Program.cs` is configured to set up the SignalR host and register all necessary services.
@@ -41,7 +48,12 @@ All tasks defined in the "Implementation Guidelines" (Phase 1, 2, 3, and 4) with
 ### 2.4. Error Handling
 *   Enhanced with `try-catch` blocks in `RpcApiHub` methods for better logging of internal server errors and more explicit unauthorized access handling.
 
-## 3. C# CLI (`OmniSync.Cli`)
+## 3. CLI
+
+### DEPRECATION NOTICE: C# CLI
+The original C# CLI (`OmniSync.Cli`) is now deprecated. Its functionality is superseded by the more versatile and cross-platform Python CLI (`omni_cli_script.py`). The code for the C# CLI has been moved to a `deprecated` subfolder within `OmniSync.Cli` for historical reference.
+
+### 3.1. C# CLI (Deprecated: `OmniSync.Cli/deprecated`)
 *   **Purpose**: To connect to `OmniSync.Hub`, authenticate, and send commands for remote execution.
 *   **SignalR Client**: Uses `Microsoft.AspNetCore.SignalR.Client`.
 *   **Functionality**:
@@ -50,17 +62,18 @@ All tasks defined in the "Implementation Guidelines" (Phase 1, 2, 3, and 4) with
     *   Subscribes to `ReceiveCommandOutput` and `CommandExecutionCompleted` to print output and gracefully exit.
     *   Includes a `Stopwatch` to measure and report total execution time.
 
-## 4. Python CLI (`omni_cli_script.py`)
+### 3.2. Python CLI (`omni_cli_script.py`)
 *   **Purpose**: A robust Python-based alternative to the C# CLI for connecting to `OmniSync.Hub` and executing commands. It now supports multiple modes of operation for diverse use cases.
+*   **Location**: `OmniSync.Cli/omni_cli_script.py`.
 *   **SignalR Client**: Uses the `signalrcore` library.
 *   **Modes and Functionality**:
     *   **Single Command Mode (Default)**: Connects to the Hub, authenticates, executes a single command provided as a command-line argument, receives and prints streamed output, waits for `CommandExecutionCompleted`, and then gracefully disconnects. Includes a stopwatch for total execution time.
     *   **Sequence Command Mode (`--sequence "cmd1;cmd2;..."`)**: Connects once, authenticates, then executes a series of semicolon-separated commands. For each command, it sends the command, waits for its `CommandExecutionCompleted` event, and proceeds to the next. After all commands are processed, it disconnects. This mode is optimized for rapid, successive command execution and provides a robust way to test the speed and function of the system under load. Performance measurements for 100 commands show an average execution time of ~35ms per command.
     *   **Persistent Interactive Mode (`--persistent`)**: Establishes a long-lived connection and authentication session. It then enters an interactive loop, prompting the user for commands via standard input. Commands are sent and executed without disconnecting. Special commands `_SLEEP_X_` (to pause for X seconds) and `_QUIT_` (to terminate the session) are supported.
 *   **Performance Note**: Significant performance improvements have been achieved for rapid command execution in Sequence and Persistent modes by optimizing the asynchronous event handling within the client.
-*   **Note on Persistent Interactive Mode**: While `asyncio.to_thread(input)` is used to offload blocking input operations, the interactive loop's responsiveness can still be perceived as sluggish if there are long pauses between user inputs. This is due to the nature of event loop scheduling when blocking I/O is involved, but does not impact the speed of command execution once a command is provided.
+*   **Note on Persistent Interactive Mode**: While `asyncio.to_thread(input)` is used to offload blocking input operations, the interactive loop's responsiveness can still be perceived as sluggish if there are long pauses between user inputs. This is due to the nature of event loop scheduling when blocking I/O is involved, but does not impact the speed of command delivery once input is provided.
 
-## 5. Android Client (`OmniSync.Android`)
+## 4. Android Client (`OmniSync.Android`)
 
 ### 5.1. Project Setup and Structure
 *   **Initialized Android Project:** Basic project structure created for a Kotlin/Jetpack Compose application.
@@ -82,7 +95,7 @@ All tasks defined in the "Implementation Guidelines" (Phase 1, 2, 3, and 4) with
 ## 6. Automation and Testing
 
 *   **`start_omnihub_background.py`**: A Python script to build the `OmniSync.Hub`, kill any existing instances, and start it in a detached background process.
-*   **`run_omnihub.py`**: A more comprehensive test script that builds both the Hub and the C# CLI, starts the Hub, runs a test command with the CLI, logs the output, and then kills the Hub process.
+*   **`run_omnihub.py`**: *DEPRECATED.* This script previously built both the Hub and the C# CLI, started the Hub, ran a test command with the C# CLI, logged the output, and then killed the Hub process. Its functionality is now largely covered by `start_omnihub_background.py` and direct use of `omni_cli_script.py`.
 *   **`run_omnisync.py`**: This script is **deleted** and has been replaced by the above scripts.
 
 ## 7. Android Deployment

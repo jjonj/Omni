@@ -162,16 +162,45 @@ The system will initially support these command sets:
 
 
 
-### D. The Omni CLI (Python Script)
-*   **Purpose:** A versatile Python command-line interface designed to interact with the OmniSync Hub. It can execute single commands, send a sequence of commands, or operate in a persistent interactive mode.
-*   **Modes of Operation:**
-    *   **Single Command Mode:** Connects to the Hub, sends a single command, waits for completion, and disconnects.
-    *   **Sequence Command Mode:** Connects to the Hub, sends a series of semicolon-separated commands, waiting for each to complete before sending the next, and then disconnects. This mode is ideal for automated testing and rapid execution of predefined command chains.
-    *   **Persistent Interactive Mode:** Establishes a long-lived connection to the Hub, allowing the user to type and send commands interactively without reconnecting.
-*   **Network Transport:** Uses the `signalrcore` library to connect to the OmniSync Hub.
-*   **Key Design Consideration:** Prioritizes responsiveness and low-latency command dispatch over explicit command tracking in persistent mode.
-*   **Note on Interactive Mode:** Due to the blocking nature of standard input (`input()`) in Python, even when offloaded to a separate thread via `asyncio.to_thread`, continuous interaction is required to prevent potential perceived unresponsiveness or timeouts of the underlying SignalR connection. This is a current limitation for purely interactive usage but does not affect the speed of command delivery once input is provided.
-
----
+### C. The Network Layer
+*   **Topology:** Peer-to-Peer via VPN Mesh.
+*   **Infrastructure:** Tailscale (Pre-requisite).
+*   **Protocol:** SignalR (WebSockets + Long Polling fallback) with Protocol Buffers or JSON serialization.
+*   **Security:** Header-based Authentication (Static Pre-Shared Key).
 
 ## 4. System Architecture Layers
+
+### 4.1. The Windows Hub Architecture
+The Windows application is the brain. It is structured into three vertical layers using Dependency Injection (DI). It now also houses the Python-based CLI.
+
+**Layer 1: The Presentation (UI & Network)**
+*   **`TrayIconManager`:** Manages the System Tray icon, Context Menu (Exit, Settings), and balloon notifications.
+*   **`RpcApiHub`:** The endpoint for Clients. It exposes methods like `SendPayload()` and broadcasts events like `ClipboardUpdated`.
+
+#### 4.1.1. Hub Monitoring UI (WPF)
+The WPF `MainWindow` serves as a real-time monitoring dashboard for the OmniSync Hub.
+
+*   **`MainWindow.xaml`:** Defines the user interface, including:
+    *   A `ListBox` to display currently active client connections.
+    *   A multi-line, read-only `TextBox` for comprehensive log output, including system events and command processing.
+    *   A `TextBlock` to show the most recent incoming command for immediate feedback.
+*   **`MainWindow.xaml.cs`:** The code-behind for the WPF window, responsible for:
+    *   Subscribing to `HubMonitorService` events to receive real-time data updates.
+    *   Using the `Dispatcher.Invoke()` method to ensure all UI updates occur safely on the main UI thread.
+    *   Binding UI elements to the `HubMonitorService`'s properties.
+*   **`HubMonitorService`:** (Logic/Monitoring Layer) A central service that collects and aggregates operational data from various Hub components. It acts as the ViewModel for the `MainWindow`.
+    *   Subscribes to `RpcApiHub.AnyCommandReceived` to capture all incoming commands.
+    *   Subscribes to `RpcApiHub.ClientConnectedEvent` and `RpcApiHub.ClientDisconnectedEvent` to track active client connections.
+    *   Raises events (`LogEntryAdded`, `CommandUpdateOccurred`, `ConnectionAdded`, `ConnectionRemoved`) that the `MainWindow` subscribes to, thus decoupling data collection from UI presentation.
+
+**Layer 2: The Logic (Services)**
+*   **`CommandDispatcher`:** Receives generic commands (e.g., "CMD_PASTE", "CMD_OPEN_NOTE") and routes them to the correct service.
+*   **`AuthService`:** Validates the GUID token from incoming connections.
+
+**Layer 3: The Infrastructure (Hardware/OS Adapters)**
+*   **`InputService`:** Wraps `user32.dll`. Handles `SendInput` (Keyboards/Mouse) to simulate physical hardware events.
+*   **`ClipboardService`:** Wraps `Ole32.dll`. Monitors the system clipboard chain and handles read/write operations safely.
+*   **`FileService`:** Provides safe I/O access to the specific Obsidian directory. Handles "Read" and "Append" logic.
+
+### 4.2. The Android Client Architecture
+The Android app is the primary sensor and remote control.
