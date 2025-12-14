@@ -61,7 +61,7 @@ async def connect_and_authenticate():
 
     hub = HubConnectionBuilder()\
         .with_url(HUB_URL)\
-        .configure_logging(logging.DEBUG, socket_trace=True)\
+        .configure_logging(logging.INFO)\
         .with_automatic_reconnect({
             "type": "raw",
             "keep_alive_interval": 10,
@@ -99,7 +99,7 @@ async def connect_and_authenticate():
     return hub
 
 # Configure logging for signalrcore
-logging.basicConfig(level=logging.DEBUG, 
+logging.basicConfig(level=logging.INFO, 
                     format='%(asctime)s - %(levelname)s - %(message)s')
 
 def on_output(args):
