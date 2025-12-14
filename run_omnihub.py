@@ -7,8 +7,8 @@ import shutil
 # Define directories and executable path
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 HUB_DIR = os.path.join(SCRIPT_DIR, "OmniSync.Hub", "src", "OmniSync.Hub")
-CLI_DIR = os.path.join(SCRIPT_DIR, "OmniSync.Cli")
-HUB_EXE_PATH = os.path.join(HUB_DIR, "bin", "Debug", "net9.0", "OmniSync.Hub.exe") 
+CLI_DIR = os.path.join(SCRIPT_DIR, "OmniSync.Cli", "deprecated")
+HUB_EXE_PATH = os.path.join(HUB_DIR, "bin", "Debug", "net9.0-windows", "OmniSync.Hub.exe") 
 
 def run_command(command, cwd=None, shell=False, capture_output=False, log_file=None):
     """
