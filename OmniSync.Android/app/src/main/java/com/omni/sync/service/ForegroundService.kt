@@ -49,7 +49,7 @@ class ForegroundService : Service() {
         val notification = NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("OmniSync is Active")
             .setContentText("Connected to your personal ecosystem.")
-            //.setSmallIcon(R.drawable.ic_notification) // You'll need to create a notification icon
+            .setSmallIcon(R.drawable.ic_notification)
             .build()
         return notification
     }

@@ -40,6 +40,8 @@ publish/
 
 # Logs
 *.log
+*.bin
+*.lock
 cli_output.log
 hub_output.log
 temp_speech.wav

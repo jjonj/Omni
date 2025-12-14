@@ -43,7 +43,11 @@ class MainActivity : ComponentActivity() {
 
         // Start the Foreground Service
         Intent(this, ForegroundService::class.java).also { intent ->
-            startService(intent)
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                startForegroundService(intent)
+            } else {
+                startService(intent)
+            }
         }
 
         setContent {
