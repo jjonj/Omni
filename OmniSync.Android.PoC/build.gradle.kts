@@ -1,8 +1,1 @@
-plugins {
-    id("com.android.application") version "8.3.2" apply false
-    id("org.jetbrains.kotlin.android") version "2.0.0" apply false
-}
-
-// Allprojects and subprojects are typically configured here,
-// but for a single module, it's mostly about plugin management
-// and top-level settings.
+// Root build.gradle.kts - empty for single module project when pluginManagement is in settings.gradle.kts
