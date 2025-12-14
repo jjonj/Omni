@@ -1,4 +1,3 @@
-
 pluginManagement {
     repositories {
         google()
@@ -13,5 +12,5 @@ dependencyResolutionManagement {
         mavenCentral()
     }
 }
-rootProject.name = "OmniSyncPoC"
+rootProject.name = "OmniSync.Android"
 include(":app")
