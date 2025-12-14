@@ -47,6 +47,10 @@ temp_speech.wav
 # Dependency directories
 packages/
 node_modules/
+OmniSync.Android/app/build
 
 # Zip files
 *.zip
+
+/gradle-8.8/
+.gradle/

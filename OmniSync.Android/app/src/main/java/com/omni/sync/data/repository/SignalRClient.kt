@@ -10,7 +10,8 @@ import com.omni.sync.service.OmniAccessibilityService
 import com.omni.sync.viewmodel.MainViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import io.reactivex.Single
+import io.reactivex.rxjava3.core.Single
+import io.reactivex.rxjava3.core.Completable
 import java.lang.Exception
 import com.omni.sync.data.model.FileSystemEntry // New import
 import java.util.Date // Added for FileSystemEntry deserialization
@@ -212,7 +213,7 @@ class SignalRClient(
     fun killProcess(processId: Int): Single<Boolean>? {
         if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
             return hubConnection?.invoke(Boolean::class.java, "KillProcess", processId)?.doOnError { error ->
-                val errorMessage = "Error killing process $processId: ${e.message}"
+                val errorMessage = "Error killing process $processId: ${error.message}"
                 mainViewModel.setErrorMessage(errorMessage)
                 Log.e("SignalRClient", errorMessage, error)
             } as? Single<Boolean>
@@ -254,7 +255,7 @@ class SignalRClient(
     fun getFileChunk(filePath: String, offset: Long, chunkSize: Int): Single<ByteArray>? {
         if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
             return hubConnection?.invoke(ByteArray::class.java, "GetFileChunk", filePath, offset, chunkSize)?.doOnError { error ->
-                val errorMessage = "Error getting file chunk for '$filePath' at offset $offset: ${e.message}"
+                val errorMessage = "Error getting file chunk for '$filePath' at offset $offset: ${error.message}"
                 mainViewModel.setErrorMessage(errorMessage)
                 Log.e("SignalRClient", errorMessage, error)
             } as? Single<ByteArray>

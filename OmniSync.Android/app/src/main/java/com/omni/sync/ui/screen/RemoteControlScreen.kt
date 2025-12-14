@@ -3,6 +3,7 @@ package com.omni.sync.ui.screen
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -94,7 +95,7 @@ fun RemoteControlScreen(modifier: Modifier = Modifier, signalRClient: SignalRCli
         // Hidden TextField to capture soft keyboard input and automatically show keyboard
         TextField(
             value = textInput,
-            onValueChange = { newText ->
+            onValueChange = { newText: String ->
                 if (newText.length > textInput.length) { // New character typed
                     val charToSend = newText.last()
                     signalRClient?.sendText(charToSend.toString())
@@ -104,12 +105,12 @@ fun RemoteControlScreen(modifier: Modifier = Modifier, signalRClient: SignalRCli
                 textInput = newText
             },
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-            onKeyboardAction = {
-                if (it == ImeAction.Send) {
+            keyboardActions = KeyboardActions(
+                onSend = {
                     signalRClient?.sendKeyEvent("INPUT_KEY_PRESS", VK_RETURN)
                     textInput = "" // Clear input after sending Enter
                 }
-            },
+            ),
             modifier = Modifier
                 .fillMaxWidth()
                 .height(0.dp) // Hide the TextField visually
@@ -147,24 +148,39 @@ fun RemoteControlScreen(modifier: Modifier = Modifier, signalRClient: SignalRCli
             verticalAlignment = Alignment.CenterVertically
         ) {
             // Modifier Keys
-            ModifierKeyButton(text = "Shift", isToggled = isShiftPressed) {
-                isShiftPressed = !isShiftPressed
-                signalRClient?.sendKeyEvent(if (isShiftPressed) "INPUT_KEY_DOWN" else "INPUT_KEY_UP", VK_SHIFT)
-            }
-            ModifierKeyButton(text = "Ctrl", isToggled = isCtrlPressed) {
-                isCtrlPressed = !isCtrlPressed
-                signalRClient?.sendKeyEvent(if (isCtrlPressed) "INPUT_KEY_DOWN" else "INPUT_KEY_UP", VK_CONTROL)
-            }
-            ModifierKeyButton(text = "Alt", isToggled = isAltPressed) {
-                isAltPressed = !isAltPressed
-                signalRClient?.sendKeyEvent(if (isAltPressed) "INPUT_KEY_DOWN" else "INPUT_KEY_UP", VK_MENU)
-            }
+            ModifierKeyButton(
+                text = "Shift",
+                isToggled = isShiftPressed,
+                onClick = {
+                    isShiftPressed = !isShiftPressed
+                    signalRClient?.sendKeyEvent(if (isShiftPressed) "INPUT_KEY_DOWN" else "INPUT_KEY_UP", VK_SHIFT)
+                },
+                modifier = Modifier.weight(1f)
+            )
+            ModifierKeyButton(
+                text = "Ctrl",
+                isToggled = isCtrlPressed,
+                onClick = {
+                    isCtrlPressed = !isCtrlPressed
+                    signalRClient?.sendKeyEvent(if (isCtrlPressed) "INPUT_KEY_DOWN" else "INPUT_KEY_UP", VK_CONTROL)
+                },
+                modifier = Modifier.weight(1f)
+            )
+            ModifierKeyButton(
+                text = "Alt",
+                isToggled = isAltPressed,
+                onClick = {
+                    isAltPressed = !isAltPressed
+                    signalRClient?.sendKeyEvent(if (isAltPressed) "INPUT_KEY_DOWN" else "INPUT_KEY_UP", VK_MENU)
+                },
+                modifier = Modifier.weight(1f)
+            )
 
             // Special Action Keys
-            ActionKeyButton(icon = Icons.Default.KeyboardBackspace) { signalRClient?.sendKeyEvent("INPUT_KEY_PRESS", VK_BACK) }
-            ActionKeyButton(icon = Icons.Default.KeyboardReturn) { signalRClient?.sendKeyEvent("INPUT_KEY_PRESS", VK_RETURN) }
-            ActionKeyButton(text = "Tab") { signalRClient?.sendKeyEvent("INPUT_KEY_PRESS", VK_TAB) }
-            ActionKeyButton(icon = Icons.Default.Delete) { signalRClient?.sendKeyEvent("INPUT_KEY_PRESS", VK_DELETE) }
+            ActionKeyButton(icon = Icons.Default.KeyboardBackspace, onClick = { signalRClient?.sendKeyEvent("INPUT_KEY_PRESS", VK_BACK) }, modifier = Modifier.weight(1f))
+            ActionKeyButton(icon = Icons.Default.KeyboardReturn, onClick = { signalRClient?.sendKeyEvent("INPUT_KEY_PRESS", VK_RETURN) }, modifier = Modifier.weight(1f))
+            ActionKeyButton(text = "Tab", onClick = { signalRClient?.sendKeyEvent("INPUT_KEY_PRESS", VK_TAB) }, modifier = Modifier.weight(1f))
+            ActionKeyButton(icon = Icons.Default.Delete, onClick = { signalRClient?.sendKeyEvent("INPUT_KEY_PRESS", VK_DELETE) }, modifier = Modifier.weight(1f))
         }
 
         // Arrow Keys (Optional, can be added later or integrated into a sub-row)
@@ -173,17 +189,17 @@ fun RemoteControlScreen(modifier: Modifier = Modifier, signalRClient: SignalRCli
 }
 
 @Composable
-fun ModifierKeyButton(text: String, isToggled: Boolean, onClick: () -> Unit) {
+fun ModifierKeyButton(text: String, isToggled: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
     val colors = if (isToggled) ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
                  else ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
-    Button(onClick = onClick, colors = colors, modifier = Modifier.weight(1f)) {
+    Button(onClick = onClick, colors = colors, modifier = modifier.padding(horizontal = 2.dp)) {
         Text(text)
     }
 }
 
 @Composable
-fun ActionKeyButton(icon: androidx.compose.ui.graphics.vector.ImageVector? = null, text: String? = null, onClick: () -> Unit) {
-    Button(onClick = onClick, modifier = Modifier.weight(1f)) {
+fun ActionKeyButton(modifier: Modifier = Modifier, icon: androidx.compose.ui.graphics.vector.ImageVector? = null, text: String? = null, onClick: () -> Unit) {
+    Button(onClick = onClick, modifier = modifier.padding(horizontal = 2.dp)) {
         icon?.let { Icon(it, contentDescription = text ?: "") }
         text?.let { Text(it) }
     }

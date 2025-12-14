@@ -64,7 +64,7 @@ class OmniAccessibilityService : AccessibilityService() {
         }
     }
 
-    private fun findFocus(focus: Int): AccessibilityNodeInfo? {
+    public override fun findFocus(focus: Int): AccessibilityNodeInfo? {
         val root = rootInActiveWindow
         return root?.findFocus(focus)
     }

@@ -9,8 +9,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.omni.sync.data.repository.SignalRClient
-
-data class ProcessInfo(val id: Int, val name: String, val mainWindowTitle: String?)
+import com.omni.sync.data.repository.ProcessInfo
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

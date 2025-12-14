@@ -8,8 +8,8 @@ import com.omni.sync.viewmodel.MainViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
-import io.reactivex.android.schedulers.AndroidSchedulers
-import io.reactivex.schedulers.Schedulers
+import io.reactivex.rxjava3.android.schedulers.AndroidSchedulers
+import io.reactivex.rxjava3.schedulers.Schedulers
 import android.util.Log
 import java.io.File
 import java.io.FileOutputStream
@@ -17,7 +17,7 @@ import java.nio.file.Paths
 import java.text.DecimalFormat
 import android.app.Application // New import
 import androidx.lifecycle.AndroidViewModel
-import kotlinx.coroutines.rx2.asCoroutineDispatcher
+import kotlinx.coroutines.rx3.asCoroutineDispatcher
 import kotlin.math.min
 import androidx.core.content.FileProvider
 import android.content.Intent
@@ -54,10 +54,14 @@ class FilesViewModel(
 
     private val _isDownloading = MutableStateFlow(false)
     val isDownloading: StateFlow<Boolean> = _isDownloading
+
+    private val _downloadErrorMessage = MutableStateFlow<String?>(null)
+    val downloadErrorMessage: StateFlow<String?> = _downloadErrorMessage
     // -------------------------------------
 
     init {
         // Observe connection state to potentially trigger a refresh or show a message
+        /*
         viewModelScope.launch {
             mainViewModel.connectionState.collect { state ->
                 if (state == "Connected" && _fileSystemEntries.value.isEmpty() && _currentPath.value.isEmpty()) {
@@ -70,6 +74,7 @@ class FilesViewModel(
                 }
             }
         }
+        */
     }
 
     fun loadDirectory(path: String) {
@@ -150,7 +155,7 @@ class FilesViewModel(
                             ?.subscribeOn(Schedulers.io())
                             ?.blockingGet() // Blocking call for simplicity within coroutine
                             ?.let { chunk ->
-                                fos.write(chunk)
+                                fos.write(chunk as ByteArray)
                                 downloadedBytes += chunk.size
                                 currentOffset += chunk.size
 

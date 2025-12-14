@@ -45,6 +45,6 @@ The user needs to resolve the file locking issue on their system. They should en
 *   [completed] Update sdk.dir in local.properties with the provided Android SDK path.
 *   [completed] Add `android.useAndroidX=true` to `gradle.properties`.
 *   [completed] Correct `accessibilityEventTypes` in `accessibility_service_config.xml` to use a list of common event types.
-*   [in_progress] Resolve persistent file locking issue causing AccessDeniedException during build.
+*   [in_progress] Resolve build errors
 *   [pending] Build the Android application using the generated Gradle wrapper.
 *   [pending] Verify the build output and locate the generated APK.
