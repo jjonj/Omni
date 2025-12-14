@@ -5,6 +5,10 @@ import com.omni.sync.data.repository.SignalRClient
 import com.omni.sync.service.ClipboardWatcher
 import com.omni.sync.viewmodel.MainViewModel
 
+import timber.log.Timber
+import com.omni.sync.utils.CrashReportingTree
+import android.content.pm.ApplicationInfo
+
 class OmniSyncApplication : Application() {
 
     // For simplicity, we're using a basic approach here.
@@ -16,6 +20,12 @@ class OmniSyncApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
+
+        // Initialize Timber for logging and crash reporting
+        if (applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0) {
+            Timber.plant(Timber.DebugTree())
+        }
+        Timber.plant(CrashReportingTree(applicationContext))
         mainViewModel = MainViewModel(this) // Pass the Application instance
         // TODO: Replace with actual Hub URL and API Key from a secure source
         signalRClient = SignalRClient(

@@ -20,7 +20,7 @@ def build_and_copy_apk():
     print(f"Omni root directory: {omni_root_dir}")
 
     # 1. Build the Android app
-    build_command = [os.path.join(android_project_dir, "gradlew.bat"), "clean", "assembleDebug"]
+    build_command = [os.path.join(android_project_dir, "gradlew"), "clean", "assembleDebug"]
     print(f"Running build command: {' '.join(build_command)} in {android_project_dir}")
     try:
         process = subprocess.run(

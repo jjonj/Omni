@@ -82,4 +82,7 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.1")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-rx3:1.8.1")
+
+    // Timber for logging
+    implementation("com.jakewharton.timber:timber:5.0.1")
 }
