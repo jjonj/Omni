@@ -11,7 +11,7 @@ def build_and_copy_apk():
     """
     script_dir = os.path.dirname(os.path.abspath(__file__))
     android_project_dir = os.path.abspath(os.path.join(script_dir, "OmniSync.Android.PoC"))
-    apk_dir = os.path.join(android_project_dir, "app", "build", "outputs", "apk", "release")
+    apk_dir = os.path.join(android_project_dir, "app", "build", "outputs", "apk", "debug")
     omni_root_dir = os.path.abspath(os.path.join(script_dir))
 
     print(f"Script directory: {script_dir}")
@@ -20,7 +20,7 @@ def build_and_copy_apk():
     print(f"Omni root directory: {omni_root_dir}")
 
     # 1. Build the Android app
-    build_command = [os.path.join(android_project_dir, "gradlew.bat"), "clean", "build"]
+    build_command = [os.path.join(android_project_dir, "gradlew.bat"), "clean", "assembleDebug"]
     print(f"Running build command: {' '.join(build_command)} in {android_project_dir}")
     try:
         process = subprocess.run(
@@ -47,9 +47,9 @@ def build_and_copy_apk():
     time.sleep(2)
 
     # 3. Find the generated APK
-    apk_path = os.path.join(apk_dir, "app-release.apk")
+    apk_path = os.path.join(apk_dir, "app-debug.apk")
     if not os.path.exists(apk_path):
-        print(f"'{apk_path}' not found. Searching for any APK in the release directory...")
+        print(f"'{apk_path}' not found. Searching for any APK in the debug directory...")
         apk_files = glob.glob(os.path.join(apk_dir, "*.apk"))
         if not apk_files:
             print(f"Error: No APK file found in {apk_dir}")
