@@ -163,3 +163,8 @@ If you encounter persistent issues, consider running Gradle with more detailed l
 .\gradlew.bat clean build --stacktrace --info --debug
 ```
 This can provide more insights into the cause of the failure.
+
+---
+**Discovered Android SDK Path on Windows:**
+The Android SDK was found at `E:\Sdks\AndroidSDK`.
+This path should be used in `local.properties` for projects built on this Windows machine.
