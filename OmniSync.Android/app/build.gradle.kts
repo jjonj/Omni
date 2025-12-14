@@ -37,7 +37,7 @@ android {
         compose = true
     }
     composeOptions {
-        kotlinCompilerExtensionVersion = "1.5.1"
+        kotlinCompilerExtensionVersion = "1.5.11"
     }
     packaging {
         resources {
@@ -56,6 +56,12 @@ dependencies {
     implementation("androidx.compose.ui:ui-graphics")
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.material3:material3")
+
+    // Additional dependencies for RxJava2, Compose ViewModel, and Material Icons
+    implementation("io.reactivex.rxjava2:rxjava:2.2.21")
+    implementation("io.reactivex.rxjava2:rxandroid:2.1.1")
+    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.0")
+    implementation("androidx.compose.material:material-icons-extended")
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.1.5")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.5.1")
@@ -65,7 +71,9 @@ dependencies {
     debugImplementation("androidx.compose.ui:ui-test-manifest")
 
     // SignalR Client
-    implementation("com.microsoft.signalr:signalr:7.0.0")
+    implementation("com.microsoft.signalr:signalr:7.0.0") {
+        exclude(group = "io.reactivex.rxjava3")
+    }
 
     // Retrofit for API calls (if needed for other components, though SignalR is primary)
     implementation("com.squareup.retrofit2:retrofit:2.9.0")

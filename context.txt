@@ -1,67 +1,50 @@
+**Summary of Current State and Blockage**
 
-## 10. Implemented Features (December 13, 2025)
+The primary goal is to build the Android application located at `B:\GDrive\ProjectsG\Omni\OmniSync.Android`. The build process is currently blocked by a persistent `java.nio.file.AccessDeniedException` during the `:app:mergeReleaseResources` task, specifically when trying to write to or delete files in `B:\GDrive\ProjectsG\Omni\OmniSync.Android\app\build\intermediates\incremental\release\mergeReleaseResources\merged.dir\values`. This typically indicates a file locking issue on the user's system (e.g., by antivirus software or another process holding files open). User intervention is required to resolve this external issue.
 
-### 10.1. File System Browsing and Streaming
+**Identified Paths and Directories:**
 
-**Goal:** Enable streaming files from the Windows PC to the Android app, including viewing the full file system and streaming video files.
+*   **Project Root:** `B:\GDrive\ProjectsG\Omni`
+*   **Android Project Directory:** `B:\GDrive\ProjectsG\Omni\OmniSync.Android`
+*   **Android Studio Installation:** `E:\Program Files\Android\Android Studio`
+*   **Downloaded Gradle Distribution (extracted):** `B:\GDrive\ProjectsG\Omni\gradle-8.8\gradle-8.8`
+*   **Gradle bin directory (from downloaded distribution):** `B:\GDrive\ProjectsG\Omni\gradle-8.8\gradle-8.8\bin`
+*   **Java Runtime (JBR) directory (from Android Studio):** `E:\Program Files\Android\Android Studio\jbr`
+*   **Android SDK Path (provided by user):** `E:\SDKS\AndroidSDK`
+*   **`local.properties` file:** `B:\GDrive\ProjectsG\Omni\OmniSync.Android\local.properties`
+*   **`gradle.properties` file:** `B:\GDrive\ProjectsG\Omni\OmniSync.Android\gradle.properties`
+*   **`accessibility_service_config.xml`:** `B:\GDrive\ProjectsG\Omni\OmniSync.Android\app\src\main\res\xml\accessibility_service_config.xml`
 
-**Hub-side Changes (OmniSync.Hub - C#):**
--   **`OmniSync.Hub/src/OmniSync.Hub/Models/FileSystemEntry.cs`:** New DTO defined to represent file and directory information (Name, Path, IsDirectory, Size, LastModified).
--   **`OmniSync.Hub/src/OmniSync.Hub/Infrastructure/Services/FileService.cs`:**
-    -   Modified constructor to allow configurable `_noteRootPath` (for Obsidian notes) and a broader `_browseRootPath` (for general file browsing).
-    -   Added `ListDirectoryContents(string relativePath)` method to list files and subdirectories within the `_browseRootPath`, returning `IEnumerable<FileSystemEntry>`.
-    -   Added `GetFileChunk(string filePath, long offset, int chunkSize)` method to read and return a specified chunk of a file as a byte array, enabling file streaming.
-    -   Enhanced path sanitization (`SanitizeAndGetNoteFullPath`, `SanitizeAndGetBrowseFullPath`) for secure access within defined root paths.
--   **`OmniSync.Hub/src/OmniSync.Hub/Presentation/Hubs/RpcApiHub.cs`:**
-    -   Added `ListDirectory(string relativePath)` hub method to expose `FileService.ListDirectoryContents` to connected clients.
-    -   Added `GetFileChunk(string filePath, long offset, int chunkSize)` hub method to expose `FileService.GetFileChunk` for file streaming requests.
--   **`OmniSync.Hub/src/OmniSync.Hub/Program.cs`:**
-    -   Updated `FileService` registration to use the new constructor, allowing `_browseRootPath` to be configured via `appsettings.json` or default to the user profile.
--   **`OmniSync.Hub/appsettings.json`:** Added `FileService:BrowseRootPath` entry for configuration.
+**Key Modifications and Reasons:**
 
-**Android-side Changes (OmniSync.Android - Kotlin):**
--   **`OmniSync.Android/app/src/main/java/com/omni/sync/data/model/FileSystemEntry.kt`:** New data class defined to mirror the C# `FileSystemEntry` DTO.
--   **`OmniSync.Android/app/src/main/java/com/omni/sync/data/repository/SignalRClient.kt`:**
-    -   Added `listDirectory(relativePath: String)` method to call the Hub's `ListDirectory` method and deserialize the returned `FileSystemEntry` list.
-    -   Added `getFileChunk(filePath: String, offset: Long, chunkSize: Int)` method to call the Hub's `GetFileChunk` method.
--   **`OmniSync.Android/app/src/main/java/com/omni/sync/viewmodel/FilesViewModel.kt`:**
-    -   New ViewModel for `FilesScreen` to manage directory state, file listings, and download/streaming logic.
-    -   Implemented `loadDirectory` to fetch file system entries.
-    -   Implemented `startFileDownload` to iteratively request file chunks, reassemble them, save to internal storage, and provide progress updates.
-    -   Added `playFile` function to launch an `Intent` for viewing downloaded files (including videos) using `FileProvider`.
-    -   Updated to extend `AndroidViewModel` to access application context for file operations.
--   **`OmniSync.Android/app/src/main/java/com/omni/sync/viewmodel/FilesViewModelFactory.kt`:** New factory for `FilesViewModel` to handle its dependencies (SignalRClient, MainViewModel, Application).
--   **`OmniSync.Android/app/src/main/java/com/omni/sync/ui/screen/FilesScreen.kt`:** New Jetpack Compose screen for displaying the PC's file system, allowing navigation and initiating file downloads/streaming. Displays download progress.
--   **`OmniSync.Android/app/src/main/java/com/omni/sync/viewmodel/MainViewModel.kt`:** Added `AppScreen.FILES` enum entry.
--   **`OmniSync.Android/app/src/main/java/com/omni/sync/MainActivity.kt`:**
-    -   Integrated `FilesScreen` into the navigation with a new "Files" button.
-    -   Updated `FilesViewModel` instantiation to use `FilesViewModelFactory`.
--   **`OmniSync.Android/app/src/main/java/com/omni/sync/OmniSyncApplication.kt`:** Updated `MainViewModel` instantiation to pass the Application context.
--   **`OmniSync.Android/app/src/main/AndroidManifest.xml`:** Added `FileProvider` definition to enable secure sharing of downloaded files for playback.
--   **`OmniSync.Android/app/src/main/res/xml/file_paths.xml`:** Created to specify paths accessible by the `FileProvider`.
+1.  **Generated Gradle Wrapper:** Since `gradlew` and `gradlew.bat` were missing, a Gradle 8.8 distribution was downloaded (`gradle-8.8-bin.zip`) and extracted. The `gradle.bat wrapper --gradle-version 8.8` command was then executed from the Android project directory to generate the necessary wrapper files.
+2.  **Set `JAVA_HOME`:** Gradle builds failed because `JAVA_HOME` was not set. The Java Runtime bundled with Android Studio (`E:\Program Files\Android\Android Studio\jbr`) was located, and `JAVA_HOME` is explicitly set to this path for each Gradle command execution (e.g., `$env:JAVA_HOME="E:\Program Files\Android\Android Studio\jbr"; ...`).
+3.  **Set `sdk.dir` in `local.properties`:** Initial build attempts failed with "SDK location not found." The `local.properties` file was created/modified in `B:\GDrive\ProjectsG\Omni\OmniSync.Android` to include `sdk.dir=E:/SDKS/AndroidSDK` (using forward slashes) based on user-provided information.
+4.  **Added `android.useAndroidX=true` to `gradle.properties`:** The build failed due to AndroidX dependencies without `android.useAndroidX=true` being set. A `gradle.properties` file was created in `B:\GDrive\ProjectsG\Omni\OmniSync.Android` with this property.
+5.  **Modified `accessibility_service_config.xml`:** An `Android resource linking failed` error occurred due to `typeAll` being incompatible with `accessibilityEventTypes`. This was changed to a list of common event types (`typeViewClicked|typeViewLongClicked|typeViewSelected|typeViewFocused|typeViewTextChanged|typeWindowContentChanged|typeWindowStateChanged`).
+6.  **Cleaned and Forcefully Deleted Build Directory:** Repeated `AccessDeniedException` errors during `mergeReleaseResources` led to running `.\gradlew.bat clean` (which failed due to file locks) and then forcefully deleting `B:\GDrive\ProjectsG\Omni\OmniSync.Android\app\build` using `Remove-Item -Recurse -Force`. However, the `AccessDeniedException` persists after this.
 
-### 10.2. Remote Control Tab (Trackpad and Keyboard)
+**Next Expected Action from User:**
 
-**Goal:** Implement a remote control tab on the Android app to control mouse movement and forward keyboard keystrokes to the Windows PC.
+The user needs to resolve the file locking issue on their system. They should ensure no applications are accessing files in `B:\GDrive\ProjectsG\Omni\OmniSync.Android\app\build` and potentially temporarily disable antivirus software before I can attempt the build again.
 
-**Hub-side Changes (OmniSync.Hub - C#):**
--   **`OmniSync.Hub/src/OmniSync.Hub/Infrastructure/Services/InputService.cs`:**
-    -   Added `SendText(string text)` method to simulate typing Unicode characters using `KEYEVENTF_UNICODE`.
-    -   Added `KeyDown(ushort keyCode)` and `KeyUp(ushort keyCode)` methods for granular control of key presses (useful for modifier keys).
-    -   Defined common Windows Virtual Key Codes (VK_SHIFT, VK_CONTROL, VK_MENU, etc.) as constants.
--   **`OmniSync.Hub/src/OmniSync.Hub/Logic/Services/CommandDispatcher.cs`:**
-    -   Added new commands: `INPUT_KEY_DOWN`, `INPUT_KEY_UP`, `INPUT_TEXT` to the `_commandMap`.
-    -   Mapped these commands to the corresponding `InputService` methods.
-    -   Renamed `KEY_PRESS` to `INPUT_KEY_PRESS` for consistency.
+**Tools Used:**
 
-**Android-side Changes (OmniSync.Android - Kotlin):**
--   **`OmniSync.Android/app/src/main/java/com/omni/sync/ui/screen/RemoteControlScreen.kt`:**
-    -   Renamed from `TrackpadScreen.kt` to `RemoteControlScreen.kt`.
-    -   Existing `detectDragGestures` logic for relative mouse movement was retained.
-    -   Implemented automatic display of the Android soft keyboard (`LocalSoftwareKeyboardController`).
-    -   Captures keystrokes from the soft keyboard via a hidden `TextField` and sends them individually using `signalRClient.sendText("INPUT_TEXT", char.toString())`.
-    -   Added a row of buttons for special keys (Backspace, Enter, Tab, Delete) and togglable modifier keys (Shift, Ctrl, Alt). These buttons send `INPUT_KEY_PRESS`, `INPUT_KEY_DOWN`, or `INPUT_KEY_UP` commands via `signalRClient.sendKeyEvent`.
-    -   `DisposableEffect` added to ensure modifier keys are released when the screen is left.
-    -   Defined Kotlin constants for common Windows Virtual Key Codes to ensure consistent mapping.
--   **`OmniSync.Android/app/src/main/java/com/omni/sync/viewmodel/MainViewModel.kt`:** Updated `AppScreen` enum: `TRACKPAD` renamed to `REMOTECONTROL`.
--   **`OmniSync.Android/app/src/main/java/com/omni/sync/MainActivity.kt`:** Updated imports and navigation references from `TrackpadScreen` to `RemoteControlScreen`, and `AppScreen.TRACKPAD` to `AppScreen.REMOTECONTROL`.
+*   `list_directory`
+*   `run_shell_command` (including PowerShell commands like `Invoke-WebRequest`, `Expand-Archive`, `Get-ChildItem -Recurse`, and environment variable setting)
+*   `write_file`
+*   `replace`
+*   `google_web_search`
+*   `write_todos`
+
+**To-Do List (Current):**
+
+*   [completed] Download a Gradle distribution.
+*   [completed] Locate a Java installation within Android Studio and use its java.exe to generate the Gradle wrapper.
+*   [completed] Manually generate the Gradle wrapper files (`gradlew`, `gradlew.bat`, `gradle-wrapper.jar`) in the Android project.
+*   [completed] Update sdk.dir in local.properties with the provided Android SDK path.
+*   [completed] Add `android.useAndroidX=true` to `gradle.properties`.
+*   [completed] Correct `accessibilityEventTypes` in `accessibility_service_config.xml` to use a list of common event types.
+*   [in_progress] Resolve persistent file locking issue causing AccessDeniedException during build.
+*   [pending] Build the Android application using the generated Gradle wrapper.
+*   [pending] Verify the build output and locate the generated APK.
