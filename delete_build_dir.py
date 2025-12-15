@@ -1,7 +1,7 @@
 import shutil
 import os
 
-build_dir = r"B:\GDrive\ProjectsG\Omni\OmniSync.Android\app\build"
+build_dir = r"D:\SSDProjects\Omni\OmniSync.Android\app\build"
 
 if os.path.exists(build_dir):
     try:

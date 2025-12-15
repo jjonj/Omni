@@ -8,8 +8,12 @@ import com.microsoft.signalr.HubConnection
 import com.microsoft.signalr.HubConnectionBuilder
 import com.omni.sync.service.OmniAccessibilityService
 import com.omni.sync.viewmodel.MainViewModel
+import com.omni.sync.utils.NetworkDebugger
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import io.reactivex.rxjava3.core.Single
 import io.reactivex.rxjava3.core.Completable
 import java.lang.Exception
@@ -41,30 +45,105 @@ class SignalRClient(
     }
 
     fun startConnection() {
+        Log.d("SignalRClient", "=== CONNECTION DEBUG START ===")
+        Log.d("SignalRClient", "Hub URL: $hubUrl")
+        Log.d("SignalRClient", "API Key present: ${apiKey.isNotEmpty()}")
+        
+        // Run network diagnostics in background
+        CoroutineScope(Dispatchers.IO).launch {
+            NetworkDebugger.debugConnection(context, hubUrl)
+        }
+        
+        // Test various URL formats
+        val urlVariants = listOf(
+            hubUrl,
+            hubUrl.replace("http://", "https://"),
+            hubUrl.replace("/signalrhub", "/signalRHub"),
+            hubUrl.replace(":5000", ":5001")
+        )
+        
+        Log.d("SignalRClient", "Testing URL variants:")
+        urlVariants.forEach { url ->
+            Log.d("SignalRClient", "  - $url")
+        }
+        
         hubConnection = HubConnectionBuilder.create(hubUrl).build()
+        
+        Log.d("SignalRClient", "HubConnection built successfully")
+        Log.d("SignalRClient", "Connection State: ${hubConnection?.connectionState}")
 
         hubConnection?.onClosed { error ->
             val errorMessage = "Connection closed: ${error?.message}"
             _connectionState.value = "Disconnected: ${error?.message}"
             mainViewModel.setConnected(false)
             mainViewModel.setErrorMessage(errorMessage)
+            Log.e("SignalRClient", "=== CONNECTION CLOSED ===")
             Log.e("SignalRClient", errorMessage, error)
+            error?.printStackTrace()
         }
 
-        hubConnection?.start()?.doOnComplete {
-            _connectionState.value = "Connected"
-            mainViewModel.setConnected(true)
-            mainViewModel.setErrorMessage(null) // Clear any previous errors
-            Log.d("SignalRClient", "Connection started.")
-            // Authenticate after connection is established
-            authenticateClient()
-        }?.doOnError { error ->
-            val errorMessage = "Connection Error: ${error.message}"
-            _connectionState.value = "Connection Error: ${error.message}"
-            mainViewModel.setConnected(false)
-            mainViewModel.setErrorMessage(errorMessage)
-            Log.e("SignalRClient", errorMessage, error)
+        Log.d("SignalRClient", "Starting connection attempts...")
+        var connected = false
+        for (url in urlVariants) {
+            if (connected) break
+            Log.d("SignalRClient", "Attempting connection with URL: $url")
+            
+            // Run network diagnostics for the current URL variant
+            CoroutineScope(Dispatchers.IO).launch {
+                NetworkDebugger.debugConnection(context, url)
+            }
+
+            hubConnection = HubConnectionBuilder.create(url).build()
+            
+            hubConnection?.onClosed { error ->
+                val errorMessage = "Connection to $url closed: ${error?.message}"
+                _connectionState.value = "Disconnected: ${error?.message}"
+                mainViewModel.setConnected(false)
+                mainViewModel.setErrorMessage(errorMessage)
+                Log.e("SignalRClient", "=== CONNECTION TO $url CLOSED ===")
+                Log.e("SignalRClient", errorMessage, error)
+                error?.printStackTrace()
+            }
+
+            hubConnection?.start()?.doOnComplete {
+                _connectionState.value = "Connected"
+                mainViewModel.setConnected(true)
+                mainViewModel.setErrorMessage(null) // Clear any previous errors
+                Log.d("SignalRClient", "=== CONNECTION SUCCESSFUL with URL: $url ===")
+                Log.d("SignalRClient", "Connection State: ${hubConnection?.connectionState}")
+                connected = true // Mark as connected
+                authenticateClient()
+            }?.doOnError { error ->
+                val errorMessage = "Connection Error with URL $url: ${error.message}"
+                _connectionState.value = "Connection Error: ${error.message}"
+                mainViewModel.setConnected(false)
+                mainViewModel.setErrorMessage(errorMessage)
+                Log.e("SignalRClient", "=== CONNECTION FAILED with URL: $url ===")
+                Log.e("SignalRClient", errorMessage, error)
+                Log.e("SignalRClient", "Error type: ${error.javaClass.name}")
+                error.printStackTrace()
+                
+                // Log detailed debugging info
+                Log.e("SignalRClient", "Hub URL attempted: $url")
+                Log.e("SignalRClient", "Possible issues for this URL:")
+                Log.e("SignalRClient", "  1. Hub not running on PC")
+                Log.e("SignalRClient", "  2. Wrong IP address (check PC's actual IP with 'ipconfig')")
+                Log.e("SignalRClient", "  3. Firewall blocking port 5000")
+                Log.e("SignalRClient", "  4. Phone and PC on different networks")
+                Log.e("SignalRClient", "  5. Hub endpoint is /signalrhub not /rpcHub")
+            }?.subscribe({
+                // onComplete - connection successful
+            }, { error ->
+                // onError - handle the error here
+                Log.e("SignalRClient", "Subscription error: ${error.message}", error)
+            })
         }
+
+        if (!connected) {
+            Log.e("SignalRClient", "All connection attempts failed.")
+            mainViewModel.setErrorMessage("All connection attempts failed.")
+        }
+
 
         // Register handlers for server-side calls
         hubConnection?.on("ReceivePayload", { payload: Any ->

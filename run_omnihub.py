@@ -10,18 +10,22 @@ HUB_DIR = os.path.join(SCRIPT_DIR, "OmniSync.Hub", "src", "OmniSync.Hub")
 CLI_DIR = os.path.join(SCRIPT_DIR, "OmniSync.Cli", "deprecated")
 HUB_EXE_PATH = os.path.join(HUB_DIR, "bin", "Debug", "net9.0-windows", "OmniSync.Hub.exe") 
 
-def run_command(command, cwd=None, shell=False, capture_output=False, log_file=None):
+def run_command(command, cwd=None, shell=False, log_file=None):
     """
     Runs a shell command and optionally logs its output.
     """
     print(f"Executing: {command} in {cwd}")
     
+    stdout_redirect = subprocess.PIPE
+    stderr_redirect = subprocess.PIPE
+
     try:
         process = subprocess.run(
             command,
             cwd=cwd,
             shell=shell,
-            capture_output=True, # Always capture output
+            stdout=stdout_redirect,
+            stderr=stderr_redirect,
             text=True,
             encoding="utf-8",
             errors="replace" # Handle decoding errors gracefully
@@ -58,7 +62,7 @@ def kill_hub_process():
     print("Attempting to kill OmniSync.Hub.exe processes...")
     if sys.platform == "win32":
         kill_cmd = "taskkill /IM OmniSync.Hub.exe /F"
-        result = run_command(kill_cmd, shell=True, capture_output=True)
+        result = run_command(kill_cmd, shell=True)
         if result:
             if "No tasks are running" in result.stdout or "process not found" in result.stderr:
                 print("OmniSync.Hub.exe was not running or could not be found.")
@@ -72,8 +76,8 @@ def kill_hub_process():
 
 def main():
     print(f"HUB_DIR is {HUB_DIR}")
-    hub_log_path = "C:\\Users\\crovea\\.gemini\\tmp\\15fda5f3183577b8e38a9eba25ada6631618a2fd66b6c589a286e637e178507d\\hub_output.log"
-    cli_log_path = "C:\\Users\\crovea\\.gemini\\tmp\\15fda5f3183577b8e38a9eba25ada6631618a2fd66b6c589a286e637e178507d\\cli_output.log"
+    hub_log_path = os.path.join(os.environ.get("GEMINI_TEMP_DIR", ""), "hub_output.log")
+    cli_log_path = os.path.join(os.environ.get("GEMINI_TEMP_DIR", ""), "cli_output.log")
 
 
     # Clear previous logs
@@ -102,6 +106,7 @@ def main():
     kill_hub_process()
 
     hub_log_file = None # Initialize to None outside try block
+    hub_process = None # Initialize to None to avoid UnboundLocalError
     try:
         print("\n--- Cleaning OmniSync.Hub ---")
         clean_hub_result = run_command("dotnet clean", cwd=HUB_DIR, log_file=hub_log_path)
@@ -149,26 +154,11 @@ def main():
         )
         print(f"OmniSync.Hub started with PID: {hub_process.pid}")
         
-        time.sleep(5) # Give the hub some time to start up
-
-        print("\n--- Building OmniSync.Cli ---")
-        build_cli_result = run_command("dotnet build", cwd=CLI_DIR, log_file=cli_log_path)
-        if build_cli_result is None or build_cli_result.returncode != 0:
-            print("OmniSync.Cli build failed. Aborting. Check cli_output.log for details.")
-            return # Exit if build failed
-        time.sleep(1)
-
-        print("Running OmniSync.Cli...")
-        cli_command = f"dotnet run --project \"{CLI_DIR}\" -- \"echo \\\"hello world\\\" > test_omni.txt\" \"http://localhost:5000/signalrhub\" \"test_api_key\""
-        run_command(cli_command, cwd=CLI_DIR, log_file=cli_log_path)
-
-        print("\nAutomation complete. Check hub_output.log and cli_output.log for details.")
+        time.sleep(5)
         
     finally:
-        if hub_log_file and not hub_log_file.closed: # Check if file is open before closing
-            hub_log_file.close()
-        # Always attempt to kill the hub process at the end
-        kill_hub_process() 
+        if hub_process:
+            print(f"OmniSync.Hub started with PID: {hub_process.pid}")
 
 if __name__ == "__main__":
     main()

@@ -1,0 +1,16 @@
+# OmniSync Android - Local Configuration
+# This file stores local development settings
+
+# ADB Path
+# Location of Android SDK platform-tools containing adb.exe
+ADB_PATH=E:\SDKS\AndroidSDK\platform-tools
+
+# Default Device
+# The IP:PORT of your default Android device for wireless debugging
+# Leave empty for auto-detection
+DEFAULT_DEVICE=
+
+# Notes:
+# - Update ADB_PATH if you move your Android SDK
+# - DEFAULT_DEVICE can be set to avoid device selection prompts
+# - This file is for local configuration only

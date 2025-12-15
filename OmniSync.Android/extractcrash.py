@@ -2,10 +2,17 @@ import subprocess
 import sys
 import time
 from datetime import datetime
+import os
 
 PACKAGE = "com.omni.sync"
 DEFAULT_DEVICE = "10.0.0.236:41391"
 LOG_TIMEOUT_SECONDS = 5
+
+# ADB Configuration - Update this if ADB is in a different location
+ADB_PATH = r"E:\SDKS\AndroidSDK\platform-tools"
+# Add ADB to PATH if not already there
+if ADB_PATH not in os.environ.get("PATH", ""):
+    os.environ["PATH"] = f"{ADB_PATH};{os.environ.get('PATH', '')}"
 
 
 def run(cmd, check=True):

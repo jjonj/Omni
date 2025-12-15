@@ -27,11 +27,29 @@ class OmniSyncApplication : Application() {
         }
         Timber.plant(CrashReportingTree(applicationContext))
         mainViewModel = MainViewModel(this) // Pass the Application instance
-        // TODO: Replace with actual Hub URL and API Key from a secure source
+        
+        // Connection Configuration
+        // IMPORTANT: Update this IP address to match your PC's actual IP
+        // Find your PC's IP: Open Command Prompt and type 'ipconfig'
+        // Look for "IPv4 Address" under your WiFi adapter
+        val pcIpAddress = "10.0.0.37"  // UPDATE THIS if your PC IP changes
+        val hubPort = "5000"
+        val hubEndpoint = "signalrhub"
+        
+        val hubUrl = "http://$pcIpAddress:$hubPort/$hubEndpoint"
+        
+        Timber.d("=== OMNISYNC CONNECTION CONFIG ===")
+        Timber.d("Hub URL: $hubUrl")
+        Timber.d("Endpoint breakdown:")
+        Timber.d("  - PC IP: $pcIpAddress")
+        Timber.d("  - Port: $hubPort")
+        Timber.d("  - Endpoint: /$hubEndpoint")
+        Timber.d("==================================")
+        
         signalRClient = SignalRClient(
             context = applicationContext,
-            hubUrl = "http://YOUR_PC_IP_ADDRESS:5000/signalrhub",
-            apiKey = "YOUR_SECRET_API_KEY_HERE",
+            hubUrl = hubUrl,
+            apiKey = "test_api_key",  // Must match the AuthApiKey in Hub's appsettings.json
             mainViewModel = mainViewModel
         )
 

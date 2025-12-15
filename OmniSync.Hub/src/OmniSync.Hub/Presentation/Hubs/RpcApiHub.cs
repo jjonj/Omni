@@ -129,7 +129,7 @@ namespace OmniSync.Hub.Presentation.Hubs
                         }
                         break;
                     case "list_notes":
-                        var files = Directory.GetFiles(_fileService.GetRootPath(), "*.md", SearchOption.TopDirectoryOnly);
+                        var files = Directory.GetFiles(_fileService.GetNoteRootPath(), "*.md", SearchOption.TopDirectoryOnly);
                         var fileNames = new List<string>();
                         foreach (var file in files)
                         {
