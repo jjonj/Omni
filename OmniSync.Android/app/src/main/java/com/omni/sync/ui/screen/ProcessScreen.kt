@@ -249,7 +249,7 @@ fun ProcessItem(process: ProcessInfo, signalRClient: SignalRClient?) {
             // Compact Kill Button
             IconButton(
                 onClick = { 
-                    signalRClient?.killProcess(process.id)?.subscribe() 
+                    signalRClient?.killProcess(process.id.toInt())?.subscribe() 
                 },
                 modifier = Modifier.size(24.dp)
             ) {

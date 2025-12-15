@@ -6,7 +6,9 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.automirrored.filled.KeyboardBackspace
+import androidx.compose.material.icons.automirrored.filled.KeyboardReturn
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -20,6 +22,7 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.omni.sync.data.repository.SignalRClient
 import com.omni.sync.viewmodel.MainViewModel // Add this import
 import kotlinx.coroutines.delay
@@ -78,6 +81,7 @@ fun RemoteControlScreen(modifier: Modifier = Modifier, signalRClient: SignalRCli
         modifier = modifier
             .fillMaxSize()
             .focusRequester(focusRequester)
+            .imePadding()
             .onPreviewKeyEvent {
                 // Intercept hardware key events (e.g., from a physical keyboard)
                 // For soft keyboard, we mostly rely on TextField's value for text input
@@ -128,7 +132,7 @@ fun RemoteControlScreen(modifier: Modifier = Modifier, signalRClient: SignalRCli
                         change.consume()
                         // FIX: Use the specific method that logs to dashboard
                         // Note: Depending on server, you might need to scale sensitivity
-                        val sensitivity = 2.0f 
+                        val sensitivity = 1.2f 
                         signalRClient?.sendMouseMove(dragAmount.x * sensitivity, dragAmount.y * sensitivity)
                     }
                 }
@@ -142,47 +146,55 @@ fun RemoteControlScreen(modifier: Modifier = Modifier, signalRClient: SignalRCli
         }
 
         // Keyboard Controls
-        Row(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(8.dp),
-            horizontalArrangement = Arrangement.SpaceAround,
-            verticalAlignment = Alignment.CenterVertically
+            verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            // Modifier Keys
-            ModifierKeyButton(
-                text = "Shift",
-                isToggled = isShiftPressed,
-                onClick = {
-                    isShiftPressed = !isShiftPressed
-                    signalRClient?.sendKeyEvent(if (isShiftPressed) "INPUT_KEY_DOWN" else "INPUT_KEY_UP", VK_SHIFT)
-                },
-                modifier = Modifier.weight(1f)
-            )
-            ModifierKeyButton(
-                text = "Ctrl",
-                isToggled = isCtrlPressed,
-                onClick = {
-                    isCtrlPressed = !isCtrlPressed
-                    signalRClient?.sendKeyEvent(if (isCtrlPressed) "INPUT_KEY_DOWN" else "INPUT_KEY_UP", VK_CONTROL)
-                },
-                modifier = Modifier.weight(1f)
-            )
-            ModifierKeyButton(
-                text = "Alt",
-                isToggled = isAltPressed,
-                onClick = {
-                    isAltPressed = !isAltPressed
-                    signalRClient?.sendKeyEvent(if (isAltPressed) "INPUT_KEY_DOWN" else "INPUT_KEY_UP", VK_MENU)
-                },
-                modifier = Modifier.weight(1f)
-            )
-
-            // Special Action Keys
-            ActionKeyButton(icon = Icons.Default.KeyboardBackspace, onClick = { signalRClient?.sendKeyEvent("INPUT_KEY_PRESS", VK_BACK) }, modifier = Modifier.weight(1f))
-            ActionKeyButton(icon = Icons.Default.KeyboardReturn, onClick = { signalRClient?.sendKeyEvent("INPUT_KEY_PRESS", VK_RETURN) }, modifier = Modifier.weight(1f))
-            ActionKeyButton(text = "Tab", onClick = { signalRClient?.sendKeyEvent("INPUT_KEY_PRESS", VK_TAB) }, modifier = Modifier.weight(1f))
-            ActionKeyButton(icon = Icons.Default.Delete, onClick = { signalRClient?.sendKeyEvent("INPUT_KEY_PRESS", VK_DELETE) }, modifier = Modifier.weight(1f))
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Modifier Keys
+                ModifierKeyButton(
+                    text = "Shift",
+                    isToggled = isShiftPressed,
+                    onClick = {
+                        isShiftPressed = !isShiftPressed
+                        signalRClient?.sendKeyEvent(if (isShiftPressed) "INPUT_KEY_DOWN" else "INPUT_KEY_UP", VK_SHIFT)
+                    },
+                    modifier = Modifier.weight(1f)
+                )
+                ModifierKeyButton(
+                    text = "Ctrl",
+                    isToggled = isCtrlPressed,
+                    onClick = {
+                        isCtrlPressed = !isCtrlPressed
+                        signalRClient?.sendKeyEvent(if (isCtrlPressed) "INPUT_KEY_DOWN" else "INPUT_KEY_UP", VK_CONTROL)
+                    },
+                    modifier = Modifier.weight(1f)
+                )
+                ModifierKeyButton(
+                    text = "Alt",
+                    isToggled = isAltPressed,
+                    onClick = {
+                        isAltPressed = !isAltPressed
+                        signalRClient?.sendKeyEvent(if (isAltPressed) "INPUT_KEY_DOWN" else "INPUT_KEY_UP", VK_MENU)
+                    },
+                    modifier = Modifier.weight(1f)
+                )
+            }
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Special Action Keys
+                ActionKeyButton(icon = Icons.AutoMirrored.Filled.KeyboardBackspace, onClick = { signalRClient?.sendKeyEvent("INPUT_KEY_PRESS", VK_BACK) }, modifier = Modifier.weight(1f))
+                ActionKeyButton(icon = Icons.AutoMirrored.Filled.KeyboardReturn, onClick = { signalRClient?.sendKeyEvent("INPUT_KEY_PRESS", VK_RETURN) }, modifier = Modifier.weight(1f))
+                ActionKeyButton(text = "Tab", onClick = { signalRClient?.sendKeyEvent("INPUT_KEY_PRESS", VK_TAB) }, modifier = Modifier.weight(1f))
+                ActionKeyButton(icon = Icons.Default.Delete, onClick = { signalRClient?.sendKeyEvent("INPUT_KEY_PRESS", VK_DELETE) }, modifier = Modifier.weight(1f))
+            }
         }
 
         // Arrow Keys (Optional, can be added later or integrated into a sub-row)
@@ -194,16 +206,23 @@ fun RemoteControlScreen(modifier: Modifier = Modifier, signalRClient: SignalRCli
 fun ModifierKeyButton(text: String, isToggled: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
     val colors = if (isToggled) ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
                  else ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
-    Button(onClick = onClick, colors = colors, modifier = modifier.padding(horizontal = 2.dp)) {
-        Text(text)
+    Button(
+        onClick = onClick,
+        colors = colors,
+        modifier = modifier.height(40.dp)
+    ) {
+        Text(text, softWrap = false, fontSize = 10.sp)
     }
 }
 
 @Composable
 fun ActionKeyButton(modifier: Modifier = Modifier, icon: androidx.compose.ui.graphics.vector.ImageVector? = null, text: String? = null, onClick: () -> Unit) {
-    Button(onClick = onClick, modifier = modifier.padding(horizontal = 2.dp)) {
+    Button(
+        onClick = onClick,
+        modifier = modifier.height(40.dp)
+    ) {
         icon?.let { Icon(it, contentDescription = text ?: "") }
-        text?.let { Text(it) }
+        text?.let { Text(it, softWrap = false, fontSize = 10.sp) }
     }
 }
 

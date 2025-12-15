@@ -93,8 +93,9 @@ namespace OmniSync.Hub.Presentation.Hubs
 
                 try
                 {
-                    int x = payload.GetProperty("X").GetInt32();
-                    int y = payload.GetProperty("Y").GetInt32();
+                    // Get double values and round to nearest integer
+                    int x = (int)Math.Round(payload.GetProperty("X").GetDouble());
+                    int y = (int)Math.Round(payload.GetProperty("Y").GetDouble());
                     _inputService.MoveMouse(x, y);
                 }
                 catch (Exception ex)

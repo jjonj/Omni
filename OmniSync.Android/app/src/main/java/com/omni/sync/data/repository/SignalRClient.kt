@@ -27,11 +27,11 @@ import java.io.File // Added for getFileChunk logic if needed, might remove late
 import com.google.gson.annotations.SerializedName
 
 data class ProcessInfo(
-    @SerializedName("Id") val id: Int, 
-    @SerializedName("Name") val name: String, 
-    @SerializedName("MainWindowTitle") val mainWindowTitle: String?,
-    @SerializedName("CpuUsage") val cpuUsage: Double = 0.0, 
-    @SerializedName("MemoryUsage") val memoryUsage: Long = 0
+    @SerializedName("id") val id: Double,
+    @SerializedName("name") val name: String,
+    @SerializedName("mainWindowTitle") val mainWindowTitle: String?,
+    @SerializedName("cpuUsage") val cpuUsage: Double = 0.0,
+    @SerializedName("memoryUsage") val memoryUsage: Long = 0
 )
 
 class SignalRClient(
