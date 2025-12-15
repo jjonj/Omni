@@ -24,7 +24,13 @@ import java.util.Date // Added for FileSystemEntry deserialization
 import java.io.File // Added for getFileChunk logic if needed, might remove later
 
 
-data class ProcessInfo(val id: Int, val name: String, val mainWindowTitle: String?)
+data class ProcessInfo(
+    val id: Int, 
+    val name: String, 
+    val mainWindowTitle: String?,
+    val cpuUsage: Double = 0.0, // Defaults in case server doesn't send them yet
+    val memoryUsage: Long = 0
+)
 
 class SignalRClient(
     private val context: Context,
@@ -125,19 +131,34 @@ class SignalRClient(
         Log.d("SignalRClient", "Connection stopped.")
     }
 
+    // Update sendPayload to log to Dashboard
     fun sendPayload(command: String, payload: Any) {
         if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
             try {
+                // CHANGE: Send "SendPayload" as the method, but command is the argument. 
+                // If you are using specific methods for mouse, we should use invoke directly for those.
+                // However, assuming your server uses a generic "SendPayload" method:
                 hubConnection?.send("SendPayload", command, payload)
-                Log.d("SignalRClient", "Sent payload: $command")
-                mainViewModel.setErrorMessage(null) // Clear any previous errors
+                mainViewModel.addLog("Sent $command", com.omni.sync.ui.screen.LogType.INFO)
             } catch (e: Exception) {
-                val errorMessage = "Error sending payload for command $command: ${e.message}"
-                mainViewModel.setErrorMessage(errorMessage)
-                Log.e("SignalRClient", errorMessage, e)
+                mainViewModel.setErrorMessage("Send failed: ${e.message}")
             }
         } else {
             val warningMessage = "Not connected, cannot send payload for command $command."
+            mainViewModel.setErrorMessage(warningMessage)
+            Log.w("SignalRClient", warningMessage)
+        }
+    }
+
+    // Specific function for Mouse Move to ensure it hits the right Hub method
+    fun sendMouseMove(x: Float, y: Float) {
+        if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
+            val payload = mapOf("X" to x, "Y" to y)
+            // Try specific method name "MouseMove" if "SendPayload" isn't routing it
+            hubConnection?.send("MouseMove", payload)
+                .also { mainViewModel.addLog("Mouse: $x, $y", com.omni.sync.ui.screen.LogType.INFO) }
+        } else {
+            val warningMessage = "Not connected, cannot send mouse move."
             mainViewModel.setErrorMessage(warningMessage)
             Log.w("SignalRClient", warningMessage)
         }
@@ -285,18 +306,12 @@ class SignalRClient(
         return null
     }
 
+    // Update sendKeyEvent
     fun sendKeyEvent(command: String, keyCode: UShort) {
         if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
-            try {
-                // Use "KeyCode" (PascalCase) to match likely C# property
-                val payload = mapOf("KeyCode" to keyCode.toInt()) 
-                sendPayload(command, payload)
-                mainViewModel.setErrorMessage(null)
-            } catch (e: Exception) {
-                val errorMessage = "Error sending key event $command (keyCode $keyCode): ${e.message}"
-                mainViewModel.setErrorMessage(errorMessage)
-                Log.e("SignalRClient", errorMessage, e)
-            }
+            val payload = mapOf("KeyCode" to keyCode.toInt())
+            // Ensure command string is what server expects (e.g. "InputKeyDown")
+            hubConnection?.send("SendPayload", command, payload)
         } else {
             val warningMessage = "Not connected, cannot send key event $command."
             mainViewModel.setErrorMessage(warningMessage)

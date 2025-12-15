@@ -21,6 +21,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.omni.sync.data.repository.SignalRClient
+import com.omni.sync.viewmodel.MainViewModel // Add this import
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -47,7 +48,7 @@ data class MouseMovePayload(val x: Float, val y: Float)
 
 @OptIn(ExperimentalMaterial3Api::class, androidx.compose.ui.ExperimentalComposeUiApi::class)
 @Composable
-fun RemoteControlScreen(modifier: Modifier = Modifier, signalRClient: SignalRClient?) {
+fun RemoteControlScreen(modifier: Modifier = Modifier, signalRClient: SignalRClient?, mainViewModel: MainViewModel?) {
     val keyboardController = LocalSoftwareKeyboardController.current
     val focusRequester = remember { FocusRequester() }
 
@@ -119,23 +120,24 @@ fun RemoteControlScreen(modifier: Modifier = Modifier, signalRClient: SignalRCli
         // Trackpad Area
         Box(
             modifier = Modifier
-                .weight(1f) // Takes remaining vertical space
+                .weight(1f)
                 .fillMaxWidth()
                 .background(MaterialTheme.colorScheme.surfaceVariant)
                 .pointerInput(Unit) {
                     detectDragGestures { change, dragAmount ->
                         change.consume()
-                        signalRClient?.sendPayload(
-                            "MOUSE_MOVE",
-                            MouseMovePayload(dragAmount.x, dragAmount.y)
-                        )
+                        // FIX: Use the specific method that logs to dashboard
+                        // Note: Depending on server, you might need to scale sensitivity
+                        val sensitivity = 2.0f 
+                        signalRClient?.sendMouseMove(dragAmount.x * sensitivity, dragAmount.y * sensitivity)
                     }
                 }
         ) {
             Text(
-                text = "Trackpad Area",
+                text = "Trackpad Active\n(Drag to move mouse)",
                 modifier = Modifier.align(Alignment.Center),
-                style = MaterialTheme.typography.headlineSmall
+                style = MaterialTheme.typography.bodyLarge,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center
             )
         }
 
@@ -208,5 +210,5 @@ fun ActionKeyButton(modifier: Modifier = Modifier, icon: androidx.compose.ui.gra
 @Preview(showBackground = true)
 @Composable
 fun RemoteControlScreenPreview() {
-    RemoteControlScreen(signalRClient = null)
+    RemoteControlScreen(signalRClient = null, mainViewModel = null)
 }

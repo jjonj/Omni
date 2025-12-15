@@ -85,10 +85,10 @@ class MainActivity : ComponentActivity() {
                         }
 
                         when (currentScreen) {
-                            AppScreen.DASHBOARD -> DashboardScreen(signalRClient = signalRClient)
-                            AppScreen.REMOTECONTROL -> RemoteControlScreen(signalRClient = signalRClient) // Updated screen
+                            AppScreen.DASHBOARD -> DashboardScreen(signalRClient = signalRClient, mainViewModel = mainViewModel)
+                            AppScreen.REMOTECONTROL -> RemoteControlScreen(signalRClient = signalRClient, mainViewModel = mainViewModel) // Updated screen
                             AppScreen.NOTEVIEWER -> NoteViewerScreen(signalRClient = signalRClient)
-                            AppScreen.PROCESS -> ProcessScreen(signalRClient = signalRClient)
+                            AppScreen.PROCESS -> ProcessScreen(signalRClient = signalRClient, mainViewModel = mainViewModel)
                             AppScreen.FILES -> FilesScreen(filesViewModel = filesViewModel) // Display FilesScreen
                         }
                     }

@@ -17,18 +17,18 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.omni.sync.data.repository.SignalRClient
+import com.omni.sync.viewmodel.MainViewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.rememberCoroutineScope
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun DashboardScreen(modifier: Modifier = Modifier, signalRClient: SignalRClient?) {
+fun DashboardScreen(modifier: Modifier = Modifier, signalRClient: SignalRClient?, mainViewModel: MainViewModel) {
     // Collect connection state
     val connectionState by signalRClient?.connectionState?.collectAsState() ?: remember { mutableStateOf("No Client") }
     
-    // Local log state for this screen
-    var logs by remember { mutableStateOf(listOf<LogEntry>()) }
+    val logs by mainViewModel.dashboardLogs.collectAsState()
     val listState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
     
@@ -37,26 +37,6 @@ fun DashboardScreen(modifier: Modifier = Modifier, signalRClient: SignalRClient?
         if (logs.isNotEmpty()) {
             listState.animateScrollToItem(logs.size - 1)
         }
-    }
-    
-    // Helper function to add logs
-    fun addLog(message: String, type: LogType = LogType.INFO) {
-        logs = logs + LogEntry(message, type, System.currentTimeMillis())
-        if (logs.size > 100) {
-            logs = logs.takeLast(100)
-        }
-    }
-    
-    // Monitor connection state changes
-    LaunchedEffect(connectionState) {
-        addLog("Connection state: $connectionState", 
-            if (connectionState.contains("Connected") && !connectionState.contains("Disconnected")) 
-                LogType.SUCCESS 
-            else if (connectionState.contains("Error"))
-                LogType.ERROR
-            else 
-                LogType.INFO
-        )
     }
     
     Column(modifier = modifier.fillMaxSize().padding(16.dp)) {
@@ -111,7 +91,7 @@ fun DashboardScreen(modifier: Modifier = Modifier, signalRClient: SignalRClient?
                     // Reconnect Button
                     IconButton(
                         onClick = {
-                            addLog("Manual reconnection initiated", LogType.INFO)
+                            mainViewModel.addLog("Manual reconnection initiated", LogType.INFO)
                             coroutineScope.launch {
                                 signalRClient?.stopConnection()
                                 delay(500)
@@ -144,7 +124,7 @@ fun DashboardScreen(modifier: Modifier = Modifier, signalRClient: SignalRClient?
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
                     Button(
                         onClick = {
-                            addLog("Testing connection...", LogType.INFO)
+                            mainViewModel.addLog("Testing connection...", LogType.INFO)
                             signalRClient?.executeCommand("echo Connection test successful")
                         },
                         modifier = Modifier.weight(1f).padding(end = 8.dp)
@@ -154,13 +134,13 @@ fun DashboardScreen(modifier: Modifier = Modifier, signalRClient: SignalRClient?
                     
                     Button(
                         onClick = {
-                            addLog("Listing notes...", LogType.INFO)
+                            mainViewModel.addLog("Listing notes...", LogType.INFO)
                             signalRClient?.listNotes()?.subscribe(
                                 { notes ->
-                                    addLog("Found ${notes.size} notes", LogType.SUCCESS)
+                                    mainViewModel.addLog("Found ${notes.size} notes", LogType.SUCCESS)
                                 },
                                 { error ->
-                                    addLog("Error listing notes: ${error.message}", LogType.ERROR)
+                                    mainViewModel.addLog("Error listing notes: ${error.message}", LogType.ERROR)
                                 }
                             )
                         },
@@ -175,9 +155,9 @@ fun DashboardScreen(modifier: Modifier = Modifier, signalRClient: SignalRClient?
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
                     Button(
                         onClick = {
-                            addLog("Sending clipboard update...", LogType.INFO)
+                            mainViewModel.addLog("Sending clipboard update...", LogType.INFO)
                             signalRClient?.sendClipboardUpdate("Test from Android: ${System.currentTimeMillis()}")
-                            addLog("Clipboard update sent", LogType.SUCCESS)
+                            mainViewModel.addLog("Clipboard update sent", LogType.SUCCESS)
                         },
                         modifier = Modifier.weight(1f).padding(end = 8.dp)
                     ) {
@@ -186,8 +166,10 @@ fun DashboardScreen(modifier: Modifier = Modifier, signalRClient: SignalRClient?
                     
                     Button(
                         onClick = {
-                            logs = emptyList()
-                            addLog("Logs cleared", LogType.INFO)
+                            // Call a function in MainViewModel to clear logs
+                            // This will be added in MainViewModel in the next step
+                            mainViewModel.clearLogs() 
+                            mainViewModel.addLog("Logs cleared", LogType.INFO)
                         },
                         modifier = Modifier.weight(1f).padding(start = 8.dp),
                         colors = ButtonDefaults.buttonColors(
@@ -223,16 +205,6 @@ fun DashboardScreen(modifier: Modifier = Modifier, signalRClient: SignalRClient?
             }
         }
     }
-}
-
-data class LogEntry(
-    val message: String,
-    val type: LogType,
-    val timestamp: Long
-)
-
-enum class LogType {
-    INFO, SUCCESS, ERROR, WARNING
 }
 
 @Composable
