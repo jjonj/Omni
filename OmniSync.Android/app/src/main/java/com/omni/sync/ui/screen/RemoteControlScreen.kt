@@ -149,7 +149,15 @@ fun RemoteControlScreen(modifier: Modifier = Modifier, signalRClient: SignalRCli
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(8.dp),
+                .padding(8.dp)
+                .pointerInput(Unit) {
+                    detectDragGestures { change, dragAmount ->
+                        // Check for a clear upward swipe to reopen the keyboard
+                        if (dragAmount.y < -40) { // Threshold for a deliberate swipe
+                            keyboardController?.show()
+                        }
+                    }
+                },
             verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             Row(

@@ -91,12 +91,7 @@ fun DashboardScreen(modifier: Modifier = Modifier, signalRClient: SignalRClient?
                     // Reconnect Button
                     IconButton(
                         onClick = {
-                            mainViewModel.addLog("Manual reconnection initiated", LogType.INFO)
-                            coroutineScope.launch {
-                                signalRClient?.stopConnection()
-                                delay(500)
-                                signalRClient?.startConnection()
-                            }
+                            signalRClient?.manualReconnect()
                         }
                     ) {
                         Icon(

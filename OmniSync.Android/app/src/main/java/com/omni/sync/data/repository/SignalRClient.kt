@@ -13,6 +13,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import io.reactivex.rxjava3.core.Single
 import io.reactivex.rxjava3.core.Completable
@@ -22,6 +25,7 @@ import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import java.util.Date // Added for FileSystemEntry deserialization
 import java.io.File // Added for getFileChunk logic if needed, might remove later
+import java.util.concurrent.atomic.AtomicBoolean
 
 
 import com.google.gson.annotations.SerializedName
@@ -43,6 +47,9 @@ class SignalRClient(
     private var hubConnection: HubConnection? = null
     private val clipboardManager = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
     private val gson = Gson() // Use Gson for manual deserialization
+    private val coroutineScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private var reconnectJob: Job? = null
+    private val isReconnecting = AtomicBoolean(false)
 
     @Volatile
     var isUpdatingClipboardInternally: Boolean = false
@@ -65,6 +72,23 @@ class SignalRClient(
         hubConnection?.onClosed { error ->
             _connectionState.value = "Disconnected: ${error?.message}"
             mainViewModel.setConnected(false)
+
+            if (isReconnecting.compareAndSet(false, true)) {
+                mainViewModel.addLog("Connection lost. Starting auto-reconnect...", com.omni.sync.ui.screen.LogType.WARNING)
+                reconnectJob = coroutineScope.launch {
+                    while (true) {
+                        delay(3000)
+                        mainViewModel.addLog("Attempting to reconnect...", com.omni.sync.ui.screen.LogType.INFO)
+                        try {
+                            // We just try to start, the existing callbacks will handle success/failure
+                            hubConnection?.start()?.subscribe({}, { _ -> })
+                        } catch (e: Exception) {
+                            // This catch is for any unexpected synchronous exception from .start()
+                            mainViewModel.addLog("Reconnect attempt failed unexpectedly: ${e.message}", com.omni.sync.ui.screen.LogType.ERROR)
+                        }
+                    }
+                }
+            }
         }
 
         hubConnection?.start()
@@ -72,6 +96,12 @@ class SignalRClient(
                 _connectionState.value = "Connected"
                 mainViewModel.setConnected(true)
                 authenticateClient()
+                // If we were reconnecting, stop the loop
+                if (isReconnecting.compareAndSet(true, false)) {
+                    reconnectJob?.cancel()
+                    reconnectJob = null
+                    mainViewModel.addLog("Reconnection successful!", com.omni.sync.ui.screen.LogType.SUCCESS)
+                }
             }
             ?.doOnError { error ->
                 _connectionState.value = "Error: ${error.message}"
@@ -126,11 +156,23 @@ class SignalRClient(
     }
 
     fun stopConnection() {
+        reconnectJob?.cancel()
+        reconnectJob = null
+        isReconnecting.set(false)
         hubConnection?.stop()
         _connectionState.value = "Disconnected"
         mainViewModel.setConnected(false)
         mainViewModel.setErrorMessage(null) // Clear any previous errors
         Log.d("SignalRClient", "Connection stopped.")
+    }
+
+    fun manualReconnect() {
+        mainViewModel.addLog("Manual reconnection initiated", com.omni.sync.ui.screen.LogType.INFO)
+        coroutineScope.launch {
+            stopConnection()
+            delay(500)
+            startConnection()
+        }
     }
 
     // Update sendPayload to log to Dashboard

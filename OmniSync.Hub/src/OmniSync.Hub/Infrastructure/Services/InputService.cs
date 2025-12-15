@@ -82,7 +82,7 @@ namespace OmniSync.Hub.Infrastructure.Services
         private Point _currentMouseDeltaTarget = new Point(0, 0); // Stores accumulated delta
         private readonly object _mouseTargetLock = new object();
         private System.Threading.Timer _mouseUpdateTimer;
-        private const int _interpolationIntervalMs = 15; // How often the timer ticks (approx 60Hz)
+        private const int _interpolationIntervalMs = 10; // How often the timer ticks (approx 60Hz)
         // private const int _maxMovementPerTick = 10; // Max pixels moved per tick - REMOVED
 
         public InputService()
@@ -104,7 +104,7 @@ namespace OmniSync.Hub.Infrastructure.Services
             int moveX = 0;
             int moveY = 0;
 
-            const double interpolationFactor = 0.5; // Move 50% of the remaining distance per tick
+            const double interpolationFactor = 0.4; // Move 50% of the remaining distance per tick
             const int minPixelMove = 1; // Ensure at least 1 pixel is moved if target is not zero
 
             lock (_mouseTargetLock)
