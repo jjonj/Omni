@@ -234,8 +234,10 @@ class SignalRClient(
         if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
             return hubConnection?.invoke(Any::class.java, "ListProcesses")?.map { rawResponse ->
                 try {
+                    Log.d("SignalRClient", "Raw response from ListProcesses: $rawResponse")
                     // Convert the raw object to JSON tree, then back to List<ProcessInfo>
                     val jsonElement = gson.toJsonTree(rawResponse)
+                    Log.d("SignalRClient", "JsonElement for ListProcesses: $jsonElement")
                     val listType = object : TypeToken<List<ProcessInfo>>() {}.type
                     val list: List<ProcessInfo> = gson.fromJson(jsonElement, listType)
                     list

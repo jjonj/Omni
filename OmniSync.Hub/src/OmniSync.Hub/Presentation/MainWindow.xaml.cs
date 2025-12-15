@@ -5,6 +5,7 @@ using System.Runtime.CompilerServices;
 using System.Windows.Threading; // For Dispatcher
 using OmniSync.Hub.Logic.Monitoring; // For HubMonitorService
 using System; // For Environment.NewLine
+using OmniSync.Hub.Infrastructure.Services; // Add this using directive
 
 namespace OmniSync.Hub.Presentation
 {
@@ -13,11 +14,13 @@ namespace OmniSync.Hub.Presentation
         public event PropertyChangedEventHandler? PropertyChanged; // Still implement for self if needed, but DataContext will notify
 
         private readonly HubMonitorService _hubMonitorService;
+        private readonly InputService _inputService; // Add InputService
 
-        public MainWindow(HubMonitorService hubMonitorService)
+        public MainWindow(HubMonitorService hubMonitorService, InputService inputService) // Add InputService to constructor
         {
             InitializeComponent();
             _hubMonitorService = hubMonitorService;
+            _inputService = inputService; // Assign InputService
             this.DataContext = _hubMonitorService; // Set DataContext to the HubMonitorService
 
             // Subscribe to HubMonitorService events
@@ -78,6 +81,17 @@ namespace OmniSync.Hub.Presentation
         protected void OnPropertyChanged([CallerMemberName] string? propertyName = null)
         {
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+        }
+
+        private void TestInput_Click(object sender, RoutedEventArgs e)
+        {
+            _hubMonitorService.AddLogMessage("[MainWindow] Testing keyboard input...");
+            _inputService.SendKeyPress(0x41); // Press 'A'
+
+            _hubMonitorService.AddLogMessage("[MainWindow] Testing mouse movement to (500,500)...");
+            _inputService.MoveMouse(500, 500); // Move to a specific coordinate
+
+            _hubMonitorService.AddLogMessage("[MainWindow] Input test sent.");
         }
     }
 }

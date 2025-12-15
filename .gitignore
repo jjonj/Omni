@@ -56,3 +56,13 @@ OmniSync.Android/app/build
 
 /gradle-8.8/
 .gradle/
+/OmniSync.Android/Instructions.txt
+/OmniSync.Android/all_source_code.txt
+/OmniSync.Android/crash.txt
+/OmniSync.Android/create_source_list.py
+/OmniSync.Android/get_logcat_window.py
+/OmniSync.Android/logcat_output.txt
+/OmniSync.Hub/all_source_code.txt
+/OmniSync.Hub/create_source_list.py
+/OmniSync.Hub/instructions.txt
+/crash.txt

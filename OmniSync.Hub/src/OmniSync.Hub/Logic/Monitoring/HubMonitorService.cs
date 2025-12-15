@@ -117,5 +117,14 @@ namespace OmniSync.Hub.Logic.Monitoring
         {
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
         }
+
+        public void AddLogMessage(string message)
+        {
+            // This ensures thread safety for ObservableCollection when updated from different threads
+            // For UI updates, it's best to Invoke on the Dispatcher, which the MainWindow does.
+            // For now, we'll just add to the collection and invoke the event.
+            LogMessages.Add($"[{DateTime.Now:HH:mm:ss}] {message}");
+            LogEntryAdded?.Invoke(this, $"[{DateTime.Now:HH:mm:ss}] {message}");
+        }
     }
 }

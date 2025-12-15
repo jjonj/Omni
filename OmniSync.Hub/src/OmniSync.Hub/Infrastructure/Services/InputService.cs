@@ -29,12 +29,9 @@ namespace OmniSync.Hub.Infrastructure.Services
         [StructLayout(LayoutKind.Explicit)]
         public struct InputUnion
         {
-            [FieldOffset(0)]
-            public MOUSEINPUT mi;
-            [FieldOffset(0)]
-            public KEYBDINPUT ki;
-            [FieldOffset(0)]
-            public HARDWAREINPUT hi;
+            [FieldOffset(0)] public MOUSEINPUT mi;
+            [FieldOffset(0)] public KEYBDINPUT ki;
+            [FieldOffset(0)] public HARDWAREINPUT hi;
         }
 
         [StructLayout(LayoutKind.Sequential)]
@@ -66,29 +63,26 @@ namespace OmniSync.Hub.Infrastructure.Services
             public ushort wParamH;
         }
 
+        // Constants
         private const int INPUT_MOUSE = 0;
         private const int INPUT_KEYBOARD = 1;
-
-        // Flags
+        
+        // Mouse Flags
         private const uint MOUSEEVENTF_MOVE = 0x0001;
-        private const uint MOUSEEVENTF_LEFTDOWN = 0x0002;
-        private const uint MOUSEEVENTF_LEFTUP = 0x0004;
         private const uint MOUSEEVENTF_ABSOLUTE = 0x8000;
-        private const uint MOUSEEVENTF_VIRTUALDESK = 0x4000; // Important for multi-monitor
+        private const uint MOUSEEVENTF_VIRTUALDESK = 0x4000; // For multi-monitor support
 
-        private const uint KEYEVENTF_EXTENDEDKEY = 0x0001;
+        // Keyboard Flags
         private const uint KEYEVENTF_KEYUP = 0x0002;
         private const uint KEYEVENTF_UNICODE = 0x0004;
-        private const uint KEYEVENTF_SCANCODE = 0x0008;
 
         public void MoveMouse(int x, int y)
         {
-            // Get screen resolution
+            // 1. Get Screen Resolution
             int screenWidth = GetSystemMetrics(SM_CXSCREEN);
             int screenHeight = GetSystemMetrics(SM_CYSCREEN);
 
-            // Convert pixels to normalized absolute coordinates (0 - 65535)
-            // This is required when using MOUSEEVENTF_ABSOLUTE
+            // 2. Normalize coordinates to 0-65535 range (Required for MOUSEEVENTF_ABSOLUTE)
             int normalizedX = (x * 65535) / screenWidth;
             int normalizedY = (y * 65535) / screenHeight;
 
@@ -162,57 +156,23 @@ namespace OmniSync.Hub.Infrastructure.Services
             if (string.IsNullOrEmpty(text)) return;
 
             var inputList = new System.Collections.Generic.List<INPUT>();
-
             foreach (char c in text)
             {
-                // Key Down
-                var down = new INPUT
-                {
-                    type = INPUT_KEYBOARD,
-                    U = new InputUnion
-                    {
-                        ki = new KEYBDINPUT
-                        {
-                            wVk = 0,
-                            wScan = c,
-                            dwFlags = KEYEVENTF_UNICODE
-                        }
-                    }
-                };
-                inputList.Add(down);
-
-                // Key Up
-                var up = new INPUT
-                {
-                    type = INPUT_KEYBOARD,
-                    U = new InputUnion
-                    {
-                        ki = new KEYBDINPUT
-                        {
-                            wVk = 0,
-                            wScan = c,
-                            dwFlags = KEYEVENTF_UNICODE | KEYEVENTF_KEYUP
-                        }
-                    }
-                };
-                inputList.Add(up);
+                // Key Down (Unicode)
+                inputList.Add(new INPUT { type = INPUT_KEYBOARD, U = new InputUnion { ki = new KEYBDINPUT { wScan = c, dwFlags = KEYEVENTF_UNICODE } } });
+                // Key Up (Unicode)
+                inputList.Add(new INPUT { type = INPUT_KEYBOARD, U = new InputUnion { ki = new KEYBDINPUT { wScan = c, dwFlags = KEYEVENTF_UNICODE | KEYEVENTF_KEYUP } } });
             }
-
             SendInputWithLogging(inputList.ToArray());
         }
 
         private void SendInputWithLogging(INPUT[] inputs)
         {
             uint successfulEvents = SendInput((uint)inputs.Length, inputs, INPUT.Size);
-            
             if (successfulEvents == 0)
             {
                 int errorCode = Marshal.GetLastWin32Error();
-                Console.WriteLine($"[InputService] FAILED. Error Code: {errorCode}. (Error 5 = Access Denied/Run as Admin)");
-            }
-            else
-            {
-                // Console.WriteLine($"[InputService] Success. Processed {successfulEvents} events.");
+                Console.WriteLine($"[InputService] FAILED. Error: {errorCode}. (5 = Access Denied. RUN AS ADMIN)");
             }
         }
     }
