@@ -1,6 +1,6 @@
 using System;
 using System.Runtime.InteropServices;
-using System.Text; // For Encoding.Unicode
+using System.Windows.Forms; // Required for Screen.PrimaryScreen.Bounds
 
 namespace OmniSync.Hub.Infrastructure.Services
 {
@@ -9,11 +9,21 @@ namespace OmniSync.Hub.Infrastructure.Services
         [DllImport("user32.dll", SetLastError = true)]
         private static extern uint SendInput(uint nInputs, INPUT[] pInputs, int cbSize);
 
+        [DllImport("user32.dll")]
+        private static extern uint MapVirtualKey(uint uCode, uint uMapType);
+
+        [DllImport("user32.dll")]
+        private static extern int GetSystemMetrics(int nIndex);
+
+        private const int SM_CXSCREEN = 0;
+        private const int SM_CYSCREEN = 1;
+
         [StructLayout(LayoutKind.Sequential)]
         public struct INPUT
         {
             public uint type;
             public InputUnion U;
+            public static int Size => Marshal.SizeOf(typeof(INPUT));
         }
 
         [StructLayout(LayoutKind.Explicit)]
@@ -59,65 +69,66 @@ namespace OmniSync.Hub.Infrastructure.Services
         private const int INPUT_MOUSE = 0;
         private const int INPUT_KEYBOARD = 1;
 
+        // Flags
         private const uint MOUSEEVENTF_MOVE = 0x0001;
+        private const uint MOUSEEVENTF_LEFTDOWN = 0x0002;
+        private const uint MOUSEEVENTF_LEFTUP = 0x0004;
+        private const uint MOUSEEVENTF_ABSOLUTE = 0x8000;
+        private const uint MOUSEEVENTF_VIRTUALDESK = 0x4000; // Important for multi-monitor
+
+        private const uint KEYEVENTF_EXTENDEDKEY = 0x0001;
         private const uint KEYEVENTF_KEYUP = 0x0002;
         private const uint KEYEVENTF_UNICODE = 0x0004;
-        private const uint KEYEVENTF_SCANCODE = 0x0008; // Not directly used but good to know
+        private const uint KEYEVENTF_SCANCODE = 0x0008;
 
-        // Virtual Key Codes (common ones, can expand as needed)
-        public const ushort VK_SHIFT = 0x10;
-        public const ushort VK_CONTROL = 0x11;
-        public const ushort VK_MENU = 0x12; // Alt key
-        public const ushort VK_LWIN = 0x5B; // Left Windows key
-        public const ushort VK_RWIN = 0x5C; // Right Windows key
-        public const ushort VK_RETURN = 0x0D; // Enter key
-        public const ushort VK_BACK = 0x08; // Backspace key
-        public const ushort VK_TAB = 0x09; // Tab key
-        public const ushort VK_ESCAPE = 0x1B; // Esc key
-        public const ushort VK_LEFT = 0x25; // Left arrow key
-        public const ushort VK_UP = 0x26; // Up arrow key
-        public const ushort VK_RIGHT = 0x27; // Right arrow key
-        public const ushort VK_DOWN = 0x28; // Down arrow key
-        public const ushort VK_DELETE = 0x2B; // Delete key
-        public const ushort VK_HOME = 0x24; // Home key
-        public const ushort VK_END = 0x23; // End key
-        public const ushort VK_PRIOR = 0x21; // Page Up
-        public const ushort VK_NEXT = 0x22; // Page Down
-
-
-        public void MoveMouse(int dx, int dy)
+        public void MoveMouse(int x, int y)
         {
+            // Get screen resolution
+            int screenWidth = GetSystemMetrics(SM_CXSCREEN);
+            int screenHeight = GetSystemMetrics(SM_CYSCREEN);
+
+            // Convert pixels to normalized absolute coordinates (0 - 65535)
+            // This is required when using MOUSEEVENTF_ABSOLUTE
+            int normalizedX = (x * 65535) / screenWidth;
+            int normalizedY = (y * 65535) / screenHeight;
+
             INPUT[] inputs = new INPUT[1];
             inputs[0].type = INPUT_MOUSE;
             inputs[0].U.mi = new MOUSEINPUT
             {
-                dx = dx,
-                dy = dy,
-                dwFlags = MOUSEEVENTF_MOVE
+                dx = normalizedX,
+                dy = normalizedY,
+                dwFlags = MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK
             };
 
-            SendInput(1, inputs, Marshal.SizeOf(typeof(INPUT)));
+            SendInputWithLogging(inputs);
         }
 
         public void SendKeyPress(ushort keyCode)
         {
-            // Key Down
             INPUT[] inputs = new INPUT[2];
+
+            // Key Down
             inputs[0].type = INPUT_KEYBOARD;
             inputs[0].U.ki = new KEYBDINPUT
             {
                 wVk = keyCode,
-                dwFlags = 0 // Key down
+                // We are not setting KEYEVENTF_SCANCODE, so Windows uses wVk.
+                // wScan is ignored unless that flag is set.
+                wScan = 0, 
+                dwFlags = 0 
             };
+
             // Key Up
             inputs[1].type = INPUT_KEYBOARD;
             inputs[1].U.ki = new KEYBDINPUT
             {
                 wVk = keyCode,
+                wScan = 0,
                 dwFlags = KEYEVENTF_KEYUP
             };
 
-            SendInput(2, inputs, Marshal.SizeOf(typeof(INPUT)));
+            SendInputWithLogging(inputs);
         }
         
         public void KeyDown(ushort keyCode)
@@ -127,9 +138,10 @@ namespace OmniSync.Hub.Infrastructure.Services
             inputs[0].U.ki = new KEYBDINPUT
             {
                 wVk = keyCode,
-                dwFlags = 0 // Key down
+                wScan = 0,
+                dwFlags = 0
             };
-            SendInput(1, inputs, Marshal.SizeOf(typeof(INPUT)));
+            SendInputWithLogging(inputs);
         }
 
         public void KeyUp(ushort keyCode)
@@ -139,41 +151,69 @@ namespace OmniSync.Hub.Infrastructure.Services
             inputs[0].U.ki = new KEYBDINPUT
             {
                 wVk = keyCode,
+                wScan = 0,
                 dwFlags = KEYEVENTF_KEYUP
             };
-            SendInput(1, inputs, Marshal.SizeOf(typeof(INPUT)));
+            SendInputWithLogging(inputs);
         }
 
         public void SendText(string text)
         {
             if (string.IsNullOrEmpty(text)) return;
 
-            // Using KEYEVENTF_UNICODE to send characters
-            INPUT[] inputs = new INPUT[text.Length * 2]; // Each char needs a down and up event
-            int i = 0;
+            var inputList = new System.Collections.Generic.List<INPUT>();
+
             foreach (char c in text)
             {
-                // Key down
-                inputs[i].type = INPUT_KEYBOARD;
-                inputs[i].U.ki = new KEYBDINPUT
+                // Key Down
+                var down = new INPUT
                 {
-                    wVk = 0, // No virtual key for unicode characters
-                    wScan = (ushort)c, // Unicode character
-                    dwFlags = KEYEVENTF_UNICODE // Indicate Unicode char
+                    type = INPUT_KEYBOARD,
+                    U = new InputUnion
+                    {
+                        ki = new KEYBDINPUT
+                        {
+                            wVk = 0,
+                            wScan = c,
+                            dwFlags = KEYEVENTF_UNICODE
+                        }
+                    }
                 };
-                i++;
+                inputList.Add(down);
 
-                // Key up
-                inputs[i].type = INPUT_KEYBOARD;
-                inputs[i].U.ki = new KEYBDINPUT
+                // Key Up
+                var up = new INPUT
                 {
-                    wVk = 0, // No virtual key for unicode characters
-                    wScan = (ushort)c, // Unicode character
-                    dwFlags = KEYEVENTF_UNICODE | KEYEVENTF_KEYUP // Indicate Unicode char and key up
+                    type = INPUT_KEYBOARD,
+                    U = new InputUnion
+                    {
+                        ki = new KEYBDINPUT
+                        {
+                            wVk = 0,
+                            wScan = c,
+                            dwFlags = KEYEVENTF_UNICODE | KEYEVENTF_KEYUP
+                        }
+                    }
                 };
-                i++;
+                inputList.Add(up);
             }
-            SendInput((uint)inputs.Length, inputs, Marshal.SizeOf(typeof(INPUT)));
+
+            SendInputWithLogging(inputList.ToArray());
+        }
+
+        private void SendInputWithLogging(INPUT[] inputs)
+        {
+            uint successfulEvents = SendInput((uint)inputs.Length, inputs, INPUT.Size);
+            
+            if (successfulEvents == 0)
+            {
+                int errorCode = Marshal.GetLastWin32Error();
+                Console.WriteLine($"[InputService] FAILED. Error Code: {errorCode}. (Error 5 = Access Denied/Run as Admin)");
+            }
+            else
+            {
+                // Console.WriteLine($"[InputService] Success. Processed {successfulEvents} events.");
+            }
         }
     }
 }

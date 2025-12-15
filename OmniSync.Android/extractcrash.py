@@ -80,7 +80,7 @@ def capture_crash(device):
     )
 
     # Allow app to start
-    time.sleep(1)
+    time.sleep(5)
 
     print("Monitoring for crashes...")
 

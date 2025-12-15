@@ -24,8 +24,9 @@ namespace OmniSync.Hub.Presentation.Hubs
         private readonly CommandDispatcher _commandDispatcher;
         private readonly ProcessService _processService;
         private readonly HubEventSender _hubEventSender;
+        private readonly InputService _inputService; // Add InputService
 
-        public RpcApiHub(AuthService authService, FileService fileService, ClipboardService clipboardService, CommandDispatcher commandDispatcher, ProcessService processService, HubEventSender hubEventSender)
+        public RpcApiHub(AuthService authService, FileService fileService, ClipboardService clipboardService, CommandDispatcher commandDispatcher, ProcessService processService, HubEventSender hubEventSender, InputService inputService) // Add InputService to constructor
         {
             _authService = authService;
             _fileService = fileService;
@@ -33,8 +34,8 @@ namespace OmniSync.Hub.Presentation.Hubs
             _commandDispatcher = commandDispatcher;
             _processService = processService;
             _hubEventSender = hubEventSender;
+            _inputService = inputService; // Assign InputService
         }
-
         public override async Task OnConnectedAsync()
         {
             System.Console.WriteLine($"Client connected: {Context.ConnectionId}. Awaiting authentication.");
@@ -53,21 +54,23 @@ namespace OmniSync.Hub.Presentation.Hubs
 
         public bool Authenticate(string apiKey)
         {
+            System.Console.WriteLine($"Authenticate method called by client: {Context.ConnectionId} with API Key: {apiKey}");
             var isAuthenticated = _authService.Validate(apiKey);
             if (isAuthenticated)
             {
                 Context.Items["IsAuthenticated"] = true;
-                System.Console.WriteLine($"Client authenticated: {Context.ConnectionId}");
+                System.Console.WriteLine($"Client authenticated: {Context.ConnectionId} - SUCCESS");
                 return true;
             }
 
-            System.Console.WriteLine($"Client failed authentication: {Context.ConnectionId}");
+            System.Console.WriteLine($"Client failed authentication: {Context.ConnectionId} - FAILED");
             Context.Abort();
             return false;
         }
 
         public void SendPayload(string command, JsonElement payload)
         {
+            System.Console.WriteLine($"SendPayload method called by client: {Context.ConnectionId} - Command: {command}, Payload: {payload.ToString()}");
             if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
             {
                 // Invoke the event for SendPayload commands
@@ -82,8 +85,35 @@ namespace OmniSync.Hub.Presentation.Hubs
                     Console.WriteLine($"Error dispatching command '{command}': {ex.Message}");
                 }
             }
+            else
+            {
+                System.Console.WriteLine($"SendPayload blocked: Client {Context.ConnectionId} not authenticated.");
+            }
         }
 
+        public void MouseMove(JsonElement payload)
+        {
+            System.Console.WriteLine($"MouseMove method called by client: {Context.ConnectionId} - Payload: {payload.ToString()}");
+            if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
+            {
+                AnyCommandReceived?.Invoke(this, "MouseMove");
+
+                try
+                {
+                    int x = payload.GetProperty("X").GetInt32();
+                    int y = payload.GetProperty("Y").GetInt32();
+                    _inputService.MoveMouse(x, y);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Error moving mouse: {ex.Message}");
+                }
+            }
+            else
+            {
+                System.Console.WriteLine($"MouseMove blocked: Client {Context.ConnectionId} not authenticated.");
+            }
+        }
         public void UpdateClipboard(string text)
         {
             if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)

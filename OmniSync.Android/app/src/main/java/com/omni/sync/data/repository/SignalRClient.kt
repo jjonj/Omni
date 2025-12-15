@@ -24,12 +24,14 @@ import java.util.Date // Added for FileSystemEntry deserialization
 import java.io.File // Added for getFileChunk logic if needed, might remove later
 
 
+import com.google.gson.annotations.SerializedName
+
 data class ProcessInfo(
-    val id: Int, 
-    val name: String, 
-    val mainWindowTitle: String?,
-    val cpuUsage: Double = 0.0, // Defaults in case server doesn't send them yet
-    val memoryUsage: Long = 0
+    @SerializedName("Id") val id: Int, 
+    @SerializedName("Name") val name: String, 
+    @SerializedName("MainWindowTitle") val mainWindowTitle: String?,
+    @SerializedName("CpuUsage") val cpuUsage: Double = 0.0, 
+    @SerializedName("MemoryUsage") val memoryUsage: Long = 0
 )
 
 class SignalRClient(
@@ -230,27 +232,22 @@ class SignalRClient(
     // FIX: List Processes (Manual Deserialization)
     fun listProcesses(): Single<List<ProcessInfo>>? {
         if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
-            // Request as a raw List/Object, then convert manually to avoid Type Erasure issues
             return hubConnection?.invoke(Any::class.java, "ListProcesses")?.map { rawResponse ->
                 try {
-                    // Convert the raw LinkedTreeMap/Object to JSON string then back to List<ProcessInfo>
-                    val json = gson.toJson(rawResponse)
+                    // Convert the raw object to JSON tree, then back to List<ProcessInfo>
+                    val jsonElement = gson.toJsonTree(rawResponse)
                     val listType = object : TypeToken<List<ProcessInfo>>() {}.type
-                    val list: List<ProcessInfo> = gson.fromJson(json, listType)
+                    val list: List<ProcessInfo> = gson.fromJson(jsonElement, listType)
                     list
                 } catch (e: Exception) {
                     Log.e("SignalR", "Deserialization error", e)
                     emptyList<ProcessInfo>()
                 }
             }?.doOnError { error ->
-                val errorMessage = "Error listing processes: ${error.message}"
-                mainViewModel.setErrorMessage(errorMessage)
-                Log.e("SignalRClient", errorMessage, error)
+                mainViewModel.setErrorMessage("Error listing processes: ${error.message}")
             }
         }
-        val warningMessage = "Not connected, cannot list processes."
-        mainViewModel.setErrorMessage(warningMessage)
-        Log.w("SignalRClient", warningMessage)
+        mainViewModel.setErrorMessage("Not connected.")
         return null
     }
 
