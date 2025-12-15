@@ -11,50 +11,62 @@ import androidx.compose.ui.unit.dp
 import com.omni.sync.data.repository.SignalRClient
 import com.omni.sync.data.repository.ProcessInfo
 
+import android.util.Log
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProcessScreen(modifier: Modifier = Modifier, signalRClient: SignalRClient?) {
     var commandInput by remember { mutableStateOf("") }
     var commandOutput by remember { mutableStateOf("") }
     var processes by remember { mutableStateOf(listOf<ProcessInfo>()) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
 
     Column(modifier = modifier.fillMaxSize().padding(8.dp)) {
+        if (errorMessage != null) {
+            Text(
+                text = "Error: $errorMessage",
+                color = MaterialTheme.colorScheme.error,
+                modifier = Modifier.padding(bottom = 8.dp)
+            )
+        }
+
         // Command Execution Section
         OutlinedTextField(
             value = commandInput,
             onValueChange = { commandInput = it },
-            label = { Text("Enter Command") },
+            label = { Text("Enter Command (e.g. 'calc')") },
             modifier = Modifier.fillMaxWidth()
         )
         Spacer(modifier = Modifier.height(8.dp))
         Button(
             onClick = {
-                commandOutput = "" // Clear previous output
+                commandOutput = "Sending..."
                 signalRClient?.executeCommand(commandInput)
+                // Note: Output usually comes back via "ReceiveCommandOutput" listener in Client
             },
             modifier = Modifier.fillMaxWidth()
         ) {
             Text("Execute Command")
         }
-        Spacer(modifier = Modifier.height(8.dp))
-        Text("Command Output:", style = MaterialTheme.typography.titleMedium)
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f)
-        ) {
-            LazyColumn(modifier = Modifier.fillMaxSize().padding(4.dp)) {
-                item {
-                    Text(commandOutput)
-                }
-            }
-        }
+        
         Spacer(modifier = Modifier.height(16.dp))
 
         // Process Management Section
         Text("Running Processes:", style = MaterialTheme.typography.titleMedium)
         Button(
-            onClick = { signalRClient?.listProcesses()?.subscribe({ processes = it }, { /* Handle Error */ }) },
+            onClick = { 
+                errorMessage = null
+                signalRClient?.listProcesses()?.subscribe(
+                    { result -> 
+                        processes = result 
+                        if (result.isEmpty()) errorMessage = "No processes returned (or parsing failed)"
+                    }, 
+                    { error -> 
+                        errorMessage = error.message 
+                        Log.e("ProcessScreen", "List failed", error)
+                    }
+                ) 
+            },
             modifier = Modifier.fillMaxWidth()
         ) {
             Text("Refresh Processes")
@@ -73,11 +85,9 @@ fun ProcessScreen(modifier: Modifier = Modifier, signalRClient: SignalRClient?) 
                             .padding(vertical = 4.dp),
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Column {
-                            Text("ID: ${process.id} Name: ${process.name}")
-                            if (!process.mainWindowTitle.isNullOrEmpty()) {
-                                Text("Title: ${process.mainWindowTitle}", style = MaterialTheme.typography.bodySmall)
-                            }
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("ID: ${process.id}", style = MaterialTheme.typography.labelSmall)
+                            Text(process.name, style = MaterialTheme.typography.bodyMedium)
                         }
                         Button(onClick = { signalRClient?.killProcess(process.id) }) {
                             Text("Kill")

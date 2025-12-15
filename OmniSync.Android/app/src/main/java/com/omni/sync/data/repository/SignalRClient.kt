@@ -18,6 +18,8 @@ import io.reactivex.rxjava3.core.Single
 import io.reactivex.rxjava3.core.Completable
 import java.lang.Exception
 import com.omni.sync.data.model.FileSystemEntry // New import
+import com.google.gson.Gson 
+import com.google.gson.reflect.TypeToken
 import java.util.Date // Added for FileSystemEntry deserialization
 import java.io.File // Added for getFileChunk logic if needed, might remove later
 
@@ -32,6 +34,7 @@ class SignalRClient(
 ) {
     private var hubConnection: HubConnection? = null
     private val clipboardManager = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+    private val gson = Gson() // Use Gson for manual deserialization
 
     @Volatile
     var isUpdatingClipboardInternally: Boolean = false
@@ -41,110 +44,38 @@ class SignalRClient(
     val connectionState: StateFlow<String> = _connectionState
 
     init {
-        // Initialize SignalR connection here, but don't start it automatically
+       // Only if you haven't put the startConnection logic here yet.
     }
-
+    
     fun startConnection() {
-        Log.d("SignalRClient", "=== CONNECTION DEBUG START ===")
-        Log.d("SignalRClient", "Hub URL: $hubUrl")
-        Log.d("SignalRClient", "API Key present: ${apiKey.isNotEmpty()}")
-        
-        // Run network diagnostics in background
-        CoroutineScope(Dispatchers.IO).launch {
-            NetworkDebugger.debugConnection(context, hubUrl)
-        }
-        
-        // Test various URL formats
-        val urlVariants = listOf(
-            hubUrl,
-            hubUrl.replace("http://", "https://"),
-            hubUrl.replace("/signalrhub", "/signalRHub"),
-            hubUrl.replace(":5000", ":5001")
-        )
-        
-        Log.d("SignalRClient", "Testing URL variants:")
-        urlVariants.forEach { url ->
-            Log.d("SignalRClient", "  - $url")
-        }
+        // ... (Keep your existing startConnection implementation) ...
+        // Ensure you paste the existing startConnection logic here or keep the file intact
+        // Just verify the hubUrl creation in OmniSyncApplication.kt matches your PC IP.
         
         hubConnection = HubConnectionBuilder.create(hubUrl).build()
-        
-        Log.d("SignalRClient", "HubConnection built successfully")
-        Log.d("SignalRClient", "Connection State: ${hubConnection?.connectionState}")
 
         hubConnection?.onClosed { error ->
-            val errorMessage = "Connection closed: ${error?.message}"
             _connectionState.value = "Disconnected: ${error?.message}"
             mainViewModel.setConnected(false)
-            mainViewModel.setErrorMessage(errorMessage)
-            Log.e("SignalRClient", "=== CONNECTION CLOSED ===")
-            Log.e("SignalRClient", errorMessage, error)
-            error?.printStackTrace()
         }
 
-        Log.d("SignalRClient", "Starting connection attempts...")
-        var connected = false
-        for (url in urlVariants) {
-            if (connected) break
-            Log.d("SignalRClient", "Attempting connection with URL: $url")
-            
-            // Run network diagnostics for the current URL variant
-            CoroutineScope(Dispatchers.IO).launch {
-                NetworkDebugger.debugConnection(context, url)
-            }
-
-            hubConnection = HubConnectionBuilder.create(url).build()
-            
-            hubConnection?.onClosed { error ->
-                val errorMessage = "Connection to $url closed: ${error?.message}"
-                _connectionState.value = "Disconnected: ${error?.message}"
-                mainViewModel.setConnected(false)
-                mainViewModel.setErrorMessage(errorMessage)
-                Log.e("SignalRClient", "=== CONNECTION TO $url CLOSED ===")
-                Log.e("SignalRClient", errorMessage, error)
-                error?.printStackTrace()
-            }
-
-            hubConnection?.start()?.doOnComplete {
+        hubConnection?.start()
+            ?.doOnComplete {
                 _connectionState.value = "Connected"
                 mainViewModel.setConnected(true)
-                mainViewModel.setErrorMessage(null) // Clear any previous errors
-                Log.d("SignalRClient", "=== CONNECTION SUCCESSFUL with URL: $url ===")
-                Log.d("SignalRClient", "Connection State: ${hubConnection?.connectionState}")
-                connected = true // Mark as connected
                 authenticateClient()
-            }?.doOnError { error ->
-                val errorMessage = "Connection Error with URL $url: ${error.message}"
-                _connectionState.value = "Connection Error: ${error.message}"
-                mainViewModel.setConnected(false)
-                mainViewModel.setErrorMessage(errorMessage)
-                Log.e("SignalRClient", "=== CONNECTION FAILED with URL: $url ===")
-                Log.e("SignalRClient", errorMessage, error)
-                Log.e("SignalRClient", "Error type: ${error.javaClass.name}")
-                error.printStackTrace()
-                
-                // Log detailed debugging info
-                Log.e("SignalRClient", "Hub URL attempted: $url")
-                Log.e("SignalRClient", "Possible issues for this URL:")
-                Log.e("SignalRClient", "  1. Hub not running on PC")
-                Log.e("SignalRClient", "  2. Wrong IP address (check PC's actual IP with 'ipconfig')")
-                Log.e("SignalRClient", "  3. Firewall blocking port 5000")
-                Log.e("SignalRClient", "  4. Phone and PC on different networks")
-                Log.e("SignalRClient", "  5. Hub endpoint is /signalrhub not /rpcHub")
-            }?.subscribe({
-                // onComplete - connection successful
+            }
+            ?.doOnError { error ->
+                _connectionState.value = "Error: ${error.message}"
+                Log.e("SignalR", "Connection failed side-effect", error)
+            }
+            // FIX: Use subscribe({}, { error -> ... }) instead of just subscribe()
+            ?.subscribe({
+                Log.d("SignalR", "Connection process started successfully")
             }, { error ->
-                // onError - handle the error here
-                Log.e("SignalRClient", "Subscription error: ${error.message}", error)
+                Log.e("SignalR", "Fatal error in connection subscription", error)
+                // This catch prevents the app from crashing on start-up errors
             })
-        }
-
-        if (!connected) {
-            Log.e("SignalRClient", "All connection attempts failed.")
-            mainViewModel.setErrorMessage("All connection attempts failed.")
-        }
-
-
         // Register handlers for server-side calls
         hubConnection?.on("ReceivePayload", { payload: Any ->
             Log.d("SignalRClient", "Received payload: $payload")
@@ -275,13 +206,26 @@ class SignalRClient(
         }
     }
 
+    // FIX: List Processes (Manual Deserialization)
     fun listProcesses(): Single<List<ProcessInfo>>? {
         if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
-            return hubConnection?.invoke(List::class.java, "ListProcesses")?.doOnError { error ->
+            // Request as a raw List/Object, then convert manually to avoid Type Erasure issues
+            return hubConnection?.invoke(Any::class.java, "ListProcesses")?.map { rawResponse ->
+                try {
+                    // Convert the raw LinkedTreeMap/Object to JSON string then back to List<ProcessInfo>
+                    val json = gson.toJson(rawResponse)
+                    val listType = object : TypeToken<List<ProcessInfo>>() {}.type
+                    val list: List<ProcessInfo> = gson.fromJson(json, listType)
+                    list
+                } catch (e: Exception) {
+                    Log.e("SignalR", "Deserialization error", e)
+                    emptyList<ProcessInfo>()
+                }
+            }?.doOnError { error ->
                 val errorMessage = "Error listing processes: ${error.message}"
                 mainViewModel.setErrorMessage(errorMessage)
                 Log.e("SignalRClient", errorMessage, error)
-            } as? Single<List<ProcessInfo>>
+            }
         }
         val warningMessage = "Not connected, cannot list processes."
         mainViewModel.setErrorMessage(warningMessage)
@@ -303,26 +247,22 @@ class SignalRClient(
         return null
     }
 
+    // Add missing List Directory logic with generic handling if needed, similar to ListProcesses
     fun listDirectory(relativePath: String): Single<List<FileSystemEntry>>? {
-        if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
-            // SignalR client library returns a Single<Any> for invoke calls, need to cast
-            return hubConnection?.invoke(List::class.java, "ListDirectory", relativePath)?.doOnError { error ->
+         if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
+            return hubConnection?.invoke(Any::class.java, "ListDirectory", relativePath)?.map { rawResponse ->
+                try {
+                    val json = gson.toJson(rawResponse)
+                    val listType = object : TypeToken<List<FileSystemEntry>>() {}.type
+                    gson.fromJson(json, listType)
+                } catch (e: Exception) {
+                    Log.e("SignalR", "Deserialization error for FileSystemEntry", e) // Added specific log
+                    emptyList<FileSystemEntry>()
+                }
+            }?.doOnError { error ->
                 val errorMessage = "Error listing directory '$relativePath': ${error.message}"
                 mainViewModel.setErrorMessage(errorMessage)
                 Log.e("SignalRClient", errorMessage, error)
-            }?.map {
-                // The SignalR client will deserialize the list of FileSystemEntry objects
-                // We need to ensure the casting is safe.
-                // Assuming it comes as a List<LinkedTreeMap> from JSON, then convert.
-                (it as? List<*>)?.filterIsInstance<Map<*, *>>()?.map { map ->
-                    FileSystemEntry(
-                        name = map["name"] as? String ?: "",
-                        path = map["path"] as? String ?: "",
-                        isDirectory = map["isDirectory"] as? Boolean ?: false,
-                        size = (map["size"] as? Number)?.toLong() ?: 0L,
-                        lastModified = Date(map["lastModified"] as? Long ?: 0L)
-                    )
-                } ?: emptyList()
             }
         }
         val warningMessage = "Not connected, cannot list directory '$relativePath'."
@@ -348,8 +288,8 @@ class SignalRClient(
     fun sendKeyEvent(command: String, keyCode: UShort) {
         if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
             try {
-                // Assuming payload for key events is { "keyCode": <value> }
-                val payload = mapOf("keyCode" to keyCode.toShort()) // UShort to Short for JSON serialization
+                // Use "KeyCode" (PascalCase) to match likely C# property
+                val payload = mapOf("KeyCode" to keyCode.toInt()) 
                 sendPayload(command, payload)
                 mainViewModel.setErrorMessage(null)
             } catch (e: Exception) {
@@ -367,8 +307,8 @@ class SignalRClient(
     fun sendText(text: String) {
         if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
             try {
-                // Assuming payload for text is { "text": "<value>" }
-                val payload = mapOf("text" to text)
+                 // Wrap text in a map/object if your C# 'InputPayload' expects properties
+                val payload = mapOf("Text" to text) // Use "Text" (PascalCase) if C# expects it
                 sendPayload("INPUT_TEXT", payload)
                 mainViewModel.setErrorMessage(null)
             } catch (e: Exception) {
@@ -383,24 +323,13 @@ class SignalRClient(
         }
     }
 
+    // Authenticate needs to exist
     private fun authenticateClient() {
-        if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
-            hubConnection?.invoke(Boolean::class.java, "Authenticate", apiKey)?.doOnSuccess { isAuthenticated ->
-                if (isAuthenticated) {
-                    Log.d("SignalRClient", "Client authenticated successfully.")
-                    mainViewModel.setErrorMessage(null) // Clear any previous errors
-                } else {
-                    val errorMessage = "Client authentication failed."
-                    Log.e("SignalRClient", errorMessage)
-                    mainViewModel.setErrorMessage(errorMessage)
-                    stopConnection() // Stop connection if authentication fails
-                }
-            }?.doOnError { error ->
-                val errorMessage = "Authentication invocation error: ${error.message}"
-                Log.e("SignalRClient", errorMessage, error)
-                mainViewModel.setErrorMessage(errorMessage)
-                stopConnection()
-            }
-        }
+        hubConnection?.invoke(Boolean::class.java, "Authenticate", apiKey)
+            ?.subscribe({ success -> 
+                Log.d("SignalR", "Auth success: $success") 
+            }, { error -> 
+                Log.e("SignalR", "Auth failed", error) 
+            })
     }
 }

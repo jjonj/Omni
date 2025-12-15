@@ -74,6 +74,9 @@ dependencies {
     // SignalR Client
     implementation("com.microsoft.signalr:signalr:7.0.0")
 
+    // Gson for manual JSON deserialization
+    implementation("com.google.code.gson:gson:2.10.1")
+
     // Retrofit for API calls (if needed for other components, though SignalR is primary)
     implementation("com.squareup.retrofit2:retrofit:2.9.0")
     implementation("com.squareup.retrofit2:converter-gson:2.9.0")

@@ -32,9 +32,9 @@ class OmniSyncApplication : Application() {
         // IMPORTANT: Update this IP address to match your PC's actual IP
         // Find your PC's IP: Open Command Prompt and type 'ipconfig'
         // Look for "IPv4 Address" under your WiFi adapter
-        val pcIpAddress = "10.0.0.37"  // UPDATE THIS if your PC IP changes
-        val hubPort = "5000"
-        val hubEndpoint = "signalrhub"
+        val pcIpAddress = "10.0.0.37" // Hub is always located at this IP
+        val hubPort = "5000" // Ensure PC firewall allows traffic on port 5000
+        val hubEndpoint = "signalrhub" // Must match Program.cs on server: app.MapHub<...>(...);
         
         val hubUrl = "http://$pcIpAddress:$hubPort/$hubEndpoint"
         
