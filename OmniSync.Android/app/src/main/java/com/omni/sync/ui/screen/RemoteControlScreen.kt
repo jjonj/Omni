@@ -46,6 +46,10 @@ const val VK_HOME: UShort = 0x24u // Home key
 const val VK_END: UShort = 0x23u // End key
 const val VK_PRIOR: UShort = 0x21u // Page Up
 const val VK_NEXT: UShort = 0x22u // Page Down
+const val VK_SPACE: UShort = 0x20u // Spacebar
+const val VK_F4: UShort = 0x73u // F4 key
+const val VK_W: UShort = 0x57u // W key
+const val VK_A: UShort = 0x41u // A key
 
 data class MouseMovePayload(val x: Float, val y: Float)
 
@@ -192,16 +196,45 @@ fun RemoteControlScreen(modifier: Modifier = Modifier, signalRClient: SignalRCli
                     },
                     modifier = Modifier.weight(1f)
                 )
+                // Moved Tab button to the first row
+                ActionKeyButton(text = "Tab", onClick = { signalRClient?.sendKeyEvent("INPUT_KEY_PRESS", VK_TAB) }, modifier = Modifier.weight(1f))
             }
             Row(
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Special Action Keys
-                ActionKeyButton(icon = Icons.AutoMirrored.Filled.KeyboardBackspace, onClick = { signalRClient?.sendKeyEvent("INPUT_KEY_PRESS", VK_BACK) }, modifier = Modifier.weight(1f))
+                // Special Action Keys - Only Return and Delete remain here
                 ActionKeyButton(icon = Icons.AutoMirrored.Filled.KeyboardReturn, onClick = { signalRClient?.sendKeyEvent("INPUT_KEY_PRESS", VK_RETURN) }, modifier = Modifier.weight(1f))
-                ActionKeyButton(text = "Tab", onClick = { signalRClient?.sendKeyEvent("INPUT_KEY_PRESS", VK_TAB) }, modifier = Modifier.weight(1f))
                 ActionKeyButton(icon = Icons.Default.Delete, onClick = { signalRClient?.sendKeyEvent("INPUT_KEY_PRESS", VK_DELETE) }, modifier = Modifier.weight(1f))
+            }
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // New Multi-Action Keys and moved Backspace
+                ActionKeyButton(text = "Esc", onClick = { signalRClient?.sendKeyEvent("INPUT_KEY_PRESS", VK_ESCAPE) }, modifier = Modifier.weight(1f), fontSize = 8.sp)
+                ActionKeyButton(text = "A+Tab", onClick = {
+                    signalRClient?.sendKeyEvent("INPUT_KEY_DOWN", VK_MENU)
+                    signalRClient?.sendKeyEvent("INPUT_KEY_PRESS", VK_TAB)
+                    signalRClient?.sendKeyEvent("INPUT_KEY_UP", VK_MENU)
+                }, modifier = Modifier.weight(1f), fontSize = 8.sp)
+                ActionKeyButton(text = "A+F4", onClick = {
+                    signalRClient?.sendKeyEvent("INPUT_KEY_DOWN", VK_MENU)
+                    signalRClient?.sendKeyEvent("INPUT_KEY_PRESS", VK_F4)
+                    signalRClient?.sendKeyEvent("INPUT_KEY_UP", VK_MENU)
+                }, modifier = Modifier.weight(1f), fontSize = 8.sp)
+                ActionKeyButton(text = "C+W", onClick = {
+                    signalRClient?.sendKeyEvent("INPUT_KEY_DOWN", VK_CONTROL)
+                    signalRClient?.sendKeyEvent("INPUT_KEY_PRESS", VK_W)
+                    signalRClient?.sendKeyEvent("INPUT_KEY_UP", VK_CONTROL)
+                }, modifier = Modifier.weight(1f), fontSize = 8.sp)
+                ActionKeyButton(text = "C+A", onClick = {
+                    signalRClient?.sendKeyEvent("INPUT_KEY_DOWN", VK_CONTROL)
+                    signalRClient?.sendKeyEvent("INPUT_KEY_PRESS", VK_A)
+                    signalRClient?.sendKeyEvent("INPUT_KEY_UP", VK_CONTROL)
+                    signalRClient?.sendKeyEvent("INPUT_KEY_PRESS", VK_BACK)
+                }, modifier = Modifier.weight(1f), fontSize = 8.sp)
+                ActionKeyButton(icon = Icons.AutoMirrored.Filled.KeyboardBackspace, onClick = { signalRClient?.sendKeyEvent("INPUT_KEY_PRESS", VK_BACK) }, modifier = Modifier.weight(1f))
             }
         }
 
@@ -224,13 +257,13 @@ fun ModifierKeyButton(text: String, isToggled: Boolean, modifier: Modifier = Mod
 }
 
 @Composable
-fun ActionKeyButton(modifier: Modifier = Modifier, icon: androidx.compose.ui.graphics.vector.ImageVector? = null, text: String? = null, onClick: () -> Unit) {
+fun ActionKeyButton(modifier: Modifier = Modifier, icon: androidx.compose.ui.graphics.vector.ImageVector? = null, text: String? = null, onClick: () -> Unit, fontSize: androidx.compose.ui.unit.TextUnit = 10.sp) {
     Button(
         onClick = onClick,
         modifier = modifier.height(40.dp)
     ) {
         icon?.let { Icon(it, contentDescription = text ?: "") }
-        text?.let { Text(it, softWrap = false, fontSize = 10.sp) }
+        text?.let { Text(it, softWrap = false, fontSize = fontSize) }
     }
 }
 
