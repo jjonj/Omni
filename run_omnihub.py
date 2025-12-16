@@ -90,6 +90,9 @@ def main():
                 # Attempt to proceed, but user might need to intervene
                 time.sleep(1)
 
+    kill_hub_process()
+    time.sleep(2) # Give the OS a moment to release file handles
+
     # Clean previous build artifacts
     for folder in ["bin", "obj"]:
         path_to_delete = os.path.join(HUB_DIR, folder)
@@ -103,7 +106,6 @@ def main():
         print(f"Deleting {vs_folder}")
         shutil.rmtree(vs_folder)
 
-    kill_hub_process()
 
     hub_log_file = None # Initialize to None outside try block
     hub_process = None # Initialize to None to avoid UnboundLocalError

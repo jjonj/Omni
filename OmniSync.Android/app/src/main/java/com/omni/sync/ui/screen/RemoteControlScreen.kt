@@ -10,6 +10,9 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardBackspace
 import androidx.compose.material.icons.automirrored.filled.KeyboardReturn
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.*
+import android.util.Log
+import androidx.compose.material.icons.filled.VolumeUp
+import androidx.compose.material.icons.filled.VolumeOff
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -62,11 +65,27 @@ fun RemoteControlScreen(modifier: Modifier = Modifier, signalRClient: SignalRCli
     var isShiftPressed by remember { mutableStateOf(false) }
     var isCtrlPressed by remember { mutableStateOf(false) }
     var isAltPressed by remember { mutableStateOf(false) }
+
+    var volumeLevel by remember { mutableStateOf(50f) } // Initial value
+    var isMutedState by remember { mutableStateOf(false) }
     
     // Hidden TextField to manage soft keyboard input
     var textInput by remember { mutableStateOf("") }
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(signalRClient?.connectionState?.value) {
+        // Fetch initial volume and mute state when connected
+        if (signalRClient?.connectionState?.value == "Connected") {
+            signalRClient.getVolume()?.subscribe({ volume ->
+                volumeLevel = volume
+            }, { error ->
+                Log.e("RemoteControlScreen", "Error getting initial volume: ${error.message}")
+            })
+            signalRClient.isMuted()?.subscribe({ muted ->
+                isMutedState = muted
+            }, { error ->
+                Log.e("RemoteControlScreen", "Error getting initial mute state: ${error.message}")
+            })
+        }
         focusRequester.requestFocus()
         keyboardController?.show()
     }
@@ -147,6 +166,38 @@ fun RemoteControlScreen(modifier: Modifier = Modifier, signalRClient: SignalRCli
                 style = MaterialTheme.typography.bodyLarge,
                 textAlign = androidx.compose.ui.text.style.TextAlign.Center
             )
+        }
+
+        // Volume Control Row
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 8.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            IconButton(onClick = {
+                signalRClient?.sendToggleMute()
+                isMutedState = !isMutedState // Optimistic update
+            }) {
+                Icon(
+                    imageVector = if (isMutedState) Icons.Filled.VolumeOff else Icons.Filled.VolumeUp,
+                    contentDescription = if (isMutedState) "Unmute" else "Mute"
+                )
+            }
+            Slider(
+                value = volumeLevel,
+                onValueChange = { newValue ->
+                    volumeLevel = newValue
+                },
+                onValueChangeFinished = {
+                    signalRClient?.sendSetVolume(volumeLevel)
+                },
+                valueRange = 0f..100f,
+                steps = 0,
+                modifier = Modifier.weight(1f)
+            )
+            Text(text = "${volumeLevel.toInt()}%", modifier = Modifier.padding(start = 8.dp))
         }
 
         // Keyboard Controls

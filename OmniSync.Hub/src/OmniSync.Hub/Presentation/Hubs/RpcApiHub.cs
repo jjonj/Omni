@@ -24,9 +24,10 @@ namespace OmniSync.Hub.Presentation.Hubs
         private readonly CommandDispatcher _commandDispatcher;
         private readonly ProcessService _processService;
         private readonly HubEventSender _hubEventSender;
-        private readonly InputService _inputService; // Add InputService
+        private readonly InputService _inputService;
+        private readonly AudioService _audioService; // Add AudioService
 
-        public RpcApiHub(AuthService authService, FileService fileService, ClipboardService clipboardService, CommandDispatcher commandDispatcher, ProcessService processService, HubEventSender hubEventSender, InputService inputService) // Add InputService to constructor
+        public RpcApiHub(AuthService authService, FileService fileService, ClipboardService clipboardService, CommandDispatcher commandDispatcher, ProcessService processService, HubEventSender hubEventSender, InputService inputService, AudioService audioService) // Add AudioService to constructor
         {
             _authService = authService;
             _fileService = fileService;
@@ -34,7 +35,8 @@ namespace OmniSync.Hub.Presentation.Hubs
             _commandDispatcher = commandDispatcher;
             _processService = processService;
             _hubEventSender = hubEventSender;
-            _inputService = inputService; // Assign InputService
+            _inputService = inputService;
+            _audioService = audioService; // Assign AudioService
         }
         public override async Task OnConnectedAsync()
         {
@@ -65,6 +67,26 @@ namespace OmniSync.Hub.Presentation.Hubs
             System.Console.WriteLine($"Client failed authentication: {Context.ConnectionId}");
             Context.Abort();
             return false;
+        }
+
+        public float GetVolume()
+        {
+            if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
+            {
+                AnyCommandReceived?.Invoke(this, "GetVolume");
+                return _audioService.GetMasterVolume();
+            }
+            throw new UnauthorizedAccessException("Client is not authenticated.");
+        }
+
+        public bool IsMuted()
+        {
+            if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
+            {
+                AnyCommandReceived?.Invoke(this, "IsMuted");
+                return _audioService.IsMuted();
+            }
+            throw new UnauthorizedAccessException("Client is not authenticated.");
         }
 
         public void SendPayload(string command, JsonElement payload)

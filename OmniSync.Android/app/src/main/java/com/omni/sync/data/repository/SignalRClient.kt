@@ -379,6 +379,59 @@ class SignalRClient(
         }
     }
 
+    fun sendSetVolume(volumePercentage: Float) {
+        if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
+            val payload = mapOf("VolumePercentage" to volumePercentage)
+            sendPayload("SET_VOLUME", payload)
+            mainViewModel.addLog("Sent SET_VOLUME: $volumePercentage", com.omni.sync.ui.screen.LogType.INFO)
+        } else {
+            val warningMessage = "Not connected, cannot set volume."
+            mainViewModel.setErrorMessage(warningMessage)
+            Log.w("SignalRClient", warningMessage)
+        }
+    }
+
+    fun sendToggleMute() {
+        if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
+            sendPayload("TOGGLE_MUTE", emptyMap<String, Any>()) // Empty payload
+            mainViewModel.addLog("Sent TOGGLE_MUTE", com.omni.sync.ui.screen.LogType.INFO)
+        } else {
+            val warningMessage = "Not connected, cannot toggle mute."
+            mainViewModel.setErrorMessage(warningMessage)
+            Log.w("SignalRClient", warningMessage)
+        }
+    }
+
+    fun getVolume(): Single<Float>? {
+        if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
+            return hubConnection?.invoke(Float::class.java, "GetVolume")
+                ?.doOnError { error ->
+                    val errorMessage = "Error getting volume: ${error.message}"
+                    mainViewModel.setErrorMessage(errorMessage)
+                    Log.e("SignalRClient", errorMessage, error)
+                }
+        }
+        val warningMessage = "Not connected, cannot get volume."
+        mainViewModel.setErrorMessage(warningMessage)
+        Log.w("SignalRClient", warningMessage)
+        return null
+    }
+
+    fun isMuted(): Single<Boolean>? {
+        if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
+            return hubConnection?.invoke(Boolean::class.java, "IsMuted")
+                ?.doOnError { error ->
+                    val errorMessage = "Error getting mute state: ${error.message}"
+                    mainViewModel.setErrorMessage(errorMessage)
+                    Log.e("SignalRClient", errorMessage, error)
+                }
+        }
+        val warningMessage = "Not connected, cannot get mute state."
+        mainViewModel.setErrorMessage(warningMessage)
+        Log.w("SignalRClient", warningMessage)
+        return null
+    }
+
     // Authenticate needs to exist
     private fun authenticateClient() {
         hubConnection?.invoke(Boolean::class.java, "Authenticate", apiKey)

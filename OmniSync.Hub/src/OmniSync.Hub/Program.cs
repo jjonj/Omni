@@ -41,6 +41,7 @@ builder.Services.AddSingleton<ClipboardService>();
 builder.Services.AddSingleton<CommandDispatcher>();
 builder.Services.AddSingleton<ProcessService>();
 builder.Services.AddSingleton<InputService>();
+builder.Services.AddSingleton<AudioService>();
 builder.Services.AddSingleton<HubEventSender>();
 builder.Services.AddSingleton<HubMonitorService>(); // Register the new monitoring service
 builder.Services.AddHostedService<TrayIconManager>();

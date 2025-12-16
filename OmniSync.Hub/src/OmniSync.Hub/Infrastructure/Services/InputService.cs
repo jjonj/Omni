@@ -179,6 +179,11 @@ namespace OmniSync.Hub.Infrastructure.Services
             SendInputWithLogging(inputList.ToArray());
         }
 
+        public void SendVolumeKey(ushort volumeKeyCode)
+        {
+            SendKeyPress(volumeKeyCode);
+        }
+
         private void SendInputWithLogging(INPUT[] inputs)
         {
             uint successfulEvents = SendInput((uint)inputs.Length, inputs, INPUT.Size);
