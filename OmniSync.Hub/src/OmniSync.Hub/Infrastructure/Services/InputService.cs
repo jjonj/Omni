@@ -99,9 +99,9 @@ namespace OmniSync.Hub.Infrastructure.Services
         {
             INPUT[] inputs = new INPUT[2];
             inputs[0].type = INPUT_MOUSE;
-            inputs[0].U.mi = new MOUSEINPUT { dwFlags = MOUSEEVENTF_LEFTDOWN };
+            inputs[0].U.mi = new MOUSEINPUT { dx = 0, dy = 0, dwFlags = MOUSEEVENTF_LEFTDOWN };
             inputs[1].type = INPUT_MOUSE;
-            inputs[1].U.mi = new MOUSEINPUT { dwFlags = MOUSEEVENTF_LEFTUP };
+            inputs[1].U.mi = new MOUSEINPUT { dx = 0, dy = 0, dwFlags = MOUSEEVENTF_LEFTUP };
             SendInputWithLogging(inputs);
         }
 
@@ -109,9 +109,9 @@ namespace OmniSync.Hub.Infrastructure.Services
         {
             INPUT[] inputs = new INPUT[2];
             inputs[0].type = INPUT_MOUSE;
-            inputs[0].U.mi = new MOUSEINPUT { dwFlags = MOUSEEVENTF_RIGHTDOWN };
+            inputs[0].U.mi = new MOUSEINPUT { dx = 0, dy = 0, dwFlags = MOUSEEVENTF_RIGHTDOWN };
             inputs[1].type = INPUT_MOUSE;
-            inputs[1].U.mi = new MOUSEINPUT { dwFlags = MOUSEEVENTF_RIGHTUP };
+            inputs[1].U.mi = new MOUSEINPUT { dx = 0, dy = 0, dwFlags = MOUSEEVENTF_RIGHTUP };
             SendInputWithLogging(inputs);
         }
 
