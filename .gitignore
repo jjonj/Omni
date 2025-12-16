@@ -50,6 +50,8 @@ temp_speech.wav
 packages/
 node_modules/
 OmniSync.Android/app/build
+OmniSync.Android/.gradle
+OmniSync.Android/.kotlin
 
 # Zip files
 *.zip

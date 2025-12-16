@@ -26,7 +26,10 @@ import com.omni.sync.ui.screen.FilesScreen
 import com.omni.sync.viewmodel.FilesViewModel
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.omni.sync.viewmodel.FilesViewModelFactory
-
+import androidx.compose.material3.Scaffold
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.padding
+import com.omni.sync.ui.components.OmniBottomNavigation
 
 class MainActivity : ComponentActivity() {
     private lateinit var mainViewModel: MainViewModel
@@ -59,37 +62,45 @@ class MainActivity : ComponentActivity() {
                     val currentScreen by mainViewModel.currentScreen.collectAsState()
                     val signalRClient = omniSyncApplication.signalRClient
                     
-                    // Create an instance of FilesViewModel using the factory
                     val filesViewModel: FilesViewModel = viewModel(
                         factory = FilesViewModelFactory(application, signalRClient, mainViewModel)
                     )
 
-                    Column {
-                        Row {
-                            Button(onClick = { mainViewModel.navigateTo(AppScreen.DASHBOARD) }) {
-                                Text("Dashboard")
-                            }
-                            Button(onClick = { mainViewModel.navigateTo(AppScreen.REMOTECONTROL) }) { // Updated enum
-                                Text("Remote Control") // Updated button text
-                            }
-                            Button(onClick = { mainViewModel.navigateTo(AppScreen.NOTEVIEWER) }) {
-                                Text("Notes")
-                            }
-                            Button(onClick = { mainViewModel.navigateTo(AppScreen.PROCESS) }) {
-                                Text("Process")
-                            }
-                            // New Files Button
-                            Button(onClick = { mainViewModel.navigateTo(AppScreen.FILES) }) {
-                                Text("Files")
-                            }
+                    // Using Scaffold to organize the layout professionally
+                    androidx.compose.material3.Scaffold(
+                        bottomBar = {
+                            OmniBottomNavigation(
+                                currentScreen = currentScreen,
+                                onNavigate = { screen -> mainViewModel.navigateTo(screen) }
+                            )
                         }
-
-                        when (currentScreen) {
-                            AppScreen.DASHBOARD -> DashboardScreen(signalRClient = signalRClient, mainViewModel = mainViewModel)
-                            AppScreen.REMOTECONTROL -> RemoteControlScreen(signalRClient = signalRClient, mainViewModel = mainViewModel) // Updated screen
-                            AppScreen.NOTEVIEWER -> NoteViewerScreen(signalRClient = signalRClient)
-                            AppScreen.PROCESS -> ProcessScreen(signalRClient = signalRClient, mainViewModel = mainViewModel)
-                            AppScreen.FILES -> FilesScreen(filesViewModel = filesViewModel) // Display FilesScreen
+                    ) { innerPadding ->
+                        // innerPadding applies the correct amount of spacing so content 
+                        // doesn't get hidden behind the bottom bar.
+                        
+                        Box(modifier = Modifier
+                            .fillMaxSize()
+                            .padding(innerPadding) // CRITICAL: Apply padding here
+                        ) {
+                            when (currentScreen) {
+                                AppScreen.DASHBOARD -> DashboardScreen(
+                                    signalRClient = signalRClient, 
+                                    mainViewModel = mainViewModel
+                                )
+                                AppScreen.REMOTECONTROL -> RemoteControlScreen(
+                                    signalRClient = signalRClient, 
+                                    mainViewModel = mainViewModel
+                                )
+                                AppScreen.NOTEVIEWER -> NoteViewerScreen(
+                                    signalRClient = signalRClient
+                                )
+                                AppScreen.PROCESS -> ProcessScreen(
+                                    signalRClient = signalRClient, 
+                                    mainViewModel = mainViewModel
+                                )
+                                                            AppScreen.FILES -> FilesScreen(
+                                                                filesViewModel = filesViewModel
+                                                            )                            }
                         }
                     }
                 }
