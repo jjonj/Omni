@@ -73,6 +73,10 @@ namespace OmniSync.Hub.Infrastructure.Services
         
         // Mouse Flags
         private const uint MOUSEEVENTF_MOVE = 0x0001;
+        private const uint MOUSEEVENTF_LEFTDOWN = 0x0002;
+        private const uint MOUSEEVENTF_LEFTUP = 0x0004;
+        private const uint MOUSEEVENTF_RIGHTDOWN = 0x0008;
+        private const uint MOUSEEVENTF_RIGHTUP = 0x0010;
 
         // Keyboard Flags
         private const uint KEYEVENTF_KEYUP = 0x0002;
@@ -89,6 +93,26 @@ namespace OmniSync.Hub.Infrastructure.Services
         {
             // Start the timer to periodically update mouse position
             _mouseUpdateTimer = new System.Threading.Timer(MouseUpdateTimer_Tick, null, 0, _interpolationIntervalMs);
+        }
+
+        public void LeftClick()
+        {
+            INPUT[] inputs = new INPUT[2];
+            inputs[0].type = INPUT_MOUSE;
+            inputs[0].U.mi = new MOUSEINPUT { dwFlags = MOUSEEVENTF_LEFTDOWN };
+            inputs[1].type = INPUT_MOUSE;
+            inputs[1].U.mi = new MOUSEINPUT { dwFlags = MOUSEEVENTF_LEFTUP };
+            SendInputWithLogging(inputs);
+        }
+
+        public void RightClick()
+        {
+            INPUT[] inputs = new INPUT[2];
+            inputs[0].type = INPUT_MOUSE;
+            inputs[0].U.mi = new MOUSEINPUT { dwFlags = MOUSEEVENTF_RIGHTDOWN };
+            inputs[1].type = INPUT_MOUSE;
+            inputs[1].U.mi = new MOUSEINPUT { dwFlags = MOUSEEVENTF_RIGHTUP };
+            SendInputWithLogging(inputs);
         }
 
         public void MoveMouse(int dx, int dy)

@@ -402,6 +402,28 @@ class SignalRClient(
         }
     }
 
+    fun sendLeftClick() {
+        if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
+            sendPayload("LEFT_CLICK", emptyMap<String, Any>()) // Empty payload
+            mainViewModel.addLog("Sent LEFT_CLICK", com.omni.sync.ui.screen.LogType.INFO)
+        } else {
+            val warningMessage = "Not connected, cannot send left click."
+            mainViewModel.setErrorMessage(warningMessage)
+            Log.w("SignalRClient", warningMessage)
+        }
+    }
+
+    fun sendRightClick() {
+        if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
+            sendPayload("RIGHT_CLICK", emptyMap<String, Any>()) // Empty payload
+            mainViewModel.addLog("Sent RIGHT_CLICK", com.omni.sync.ui.screen.LogType.INFO)
+        } else {
+            val warningMessage = "Not connected, cannot send right click."
+            mainViewModel.setErrorMessage(warningMessage)
+            Log.w("SignalRClient", warningMessage)
+            }
+        }
+
     fun getVolume(): Single<Float>? {
         if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
             return hubConnection?.invoke(Float::class.java, "GetVolume")

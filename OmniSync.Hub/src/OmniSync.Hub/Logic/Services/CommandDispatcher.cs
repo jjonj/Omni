@@ -22,6 +22,8 @@ namespace OmniSync.Hub.Logic.Services
                         _audioService = audioService; // Assign AudioService
                                     _commandMap = new Dictionary<string, Action<JsonElement>>
                                     {
+                                        { "LEFT_CLICK", payload => _inputService.LeftClick() },
+                                        { "RIGHT_CLICK", payload => _inputService.RightClick() },
                                         { "MOUSE_MOVE", payload => _inputService.MoveMouse(payload.GetProperty("X").GetInt32(), payload.GetProperty("Y").GetInt32()) },
                                         { "INPUT_KEY_PRESS", payload => _inputService.SendKeyPress(payload.GetProperty("KeyCode").GetUInt16()) },
                                         { "INPUT_KEY_DOWN", payload => _inputService.KeyDown(payload.GetProperty("KeyCode").GetUInt16()) },

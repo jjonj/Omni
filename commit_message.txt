@@ -1,6 +1,0 @@
-docs(context): Add automated testing methodology
-
-Document the automated testing methodology used during the development and
-debugging of the OmniSync.Hub, especially for the WPF monitoring UI.
-This includes details on Hub lifecycle management, client activity simulation
-using the Python CLI, and log analysis for iterative debugging.

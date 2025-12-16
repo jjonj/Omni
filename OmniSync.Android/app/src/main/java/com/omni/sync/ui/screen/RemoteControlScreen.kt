@@ -1,6 +1,7 @@
 package com.omni.sync.ui.screen
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.KeyboardActions
@@ -165,6 +166,10 @@ fun RemoteControlScreen(modifier: Modifier = Modifier, signalRClient: SignalRCli
                         val sensitivity = 1.2f 
                         signalRClient?.sendMouseMove(dragAmount.x * sensitivity, dragAmount.y * sensitivity)
                     }
+                    detectTapGestures(
+                        onTap = { signalRClient?.sendLeftClick() },
+                        onLongPress = { signalRClient?.sendRightClick() }
+                    )
                 }
         ) {
             Text(
