@@ -57,7 +57,7 @@ namespace OmniSync.Hub.Presentation
         {
             // Signal the ApplicationContext to exit its thread
             _applicationContext?.ExitThread();
-            _trayThread?.Join(); // Wait for the tray thread to finish
+            // _trayThread?.Join(); // Do not join here. This will cause a deadlock because the call to StopApplication() originates from this thread.
             return Task.CompletedTask;
         }
 

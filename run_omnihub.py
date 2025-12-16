@@ -114,11 +114,11 @@ def main():
             print("OmniSync.Hub clean failed. Aborting. Check hub_output.log for details.")
             return # Exit if clean failed
 
-        print("\n--- Clearing NuGet cache ---")
+        print("\n--- Clearing NuGet cache (optional) ---")
         clear_nuget_cache_result = run_command("dotnet nuget locals all --clear", cwd=HUB_DIR, log_file=hub_log_path)
         if clear_nuget_cache_result is None or clear_nuget_cache_result.returncode != 0:
-            print("NuGet cache clear failed. Aborting. Check hub_output.log for details.")
-            return # Exit if clear failed
+            print("Warning: NuGet cache clear failed. Continuing anyway. Check hub_output.log for details.")
+            # Do not return, continue with the rest of the script
 
         print("\n--- Restoring OmniSync.Hub dependencies ---")
         restore_hub_result = run_command(f"dotnet restore \"{HUB_DIR}\"", cwd=HUB_DIR, log_file=hub_log_path)
