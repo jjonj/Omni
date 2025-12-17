@@ -141,6 +141,10 @@ class MainActivity : ComponentActivity() {
             AppScreen.FILES -> FilesScreen(
                 filesViewModel = filesViewModel
             )
+            AppScreen.EDITOR -> com.omni.sync.ui.screen.TextEditorScreen(
+                filesViewModel = filesViewModel,
+                onBack = { mainViewModel.goBack() }
+            )
             else -> {} // Handled at top level
         }
     }

@@ -63,6 +63,12 @@ namespace OmniSync.Hub.Infrastructure.Services
             File.WriteAllText(fullPath, content);
         }
 
+        public void WriteBrowseFile(string filePath, string content)
+        {
+            var fullPath = SanitizeAndGetBrowseFullPath(filePath);
+            File.WriteAllText(fullPath, content);
+        }
+
         public void AppendToFile(string filePath, string content)
         {
             var fullPath = SanitizeAndGetNoteFullPath(filePath);

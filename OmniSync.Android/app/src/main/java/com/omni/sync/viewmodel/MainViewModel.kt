@@ -14,7 +14,8 @@ enum class AppScreen {
     BROWSER,
     PROCESS,
     FILES,
-    VIDEOPLAYER
+    VIDEOPLAYER,
+    EDITOR
 }
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {

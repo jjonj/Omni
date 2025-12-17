@@ -407,11 +407,15 @@ class SignalRClient(
 
     fun getFileChunk(filePath: String, offset: Long, chunkSize: Int): Single<ByteArray>? {
         if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
-            return hubConnection?.invoke(ByteArray::class.java, "GetFileChunk", filePath, offset, chunkSize)?.doOnError { error ->
-                val errorMessage = "Error getting file chunk for '$filePath' at offset $offset: ${error.message}"
-                mainViewModel.setErrorMessage(errorMessage)
-                Log.e("SignalRClient", errorMessage, error)
-            } as? Single<ByteArray>
+            return hubConnection?.invoke(String::class.java, "GetFileChunk", filePath, offset, chunkSize)
+                ?.map { base64String ->
+                    android.util.Base64.decode(base64String, android.util.Base64.DEFAULT)
+                }
+                ?.doOnError { error ->
+                    val errorMessage = "Error getting file chunk for '$filePath' at offset $offset: ${error.message}"
+                    mainViewModel.setErrorMessage(errorMessage)
+                    Log.e("SignalRClient", errorMessage, error)
+                } as? Single<ByteArray>
         }
         val warningMessage = "Not connected, cannot get file chunk for '$filePath'."
         mainViewModel.setErrorMessage(warningMessage)
@@ -562,7 +566,17 @@ class SignalRClient(
         return null
     }
 
-    // Authenticate needs to exist
+    fun sendPayload(command: String, payload: Any?) {
+        if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
+            try {
+                hubConnection?.send("SendPayload", command, payload)
+                Log.d("SignalRClient", "Sent payload: $command")
+            } catch (e: Exception) {
+                Log.e("SignalRClient", "Error sending payload $command", e)
+            }
+        }
+    }
+
     private fun authenticateClient() {
         hubConnection?.invoke(Boolean::class.java, "Authenticate", apiKey)
             ?.subscribe({ success -> 

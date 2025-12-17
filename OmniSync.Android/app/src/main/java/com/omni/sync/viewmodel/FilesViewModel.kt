@@ -59,6 +59,17 @@ class FilesViewModel(
     val downloadErrorMessage: StateFlow<String?> = _downloadErrorMessage
     // -------------------------------------
 
+    // --- Text Editor State ---
+    private val _editingFile = MutableStateFlow<FileSystemEntry?>(null)
+    val editingFile: StateFlow<FileSystemEntry?> = _editingFile
+
+    private val _editingContent = MutableStateFlow("")
+    val editingContent: StateFlow<String> = _editingContent
+
+    private val _isSaving = MutableStateFlow(false)
+    val isSaving: StateFlow<Boolean> = _isSaving
+    // -------------------------
+
     init {
         // Observe connection state to potentially trigger a refresh or show a message
         /*
@@ -182,10 +193,8 @@ class FilesViewModel(
                 if (tempFile.renameTo(outputFile)) {
                     _downloadErrorMessage.value = null
                     Log.d("FilesViewModel", "File downloaded successfully to: ${outputFile.absolutePath}")
-                    // Play video if it's a video file
-                    if (isMediaFile(outputFile.name)) {
-                        playFile(outputFile)
-                    }
+                    // Open the file with an appropriate app
+                    openFile(outputFile)
                 } else {
                     throw Exception("Failed to rename temporary file to final destination.")
                 }
@@ -201,6 +210,92 @@ class FilesViewModel(
         }
     }
 
+    fun openFileOnPC(entry: FileSystemEntry) {
+        if (!mainViewModel.isConnected.value) {
+            _errorMessage.value = "Not connected to OmniSync Hub. Please connect first."
+            return
+        }
+        mainViewModel.addLog("Opening on PC: ${entry.name}", com.omni.sync.ui.screen.LogType.INFO)
+        signalRClient.sendPayload("OPEN_ON_PC", mapOf("Path" to entry.path))
+    }
+
+    fun openForEditing(entry: FileSystemEntry) {
+        if (!mainViewModel.isConnected.value) {
+            _errorMessage.value = "Not connected to OmniSync Hub. Please connect first."
+            return
+        }
+
+        _isLoading.value = true
+        viewModelScope.launch(Schedulers.io().asCoroutineDispatcher()) {
+            try {
+                // Download the entire file into memory as a string
+                val totalSize = entry.size
+                var downloadedBytes = 0L
+                val contentBuilder = StringBuilder()
+                val chunkSize = 128 * 1024 // 128 KB for text is plenty
+
+                var currentOffset = 0L
+                while (currentOffset < totalSize) {
+                    val remainingBytes = totalSize - currentOffset
+                    val currentChunkSize = minOf(chunkSize.toLong(), remainingBytes).toInt()
+
+                    if (currentChunkSize == 0) break
+
+                    val chunk = signalRClient.getFileChunk(entry.path, currentOffset, currentChunkSize)
+                        ?.subscribeOn(Schedulers.io())
+                        ?.blockingGet() as? ByteArray
+
+                    if (chunk != null) {
+                        contentBuilder.append(String(chunk, Charsets.UTF_8))
+                        downloadedBytes += chunk.size
+                        currentOffset += chunk.size
+                    } else {
+                        throw Exception("Failed to get file chunk during editing.")
+                    }
+                }
+
+                _editingFile.value = entry
+                _editingContent.value = contentBuilder.toString()
+                _isLoading.value = false
+                
+                viewModelScope.launch(AndroidSchedulers.mainThread().asCoroutineDispatcher()) {
+                    mainViewModel.navigateTo(AppScreen.EDITOR)
+                }
+            } catch (e: Exception) {
+                _isLoading.value = false
+                _errorMessage.value = "Failed to open for editing: ${e.message}"
+            }
+        }
+    }
+
+    fun updateEditingContent(newContent: String) {
+        _editingContent.value = newContent
+    }
+
+    fun saveEditingContent() {
+        val entry = _editingFile.value ?: return
+        if (!mainViewModel.isConnected.value) return
+
+        _isSaving.value = true
+        viewModelScope.launch(Schedulers.io().asCoroutineDispatcher()) {
+            try {
+                signalRClient.sendPayload("SAVE_FILE", mapOf(
+                    "Path" to entry.path,
+                    "Content" to _editingContent.value
+                ))
+                
+                viewModelScope.launch(AndroidSchedulers.mainThread().asCoroutineDispatcher()) {
+                    mainViewModel.addLog("File saved: ${entry.name}", com.omni.sync.ui.screen.LogType.SUCCESS)
+                    _isSaving.value = false
+                    mainViewModel.goBack()
+                }
+            } catch (e: Exception) {
+                _isSaving.value = false
+                _errorMessage.value = "Save failed: ${e.message}"
+            }
+        }
+    }
+
     private fun resetDownloadState() {
         _downloadingFile.value = null
         _downloadProgress.value = 0
@@ -209,23 +304,38 @@ class FilesViewModel(
         _isDownloading.value = false
     }
 
-    private fun playFile(file: File) {
+    private fun openFile(file: File) {
         val uri: Uri = FileProvider.getUriForFile(
             getApplication(),
             getApplication<Application>().packageName + ".fileprovider",
             file
         )
-        val mimeType: String = MimeTypeMap.getSingleton().getMimeTypeFromExtension(file.extension) ?: "*/*"
+        
+        var mimeType: String? = MimeTypeMap.getSingleton().getMimeTypeFromExtension(file.extension.lowercase())
+        
+        if (mimeType == null) {
+            // Fallback to text/plain for unknown file types as requested
+            mimeType = "text/plain"
+        }
         
         val intent = Intent(Intent.ACTION_VIEW)
         intent.setDataAndType(uri, mimeType)
         intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) // Needed when starting activity from non-activity context
         
-        // Ensure there's an app to handle the intent
-        if (intent.resolveActivity(getApplication<Application>().packageManager) != null) {
+        try {
             getApplication<Application>().startActivity(intent)
-        } else {
-            _errorMessage.value = "No app found to open this file type."
+        } catch (e: Exception) {
+            // If opening with detected/fallback mime type fails, try one last time with */*
+            try {
+                val genericIntent = Intent(Intent.ACTION_VIEW)
+                genericIntent.setDataAndType(uri, "*/*")
+                genericIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                genericIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                getApplication<Application>().startActivity(genericIntent)
+            } catch (e2: Exception) {
+                _errorMessage.value = "No app found to open this file: ${e2.message}"
+            }
         }
     }
 

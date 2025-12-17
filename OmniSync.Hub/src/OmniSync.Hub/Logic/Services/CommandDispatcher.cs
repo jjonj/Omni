@@ -12,15 +12,17 @@ namespace OmniSync.Hub.Logic.Services
                     private readonly FileService _fileService;
                     private readonly HubMonitorService _hubMonitorService;
                     private readonly AudioService _audioService; // Inject AudioService
+                    private readonly ProcessService _processService; // Inject ProcessService
                     private readonly ShutdownService _shutdownService;
                     private readonly Dictionary<string, Action<JsonElement>> _commandMap;
             
-                    public CommandDispatcher(InputService inputService, FileService fileService, HubMonitorService hubMonitorService, AudioService audioService, ShutdownService shutdownService) // Add AudioService to constructor
+                    public CommandDispatcher(InputService inputService, FileService fileService, HubMonitorService hubMonitorService, AudioService audioService, ProcessService processService, ShutdownService shutdownService) // Add AudioService and ProcessService to constructor
                     {
                         _inputService = inputService;
                         _fileService = fileService;
                         _hubMonitorService = hubMonitorService;
                         _audioService = audioService; // Assign AudioService
+                        _processService = processService; // Assign ProcessService
                         _shutdownService = shutdownService;
                                     _commandMap = new Dictionary<string, Action<JsonElement>>
                                     {
@@ -35,6 +37,17 @@ namespace OmniSync.Hub.Logic.Services
                                         { "SET_VOLUME", payload => _audioService.SetMasterVolume(payload.GetProperty("VolumePercentage").GetSingle()) },
                                         { "TOGGLE_MUTE", payload => _audioService.ToggleMute() },
                                         { "APPEND_NOTE", payload => _fileService.AppendToFile(payload.GetProperty("filename").GetString(), payload.GetProperty("content").GetString()) },
+                                        { "SAVE_FILE", payload => _fileService.WriteBrowseFile(payload.GetProperty("Path").GetString(), payload.GetProperty("Content").GetString()) },
+                                        { "OPEN_ON_PC", payload => {
+                                            var path = payload.GetProperty("Path").GetString();
+                                            if (!string.IsNullOrEmpty(path)) {
+                                                try {
+                                                    System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(path) { UseShellExecute = true });
+                                                } catch (Exception ex) {
+                                                    Console.WriteLine($"Error opening file on PC: {ex.Message}");
+                                                }
+                                            }
+                                        }},
                                         { "SCHEDULE_SHUTDOWN", payload => _shutdownService.ScheduleShutdown(payload.GetProperty("Minutes").GetInt32()) },
                                         // Note: GET_NOTE and other commands that return data are handled directly in RpcApiHub
                                     };                    }
