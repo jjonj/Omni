@@ -28,10 +28,12 @@ Downloading a video into app data and optionally password protecting it with enc
 DONE Problem when switching phone orientation the video restarts
 DONE Video player fullscreen/horizontal mode 
 Video player pinch to zoom.
-double tapping right and left side of video should skip forward/back 10 seconds
+DONE double tapping right and left side of video should skip forward/back 10 seconds
 Support to open more file types, unknown filetypes should open as a text file
 Support for editing files opened as text files
 Video player has a previous and next button built in, hook into those buttons and find the next/previous video in the current folders
+Swiping finger up and down on left side should change phone brightness and right side should change phone volume
+
 
 ### Browser control screen
 Add a button to open current chrome tab url on phone (send to default browser)

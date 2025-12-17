@@ -12,6 +12,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
@@ -58,10 +61,19 @@ fun VideoPlayerScreen(
     var offset by remember { mutableStateOf(Offset.Zero) }
     var isControllerVisible by remember { mutableStateOf(true) }
     var containerSize by remember { mutableStateOf(IntSize.Zero) }
+    var skipFeedbackText by remember { mutableStateOf<String?>(null) }
 
     // Handle system back press
     BackHandler {
         onBack()
+    }
+
+    // Effect to clear skip feedback after delay
+    LaunchedEffect(skipFeedbackText) {
+        if (skipFeedbackText != null) {
+            delay(800)
+            skipFeedbackText = null
+        }
     }
 
     // Dynamic Orientation and Fullscreen
@@ -119,38 +131,13 @@ fun VideoPlayerScreen(
         }
     }
 
+    var playerViewInstance by remember { mutableStateOf<PlayerView?>(null) }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(Color.Black)
             .onSizeChanged { containerSize = it }
-            .pointerInput(Unit) {
-                detectTransformGestures { _, pan, zoom, _ ->
-                    scale = (scale * zoom).coerceIn(1f, 5f)
-                    
-                    if (scale > 1f) {
-                        val extraWidth = (scale - 1) * containerSize.width
-                        val extraHeight = (scale - 1) * containerSize.height
-                        val maxX = extraWidth / 2
-                        val maxY = extraHeight / 2
-                        
-                        offset = Offset(
-                            x = (offset.x + pan.x * scale).coerceIn(-maxX, maxX),
-                            y = (offset.y + pan.y * scale).coerceIn(-maxY, maxY)
-                        )
-                    } else {
-                        offset = Offset.Zero
-                    }
-                }
-            }
-            .pointerInput(Unit) {
-                detectTapGestures(
-                    onDoubleTap = {
-                        scale = 1f
-                        offset = Offset.Zero
-                    }
-                )
-            }
     ) {
         AndroidView(
             modifier = Modifier
@@ -174,9 +161,121 @@ fun VideoPlayerScreen(
                     setControllerVisibilityListener(PlayerView.ControllerVisibilityListener { visibility ->
                         isControllerVisible = visibility == android.view.View.VISIBLE
                     })
+                    playerViewInstance = this
                 }
             }
         )
+
+        // GESTURE OVERLAYS (Two side boxes)
+        Row(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(bottom = 80.dp) // Leave space for seek bar
+        ) {
+            // LEFT SKIP AREA (30%)
+            Box(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .weight(0.3f)
+                    .pointerInput(Unit) {
+                        detectTapGestures(
+                            onDoubleTap = {
+                                if (scale > 1.1f) {
+                                    scale = 1f
+                                    offset = Offset.Zero
+                                } else {
+                                    val newPos = exoPlayer.currentPosition - 10000
+                                    exoPlayer.seekTo(newPos.coerceAtLeast(0))
+                                    skipFeedbackText = "Back 10s"
+                                }
+                            },
+                            onTap = {
+                                if (isControllerVisible) playerViewInstance?.hideController()
+                                else playerViewInstance?.showController()
+                            }
+                        )
+                    }
+                    .pointerInput(Unit) {
+                        detectTransformGestures { _, pan, zoom, _ ->
+                            scale = (scale * zoom).coerceIn(1f, 5f)
+                            if (scale > 1f) {
+                                val extraWidth = (scale - 1) * containerSize.width
+                                val extraHeight = (scale - 1) * containerSize.height
+                                val maxX = extraWidth / 2
+                                val maxY = extraHeight / 2
+                                offset = Offset(
+                                    x = (offset.x + pan.x * scale).coerceIn(-maxX, maxX),
+                                    y = (offset.y + pan.y * scale).coerceIn(-maxY, maxY)
+                                )
+                            } else {
+                                offset = Offset.Zero
+                            }
+                        }
+                    }
+            )
+
+            // MIDDLE GAP (40%) - No overlays here to allow touching player buttons
+            Spacer(modifier = Modifier.weight(0.4f))
+
+            // RIGHT SKIP AREA (30%)
+            Box(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .weight(0.3f)
+                    .pointerInput(Unit) {
+                        detectTapGestures(
+                            onDoubleTap = {
+                                if (scale > 1.1f) {
+                                    scale = 1f
+                                    offset = Offset.Zero
+                                } else {
+                                    val isRightSide = true // Always right side in this box
+                                    val newPos = exoPlayer.currentPosition + 10000
+                                    exoPlayer.seekTo(newPos.coerceAtMost(exoPlayer.duration))
+                                    skipFeedbackText = "Forward 10s"
+                                }
+                            },
+                            onTap = {
+                                if (isControllerVisible) playerViewInstance?.hideController()
+                                else playerViewInstance?.showController()
+                            }
+                        )
+                    }
+                    .pointerInput(Unit) {
+                        detectTransformGestures { _, pan, zoom, _ ->
+                            scale = (scale * zoom).coerceIn(1f, 5f)
+                            if (scale > 1f) {
+                                val extraWidth = (scale - 1) * containerSize.width
+                                val extraHeight = (scale - 1) * containerSize.height
+                                val maxX = extraWidth / 2
+                                val maxY = extraHeight / 2
+                                offset = Offset(
+                                    x = (offset.x + pan.x * scale).coerceIn(-maxX, maxX),
+                                    y = (offset.y + pan.y * scale).coerceIn(-maxY, maxY)
+                                )
+                            } else {
+                                offset = Offset.Zero
+                            }
+                        }
+                    }
+            )
+        }
+
+        // Skip Feedback Overlay
+        skipFeedbackText?.let { text ->
+            Box(
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .background(Color.Black.copy(alpha = 0.6f), shape = MaterialTheme.shapes.medium)
+                    .padding(16.dp)
+            ) {
+                androidx.compose.material3.Text(
+                    text = text,
+                    color = Color.White,
+                    style = MaterialTheme.typography.headlineMedium
+                )
+            }
+        }
 
         // Back Button Overlay - only visible when controller is visible, or always in portrait
         if (isControllerVisible || !isLandscape) {
