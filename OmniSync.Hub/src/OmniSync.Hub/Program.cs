@@ -48,6 +48,7 @@ builder.Services.AddSingleton<InputService>(provider =>
     return new InputService(logger, keyboardHook);
 });
 builder.Services.AddSingleton<AudioService>();
+builder.Services.AddSingleton<ShutdownService>();
 builder.Services.AddSingleton<HubEventSender>();
 builder.Services.AddSingleton<HubMonitorService>(); // Register the new monitoring service
 builder.Services.AddHostedService<TrayIconManager>();

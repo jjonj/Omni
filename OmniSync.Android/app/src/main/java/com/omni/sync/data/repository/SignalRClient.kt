@@ -182,7 +182,7 @@ class SignalRClient(
             Log.d("SignalRClient", "ModifierStateUpdated: $modifierName = $isPressed")
             when (modifierName) {
                 "Shift" -> mainViewModel.setShiftPressed(isPressed)
-                "Control" -> mainViewModel.setCtrlPressed(isPressed)
+                "Ctrl" -> mainViewModel.setCtrlPressed(isPressed)
                 "Alt" -> mainViewModel.setAltPressed(isPressed)
             }
         }, String::class.java, Boolean::class.java)
@@ -463,6 +463,16 @@ class SignalRClient(
             val warningMessage = "Not connected, cannot toggle mute."
             mainViewModel.setErrorMessage(warningMessage)
             Log.w("SignalRClient", warningMessage)
+        }
+    }
+
+    fun sendScheduleShutdown(minutes: Int) {
+        if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
+            val payload = mapOf("Minutes" to minutes)
+            hubConnection?.send("SendPayload", "SCHEDULE_SHUTDOWN", payload)
+            mainViewModel.addLog("Scheduled shutdown: $minutes min", com.omni.sync.ui.screen.LogType.INFO)
+        } else {
+            mainViewModel.setErrorMessage("Not connected.")
         }
     }
 

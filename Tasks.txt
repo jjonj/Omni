@@ -1,0 +1,25 @@
+# Tasks
+After finishing a task build and deploy then rely on user to approve each subtask before you git commit between each task. Also mark the task as "Done" in this document by prefixing the line
+
+
+## General
+
+## For the hub
+See similar android task: Button on hub window to set PC to turn off after X time. Clicking botton toggles between None/15min/30min/60min/2hours/5hours/12hours cycling back to none. To turn off PC schedule a call to C:\Windows\explorer.exe "B:\GDrive\Tools\05 Automation\shutdown.bat"
+
+
+## in OmniSync.Android
+### Remote Control Screen
+DONE Special Button panel is ugly and takes up too much space
+DONE Shift, Alt and Ctrl toggling is broken, should be intelligent about highlighting button
+DONE See similar hub task: Button to set PC to turn off after X time. Clicking botton toggles between None/15min/30min/60min/2hours/5hours/12hours cycling back to none. To turn off PC schedule a call to C:\Windows\explorer.exe "B:\GDrive\Tools\05 Automation\shutdown.bat". Text on button updates with each click.
+when the android keyboard is active (there is a black space between the buttons and the keyboard only when keyboard active)
+### Files Screen
+Downloading a video into app data and optionally password protecting it with encryption and password
+Problem when switching phone orientation the video restarts
+Video player fullscreen/horizontal mode and pinch to zoom.
+Support to open more file types, unknown filetypes should open as a text file
+Support for editing files opened as text files
+
+### Browser control screen
+Add a button to open current chrome tab url on phone (send to default browser)

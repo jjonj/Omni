@@ -12,14 +12,16 @@ namespace OmniSync.Hub.Logic.Services
                     private readonly FileService _fileService;
                     private readonly HubMonitorService _hubMonitorService;
                     private readonly AudioService _audioService; // Inject AudioService
+                    private readonly ShutdownService _shutdownService;
                     private readonly Dictionary<string, Action<JsonElement>> _commandMap;
             
-                    public CommandDispatcher(InputService inputService, FileService fileService, HubMonitorService hubMonitorService, AudioService audioService) // Add AudioService to constructor
+                    public CommandDispatcher(InputService inputService, FileService fileService, HubMonitorService hubMonitorService, AudioService audioService, ShutdownService shutdownService) // Add AudioService to constructor
                     {
                         _inputService = inputService;
                         _fileService = fileService;
                         _hubMonitorService = hubMonitorService;
                         _audioService = audioService; // Assign AudioService
+                        _shutdownService = shutdownService;
                                     _commandMap = new Dictionary<string, Action<JsonElement>>
                                     {
                                         { "LEFT_CLICK", payload => _inputService.LeftClick() },
@@ -33,6 +35,7 @@ namespace OmniSync.Hub.Logic.Services
                                         { "SET_VOLUME", payload => _audioService.SetMasterVolume(payload.GetProperty("VolumePercentage").GetSingle()) },
                                         { "TOGGLE_MUTE", payload => _audioService.ToggleMute() },
                                         { "APPEND_NOTE", payload => _fileService.AppendToFile(payload.GetProperty("filename").GetString(), payload.GetProperty("content").GetString()) },
+                                        { "SCHEDULE_SHUTDOWN", payload => _shutdownService.ScheduleShutdown(payload.GetProperty("Minutes").GetInt32()) },
                                         // Note: GET_NOTE and other commands that return data are handled directly in RpcApiHub
                                     };                    }
             

@@ -112,7 +112,7 @@ namespace OmniSync.Hub.Infrastructure.Services
                 if (_isCtrlPressed != value)
                 {
                     _isCtrlPressed = value;
-                    ModifierStateChanged?.Invoke(this, new ModifierStateEventArgs(ModifierKey.Control, value));
+                    ModifierStateChanged?.Invoke(this, new ModifierStateEventArgs(ModifierKey.Ctrl, value));
                 }
             }
         }
@@ -292,7 +292,7 @@ namespace OmniSync.Hub.Infrastructure.Services
     public enum ModifierKey
     {
         Shift,
-        Control,
+        Ctrl,
         Alt
     }
 
