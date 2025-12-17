@@ -6,6 +6,7 @@ using System.Windows.Threading; // For Dispatcher
 using OmniSync.Hub.Logic.Monitoring; // For HubMonitorService
 using System; // For Environment.NewLine
 using OmniSync.Hub.Infrastructure.Services; // Add this using directive
+using Microsoft.Win32; // Added for Registry access
 
 namespace OmniSync.Hub.Presentation
 {
@@ -15,6 +16,7 @@ namespace OmniSync.Hub.Presentation
 
         private readonly HubMonitorService _hubMonitorService;
         private readonly InputService _inputService; // Add InputService
+        private const string AppName = "OmniSync Hub";
 
         public MainWindow(HubMonitorService hubMonitorService, InputService inputService) // Add InputService to constructor
         {
@@ -42,6 +44,53 @@ namespace OmniSync.Hub.Presentation
 
             // Scroll to end of log on initial load
             LogTextBox.ScrollToEnd();
+
+            // Initialize RunOnStartup checkbox state
+            RunOnStartupCheckBox.IsChecked = IsRunOnStartupEnabled();
+            RunOnStartupCheckBox.Checked += RunOnStartupCheckBox_Checked;
+            RunOnStartupCheckBox.Unchecked += RunOnStartupCheckBox_Unchecked;
+        }
+
+        private bool IsRunOnStartupEnabled()
+        {
+            using (RegistryKey? rk = Registry.CurrentUser.OpenSubKey("SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run", false))
+            {
+                return rk?.GetValue(AppName) != null;
+            }
+        }
+
+        private void SetRunOnStartup(bool enable)
+        {
+            using (RegistryKey? rk = Registry.CurrentUser.OpenSubKey("SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run", true))
+            {
+                if (rk == null) return;
+
+                if (enable)
+                {
+                    // Get the path to the current executable
+                    string? executablePath = System.Reflection.Assembly.GetExecutingAssembly().Location;
+                    if (executablePath != null)
+                    {
+                        rk.SetValue(AppName, executablePath);
+                        _hubMonitorService.AddLogMessage($"Enabled '{AppName}' to run on startup.");
+                    }
+                }
+                else
+                {
+                    rk.DeleteValue(AppName, false);
+                    _hubMonitorService.AddLogMessage($"Disabled '{AppName}' from running on startup.");
+                }
+            }
+        }
+
+        private void RunOnStartupCheckBox_Checked(object sender, RoutedEventArgs e)
+        {
+            SetRunOnStartup(true);
+        }
+
+        private void RunOnStartupCheckBox_Unchecked(object sender, RoutedEventArgs e)
+        {
+            SetRunOnStartup(false);
         }
 
         private void HubMonitorService_LogEntryAdded(object? sender, string message)
