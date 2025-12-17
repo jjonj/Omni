@@ -55,8 +55,8 @@ const val VK_TAB: UShort = 0x09u // Tab key
 const val VK_ESCAPE: UShort = 0x1Bu // Esc key
 const val VK_DELETE: UShort = 0x2Bu // Delete key
 const val VK_F4: UShort = 0x73u // F4 key
-const val VK_W: UShort = 0x57u // W key
 const val VK_A: UShort = 0x41u // A key
+const val VK_W: UShort = 0x57u // W key
 
 @Composable
 fun RemoteControlScreen(
@@ -326,16 +326,24 @@ fun RemoteControlScreen(
                 ActionKeyButton(text = "Tab", onClick = { signalRClient?.sendKeyEvent("INPUT_KEY_PRESS", VK_TAB) }, modifier = Modifier.weight(1f))
             }
 
-            // Row 2: Enter, Backspace, Delete
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                ActionKeyButton(icon = Icons.AutoMirrored.Filled.KeyboardReturn, onClick = { signalRClient?.sendKeyEvent("INPUT_KEY_PRESS", VK_RETURN) }, modifier = Modifier.weight(1f))
-                ActionKeyButton(icon = Icons.AutoMirrored.Filled.KeyboardBackspace, onClick = { signalRClient?.sendKeyEvent("INPUT_KEY_PRESS", VK_BACK) }, modifier = Modifier.weight(1f))
-                ActionKeyButton(icon = Icons.Default.Delete, onClick = { signalRClient?.sendKeyEvent("INPUT_KEY_PRESS", VK_DELETE) }, modifier = Modifier.weight(1f))
-            }
-
-            // Row 3: Shortcuts
+            // Row 2: Esc, Enter, Delete
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 ActionKeyButton(text = "Esc", onClick = { signalRClient?.sendKeyEvent("INPUT_KEY_PRESS", VK_ESCAPE) }, modifier = Modifier.weight(1f))
+                ActionKeyButton(icon = Icons.AutoMirrored.Filled.KeyboardReturn, onClick = { signalRClient?.sendKeyEvent("INPUT_KEY_PRESS", VK_RETURN) }, modifier = Modifier.weight(1f))
+                ActionKeyButton(icon = Icons.Default.Delete, onClick = {
+                    coroutineScope.launch {
+                        signalRClient?.sendKeyEvent("INPUT_KEY_DOWN", VK_CONTROL)
+                        signalRClient?.sendKeyEvent("INPUT_KEY_PRESS", VK_A)
+                        delay(100) // Increased delay
+                        signalRClient?.sendKeyEvent("INPUT_KEY_UP", VK_CONTROL)
+                        signalRClient?.sendKeyEvent("INPUT_KEY_PRESS", VK_BACK)
+                        Log.d("RemoteControlScreen", "Sent Ctrl+A and Backspace")
+                    }
+                }, modifier = Modifier.weight(1f))
+            }
+
+            // Row 3: Shortcuts, Backspace
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 ActionKeyButton(text = "Alt+Tab", onClick = {
                     signalRClient?.sendKeyEvent("INPUT_KEY_DOWN", VK_MENU)
                     signalRClient?.sendKeyEvent("INPUT_KEY_PRESS", VK_TAB)
@@ -346,18 +354,28 @@ fun RemoteControlScreen(
                     signalRClient?.sendKeyEvent("INPUT_KEY_PRESS", VK_F4)
                     signalRClient?.sendKeyEvent("INPUT_KEY_UP", VK_MENU)
                 }, modifier = Modifier.weight(1f))
+                ActionKeyButton(icon = Icons.AutoMirrored.Filled.KeyboardBackspace, onClick = { signalRClient?.sendKeyEvent("INPUT_KEY_PRESS", VK_BACK) }, modifier = Modifier.weight(1f))
             }
             // Row 4: Special Actions
             val context = LocalContext.current
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 ActionKeyButton(text = "Paste Clipboard", onClick = {
+                    if (signalRClient == null) {
+                        Log.d("RemoteControlScreen", "SignalRClient is null. Cannot send clipboard update.")
+                        return@ActionKeyButton
+                    }
                     val clipboardManager = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                     val clipData = clipboardManager.primaryClip
                     if (clipData != null && clipData.itemCount > 0) {
                         val clipboardText = clipData.getItemAt(0).text?.toString()
                         if (clipboardText != null) {
-                            signalRClient?.sendClipboardUpdate(clipboardText)
+                            signalRClient.sendText(clipboardText)
+                            Log.d("RemoteControlScreen", "Sent clipboard text via sendText: $clipboardText")
+                        } else {
+                            Log.d("RemoteControlScreen", "Clipboard text is null.")
                         }
+                    } else {
+                        Log.d("RemoteControlScreen", "ClipData is null or empty.")
                     }
                 }, modifier = Modifier.weight(1f))
             }

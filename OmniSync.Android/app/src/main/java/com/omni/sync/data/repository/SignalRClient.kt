@@ -81,9 +81,8 @@ class SignalRClient(
     }
     
     fun startConnection() {
-        // ... (Keep your existing startConnection implementation) ...
-        // Ensure you paste the existing startConnection logic here or keep the file intact
-        // Just verify the hubUrl creation in OmniSyncApplication.kt matches your PC IP.
+        _connectionState.value = "Connecting..."
+        mainViewModel.setErrorMessage(null) // Clear previous errors
         
         hubConnection = HubConnectionBuilder.create(hubUrl).build()
 
@@ -98,7 +97,9 @@ class SignalRClient(
                         delay(3000)
                         mainViewModel.addLog("Attempting to reconnect...", com.omni.sync.ui.screen.LogType.INFO)
                         try {
-                            hubConnection?.start()?.subscribe({}, { _ -> })
+                            hubConnection?.start()?.subscribe({}, { e -> 
+                                mainViewModel.addLog("Reconnect attempt failed: ${e.message}", com.omni.sync.ui.screen.LogType.ERROR)
+                            })
                         } catch (e: Exception) {
                             mainViewModel.addLog("Reconnect attempt failed unexpectedly: ${e.message}", com.omni.sync.ui.screen.LogType.ERROR)
                         }
@@ -129,19 +130,18 @@ class SignalRClient(
                 Log.e("SignalR", "Connection failed side-effect", error)
                 mainViewModel.setConnected(false) // Ensure connected state is false on error
             }
-            // FIX: Use subscribe({}, { error -> ... }) instead of just subscribe()
             ?.subscribe({
                 Log.d("SignalR", "Connection process started successfully")
             }, { error ->
                 Log.e("SignalR", "Fatal error in connection subscription", error)
                 mainViewModel.setConnected(false) // Ensure connected state is false on fatal error
-                // This catch prevents the app from crashing on start-up errors
             })
-        // Register handlers for server-side calls
-        hubConnection?.on("ReceivePayload", { payload: Any ->
-            Log.d("SignalRClient", "Received payload: $payload")
-            // TODO: Process incoming payload via CommandDispatcher
-        }, Any::class.java)
+        
+        // Register handlers
+        registerHubHandlers()
+    }
+
+    private fun registerHubHandlers() {
 
         hubConnection?.on("ClipboardUpdated", { newText: String ->
             Log.d("SignalRClient", "Received clipboard update: $newText")
