@@ -13,7 +13,8 @@ enum class AppScreen {
     REMOTECONTROL,
     NOTEVIEWER,
     PROCESS,
-    FILES
+    FILES,
+    VIDEOPLAYER
 }
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
@@ -35,6 +36,25 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     // --- Centralized Dashboard Logs ---
     private val _dashboardLogs = MutableStateFlow<List<LogEntry>>(emptyList())
     val dashboardLogs: StateFlow<List<LogEntry>> = _dashboardLogs
+
+    // Add state to hold the current video to play
+    private val _currentVideoUrl = MutableStateFlow<String?>(null)
+    val currentVideoUrl: StateFlow<String?> = _currentVideoUrl
+
+    // Helper to extract the base URL (http://10.0.0.37:5000) from the specific Hub URL
+    fun getBaseUrl(): String {
+        return "http://10.0.0.37:5000" 
+    }
+
+    fun playVideo(remotePath: String) {
+        // Construct a direct HTTP URL. 
+        // We must encode the path to ensure spaces and slashes are handled correctly in the query string.
+        val encodedPath = java.net.URLEncoder.encode(remotePath, "UTF-8")
+        val url = "${getBaseUrl()}/api/stream?path=$encodedPath"
+        
+        _currentVideoUrl.value = url
+        navigateTo(AppScreen.VIDEOPLAYER)
+    }
 
     fun setConnected(connected: Boolean) {
         _isConnected.value = connected

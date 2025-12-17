@@ -27,7 +27,7 @@ import android.webkit.MimeTypeMap
 class FilesViewModel(
     application: Application, // Add application to constructor
     private val signalRClient: SignalRClient,
-    private val mainViewModel: MainViewModel // To access connection status, etc.
+    val mainViewModel: MainViewModel // To access connection status, etc.
 ) : AndroidViewModel(application) {
 
     private val _currentPath = MutableStateFlow("")

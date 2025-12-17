@@ -109,9 +109,14 @@ fun FilesScreen(
                                 // For ".." entry, we just use the path provided by the server which is already parent
                                 filesViewModel.loadDirectory(clickedEntry.path)
                             } else {
-                                // Handle file click (initiate download/streaming)
-                                filesViewModel.startFileDownload(clickedEntry)
-                                Toast.makeText(context, "Starting download for ${clickedEntry.name}", Toast.LENGTH_SHORT).show()
+                                if (isVideoFile(clickedEntry.name)) {
+                                    // STREAM VIDEO
+                                    filesViewModel.mainViewModel.playVideo(clickedEntry.path)
+                                } else {
+                                    // Handle file click (initiate download/streaming)
+                                    filesViewModel.startFileDownload(clickedEntry)
+                                    Toast.makeText(context, "Starting download for ${clickedEntry.name}", Toast.LENGTH_SHORT).show()
+                                }
                             }
                         }
                     }
@@ -163,4 +168,10 @@ private fun getParentPath(path: String): String {
 
 
 fun Double.format(digits: Int) = "%.${digits}f".format(Locale.getDefault(), this)
+
+// Helper function to check extensions
+fun isVideoFile(filename: String): Boolean {
+    val lower = filename.lowercase()
+    return lower.endsWith(".mp4") || lower.endsWith(".mkv") || lower.endsWith(".avi") || lower.endsWith(".mov")
+}
 

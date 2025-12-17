@@ -54,6 +54,7 @@ dependencies {
     implementation("androidx.activity:activity-compose:1.8.2")
     implementation(platform("androidx.compose:compose-bom:2024.04.01"))
     implementation("androidx.compose.ui:ui")
+    implementation("androidx.compose.ui:ui-input:1.6.7")
     implementation("androidx.compose.ui:ui-graphics")
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.material3:material3")
@@ -88,4 +89,10 @@ dependencies {
 
     // Timber for logging
     implementation("com.jakewharton.timber:timber:5.0.1")
+
+    // Media3 (ExoPlayer)
+    val media3_version = "1.2.0"
+    implementation("androidx.media3:media3-exoplayer:$media3_version")
+    implementation("androidx.media3:media3-ui:$media3_version")
+    implementation("androidx.media3:media3-common:$media3_version")
 }

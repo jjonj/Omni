@@ -47,6 +47,7 @@ builder.Services.AddSingleton<HubMonitorService>(); // Register the new monitori
 builder.Services.AddHostedService<TrayIconManager>();
 
 builder.Services.AddSignalR();
+builder.Services.AddControllers();
 
 var app = builder.Build();
 
@@ -62,6 +63,7 @@ app.UseRouting();
 // If there's an actual authentication scheme, it would go here: app.UseAuthentication();
 app.UseAuthorization(); // Even if empty, it's good practice if Authorization is ever considered.
 
+app.MapControllers();
 app.MapHub<RpcApiHub>("/signalrhub");
 
 app.Run();

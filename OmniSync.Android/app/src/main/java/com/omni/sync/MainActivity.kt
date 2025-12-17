@@ -98,9 +98,19 @@ class MainActivity : ComponentActivity() {
                                     signalRClient = signalRClient, 
                                     mainViewModel = mainViewModel
                                 )
-                                                            AppScreen.FILES -> FilesScreen(
-                                                                filesViewModel = filesViewModel
-                                                            )                            }
+                                AppScreen.FILES -> FilesScreen(
+                                    filesViewModel = filesViewModel
+                                )
+                                AppScreen.VIDEOPLAYER -> {
+                                    val videoUrl by mainViewModel.currentVideoUrl.collectAsState()
+                                    if (videoUrl != null) {
+                                        com.omni.sync.ui.screen.VideoPlayerScreen(
+                                            videoUrl = videoUrl!!,
+                                            onBack = { mainViewModel.navigateTo(AppScreen.FILES) }
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
                 }

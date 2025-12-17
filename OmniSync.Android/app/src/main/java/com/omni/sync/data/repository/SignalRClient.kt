@@ -403,6 +403,7 @@ class SignalRClient(
     }
 
     fun sendLeftClick() {
+        mainViewModel.addLog("sendLeftClick called")
         if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
             sendPayload("LEFT_CLICK", emptyMap<String, Any>()) // Empty payload
             mainViewModel.addLog("Sent LEFT_CLICK", com.omni.sync.ui.screen.LogType.INFO)
@@ -414,6 +415,7 @@ class SignalRClient(
     }
 
     fun sendRightClick() {
+        mainViewModel.addLog("sendRightClick called")
         if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
             sendPayload("RIGHT_CLICK", emptyMap<String, Any>()) // Empty payload
             mainViewModel.addLog("Sent RIGHT_CLICK", com.omni.sync.ui.screen.LogType.INFO)
