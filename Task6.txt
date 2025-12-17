@@ -1,1 +1,0 @@
-Make omnihub window have a settings page, in which you can enable/disable omnihub run on windows startup which should be functional

@@ -86,12 +86,15 @@ class FilesViewModel(
         _isLoading.value = true
         _errorMessage.value = null
         resetDownloadState() // Reset download state when navigating
+        mainViewModel.addLog("Loading directory: ${if (path.isEmpty()) "(root)" else path}", com.omni.sync.ui.screen.LogType.INFO)
 
         signalRClient.listDirectory(path)
             ?.subscribeOn(Schedulers.io())
             ?.observeOn(AndroidSchedulers.mainThread())
+            ?.timeout(8, java.util.concurrent.TimeUnit.SECONDS)
             ?.subscribe(
                 { entries ->
+                    mainViewModel.addLog("Loaded ${entries.size} entries", com.omni.sync.ui.screen.LogType.SUCCESS)
                     _fileSystemEntries.value = entries
                     _currentPath.value = path
                     _isLoading.value = false
@@ -100,12 +103,14 @@ class FilesViewModel(
                 { error ->
                     _errorMessage.value = "Error loading directory: ${error.message}"
                     _isLoading.value = false
+                    mainViewModel.addLog("Error loading directory: ${error.message}", com.omni.sync.ui.screen.LogType.ERROR)
                     Log.e("FilesViewModel", "Error loading directory", error)
                 }
             )
             ?: run {
                 _isLoading.value = false
                 _errorMessage.value = "Failed to initiate directory listing (not connected?)."
+                mainViewModel.addLog("Failed to initiate directory listing", com.omni.sync.ui.screen.LogType.ERROR)
             }
     }
 

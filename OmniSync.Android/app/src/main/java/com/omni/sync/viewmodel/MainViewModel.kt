@@ -11,7 +11,7 @@ import com.omni.sync.ui.screen.LogType
 enum class AppScreen {
     DASHBOARD,
     REMOTECONTROL,
-    NOTEVIEWER,
+    BROWSER,
     PROCESS,
     FILES,
     VIDEOPLAYER
@@ -28,6 +28,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _errorMessage = MutableStateFlow<String?>(null)
     val errorMessage: StateFlow<String?> = _errorMessage
+
+    // Modifier Key States
+    private val _isShiftPressed = MutableStateFlow(false)
+    val isShiftPressed: StateFlow<Boolean> = _isShiftPressed
+
+    private val _isCtrlPressed = MutableStateFlow(false)
+    val isCtrlPressed: StateFlow<Boolean> = _isCtrlPressed
+
+    private val _isAltPressed = MutableStateFlow(false)
+    val isAltPressed: StateFlow<Boolean> = _isAltPressed
 
     // --- Command Output ---
     private val _commandOutput = MutableStateFlow("")
@@ -60,6 +70,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _isConnected.value = connected
         if (connected) addLog("Hub Connected", LogType.SUCCESS)
         else addLog("Hub Disconnected", LogType.ERROR)
+    }
+    
+    fun setShiftPressed(isPressed: Boolean) {
+        _isShiftPressed.value = isPressed
+    }
+
+    fun setCtrlPressed(isPressed: Boolean) {
+        _isCtrlPressed.value = isPressed
+    }
+
+    fun setAltPressed(isPressed: Boolean) {
+        _isAltPressed.value = isPressed
     }
     
     // Updated Clipboard logic if needed, omitted for brevity but keep your existing logic

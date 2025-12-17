@@ -23,6 +23,9 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.key.*
 import androidx.compose.ui.input.pointer.*
+import android.content.Context
+import android.content.ClipboardManager
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.tooling.preview.Preview
@@ -32,6 +35,14 @@ import com.omni.sync.data.repository.SignalRClient
 import com.omni.sync.viewmodel.MainViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.PressInteraction
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.launch
 
 // Common Windows Virtual Key Codes
@@ -57,9 +68,9 @@ fun RemoteControlScreen(
     val focusRequester = remember { FocusRequester() }
     val coroutineScope = rememberCoroutineScope() // Scope for side-effects like the timer
 
-    var isShiftPressed by remember { mutableStateOf(false) }
-    var isCtrlPressed by remember { mutableStateOf(false) }
-    var isAltPressed by remember { mutableStateOf(false) }
+    val isShiftPressed by mainViewModel!!.isShiftPressed.collectAsState()
+    val isCtrlPressed by mainViewModel.isCtrlPressed.collectAsState()
+    val isAltPressed by mainViewModel.isAltPressed.collectAsState()
 
     var volumeLevel by remember { mutableStateOf(50f) }
     var isMutedState by remember { mutableStateOf(false) }
@@ -86,9 +97,10 @@ fun RemoteControlScreen(
     DisposableEffect(Unit) {
         onDispose {
             keyboardController?.hide()
-            if (isShiftPressed) signalRClient?.sendKeyEvent("INPUT_KEY_UP", VK_SHIFT)
-            if (isCtrlPressed) signalRClient?.sendKeyEvent("INPUT_KEY_UP", VK_CONTROL)
-            if (isAltPressed) signalRClient?.sendKeyEvent("INPUT_KEY_UP", VK_MENU)
+            // Only send key up if the ViewModel says they are pressed
+            if (mainViewModel?.isShiftPressed?.value == true) signalRClient?.sendKeyEvent("INPUT_KEY_UP", VK_SHIFT)
+            if (mainViewModel?.isCtrlPressed?.value == true) signalRClient?.sendKeyEvent("INPUT_KEY_UP", VK_CONTROL)
+            if (mainViewModel?.isAltPressed?.value == true) signalRClient?.sendKeyEvent("INPUT_KEY_UP", VK_MENU)
         }
     }
 
@@ -254,18 +266,63 @@ fun RemoteControlScreen(
         ) {
             // Row 1: Modifiers + Tab
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                ModifierKeyButton("Shift", isShiftPressed, Modifier.weight(1f)) {
-                    isShiftPressed = !isShiftPressed
-                    signalRClient?.sendKeyEvent(if (isShiftPressed) "INPUT_KEY_DOWN" else "INPUT_KEY_UP", VK_SHIFT)
-                }
-                ModifierKeyButton("Ctrl", isCtrlPressed, Modifier.weight(1f)) {
-                    isCtrlPressed = !isCtrlPressed
-                    signalRClient?.sendKeyEvent(if (isCtrlPressed) "INPUT_KEY_DOWN" else "INPUT_KEY_UP", VK_CONTROL)
-                }
-                ModifierKeyButton("Alt", isAltPressed, modifier = Modifier.weight(1f)) {
-                    isAltPressed = !isAltPressed
-                    signalRClient?.sendKeyEvent(if (isAltPressed) "INPUT_KEY_DOWN" else "INPUT_KEY_UP", VK_MENU)
-                }
+                ModifierKeyButton(
+                    "Shift",
+                    isShiftPressed,
+                    Modifier.weight(1f),
+                    onDown = {
+                        mainViewModel?.setShiftPressed(true)
+                        signalRClient?.sendKeyEvent("INPUT_KEY_DOWN", VK_SHIFT)
+                    },
+                    onUp = {
+                        mainViewModel?.setShiftPressed(false)
+                        signalRClient?.sendKeyEvent("INPUT_KEY_UP", VK_SHIFT)
+                    },
+                    onDoubleClick = {
+                        signalRClient?.sendKeyEvent("INPUT_KEY_DOWN", VK_SHIFT)
+                        signalRClient?.sendMouseClick("Left")
+                        signalRClient?.sendKeyEvent("INPUT_KEY_UP", VK_SHIFT)
+                        mainViewModel?.setShiftPressed(false) // Reset state after double-click action
+                    }
+                )
+                ModifierKeyButton(
+                    "Ctrl",
+                    isCtrlPressed,
+                    Modifier.weight(1f),
+                    onDown = {
+                        mainViewModel?.setCtrlPressed(true)
+                        signalRClient?.sendKeyEvent("INPUT_KEY_DOWN", VK_CONTROL)
+                    },
+                    onUp = {
+                        mainViewModel?.setCtrlPressed(false)
+                        signalRClient?.sendKeyEvent("INPUT_KEY_UP", VK_CONTROL)
+                    },
+                    onDoubleClick = {
+                        signalRClient?.sendKeyEvent("INPUT_KEY_DOWN", VK_CONTROL)
+                        signalRClient?.sendMouseClick("Left")
+                        signalRClient?.sendKeyEvent("INPUT_KEY_UP", VK_CONTROL)
+                        mainViewModel?.setCtrlPressed(false) // Reset state after double-click action
+                    }
+                )
+                ModifierKeyButton(
+                    "Alt",
+                    isAltPressed,
+                    modifier = Modifier.weight(1f),
+                    onDown = {
+                        mainViewModel?.setAltPressed(true)
+                        signalRClient?.sendKeyEvent("INPUT_KEY_DOWN", VK_MENU)
+                    },
+                    onUp = {
+                        mainViewModel?.setAltPressed(false)
+                        signalRClient?.sendKeyEvent("INPUT_KEY_UP", VK_MENU)
+                    },
+                    onDoubleClick = {
+                        signalRClient?.sendKeyEvent("INPUT_KEY_DOWN", VK_MENU)
+                        signalRClient?.sendMouseClick("Left")
+                        signalRClient?.sendKeyEvent("INPUT_KEY_UP", VK_MENU)
+                        mainViewModel?.setAltPressed(false) // Reset state after double-click action
+                    }
+                )
                 ActionKeyButton(text = "Tab", onClick = { signalRClient?.sendKeyEvent("INPUT_KEY_PRESS", VK_TAB) }, modifier = Modifier.weight(1f))
             }
 
@@ -290,16 +347,76 @@ fun RemoteControlScreen(
                     signalRClient?.sendKeyEvent("INPUT_KEY_UP", VK_MENU)
                 }, modifier = Modifier.weight(1f))
             }
+            // Row 4: Special Actions
+            val context = LocalContext.current
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                ActionKeyButton(text = "Paste Clipboard", onClick = {
+                    val clipboardManager = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                    val clipData = clipboardManager.primaryClip
+                    if (clipData != null && clipData.itemCount > 0) {
+                        val clipboardText = clipData.getItemAt(0).text?.toString()
+                        if (clipboardText != null) {
+                            signalRClient?.sendClipboardText(clipboardText)
+                        }
+                    }
+                }, modifier = Modifier.weight(1f))
+            }
         }
     }
 }
 
 @Composable
-fun ModifierKeyButton(text: String, isToggled: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
+fun ModifierKeyButton(
+    text: String,
+    isToggled: Boolean,
+    modifier: Modifier = Modifier,
+    onDown: () -> Unit,
+    onUp: () -> Unit,
+    onDoubleClick: () -> Unit
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val coroutineScope = rememberCoroutineScope()
+
     val colors = if (isToggled) ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
     else ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
-    Button(onClick = onClick, colors = colors, modifier = modifier.height(40.dp)) {
+
+    Button(
+        onClick = { /* Handled by pointerInput */ },
+        colors = colors,
+        modifier = modifier
+            .height(40.dp)
+            .pointerInput(Unit) {
+                detectTapGestures(
+                    onDoubleTap = {
+                        onDoubleClick()
+                    }
+                )
+            }
+            .clickable(
+                interactionSource = interactionSource,
+                indication = null
+            ) {
+                // This onClick is for single tap behavior, to trigger onDown/onUp
+                // We'll manage the state with interactionSource
+            }
+    ) {
         Text(text, softWrap = false, fontSize = 10.sp)
+    }
+
+    LaunchedEffect(interactionSource) {
+        interactionSource.interactions.collect { interaction ->
+            when (interaction) {
+                is PressInteraction.Press -> {
+                    onDown()
+                }
+                is PressInteraction.Release -> {
+                    onUp()
+                }
+                is PressInteraction.Cancel -> {
+                    onUp()
+                }
+            }
+        }
     }
 }
 

@@ -55,6 +55,21 @@ OmniSync.Android/.kotlin
 
 # Zip files
 *.zip
+*.log
+
+Task*.txt
+progress.txt
+progress.md
+Status.txt
+Status.md
+solution.md
+question.md
+answer.md
+problem.md
+solution.txt
+question.txt
+answer.txt
+problem.txt
 
 /gradle-8.8/
 .gradle/

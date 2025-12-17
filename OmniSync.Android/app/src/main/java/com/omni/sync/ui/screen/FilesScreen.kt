@@ -10,6 +10,7 @@ import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.InsertDriveFile
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -42,6 +43,12 @@ fun FilesScreen(
     val downloadErrorMessage by filesViewModel.downloadErrorMessage.collectAsState()
 
     val context = LocalContext.current // Get context for Toast
+
+    LaunchedEffect(Unit) {
+        if (fileSystemEntries.isEmpty()) {
+            filesViewModel.loadDirectory("")
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -147,11 +154,17 @@ fun FileSystemEntryItem(entry: FileSystemEntry, onClick: (FileSystemEntry) -> Un
                 Text(text = "${(entry.size / 1024.0).format(2)} KB", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
-        Text(
-            text = SimpleDateFormat("MMM dd, HH:mm", Locale.getDefault()).format(entry.lastModified),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
+        val lmText = run {
+            val ts = entry.lastModified.time
+            if (ts <= 0L) "" else SimpleDateFormat("MMM dd, HH:mm", Locale.getDefault()).format(entry.lastModified)
+        }
+        if (lmText.isNotEmpty()) {
+            Text(
+                text = lmText,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
     }
 }
 
@@ -174,4 +187,3 @@ fun isVideoFile(filename: String): Boolean {
     val lower = filename.lowercase()
     return lower.endsWith(".mp4") || lower.endsWith(".mkv") || lower.endsWith(".avi") || lower.endsWith(".mov")
 }
-

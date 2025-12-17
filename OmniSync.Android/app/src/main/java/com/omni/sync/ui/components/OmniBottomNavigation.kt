@@ -3,7 +3,7 @@ package com.omni.sync.ui.components
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.Gamepad
-import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material3.Icon
@@ -25,7 +25,7 @@ data class NavItem(
 val navigationItems = listOf(
     NavItem(AppScreen.DASHBOARD, "Dashboard", Icons.Default.Dashboard),
     NavItem(AppScreen.REMOTECONTROL, "Remote", Icons.Default.Gamepad),
-    NavItem(AppScreen.NOTEVIEWER, "Notes", Icons.Default.Description),
+    NavItem(AppScreen.BROWSER, "Browser", Icons.Default.Public),
     NavItem(AppScreen.PROCESS, "Process", Icons.Default.Memory),
     NavItem(AppScreen.FILES, "Files", Icons.Default.Folder)
 )
