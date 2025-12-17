@@ -66,6 +66,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val backStack = mutableListOf<AppScreen>()
     private val _canGoBack = MutableStateFlow(false)
     val canGoBack: StateFlow<Boolean> = _canGoBack
+    
+    private var lastDashboardBackPressTime = 0L
 
     // Helper to extract the base URL (http://10.0.0.37:5000) from the specific Hub URL
     fun getBaseUrl(): String {
@@ -108,28 +110,49 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun updateClipboardContent(content: String) { /* keep existing */ }
 
     fun navigateTo(screen: AppScreen) {
-        val isMainTab = screen == AppScreen.DASHBOARD || 
-                        screen == AppScreen.REMOTECONTROL || 
-                        screen == AppScreen.BROWSER || 
-                        screen == AppScreen.PROCESS || 
-                        screen == AppScreen.FILES
+        if (_currentScreen.value == screen) return
 
-        if (isMainTab) {
-            backStack.clear()
-        } else {
-            // Push current screen before navigating away
-            backStack.add(_currentScreen.value)
+        // Push current screen to backstack
+        backStack.add(_currentScreen.value)
+        
+        // Keep only the last 3 screens in history
+        if (backStack.size > 3) {
+            backStack.removeAt(0)
         }
         
         _currentScreen.value = screen
-        _canGoBack.value = backStack.isNotEmpty()
+        _canGoBack.value = true // We can always try to go back now
     }
 
-    fun goBack(): Boolean {
+    fun handleBackPress(exitApp: () -> Unit) {
         if (backStack.isNotEmpty()) {
             val previous = backStack.removeAt(backStack.lastIndex)
             _currentScreen.value = previous
-            _canGoBack.value = backStack.isNotEmpty()
+            _canGoBack.value = true // Still true because we can always go back to dashboard eventually
+        } else if (_currentScreen.value != AppScreen.DASHBOARD) {
+            // If no history and not on dashboard, go to dashboard
+            _currentScreen.value = AppScreen.DASHBOARD
+            _canGoBack.value = true
+        } else {
+            // On dashboard with no history, check for double press to exit
+            val currentTime = System.currentTimeMillis()
+            if (currentTime - lastDashboardBackPressTime < 2000) {
+                exitApp()
+            } else {
+                lastDashboardBackPressTime = currentTime
+                addLog("Press back again to exit", LogType.INFO)
+            }
+        }
+    }
+
+    fun goBack(): Boolean {
+        // This is still used by some UI components to navigate back without exiting the app
+        if (backStack.isNotEmpty()) {
+            val previous = backStack.removeAt(backStack.lastIndex)
+            _currentScreen.value = previous
+            return true
+        } else if (_currentScreen.value != AppScreen.DASHBOARD) {
+            _currentScreen.value = AppScreen.DASHBOARD
             return true
         }
         return false

@@ -95,7 +95,7 @@ class SignalRClient(
                 mainViewModel.addLog("Connection lost. Starting auto-reconnect...", com.omni.sync.ui.screen.LogType.WARNING)
                 reconnectJob = coroutineScope.launch {
                     while (true) {
-                        delay(3000)
+                        delay(10000)
                         mainViewModel.addLog("Attempting to reconnect...", com.omni.sync.ui.screen.LogType.INFO)
                         try {
                             hubConnection?.start()?.subscribe({}, { e -> 

@@ -37,6 +37,8 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.ui.unit.dp
 import com.omni.sync.ui.components.OmniBottomNavigation
 
+import androidx.core.view.WindowCompat
+
 class MainActivity : ComponentActivity() {
     private lateinit var mainViewModel: MainViewModel
     private lateinit var omniSyncApplication: OmniSyncApplication
@@ -44,6 +46,9 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
+        // This is crucial for making the IME (keyboard) work correctly with padding
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+
         omniSyncApplication = application as OmniSyncApplication
         mainViewModel = omniSyncApplication.mainViewModel
         
@@ -80,8 +85,8 @@ class MainActivity : ComponentActivity() {
                         color = MaterialTheme.colorScheme.background
                     ) {
                         // Handle global back navigation
-                        BackHandler(enabled = canGoBack) {
-                            mainViewModel.goBack()
+                        BackHandler(enabled = true) {
+                            mainViewModel.handleBackPress { finish() }
                         }
                         
                         val filesViewModel: FilesViewModel = viewModel(

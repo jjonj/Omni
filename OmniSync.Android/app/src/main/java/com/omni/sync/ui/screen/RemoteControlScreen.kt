@@ -67,8 +67,107 @@ fun RemoteControlScreen(
 ) {
     val keyboardController = LocalSoftwareKeyboardController.current
     val focusRequester = remember { FocusRequester() }
-    val coroutineScope = rememberCoroutineScope() // Scope for side-effects like the timer
 
+    LaunchedEffect(Unit) {
+        focusRequester.requestFocus()
+    }
+
+    Box(modifier = modifier.fillMaxSize().statusBarsPadding()) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            TrackpadArea(
+                signalRClient = signalRClient,
+                modifier = Modifier.weight(1f)
+            )
+            ButtonPanel(
+                signalRClient = signalRClient,
+                mainViewModel = mainViewModel,
+                modifier = Modifier.fillMaxWidth().imePadding().navigationBarsPadding(),
+                keyboardController = keyboardController,
+                focusRequester = focusRequester
+            )
+        }
+    }
+}
+
+@Composable
+fun TrackpadArea(signalRClient: SignalRClient, modifier: Modifier = Modifier) {
+    val coroutineScope = rememberCoroutineScope()
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .pointerInput(signalRClient) {
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false)
+                    val downPoint = down.position
+                    var isDrag = false
+                    var isRightClickTriggered = false
+                    val movementThreshold = 10.dp.toPx()
+                    
+                    val longPressJob = coroutineScope.launch {
+                        delay(1750)
+                        if (!isDrag) {
+                            isRightClickTriggered = true
+                            signalRClient.sendRightClick()
+                        }
+                    }
+
+                    try {
+                        while (true) {
+                            val event = awaitPointerEvent()
+                            val change = event.changes.firstOrNull { it.id == down.id }
+                            
+                            if (change == null || !change.pressed) {
+                                change?.consume()
+                                break
+                            }
+
+                            val positionChange = change.position - downPoint
+                            val distance = positionChange.getDistance()
+
+                            if (!isDrag && distance > movementThreshold) {
+                                isDrag = true
+                                longPressJob.cancel()
+                            }
+
+                            if (isDrag) {
+                                val delta = change.positionChange()
+                                if (delta != Offset.Zero) {
+                                    val sensitivity = 1.2f
+                                    signalRClient.sendMouseMove(delta.x * sensitivity, delta.y * sensitivity)
+                                    change.consume()
+                                }
+                            }
+                        }
+                    } finally {
+                        longPressJob.cancel()
+                    }
+
+                    if (!isDrag && !isRightClickTriggered) {
+                        signalRClient.sendLeftClick()
+                    }
+                }
+            }
+    ) {
+        Text(
+            text = "Trackpad Active\n(Tap = Left Click | Hold 2s = Right Click)",
+            modifier = Modifier.align(Alignment.Center),
+            style = MaterialTheme.typography.bodyLarge,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+        )
+    }
+}
+
+@Composable
+fun ButtonPanel(
+    signalRClient: SignalRClient,
+    mainViewModel: MainViewModel,
+    modifier: Modifier = Modifier,
+    keyboardController: androidx.compose.ui.platform.SoftwareKeyboardController?,
+    focusRequester: FocusRequester
+) {
+    val coroutineScope = rememberCoroutineScope()
     val isShiftPressed by mainViewModel.isShiftPressed.collectAsState()
     val isCtrlPressed by mainViewModel.isCtrlPressed.collectAsState()
     val isAltPressed by mainViewModel.isAltPressed.collectAsState()
@@ -76,17 +175,15 @@ fun RemoteControlScreen(
 
     var volumeLevel by remember { mutableStateOf(50f) }
     var isMutedState by remember { mutableStateOf(false) }
-
-    // Countdown logic for shutdown timer
     var shutdownLabel by remember { mutableStateOf("None") }
     var shutdownIndex by remember { mutableStateOf(0) }
-    
+    var textInput by remember { mutableStateOf("") }
+
     LaunchedEffect(scheduledShutdownTime) {
         if (scheduledShutdownTime == null) {
             shutdownLabel = "None"
             shutdownIndex = 0
         } else {
-            // Parsing Hub time (ISO 8601)
             try {
                 val targetTime = java.time.OffsetDateTime.parse(scheduledShutdownTime).toInstant().toEpochMilli()
                 while (true) {
@@ -99,318 +196,154 @@ fun RemoteControlScreen(
                     val totalMinutes = (diff / 1000) / 60
                     val hours = totalMinutes / 60
                     val minutes = totalMinutes % 60
-                    
-                    shutdownLabel = if (hours > 0) {
-                        "${hours}h ${minutes}m"
-                    } else {
-                        "${minutes}m"
-                    }
+                    shutdownLabel = if (hours > 0) "${hours}h ${minutes}m" else "${minutes}m"
                     delay(1000)
                 }
             } catch (e: Exception) {
-                Log.e("RemoteControlScreen", "Error parsing shutdown time: $scheduledShutdownTime", e)
                 shutdownLabel = "Error"
             }
         }
     }
 
-    // Hidden TextField to manage soft keyboard input
-    var textInput by remember { mutableStateOf("") }
-
-    LaunchedEffect(signalRClient?.connectionState?.collectAsState()?.value) {
-        if (signalRClient?.connectionState?.value?.contains("Connected") == true) {
-            signalRClient.getVolume()?.subscribe({ volume ->
-                volumeLevel = volume
-            }, { error ->
-                Log.e("RemoteControlScreen", "Error getting initial volume: ${error.message}")
-            })
-            signalRClient.isMuted()?.subscribe({ muted ->
-                isMutedState = muted
-            }, { error ->
-                Log.e("RemoteControlScreen", "Error getting initial mute state: ${error.message}")
-            })
-        }
-        focusRequester.requestFocus()
-    }
-
-    DisposableEffect(Unit) {
-        onDispose {
-            keyboardController?.hide()
-            // Only send key up if the ViewModel says they are pressed
-            if (mainViewModel?.isShiftPressed?.value == true) signalRClient?.sendKeyEvent("INPUT_KEY_UP", VK_SHIFT)
-            if (mainViewModel?.isCtrlPressed?.value == true) signalRClient?.sendKeyEvent("INPUT_KEY_UP", VK_CONTROL)
-            if (mainViewModel?.isAltPressed?.value == true) signalRClient?.sendKeyEvent("INPUT_KEY_UP", VK_MENU)
+    LaunchedEffect(Unit) {
+        if (signalRClient.connectionState.value.contains("Connected")) {
+            signalRClient.getVolume()?.subscribe({ volumeLevel = it }, {})
+            signalRClient.isMuted()?.subscribe({ isMutedState = it }, {})
         }
     }
 
     Column(
         modifier = modifier
-            .fillMaxSize()
-            .focusRequester(focusRequester)
-            .imePadding()
+            .background(MaterialTheme.colorScheme.surface)
+            .padding(8.dp)
             .onPreviewKeyEvent { keyEvent ->
                 if (keyEvent.type == KeyEventType.KeyDown) {
                     val unicodeChar = keyEvent.nativeKeyEvent.unicodeChar
                     if (unicodeChar != 0) {
-                        signalRClient?.sendText(unicodeChar.toChar().toString())
+                        signalRClient.sendText(unicodeChar.toChar().toString())
                         return@onPreviewKeyEvent true
                     }
                 }
                 false
             }
     ) {
-        // Hidden TextField
+        // Hidden TextField for keyboard
         TextField(
             value = textInput,
-            onValueChange = { newText: String ->
+            onValueChange = { newText ->
                 if (newText.length > textInput.length) {
-                    val charToSend = newText.last()
-                    signalRClient?.sendText(charToSend.toString())
+                    signalRClient.sendText(newText.last().toString())
                 } else if (newText.length < textInput.length) {
-                    signalRClient?.sendKeyEvent("INPUT_KEY_PRESS", VK_BACK)
+                    signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_BACK)
                 }
                 textInput = newText
             },
+            modifier = Modifier.height(0.dp).focusRequester(focusRequester),
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-            keyboardActions = KeyboardActions(
-                onSend = {
-                    signalRClient?.sendKeyEvent("INPUT_KEY_PRESS", VK_RETURN)
-                    textInput = ""
-                }
-            ),
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(0.dp)
+            keyboardActions = KeyboardActions(onSend = {
+                signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_RETURN)
+                textInput = ""
+            })
         )
 
-        // --- TRACKPAD AREA ---
-        Box(
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth()
-                .background(MaterialTheme.colorScheme.surfaceVariant)
-                .pointerInput(signalRClient) { // Pass signalRClient as a key
-                    // This creates a dedicated gesture handler
-                    awaitEachGesture {
-                        val down = awaitFirstDown(requireUnconsumed = false)
-                        val downPoint = down.position
-                        var isDrag = false
-                        var isRightClickTriggered = false
-                        val movementThreshold = 10.dp.toPx()
-                        
-                        // Launch a job on the UI scope to handle the 2-second right-click timer
-                        val longPressJob = coroutineScope.launch {
-                            delay(1750) // The 1.75-second threshold
-                            if (!isDrag) {
-                                isRightClickTriggered = true
-                                Log.d("RemoteControlScreen", "Sending Right Click (Timer)")
-                                signalRClient.sendRightClick() // Use non-nullable signalRClient
-                            }
-                        }
-
-                        try {
-                            // Process events until the finger is lifted
-                            while (true) {
-                                val event = awaitPointerEvent()
-                                val change = event.changes.firstOrNull { it.id == down.id }
-                                
-                                if (change == null || !change.pressed) {
-                                    // Finger Up
-                                    change?.consume()
-                                    break
-                                }
-
-                                val positionChange = change.position - downPoint
-                                val distance = positionChange.getDistance()
-
-                                // If moved beyond threshold, it's a drag
-                                if (!isDrag && distance > movementThreshold) {
-                                    isDrag = true
-                                    longPressJob.cancel() // Cancel the right-click timer immediately
-                                }
-
-                                if (isDrag) {
-                                    // Handle Mouse Movement
-                                    val delta = change.positionChange()
-                                    if (delta != Offset.Zero) {
-                                        val sensitivity = 1.2f
-                                        signalRClient.sendMouseMove(delta.x * sensitivity, delta.y * sensitivity) // Use non-nullable signalRClient
-                                        change.consume()
-                                    }
-                                }
-                            }
-                        } finally {
-                            // Ensure the timer is cancelled when the gesture ends (finger up)
-                            longPressJob.cancel()
-                        }
-
-                        // Gesture Finished (Finger Up)
-                        // If it wasn't a drag and we haven't triggered right click yet, it's a left click
-                        if (!isDrag && !isRightClickTriggered) {
-                            Log.d("RemoteControlScreen", "Sending Left Click (Tap)")
-                            signalRClient.sendLeftClick() // Use non-nullable signalRClient
-                        }
-                    }
-                }
-        ) {
-            Text(
-                text = "Trackpad Active\n(Tap = Left Click | Hold 2s = Right Click)",
-                modifier = Modifier.align(Alignment.Center),
-                style = MaterialTheme.typography.bodyLarge,
-                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
-            )
-        }
-
-        // --- CONTROLS ROW ---
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 8.dp, vertical = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
+        // Volume Slider
+        Row(verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = {
-                signalRClient?.sendToggleMute()
+                signalRClient.sendToggleMute()
                 isMutedState = !isMutedState
             }) {
-                Icon(
-                    imageVector = if (isMutedState) Icons.Filled.VolumeOff else Icons.Filled.VolumeUp,
-                    contentDescription = if (isMutedState) "Unmute" else "Mute"
-                )
+                Icon(if (isMutedState) Icons.Filled.VolumeOff else Icons.Filled.VolumeUp, null)
             }
             Slider(
                 value = volumeLevel,
-                onValueChange = { newValue -> volumeLevel = newValue },
-                onValueChangeFinished = { signalRClient?.sendSetVolume(volumeLevel) },
+                onValueChange = { volumeLevel = it },
+                onValueChangeFinished = { signalRClient.sendSetVolume(volumeLevel) },
                 valueRange = 0f..100f,
                 modifier = Modifier.weight(1f)
             )
-            Text(text = "${volumeLevel.toInt()}%", modifier = Modifier.padding(start = 8.dp))
         }
 
-        // --- KEYBOARD CONTROLS ---
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(8.dp)
-                .pointerInput(Unit) {
-                    detectDragGestures { _, dragAmount ->
-                        if (dragAmount.y < -40) {
-                            keyboardController?.show()
-                        }
-                    }
-                },
-            verticalArrangement = Arrangement.spacedBy(4.dp)
-        ) {
-            // Row 1: Modifiers + Tab
+        // Key Grids
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            // Grid 1
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                ModifierKeyButton(
-                    "Shift",
-                    isShiftPressed,
-                    Modifier.weight(1f),
-                    onToggle = { newState ->
-                        if (newState) signalRClient?.sendKeyEvent("INPUT_KEY_DOWN", VK_SHIFT)
-                        else signalRClient?.sendKeyEvent("INPUT_KEY_UP", VK_SHIFT)
-                        mainViewModel?.setShiftPressed(newState)
-                    },
-                    onDoubleClick = {
-                        signalRClient?.sendKeyEvent("INPUT_KEY_DOWN", VK_SHIFT)
-                        signalRClient?.sendMouseClick("Left")
-                        signalRClient?.sendKeyEvent("INPUT_KEY_UP", VK_SHIFT)
-                        mainViewModel?.setShiftPressed(false)
-                    }
-                )
-                ModifierKeyButton(
-                    "Ctrl",
-                    isCtrlPressed,
-                    Modifier.weight(1f),
-                    onToggle = { newState ->
-                        if (newState) signalRClient?.sendKeyEvent("INPUT_KEY_DOWN", VK_CONTROL)
-                        else signalRClient?.sendKeyEvent("INPUT_KEY_UP", VK_CONTROL)
-                        mainViewModel?.setCtrlPressed(newState)
-                    },
-                    onDoubleClick = {
-                        signalRClient?.sendKeyEvent("INPUT_KEY_DOWN", VK_CONTROL)
-                        signalRClient?.sendMouseClick("Left")
-                        signalRClient?.sendKeyEvent("INPUT_KEY_UP", VK_CONTROL)
-                        mainViewModel?.setCtrlPressed(false)
-                    }
-                )
-                ModifierKeyButton(
-                    "Alt",
-                    isAltPressed,
-                    modifier = Modifier.weight(1f),
-                    onToggle = { newState ->
-                        if (newState) signalRClient?.sendKeyEvent("INPUT_KEY_DOWN", VK_MENU)
-                        else signalRClient?.sendKeyEvent("INPUT_KEY_UP", VK_MENU)
-                        mainViewModel?.setAltPressed(newState)
-                    },
-                    onDoubleClick = {
-                        signalRClient?.sendKeyEvent("INPUT_KEY_DOWN", VK_MENU)
-                        signalRClient?.sendMouseClick("Left")
-                        signalRClient?.sendKeyEvent("INPUT_KEY_UP", VK_MENU)
-                        mainViewModel?.setAltPressed(false)
-                    }
-                )
-                ActionKeyButton(text = "Tab", onClick = { signalRClient?.sendKeyEvent("INPUT_KEY_PRESS", VK_TAB) }, modifier = Modifier.weight(1f))
+                ModifierKeyButton("Shift", isShiftPressed, Modifier.weight(1f), onToggle = { 
+                    if (it) signalRClient.sendKeyEvent("INPUT_KEY_DOWN", VK_SHIFT)
+                    else signalRClient.sendKeyEvent("INPUT_KEY_UP", VK_SHIFT)
+                    mainViewModel.setShiftPressed(it)
+                }, onDoubleClick = {
+                    signalRClient.sendKeyEvent("INPUT_KEY_DOWN", VK_SHIFT)
+                    signalRClient.sendMouseClick("Left")
+                    signalRClient.sendKeyEvent("INPUT_KEY_UP", VK_SHIFT)
+                    mainViewModel.setShiftPressed(false)
+                })
+                ModifierKeyButton("Ctrl", isCtrlPressed, Modifier.weight(1f), onToggle = { 
+                    if (it) signalRClient.sendKeyEvent("INPUT_KEY_DOWN", VK_CONTROL)
+                    else signalRClient.sendKeyEvent("INPUT_KEY_UP", VK_CONTROL)
+                    mainViewModel.setCtrlPressed(it)
+                }, onDoubleClick = {
+                    signalRClient.sendKeyEvent("INPUT_KEY_DOWN", VK_CONTROL)
+                    signalRClient.sendMouseClick("Left")
+                    signalRClient.sendKeyEvent("INPUT_KEY_UP", VK_CONTROL)
+                    mainViewModel.setCtrlPressed(false)
+                })
+                ModifierKeyButton("Alt", isAltPressed, Modifier.weight(1f), onToggle = { 
+                    if (it) signalRClient.sendKeyEvent("INPUT_KEY_DOWN", VK_MENU)
+                    else signalRClient.sendKeyEvent("INPUT_KEY_UP", VK_MENU)
+                    mainViewModel.setAltPressed(it)
+                }, onDoubleClick = {
+                    signalRClient.sendKeyEvent("INPUT_KEY_DOWN", VK_MENU)
+                    signalRClient.sendMouseClick("Left")
+                    signalRClient.sendKeyEvent("INPUT_KEY_UP", VK_MENU)
+                    mainViewModel.setAltPressed(false)
+                })
+                ActionKeyButton(text = "Tab", modifier = Modifier.weight(1f)) {
+                    signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_TAB)
+                }
             }
 
-            // Row 2: Esc, Enter, Delete, Backspace
+            // Grid 2
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                ActionKeyButton(text = "Esc", onClick = { signalRClient?.sendKeyEvent("INPUT_KEY_PRESS", VK_ESCAPE) }, modifier = Modifier.weight(1f))
-                ActionKeyButton(icon = Icons.AutoMirrored.Filled.KeyboardReturn, onClick = { signalRClient?.sendKeyEvent("INPUT_KEY_PRESS", VK_RETURN) }, modifier = Modifier.weight(1f))
-                ActionKeyButton(icon = Icons.Default.Delete, onClick = {
+                ActionKeyButton(text = "Esc", modifier = Modifier.weight(1f)) {
+                    signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_ESCAPE)
+                }
+                ActionKeyButton(icon = Icons.AutoMirrored.Filled.KeyboardReturn, modifier = Modifier.weight(1f)) {
+                    signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_RETURN)
+                }
+                ActionKeyButton(icon = Icons.Default.Delete, modifier = Modifier.weight(1f)) {
                     coroutineScope.launch {
-                        signalRClient?.sendKeyEvent("INPUT_KEY_DOWN", VK_CONTROL)
-                        signalRClient?.sendKeyEvent("INPUT_KEY_PRESS", VK_A)
+                        signalRClient.sendKeyEvent("INPUT_KEY_DOWN", VK_CONTROL)
+                        signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_A)
                         delay(100)
-                        signalRClient?.sendKeyEvent("INPUT_KEY_UP", VK_CONTROL)
-                        signalRClient?.sendKeyEvent("INPUT_KEY_PRESS", VK_BACK)
+                        signalRClient.sendKeyEvent("INPUT_KEY_UP", VK_CONTROL)
+                        signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_BACK)
                     }
-                }, modifier = Modifier.weight(1f))
-                ActionKeyButton(icon = Icons.AutoMirrored.Filled.KeyboardBackspace, onClick = { signalRClient?.sendKeyEvent("INPUT_KEY_PRESS", VK_BACK) }, modifier = Modifier.weight(1f))
+                }
+                ActionKeyButton(icon = Icons.AutoMirrored.Filled.KeyboardBackspace, modifier = Modifier.weight(1f)) {
+                    signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_BACK)
+                }
             }
 
-                        // Row 3: Shortcuts, Paste, Shutdown
-                        val shutdownTimes = listOf(0, 15, 30, 60, 120, 300, 720)
-                        val context = LocalContext.current            
-                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                            ActionKeyButton(text = "Alt+Tab", onClick = {
-                                signalRClient?.sendKeyEvent("INPUT_KEY_DOWN", VK_MENU)
-                                signalRClient?.sendKeyEvent("INPUT_KEY_PRESS", VK_TAB)
-                                signalRClient?.sendKeyEvent("INPUT_KEY_UP", VK_MENU)
-                            }, modifier = Modifier.weight(1f))
-                            
-                            ActionKeyButton(text = "Paste", onClick = {
-                                val clipboardManager = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                val clipData = clipboardManager.primaryClip
-                                if (clipData != null && clipData.itemCount > 0) {
-                                    val clipboardText = clipData.getItemAt(0).text?.toString()
-                                    if (clipboardText != null) {
-                                        signalRClient?.sendText(clipboardText)
-                                    }
-                                }
-                            }, modifier = Modifier.weight(1f))
-            
-                            ActionKeyButton(
-                                icon = Icons.Default.PowerSettingsNew,
-                                text = shutdownLabel,
-                                onClick = {
-                                    shutdownIndex = (shutdownIndex + 1) % shutdownTimes.size
-                                    signalRClient?.sendScheduleShutdown(shutdownTimes[shutdownIndex])
-                                },
-                                modifier = Modifier.weight(1f)
-                            )
-                            ActionKeyButton(
-                                text = "Alt+F4",
-                                onClick = {
-                                    signalRClient?.sendKeyEvent("INPUT_KEY_DOWN", VK_MENU)
-                                    signalRClient?.sendKeyEvent("INPUT_KEY_PRESS", VK_F4)
-                                    signalRClient?.sendKeyEvent("INPUT_KEY_UP", VK_MENU)
-                                },
-                                modifier = Modifier.weight(1f)
-                            )
+            // Grid 3
+            val shutdownTimes = listOf(0, 15, 30, 60, 120, 300, 720)
+            val context = LocalContext.current
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                ActionKeyButton(text = "Alt+Tab", modifier = Modifier.weight(1f)) {
+                    signalRClient.sendKeyEvent("INPUT_KEY_DOWN", VK_MENU)
+                    signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_TAB)
+                    signalRClient.sendKeyEvent("INPUT_KEY_UP", VK_MENU)
+                }
+                ActionKeyButton(text = "Paste", modifier = Modifier.weight(1f)) {
+                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                    clipboard.primaryClip?.getItemAt(0)?.text?.let { signalRClient.sendText(it.toString()) }
+                }
+                ActionKeyButton(icon = Icons.Default.PowerSettingsNew, text = shutdownLabel, modifier = Modifier.weight(1f)) {
+                    shutdownIndex = (shutdownIndex + 1) % shutdownTimes.size
+                    signalRClient.sendScheduleShutdown(shutdownTimes[shutdownIndex])
+                }
+                ActionKeyButton(text = "Kbd", modifier = Modifier.weight(1f)) {
+                    keyboardController?.show()
+                }
             }
         }
     }
@@ -446,8 +379,17 @@ fun ModifierKeyButton(
 }
 
 @Composable
-fun ActionKeyButton(modifier: Modifier = Modifier, icon: androidx.compose.ui.graphics.vector.ImageVector? = null, text: String? = null, onClick: () -> Unit) {
-    Button(onClick = onClick, modifier = modifier.height(40.dp)) {
+fun ActionKeyButton(
+    modifier: Modifier = Modifier, 
+    icon: androidx.compose.ui.graphics.vector.ImageVector? = null, 
+    text: String? = null, 
+    onClick: () -> Unit
+) {
+    Button(
+        onClick = onClick, 
+        modifier = modifier.height(40.dp),
+        contentPadding = PaddingValues(0.dp)
+    ) {
         if (icon != null) Icon(icon, contentDescription = text)
         if (text != null) Text(text, softWrap = false, fontSize = 10.sp)
     }

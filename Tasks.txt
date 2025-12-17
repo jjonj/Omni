@@ -8,12 +8,13 @@ WHen starting a task edit this document by prefixing the line with IN-PROGRESS
 DONE See similar android task: Button on hub window to set PC to turn off after X time. Clicking botton toggles between None/15min/30min/60min/2hours/5hours/12hours cycling back to none. To turn off PC schedule a call to C:\Windows\explorer.exe "B:\GDrive\Tools\05 Automation\shutdown.bat"
 Remove the Test Input button (do this tiny task whenever you are touching the hub code anyway)
 Hub window should look better/more modern UI and have a dark theme
+Hub window shutdown timer does not update (its stuck at e.g. 14m 59s without counting down)
 
 ## in OmniSync.Android
 
 ### General
-Change reconnect attempt period from 3s to 10s
-Using android back button should go back to the previous screen we were on instead of closing app, remember up to 3 screens. If no previous screen in history then go to dashboard. If going back twice on dashboard then close app.
+DONE Change reconnect attempt period from 3s to 10s
+DONE Using android back button should go back to the previous screen we were on instead of closing app, remember up to 3 screens. If no previous screen in history then go to dashboard. If going back twice on dashboard then close app.
 
 
 ### Dashboard
@@ -25,10 +26,9 @@ DONE Remove some of the overly verbose logging to the activity hub
 ### Remote Control Screen
 DONE Special Button panel is ugly and takes up too much space
 DONE Shift, Alt and Ctrl toggling is broken, should be intelligent about highlighting button
-DONE See similar hub task: Button to set PC to turn off after X time. Clicking botton toggles between None/15min/30min/60min/2hours/5hours/12hours cycling back to none. To turn off PC schedule a call to C:\Windows\explorer.exe "B:\GDrive\Tools\05 Automation\shutdown.bat". Text on button updates with each click.
-Recent commits made it so the button panel no longer floats above the android keyboard when the keyboard pops up, refix this.
+DONE See similar hub task: Button to set PC to turn off after X time. Clicking botton toggles between None/15min/30min/60min/2hours/5hours/12hours cycling back to none. To turn off PC schedule a call to C:\Windows\explorer.exe "B:\GDrive\Tools\05 Automation\shutdown.bat". Text on button updates with each click.      
+DONE Recent commits made it so the button panel no longer floats above the android keyboard when the keyboard pops up, refix this.
 Stream screen, replacing background of the trackpad leaving the trackpad functioning still, options to toggle monitor, pinch to zoom, (advanced feature, do last)
-
 ### Files Screen
 Downloading a video into app data and optionally password protecting it with encryption and password. Should be deletable
 DONE Problem when switching phone orientation the video restarts
@@ -41,6 +41,7 @@ Bookmarking folders
 Video player has a previous and next button built in, hook into those buttons and find the next/previous video in the current folders
 Swiping finger up and down on left side should change phone brightness and right side should change phone volume
 Text editing fancy features, think like a lite code editor like notepad++ or VS code. be creative.
+Search for files (relative to current folder), when file found have a button to open containing folder. Quick/long tapping file should work like normal.
 
 ### Browser control screen
 Add a button to open current chrome tab url on phone (send to default browser)
