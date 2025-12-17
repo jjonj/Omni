@@ -143,17 +143,6 @@ namespace OmniSync.Hub.Presentation
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
         }
 
-        private void TestInput_Click(object sender, RoutedEventArgs e)
-        {
-            _hubMonitorService.AddLogMessage("[MainWindow] Testing keyboard input...");
-            _inputService.SendKeyPress(0x41); // Press 'A'
-
-            _hubMonitorService.AddLogMessage("[MainWindow] Testing mouse movement to (500,500)...");
-            _inputService.MoveMouse(500, 500); // Move to a specific coordinate
-
-            _hubMonitorService.AddLogMessage("[MainWindow] Input test sent.");
-        }
-
         private void ShutdownService_ShutdownScheduled(object? sender, DateTime? scheduledTime)
         {
             Dispatcher.Invoke(() =>
