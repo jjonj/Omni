@@ -6,6 +6,7 @@ using System.Windows.Threading; // For Dispatcher
 using OmniSync.Hub.Logic.Monitoring; // For HubMonitorService
 using System; // For Environment.NewLine
 using OmniSync.Hub.Infrastructure.Services; // Add this using directive
+using OmniSync.Hub.Logic.Services;
 using Microsoft.Win32; // Added for Registry access
 
 namespace OmniSync.Hub.Presentation
@@ -16,13 +17,19 @@ namespace OmniSync.Hub.Presentation
 
         private readonly HubMonitorService _hubMonitorService;
         private readonly InputService _inputService; // Add InputService
+        private readonly ShutdownService _shutdownService;
         private const string AppName = "OmniSync Hub";
 
-        public MainWindow(HubMonitorService hubMonitorService, InputService inputService) // Add InputService to constructor
+        private int _shutdownIndex = 0;
+        private readonly int[] _shutdownTimes = { 0, 15, 30, 60, 120, 300, 720 };
+        private readonly string[] _shutdownLabels = { "None", "15m", "30m", "1h", "2h", "5h", "12h" };
+
+        public MainWindow(HubMonitorService hubMonitorService, InputService inputService, ShutdownService shutdownService) // Add ShutdownService
         {
             InitializeComponent();
             _hubMonitorService = hubMonitorService;
             _inputService = inputService; // Assign InputService
+            _shutdownService = shutdownService;
             this.DataContext = _hubMonitorService; // Set DataContext to the HubMonitorService
 
             // Subscribe to HubMonitorService events
@@ -30,6 +37,7 @@ namespace OmniSync.Hub.Presentation
             _hubMonitorService.CommandUpdateOccurred += HubMonitorService_CommandUpdateOccurred;
             _hubMonitorService.ConnectionAdded += HubMonitorService_ConnectionAdded; // New subscription
             _hubMonitorService.ConnectionRemoved += HubMonitorService_ConnectionRemoved; // New subscription
+            _shutdownService.ShutdownScheduled += ShutdownService_ShutdownScheduled;
 
             // Initialize UI elements with current data from HubMonitorService
             // ConnectionsListBox is bound directly to ActiveConnections in XAML and ObservableCollection handles updates
@@ -41,6 +49,9 @@ namespace OmniSync.Hub.Presentation
                 LogTextBox.AppendText(logEntry + Environment.NewLine);
             }
             LastCommandTextBlock.Text = _hubMonitorService.LastIncomingCommand;
+
+            // Initial load for ShutdownButton
+            UpdateShutdownButtonLabel(_shutdownService.GetScheduledTime());
 
             // Scroll to end of log on initial load
             LogTextBox.ScrollToEnd();
@@ -141,6 +152,49 @@ namespace OmniSync.Hub.Presentation
             _inputService.MoveMouse(500, 500); // Move to a specific coordinate
 
             _hubMonitorService.AddLogMessage("[MainWindow] Input test sent.");
+        }
+
+        private void ShutdownService_ShutdownScheduled(object? sender, DateTime? scheduledTime)
+        {
+            Dispatcher.Invoke(() =>
+            {
+                UpdateShutdownButtonLabel(scheduledTime);
+            });
+        }
+
+        private void UpdateShutdownButtonLabel(DateTime? scheduledTime)
+        {
+            if (scheduledTime == null)
+            {
+                ShutdownButton.Content = "Shutdown: None";
+                _shutdownIndex = 0;
+            }
+            else
+            {
+                var remaining = scheduledTime.Value - DateTime.Now;
+                if (remaining.TotalSeconds > 0)
+                {
+                    if (remaining.TotalHours >= 1)
+                    {
+                        ShutdownButton.Content = $"Shutdown: {(int)remaining.TotalHours}h {remaining.Minutes}m {remaining.Seconds}s";
+                    }
+                    else
+                    {
+                        ShutdownButton.Content = $"Shutdown: {remaining.Minutes}m {remaining.Seconds}s";
+                    }
+                }
+                else
+                {
+                    ShutdownButton.Content = "Shutdown: Now";
+                }
+            }
+        }
+
+        private void ShutdownButton_Click(object sender, RoutedEventArgs e)
+        {
+            _shutdownIndex = (_shutdownIndex + 1) % _shutdownTimes.Length;
+            int minutes = _shutdownTimes[_shutdownIndex];
+            _shutdownService.ScheduleShutdown(minutes);
         }
     }
 }

@@ -89,6 +89,7 @@ class SignalRClient(
         hubConnection?.onClosed { error ->
             _connectionState.value = "Disconnected: ${error?.message}"
             mainViewModel.setConnected(false)
+            mainViewModel.setScheduledShutdownTime(null)
 
             if (isReconnecting.compareAndSet(false, true)) {
                 mainViewModel.addLog("Connection lost. Starting auto-reconnect...", com.omni.sync.ui.screen.LogType.WARNING)
@@ -186,6 +187,11 @@ class SignalRClient(
                 "Alt" -> mainViewModel.setAltPressed(isPressed)
             }
         }, String::class.java, Boolean::class.java)
+
+        hubConnection?.on("ShutdownScheduled", { scheduledTime: String? ->
+            Log.d("SignalRClient", "ShutdownScheduled: $scheduledTime")
+            mainViewModel.setScheduledShutdownTime(scheduledTime)
+        }, String::class.java)
         
         // Handler for cleanup patterns from Chrome extension
         hubConnection?.on("ReceiveCleanupPatterns", { patternsData: Any ->
@@ -208,6 +214,7 @@ class SignalRClient(
         hubConnection?.stop()
         _connectionState.value = "Disconnected"
         mainViewModel.setConnected(false)
+        mainViewModel.setScheduledShutdownTime(null)
         mainViewModel.setErrorMessage(null) // Clear any previous errors
         Log.d("SignalRClient", "Connection stopped.")
     }

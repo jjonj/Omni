@@ -14,6 +14,8 @@ namespace OmniSync.Hub.Logic.Services
         private CancellationTokenSource? _shutdownCts;
         private DateTime? _scheduledTime;
 
+        public event EventHandler<DateTime?>? ShutdownScheduled;
+
         public ShutdownService(ILogger<ShutdownService> logger, ProcessService processService)
         {
             _logger = logger;
@@ -29,10 +31,12 @@ namespace OmniSync.Hub.Logic.Services
             if (minutes <= 0)
             {
                 _logger.LogInformation("Shutdown timer cancelled.");
+                ShutdownScheduled?.Invoke(this, null);
                 return;
             }
 
             _scheduledTime = DateTime.Now.AddMinutes(minutes);
+            ShutdownScheduled?.Invoke(this, _scheduledTime);
             _shutdownCts = new CancellationTokenSource();
             var token = _shutdownCts.Token;
 

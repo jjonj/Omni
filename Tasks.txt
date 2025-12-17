@@ -1,21 +1,25 @@
 # Tasks
-After finishing a task build and deploy then rely on user to approve each subtask before you git commit between each task. Also mark the task as "Done" in this document by prefixing the line
-
-
+WHen starting a task edit this document by prefixing the line with IN-PROGRESS
 ## General
 
 ## For the hub
-See similar android task: Button on hub window to set PC to turn off after X time. Clicking botton toggles between None/15min/30min/60min/2hours/5hours/12hours cycling back to none. To turn off PC schedule a call to C:\Windows\explorer.exe "B:\GDrive\Tools\05 Automation\shutdown.bat"
+DONE See similar android task: Button on hub window to set PC to turn off after X time. Clicking botton toggles between None/15min/30min/60min/2hours/5hours/12hours cycling back to none. To turn off PC schedule a call to C:\Windows\explorer.exe "B:\GDrive\Tools\05 Automation\shutdown.bat"
 
 
 ## in OmniSync.Android
+
+### Dashboard
+Quick actions, remove buttons test echo, list notes, test clipboard. Instead add buttons for Shutdown ( "B:\GDrive\Tools\05 Automation\shutdown.bat") and Sleep ("B:\GDrive\Tools\05 Automation\sleep.bat")
+Add quick action button to send "magic packet" for wake on lan. Use broadcast mask 10.0.0.255 and mac address 10FFE0379DAC use port 9
+
 ### Remote Control Screen
 DONE Special Button panel is ugly and takes up too much space
 DONE Shift, Alt and Ctrl toggling is broken, should be intelligent about highlighting button
 DONE See similar hub task: Button to set PC to turn off after X time. Clicking botton toggles between None/15min/30min/60min/2hours/5hours/12hours cycling back to none. To turn off PC schedule a call to C:\Windows\explorer.exe "B:\GDrive\Tools\05 Automation\shutdown.bat". Text on button updates with each click.
 when the android keyboard is active (there is a black space between the buttons and the keyboard only when keyboard active)
+
 ### Files Screen
-Downloading a video into app data and optionally password protecting it with encryption and password
+Downloading a video into app data and optionally password protecting it with encryption and password. Should be deletable
 Problem when switching phone orientation the video restarts
 Video player fullscreen/horizontal mode and pinch to zoom.
 Support to open more file types, unknown filetypes should open as a text file
@@ -23,3 +27,7 @@ Support for editing files opened as text files
 
 ### Browser control screen
 Add a button to open current chrome tab url on phone (send to default browser)
+The [arrow down] button next to clean tabs does not do anything. its supposed to open a list of the urls to auto close during clean tabs action.
+Button to open a list of all tabs open in chrome with in-row buttons to close each one (for manual tab cleanup)
+Bookmark current URL should bookmark the currently open chrome tab, not the entered url
+Make bookmarks reorderable

@@ -39,6 +39,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _isAltPressed = MutableStateFlow(false)
     val isAltPressed: StateFlow<Boolean> = _isAltPressed
 
+    private val _scheduledShutdownTime = MutableStateFlow<String?>(null)
+    val scheduledShutdownTime: StateFlow<String?> = _scheduledShutdownTime
+
     // --- Command Output ---
     private val _commandOutput = MutableStateFlow("")
     val commandOutput: StateFlow<String> = _commandOutput
@@ -87,6 +90,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setAltPressed(isPressed: Boolean) {
         _isAltPressed.value = isPressed
+    }
+
+    fun setScheduledShutdownTime(time: String?) {
+        _scheduledShutdownTime.value = time
     }
     
     // Updated Clipboard logic if needed, omitted for brevity but keep your existing logic

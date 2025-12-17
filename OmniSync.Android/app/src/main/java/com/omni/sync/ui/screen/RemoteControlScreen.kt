@@ -12,6 +12,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardBackspace
 import androidx.compose.material.icons.automirrored.filled.KeyboardReturn
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.PowerSettingsNew
 import androidx.compose.material.icons.filled.VolumeOff
 import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.*
@@ -71,9 +72,47 @@ fun RemoteControlScreen(
     val isShiftPressed by mainViewModel.isShiftPressed.collectAsState()
     val isCtrlPressed by mainViewModel.isCtrlPressed.collectAsState()
     val isAltPressed by mainViewModel.isAltPressed.collectAsState()
+    val scheduledShutdownTime by mainViewModel.scheduledShutdownTime.collectAsState()
 
     var volumeLevel by remember { mutableStateOf(50f) }
     var isMutedState by remember { mutableStateOf(false) }
+
+    // Countdown logic for shutdown timer
+    var shutdownLabel by remember { mutableStateOf("None") }
+    var shutdownIndex by remember { mutableStateOf(0) }
+    
+    LaunchedEffect(scheduledShutdownTime) {
+        if (scheduledShutdownTime == null) {
+            shutdownLabel = "None"
+            shutdownIndex = 0
+        } else {
+            // Parsing Hub time (ISO 8601)
+            try {
+                val targetTime = java.time.OffsetDateTime.parse(scheduledShutdownTime).toInstant().toEpochMilli()
+                while (true) {
+                    val now = System.currentTimeMillis()
+                    val diff = targetTime - now
+                    if (diff <= 0) {
+                        shutdownLabel = "Now"
+                        break
+                    }
+                    val totalMinutes = (diff / 1000) / 60
+                    val hours = totalMinutes / 60
+                    val minutes = totalMinutes % 60
+                    
+                    shutdownLabel = if (hours > 0) {
+                        "${hours}h ${minutes}m"
+                    } else {
+                        "${minutes}m"
+                    }
+                    delay(1000)
+                }
+            } catch (e: Exception) {
+                Log.e("RemoteControlScreen", "Error parsing shutdown time: $scheduledShutdownTime", e)
+                shutdownLabel = "Error"
+            }
+        }
+    }
 
     // Hidden TextField to manage soft keyboard input
     var textInput by remember { mutableStateOf("") }
@@ -333,44 +372,45 @@ fun RemoteControlScreen(
                 ActionKeyButton(icon = Icons.AutoMirrored.Filled.KeyboardBackspace, onClick = { signalRClient?.sendKeyEvent("INPUT_KEY_PRESS", VK_BACK) }, modifier = Modifier.weight(1f))
             }
 
-            // Row 3: Shortcuts, Paste, Shutdown
-            val shutdownTimes = listOf(0, 15, 30, 60, 120, 300, 720)
-            val shutdownLabels = listOf("None", "15m", "30m", "1h", "2h", "5h", "12h")
-            var shutdownIndex by remember { mutableStateOf(0) }
-            val context = LocalContext.current
-
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                ActionKeyButton(text = "Alt+Tab", onClick = {
-                    signalRClient?.sendKeyEvent("INPUT_KEY_DOWN", VK_MENU)
-                    signalRClient?.sendKeyEvent("INPUT_KEY_PRESS", VK_TAB)
-                    signalRClient?.sendKeyEvent("INPUT_KEY_UP", VK_MENU)
-                }, modifier = Modifier.weight(1f))
-                
-                ActionKeyButton(text = "Paste", onClick = {
-                    val clipboardManager = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                    val clipData = clipboardManager.primaryClip
-                    if (clipData != null && clipData.itemCount > 0) {
-                        val clipboardText = clipData.getItemAt(0).text?.toString()
-                        if (clipboardText != null) {
-                            signalRClient?.sendText(clipboardText)
-                        }
-                    }
-                }, modifier = Modifier.weight(1f))
-
-                ActionKeyButton(
-                    text = "OFF: ${shutdownLabels[shutdownIndex]}",
-                    onClick = {
-                        shutdownIndex = (shutdownIndex + 1) % shutdownTimes.size
-                        signalRClient?.sendScheduleShutdown(shutdownTimes[shutdownIndex])
-                    },
-                    modifier = Modifier.weight(1f)
-                )
-                
-                ActionKeyButton(text = "Alt+F4", onClick = {
-                    signalRClient?.sendKeyEvent("INPUT_KEY_DOWN", VK_MENU)
-                    signalRClient?.sendKeyEvent("INPUT_KEY_PRESS", VK_F4)
-                    signalRClient?.sendKeyEvent("INPUT_KEY_UP", VK_MENU)
-                }, modifier = Modifier.weight(1f))
+                        // Row 3: Shortcuts, Paste, Shutdown
+                        val shutdownTimes = listOf(0, 15, 30, 60, 120, 300, 720)
+                        val context = LocalContext.current            
+                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            ActionKeyButton(text = "Alt+Tab", onClick = {
+                                signalRClient?.sendKeyEvent("INPUT_KEY_DOWN", VK_MENU)
+                                signalRClient?.sendKeyEvent("INPUT_KEY_PRESS", VK_TAB)
+                                signalRClient?.sendKeyEvent("INPUT_KEY_UP", VK_MENU)
+                            }, modifier = Modifier.weight(1f))
+                            
+                            ActionKeyButton(text = "Paste", onClick = {
+                                val clipboardManager = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                val clipData = clipboardManager.primaryClip
+                                if (clipData != null && clipData.itemCount > 0) {
+                                    val clipboardText = clipData.getItemAt(0).text?.toString()
+                                    if (clipboardText != null) {
+                                        signalRClient?.sendText(clipboardText)
+                                    }
+                                }
+                            }, modifier = Modifier.weight(1f))
+            
+                            ActionKeyButton(
+                                icon = Icons.Default.PowerSettingsNew,
+                                text = shutdownLabel,
+                                onClick = {
+                                    shutdownIndex = (shutdownIndex + 1) % shutdownTimes.size
+                                    signalRClient?.sendScheduleShutdown(shutdownTimes[shutdownIndex])
+                                },
+                                modifier = Modifier.weight(1f)
+                            )
+                            ActionKeyButton(
+                                text = "Alt+F4",
+                                onClick = {
+                                    signalRClient?.sendKeyEvent("INPUT_KEY_DOWN", VK_MENU)
+                                    signalRClient?.sendKeyEvent("INPUT_KEY_PRESS", VK_F4)
+                                    signalRClient?.sendKeyEvent("INPUT_KEY_UP", VK_MENU)
+                                },
+                                modifier = Modifier.weight(1f)
+                            )
             }
         }
     }

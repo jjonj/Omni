@@ -40,6 +40,8 @@
                         <StackPanel>
                             <TextBlock Text="Last Incoming Command" FontWeight="Bold" Margin="5"/>
                             <TextBlock x:Name="LastCommandTextBlock" Text="{Binding LastIncomingCommand}" TextWrapping="Wrap" Margin="5"/>
+                            <!-- Shutdown Timer Button -->
+                            <Button x:Name="ShutdownButton" Content="Shutdown: None" Click="ShutdownButton_Click" Margin="5"/>
                             <!-- New Test Input Button -->
                             <Button Content="Test Input" Click="TestInput_Click" Margin="5"/>
                         </StackPanel>

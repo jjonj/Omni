@@ -27,9 +27,10 @@ namespace OmniSync.Hub.Presentation.Hubs
         private readonly HubEventSender _hubEventSender;
         private readonly InputService _inputService;
         private readonly AudioService _audioService;
+        private readonly ShutdownService _shutdownService;
         private readonly ILogger<RpcApiHub> _logger; // Added for logging
 
-        public RpcApiHub(AuthService authService, FileService fileService, ClipboardService clipboardService, CommandDispatcher commandDispatcher, ProcessService processService, HubEventSender hubEventSender, InputService inputService, AudioService audioService, ILogger<RpcApiHub> logger)
+        public RpcApiHub(AuthService authService, FileService fileService, ClipboardService clipboardService, CommandDispatcher commandDispatcher, ProcessService processService, HubEventSender hubEventSender, InputService inputService, AudioService audioService, ShutdownService shutdownService, ILogger<RpcApiHub> logger)
         {
             _authService = authService;
             _fileService = fileService;
@@ -39,9 +40,8 @@ namespace OmniSync.Hub.Presentation.Hubs
             _hubEventSender = hubEventSender;
             _inputService = inputService;
             _audioService = audioService;
+            _shutdownService = shutdownService;
             _logger = logger;
-
-            _inputService.ModifierStateChanged += OnModifierStateChanged;
         }
 
         public override async Task OnConnectedAsync()
@@ -54,9 +54,7 @@ namespace OmniSync.Hub.Presentation.Hubs
             // Send current modifier states to the newly connected client
             if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
             {
-                await Clients.Caller.SendAsync("ModifierStateUpdated", "Shift", _inputService.IsShiftPressed);
-                await Clients.Caller.SendAsync("ModifierStateUpdated", "Ctrl", _inputService.IsCtrlPressed);
-                await Clients.Caller.SendAsync("ModifierStateUpdated", "Alt", _inputService.IsAltPressed);
+                await SendCurrentState();
             }
         }
 
@@ -68,10 +66,12 @@ namespace OmniSync.Hub.Presentation.Hubs
             await base.OnDisconnectedAsync(exception);
         }
 
-        private async void OnModifierStateChanged(object? sender, ModifierStateEventArgs e)
+        private async Task SendCurrentState()
         {
-            _logger.LogDebug($"Modifier {e.Modifier} state changed to {e.IsPressed}. Broadcasting to clients.");
-            await Clients.All.SendAsync("ModifierStateUpdated", e.Modifier.ToString(), e.IsPressed);
+            await Clients.Caller.SendAsync("ModifierStateUpdated", "Shift", _inputService.IsShiftPressed);
+            await Clients.Caller.SendAsync("ModifierStateUpdated", "Ctrl", _inputService.IsCtrlPressed);
+            await Clients.Caller.SendAsync("ModifierStateUpdated", "Alt", _inputService.IsAltPressed);
+            await Clients.Caller.SendAsync("ShutdownScheduled", _shutdownService.GetScheduledTime());
         }
 
         public bool Authenticate(string apiKey)
@@ -82,10 +82,8 @@ namespace OmniSync.Hub.Presentation.Hubs
                 Context.Items["IsAuthenticated"] = true;
                 _logger.LogInformation($"Client authenticated: {Context.ConnectionId}");
                 
-                // Immediately send current modifier states after successful authentication
-                Clients.Caller.SendAsync("ModifierStateUpdated", "Shift", _inputService.IsShiftPressed);
-                Clients.Caller.SendAsync("ModifierStateUpdated", "Ctrl", _inputService.IsCtrlPressed);
-                Clients.Caller.SendAsync("ModifierStateUpdated", "Alt", _inputService.IsAltPressed);
+                // Immediately send current states after successful authentication
+                _ = SendCurrentState();
                 
                 return true;
             }
@@ -436,11 +434,6 @@ namespace OmniSync.Hub.Presentation.Hubs
             List<string> args = parts.Count > 1 ? parts.GetRange(1, parts.Count - 1) : new List<string>();
 
             return (commandName, args);
-        }
-
-        public void Dispose()
-        {
-            _inputService.ModifierStateChanged -= OnModifierStateChanged;
         }
     }
 }

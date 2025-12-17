@@ -12,13 +12,30 @@ namespace OmniSync.Hub.Logic.Services
     {
         private readonly IHubContext<RpcApiHub> _hubContext;
         private readonly ProcessService _processService;
+        private readonly InputService _inputService;
+        private readonly ShutdownService _shutdownService;
         private readonly Dictionary<string, string> _clientCommandOutputSubscriptions = new Dictionary<string, string>(); // ClientId -> ConnectionId for command output
 
-        public HubEventSender(IHubContext<RpcApiHub> hubContext, ProcessService processService)
+        public HubEventSender(IHubContext<RpcApiHub> hubContext, ProcessService processService, InputService inputService, ShutdownService shutdownService)
         {
             _hubContext = hubContext;
             _processService = processService;
+            _inputService = inputService;
+            _shutdownService = shutdownService;
+
             _processService.CommandOutputReceived += OnCommandOutputReceived;
+            _inputService.ModifierStateChanged += OnModifierStateChanged;
+            _shutdownService.ShutdownScheduled += OnShutdownScheduled;
+        }
+
+        private async void OnModifierStateChanged(object? sender, ModifierStateEventArgs e)
+        {
+            await _hubContext.Clients.All.SendAsync("ModifierStateUpdated", e.Modifier.ToString(), e.IsPressed);
+        }
+
+        private async void OnShutdownScheduled(object? sender, DateTime? scheduledTime)
+        {
+            await _hubContext.Clients.All.SendAsync("ShutdownScheduled", scheduledTime);
         }
 
         // Method to be called by RpcApiHub when a client connects and wants command output
