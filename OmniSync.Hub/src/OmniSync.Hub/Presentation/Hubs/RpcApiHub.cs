@@ -245,25 +245,51 @@ namespace OmniSync.Hub.Presentation.Hubs
             }
         }
 
-        public async Task<IEnumerable<OmniSync.Hub.Models.FileSystemEntry>> ListDirectory(string relativePath)
+        public async Task GetAvailableDrives()
         {
             try
             {
                 if (!Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) || !(bool)isAuthenticated)
                 {
-                    throw new UnauthorizedAccessException("Client is not authenticated.");
+                    await Clients.Caller.SendAsync("ReceiveError", "Unauthorized: Please authenticate first.");
+                    return;
                 }
 
-                // Invoke the event for ListDirectory commands
-                AnyCommandReceived?.Invoke(this, $"ListDirectory: {relativePath}");
-
-                return _fileService.ListDirectoryContents(relativePath);
+                AnyCommandReceived?.Invoke(this, "GetAvailableDrives");
+                
+                var drives = _fileService.GetDrives();
+                
+                // Python script expects "ReceiveAvailableDrives" event
+                await Clients.Caller.SendAsync("ReceiveAvailableDrives", drives);
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error listing directory '{relativePath}': {ex.Message}");
-                // Return an empty list or throw a more specific exception that the client can handle
-                throw new HubException($"Error listing directory: {ex.Message}", ex);
+                Console.WriteLine($"Error getting drives: {ex.Message}");
+                await Clients.Caller.SendAsync("ReceiveError", $"Error: {ex.Message}");
+            }
+        }
+
+        public async Task ListDirectory(string path)
+        {
+            try
+            {
+                if (!Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) || !(bool)isAuthenticated)
+                {
+                    await Clients.Caller.SendAsync("ReceiveError", "Unauthorized");
+                    return;
+                }
+
+                AnyCommandReceived?.Invoke(this, $"ListDirectory: {path}");
+
+                var contents = _fileService.ListDirectoryContents(path);
+
+                // Python script expects "ReceiveDirectoryContents" event
+                await Clients.Caller.SendAsync("ReceiveDirectoryContents", contents);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error listing directory '{path}': {ex.Message}");
+                await Clients.Caller.SendAsync("ReceiveError", $"Error listing directory: {ex.Message}");
             }
         }
 

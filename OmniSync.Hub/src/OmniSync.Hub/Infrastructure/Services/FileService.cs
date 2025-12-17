@@ -69,9 +69,44 @@ namespace OmniSync.Hub.Infrastructure.Services
             File.AppendAllText(fullPath, content);
         }
 
-        public IEnumerable<FileSystemEntry> ListDirectoryContents(string relativePath)
+        public IEnumerable<FileSystemEntry> GetDrives()
         {
-            var targetPath = SanitizeAndGetBrowseFullPath(relativePath);
+            var drives = DriveInfo.GetDrives();
+            return drives.Where(d => d.IsReady).Select(d => new FileSystemEntry
+            {
+                Name = d.Name,      // e.g., "C:\"
+                Path = d.Name,      // Absolute path
+                IsDirectory = true,
+                EntryType = "Drive",
+                Size = d.TotalSize,
+                LastModified = DateTime.Now 
+            });
+        }
+
+        public IEnumerable<FileSystemEntry> ListDirectoryContents(string path)
+        {
+            // If path is empty, and we are in "Whole Computer" mode, return drives.
+            if (string.IsNullOrEmpty(path) && string.IsNullOrEmpty(_browseRootPath))
+            {
+                return GetDrives();
+            }
+
+            string targetPath;
+
+            // Determine if we are using relative paths (Sandboxed) or Absolute paths (Full Access)
+            if (string.IsNullOrEmpty(_browseRootPath)) 
+            {
+                // Full Access Mode: Treat input path as absolute
+                targetPath = path;
+                
+                // Safety check: ensure path is valid
+                if (string.IsNullOrWhiteSpace(targetPath)) return GetDrives();
+            }
+            else
+            {
+                // Sandboxed Mode: Combine with root
+                targetPath = SanitizeAndGetBrowseFullPath(path);
+            }
 
             if (!Directory.Exists(targetPath))
             {
@@ -80,50 +115,70 @@ namespace OmniSync.Hub.Infrastructure.Services
 
             var entries = new List<FileSystemEntry>();
 
-            // Add parent directory (..) entry if not at the browse root
-            if (!string.Equals(targetPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar), 
-                               _browseRootPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar), 
-                               StringComparison.OrdinalIgnoreCase))
+            // 1. Add Parent Directory (..)
+            // We only add '..' if we are not at a Drive Root (e.g., C:\)
+            var parent = Directory.GetParent(targetPath);
+            if (parent != null)
             {
                 entries.Add(new FileSystemEntry
                 {
                     Name = "..",
-                    Path = Path.GetDirectoryName(relativePath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)) ?? "",
+                    Path = parent.FullName,
                     IsDirectory = true,
+                    EntryType = "Directory",
                     Size = 0,
-                    LastModified = DateTime.MinValue // Not applicable for parent
+                    LastModified = DateTime.MinValue
                 });
             }
-
-            // Directories
-            foreach (var dir in Directory.EnumerateDirectories(targetPath))
+            else if (string.IsNullOrEmpty(_browseRootPath))
             {
-                var dirInfo = new DirectoryInfo(dir);
-                entries.Add(new FileSystemEntry
-                {
-                    Name = dirInfo.Name,
-                    Path = Path.GetRelativePath(_browseRootPath, dir),
-                    IsDirectory = true,
-                    Size = 0, // Directories don't have a file size
-                    LastModified = dirInfo.LastWriteTime
-                });
+                // If we are at C:\ and in Full Access mode, '..' should probably take us back to the Drive List?
+                // For now, let's leave it empty or handle it in client logic.
             }
 
-            // Files
-            foreach (var file in Directory.EnumerateFiles(targetPath))
+            try 
             {
-                var fileInfo = new FileInfo(file);
-                entries.Add(new FileSystemEntry
+                // Directories
+                foreach (var dir in Directory.EnumerateDirectories(targetPath))
                 {
-                    Name = fileInfo.Name,
-                    Path = Path.GetRelativePath(_browseRootPath, file),
-                    IsDirectory = false,
-                    Size = fileInfo.Length,
-                    LastModified = fileInfo.LastWriteTime
-                });
+                    var dirInfo = new DirectoryInfo(dir);
+                    // Hide hidden folders
+                    if ((dirInfo.Attributes & FileAttributes.Hidden) != 0) continue;
+
+                    entries.Add(new FileSystemEntry
+                    {
+                        Name = dirInfo.Name,
+                        Path = dirInfo.FullName, // Send absolute path for navigation
+                        IsDirectory = true,
+                        EntryType = "Directory",
+                        Size = 0,
+                        LastModified = dirInfo.LastWriteTime
+                    });
+                }
+
+                // Files
+                foreach (var file in Directory.EnumerateFiles(targetPath))
+                {
+                    var fileInfo = new FileInfo(file);
+                    if ((fileInfo.Attributes & FileAttributes.Hidden) != 0) continue;
+
+                    entries.Add(new FileSystemEntry
+                    {
+                        Name = fileInfo.Name,
+                        Path = fileInfo.FullName, // Send absolute path
+                        IsDirectory = false,
+                        EntryType = "File",
+                        Size = fileInfo.Length,
+                        LastModified = fileInfo.LastWriteTime
+                    });
+                }
+            }
+            catch (UnauthorizedAccessException) 
+            {
+                // Skip system folders we can't read
             }
 
-            return entries.OrderBy(e => e.Name); // Order for consistent display
+            return entries.OrderByDescending(e => e.IsDirectory).ThenBy(e => e.Name);
         }
 
         public byte[] GetFileChunk(string filePath, long offset, int chunkSize)
