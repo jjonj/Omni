@@ -16,16 +16,18 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import com.omni.sync.service.ForegroundService
 import com.omni.sync.ui.screen.DashboardScreen
-import com.omni.sync.ui.screen.NoteViewerScreen
+import com.omni.sync.ui.screen.BrowserControlScreen
 import com.omni.sync.ui.screen.ProcessScreen
-import com.omni.sync.ui.screen.RemoteControlScreen // Updated import
+import com.omni.sync.ui.screen.RemoteControlScreen
 import com.omni.sync.ui.theme.OmniSyncTheme
 import com.omni.sync.viewmodel.AppScreen
 import com.omni.sync.viewmodel.MainViewModel
 import com.omni.sync.ui.screen.FilesScreen
 import com.omni.sync.viewmodel.FilesViewModel
+import com.omni.sync.viewmodel.BrowserViewModel
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.omni.sync.viewmodel.FilesViewModelFactory
+import com.omni.sync.viewmodel.BrowserViewModelFactory
 import androidx.compose.material3.Scaffold
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
@@ -65,6 +67,9 @@ class MainActivity : ComponentActivity() {
                     val filesViewModel: FilesViewModel = viewModel(
                         factory = FilesViewModelFactory(application, signalRClient, mainViewModel)
                     )
+                    val browserViewModel: BrowserViewModel = viewModel(
+                        factory = BrowserViewModelFactory(application, signalRClient)
+                    )
 
                     // Using Scaffold to organize the layout professionally
                     androidx.compose.material3.Scaffold(
@@ -91,8 +96,9 @@ class MainActivity : ComponentActivity() {
                                     signalRClient = signalRClient, 
                                     mainViewModel = mainViewModel
                                 )
-                                AppScreen.NOTEVIEWER -> NoteViewerScreen(
-                                    signalRClient = signalRClient
+                                AppScreen.BROWSER -> BrowserControlScreen(
+                                    signalRClient = signalRClient,
+                                    viewModel = browserViewModel
                                 )
                                 AppScreen.PROCESS -> ProcessScreen(
                                     signalRClient = signalRClient, 

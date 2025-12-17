@@ -1,0 +1,193 @@
+package com.omni.sync.ui.screen
+
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.ContentPasteGo
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Public
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material3.*
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import com.omni.sync.data.repository.SignalRClient
+import com.omni.sync.viewmodel.Bookmark
+import com.omni.sync.viewmodel.BrowserViewModel
+import com.omni.sync.viewmodel.BrowserViewModelFactory
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun BrowserControlScreen(
+    modifier: Modifier = Modifier,
+    signalRClient: SignalRClient?,
+    viewModel: BrowserViewModel
+) {
+    val urlInput by viewModel.urlInput.collectAsState()
+    val bookmarks by viewModel.bookmarks.collectAsState()
+    val openInNewTab by viewModel.openInNewTab.collectAsState()
+    val context = LocalContext.current
+
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .padding(16.dp)
+    ) {
+        // --- 1. Address Bar & Main Actions ---
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            OutlinedTextField(
+                value = urlInput,
+                onValueChange = { viewModel.onUrlChanged(it) },
+                label = { Text("URL") },
+                placeholder = { Text("google.com") },
+                leadingIcon = { Icon(Icons.Default.Public, contentDescription = null) },
+                singleLine = true,
+                modifier = Modifier.weight(1f),
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Go),
+                keyboardActions = KeyboardActions(
+                    onGo = { viewModel.navigate(urlInput) }
+                )
+            )
+            
+            // Paste & Go
+            IconButton(onClick = { viewModel.loadUrlFromClipboard(context) }) {
+                Icon(Icons.Default.ContentPasteGo, "Paste & Go", tint = MaterialTheme.colorScheme.primary)
+            }
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        // --- 2. Navigation Controls ---
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row {
+                IconButton(onClick = { viewModel.sendCommand("Back") }) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back")
+                }
+                IconButton(onClick = { viewModel.sendCommand("Refresh") }) {
+                    Icon(Icons.Default.Refresh, "Refresh")
+                }
+                IconButton(onClick = { viewModel.sendCommand("Forward") }) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowForward, "Forward")
+                }
+            }
+
+            // New Tab Toggle
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("New Tab", style = MaterialTheme.typography.bodySmall)
+                Switch(
+                    checked = openInNewTab,
+                    onCheckedChange = { viewModel.toggleNewTab(it) },
+                    modifier = Modifier.graphicsLayer(scaleX = 0.8f, scaleY = 0.8f)
+                )
+            }
+        }
+        
+        // --- 3. Add Bookmark Button ---
+        Button(
+            onClick = { viewModel.addBookmark() },
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(8.dp)
+        ) {
+            Icon(Icons.Default.Star, null, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(8.dp))
+            Text("Bookmark Current URL")
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+        HorizontalDivider()
+        Spacer(modifier = Modifier.height(8.dp))
+
+        // --- 4. Bookmarks List ---
+        Text(
+            text = "Bookmarks",
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.primary
+        )
+        
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(top = 8.dp)
+        ) {
+            items(bookmarks) { bookmark ->
+                BookmarkItem(
+                    bookmark = bookmark,
+                    onClick = { 
+                        viewModel.onUrlChanged(bookmark.url)
+                        viewModel.navigate(bookmark.url) 
+                    },
+                    onDelete = { viewModel.removeBookmark(bookmark) }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun BookmarkItem(bookmark: Bookmark, onClick: () -> Unit, onDelete: () -> Unit) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp)
+            .clickable { onClick() },
+        elevation = CardDefaults.cardElevation(2.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+    ) {
+        Row(
+            modifier = Modifier
+                .padding(12.dp)
+                .fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(Icons.Default.Bookmark, null, tint = MaterialTheme.colorScheme.secondary)
+            Spacer(modifier = Modifier.width(12.dp))
+            
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = bookmark.name,
+                    style = MaterialTheme.typography.bodyMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = bookmark.url,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color.Gray,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            
+            IconButton(onClick = onDelete, modifier = Modifier.size(24.dp)) {
+                Icon(
+                    Icons.Default.Delete, 
+                    contentDescription = "Remove", 
+                    tint = MaterialTheme.colorScheme.error.copy(alpha = 0.6f) 
+                )
+            }
+        }
+    }
+}
