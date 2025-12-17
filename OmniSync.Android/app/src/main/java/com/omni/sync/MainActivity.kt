@@ -5,6 +5,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.compose.BackHandler
+import androidx.compose.runtime.Composable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -32,6 +33,8 @@ import com.omni.sync.viewmodel.BrowserViewModelFactory
 import androidx.compose.material3.Scaffold
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.ui.unit.dp
 import com.omni.sync.ui.components.OmniBottomNavigation
 
 class MainActivity : ComponentActivity() {
@@ -58,76 +61,87 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             OmniSyncTheme {
-                Surface(
-                    modifier = Modifier.fillMaxSize(),
-                    color = MaterialTheme.colorScheme.background
-                ) {
-                    val currentScreen by mainViewModel.currentScreen.collectAsState()
-                    val canGoBack by mainViewModel.canGoBack.collectAsState()
-                    val signalRClient = omniSyncApplication.signalRClient
-                    
-                    // Handle global back navigation
-                    BackHandler(enabled = canGoBack) {
-                        mainViewModel.goBack()
-                    }
-                    
-                    val filesViewModel: FilesViewModel = viewModel(
-                        factory = FilesViewModelFactory(application, signalRClient, mainViewModel)
-                    )
-                    val browserViewModel: BrowserViewModel = viewModel(
-                        factory = BrowserViewModelFactory(application, signalRClient)
-                    )
+                val currentScreen by mainViewModel.currentScreen.collectAsState()
+                val canGoBack by mainViewModel.canGoBack.collectAsState()
+                val signalRClient = omniSyncApplication.signalRClient
 
-                    // Using Scaffold to organize the layout professionally
-                    androidx.compose.material3.Scaffold(
-                        bottomBar = {
-                            OmniBottomNavigation(
-                                currentScreen = currentScreen,
-                                onNavigate = { screen -> mainViewModel.navigateTo(screen) }
-                            )
+                if (currentScreen == AppScreen.VIDEOPLAYER) {
+                    // Truly Fullscreen for video player - Bypass everything
+                    val videoUrl by mainViewModel.currentVideoUrl.collectAsState()
+                    if (videoUrl != null) {
+                        com.omni.sync.ui.screen.VideoPlayerScreen(
+                            videoUrl = videoUrl!!,
+                            onBack = { mainViewModel.goBack() }
+                        )
+                    }
+                } else {
+                    Surface(
+                        modifier = Modifier.fillMaxSize(),
+                        color = MaterialTheme.colorScheme.background
+                    ) {
+                        // Handle global back navigation
+                        BackHandler(enabled = canGoBack) {
+                            mainViewModel.goBack()
                         }
-                    ) { innerPadding ->
-                        // innerPadding applies the correct amount of spacing so content 
-                        // doesn't get hidden behind the bottom bar.
                         
-                        Box(modifier = Modifier
-                            .fillMaxSize()
-                            .padding(innerPadding) // CRITICAL: Apply padding here
-                        ) {
-                            when (currentScreen) {
-                                AppScreen.DASHBOARD -> DashboardScreen(
-                                    signalRClient = signalRClient, 
-                                    mainViewModel = mainViewModel
+                        val filesViewModel: FilesViewModel = viewModel(
+                            factory = FilesViewModelFactory(application, signalRClient, mainViewModel)
+                        )
+                        val browserViewModel: BrowserViewModel = viewModel(
+                            factory = BrowserViewModelFactory(application, signalRClient)
+                        )
+
+                        // Using Scaffold to organize the layout professionally
+                        androidx.compose.material3.Scaffold(
+                            bottomBar = {
+                                OmniBottomNavigation(
+                                    currentScreen = currentScreen,
+                                    onNavigate = { screen -> mainViewModel.navigateTo(screen) }
                                 )
-                                AppScreen.REMOTECONTROL -> RemoteControlScreen(
-                                    signalRClient = signalRClient, 
-                                    mainViewModel = mainViewModel
-                                )
-                                AppScreen.BROWSER -> BrowserControlScreen(
-                                    signalRClient = signalRClient,
-                                    viewModel = browserViewModel
-                                )
-                                AppScreen.PROCESS -> ProcessScreen(
-                                    signalRClient = signalRClient, 
-                                    mainViewModel = mainViewModel
-                                )
-                                AppScreen.FILES -> FilesScreen(
-                                    filesViewModel = filesViewModel
-                                )
-                                AppScreen.VIDEOPLAYER -> {
-                                    val videoUrl by mainViewModel.currentVideoUrl.collectAsState()
-                                    if (videoUrl != null) {
-                                        com.omni.sync.ui.screen.VideoPlayerScreen(
-                                            videoUrl = videoUrl!!,
-                                            onBack = { mainViewModel.goBack() }
-                                        )
-                                    }
-                                }
+                            }
+                        ) { innerPadding ->
+                            Box(modifier = Modifier
+                                .fillMaxSize()
+                                .padding(innerPadding)
+                            ) {
+                                MainScreenContent(currentScreen, signalRClient, browserViewModel, filesViewModel, mainViewModel)
                             }
                         }
                     }
                 }
             }
+        }
+    }
+
+    @Composable
+    private fun MainScreenContent(
+        currentScreen: AppScreen,
+        signalRClient: com.omni.sync.data.repository.SignalRClient,
+        browserViewModel: BrowserViewModel,
+        filesViewModel: FilesViewModel,
+        mainViewModel: MainViewModel
+    ) {
+        when (currentScreen) {
+            AppScreen.DASHBOARD -> DashboardScreen(
+                signalRClient = signalRClient, 
+                mainViewModel = mainViewModel
+            )
+            AppScreen.REMOTECONTROL -> RemoteControlScreen(
+                signalRClient = signalRClient, 
+                mainViewModel = mainViewModel
+            )
+            AppScreen.BROWSER -> BrowserControlScreen(
+                signalRClient = signalRClient,
+                viewModel = browserViewModel
+            )
+            AppScreen.PROCESS -> ProcessScreen(
+                signalRClient = signalRClient, 
+                mainViewModel = mainViewModel
+            )
+            AppScreen.FILES -> FilesScreen(
+                filesViewModel = filesViewModel
+            )
+            else -> {} // Handled at top level
         }
     }
 }

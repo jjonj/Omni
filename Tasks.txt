@@ -3,14 +3,19 @@ WHen starting a task edit this document by prefixing the line with IN-PROGRESS
 ## General
 
 ## For the hub
-DONE See similar android task: Button on hub window to set PC to turn off after X time. Clicking botton toggles between None/15min/30min/60min/2hours/5hours/12hours cycling back to none. To turn off PC schedule a call to C:\Windows\explorer.exe "B:\GDrive\Tools\05 Automation\shutdown.bat"
 
+### Hub window
+DONE See similar android task: Button on hub window to set PC to turn off after X time. Clicking botton toggles between None/15min/30min/60min/2hours/5hours/12hours cycling back to none. To turn off PC schedule a call to C:\Windows\explorer.exe "B:\GDrive\Tools\05 Automation\shutdown.bat"
+Remove the Test Input button (do this tiny task whenever you are touching the hub code anyway)
+Hub window should look better/more modern UI and have a dark theme
 
 ## in OmniSync.Android
 
 ### Dashboard
 Quick actions, remove buttons test echo, list notes, test clipboard. Instead add buttons for Shutdown ( "B:\GDrive\Tools\05 Automation\shutdown.bat") and Sleep ("B:\GDrive\Tools\05 Automation\sleep.bat")
 Add quick action button to send "magic packet" for wake on lan. Use broadcast mask 10.0.0.255 and mac address 10FFE0379DAC use port 9
+Remove some of the overly verbose logging to the activity hub
+
 
 ### Remote Control Screen
 DONE Special Button panel is ugly and takes up too much space
@@ -20,10 +25,13 @@ when the android keyboard is active (there is a black space between the buttons 
 
 ### Files Screen
 Downloading a video into app data and optionally password protecting it with encryption and password. Should be deletable
-Problem when switching phone orientation the video restarts
-Video player fullscreen/horizontal mode and pinch to zoom.
+DONE Problem when switching phone orientation the video restarts
+DONE Video player fullscreen/horizontal mode 
+Video player pinch to zoom.
+double tapping right and left side of video should skip forward/back 10 seconds
 Support to open more file types, unknown filetypes should open as a text file
 Support for editing files opened as text files
+Video player has a previous and next button built in, hook into those buttons and find the next/previous video in the current folders
 
 ### Browser control screen
 Add a button to open current chrome tab url on phone (send to default browser)
@@ -31,3 +39,10 @@ The [arrow down] button next to clean tabs does not do anything. its supposed to
 Button to open a list of all tabs open in chrome with in-row buttons to close each one (for manual tab cleanup)
 Bookmark current URL should bookmark the currently open chrome tab, not the entered url
 Make bookmarks reorderable
+
+## Web (new feature)
+Hub should include a webserver acessible on port 3333, the server should communicate with the hub like other parts of the system.
+Webpage should default to a page that is a copy of OmniSync.Web\IntegrateThisIntoWeb
+
+## Settings page
+Add setting for video player next/previous buttons whether they should play next video by file order or random
