@@ -150,7 +150,7 @@ fun RemoteControlScreen(
                 .weight(1f)
                 .fillMaxWidth()
                 .background(MaterialTheme.colorScheme.surfaceVariant)
-                .pointerInput(Unit) {
+                .pointerInput(signalRClient) { // Pass signalRClient as a key
                     // This creates a dedicated gesture handler
                     awaitEachGesture {
                         val down = awaitFirstDown(requireUnconsumed = false)
@@ -165,7 +165,7 @@ fun RemoteControlScreen(
                             if (!isDrag) {
                                 isRightClickTriggered = true
                                 Log.d("RemoteControlScreen", "Sending Right Click (Timer)")
-                                signalRClient?.sendRightClick()
+                                signalRClient.sendRightClick() // Use non-nullable signalRClient
                             }
                         }
 
@@ -195,7 +195,7 @@ fun RemoteControlScreen(
                                     val delta = change.positionChange()
                                     if (delta != Offset.Zero) {
                                         val sensitivity = 1.2f
-                                        signalRClient!!.sendMouseMove(delta.x * sensitivity, delta.y * sensitivity)
+                                        signalRClient.sendMouseMove(delta.x * sensitivity, delta.y * sensitivity) // Use non-nullable signalRClient
                                         change.consume()
                                     }
                                 }
@@ -209,7 +209,7 @@ fun RemoteControlScreen(
                         // If it wasn't a drag and we haven't triggered right click yet, it's a left click
                         if (!isDrag && !isRightClickTriggered) {
                             Log.d("RemoteControlScreen", "Sending Left Click (Tap)")
-                            signalRClient?.sendLeftClick()
+                            signalRClient.sendLeftClick() // Use non-nullable signalRClient
                         }
                     }
                 }

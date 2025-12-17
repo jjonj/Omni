@@ -31,11 +31,27 @@ class BrowserViewModel(
 
     private val _openInNewTab = MutableStateFlow(false)
     val openInNewTab: StateFlow<Boolean> = _openInNewTab
+    
+    val customCleanupPatterns: StateFlow<List<String>> = signalRClient.cleanupPatterns
 
     init {
         loadBookmarks()
         // Load toggle preference
         _openInNewTab.value = prefs.getBoolean("open_in_new_tab", false)
+        // Request cleanup patterns from Chrome extension
+        requestCleanupPatterns()
+    }
+    
+    fun requestCleanupPatterns() {
+        signalRClient.sendBrowserCommand("GetCleanupPatterns", "", false)
+    }
+    
+    fun addCurrentTabToCleanup() {
+        signalRClient.sendBrowserCommand("AddCurrentTabToCleanup", "", false)
+    }
+    
+    fun removeCleanupPattern(pattern: String) {
+        signalRClient.sendBrowserCommand("RemoveCleanupPattern", pattern, false)
     }
 
     fun onUrlChanged(newUrl: String) {

@@ -3,6 +3,15 @@ importScripts('signalr.min.js');
 const HUB_URL = "http://10.0.0.37:5000/signalrhub";
 const API_KEY = "test_api_key";
 
+// Custom cleanup patterns stored in chrome.storage
+let customCleanupPatterns = [];
+
+// Load custom patterns on startup
+chrome.storage.local.get(['customCleanupPatterns'], (result) => {
+    customCleanupPatterns = result.customCleanupPatterns || [];
+    console.log("Loaded custom cleanup patterns:", customCleanupPatterns);
+});
+
 let connection = new signalR.HubConnectionBuilder()
     .withUrl(HUB_URL)
     .withAutomaticReconnect()
@@ -25,6 +34,16 @@ connection.onclose(async () => {
     await start();
 });
 
+// Helper function to check if URL matches a pattern (supports * wildcard)
+function urlMatchesPattern(url, pattern) {
+    // Convert pattern to regex: escape special chars, replace * with .*
+    const regexPattern = pattern
+        .replace(/[.+?^${}()|[\]\\]/g, '\\$&')  // Escape special regex chars except *
+        .replace(/\*/g, '.*');  // Replace * with .*
+    const regex = new RegExp(regexPattern, 'i');
+    return regex.test(url);
+}
+
 // Helper function to check if a tab URL matches cleanup patterns
 function shouldCleanTab(tabUrl) {
     if (!tabUrl) return false;
@@ -43,6 +62,11 @@ function shouldCleanTab(tabUrl) {
     
     // Chrome start page / new tab
     if (tabUrl === "chrome://newtab/" || tabUrl === "about:blank" || tabUrl === "edge://newtab/") return true;
+    
+    // Check custom patterns
+    for (const pattern of customCleanupPatterns) {
+        if (urlMatchesPattern(tabUrl, pattern)) return true;
+    }
     
     return false;
 }
@@ -86,6 +110,38 @@ connection.on("ReceiveBrowserCommand", async (command, url, newTab) => {
             const tabsToClose = tabs.filter(tab => shouldCleanTab(tab.url));
             console.log(`Cleaning ${tabsToClose.length} tabs`);
             tabsToClose.forEach(tab => chrome.tabs.remove(tab.id));
+        });
+    } else if (command === "AddCleanupPattern") {
+        // url parameter contains the pattern to add
+        if (url && !customCleanupPatterns.includes(url)) {
+            customCleanupPatterns.push(url);
+            chrome.storage.local.set({ customCleanupPatterns });
+            console.log("Added cleanup pattern:", url);
+        }
+    } else if (command === "RemoveCleanupPattern") {
+        // url parameter contains the pattern to remove
+        const index = customCleanupPatterns.indexOf(url);
+        if (index > -1) {
+            customCleanupPatterns.splice(index, 1);
+            chrome.storage.local.set({ customCleanupPatterns });
+            console.log("Removed cleanup pattern:", url);
+        }
+    } else if (command === "GetCleanupPatterns") {
+        // Send patterns back to hub which will forward to Android
+        connection.invoke("SendCleanupPatterns", customCleanupPatterns);
+    } else if (command === "AddCurrentTabToCleanup") {
+        // Get current tab URL and add it to cleanup patterns
+        chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+            if (tabs[0] && tabs[0].url) {
+                const tabUrl = tabs[0].url;
+                if (!customCleanupPatterns.includes(tabUrl)) {
+                    customCleanupPatterns.push(tabUrl);
+                    chrome.storage.local.set({ customCleanupPatterns });
+                    console.log("Added current tab to cleanup:", tabUrl);
+                    // Notify hub of updated patterns
+                    connection.invoke("SendCleanupPatterns", customCleanupPatterns);
+                }
+            }
         });
     }
 });

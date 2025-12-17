@@ -372,6 +372,17 @@ namespace OmniSync.Hub.Presentation.Hubs
             }
         }
 
+        public async Task SendCleanupPatterns(List<string> patterns)
+        {
+            if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
+            {
+                AnyCommandReceived?.Invoke(this, $"SendCleanupPatterns: {patterns.Count} patterns");
+                
+                // Forward to all clients (Android will pick this up)
+                await Clients.All.SendAsync("ReceiveCleanupPatterns", patterns);
+            }
+        }
+
         private (string commandName, List<string> args) ParseCommand(string commandString)
         {
             var parts = new List<string>();

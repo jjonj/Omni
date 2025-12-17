@@ -19,6 +19,12 @@ import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CleaningServices
 import androidx.compose.material.icons.filled.SpaceBar
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -46,6 +52,8 @@ fun BrowserControlScreen(
     val urlInput by viewModel.urlInput.collectAsState()
     val bookmarks by viewModel.bookmarks.collectAsState()
     val openInNewTab by viewModel.openInNewTab.collectAsState()
+    val customCleanupPatterns by viewModel.customCleanupPatterns.collectAsState()
+    var showCleanupPatterns by remember { mutableStateOf(false) }
     val context = LocalContext.current
 
     Column(
@@ -163,14 +171,80 @@ fun BrowserControlScreen(
         )
         Spacer(modifier = Modifier.height(8.dp))
         
-        OutlinedButton(
-            onClick = { viewModel.sendCommand("CleanTabs") },
+        Row(
             modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(8.dp)
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Icon(Icons.Default.CleaningServices, null, modifier = Modifier.size(18.dp))
-            Spacer(Modifier.width(8.dp))
-            Text("Clean Tabs")
+            OutlinedButton(
+                onClick = { viewModel.sendCommand("CleanTabs") },
+                modifier = Modifier.weight(1f),
+                shape = RoundedCornerShape(8.dp)
+            ) {
+                Icon(Icons.Default.CleaningServices, null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("Clean Tabs")
+            }
+            
+            OutlinedButton(
+                onClick = { viewModel.addCurrentTabToCleanup() },
+                shape = RoundedCornerShape(8.dp)
+            ) {
+                Icon(Icons.Default.Add, "Add current tab to cleanup")
+            }
+            
+            OutlinedButton(
+                onClick = { showCleanupPatterns = !showCleanupPatterns },
+                shape = RoundedCornerShape(8.dp)
+            ) {
+                Icon(
+                    if (showCleanupPatterns) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                    "Show patterns"
+                )
+            }
+        }
+        
+        // Custom cleanup patterns list
+        if (showCleanupPatterns && customCleanupPatterns.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(8.dp))
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+            ) {
+                Column(modifier = Modifier.padding(8.dp)) {
+                    Text(
+                        "Custom Cleanup Patterns",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    customCleanupPatterns.forEach { pattern ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = pattern,
+                                style = MaterialTheme.typography.bodySmall,
+                                modifier = Modifier.weight(1f),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            IconButton(
+                                onClick = { viewModel.removeCleanupPattern(pattern) },
+                                modifier = Modifier.size(24.dp)
+                            ) {
+                                Icon(
+                                    Icons.Default.Delete,
+                                    "Remove",
+                                    tint = MaterialTheme.colorScheme.error,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
         }
         Spacer(modifier = Modifier.height(8.dp))
     }
