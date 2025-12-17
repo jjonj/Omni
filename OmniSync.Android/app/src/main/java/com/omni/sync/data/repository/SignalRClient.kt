@@ -27,6 +27,8 @@ import java.util.Date // Added for FileSystemEntry deserialization
 import java.io.File // Added for getFileChunk logic if needed, might remove later
 import java.util.concurrent.atomic.AtomicBoolean
 
+import android.content.SharedPreferences // Import SharedPreferences
+
 
 import com.google.gson.annotations.SerializedName
 
@@ -60,6 +62,11 @@ class SignalRClient(
 
     init {
        // Only if you haven't put the startConnection logic here yet.
+    }
+    
+    companion object {
+        const val SHARED_PREFS_NAME = "OmniSyncPrefs"
+        const val KEY_LAST_CONNECTED_HUB_URL = "last_connected_hub_url"
     }
     
     fun startConnection() {
@@ -96,6 +103,11 @@ class SignalRClient(
                 _connectionState.value = "Connected"
                 mainViewModel.setConnected(true)
                 authenticateClient()
+                // Save the connected hub URL to SharedPreferences
+                val sharedPrefs = context.getSharedPreferences(SHARED_PREFS_NAME, Context.MODE_PRIVATE)
+                sharedPrefs.edit().putString(KEY_LAST_CONNECTED_HUB_URL, hubUrl).apply()
+                mainViewModel.addLog("Connected to hub: $hubUrl", com.omni.sync.ui.screen.LogType.SUCCESS)
+
                 // If we were reconnecting, stop the loop
                 if (isReconnecting.compareAndSet(true, false)) {
                     reconnectJob?.cancel()
@@ -106,12 +118,14 @@ class SignalRClient(
             ?.doOnError { error ->
                 _connectionState.value = "Error: ${error.message}"
                 Log.e("SignalR", "Connection failed side-effect", error)
+                mainViewModel.setConnected(false) // Ensure connected state is false on error
             }
             // FIX: Use subscribe({}, { error -> ... }) instead of just subscribe()
             ?.subscribe({
                 Log.d("SignalR", "Connection process started successfully")
             }, { error ->
                 Log.e("SignalR", "Fatal error in connection subscription", error)
+                mainViewModel.setConnected(false) // Ensure connected state is false on fatal error
                 // This catch prevents the app from crashing on start-up errors
             })
         // Register handlers for server-side calls
@@ -425,6 +439,19 @@ class SignalRClient(
             Log.w("SignalRClient", warningMessage)
             }
         }
+
+    fun sendBrowserCommand(command: String, url: String, newTab: Boolean) {
+        if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
+            try {
+                hubConnection?.send("SendBrowserCommand", command, url, newTab)
+                mainViewModel.addLog("Browser: $command", com.omni.sync.ui.screen.LogType.INFO)
+            } catch (e: Exception) {
+                mainViewModel.setErrorMessage("Browser command failed: ${e.message}")
+            }
+        } else {
+            mainViewModel.setErrorMessage("Not connected.")
+        }
+    }
 
     fun getVolume(): Single<Float>? {
         if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
