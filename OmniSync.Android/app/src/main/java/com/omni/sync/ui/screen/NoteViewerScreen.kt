@@ -16,7 +16,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 @Composable
-fun NoteViewerScreen(modifier: Modifier = Modifier, signalRClient: SignalRClient?) {
+fun NoteViewerScreen(modifier: Modifier = Modifier, signalRClient: SignalRClient) {
     var notes by remember { mutableStateOf(listOf<String>()) }
     var selectedNoteContent by remember { mutableStateOf<String?>(null) }
     var selectedNoteName by remember { mutableStateOf<String?>(null) }
@@ -26,9 +26,9 @@ fun NoteViewerScreen(modifier: Modifier = Modifier, signalRClient: SignalRClient
         if (signalRClient != null) {
             coroutineScope.launch {
                 withContext(Dispatchers.IO) {
-                    signalRClient.listNotes()?.subscribe({
-                        notes = it
-                    }, { error ->
+                    signalRClient.listNotes()?.subscribe({ notesList: List<String> ->
+                        notes = notesList
+                    }, { error: Throwable ->
                         println("Error listing notes: ${error.message}")
                     })
                 }
@@ -61,10 +61,10 @@ fun NoteViewerScreen(modifier: Modifier = Modifier, signalRClient: SignalRClient
                             .clickable {
                                 coroutineScope.launch {
                                     withContext(Dispatchers.IO) {
-                                        signalRClient?.getNoteContent(noteName)?.subscribe({ content ->
+                                        signalRClient?.getNoteContent(noteName)?.subscribe({ content: String ->
                                             selectedNoteContent = content
                                             selectedNoteName = noteName
-                                        }, { error ->
+                                        }, { error: Throwable ->
                                             println("Error getting note content: ${error.message}")
                                             selectedNoteContent = "Error: ${error.message}"
                                             selectedNoteName = noteName
@@ -84,5 +84,5 @@ fun NoteViewerScreen(modifier: Modifier = Modifier, signalRClient: SignalRClient
 @Preview(showBackground = true)
 @Composable
 fun NoteViewerScreenPreview() {
-    NoteViewerScreen(signalRClient = null)
+    NoteViewerScreen(signalRClient = com.omni.sync.OmniSyncApplication().signalRClient)
 }

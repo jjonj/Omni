@@ -61,14 +61,14 @@ const val VK_A: UShort = 0x41u // A key
 @Composable
 fun RemoteControlScreen(
     modifier: Modifier = Modifier,
-    signalRClient: SignalRClient?,
-    mainViewModel: MainViewModel?
+    signalRClient: SignalRClient,
+    mainViewModel: MainViewModel
 ) {
     val keyboardController = LocalSoftwareKeyboardController.current
     val focusRequester = remember { FocusRequester() }
     val coroutineScope = rememberCoroutineScope() // Scope for side-effects like the timer
 
-    val isShiftPressed by mainViewModel!!.isShiftPressed.collectAsState()
+    val isShiftPressed by mainViewModel.isShiftPressed.collectAsState()
     val isCtrlPressed by mainViewModel.isCtrlPressed.collectAsState()
     val isAltPressed by mainViewModel.isAltPressed.collectAsState()
 
@@ -195,7 +195,7 @@ fun RemoteControlScreen(
                                     val delta = change.positionChange()
                                     if (delta != Offset.Zero) {
                                         val sensitivity = 1.2f
-                                        signalRClient?.sendMouseMove(delta.x * sensitivity, delta.y * sensitivity)
+                                        signalRClient!!.sendMouseMove(delta.x * sensitivity, delta.y * sensitivity)
                                         change.consume()
                                     }
                                 }
@@ -356,7 +356,7 @@ fun RemoteControlScreen(
                     if (clipData != null && clipData.itemCount > 0) {
                         val clipboardText = clipData.getItemAt(0).text?.toString()
                         if (clipboardText != null) {
-                            signalRClient?.sendClipboardText(clipboardText)
+                            signalRClient?.sendClipboardUpdate(clipboardText)
                         }
                     }
                 }, modifier = Modifier.weight(1f))
@@ -431,5 +431,8 @@ fun ActionKeyButton(modifier: Modifier = Modifier, icon: androidx.compose.ui.gra
 @Preview(showBackground = true)
 @Composable
 fun RemoteControlScreenPreview() {
-    RemoteControlScreen(signalRClient = null, mainViewModel = null)
+    val application = com.omni.sync.OmniSyncApplication()
+    val signalRClient = application.signalRClient
+    val mainViewModel = com.omni.sync.viewmodel.MainViewModel(application)
+    RemoteControlScreen(signalRClient = signalRClient, mainViewModel = mainViewModel)
 }

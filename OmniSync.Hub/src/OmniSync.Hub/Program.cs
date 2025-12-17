@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 using OmniSync.Hub.Logic.Services;
 using OmniSync.Hub.Infrastructure.Services;
 using OmniSync.Hub.Presentation.Hubs;
@@ -40,11 +41,17 @@ builder.Services.AddSingleton<FileService>(provider =>
 builder.Services.AddSingleton<ClipboardService>();
 builder.Services.AddSingleton<CommandDispatcher>();
 builder.Services.AddSingleton<ProcessService>();
-builder.Services.AddSingleton<InputService>();
+builder.Services.AddSingleton<InputService>(provider =>
+{
+    var logger = provider.GetRequiredService<ILogger<InputService>>();
+    var keyboardHook = provider.GetRequiredService<KeyboardHook>();
+    return new InputService(logger, keyboardHook);
+});
 builder.Services.AddSingleton<AudioService>();
 builder.Services.AddSingleton<HubEventSender>();
 builder.Services.AddSingleton<HubMonitorService>(); // Register the new monitoring service
 builder.Services.AddHostedService<TrayIconManager>();
+builder.Services.AddSingleton<KeyboardHook>(); // Register KeyboardHook
 
 builder.Services.AddSignalR();
 builder.Services.AddControllers();

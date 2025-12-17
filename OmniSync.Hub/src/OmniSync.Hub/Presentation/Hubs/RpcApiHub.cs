@@ -6,10 +6,11 @@ using System.Text.Json;
 using System.Threading.Tasks;
 using OmniSync.Hub.Logic.Services;
 using OmniSync.Hub.Infrastructure.Services; // Added for FileService
+using Microsoft.Extensions.Logging; // Added for ILogger
 
 namespace OmniSync.Hub.Presentation.Hubs
 {
-    public class RpcApiHub : Microsoft.AspNetCore.SignalR.Hub
+    public class RpcApiHub : Microsoft.AspNetCore.SignalR.Hub, IDisposable
     {
         // New: Event to notify of any command received by the Hub
         public static event EventHandler<string>? AnyCommandReceived;
@@ -25,9 +26,10 @@ namespace OmniSync.Hub.Presentation.Hubs
         private readonly ProcessService _processService;
         private readonly HubEventSender _hubEventSender;
         private readonly InputService _inputService;
-        private readonly AudioService _audioService; // Add AudioService
+        private readonly AudioService _audioService;
+        private readonly ILogger<RpcApiHub> _logger; // Added for logging
 
-        public RpcApiHub(AuthService authService, FileService fileService, ClipboardService clipboardService, CommandDispatcher commandDispatcher, ProcessService processService, HubEventSender hubEventSender, InputService inputService, AudioService audioService) // Add AudioService to constructor
+        public RpcApiHub(AuthService authService, FileService fileService, ClipboardService clipboardService, CommandDispatcher commandDispatcher, ProcessService processService, HubEventSender hubEventSender, InputService inputService, AudioService audioService, ILogger<RpcApiHub> logger)
         {
             _authService = authService;
             _fileService = fileService;
@@ -36,22 +38,40 @@ namespace OmniSync.Hub.Presentation.Hubs
             _processService = processService;
             _hubEventSender = hubEventSender;
             _inputService = inputService;
-            _audioService = audioService; // Assign AudioService
-        }
-        public override async Task OnConnectedAsync()
-        {
-            System.Console.WriteLine($"Client connected: {Context.ConnectionId}. Awaiting authentication.");
-            ClientConnectedEvent?.Invoke(this, Context.ConnectionId); // New: Invoke event
-            _hubEventSender.SubscribeForCommandOutput(Context.UserIdentifier ?? Context.ConnectionId, Context.ConnectionId);
-            await base.OnConnectedAsync();
+            _audioService = audioService;
+            _logger = logger;
+
+            _inputService.ModifierStateChanged += OnModifierStateChanged;
         }
 
-        public override async Task OnDisconnectedAsync(Exception exception)
+        public override async Task OnConnectedAsync()
         {
-            System.Console.WriteLine($"Client disconnected: {Context.ConnectionId}");
-            ClientDisconnectedEvent?.Invoke(this, Context.ConnectionId); // New: Invoke event
+            _logger.LogInformation($"Client connected: {Context.ConnectionId}. Awaiting authentication.");
+            ClientConnectedEvent?.Invoke(this, Context.ConnectionId);
+            _hubEventSender.SubscribeForCommandOutput(Context.UserIdentifier ?? Context.ConnectionId, Context.ConnectionId);
+            await base.OnConnectedAsync();
+            
+            // Send current modifier states to the newly connected client
+            if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
+            {
+                await Clients.Caller.SendAsync("ModifierStateUpdated", "Shift", _inputService.IsShiftPressed);
+                await Clients.Caller.SendAsync("ModifierStateUpdated", "Ctrl", _inputService.IsCtrlPressed);
+                await Clients.Caller.SendAsync("ModifierStateUpdated", "Alt", _inputService.IsAltPressed);
+            }
+        }
+
+        public override async Task OnDisconnectedAsync(Exception? exception)
+        {
+            _logger.LogInformation($"Client disconnected: {Context.ConnectionId}");
+            ClientDisconnectedEvent?.Invoke(this, Context.ConnectionId);
             _hubEventSender.UnsubscribeFromCommandOutput(Context.UserIdentifier ?? Context.ConnectionId);
             await base.OnDisconnectedAsync(exception);
+        }
+
+        private async void OnModifierStateChanged(object? sender, ModifierStateEventArgs e)
+        {
+            _logger.LogDebug($"Modifier {e.Modifier} state changed to {e.IsPressed}. Broadcasting to clients.");
+            await Clients.All.SendAsync("ModifierStateUpdated", e.Modifier.ToString(), e.IsPressed);
         }
 
         public bool Authenticate(string apiKey)
@@ -60,11 +80,17 @@ namespace OmniSync.Hub.Presentation.Hubs
             if (isAuthenticated)
             {
                 Context.Items["IsAuthenticated"] = true;
-                System.Console.WriteLine($"Client authenticated: {Context.ConnectionId}");
+                _logger.LogInformation($"Client authenticated: {Context.ConnectionId}");
+                
+                // Immediately send current modifier states after successful authentication
+                Clients.Caller.SendAsync("ModifierStateUpdated", "Shift", _inputService.IsShiftPressed);
+                Clients.Caller.SendAsync("ModifierStateUpdated", "Ctrl", _inputService.IsCtrlPressed);
+                Clients.Caller.SendAsync("ModifierStateUpdated", "Alt", _inputService.IsAltPressed);
+                
                 return true;
             }
 
-            System.Console.WriteLine($"Client failed authentication: {Context.ConnectionId}");
+            _logger.LogWarning($"Client failed authentication: {Context.ConnectionId}");
             Context.Abort();
             return false;
         }
@@ -140,6 +166,27 @@ namespace OmniSync.Hub.Presentation.Hubs
             }
         }
 
+
+        public void PasteClipboard(string text)
+        {
+            if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
+            {
+                AnyCommandReceived?.Invoke(this, "PasteClipboard");
+
+                try
+                {
+                    _clipboardService.SetClipboardText(text);
+                    // Simulate Ctrl+V
+                    _inputService.KeyDown((ushort)0x11); // VK_CONTROL
+                    _inputService.SendKeyPress((ushort)0x56); // VK_V
+                    _inputService.KeyUp((ushort)0x11); // VK_CONTROL
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Error pasting clipboard text: {ex.Message}");
+                }
+            }
+        }
 
         public async Task ExecuteCommand(string command)
         {
@@ -314,6 +361,17 @@ namespace OmniSync.Hub.Presentation.Hubs
             }
         }
 
+        public async Task SendBrowserCommand(string command, string url, bool newTab)
+        {
+            if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
+            {
+                AnyCommandReceived?.Invoke(this, $"Browser: {command} -> {url}");
+                
+                // Broadcast to all clients (The Chrome extension will pick this up)
+                await Clients.All.SendAsync("ReceiveBrowserCommand", command, url, newTab);
+            }
+        }
+
         private (string commandName, List<string> args) ParseCommand(string commandString)
         {
             var parts = new List<string>();
@@ -367,6 +425,11 @@ namespace OmniSync.Hub.Presentation.Hubs
             List<string> args = parts.Count > 1 ? parts.GetRange(1, parts.Count - 1) : new List<string>();
 
             return (commandName, args);
+        }
+
+        public void Dispose()
+        {
+            _inputService.ModifierStateChanged -= OnModifierStateChanged;
         }
     }
 }

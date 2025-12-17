@@ -3,11 +3,15 @@ using System.Runtime.InteropServices;
 using System.Threading;
 using System.Drawing; // For Point struct
 using System.Windows.Forms; // Required for Screen.PrimaryScreen.Bounds
+using Microsoft.Extensions.Logging; // Add for ILogger
 
 namespace OmniSync.Hub.Infrastructure.Services
 {
     public class InputService : IDisposable
     {
+        private readonly ILogger<InputService> _logger;
+        private readonly KeyboardHook _keyboardHook;
+
         // P/Invoke Declarations
         [DllImport("user32.dll", SetLastError = true)]
         private static extern uint SendInput(uint nInputs, INPUT[] pInputs, int cbSize);
@@ -82,6 +86,52 @@ namespace OmniSync.Hub.Infrastructure.Services
         private const uint KEYEVENTF_KEYUP = 0x0002;
         private const uint KEYEVENTF_UNICODE = 0x0004;
 
+        // Modifier Key States (Internal)
+        private bool _isShiftPressed;
+        private bool _isCtrlPressed;
+        private bool _isAltPressed;
+
+        // Public Properties for Modifier Key States
+        public bool IsShiftPressed
+        {
+            get => _isShiftPressed;
+            private set
+            {
+                if (_isShiftPressed != value)
+                {
+                    _isShiftPressed = value;
+                    ModifierStateChanged?.Invoke(this, new ModifierStateEventArgs(ModifierKey.Shift, value));
+                }
+            }
+        }
+        public bool IsCtrlPressed
+        {
+            get => _isCtrlPressed;
+            private set
+            {
+                if (_isCtrlPressed != value)
+                {
+                    _isCtrlPressed = value;
+                    ModifierStateChanged?.Invoke(this, new ModifierStateEventArgs(ModifierKey.Control, value));
+                }
+            }
+        }
+        public bool IsAltPressed
+        {
+            get => _isAltPressed;
+            private set
+            {
+                if (_isAltPressed != value)
+                {
+                    _isAltPressed = value;
+                    ModifierStateChanged?.Invoke(this, new ModifierStateEventArgs(ModifierKey.Alt, value));
+                }
+            }
+        }
+
+        // Event for notifying about modifier state changes
+        public event EventHandler<ModifierStateEventArgs>? ModifierStateChanged;
+
         // Mouse Interpolation Fields
         private Point _currentMouseDeltaTarget = new Point(0, 0); // Stores accumulated delta
         private readonly object _mouseTargetLock = new object();
@@ -89,12 +139,26 @@ namespace OmniSync.Hub.Infrastructure.Services
         private const int _interpolationIntervalMs = 10; // How often the timer ticks (approx 60Hz)
         // private const int _maxMovementPerTick = 10; // Max pixels moved per tick - REMOVED
 
-        public InputService()
+        public InputService(ILogger<InputService> logger, KeyboardHook keyboardHook)
         {
+            _logger = logger;
+            _keyboardHook = keyboardHook;
+            _keyboardHook.KeyActionOccurred += OnKeyActionOccurred;
+            _keyboardHook.SetHook();
+
             // Start the timer to periodically update mouse position
             _mouseUpdateTimer = new System.Threading.Timer(MouseUpdateTimer_Tick, null, 0, _interpolationIntervalMs);
         }
 
+        private void OnKeyActionOccurred(object? sender, KeyHookEventArgs e)
+        {
+            // Update internal state based on the hook's reported modifier states
+            IsShiftPressed = e.Shift;
+            IsCtrlPressed = e.Control;
+            IsAltPressed = e.Alt;
+
+            _logger.LogDebug($"Modifier states from hook: Shift={IsShiftPressed}, Ctrl={IsCtrlPressed}, Alt={IsAltPressed}");
+        }
         public void LeftClick()
         {
             INPUT[] inputs = new INPUT[2];
@@ -221,6 +285,26 @@ namespace OmniSync.Hub.Infrastructure.Services
         public void Dispose()
         {
             _mouseUpdateTimer?.Dispose();
+            _keyboardHook?.Dispose(); // Dispose the keyboard hook
+        }
+    }
+
+    public enum ModifierKey
+    {
+        Shift,
+        Control,
+        Alt
+    }
+
+    public class ModifierStateEventArgs : EventArgs
+    {
+        public ModifierKey Modifier { get; }
+        public bool IsPressed { get; }
+
+        public ModifierStateEventArgs(ModifierKey modifier, bool isPressed)
+        {
+            Modifier = modifier;
+            IsPressed = isPressed;
         }
     }
 }

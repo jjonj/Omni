@@ -25,6 +25,28 @@ connection.onclose(async () => {
     await start();
 });
 
+// Helper function to check if a tab URL matches cleanup patterns
+function shouldCleanTab(tabUrl) {
+    if (!tabUrl) return false;
+    
+    // Twitch following directory
+    if (tabUrl.includes("twitch.tv/directory/following")) return true;
+    
+    // YouTube tabs that are NOT watch pages or channel pages
+    if (tabUrl.includes("youtube.com") && !tabUrl.includes("/watch?v=") && !tabUrl.includes("/@")) return true;
+    
+    // Google.com pages
+    if (tabUrl.includes("google.com/")) return true;
+    
+    // Local file URLs
+    if (tabUrl.startsWith("file:///")) return true;
+    
+    // Chrome start page / new tab
+    if (tabUrl === "chrome://newtab/" || tabUrl === "about:blank" || tabUrl === "edge://newtab/") return true;
+    
+    return false;
+}
+
 // Handle Commands from Android
 connection.on("ReceiveBrowserCommand", async (command, url, newTab) => {
     console.log(`Command: ${command}, URL: ${url}, NewTab: ${newTab}`);
@@ -54,6 +76,16 @@ connection.on("ReceiveBrowserCommand", async (command, url, newTab) => {
     } else if (command === "Forward") {
         chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
             if (tabs[0]) chrome.tabs.goForward(tabs[0].id);
+        });
+    } else if (command === "CloseTab") {
+        chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+            if (tabs[0]) chrome.tabs.remove(tabs[0].id);
+        });
+    } else if (command === "CleanTabs") {
+        chrome.tabs.query({}, (tabs) => {
+            const tabsToClose = tabs.filter(tab => shouldCleanTab(tab.url));
+            console.log(`Cleaning ${tabsToClose.length} tabs`);
+            tabsToClose.forEach(tab => chrome.tabs.remove(tab.id));
         });
     }
 });

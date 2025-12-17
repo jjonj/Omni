@@ -58,6 +58,11 @@ class BrowserViewModel(
     fun sendCommand(command: String) {
         signalRClient.sendBrowserCommand(command, "", false)
     }
+    
+    fun sendSpacebar() {
+        // VK_SPACE = 0x20 (32)
+        signalRClient.sendKeyEvent("InputKeyPress", 0x20u)
+    }
 
     fun addBookmark() {
         val url = _urlInput.value

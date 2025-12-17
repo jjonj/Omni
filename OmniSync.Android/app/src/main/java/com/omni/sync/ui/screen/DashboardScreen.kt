@@ -24,13 +24,22 @@ import androidx.compose.runtime.rememberCoroutineScope
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun DashboardScreen(modifier: Modifier = Modifier, signalRClient: SignalRClient?, mainViewModel: MainViewModel) {
-    // Collect connection state
-    val connectionState by signalRClient?.connectionState?.collectAsState() ?: remember { mutableStateOf("No Client") }
+fun DashboardScreen(modifier: Modifier = Modifier, signalRClient: SignalRClient, mainViewModel: MainViewModel) {
+    // Collect connection states
+    val connectionStateString by signalRClient?.connectionState?.collectAsState() ?: remember { mutableStateOf("No Client") }
+    val isConnected by mainViewModel.isConnected.collectAsState()
     
     val logs by mainViewModel.dashboardLogs.collectAsState()
     val listState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
+    
+    // Determine connection status based on actual isConnected state
+    val connectionStatus = when {
+        isConnected -> ConnectionStatus.CONNECTED
+        connectionStateString.contains("Error", ignoreCase = true) -> ConnectionStatus.ERROR
+        connectionStateString.contains("Disconnected", ignoreCase = true) -> ConnectionStatus.DISCONNECTED
+        else -> ConnectionStatus.UNKNOWN
+    }
     
     // Auto-scroll to bottom when new logs arrive
     LaunchedEffect(logs.size) {
@@ -41,68 +50,11 @@ fun DashboardScreen(modifier: Modifier = Modifier, signalRClient: SignalRClient?
     
     Column(modifier = modifier.fillMaxSize().padding(16.dp)) {
         // Connection Status Card
-        Card(
-            modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
-            colors = CardDefaults.cardColors(
-                containerColor = when {
-                    connectionState.contains("Connected") && !connectionState.contains("Disconnected") -> 
-                        Color(0xFF4CAF50).copy(alpha = 0.1f)
-                    connectionState.contains("Error") -> Color(0xFFF44336).copy(alpha = 0.1f)
-                    else -> Color(0xFFFF9800).copy(alpha = 0.1f)
-                }
-            )
-        ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = if (connectionState.contains("Connected") && !connectionState.contains("Disconnected"))
-                                Icons.Filled.CheckCircle
-                            else
-                                Icons.Filled.Error,
-                            contentDescription = "Connection Status",
-                            tint = when {
-                                connectionState.contains("Connected") && !connectionState.contains("Disconnected") -> 
-                                    Color(0xFF4CAF50)
-                                connectionState.contains("Error") -> Color(0xFFF44336)
-                                else -> Color(0xFFFF9800)
-                            },
-                            modifier = Modifier.size(32.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Column {
-                            Text(
-                                text = "Hub Connection",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Text(
-                                text = connectionState,
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-                    
-                    // Reconnect Button
-                    IconButton(
-                        onClick = {
-                            signalRClient?.manualReconnect()
-                        }
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.Refresh,
-                            contentDescription = "Reconnect",
-                            tint = MaterialTheme.colorScheme.primary
-                        )
-                    }
-                }
-            }
-        }
+        HubConnectionCard(
+            connectionStatus = connectionStatus,
+            connectionMessage = connectionStateString,
+            onReconnect = { signalRClient?.manualReconnect() }
+        )
         
         // Test Buttons Section
         Card(
@@ -131,10 +83,10 @@ fun DashboardScreen(modifier: Modifier = Modifier, signalRClient: SignalRClient?
                         onClick = {
                             mainViewModel.addLog("Listing notes...", LogType.INFO)
                             signalRClient?.listNotes()?.subscribe(
-                                { notes ->
+                                { notes: List<String> ->
                                     mainViewModel.addLog("Found ${notes.size} notes", LogType.SUCCESS)
                                 },
-                                { error ->
+                                { error: Throwable ->
                                     mainViewModel.addLog("Error listing notes: ${error.message}", LogType.ERROR)
                                 }
                             )
@@ -235,5 +187,98 @@ fun LogItem(log: LogEntry) {
             style = MaterialTheme.typography.bodySmall,
             color = textColor
         )
+    }
+}
+
+enum class ConnectionStatus {
+    CONNECTED,
+    DISCONNECTED,
+    ERROR,
+    UNKNOWN
+}
+
+@Composable
+fun HubConnectionCard(
+    connectionStatus: ConnectionStatus,
+    connectionMessage: String,
+    onReconnect: () -> Unit
+) {
+    val statusColor = when (connectionStatus) {
+        ConnectionStatus.CONNECTED -> Color(0xFF4CAF50)
+        ConnectionStatus.ERROR -> Color(0xFFF44336)
+        ConnectionStatus.DISCONNECTED -> Color(0xFFFF9800)
+        ConnectionStatus.UNKNOWN -> Color(0xFF9E9E9E)
+    }
+    
+    val statusIcon = when (connectionStatus) {
+        ConnectionStatus.CONNECTED -> Icons.Filled.CheckCircle
+        else -> Icons.Filled.Error
+    }
+    
+    val statusText = when (connectionStatus) {
+        ConnectionStatus.CONNECTED -> "Connected"
+        ConnectionStatus.DISCONNECTED -> "Disconnected"
+        ConnectionStatus.ERROR -> "Connection Error"
+        ConnectionStatus.UNKNOWN -> "Unknown Status"
+    }
+    
+    Card(
+        modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = statusColor.copy(alpha = 0.1f)
+        )
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Icon(
+                        imageVector = statusIcon,
+                        contentDescription = "Connection Status",
+                        tint = statusColor,
+                        modifier = Modifier.size(32.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Hub Connection",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = statusText,
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = statusColor
+                        )
+                        if (connectionMessage.isNotBlank() && connectionMessage != statusText) {
+                            Text(
+                                text = connectionMessage,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 2
+                            )
+                        }
+                    }
+                }
+                
+                // Show reconnect button only when not connected
+                if (connectionStatus != ConnectionStatus.CONNECTED) {
+                    IconButton(onClick = onReconnect) {
+                        Icon(
+                            imageVector = Icons.Filled.Refresh,
+                            contentDescription = "Reconnect",
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
+            }
+        }
     }
 }

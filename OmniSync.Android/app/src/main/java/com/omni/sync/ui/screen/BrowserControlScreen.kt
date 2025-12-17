@@ -16,6 +16,9 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.CleaningServices
+import androidx.compose.material.icons.filled.SpaceBar
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -93,6 +96,12 @@ fun BrowserControlScreen(
                 IconButton(onClick = { viewModel.sendCommand("Forward") }) {
                     Icon(Icons.AutoMirrored.Filled.ArrowForward, "Forward")
                 }
+                IconButton(onClick = { viewModel.sendCommand("CloseTab") }) {
+                    Icon(Icons.Default.Close, "Close Tab", tint = MaterialTheme.colorScheme.error)
+                }
+                IconButton(onClick = { viewModel.sendSpacebar() }) {
+                    Icon(Icons.Default.SpaceBar, "Spacebar")
+                }
             }
 
             // New Tab Toggle
@@ -129,7 +138,7 @@ fun BrowserControlScreen(
         )
         
         LazyColumn(
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier.weight(1f),
             contentPadding = PaddingValues(top = 8.dp)
         ) {
             items(bookmarks) { bookmark ->
@@ -143,6 +152,27 @@ fun BrowserControlScreen(
                 )
             }
         }
+        
+        // --- 5. Advanced Actions ---
+        HorizontalDivider()
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(
+            text = "Advanced Actions",
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.secondary
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        
+        OutlinedButton(
+            onClick = { viewModel.sendCommand("CleanTabs") },
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(8.dp)
+        ) {
+            Icon(Icons.Default.CleaningServices, null, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(8.dp))
+            Text("Clean Tabs")
+        }
+        Spacer(modifier = Modifier.height(8.dp))
     }
 }
 

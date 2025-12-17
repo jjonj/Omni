@@ -42,12 +42,12 @@ class OmniAccessibilityService : AccessibilityService() {
             when (event.keyCode) {
                 KeyEvent.KEYCODE_VOLUME_UP -> {
                     Log.d("OmniAccessibility", "Volume Up pressed.")
-                    signalRClient.sendPayload("VOLUME_UP", mapOf("action" to "next_track"))
+                    signalRClient.sendKeyEvent("INPUT_KEY_PRESS", 0xAFu)
                     return true // Consume the event
                 }
                 KeyEvent.KEYCODE_VOLUME_DOWN -> {
                     Log.d("OmniAccessibility", "Volume Down pressed.")
-                    signalRClient.sendPayload("VOLUME_DOWN", mapOf("action" to "prev_track"))
+                    signalRClient.sendKeyEvent("INPUT_KEY_PRESS", 0xAEu)
                     return true // Consume the event
                 }
             }
