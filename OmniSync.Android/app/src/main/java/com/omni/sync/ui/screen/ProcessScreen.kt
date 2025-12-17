@@ -27,6 +27,7 @@ import com.omni.sync.data.repository.ProcessInfo
 import com.omni.sync.data.repository.SignalRClient
 import com.omni.sync.viewmodel.MainViewModel // Ensure you have this import
 import java.text.DecimalFormat
+import kotlinx.coroutines.launch
 
 // Import local or shared ViewModel instance mechanism
 // For this snippet, I assume commandOutput is passed or accessible. 
@@ -186,7 +187,13 @@ fun ProcessScreen(
                 item { Text("No processes found.", modifier = Modifier.padding(8.dp)) }
             }
             itemsIndexed(filteredProcesses) { index, process ->
-                ProcessItem(process, signalRClient)
+                ProcessItem(
+                    process = process,
+                    signalRClient = signalRClient,
+                    onProcessKilledAndVerified = { killedProcess ->
+                        processes = processes.toMutableList().apply { remove(killedProcess) }
+                    }
+                )
             }
         }
     }
@@ -207,7 +214,7 @@ fun SortChip(label: String, option: SortOption, current: SortOption, onSelect: (
 }
 
 @Composable
-fun ProcessItem(process: ProcessInfo, signalRClient: SignalRClient?) {
+fun ProcessItem(process: ProcessInfo, signalRClient: SignalRClient?, onProcessKilledAndVerified: (ProcessInfo) -> Unit) {
     Card(
         elevation = CardDefaults.cardElevation(1.dp),
         modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
@@ -247,9 +254,17 @@ fun ProcessItem(process: ProcessInfo, signalRClient: SignalRClient?) {
             }
 
             // Compact Kill Button
+            val coroutineScope = rememberCoroutineScope()
             IconButton(
                 onClick = { 
-                    signalRClient?.killProcess(process.id.toInt())?.subscribe() 
+                    coroutineScope.launch {
+                        signalRClient?.killProcess(process.id.toInt())?.subscribe() 
+                        // Assuming the kill command is asynchronous and takes time to reflect
+                        // Add a delay to allow the system to kill the process
+                        kotlinx.coroutines.delay(2000L) // 2 seconds delay
+                        // After delay, we assume the process is gone and notify the parent Composable
+                        onProcessKilledAndVerified(process)
+                    }
                 },
                 modifier = Modifier.size(24.dp)
             ) {
