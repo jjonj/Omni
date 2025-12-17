@@ -71,29 +71,23 @@ fun DashboardScreen(modifier: Modifier = Modifier, signalRClient: SignalRClient,
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
                     Button(
                         onClick = {
-                            mainViewModel.addLog("Testing connection...", LogType.INFO)
-                            signalRClient?.executeCommand("echo Connection test successful")
+                            mainViewModel.addLog("Triggering Shutdown...", LogType.WARNING)
+                            signalRClient?.executeCommand("B:\\GDrive\\Tools\\05 Automation\\shutdown.bat")
                         },
-                        modifier = Modifier.weight(1f).padding(end = 8.dp)
+                        modifier = Modifier.weight(1f).padding(end = 4.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
                     ) {
-                        Text("Test Echo")
+                        Text("Shutdown")
                     }
                     
                     Button(
                         onClick = {
-                            mainViewModel.addLog("Listing notes...", LogType.INFO)
-                            signalRClient?.listNotes()?.subscribe(
-                                { notes: List<String> ->
-                                    mainViewModel.addLog("Found ${notes.size} notes", LogType.SUCCESS)
-                                },
-                                { error: Throwable ->
-                                    mainViewModel.addLog("Error listing notes: ${error.message}", LogType.ERROR)
-                                }
-                            )
+                            mainViewModel.addLog("Triggering Sleep...", LogType.INFO)
+                            signalRClient?.executeCommand("B:\\GDrive\\Tools\\05 Automation\\sleep.bat")
                         },
-                        modifier = Modifier.weight(1f).padding(start = 8.dp)
+                        modifier = Modifier.weight(1f).padding(start = 4.dp)
                     ) {
-                        Text("List Notes")
+                        Text("Sleep")
                     }
                 }
                 
@@ -102,29 +96,38 @@ fun DashboardScreen(modifier: Modifier = Modifier, signalRClient: SignalRClient,
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
                     Button(
                         onClick = {
-                            mainViewModel.addLog("Sending clipboard update...", LogType.INFO)
-                            signalRClient?.sendClipboardUpdate("Test from Android: ${System.currentTimeMillis()}")
-                            mainViewModel.addLog("Clipboard update sent", LogType.SUCCESS)
+                            mainViewModel.addLog("Toggling TV...", LogType.INFO)
+                            signalRClient?.executeCommand("B:\\GDrive\\Tools\\05 Automation\\TVActive3\\tv_toggle.bat")
                         },
-                        modifier = Modifier.weight(1f).padding(end = 8.dp)
+                        modifier = Modifier.weight(1f).padding(end = 4.dp)
                     ) {
-                        Text("Test Clipboard")
+                        Text("TV")
                     }
                     
                     Button(
                         onClick = {
-                            // Call a function in MainViewModel to clear logs
-                            // This will be added in MainViewModel in the next step
-                            mainViewModel.clearLogs() 
-                            mainViewModel.addLog("Logs cleared", LogType.INFO)
+                            mainViewModel.sendWakeOnLan("10FFE0379DAC", "10.0.0.255", 9)
                         },
-                        modifier = Modifier.weight(1f).padding(start = 8.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = MaterialTheme.colorScheme.secondary
-                        )
+                        modifier = Modifier.weight(1f).padding(start = 4.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.tertiary)
                     ) {
-                        Text("Clear Logs")
+                        Text("WOL")
                     }
+                }
+                
+                Spacer(modifier = Modifier.height(8.dp))
+                
+                Button(
+                    onClick = {
+                        mainViewModel.clearLogs() 
+                        mainViewModel.addLog("Logs cleared", LogType.INFO)
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.secondary
+                    )
+                ) {
+                    Text("Clear Logs")
                 }
             }
         }

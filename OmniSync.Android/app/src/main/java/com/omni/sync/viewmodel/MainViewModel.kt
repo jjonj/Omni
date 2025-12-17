@@ -3,10 +3,17 @@ package com.omni.sync.viewmodel
 import android.app.Application
 import android.content.Context
 import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.launch
 import com.omni.sync.ui.screen.LogEntry // We will define this or use the one from Dashboard
 import com.omni.sync.ui.screen.LogType
+import java.lang.Exception
+import java.net.DatagramPacket
+import java.net.DatagramSocket
+import java.net.InetAddress
 
 enum class AppScreen {
     DASHBOARD,
@@ -151,5 +158,39 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun clearLogs() {
         _dashboardLogs.value = emptyList()
+    }
+
+    fun sendWakeOnLan(macAddress: String, broadcastIp: String = "10.0.0.255", port: Int = 9) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                addLog("Sending WOL to $macAddress...", LogType.INFO)
+                val macBytes = getMacBytes(macAddress)
+                val bytes = ByteArray(6 + 16 * macBytes.size)
+                for (i in 0 until 6) {
+                    bytes[i] = 0xff.toByte()
+                }
+                for (i in 6 until bytes.size step macBytes.size) {
+                    System.arraycopy(macBytes, 0, bytes, i, macBytes.size)
+                }
+
+                val address = InetAddress.getByName(broadcastIp)
+                val packet = DatagramPacket(bytes, bytes.size, address, port)
+                val socket = DatagramSocket()
+                socket.send(packet)
+                socket.close()
+                addLog("WOL packet sent!", LogType.SUCCESS)
+            } catch (e: Exception) {
+                addLog("Failed to send WOL: ${e.message}", LogType.ERROR)
+            }
+        }
+    }
+
+    private fun getMacBytes(macString: String): ByteArray {
+        val bytes = ByteArray(6)
+        val hex = macString.replace("[:\\-]".toRegex(), "")
+        for (i in 0 until 6) {
+            bytes[i] = hex.substring(i * 2, i * 2 + 2).toInt(16).toByte()
+        }
+        return bytes
     }
 }

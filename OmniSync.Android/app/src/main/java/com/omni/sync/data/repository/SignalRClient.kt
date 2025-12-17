@@ -234,7 +234,6 @@ class SignalRClient(
             val payload = mapOf("X" to x, "Y" to y)
             // Try specific method name "MouseMove" if "SendPayload" isn't routing it
             hubConnection?.send("MouseMove", payload)
-                .also { mainViewModel.addLog("Mouse: $x, $y", com.omni.sync.ui.screen.LogType.INFO) }
         } else {
             val warningMessage = "Not connected, cannot send mouse move."
             mainViewModel.setErrorMessage(warningMessage)
@@ -488,10 +487,8 @@ class SignalRClient(
     }
 
     fun sendLeftClick() {
-        mainViewModel.addLog("sendLeftClick called")
         if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
             hubConnection?.send("SendPayload", "LEFT_CLICK", null)
-            mainViewModel.addLog("Sent LEFT_CLICK", com.omni.sync.ui.screen.LogType.INFO)
         } else {
             val warningMessage = "Not connected, cannot send left click."
             mainViewModel.setErrorMessage(warningMessage)
@@ -500,10 +497,8 @@ class SignalRClient(
     }
 
     fun sendRightClick() {
-        mainViewModel.addLog("sendRightClick called")
         if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
             hubConnection?.send("SendPayload", "RIGHT_CLICK", null)
-            mainViewModel.addLog("Sent RIGHT_CLICK", com.omni.sync.ui.screen.LogType.INFO)
         } else {
             val warningMessage = "Not connected, cannot send right click."
             mainViewModel.setErrorMessage(warningMessage)
@@ -515,7 +510,6 @@ class SignalRClient(
         if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
             val command = "${button.uppercase()}_CLICK"
             hubConnection?.send(command)
-            mainViewModel.addLog("Sent $button Click", com.omni.sync.ui.screen.LogType.INFO)
         } else {
             val warningMessage = "Not connected, cannot send $button click."
             mainViewModel.setErrorMessage(warningMessage)

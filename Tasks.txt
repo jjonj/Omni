@@ -17,9 +17,9 @@ Using android back button should go back to the previous screen we were on inste
 
 
 ### Dashboard
-Quick actions, remove buttons test echo, list notes, test clipboard. Instead add buttons for Shutdown ( "B:\GDrive\Tools\05 Automation\shutdown.bat") and Sleep ("B:\GDrive\Tools\05 Automation\sleep.bat") and TV ("B:\GDrive\Tools\05 Automation\TVActive3\tv_toggle.bat")
-Add quick action button to send "magic packet" for wake on lan. Use broadcast mask 10.0.0.255 and mac address 10FFE0379DAC use port 9
-Remove some of the overly verbose logging to the activity hub
+DONE Quick actions, remove buttons test echo, list notes, test clipboard. Instead add buttons for Shutdown ( "B:\GDrive\Tools\05 Automation\shutdown.bat") and Sleep ("B:\GDrive\Tools\05 Automation\sleep.bat") and TV ("B:\GDrive\Tools\05 Automation\TVActive3\tv_toggle.bat")
+DONE Add quick action button to send "magic packet" for wake on lan. Use broadcast mask 10.0.0.255 and mac address 10FFE0379DAC use port 9
+DONE Remove some of the overly verbose logging to the activity hub
 
 
 ### Remote Control Screen
@@ -59,7 +59,7 @@ Add setting for how far to skip forward/back when double tapping in video player
 Settings for what buttons should be in the notification quick actions panel, try to add as many possibilities here that you think could be done with a single button, especially from the Dashboard/Quick actions, remote control and browser control screens. also add option for custom buttons that will send a run/cmd command that will be executed on the pc.
 
 ### AI screen (new)
-An AI screen that lets us talk to an LLM chatbot in a CLI running on the PC. Will work like gemini CLI but the interface is on the phone and the actions are on the PC. probably involves making a custom version/branch/fork of gemini CLI (which is on github)
+An AI screen that lets us talk to an LLM chatbot in a CLI running on the PC. Will work like gemini CLI but the interface is on the phone and the actions are on the PC. probably involves making a custom version/branch/fork of gemini CLI (which is on github). I have a fork checked out at D:\SSDProjects\Tools\gemini-cli but it needs an upstream remote and to rebase on that remote, maybe diverge away from the one commit i put on top if conflicting too much for now.
 
 
 ## Web (new)
