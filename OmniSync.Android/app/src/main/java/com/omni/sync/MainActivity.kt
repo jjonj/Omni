@@ -4,6 +4,7 @@ import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -62,7 +63,13 @@ class MainActivity : ComponentActivity() {
                     color = MaterialTheme.colorScheme.background
                 ) {
                     val currentScreen by mainViewModel.currentScreen.collectAsState()
+                    val canGoBack by mainViewModel.canGoBack.collectAsState()
                     val signalRClient = omniSyncApplication.signalRClient
+                    
+                    // Handle global back navigation
+                    BackHandler(enabled = canGoBack) {
+                        mainViewModel.goBack()
+                    }
                     
                     val filesViewModel: FilesViewModel = viewModel(
                         factory = FilesViewModelFactory(application, signalRClient, mainViewModel)
@@ -112,7 +119,7 @@ class MainActivity : ComponentActivity() {
                                     if (videoUrl != null) {
                                         com.omni.sync.ui.screen.VideoPlayerScreen(
                                             videoUrl = videoUrl!!,
-                                            onBack = { mainViewModel.navigateTo(AppScreen.FILES) }
+                                            onBack = { mainViewModel.goBack() }
                                         )
                                     }
                                 }

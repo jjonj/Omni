@@ -51,6 +51,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _currentVideoUrl = MutableStateFlow<String?>(null)
     val currentVideoUrl: StateFlow<String?> = _currentVideoUrl
 
+    // Back Navigation Logic
+    private val backStack = mutableListOf<AppScreen>()
+    private val _canGoBack = MutableStateFlow(false)
+    val canGoBack: StateFlow<Boolean> = _canGoBack
+
     // Helper to extract the base URL (http://10.0.0.37:5000) from the specific Hub URL
     fun getBaseUrl(): String {
         return "http://10.0.0.37:5000" 
@@ -88,7 +93,31 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun updateClipboardContent(content: String) { /* keep existing */ }
 
     fun navigateTo(screen: AppScreen) {
+        val isMainTab = screen == AppScreen.DASHBOARD || 
+                        screen == AppScreen.REMOTECONTROL || 
+                        screen == AppScreen.BROWSER || 
+                        screen == AppScreen.PROCESS || 
+                        screen == AppScreen.FILES
+
+        if (isMainTab) {
+            backStack.clear()
+        } else {
+            // Push current screen before navigating away
+            backStack.add(_currentScreen.value)
+        }
+        
         _currentScreen.value = screen
+        _canGoBack.value = backStack.isNotEmpty()
+    }
+
+    fun goBack(): Boolean {
+        if (backStack.isNotEmpty()) {
+            val previous = backStack.removeAt(backStack.lastIndex)
+            _currentScreen.value = previous
+            _canGoBack.value = backStack.isNotEmpty()
+            return true
+        }
+        return false
     }
 
     fun setErrorMessage(message: String?) {
