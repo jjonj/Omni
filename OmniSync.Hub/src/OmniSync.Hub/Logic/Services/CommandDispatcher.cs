@@ -38,7 +38,7 @@ namespace OmniSync.Hub.Logic.Services
             
                     public void Dispatch(string command, JsonElement payload)
                     {
-                        if (_commandMap.TryGetValue(command, out var action))
+                        if (_commandMap.TryGetValue(command.ToUpper(), out var action))
                         {
                             action(payload);
                         }

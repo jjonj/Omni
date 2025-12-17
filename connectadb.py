@@ -41,7 +41,8 @@ def main():
     print("Pairing...")
     run(
         ["adb", "pair", f"{PHONE_IP}:{pairing_port}"],
-        input_text=pairing_code + "\n"
+        input_text=pairing_code + "\n",
+        check=False
     )
 
     print("Connecting...")

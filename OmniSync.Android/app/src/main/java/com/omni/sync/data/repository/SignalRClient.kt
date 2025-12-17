@@ -428,7 +428,8 @@ class SignalRClient(
     fun sendText(text: String) {
         if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
             try {
-                hubConnection?.send("SendText", text)
+                val payload = mapOf("Text" to text)
+                hubConnection?.send("SendPayload", "INPUT_TEXT", payload)
                 mainViewModel.setErrorMessage(null)
             } catch (e: Exception) {
                 val errorMessage = "Error sending text '$text': ${e.message}"
@@ -444,7 +445,8 @@ class SignalRClient(
 
     fun sendSetVolume(volumePercentage: Float) {
         if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
-            hubConnection?.send("SetVolume", volumePercentage)
+            val payload = mapOf("VolumePercentage" to volumePercentage)
+            hubConnection?.send("SendPayload", "SET_VOLUME", payload)
             mainViewModel.addLog("Sent SET_VOLUME: $volumePercentage", com.omni.sync.ui.screen.LogType.INFO)
         } else {
             val warningMessage = "Not connected, cannot set volume."
@@ -455,7 +457,7 @@ class SignalRClient(
 
     fun sendToggleMute() {
         if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
-            hubConnection?.send("ToggleMute")
+            hubConnection?.send("SendPayload", "TOGGLE_MUTE", null)
             mainViewModel.addLog("Sent TOGGLE_MUTE", com.omni.sync.ui.screen.LogType.INFO)
         } else {
             val warningMessage = "Not connected, cannot toggle mute."
@@ -467,7 +469,7 @@ class SignalRClient(
     fun sendLeftClick() {
         mainViewModel.addLog("sendLeftClick called")
         if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
-            hubConnection?.send("LeftClick")
+            hubConnection?.send("SendPayload", "LEFT_CLICK", null)
             mainViewModel.addLog("Sent LEFT_CLICK", com.omni.sync.ui.screen.LogType.INFO)
         } else {
             val warningMessage = "Not connected, cannot send left click."
@@ -479,7 +481,7 @@ class SignalRClient(
     fun sendRightClick() {
         mainViewModel.addLog("sendRightClick called")
         if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
-            hubConnection?.send("RightClick")
+            hubConnection?.send("SendPayload", "RIGHT_CLICK", null)
             mainViewModel.addLog("Sent RIGHT_CLICK", com.omni.sync.ui.screen.LogType.INFO)
         } else {
             val warningMessage = "Not connected, cannot send right click."
