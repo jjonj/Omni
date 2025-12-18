@@ -33,6 +33,7 @@ class BrowserViewModel(
     val openInNewTab: StateFlow<Boolean> = _openInNewTab
     
     val customCleanupPatterns: StateFlow<List<String>> = signalRClient.cleanupPatterns
+    val tabList: StateFlow<List<Map<String, Any>>> = signalRClient.tabListReceived
 
     init {
         loadBookmarks()
@@ -40,10 +41,26 @@ class BrowserViewModel(
         _openInNewTab.value = prefs.getBoolean("open_in_new_tab", false)
         // Request cleanup patterns from Chrome extension
         requestCleanupPatterns()
+
+        // Listen for tab info to add bookmarks automatically when requested
+        viewModelScope.launch {
+            signalRClient.tabInfoReceived.collect { (title, url) ->
+                addBookmark(title, url)
+            }
+        }
     }
     
     fun requestCleanupPatterns() {
         signalRClient.sendBrowserCommand("GetCleanupPatterns", "", false)
+    }
+
+    fun requestTabList() {
+        signalRClient.sendBrowserCommand("ListTabs", "", false)
+    }
+
+    fun closeSpecificTab(tabId: Any) {
+        // We pass tabId in the URL field for the CloseTab command if it's specific
+        signalRClient.sendBrowserCommand("CloseTab", tabId.toString(), false)
     }
     
     fun addCurrentTabToCleanup() {
@@ -74,22 +91,37 @@ class BrowserViewModel(
     fun sendCommand(command: String) {
         signalRClient.sendBrowserCommand(command, "", false)
     }
+
+    fun toggleMedia() {
+        signalRClient.sendBrowserCommand("MediaPlayPause", "", false)
+    }
     
     fun sendSpacebar() {
         // VK_SPACE = 0x20 (32)
         signalRClient.sendKeyEvent("InputKeyPress", 0x20u)
     }
 
-    fun addBookmark() {
-        val url = _urlInput.value
-        if (url.isNotBlank()) {
+    fun bookmarkCurrentTab() {
+        signalRClient.sendBrowserCommand("GetTabInfo", "", false)
+    }
+
+    fun addBookmark(name: String? = null, url: String? = null) {
+        val finalUrl = url ?: _urlInput.value
+        if (finalUrl.isNotBlank()) {
             val currentList = _bookmarks.value.toMutableList()
-            // Simple name generation, ideally user sets name
-            val name = if (url.contains("://")) url.split("://")[1].take(20) else url.take(20)
             
-            currentList.add(0, Bookmark(name, url)) // Add to top
-            _bookmarks.value = currentList
-            saveBookmarks()
+            val finalName = if (!name.isNullOrBlank()) {
+                name
+            } else {
+                if (finalUrl.contains("://")) finalUrl.split("://")[1].take(20) else finalUrl.take(20)
+            }
+            
+            // Avoid duplicates
+            if (currentList.none { it.url == finalUrl }) {
+                currentList.add(0, Bookmark(finalName, finalUrl)) // Add to top
+                _bookmarks.value = currentList
+                saveBookmarks()
+            }
         }
     }
     

@@ -13,6 +13,7 @@ import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.InsertDriveFile
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -23,6 +24,9 @@ import com.omni.sync.viewmodel.FilesViewModel
 import java.text.SimpleDateFormat
 import java.util.Locale
 
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Close
+
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun FilesScreen(
@@ -32,6 +36,7 @@ fun FilesScreen(
     val currentPath by filesViewModel.currentPath.collectAsState()
     val fileSystemEntries by filesViewModel.fileSystemEntries.collectAsState()
     val isLoading by filesViewModel.isLoading.collectAsState()
+    val searchQuery by filesViewModel.searchQuery.collectAsState()
     val errorMessage by filesViewModel.errorMessage.collectAsState()
 
     // Download-specific states
@@ -70,6 +75,26 @@ fun FilesScreen(
                 .padding(paddingValues)
                 .fillMaxSize()
         ) {
+            // --- Search Bar ---
+            OutlinedTextField(
+                value = searchQuery,
+                onValueChange = { filesViewModel.performSearch(it) },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(8.dp),
+                placeholder = { Text("Search in current folder...") },
+                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                trailingIcon = {
+                    if (searchQuery.isNotEmpty()) {
+                        IconButton(onClick = { filesViewModel.performSearch("") }) {
+                            Icon(Icons.Default.Close, contentDescription = "Clear search")
+                        }
+                    }
+                },
+                singleLine = true,
+                shape = RoundedCornerShape(12.dp)
+            )
+
             if (isLoading || isDownloading) {
                 LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
                 if (isDownloading && downloadingFile != null) {
@@ -116,10 +141,18 @@ fun FilesScreen(
                                 if (clickedEntry.isDirectory) {
                                     filesViewModel.loadDirectory(clickedEntry.path)
                                 } else {
-                                    if (isVideoFile(clickedEntry.name)) {
-                                        filesViewModel.mainViewModel.playVideo(clickedEntry.path)
-                                    } else {
-                                        filesViewModel.openForEditing(clickedEntry)
+                                    when {
+                                        isVideoFile(clickedEntry.name) -> {
+                                            val playlist = fileSystemEntries.filter { isVideoFile(it.name) }.map { it.path }
+                                            filesViewModel.mainViewModel.playVideo(clickedEntry.path, playlist)
+                                        }
+                                        isImageFile(clickedEntry.name) || isPdfFile(clickedEntry.name) || isAudioFile(clickedEntry.name) -> {
+                                            filesViewModel.startFileDownload(clickedEntry)
+                                            Toast.makeText(context, "Downloading ${clickedEntry.name}...", Toast.LENGTH_SHORT).show()
+                                        }
+                                        else -> {
+                                            filesViewModel.openForEditing(clickedEntry)
+                                        }
                                     }
                                 }
                             },

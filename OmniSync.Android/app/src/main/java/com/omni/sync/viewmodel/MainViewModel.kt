@@ -58,9 +58,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _dashboardLogs = MutableStateFlow<List<LogEntry>>(emptyList())
     val dashboardLogs: StateFlow<List<LogEntry>> = _dashboardLogs
 
-    // Add state to hold the current video to play
+    // Add state to hold the current video to play and playlist
     private val _currentVideoUrl = MutableStateFlow<String?>(null)
     val currentVideoUrl: StateFlow<String?> = _currentVideoUrl
+    
+    private val _videoPlaylist = MutableStateFlow<List<String>>(emptyList())
+    val videoPlaylist: StateFlow<List<String>> = _videoPlaylist
+    
+    private val _currentVideoIndex = MutableStateFlow(0)
+    val currentVideoIndex: StateFlow<Int> = _currentVideoIndex
 
     // Back Navigation Logic
     private val backStack = mutableListOf<AppScreen>()
@@ -74,13 +80,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         return "http://10.0.0.37:5000" 
     }
 
-    fun playVideo(remotePath: String) {
-        // Construct a direct HTTP URL. 
-        // We must encode the path to ensure spaces and slashes are handled correctly in the query string.
-        val encodedPath = java.net.URLEncoder.encode(remotePath, "UTF-8")
-        val url = "${getBaseUrl()}/api/stream?path=$encodedPath"
+    fun playVideo(remotePath: String, playlist: List<String> = emptyList()) {
+        val baseUrl = getBaseUrl()
+        val playlistUrls = playlist.map { path ->
+            val encoded = java.net.URLEncoder.encode(path, "UTF-8")
+            "$baseUrl/api/stream?path=$encoded"
+        }
         
-        _currentVideoUrl.value = url
+        val encodedPath = java.net.URLEncoder.encode(remotePath, "UTF-8")
+        val currentUrl = "$baseUrl/api/stream?path=$encodedPath"
+        
+        _videoPlaylist.value = playlistUrls
+        _currentVideoIndex.value = if (playlistUrls.contains(currentUrl)) playlistUrls.indexOf(currentUrl) else 0
+        _currentVideoUrl.value = currentUrl
+        
         navigateTo(AppScreen.VIDEOPLAYER)
     }
 

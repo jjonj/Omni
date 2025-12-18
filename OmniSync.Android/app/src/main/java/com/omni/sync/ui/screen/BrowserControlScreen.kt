@@ -42,6 +42,9 @@ import com.omni.sync.viewmodel.Bookmark
 import com.omni.sync.viewmodel.BrowserViewModel
 import com.omni.sync.viewmodel.BrowserViewModelFactory
 
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.List
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BrowserControlScreen(
@@ -53,7 +56,9 @@ fun BrowserControlScreen(
     val bookmarks by viewModel.bookmarks.collectAsState()
     val openInNewTab by viewModel.openInNewTab.collectAsState()
     val customCleanupPatterns by viewModel.customCleanupPatterns.collectAsState()
+    val tabList by viewModel.tabList.collectAsState()
     var showCleanupPatterns by remember { mutableStateOf(false) }
+    var showTabList by remember { mutableStateOf(false) }
     val context = LocalContext.current
 
     Column(
@@ -110,6 +115,9 @@ fun BrowserControlScreen(
                 IconButton(onClick = { viewModel.sendSpacebar() }) {
                     Icon(Icons.Default.SpaceBar, "Spacebar")
                 }
+                IconButton(onClick = { viewModel.toggleMedia() }) {
+                    Icon(Icons.Default.PlayArrow, "Play/Pause Media", tint = MaterialTheme.colorScheme.primary)
+                }
             }
 
             // New Tab Toggle
@@ -125,13 +133,13 @@ fun BrowserControlScreen(
         
         // --- 3. Add Bookmark Button ---
         Button(
-            onClick = { viewModel.addBookmark() },
+            onClick = { viewModel.bookmarkCurrentTab() },
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(8.dp)
         ) {
             Icon(Icons.Default.Star, null, modifier = Modifier.size(18.dp))
             Spacer(Modifier.width(8.dp))
-            Text("Bookmark Current URL")
+            Text("Bookmark Current Tab")
         }
 
         Spacer(modifier = Modifier.height(16.dp))
@@ -186,6 +194,19 @@ fun BrowserControlScreen(
             }
             
             OutlinedButton(
+                onClick = { 
+                    showTabList = !showTabList
+                    if (showTabList) viewModel.requestTabList()
+                },
+                modifier = Modifier.weight(1f),
+                shape = RoundedCornerShape(8.dp)
+            ) {
+                Icon(Icons.Default.List, null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("Tab List")
+            }
+
+            OutlinedButton(
                 onClick = { viewModel.addCurrentTabToCleanup() },
                 shape = RoundedCornerShape(8.dp)
             ) {
@@ -203,6 +224,65 @@ fun BrowserControlScreen(
             }
         }
         
+        // Tab List display
+        if (showTabList && tabList.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(8.dp))
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(0.5f),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+            ) {
+                LazyColumn(modifier = Modifier.padding(8.dp)) {
+                    item {
+                        Text(
+                            "Open Chrome Tabs",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    items(tabList) { tab ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 4.dp)
+                                .clickable { 
+                                    val url = tab["url"] as? String ?: ""
+                                    if (url.isNotEmpty()) {
+                                        viewModel.onUrlChanged(url)
+                                        viewModel.navigate(url)
+                                    }
+                                },
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = tab["title"] as? String ?: "Untitled",
+                                style = MaterialTheme.typography.bodySmall,
+                                modifier = Modifier.weight(1f),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            IconButton(
+                                onClick = { 
+                                    val id = tab["id"]
+                                    if (id != null) viewModel.closeSpecificTab(id)
+                                    viewModel.requestTabList() // Refresh
+                                },
+                                modifier = Modifier.size(24.dp)
+                            ) {
+                                Icon(
+                                    Icons.Default.Close,
+                                    "Close",
+                                    tint = MaterialTheme.colorScheme.error,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         // Custom cleanup patterns list
         if (showCleanupPatterns && customCleanupPatterns.isNotEmpty()) {
             Spacer(modifier = Modifier.height(8.dp))

@@ -187,6 +187,58 @@ namespace OmniSync.Hub.Infrastructure.Services
             return entries.OrderByDescending(e => e.IsDirectory).ThenBy(e => e.Name);
         }
 
+        public IEnumerable<FileSystemEntry> SearchFiles(string path, string query)
+        {
+            string targetPath = string.IsNullOrEmpty(_browseRootPath) ? path : SanitizeAndGetBrowseFullPath(path);
+
+            if (!Directory.Exists(targetPath))
+            {
+                throw new DirectoryNotFoundException($"Directory not found: {targetPath}");
+            }
+
+            var results = new List<FileSystemEntry>();
+            SearchRecursive(targetPath, query, results, 100);
+            return results;
+        }
+
+        private void SearchRecursive(string directory, string query, List<FileSystemEntry> results, int maxResults)
+        {
+            if (results.Count >= maxResults) return;
+
+            try
+            {
+                foreach (var file in Directory.EnumerateFiles(directory))
+                {
+                    if (file.Contains(query, StringComparison.OrdinalIgnoreCase))
+                    {
+                        var fileInfo = new FileInfo(file);
+                        if ((fileInfo.Attributes & FileAttributes.Hidden) != 0) continue;
+
+                        results.Add(new FileSystemEntry
+                        {
+                            Name = fileInfo.Name,
+                            Path = fileInfo.FullName,
+                            IsDirectory = false,
+                            EntryType = "File",
+                            Size = fileInfo.Length,
+                            LastModified = fileInfo.LastWriteTime
+                        });
+
+                        if (results.Count >= maxResults) return;
+                    }
+                }
+
+                foreach (var dir in Directory.EnumerateDirectories(directory))
+                {
+                    SearchRecursive(dir, query, results, maxResults);
+                    if (results.Count >= maxResults) return;
+                }
+            }
+            catch (UnauthorizedAccessException) { }
+            catch (IOException) { }
+            catch (SecurityException) { }
+        }
+
         public byte[] GetFileChunk(string filePath, long offset, int chunkSize)
         {
             var fullPath = SanitizeAndGetBrowseFullPath(filePath);

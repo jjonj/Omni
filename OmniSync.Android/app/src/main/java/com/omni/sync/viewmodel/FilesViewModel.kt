@@ -39,6 +39,9 @@ class FilesViewModel(
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading
 
+    private val _searchQuery = MutableStateFlow("")
+    val searchQuery: StateFlow<String> = _searchQuery
+
     private val _errorMessage = MutableStateFlow<String?>(null)
     val errorMessage: StateFlow<String?> = _errorMessage
 
@@ -94,6 +97,7 @@ class FilesViewModel(
             return
         }
 
+        _searchQuery.value = "" // Clear search when navigating
         _isLoading.value = true
         _errorMessage.value = null
         resetDownloadState() // Reset download state when navigating
@@ -123,6 +127,31 @@ class FilesViewModel(
                 _errorMessage.value = "Failed to initiate directory listing (not connected?)."
                 mainViewModel.addLog("Failed to initiate directory listing", com.omni.sync.ui.screen.LogType.ERROR)
             }
+    }
+
+    fun performSearch(query: String) {
+        _searchQuery.value = query
+        if (query.isBlank()) {
+            loadDirectory(_currentPath.value)
+            return
+        }
+
+        if (!mainViewModel.isConnected.value) return
+
+        _isLoading.value = true
+        signalRClient.searchFiles(_currentPath.value, query)
+            ?.subscribeOn(Schedulers.io())
+            ?.observeOn(AndroidSchedulers.mainThread())
+            ?.subscribe(
+                { entries ->
+                    _fileSystemEntries.value = entries
+                    _isLoading.value = false
+                },
+                { error ->
+                    _errorMessage.value = "Search error: ${error.message}"
+                    _isLoading.value = false
+                }
+            )
     }
 
     fun startFileDownload(entry: FileSystemEntry) {

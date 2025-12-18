@@ -133,6 +133,34 @@ connection.on("ReceiveBrowserCommand", async (command, url, newTab) => {
     } else if (command === "GetCleanupPatterns") {
         // Send patterns back to hub which will forward to Android
         connection.invoke("SendCleanupPatterns", customCleanupPatterns);
+    } else if (command === "GetTabInfo") {
+        chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+            if (tabs[0]) {
+                connection.invoke("SendTabInfo", tabs[0].title || "", tabs[0].url || "");
+            }
+        });
+    } else if (command === "ListTabs") {
+        chrome.tabs.query({}, (tabs) => {
+            const tabList = tabs.map(t => ({ id: t.id, title: t.title || "", url: t.url || "" }));
+            connection.invoke("SendTabList", tabList);
+        });
+    } else if (command === "MediaPlayPause") {
+        chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+            if (tabs[0]) {
+                chrome.scripting.executeScript({
+                    target: { tabId: tabs[0].id },
+                    func: () => {
+                        const media = document.querySelectorAll('video, audio');
+                        if (media.length > 0) {
+                            media.forEach(m => {
+                                if (m.paused) m.play();
+                                else m.pause();
+                            });
+                        }
+                    }
+                });
+            }
+        });
     } else if (command === "AddCurrentTabToCleanup") {
         // Get current tab URL and add it to cleanup patterns
         chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {

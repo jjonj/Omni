@@ -11,6 +11,9 @@ import com.omni.sync.viewmodel.MainViewModel
 import com.omni.sync.utils.NetworkDebugger
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -70,6 +73,12 @@ class SignalRClient(
     
     private val _cleanupPatterns = MutableStateFlow<List<String>>(emptyList())
     val cleanupPatterns: StateFlow<List<String>> = _cleanupPatterns
+
+    private val _tabInfoReceived = MutableSharedFlow<Pair<String, String>>()
+    val tabInfoReceived: SharedFlow<Pair<String, String>> = _tabInfoReceived.asSharedFlow()
+
+    private val _tabListReceived = MutableStateFlow<List<Map<String, Any>>>(emptyList())
+    val tabListReceived: StateFlow<List<Map<String, Any>>> = _tabListReceived
 
     init {
        // Only if you haven't put the startConnection logic here yet.
@@ -203,6 +212,25 @@ class SignalRClient(
                 _cleanupPatterns.value = patterns
             } catch (e: Exception) {
                 Log.e("SignalRClient", "Error parsing cleanup patterns", e)
+            }
+        }, Any::class.java)
+
+        hubConnection?.on("ReceiveTabInfo", { title: String, url: String ->
+            Log.d("SignalRClient", "Received tab info: $title -> $url")
+            coroutineScope.launch {
+                _tabInfoReceived.emit(Pair(title, url))
+            }
+        }, String::class.java, String::class.java)
+
+        hubConnection?.on("ReceiveTabList", { tabsData: Any ->
+            Log.d("SignalRClient", "Received tab list: $tabsData")
+            try {
+                val jsonStr = gson.toJson(tabsData)
+                val type = object : TypeToken<List<Map<String, Any>>>() {}.type
+                val tabs: List<Map<String, Any>> = gson.fromJson(jsonStr, type)
+                _tabListReceived.value = tabs
+            } catch (e: Exception) {
+                Log.e("SignalRClient", "Error parsing tab list", e)
             }
         }, Any::class.java)
     }
@@ -401,6 +429,47 @@ class SignalRClient(
         val warningMessage = "Not connected, cannot list directory '$relativePath'."
         mainViewModel.setErrorMessage(warningMessage)
         Log.w("SignalRClient", warningMessage)
+        return null
+    }
+
+    fun searchFiles(path: String, query: String): Single<List<FileSystemEntry>>? {
+        if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
+            return Single.create<List<FileSystemEntry>> { emitter ->
+                try {
+                    mainViewModel.addLog("Searching in $path for: $query", com.omni.sync.ui.screen.LogType.INFO)
+                    val handlerName = "ReceiveDirectoryContents"
+                    var handled = false
+                    val handler: (Any) -> Unit = { rawResponse ->
+                        if (!handled) {
+                            handled = true
+                            try {
+                                val jsonElement = gson.toJsonTree(rawResponse)
+                                val results = mutableListOf<FileSystemEntry>()
+                                if (jsonElement.isJsonArray) {
+                                    val arr = jsonElement.asJsonArray
+                                    for (el in arr) {
+                                        val entry = gson.fromJson(el, FileSystemEntry::class.java)
+                                        if (entry != null) results.add(entry)
+                                    }
+                                }
+                                mainViewModel.addLog("Found ${results.size} matches", com.omni.sync.ui.screen.LogType.SUCCESS)
+                                emitter.onSuccess(results)
+                            } catch (e: Exception) {
+                                emitter.onError(e)
+                            } finally {
+                                try {
+                                    hubConnection?.remove(handlerName)
+                                } catch (_: Exception) { }
+                            }
+                        }
+                    }
+                    hubConnection?.on(handlerName, handler, Any::class.java)
+                    hubConnection?.send("SearchFiles", path, query)
+                } catch (e: Exception) {
+                    emitter.onError(e)
+                }
+            }
+        }
         return null
     }
 

@@ -23,6 +23,7 @@ namespace OmniSync.Hub.Presentation
         private int _shutdownIndex = 0;
         private readonly int[] _shutdownTimes = { 0, 15, 30, 60, 120, 300, 720 };
         private readonly string[] _shutdownLabels = { "None", "15m", "30m", "1h", "2h", "5h", "12h" };
+        private readonly DispatcherTimer _uiUpdateTimer;
 
         public MainWindow(HubMonitorService hubMonitorService, InputService inputService, ShutdownService shutdownService) // Add ShutdownService
         {
@@ -60,6 +61,19 @@ namespace OmniSync.Hub.Presentation
             RunOnStartupCheckBox.IsChecked = IsRunOnStartupEnabled();
             RunOnStartupCheckBox.Checked += RunOnStartupCheckBox_Checked;
             RunOnStartupCheckBox.Unchecked += RunOnStartupCheckBox_Unchecked;
+
+            // Initialize and start UI update timer
+            _uiUpdateTimer = new DispatcherTimer
+            {
+                Interval = TimeSpan.FromSeconds(1)
+            };
+            _uiUpdateTimer.Tick += UiUpdateTimer_Tick;
+            _uiUpdateTimer.Start();
+        }
+
+        private void UiUpdateTimer_Tick(object? sender, EventArgs e)
+        {
+            UpdateShutdownButtonLabel(_shutdownService.GetScheduledTime());
         }
 
         private bool IsRunOnStartupEnabled()
@@ -79,7 +93,7 @@ namespace OmniSync.Hub.Presentation
                 if (enable)
                 {
                     // Get the path to the current executable
-                    string? executablePath = System.Reflection.Assembly.GetExecutingAssembly().Location;
+                    string? executablePath = Environment.ProcessPath;
                     if (executablePath != null)
                     {
                         rk.SetValue(AppName, executablePath);

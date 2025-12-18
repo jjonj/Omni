@@ -338,6 +338,30 @@ namespace OmniSync.Hub.Presentation.Hubs
             }
         }
 
+        public async Task SearchFiles(string path, string query)
+        {
+            try
+            {
+                if (!Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) || !(bool)isAuthenticated)
+                {
+                    await Clients.Caller.SendAsync("ReceiveError", "Unauthorized");
+                    return;
+                }
+
+                AnyCommandReceived?.Invoke(this, $"SearchFiles in {path}: {query}");
+
+                var contents = _fileService.SearchFiles(path, query);
+
+                // Reuse ReceiveDirectoryContents for search results
+                await Clients.All.SendAsync("ReceiveDirectoryContents", contents);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error searching directory '{path}': {ex.Message}");
+                await Clients.Caller.SendAsync("ReceiveError", $"Error searching: {ex.Message}");
+            }
+        }
+
         public async Task<byte[]> GetFileChunk(string filePath, long offset, int chunkSize)
         {
             try
@@ -378,6 +402,24 @@ namespace OmniSync.Hub.Presentation.Hubs
                 
                 // Forward to all clients (Android will pick this up)
                 await Clients.All.SendAsync("ReceiveCleanupPatterns", patterns);
+            }
+        }
+
+        public async Task SendTabInfo(string title, string url)
+        {
+            if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
+            {
+                AnyCommandReceived?.Invoke(this, $"SendTabInfo: {title} -> {url}");
+                await Clients.All.SendAsync("ReceiveTabInfo", title, url);
+            }
+        }
+
+        public async Task SendTabList(List<JsonElement> tabs)
+        {
+            if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
+            {
+                AnyCommandReceived?.Invoke(this, $"SendTabList: {tabs.Count} tabs");
+                await Clients.All.SendAsync("ReceiveTabList", tabs);
             }
         }
 

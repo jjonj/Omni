@@ -11,10 +11,17 @@ using OmniSync.Hub.Logic.Monitoring; // For the new monitoring service
 using System;
 using System.IO; // Added for Path.Combine and Directory.GetCurrentDirectory()
 
+using Microsoft.Extensions.FileProviders; // Added for PhysicalFileProvider
+using Microsoft.AspNetCore.Hosting; // Added for ConfigureKestrel
+
 var builder = WebApplication.CreateBuilder(args);
 
-// Set URLs through configuration
-builder.Configuration["Urls"] = "http://0.0.0.0:5000";
+// Configure Kestrel to listen on multiple ports
+builder.WebHost.ConfigureKestrel(options =>
+{
+    options.ListenAnyIP(5000); // SignalR and APIs
+    options.ListenAnyIP(3333); // Webserver
+});
 
 // Explicitly load appsettings.json using absolute path
 string appSettingsPath = Path.Combine(Directory.GetCurrentDirectory(), "..", "..", "appsettings.json");
@@ -66,6 +73,22 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseRouting();
+
+// Serve static files from OmniSync.Web\IntegrateThisIntoWeb
+var webContentPath = Path.Combine(Directory.GetCurrentDirectory(), "..", "..", "..", "OmniSync.Web", "IntegrateThisIntoWeb");
+if (Directory.Exists(webContentPath))
+{
+    app.UseDefaultFiles(new DefaultFilesOptions
+    {
+        FileProvider = new PhysicalFileProvider(webContentPath),
+        DefaultFileNames = new List<string> { "Scheduler.html", "Test.html" } 
+    });
+    app.UseStaticFiles(new StaticFileOptions
+    {
+        FileProvider = new PhysicalFileProvider(webContentPath),
+        RequestPath = ""
+    });
+}
 
 // Assuming no explicit authentication middleware is needed beyond SignalR's internal one for simplicity.
 // If there's an actual authentication scheme, it would go here: app.UseAuthentication();

@@ -9,6 +9,7 @@ DONE See similar android task: Button on hub window to set PC to turn off after 
 DONE Remove the Test Input button (do this tiny task whenever you are touching the hub code anyway)
 DONE Hub window should look better/more modern UI and have a dark theme
 Hub window shutdown timer does not update (its stuck at e.g. 14m 59s without counting down)
+Startup on windows start does not work
 
 ## in OmniSync.Android
 
@@ -29,6 +30,7 @@ DONE Shift, Alt and Ctrl toggling is broken, should be intelligent about highlig
 DONE See similar hub task: Button to set PC to turn off after X time. Clicking botton toggles between None/15min/30min/60min/2hours/5hours/12hours cycling back to none. To turn off PC schedule a call to C:\Windows\explorer.exe "B:\GDrive\Tools\05 Automation\shutdown.bat". Text on button updates with each click.      
 DONE Recent commits made it so the button panel no longer floats above the android keyboard when the keyboard pops up, refix this.
 Stream screen, replacing background of the trackpad leaving the trackpad functioning still, options to toggle monitor, pinch to zoom, (advanced feature, do last)
+
 ### Files Screen
 Downloading a video into app data and optionally password protecting it with encryption and password. Should be deletable
 DONE Problem when switching phone orientation the video restarts

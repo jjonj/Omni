@@ -73,9 +73,14 @@ class MainActivity : ComponentActivity() {
                 if (currentScreen == AppScreen.VIDEOPLAYER) {
                     // Truly Fullscreen for video player - Bypass everything
                     val videoUrl by mainViewModel.currentVideoUrl.collectAsState()
+                    val playlist by mainViewModel.videoPlaylist.collectAsState()
+                    val initialIndex by mainViewModel.currentVideoIndex.collectAsState()
+                    
                     if (videoUrl != null) {
                         com.omni.sync.ui.screen.VideoPlayerScreen(
                             videoUrl = videoUrl!!,
+                            playlist = playlist,
+                            initialIndex = initialIndex,
                             onBack = { mainViewModel.goBack() }
                         )
                     }

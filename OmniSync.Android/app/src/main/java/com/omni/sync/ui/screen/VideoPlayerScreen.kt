@@ -11,6 +11,7 @@ import android.content.res.Configuration
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -44,11 +45,16 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import android.view.WindowManager
+import android.media.AudioManager
+import android.content.Context
 
 @OptIn(UnstableApi::class) 
 @Composable
 fun VideoPlayerScreen(
     videoUrl: String, 
+    playlist: List<String> = emptyList(),
+    initialIndex: Int = 0,
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
@@ -56,12 +62,17 @@ fun VideoPlayerScreen(
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
     val scope = rememberCoroutineScope()
+    
+    val audioManager = remember { context.getSystemService(Context.AUDIO_SERVICE) as AudioManager }
+    val maxVolume = remember { audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC) }
 
     var scale by remember { mutableStateOf(1f) }
     var offset by remember { mutableStateOf(Offset.Zero) }
     var isControllerVisible by remember { mutableStateOf(true) }
     var containerSize by remember { mutableStateOf(IntSize.Zero) }
     var skipFeedbackText by remember { mutableStateOf<String?>(null) }
+    
+    var currentBrightness by remember { mutableStateOf(activity?.window?.attributes?.screenBrightness ?: 0.5f) }
 
     // Handle system back press
     BackHandler {
@@ -117,11 +128,18 @@ fun VideoPlayerScreen(
         }
     }
 
-    // Prepare the MediaSource when videoUrl changes
-    LaunchedEffect(videoUrl) {
-        val mediaItem = MediaItem.fromUri(Uri.parse(videoUrl))
-        exoPlayer.setMediaItem(mediaItem)
-        exoPlayer.prepare()
+    // Prepare the MediaSource when videoUrl or playlist changes
+    LaunchedEffect(playlist, initialIndex) {
+        if (playlist.isNotEmpty()) {
+            val mediaItems = playlist.map { MediaItem.fromUri(Uri.parse(it)) }
+            exoPlayer.setMediaItems(mediaItems)
+            exoPlayer.seekTo(initialIndex, 0L)
+            exoPlayer.prepare()
+        } else {
+            val mediaItem = MediaItem.fromUri(Uri.parse(videoUrl))
+            exoPlayer.setMediaItem(mediaItem)
+            exoPlayer.prepare()
+        }
     }
 
     // Dispose the player when leaving the screen to free resources
@@ -172,7 +190,7 @@ fun VideoPlayerScreen(
                 .fillMaxSize()
                 .padding(bottom = 80.dp) // Leave space for seek bar
         ) {
-            // LEFT SKIP AREA (30%)
+            // LEFT SKIP AREA (30%) - Brightness Control
             Box(
                 modifier = Modifier
                     .fillMaxHeight()
@@ -196,19 +214,38 @@ fun VideoPlayerScreen(
                         )
                     }
                     .pointerInput(Unit) {
+                        detectDragGestures(
+                            onDrag = { change, dragAmount ->
+                                if (scale == 1f) {
+                                    change.consume()
+                                    // Left side: Brightness
+                                    val delta = -dragAmount.y / containerSize.height
+                                    val newBrightness = (currentBrightness + delta).coerceIn(0.01f, 1f)
+                                    currentBrightness = newBrightness
+                                    val lp = activity?.window?.attributes
+                                    lp?.screenBrightness = newBrightness
+                                    activity?.window?.attributes = lp
+                                    skipFeedbackText = "Brightness: ${(newBrightness * 100).toInt()}%"
+                                }
+                            }
+                        )
+                    }
+                    .pointerInput(Unit) {
                         detectTransformGestures { _, pan, zoom, _ ->
-                            scale = (scale * zoom).coerceIn(1f, 5f)
-                            if (scale > 1f) {
-                                val extraWidth = (scale - 1) * containerSize.width
-                                val extraHeight = (scale - 1) * containerSize.height
-                                val maxX = extraWidth / 2
-                                val maxY = extraHeight / 2
-                                offset = Offset(
-                                    x = (offset.x + pan.x * scale).coerceIn(-maxX, maxX),
-                                    y = (offset.y + pan.y * scale).coerceIn(-maxY, maxY)
-                                )
-                            } else {
-                                offset = Offset.Zero
+                            if (scale > 1.05f || zoom != 1f) {
+                                scale = (scale * zoom).coerceIn(1f, 5f)
+                                if (scale > 1f) {
+                                    val extraWidth = (scale - 1) * containerSize.width
+                                    val extraHeight = (scale - 1) * containerSize.height
+                                    val maxX = extraWidth / 2
+                                    val maxY = extraHeight / 2
+                                    offset = Offset(
+                                        x = (offset.x + pan.x * scale).coerceIn(-maxX, maxX),
+                                        y = (offset.y + pan.y * scale).coerceIn(-maxY, maxY)
+                                    )
+                                } else {
+                                    offset = Offset.Zero
+                                }
                             }
                         }
                     }
@@ -217,7 +254,7 @@ fun VideoPlayerScreen(
             // MIDDLE GAP (40%) - No overlays here to allow touching player buttons
             Spacer(modifier = Modifier.weight(0.4f))
 
-            // RIGHT SKIP AREA (30%)
+            // RIGHT SKIP AREA (30%) - Volume Control
             Box(
                 modifier = Modifier
                     .fillMaxHeight()
@@ -242,19 +279,41 @@ fun VideoPlayerScreen(
                         )
                     }
                     .pointerInput(Unit) {
+                        detectDragGestures(
+                            onDrag = { change, dragAmount ->
+                                if (scale == 1f) {
+                                    change.consume()
+                                    // Right side: Volume
+                                    val deltaY = -dragAmount.y
+                                    val deltaVolume = (deltaY / containerSize.height) * maxVolume * 2f // Sensitivity
+                                    
+                                    val currentVol = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
+                                    val newVol = (currentVol + deltaVolume).toInt().coerceIn(0, maxVolume)
+                                    
+                                    if (newVol != currentVol) {
+                                        audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, newVol, 0)
+                                        skipFeedbackText = "Volume: ${(newVol.toFloat() / maxVolume * 100).toInt()}%"
+                                    }
+                                }
+                            }
+                        )
+                    }
+                    .pointerInput(Unit) {
                         detectTransformGestures { _, pan, zoom, _ ->
-                            scale = (scale * zoom).coerceIn(1f, 5f)
-                            if (scale > 1f) {
-                                val extraWidth = (scale - 1) * containerSize.width
-                                val extraHeight = (scale - 1) * containerSize.height
-                                val maxX = extraWidth / 2
-                                val maxY = extraHeight / 2
-                                offset = Offset(
-                                    x = (offset.x + pan.x * scale).coerceIn(-maxX, maxX),
-                                    y = (offset.y + pan.y * scale).coerceIn(-maxY, maxY)
-                                )
-                            } else {
-                                offset = Offset.Zero
+                            if (scale > 1.05f || zoom != 1f) {
+                                scale = (scale * zoom).coerceIn(1f, 5f)
+                                if (scale > 1f) {
+                                    val extraWidth = (scale - 1) * containerSize.width
+                                    val extraHeight = (scale - 1) * containerSize.height
+                                    val maxX = extraWidth / 2
+                                    val maxY = extraHeight / 2
+                                    offset = Offset(
+                                        x = (offset.x + pan.x * scale).coerceIn(-maxX, maxX),
+                                        y = (offset.y + pan.y * scale).coerceIn(-maxY, maxY)
+                                    )
+                                } else {
+                                    offset = Offset.Zero
+                                }
                             }
                         }
                     }
