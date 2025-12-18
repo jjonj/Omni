@@ -66,6 +66,13 @@ class BrowserViewModel(
     fun addCurrentTabToCleanup() {
         signalRClient.sendBrowserCommand("AddCurrentTabToCleanup", "", false)
     }
+
+    fun addCleanupPattern(pattern: String) {
+        if (pattern.isNotBlank()) {
+            // Send to hub, which will forward to extension
+            signalRClient.sendPayload("AddCleanupPattern", pattern)
+        }
+    }
     
     fun removeCleanupPattern(pattern: String) {
         signalRClient.sendBrowserCommand("RemoveCleanupPattern", pattern, false)

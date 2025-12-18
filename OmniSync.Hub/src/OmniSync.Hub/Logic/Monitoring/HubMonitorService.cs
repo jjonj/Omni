@@ -61,6 +61,13 @@ namespace OmniSync.Hub.Logic.Monitoring
             _anyCommandReceivedHandler = (sender, command) =>
             {
                 CommandUpdateOccurred?.Invoke(this, command);
+                
+                // Filter out verbose commands from the persistent log
+                if (command == "MouseMove" || command.Contains("GetVolume") || command.Contains("GetFileChunk"))
+                {
+                    return;
+                }
+
                 LogEntryAdded?.Invoke(this, $"[{DateTime.Now:HH:mm:ss}] Command Received: {command}");
             };
 

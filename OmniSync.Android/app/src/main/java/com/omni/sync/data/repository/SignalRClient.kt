@@ -80,6 +80,9 @@ class SignalRClient(
     private val _tabListReceived = MutableStateFlow<List<Map<String, Any>>>(emptyList())
     val tabListReceived: StateFlow<List<Map<String, Any>>> = _tabListReceived
 
+    private val _aiMessages = MutableStateFlow<List<Pair<String, String>>>(emptyList())
+    val aiMessages: StateFlow<List<Pair<String, String>>> = _aiMessages
+
     init {
        // Only if you haven't put the startConnection logic here yet.
     }
@@ -238,6 +241,21 @@ class SignalRClient(
             Log.d("SignalRClient", "Received tab to phone: $url")
             mainViewModel.openUrlOnPhone(url)
         }, String::class.java)
+
+        hubConnection?.on("ReceiveAiMessage", { senderId: String, message: String ->
+            val senderName = if (senderId == hubConnection?.connectionId) "Me" else "User"
+            _aiMessages.value = _aiMessages.value + Pair(senderName, message)
+        }, String::class.java, String::class.java)
+
+        hubConnection?.on("ReceiveAiResponse", { response: String ->
+            _aiMessages.value = _aiMessages.value + Pair("AI", response)
+        }, String::class.java)
+    }
+
+    fun sendAiMessage(message: String) {
+        if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
+            hubConnection?.send("SendAiMessage", message)
+        }
     }
 
     fun stopConnection() {

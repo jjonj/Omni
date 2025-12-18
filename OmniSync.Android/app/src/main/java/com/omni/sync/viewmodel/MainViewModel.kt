@@ -25,7 +25,8 @@ enum class AppScreen {
     FILES,
     VIDEOPLAYER,
     EDITOR,
-    SETTINGS
+    SETTINGS,
+    AI_CHAT
 }
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {

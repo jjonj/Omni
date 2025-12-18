@@ -12,6 +12,7 @@ import io.reactivex.rxjava3.android.schedulers.AndroidSchedulers
 import io.reactivex.rxjava3.schedulers.Schedulers
 import android.util.Log
 import java.io.File
+import android.content.Context
 import java.io.FileOutputStream
 import java.nio.file.Paths
 import java.text.DecimalFormat
@@ -73,22 +74,77 @@ class FilesViewModel(
     val isSaving: StateFlow<Boolean> = _isSaving
     // -------------------------
 
+    // --- Bookmarks State ---
+    private val _folderBookmarks = MutableStateFlow<List<FileSystemEntry>>(emptyList())
+    val folderBookmarks: StateFlow<List<FileSystemEntry>> = _folderBookmarks
+    
+    private val prefs = application.getSharedPreferences("files_prefs", Context.MODE_PRIVATE)
+    private val gson = com.google.gson.Gson()
+
     init {
-        // Observe connection state to potentially trigger a refresh or show a message
-        /*
-        viewModelScope.launch {
-            mainViewModel.connectionState.collect { state ->
-                if (state == "Connected" && _fileSystemEntries.value.isEmpty() && _currentPath.value.isEmpty()) {
-                    // Automatically load root directory when connected, if not already loaded
-                    loadDirectory("")
-                } else if (state != "Connected") {
-                    _fileSystemEntries.value = emptyList()
-                    _errorMessage.value = "Disconnected from Hub."
-                    resetDownloadState()
-                }
-            }
+        loadFolderBookmarks()
+    }
+
+    private fun loadFolderBookmarks() {
+        val json = prefs.getString("folder_bookmarks", null)
+        if (json != null) {
+            val type = object : com.google.gson.reflect.TypeToken<List<FileSystemEntry>>() {}.type
+            _folderBookmarks.value = gson.fromJson(json, type)
         }
-        */
+    }
+
+    private fun saveFolderBookmarks() {
+        val json = gson.toJson(_folderBookmarks.value)
+        prefs.edit().putString("folder_bookmarks", json).apply()
+    }
+
+    fun toggleFolderBookmark(entry: FileSystemEntry) {
+        if (!entry.isDirectory) return
+        
+        val current = _folderBookmarks.value.toMutableList()
+        val existing = current.find { it.path == entry.path }
+        
+        if (existing != null) {
+            current.remove(existing)
+        } else {
+            current.add(0, entry)
+        }
+        
+        _folderBookmarks.value = current
+        saveFolderBookmarks()
+    }
+
+    fun isFolderBookmarked(path: String): Boolean {
+        return _folderBookmarks.value.any { it.path == path }
+    }
+
+    fun removeFolderBookmark(entry: FileSystemEntry) {
+        val current = _folderBookmarks.value.toMutableList()
+        current.removeAll { it.path == entry.path }
+        _folderBookmarks.value = current
+        saveFolderBookmarks()
+    }
+
+    fun moveFolderBookmarkUp(entry: FileSystemEntry) {
+        val current = _folderBookmarks.value.toMutableList()
+        val index = current.indexOfFirst { it.path == entry.path }
+        if (index > 0) {
+            val item = current.removeAt(index)
+            current.add(index - 1, item)
+            _folderBookmarks.value = current
+            saveFolderBookmarks()
+        }
+    }
+
+    fun moveFolderBookmarkDown(entry: FileSystemEntry) {
+        val current = _folderBookmarks.value.toMutableList()
+        val index = current.indexOfFirst { it.path == entry.path }
+        if (index != -1 && index < current.size - 1) {
+            val item = current.removeAt(index)
+            current.add(index + 1, item)
+            _folderBookmarks.value = current
+            saveFolderBookmarks()
+        }
     }
 
     fun loadDirectory(path: String) {

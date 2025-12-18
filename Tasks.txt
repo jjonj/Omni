@@ -19,7 +19,7 @@ DONE Using android back button should go back to the previous screen we were on 
 
 
 ### Dashboard
-DONE Quick actions, remove buttons test echo, list notes, test clipboard. Instead add buttons for Shutdown ( "B:\\GDrive\\Tools\\05 Automation\\shutdown.bat") and Sleep ("B:\\GDrive\\Tools\\05 Automation\\sleep.bat") and TV ("B:\\GDrive\\Tools\\05 Automation\\TVActive3\\tv_toggle.bat")
+DONE Quick actions, remove buttons test echo, list notes, test clipboard. Instead add buttons for Shutdown ( "B:\GDrive\Tools\05 Automation\shutdown.bat") and Sleep ("B:\GDrive\Tools\05 Automation\sleep.bat") and TV ("B:\GDrive\Tools\05 Automation\TVActive3\tv_toggle.bat")
 DONE Add quick action button to send "magic packet" for wake on lan. Use broadcast mask 10.0.0.255 and mac address 10FFE0379DAC use port 9
 DONE Remove some of the overly verbose logging to the activity hub
 
@@ -39,7 +39,7 @@ DONE Video player pinch to zoom.
 DONE double tapping right and left side of video should skip forward/back 10 seconds
 DONE Support to open more file types, unknown filetypes should open as a text file       
 DONE Support for editing files opened as text files
-DONE Bookmarking folders (via reorderable list in browser logic? wait, task said files bookmarking)
+Bookmarking folders
 DONE Video player has a previous and next button built in, hook into those buttons and find the next/previous video in the current folders
 DONE Swiping finger up and down on left side should change phone brightness and right side should change phone volume
 DONE Text editing fancy features, think like a lite code editor like notepad++ or VS code. be creative.
@@ -47,7 +47,7 @@ DONE Search for files (relative to current folder), when file found have a butto
 
 ### Browser control screen
 DONE Add a button to open current chrome tab url on phone (send to default browser)      
-The [arrow down] button next to clean tabs does not do anything. its supposed to open a list of the urls to auto close during clean tabs action.
+DONE The [arrow down] button next to clean tabs does not do anything. its supposed to open a list of the urls to auto close during clean tabs action.
 DONE Button to open a list of all tabs open in chrome with in-row buttons to close each one (for manual tab cleanup). The tab rows should not display the URL but the tab title
 DONE Bookmark current URL should bookmark the currently open chrome tab, not the entered url
 DONE Make bookmarks reorderable
@@ -62,7 +62,7 @@ DONE Add setting for how far to skip forward/back when double tapping in video p
 Settings for what buttons should be in the notification quick actions panel, try to add as many possibilities here that you think could be done with a single button, especially from the Dashboard/Quick actions, remote control and browser control screens. also add option for custom buttons that will send a run/cmd command that will be executed on the pc.
 
 ### AI screen (new)
-An AI screen that lets us talk to an LLM chatbot in a CLI running on the PC. Will work like gemini CLI but the interface is on the phone and the actions are on the PC. probably involves making a custom version/branch/fork of gemini CLI (which is on github). I have a fork checked out at D:\SSDProjects\Tools\gemini-cli but it needs an upstream remote and to rebase on that remote, maybe diverge away from the one commit i put on top if conflicting too much for now.
+DONE An AI screen that lets us talk to an LLM chatbot in a CLI running on the PC. Will work like gemini CLI but the interface is on the phone and the actions are on the PC. probably involves making a custom version/branch/fork of gemini CLI (which is on github). I have a fork checked out at D:\SSDProjects\Tools\gemini-cli but it needs an upstream remote and to rebase on that remote, maybe diverge away from the one commit i put on top if conflicting too much for now.
 
 
 ## Web (new)

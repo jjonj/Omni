@@ -11,9 +11,17 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.InsertDriveFile
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.StarBorder
+import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.background
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -25,9 +33,6 @@ import com.omni.sync.viewmodel.FilesViewModel
 import java.text.SimpleDateFormat
 import java.util.Locale
 
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Close
-
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun FilesScreen(
@@ -36,9 +41,12 @@ fun FilesScreen(
 ) {
     val currentPath by filesViewModel.currentPath.collectAsState()
     val fileSystemEntries by filesViewModel.fileSystemEntries.collectAsState()
+    val folderBookmarks by filesViewModel.folderBookmarks.collectAsState()
     val isLoading by filesViewModel.isLoading.collectAsState()
     val searchQuery by filesViewModel.searchQuery.collectAsState()
     val errorMessage by filesViewModel.errorMessage.collectAsState()
+
+    var showBookmarks by remember { mutableStateOf(false) }
 
     // Download-specific states
     val isDownloading by filesViewModel.isDownloading.collectAsState()
@@ -66,16 +74,62 @@ fun FilesScreen(
                             Icon(Icons.Filled.ArrowBack, "Back")
                         }
                     }
+                },
+                actions = {
+                    IconButton(onClick = { showBookmarks = !showBookmarks }) {
+                        Icon(if (showBookmarks) Icons.Default.Star else Icons.Default.StarBorder, contentDescription = "Bookmarks")
+                    }
                 }
             )
         },
         modifier = modifier
-    ) { paddingValues ->
+    ) { innerPadding ->
         Column(
             modifier = Modifier
-                .padding(paddingValues)
+                .padding(innerPadding)
                 .fillMaxSize()
         ) {
+            // --- Bookmarks List ---
+            if (showBookmarks && folderBookmarks.isNotEmpty()) {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(8.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                ) {
+                    Column(modifier = Modifier.padding(8.dp)) {
+                        Text("Folder Bookmarks", style = MaterialTheme.typography.titleSmall)
+                        Spacer(modifier = Modifier.height(4.dp))
+                        folderBookmarks.forEach { bookmark ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { 
+                                        filesViewModel.loadDirectory(bookmark.path)
+                                        showBookmarks = false
+                                    }
+                                    .padding(vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(Icons.Default.Folder, null, modifier = Modifier.size(20.dp), tint = MaterialTheme.colorScheme.primary)
+                                Spacer(Modifier.width(8.dp))
+                                Text(bookmark.name, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+                                
+                                IconButton(onClick = { filesViewModel.moveFolderBookmarkUp(bookmark) }, modifier = Modifier.size(24.dp)) {
+                                    Icon(Icons.Default.KeyboardArrowUp, null)
+                                }
+                                IconButton(onClick = { filesViewModel.moveFolderBookmarkDown(bookmark) }, modifier = Modifier.size(24.dp)) {
+                                    Icon(Icons.Default.KeyboardArrowDown, null)
+                                }
+                                IconButton(onClick = { filesViewModel.removeFolderBookmark(bookmark) }, modifier = Modifier.size(24.dp)) {
+                                    Icon(Icons.Default.Delete, null, tint = MaterialTheme.colorScheme.error)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             // --- Search Bar ---
             OutlinedTextField(
                 value = searchQuery,
@@ -139,6 +193,8 @@ fun FilesScreen(
                         FileSystemEntryItem(
                             entry = entry,
                             isSearching = searchQuery.isNotEmpty(),
+                            isBookmarked = filesViewModel.isFolderBookmarked(entry.path),
+                            onBookmarkToggle = { filesViewModel.toggleFolderBookmark(it) },
                             onClick = { clickedEntry ->
                                 if (clickedEntry.isDirectory) {
                                     filesViewModel.loadDirectory(clickedEntry.path)
@@ -182,6 +238,8 @@ fun FilesScreen(
 fun FileSystemEntryItem(
     entry: FileSystemEntry, 
     isSearching: Boolean = false,
+    isBookmarked: Boolean = false,
+    onBookmarkToggle: (FileSystemEntry) -> Unit = {},
     onClick: (FileSystemEntry) -> Unit, 
     onLongClick: (FileSystemEntry) -> Unit,
     onDownloadAndOpen: (FileSystemEntry) -> Unit,
@@ -228,6 +286,17 @@ fun FileSystemEntryItem(
                     Text(text = "${(entry.size / 1024.0).format(2)} KB", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
+            
+            if (entry.isDirectory) {
+                IconButton(onClick = { onBookmarkToggle(entry) }) {
+                    Icon(
+                        imageVector = if (isBookmarked) Icons.Default.Star else Icons.Default.StarBorder,
+                        contentDescription = "Bookmark",
+                        tint = if (isBookmarked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
+                    )
+                }
+            }
+
             val lmText = run {
                 val ts = entry.lastModified.time
                 if (ts <= 0L) "" else SimpleDateFormat("MMM dd, HH:mm", Locale.getDefault()).format(entry.lastModified)
@@ -283,7 +352,7 @@ fun FileSystemEntryItem(
 private fun getParentPath(path: String): String {
     // This function is for client-side navigation up, if the server-provided ".." path is not used
     // However, the server now provides the correct ".." path, so this might not be needed for direct use with loadDirectory(entry.path)
-    val separator = System.getProperty("file.separator") ?: "/"
+    val separator = System.getProperty("file.separator") ?: "\\"
     return if (path.contains(separator) && path.lastIndexOf(separator) > 0) { // Check if it's not just "/"
         path.substringBeforeLast(separator)
     } else {

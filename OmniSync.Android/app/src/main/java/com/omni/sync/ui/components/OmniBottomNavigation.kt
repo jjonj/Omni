@@ -14,6 +14,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.vector.ImageVector
 import com.omni.sync.viewmodel.AppScreen
 
+import androidx.compose.material.icons.filled.SmartToy
+
 // Create a simple data class to hold nav info
 data class NavItem(
     val screen: AppScreen,
@@ -27,7 +29,8 @@ val navigationItems = listOf(
     NavItem(AppScreen.REMOTECONTROL, "Remote", Icons.Default.Gamepad),
     NavItem(AppScreen.BROWSER, "Browser", Icons.Default.Public),
     NavItem(AppScreen.PROCESS, "Process", Icons.Default.Memory),
-    NavItem(AppScreen.FILES, "Files", Icons.Default.Folder)
+    NavItem(AppScreen.FILES, "Files", Icons.Default.Folder),
+    NavItem(AppScreen.AI_CHAT, "AI", Icons.Default.SmartToy)
 )
 
 @Composable

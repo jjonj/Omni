@@ -293,18 +293,45 @@ fun BrowserControlScreen(
         }
 
         // Custom cleanup patterns list
-        if (showCleanupPatterns && customCleanupPatterns.isNotEmpty()) {
+        if (showCleanupPatterns) {
             Spacer(modifier = Modifier.height(8.dp))
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
             ) {
                 Column(modifier = Modifier.padding(8.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        var newPattern by remember { mutableStateOf("") }
+                        OutlinedTextField(
+                            value = newPattern,
+                            onValueChange = { newPattern = it },
+                            label = { Text("New Pattern (e.g. *.google.com/*)") },
+                            modifier = Modifier.weight(1f),
+                            singleLine = true
+                        )
+                        IconButton(onClick = { 
+                            viewModel.addCleanupPattern(newPattern)
+                            newPattern = ""
+                        }) {
+                            Icon(Icons.Default.Add, "Add pattern")
+                        }
+                    }
+                    
+                    Spacer(modifier = Modifier.height(8.dp))
+                    
                     Text(
                         "Custom Cleanup Patterns",
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                    
+                    if (customCleanupPatterns.isEmpty()) {
+                        Text("No custom patterns", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(vertical = 8.dp))
+                    }
+
                     customCleanupPatterns.forEach { pattern ->
                         Row(
                             modifier = Modifier

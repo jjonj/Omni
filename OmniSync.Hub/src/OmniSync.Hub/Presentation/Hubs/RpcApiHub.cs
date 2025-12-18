@@ -405,6 +405,17 @@ namespace OmniSync.Hub.Presentation.Hubs
             }
         }
 
+        public async Task AddCleanupPattern(string pattern)
+        {
+            if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
+            {
+                AnyCommandReceived?.Invoke(this, $"AddCleanupPattern: {pattern}");
+                
+                // Forward to all clients (Chrome extension will pick this up)
+                await Clients.All.SendAsync("ReceiveBrowserCommand", "AddCleanupPattern", pattern, false);
+            }
+        }
+
         public async Task SendTabInfo(string title, string url)
         {
             if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
@@ -429,6 +440,25 @@ namespace OmniSync.Hub.Presentation.Hubs
             {
                 AnyCommandReceived?.Invoke(this, $"SendTabToPhone: {url}");
                 await Clients.All.SendAsync("ReceiveTabToPhone", url);
+            }
+        }
+
+        public async Task SendAiMessage(string message)
+        {
+            if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
+            {
+                AnyCommandReceived?.Invoke(this, $"AI Message Sent: {message.Take(20)}...");
+                // Broadcast the user message so other clients (like a CLI listener) can see it
+                await Clients.All.SendAsync("ReceiveAiMessage", Context.ConnectionId, message);
+            }
+        }
+
+        public async Task SendAiResponse(string response)
+        {
+            if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
+            {
+                AnyCommandReceived?.Invoke(this, "AI Response Received");
+                await Clients.All.SendAsync("ReceiveAiResponse", response);
             }
         }
 

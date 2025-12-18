@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Text.Json;
 using OmniSync.Hub.Infrastructure.Services;
 using OmniSync.Hub.Logic.Monitoring; // Add this using directive
+using Microsoft.AspNetCore.SignalR;
+using OmniSync.Hub.Presentation.Hubs;
 
 namespace OmniSync.Hub.Logic.Services
 {
@@ -14,9 +16,10 @@ namespace OmniSync.Hub.Logic.Services
                     private readonly AudioService _audioService; // Inject AudioService
                     private readonly ProcessService _processService; // Inject ProcessService
                     private readonly ShutdownService _shutdownService;
+                    private readonly IHubContext<RpcApiHub> _hubContext;
                     private readonly Dictionary<string, Action<JsonElement>> _commandMap;
             
-                    public CommandDispatcher(InputService inputService, FileService fileService, HubMonitorService hubMonitorService, AudioService audioService, ProcessService processService, ShutdownService shutdownService) // Add AudioService and ProcessService to constructor
+                    public CommandDispatcher(InputService inputService, FileService fileService, HubMonitorService hubMonitorService, AudioService audioService, ProcessService processService, ShutdownService shutdownService, IHubContext<RpcApiHub> hubContext) // Add AudioService and ProcessService to constructor
                     {
                         _inputService = inputService;
                         _fileService = fileService;
@@ -24,6 +27,7 @@ namespace OmniSync.Hub.Logic.Services
                         _audioService = audioService; // Assign AudioService
                         _processService = processService; // Assign ProcessService
                         _shutdownService = shutdownService;
+                        _hubContext = hubContext;
                                     _commandMap = new Dictionary<string, Action<JsonElement>>
                                     {
                                         { "LEFT_CLICK", payload => _inputService.LeftClick() },
@@ -48,9 +52,9 @@ namespace OmniSync.Hub.Logic.Services
                                                 }
                                             }
                                         }},
-                                        { "SCHEDULE_SHUTDOWN", payload => _shutdownService.ScheduleShutdown(payload.GetProperty("Minutes").GetInt32()) },
-                                        // Note: GET_NOTE and other commands that return data are handled directly in RpcApiHub
-                                    };                    }
+            { "SCHEDULE_SHUTDOWN", payload => _shutdownService.ScheduleShutdown(payload.GetProperty("Minutes").GetInt32()) },
+            { "ADDCLEANUPPATTERN", payload => _hubContext.Clients.All.SendAsync("ReceiveBrowserCommand", "AddCleanupPattern", payload.GetString(), false) }
+        };                    }
             
                     public void Dispatch(string command, JsonElement payload)
                     {

@@ -158,6 +158,10 @@ class MainActivity : ComponentActivity() {
             AppScreen.SETTINGS -> com.omni.sync.ui.screen.SettingsScreen(
                 mainViewModel = mainViewModel
             )
+            AppScreen.AI_CHAT -> com.omni.sync.ui.screen.AiChatScreen(
+                signalRClient = signalRClient,
+                mainViewModel = mainViewModel
+            )
             else -> {} // Handled at top level
         }
     }
