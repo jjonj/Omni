@@ -9,20 +9,22 @@ import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import com.omni.sync.R
-
 import android.app.PendingIntent
+import android.content.Context
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
 import com.omni.sync.MainActivity
 import com.omni.sync.OmniSyncApplication
+import com.omni.sync.data.model.NotificationAction
 
 class ForegroundService : Service() {
 
     private val CHANNEL_ID = "OmniSyncForegroundServiceChannel"
 
     companion object {
-        const val ACTION_SHUTDOWN = "com.omni.sync.ACTION_SHUTDOWN"
-        const val ACTION_SLEEP = "com.omni.sync.ACTION_SLEEP"
-        const val ACTION_TV = "com.omni.sync.ACTION_TV"
-        const val ACTION_WOL = "com.omni.sync.ACTION_WOL"
+        const val ACTION_TRIGGER_NOTIFICATION_ACTION = "com.omni.sync.TRIGGER_ACTION"
+        const val EXTRA_ACTION_ID = "extra_action_id"
+        const val ACTION_REFRESH_NOTIFICATION = "com.omni.sync.REFRESH_NOTIFICATION"
     }
 
     override fun onCreate() {
@@ -31,9 +33,16 @@ class ForegroundService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        val action = intent?.action
-        if (action != null) {
-            handleAction(action)
+        when (intent?.action) {
+            ACTION_TRIGGER_NOTIFICATION_ACTION -> {
+                val actionId = intent.getStringExtra(EXTRA_ACTION_ID)
+                if (actionId != null) {
+                    handleNotificationAction(actionId)
+                }
+            }
+            ACTION_REFRESH_NOTIFICATION -> {
+                updateNotification()
+            }
         }
 
         val notification = createNotification()
@@ -42,28 +51,25 @@ class ForegroundService : Service() {
         return START_STICKY
     }
 
-    private fun handleAction(action: String) {
+    private fun handleNotificationAction(actionId: String) {
+        val actions = getSavedActions()
+        val action = actions.find { it.id == actionId } ?: return
+        
         val app = application as OmniSyncApplication
         val signalRClient = app.signalRClient
         val mainViewModel = app.mainViewModel
 
-        when (action) {
-            ACTION_SHUTDOWN -> {
-                mainViewModel.addLog("Notification: Triggering Shutdown...", com.omni.sync.ui.screen.LogType.WARNING)
-                signalRClient.executeCommand("B:\\GDrive\\Tools\\05 Automation\\shutdown.bat")
-            }
-            ACTION_SLEEP -> {
-                mainViewModel.addLog("Notification: Triggering Sleep...", com.omni.sync.ui.screen.LogType.INFO)
-                signalRClient.executeCommand("B:\\GDrive\\Tools\\05 Automation\\sleep.bat")
-            }
-            ACTION_TV -> {
-                mainViewModel.addLog("Notification: Toggling TV...", com.omni.sync.ui.screen.LogType.INFO)
-                signalRClient.executeCommand("B:\\GDrive\\Tools\\05 Automation\\TVActive3\\tv_toggle.bat")
-            }
-            ACTION_WOL -> {
-                mainViewModel.sendWakeOnLan("10FFE0379DAC", "10.0.0.255", 9)
-            }
+        if (action.isWol && action.macAddress != null) {
+            mainViewModel.sendWakeOnLan(action.macAddress)
+        } else {
+            mainViewModel.addLog("Notification: Triggering ".plus(action.label).plus("..."), com.omni.sync.ui.screen.LogType.INFO)
+            signalRClient.executeCommand(action.command)
         }
+    }
+
+    private fun updateNotification() {
+        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        notificationManager.notify(1, createNotification())
     }
 
     override fun onBind(intent: Intent?): IBinder? {
@@ -75,39 +81,50 @@ class ForegroundService : Service() {
             val serviceChannel = NotificationChannel(
                 CHANNEL_ID,
                 getString(R.string.notification_channel_name),
-                NotificationManager.IMPORTANCE_LOW // Use LOW to avoid sound on every update
+                NotificationManager.IMPORTANCE_LOW
             )
             val manager = getSystemService(NotificationManager::class.java)
             manager.createNotificationChannel(serviceChannel)
         }
     }
 
+    private fun getSavedActions(): List<NotificationAction> {
+        val prefs = getSharedPreferences("omni_settings", Context.MODE_PRIVATE)
+        val json = prefs.getString("notification_actions", null)
+        if (json == null) {
+            // Default actions
+            return listOf(
+                NotificationAction("1", "Shutdown", "B:\\GDrive\\Tools\\05 Automation\\shutdown.bat"),
+                NotificationAction("2", "Sleep", "B:\\GDrive\\Tools\\05 Automation\\sleep.bat"),
+                NotificationAction("3", "TV", "B:\\GDrive\\Tools\\05 Automation\\TVActive3\\tv_toggle.bat"),
+                NotificationAction("4", "WOL", "", isWol = true, macAddress = "10FFE0379DAC")
+            )
+        }
+        val type = object : TypeToken<List<NotificationAction>>() {}.type
+        return Gson().fromJson(json, type)
+    }
+
     private fun createNotification(): Notification {
         val intent = Intent(this, MainActivity::class.java)
         val pendingIntent = PendingIntent.getActivity(this, 0, intent, PendingIntent.FLAG_IMMUTABLE)
 
-        val shutdownIntent = Intent(this, ForegroundService::class.java).apply { action = ACTION_SHUTDOWN }
-        val shutdownPendingIntent = PendingIntent.getService(this, 1, shutdownIntent, PendingIntent.FLAG_IMMUTABLE)
-
-        val sleepIntent = Intent(this, ForegroundService::class.java).apply { action = ACTION_SLEEP }
-        val sleepPendingIntent = PendingIntent.getService(this, 2, sleepIntent, PendingIntent.FLAG_IMMUTABLE)
-
-        val tvIntent = Intent(this, ForegroundService::class.java).apply { action = ACTION_TV }
-        val tvPendingIntent = PendingIntent.getService(this, 3, tvIntent, PendingIntent.FLAG_IMMUTABLE)
-
-        val wolIntent = Intent(this, ForegroundService::class.java).apply { action = ACTION_WOL }
-        val wolPendingIntent = PendingIntent.getService(this, 4, wolIntent, PendingIntent.FLAG_IMMUTABLE)
-
-        return NotificationCompat.Builder(this, CHANNEL_ID)
+        val builder = NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("OmniSync is Active")
             .setContentText("Quick actions available below.")
             .setSmallIcon(R.drawable.ic_notification)
             .setContentIntent(pendingIntent)
-            .addAction(0, getString(R.string.action_shutdown), shutdownPendingIntent)
-            .addAction(0, getString(R.string.action_sleep), sleepPendingIntent)
-            .addAction(0, getString(R.string.action_tv), tvPendingIntent)
-            .addAction(0, getString(R.string.action_wol), wolPendingIntent)
             .setOngoing(true)
-            .build()
+
+        val actions = getSavedActions()
+        actions.take(3).forEach { action -> // Android notifications usually limit to 3 actions
+            val triggerIntent = Intent(this, ForegroundService::class.java).apply {
+                this.action = ACTION_TRIGGER_NOTIFICATION_ACTION
+                putExtra(EXTRA_ACTION_ID, action.id)
+            }
+            val triggerPendingIntent = PendingIntent.getService(this, action.id.hashCode(), triggerIntent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+            builder.addAction(0, action.label, triggerPendingIntent)
+        }
+
+        return builder.build()
     }
 }

@@ -59,8 +59,12 @@ class BrowserViewModel(
     }
 
     fun closeSpecificTab(tabId: Any) {
-        // We pass tabId in the URL field for the CloseTab command if it's specific
-        signalRClient.sendBrowserCommand("CloseTab", tabId.toString(), false)
+        // Use dedicated hub method for closing specific tab
+        if (tabId is Number) {
+            signalRClient.sendCommand("CloseSpecificTab", tabId.toInt())
+        } else {
+            signalRClient.sendBrowserCommand("CloseTab", tabId.toString(), false)
+        }
     }
     
     fun addCurrentTabToCleanup() {

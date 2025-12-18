@@ -39,6 +39,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
@@ -346,14 +347,14 @@ fun BrowserControlScreen(
                     
                     Text("Built-in (Non-removable):", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
                     defaultPatterns.forEach { pattern ->
-                        Text("• $pattern", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(start = 8.dp, vertical = 1.dp))
+                        Text("• $pattern", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(PaddingValues(start = 8.dp, top = 1.dp, bottom = 1.dp)))
                     }
 
                     Spacer(modifier = Modifier.height(8.dp))
                     Text("Custom:", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
-                    
+
                     if (customCleanupPatterns.isEmpty()) {
-                        Text("No custom patterns", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(start = 8.dp, vertical = 4.dp))
+                        Text("No custom patterns", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(PaddingValues(start = 8.dp, top = 4.dp, bottom = 4.dp)))
                     }
 
                     customCleanupPatterns.forEach { pattern ->

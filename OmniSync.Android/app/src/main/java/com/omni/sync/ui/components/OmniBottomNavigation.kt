@@ -18,6 +18,7 @@ import androidx.compose.material.icons.filled.SmartToy
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.isImeVisible
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 
 // Create a simple data class to hold nav info
 data class NavItem(
@@ -36,20 +37,20 @@ val navigationItems = listOf(
     NavItem(AppScreen.AI_CHAT, "AI", Icons.Default.SmartToy)
 )
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun OmniBottomNavigation(
     currentScreen: AppScreen,
     onNavigate: (AppScreen) -> Unit
 ) {
-    // We only want to show the Bottom Bar if we are on one of the main screens.
-    // If we are in the Video Player, we usually want to hide it (optional).
+    // We only want to show the Bottom Bar if we are on one of the main screens.    
+    // If we are in the Video Player, we usually want to hide it (optional).        
     // Also hide when keyboard is up to save space.
     val isKeyboardVisible = WindowInsets.isImeVisible
     val showBottomBar = navigationItems.any { it.screen == currentScreen } && !isKeyboardVisible
 
     if (showBottomBar) {
-        NavigationBar {
-            navigationItems.forEach { item ->
+        NavigationBar {            navigationItems.forEach { item ->
                 val isSelected = currentScreen == item.screen
                 
                 NavigationBarItem(

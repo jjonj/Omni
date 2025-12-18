@@ -94,7 +94,7 @@ fun FilesScreen(
             )
         },
         modifier = modifier
-    ) {
+    ) { innerPadding ->
         Column(
             modifier = Modifier
                 .padding(innerPadding)
@@ -289,11 +289,7 @@ fun FileSystemEntryItem(
                 .combinedClickable(
                     onClick = { onClick(entry) },
                     onLongClick = { 
-                        if (!entry.isDirectory) {
-                            showMenu = true 
-                        } else {
-                            showMenu = true
-                        }
+                        showMenu = true
                     }
                 )
                 .padding(vertical = 8.dp),
@@ -397,7 +393,7 @@ fun FileSystemEntryItem(
 }
 
 private fun getParentPath(path: String): String {
-    val separator = if (path.contains("/")) "/" else "\\
+    val separator = if (path.contains("/")) "/" else "\\"
     return if (path.contains(separator) && path.lastIndexOf(separator) > 0) {
         path.substringBeforeLast(separator)
     } else if (path.length >= 2 && path[1] == ':') {

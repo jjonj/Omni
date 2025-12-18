@@ -567,6 +567,16 @@ class SignalRClient(
         }
     }
 
+    fun sendCommand(command: String, vararg args: Any?) {
+        if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
+            try {
+                hubConnection?.send(command, *args)
+            } catch (e: Exception) {
+                Log.e("SignalRClient", "Error sending command $command", e)
+            }
+        }
+    }
+
     fun getVolume(): Single<Float>? {
         if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
             return hubConnection?.invoke(Float::class.java, "GetVolume")

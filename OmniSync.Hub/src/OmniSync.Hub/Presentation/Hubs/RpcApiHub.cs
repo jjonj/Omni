@@ -430,6 +430,15 @@ namespace OmniSync.Hub.Presentation.Hubs
             }
         }
 
+        public async Task CloseSpecificTab(int tabId)
+        {
+            if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
+            {
+                AnyCommandReceived?.Invoke(this, $"CloseSpecificTab: {tabId}");
+                await Clients.All.SendAsync("ReceiveBrowserCommand", "CloseTab", tabId.ToString(), false);
+            }
+        }
+
         public async Task SendCleanupPatterns(List<string> patterns)
         {
             if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
