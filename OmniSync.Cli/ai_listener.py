@@ -23,16 +23,9 @@ hub = None
 async def run_gemini_cli(message):
     try:
         logger.info(f"Processing message with Gemini CLI: {message[:50]}...")
-        # Use npx to run the gemini-cli from its directory
-        # The exact command might depend on how gemini-cli is invoked
-        # Usually it's 'npm start -- "message"' or similar if it's a node project
-        
-        # Based on the file list, it's a node project. 
-        # I'll try 'npm start' or running the main entry point if known.
-        # Assuming there is a script or entry point that takes the prompt.
-        
+        # Use node to run the bundled gemini-cli non-interactively
         process = await asyncio.create_subprocess_exec(
-            'npm', 'run', 'start', '--', message,
+            'node', 'bundle/gemini.js', '--prompt', message, '--output-format', 'text',
             cwd=GEMINI_CLI_DIR,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE
@@ -54,14 +47,19 @@ async def run_gemini_cli(message):
         return f"Exception: {str(e)}"
 
 def on_ai_message(args):
-    sender_id, message = args
-    if sender_id == hub.connection_id:
-        return # Ignore our own messages if broadcasted back
+    try:
+        sender_id, message = args
+        # Check if we have a valid transport and connection_id
+        our_id = getattr(hub.transport, 'connection_id', None)
+        if our_id and sender_id == our_id:
+            return # Ignore our own messages if broadcasted back
+            
+        logger.info(f"Received AI Message from {sender_id}")
         
-    logger.info(f"Received AI Message from {sender_id}")
-    
-    # Run in event loop
-    asyncio.run_coroutine_threadsafe(handle_and_reply(message), GLOBAL_LOOP)
+        # Run in event loop
+        asyncio.run_coroutine_threadsafe(handle_and_reply(message), GLOBAL_LOOP)
+    except Exception as e:
+        logger.error(f"Error in on_ai_message callback: {e}")
 
 async def handle_and_reply(message):
     response = await run_gemini_cli(message)

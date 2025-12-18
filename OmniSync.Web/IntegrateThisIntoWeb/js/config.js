@@ -1,4 +1,10 @@
 /* =========================================
+   HUB CONFIGURATION
+   ========================================= */
+const HUB_URL = "http://10.0.0.37:5000/signalrhub";
+const API_KEY = "test_api_key";
+
+/* =========================================
    USER CONFIGURATION ZONE
    Edit the duration (dur) or names below.
    dur = minutes.

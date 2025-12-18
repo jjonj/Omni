@@ -250,6 +250,11 @@ class SignalRClient(
         hubConnection?.on("ReceiveAiResponse", { response: String ->
             _aiMessages.value = _aiMessages.value + Pair("AI", response)
         }, String::class.java)
+
+        hubConnection?.on("ReceiveCortexActivity", { name: String, type: String ->
+            Log.d("SignalRClient", "Cortex Activity: $name ($type)")
+            mainViewModel.onCortexActivityChanged(name, type)
+        }, String::class.java, String::class.java)
     }
 
     fun sendAiMessage(message: String) {
@@ -395,103 +400,43 @@ class SignalRClient(
         return null
     }
 
-    // List Directory using event-based response ("ReceiveDirectoryContents")
+    // List Directory using invoke for reliability
     fun listDirectory(relativePath: String): Single<List<FileSystemEntry>>? {
         if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
-            return Single.create<List<FileSystemEntry>> { emitter ->
-                try {
-                    mainViewModel.addLog("Requesting directory: ${if (relativePath.isEmpty()) "(root)" else relativePath}", com.omni.sync.ui.screen.LogType.INFO)
-                    val handlerName = "ReceiveDirectoryContents"
-                    var handled = false
-                    val handler: (Any) -> Unit = { rawResponse ->
-                        if (!handled) {
-                            handled = true
-                            try {
-                                val jsonElement = gson.toJsonTree(rawResponse)
-                                val results = mutableListOf<FileSystemEntry>()
-                                var skipped = 0
-                                if (jsonElement.isJsonArray) {
-                                    val arr = jsonElement.asJsonArray
-                                    for (el in arr) {
-                                        try {
-                                            val entry = gson.fromJson(el, FileSystemEntry::class.java)
-                                            if (entry != null) {
-                                                results.add(entry)
-                                            } else {
-                                                skipped++
-                                            }
-                                        } catch (_: Exception) {
-                                            skipped++
-                                        }
-                                    }
-                                }
-                                mainViewModel.addLog("Received ${results.size} entries${if (skipped > 0) " (skipped $skipped)" else ""}", com.omni.sync.ui.screen.LogType.SUCCESS)
-                                emitter.onSuccess(results)
-                            } catch (e: Exception) {
-                                val msg = "Parse error for directory '$relativePath': ${e.message}"
-                                mainViewModel.setErrorMessage(msg)
-                                Log.e("SignalRClient", msg, e)
-                                emitter.onError(e)
-                            } finally {
-                                try {
-                                    hubConnection?.remove(handlerName)
-                                } catch (_: Exception) { }
-                            }
-                        }
-                    }
-                    hubConnection?.on(handlerName, handler, Any::class.java)
-                    hubConnection?.send("ListDirectory", relativePath)
-                } catch (e: Exception) {
-                    val errorMessage = "Error requesting directory '$relativePath': ${e.message}"
-                    mainViewModel.setErrorMessage(errorMessage)
-                    Log.e("SignalRClient", errorMessage, e)
-                    emitter.onError(e)
+            mainViewModel.addLog("Requesting directory: ${if (relativePath.isEmpty()) "(root)" else relativePath}", com.omni.sync.ui.screen.LogType.INFO)
+            return hubConnection?.invoke(List::class.java, "ListDirectory", relativePath)
+                ?.map { rawList ->
+                    val jsonElement = gson.toJsonTree(rawList)
+                    val listType = object : TypeToken<List<FileSystemEntry>>() {}.type
+                    val results: List<FileSystemEntry> = gson.fromJson(jsonElement, listType)
+                    mainViewModel.addLog("Received ${results.size} entries", com.omni.sync.ui.screen.LogType.SUCCESS)
+                    results
                 }
-            }
+                ?.doOnError { error ->
+                    val msg = "Error for directory '$relativePath': ${error.message}"
+                    mainViewModel.setErrorMessage(msg)
+                    Log.e("SignalRClient", msg, error)
+                } as? Single<List<FileSystemEntry>>
         }
-        val warningMessage = "Not connected, cannot list directory '$relativePath'."
-        mainViewModel.setErrorMessage(warningMessage)
-        Log.w("SignalRClient", warningMessage)
         return null
     }
 
     fun searchFiles(path: String, query: String): Single<List<FileSystemEntry>>? {
         if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
-            return Single.create<List<FileSystemEntry>> { emitter ->
-                try {
-                    mainViewModel.addLog("Searching in $path for: $query", com.omni.sync.ui.screen.LogType.INFO)
-                    val handlerName = "ReceiveDirectoryContents"
-                    var handled = false
-                    val handler: (Any) -> Unit = { rawResponse ->
-                        if (!handled) {
-                            handled = true
-                            try {
-                                val jsonElement = gson.toJsonTree(rawResponse)
-                                val results = mutableListOf<FileSystemEntry>()
-                                if (jsonElement.isJsonArray) {
-                                    val arr = jsonElement.asJsonArray
-                                    for (el in arr) {
-                                        val entry = gson.fromJson(el, FileSystemEntry::class.java)
-                                        if (entry != null) results.add(entry)
-                                    }
-                                }
-                                mainViewModel.addLog("Found ${results.size} matches", com.omni.sync.ui.screen.LogType.SUCCESS)
-                                emitter.onSuccess(results)
-                            } catch (e: Exception) {
-                                emitter.onError(e)
-                            } finally {
-                                try {
-                                    hubConnection?.remove(handlerName)
-                                } catch (_: Exception) { }
-                            }
-                        }
-                    }
-                    hubConnection?.on(handlerName, handler, Any::class.java)
-                    hubConnection?.send("SearchFiles", path, query)
-                } catch (e: Exception) {
-                    emitter.onError(e)
+            mainViewModel.addLog("Searching in $path for: $query", com.omni.sync.ui.screen.LogType.INFO)
+            return hubConnection?.invoke(List::class.java, "SearchFiles", path, query)
+                ?.map { rawList ->
+                    val jsonElement = gson.toJsonTree(rawList)
+                    val listType = object : TypeToken<List<FileSystemEntry>>() {}.type
+                    val results: List<FileSystemEntry> = gson.fromJson(jsonElement, listType)
+                    mainViewModel.addLog("Found ${results.size} matches", com.omni.sync.ui.screen.LogType.SUCCESS)
+                    results
                 }
-            }
+                ?.doOnError { error ->
+                    val msg = "Search error in '$path': ${error.message}"
+                    mainViewModel.setErrorMessage(msg)
+                    Log.e("SignalRClient", msg, error)
+                } as? Single<List<FileSystemEntry>>
         }
         return null
     }

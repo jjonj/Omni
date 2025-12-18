@@ -105,7 +105,7 @@ class BrowserViewModel(
     
     fun sendSpacebar() {
         // VK_SPACE = 0x20 (32)
-        signalRClient.sendKeyEvent("InputKeyPress", 0x20u)
+        signalRClient.sendKeyEvent("INPUT_KEY_PRESS", 0x20u)
     }
 
     fun bookmarkCurrentTab() {

@@ -15,7 +15,9 @@ import java.net.DatagramPacket
 import java.net.DatagramSocket
 import java.net.InetAddress
 import android.content.Intent
-import android.net.Uri
+import android.app.NotificationManager
+import androidx.core.app.NotificationCompat
+import com.omni.sync.R
 
 enum class AppScreen {
     DASHBOARD,
@@ -120,6 +122,26 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         } catch (e: Exception) {
             addLog("Failed to open URL: ${e.message}", LogType.ERROR)
         }
+    }
+
+    fun onCortexActivityChanged(name: String, type: String) {
+        addLog("Cortex: $name ($type)", LogType.INFO)
+        
+        val prefs = applicationContext.getSharedPreferences("omni_settings", Context.MODE_PRIVATE)
+        if (!prefs.getBoolean("cortex_notifications_enabled", true)) return
+
+        val notificationManager = applicationContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        val channelId = "OmniSyncForegroundServiceChannel" // Reuse existing channel for now
+        
+        val notification = NotificationCompat.Builder(applicationContext, channelId)
+            .setContentTitle("New Cortex Activity")
+            .setContentText(name)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setAutoCancel(true)
+            .build()
+            
+        notificationManager.notify(2, notification) // ID 2 for activity changes
     }
 
     fun setConnected(connected: Boolean) {

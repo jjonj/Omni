@@ -60,6 +60,7 @@ namespace OmniSync.Hub.Logic.Monitoring
             // Define the event handler for RpcApiHub.AnyCommandReceived
             _anyCommandReceivedHandler = (sender, command) =>
             {
+                LastIncomingCommand = command;
                 CommandUpdateOccurred?.Invoke(this, command);
                 
                 // Filter out verbose commands from the persistent log
@@ -68,21 +69,26 @@ namespace OmniSync.Hub.Logic.Monitoring
                     return;
                 }
 
-                LogEntryAdded?.Invoke(this, $"[{DateTime.Now:HH:mm:ss}] Command Received: {command}");
+                AddLogMessage($"Command Received: {command}");
             };
 
             // Define the event handler for RpcApiHub.ClientConnectedEvent
             _clientConnectedHandler = (sender, connectionId) =>
             {
+                if (!ActiveConnections.Contains(connectionId))
+                {
+                    ActiveConnections.Add(connectionId);
+                }
                 ConnectionAdded?.Invoke(this, connectionId); // Now raises event
-                LogEntryAdded?.Invoke(this, $"[{DateTime.Now:HH:mm:ss}] Client Connected: {connectionId}");
+                AddLogMessage($"Client Connected: {connectionId}");
             };
 
             // Define the event handler for RpcApiHub.ClientDisconnectedEvent
             _clientDisconnectedHandler = (sender, connectionId) =>
             {
+                ActiveConnections.Remove(connectionId);
                 ConnectionRemoved?.Invoke(this, connectionId); // Now raises event
-                LogEntryAdded?.Invoke(this, $"[{DateTime.Now:HH:mm:ss}] Client Disconnected: {connectionId}");
+                AddLogMessage($"Client Disconnected: {connectionId}");
             };
 
             // Hook into RpcApiHub events

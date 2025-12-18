@@ -11,17 +11,7 @@ import android.content.res.Configuration
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
-import androidx.compose.foundation.gestures.detectDragGestures
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Icon
@@ -52,9 +42,6 @@ import kotlinx.coroutines.launch
 import android.view.WindowManager
 import android.media.AudioManager
 import android.content.Context
-
-import androidx.compose.material.icons.filled.SkipNext
-import androidx.compose.material.icons.filled.SkipPrevious
 
 @OptIn(UnstableApi::class) 
 @Composable
@@ -166,6 +153,74 @@ fun VideoPlayerScreen(
             .fillMaxSize()
             .background(Color.Black)
             .onSizeChanged { containerSize = it }
+            .pointerInput(Unit) {
+                detectTapGestures(
+                    onDoubleTap = { tapOffset ->
+                        if (scale > 1.05f) {
+                            scale = 1f
+                            offset = Offset.Zero
+                        } else {
+                            if (tapOffset.x < size.width / 2) {
+                                val newPos = exoPlayer.currentPosition - skipIntervalMs
+                                exoPlayer.seekTo(newPos.coerceAtLeast(0))
+                                skipFeedbackText = "Back ${skipIntervalMs / 1000}s"
+                            } else {
+                                val newPos = exoPlayer.currentPosition + skipIntervalMs
+                                exoPlayer.seekTo(newPos.coerceAtMost(exoPlayer.duration))
+                                skipFeedbackText = "Forward ${skipIntervalMs / 1000}s"
+                            }
+                        }
+                    },
+                    onTap = {
+                        if (isControllerVisible) playerViewInstance?.hideController()
+                        else playerViewInstance?.showController()
+                    }
+                )
+            }
+            .pointerInput(Unit) {
+                detectTransformGestures { centroid, pan, zoom, _ ->
+                    if (zoom != 1f || scale > 1.05f) {
+                        // Handle Zoom and Pan when zoomed in
+                        scale = (scale * zoom).coerceIn(1f, 5f)
+                        if (scale > 1f) {
+                            val extraWidth = (scale - 1) * containerSize.width
+                            val extraHeight = (scale - 1) * containerSize.height
+                            val maxX = extraWidth / 2
+                            val maxY = extraHeight / 2
+                            offset = Offset(
+                                x = (offset.x + pan.x * scale).coerceIn(-maxX, maxX),
+                                y = (offset.y + pan.y * scale).coerceIn(-maxY, maxY)
+                            )
+                        } else {
+                            offset = Offset.Zero
+                        }
+                    } else if (pan.y != 0f && Math.abs(pan.y) > Math.abs(pan.x)) {
+                        // Handle Brightness/Volume when not zoomed in
+                        if (centroid.x < containerSize.width / 2) {
+                            // Left side: Brightness
+                            val delta = -pan.y / containerSize.height
+                            val newBrightness = (currentBrightness + delta).coerceIn(0.01f, 1f)
+                            currentBrightness = newBrightness
+                            val lp = activity?.window?.attributes
+                            lp?.screenBrightness = newBrightness
+                            activity?.window?.attributes = lp
+                            skipFeedbackText = "Brightness: ${(newBrightness * 100).toInt()}%"
+                        } else {
+                            // Right side: Volume
+                            val deltaY = -pan.y
+                            val deltaVolume = (deltaY / containerSize.height) * maxVolume * 2f
+                            
+                            val currentVol = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
+                            val newVol = (currentVol + deltaVolume).toInt().coerceIn(0, maxVolume)
+                            
+                            if (newVol != currentVol) {
+                                audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, newVol, 0)
+                                skipFeedbackText = "Volume: ${(newVol.toFloat() / maxVolume * 100).toInt()}%"
+                            }
+                        }
+                    }
+                }
+            }
     ) {
         AndroidView(
             modifier = Modifier
@@ -183,7 +238,6 @@ fun VideoPlayerScreen(
                         ViewGroup.LayoutParams.MATCH_PARENT,
                         ViewGroup.LayoutParams.MATCH_PARENT
                     )
-                    // Use a more appropriate resize mode for zoom
                     resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT
                     controllerShowTimeoutMs = 3000
                     setControllerVisibilityListener(PlayerView.ControllerVisibilityListener { visibility ->
@@ -193,167 +247,6 @@ fun VideoPlayerScreen(
                 }
             }
         )
-
-        // Previous/Next Buttons Overlays
-        if (isControllerVisible && playlist.isNotEmpty()) {
-            Row(
-                modifier = Modifier
-                    .align(Alignment.Center)
-                    .fillMaxWidth()
-                    .padding(horizontal = 64.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                IconButton(
-                    onClick = { exoPlayer.seekToPreviousMediaItem() },
-                    modifier = Modifier.size(64.dp).background(Color.Black.copy(alpha = 0.3f), shape = MaterialTheme.shapes.extraLarge)
-                ) {
-                    Icon(Icons.Default.SkipPrevious, "Previous", tint = Color.White, modifier = Modifier.size(48.dp))
-                }
-                IconButton(
-                    onClick = { exoPlayer.seekToNextMediaItem() },
-                    modifier = Modifier.size(64.dp).background(Color.Black.copy(alpha = 0.3f), shape = MaterialTheme.shapes.extraLarge)
-                ) {
-                    Icon(Icons.Default.SkipNext, "Next", tint = Color.White, modifier = Modifier.size(48.dp))
-                }
-            }
-        }
-
-        // GESTURE OVERLAYS (Two side boxes)
-        Row(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(bottom = 80.dp) // Leave space for seek bar
-        ) {
-            // LEFT SKIP AREA (30%) - Brightness Control
-            Box(
-                modifier = Modifier
-                    .fillMaxHeight()
-                    .weight(0.3f)
-                    .pointerInput(Unit) {
-                        detectTapGestures(
-                            onDoubleTap = {
-                                if (scale > 1.1f) {
-                                    scale = 1f
-                                    offset = Offset.Zero
-                                } else {
-                                    val newPos = exoPlayer.currentPosition - skipIntervalMs
-                                    exoPlayer.seekTo(newPos.coerceAtLeast(0))
-                                    skipFeedbackText = "Back ${skipIntervalMs/1000}s"
-                                }
-                            },
-                            onTap = {
-                                if (isControllerVisible) playerViewInstance?.hideController()
-                                else playerViewInstance?.showController()
-                            }
-                        )
-                    }
-                    .pointerInput(Unit) {
-                        detectDragGestures(
-                            onDrag = { change, dragAmount ->
-                                if (scale == 1f) {
-                                    change.consume()
-                                    // Left side: Brightness
-                                    val delta = -dragAmount.y / containerSize.height
-                                    val newBrightness = (currentBrightness + delta).coerceIn(0.01f, 1f)
-                                    currentBrightness = newBrightness
-                                    val lp = activity?.window?.attributes
-                                    lp?.screenBrightness = newBrightness
-                                    activity?.window?.attributes = lp
-                                    skipFeedbackText = "Brightness: ${(newBrightness * 100).toInt()}%"
-                                }
-                            }
-                        )
-                    }
-                    .pointerInput(Unit) {
-                        detectTransformGestures { _, pan, zoom, _ ->
-                            if (scale > 1.05f || zoom != 1f) {
-                                scale = (scale * zoom).coerceIn(1f, 5f)
-                                if (scale > 1f) {
-                                    val extraWidth = (scale - 1) * containerSize.width
-                                    val extraHeight = (scale - 1) * containerSize.height
-                                    val maxX = extraWidth / 2
-                                    val maxY = extraHeight / 2
-                                    offset = Offset(
-                                        x = (offset.x + pan.x * scale).coerceIn(-maxX, maxX),
-                                        y = (offset.y + pan.y * scale).coerceIn(-maxY, maxY)
-                                    )
-                                } else {
-                                    offset = Offset.Zero
-                                }
-                            }
-                        }
-                    }
-            )
-
-            // MIDDLE GAP (40%) - No overlays here to allow touching player buttons
-            Spacer(modifier = Modifier.weight(0.4f))
-
-            // RIGHT SKIP AREA (30%) - Volume Control
-            Box(
-                modifier = Modifier
-                    .fillMaxHeight()
-                    .weight(0.3f)
-                    .pointerInput(Unit) {
-                        detectTapGestures(
-                            onDoubleTap = {
-                                if (scale > 1.1f) {
-                                    scale = 1f
-                                    offset = Offset.Zero
-                                } else {
-                                    val isRightSide = true // Always right side in this box
-                                    val newPos = exoPlayer.currentPosition + skipIntervalMs
-                                    exoPlayer.seekTo(newPos.coerceAtMost(exoPlayer.duration))
-                                    skipFeedbackText = "Forward ${skipIntervalMs/1000}s"
-                                }
-                            },
-                            onTap = {
-                                if (isControllerVisible) playerViewInstance?.hideController()
-                                else playerViewInstance?.showController()
-                            }
-                        )
-                    }
-                    .pointerInput(Unit) {
-                        detectDragGestures(
-                            onDrag = { change, dragAmount ->
-                                if (scale == 1f) {
-                                    change.consume()
-                                    // Right side: Volume
-                                    val deltaY = -dragAmount.y
-                                    val deltaVolume = (deltaY / containerSize.height) * maxVolume * 2f // Sensitivity
-                                    
-                                    val currentVol = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
-                                    val newVol = (currentVol + deltaVolume).toInt().coerceIn(0, maxVolume)
-                                    
-                                    if (newVol != currentVol) {
-                                        audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, newVol, 0)
-                                        skipFeedbackText = "Volume: ${(newVol.toFloat() / maxVolume * 100).toInt()}%"
-                                    }
-                                }
-                            }
-                        )
-                    }
-                    .pointerInput(Unit) {
-                        detectTransformGestures { _, pan, zoom, _ ->
-                            if (scale > 1.05f || zoom != 1f) {
-                                scale = (scale * zoom).coerceIn(1f, 5f)
-                                if (scale > 1f) {
-                                    val extraWidth = (scale - 1) * containerSize.width
-                                    val extraHeight = (scale - 1) * containerSize.height
-                                    val maxX = extraWidth / 2
-                                    val maxY = extraHeight / 2
-                                    offset = Offset(
-                                        x = (offset.x + pan.x * scale).coerceIn(-maxX, maxX),
-                                        y = (offset.y + pan.y * scale).coerceIn(-maxY, maxY)
-                                    )
-                                } else {
-                                    offset = Offset.Zero
-                                }
-                            }
-                        }
-                    }
-            )
-        }
 
         // Skip Feedback Overlay
         skipFeedbackText?.let { text ->
@@ -371,7 +264,7 @@ fun VideoPlayerScreen(
             }
         }
 
-        // Back Button Overlay - only visible when controller is visible, or always in portrait
+        // Back Button Overlay
         if (isControllerVisible || !isLandscape) {
             IconButton(
                 onClick = onBack,

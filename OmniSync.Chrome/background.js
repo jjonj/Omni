@@ -99,16 +99,26 @@ connection.on("ReceiveBrowserCommand", async (command, url, newTab) => {
         });
     } else if (command === "Back") {
         chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-            if (tabs[0]) chrome.tabs.goBack(tabs[0].id);
+            if (tabs[0]) {
+                chrome.tabs.goBack(tabs[0].id).catch(err => console.log("No back history"));
+            }
         });
     } else if (command === "Forward") {
         chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-            if (tabs[0]) chrome.tabs.goForward(tabs[0].id);
+            if (tabs[0]) {
+                chrome.tabs.goForward(tabs[0].id).catch(err => console.log("No forward history"));
+            }
         });
     } else if (command === "CloseTab") {
-        chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-            if (tabs[0]) chrome.tabs.remove(tabs[0].id);
-        });
+        if (url && !isNaN(url)) {
+            // Close specific tab ID passed in 'url' field
+            chrome.tabs.remove(parseInt(url));
+        } else {
+            // Default: close active tab
+            chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+                if (tabs[0]) chrome.tabs.remove(tabs[0].id);
+            });
+        }
     } else if (command === "CleanTabs") {
         chrome.tabs.query({}, (tabs) => {
             const tabsToClose = tabs.filter(tab => shouldCleanTab(tab.url));
@@ -147,6 +157,8 @@ connection.on("ReceiveBrowserCommand", async (command, url, newTab) => {
             connection.invoke("SendTabList", tabList);
         });
     } else if (command === "MediaPlayPause") {
+        // Broad search for any tab with media if active tab doesn't have it?
+        // For now, let's just do active tab but with better detection
         chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
             if (tabs[0]) {
                 chrome.scripting.executeScript({
@@ -158,6 +170,9 @@ connection.on("ReceiveBrowserCommand", async (command, url, newTab) => {
                                 if (m.paused) m.play();
                                 else m.pause();
                             });
+                        } else {
+                            // Try to find iframes (like youtube embeds) - limited by same-origin
+                            console.log("No direct media found in active tab");
                         }
                     }
                 });

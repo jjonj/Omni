@@ -21,6 +21,7 @@ fun SettingsScreen(
     
     var videoSkipInterval by remember { mutableIntStateOf(prefs.getInt("video_skip_interval", 10)) }
     var videoPlaylistRandom by remember { mutableStateOf(prefs.getBoolean("video_playlist_random", false)) }
+    var cortexNotificationsEnabled by remember { mutableStateOf(prefs.getBoolean("cortex_notifications_enabled", true)) }
 
     Scaffold(
         topBar = {
@@ -77,6 +78,26 @@ fun SettingsScreen(
                     onCheckedChange = { 
                         videoPlaylistRandom = it
                         prefs.edit().putBoolean("video_playlist_random", videoPlaylistRandom).apply()
+                    }
+                )
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Text("Scheduling", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text("Cortex activity notifications")
+                Switch(
+                    checked = cortexNotificationsEnabled,
+                    onCheckedChange = { 
+                        cortexNotificationsEnabled = it
+                        prefs.edit().putBoolean("cortex_notifications_enabled", cortexNotificationsEnabled).apply()
                     }
                 )
             }

@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OmniSync Hub Remote Control</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #1e1e1e; color: #d4d4d4; margin: 0; padding: 20px; }
+        .container { display: grid; grid-template-columns: 250px 1fr; gap: 20px; }
+        .box { background: #252526; border: 1px solid #333337; border-radius: 4px; padding: 15px; }
+        h2 { font-size: 1rem; margin-top: 0; border-bottom: 1px solid #333; padding-bottom: 10px; color: #fff; }
+        #log-output { height: 400px; background: #1e1e1e; border: none; width: 100%; color: #d4d4d4; font-family: Consolas, monospace; font-size: 0.9rem; overflow-y: scroll; white-space: pre-wrap; padding: 5px; }
+        #connections-list { list-style: none; padding: 0; margin: 0; }
+        #connections-list li { padding: 5px 0; border-bottom: 1px solid #333; font-size: 0.8rem; }
+        .footer { grid-column: span 2; display: flex; justify-content: space-between; align-items: center; margin-top: 10px; }
+        button { background: #3e3e42; color: #d4d4d4; border: none; padding: 8px 15px; cursor: pointer; border-radius: 2px; }
+        button:hover { background: #4e4e52; }
+        .status-item { margin-bottom: 10px; }
+        .status-label { font-weight: bold; font-size: 0.8rem; color: #888; }
+        .status-value { font-style: italic; opacity: 0.8; }
+    </style>
+</head>
+<body>
+    <h1>OmniSync Hub Web Control</h1>
+    <div class="container">
+        <div class="box">
+            <h2>Active Connections</h2>
+            <ul id="connections-list"></ul>
+        </div>
+        <div class="box" style="flex-grow: 1;">
+            <h2>Log Output</h2>
+            <div id="log-output"></div>
+        </div>
+        <div class="footer box">
+            <div>
+                <div class="status-item">
+                    <span class="status-label">Last Command:</span>
+                    <span id="last-command" class="status-value">None</span>
+                </div>
+                <div>
+                    <input type="checkbox" id="run-on-startup" onchange="toggleStartup(this.checked)">
+                    <label for="run-on-startup">Run on Windows Startup</label>
+                </div>
+            </div>
+            <div>
+                <button id="shutdown-btn" onclick="cycleShutdown()">Shutdown: None</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/signalr.min.js"></script>
+    <script src="js/config.js"></script>
+    <script>
+        let hubConnection = null;
+        let shutdownIndex = 0;
+        const shutdownTimes = [0, 15, 30, 60, 120, 300, 720];
+        let scheduledTime = null;
+
+        async function init() {
+            hubConnection = new signalR.HubConnectionBuilder()
+                .withUrl(HUB_URL)
+                .withAutomaticReconnect()
+                .build();
+
+            hubConnection.on("LogEntryAdded", (message) => {
+                const log = document.getElementById("log-output");
+                log.innerText += message + "\n";
+                log.scrollTop = log.scrollHeight;
+            });
+
+            hubConnection.on("CommandUpdateOccurred", (command) => {
+                document.getElementById("last-command").innerText = command;
+            });
+
+            hubConnection.on("ConnectionAdded", (id) => {
+                const li = document.createElement("li");
+                li.id = "conn-" + id;
+                li.innerText = id;
+                document.getElementById("connections-list").appendChild(li);
+            });
+
+            hubConnection.on("ConnectionRemoved", (id) => {
+                const el = document.getElementById("conn-" + id);
+                if (el) el.remove();
+            });
+
+            hubConnection.on("ShutdownScheduled", (time) => {
+                scheduledTime = time ? new Date(time) : null;
+                updateShutdownButton();
+            });
+
+            hubConnection.on("UpdateRunOnStartup", (enabled) => {
+                document.getElementById("run-on-startup").checked = enabled;
+            });
+
+            try {
+                await hubConnection.start();
+                console.log("Connected");
+                await hubConnection.invoke("Authenticate", API_KEY);
+                
+                // Get initial status
+                const status = await hubConnection.invoke("GetHubStatus");
+                document.getElementById("log-output").innerText = status.logMessages.join("\n") + "\n";
+                document.getElementById("last-command").innerText = status.lastIncomingCommand;
+                document.getElementById("run-on-startup").checked = status.isRunOnStartupEnabled;
+                scheduledTime = status.scheduledShutdownTime ? new Date(status.scheduledShutdownTime) : null;
+                
+                const connList = document.getElementById("connections-list");
+                status.activeConnections.forEach(id => {
+                    const li = document.createElement("li");
+                    li.id = "conn-" + id;
+                    li.innerText = id;
+                    connList.appendChild(li);
+                });
+
+                updateShutdownButton();
+                setInterval(updateShutdownButton, 1000);
+
+            } catch (err) {
+                console.error(err);
+            }
+        }
+
+        function updateShutdownButton() {
+            const btn = document.getElementById("shutdown-btn");
+            if (!scheduledTime) {
+                btn.innerText = "Shutdown: None";
+                shutdownIndex = 0;
+            } else {
+                const diff = scheduledTime - new Date();
+                if (diff <= 0) {
+                    btn.innerText = "Shutdown: Now";
+                } else {
+                    const mins = Math.floor(diff / 60000);
+                    const secs = Math.floor((diff % 60000) / 1000);
+                    btn.innerText = `Shutdown: ${mins}m ${secs}s`;
+                }
+            }
+        }
+
+        function cycleShutdown() {
+            shutdownIndex = (shutdownIndex + 1) % shutdownTimes.length;
+            const mins = shutdownTimes[shutdownIndex];
+            hubConnection.invoke("SendPayload", "SCHEDULE_SHUTDOWN", { Minutes: mins });
+        }
+
+        function toggleStartup(enabled) {
+            hubConnection.invoke("SetRunOnStartup", enabled);
+        }
+
+        init();
+    </script>
+</body>
+</html>

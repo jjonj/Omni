@@ -56,6 +56,7 @@ builder.Services.AddSingleton<InputService>(provider =>
 });
 builder.Services.AddSingleton<AudioService>();
 builder.Services.AddSingleton<ShutdownService>();
+builder.Services.AddSingleton<RegistryService>();
 builder.Services.AddSingleton<HubEventSender>();
 builder.Services.AddSingleton<HubMonitorService>(); // Register the new monitoring service
 builder.Services.AddHostedService<TrayIconManager>();
@@ -81,7 +82,7 @@ if (Directory.Exists(webContentPath))
     app.UseDefaultFiles(new DefaultFilesOptions
     {
         FileProvider = new PhysicalFileProvider(webContentPath),
-        DefaultFileNames = new List<string> { "Scheduler.html", "Test.html" } 
+        DefaultFileNames = new List<string> { "Scheduler.html", "Test.html", "HubControl.html" } 
     });
     app.UseStaticFiles(new StaticFileOptions
     {

@@ -39,9 +39,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.omni.sync.data.repository.SignalRClient
 import com.omni.sync.viewmodel.Bookmark
 import com.omni.sync.viewmodel.BrowserViewModel
@@ -62,6 +64,15 @@ fun BrowserControlScreen(
     var showCleanupPatterns by remember { mutableStateOf(false) }
     var showTabList by remember { mutableStateOf(false) }
     val context = LocalContext.current
+
+    val defaultPatterns = listOf(
+        "twitch.tv/directory/following",
+        "youtube.com (not watch/channel)",
+        "google.com/*",
+        "file:///*",
+        "chrome://newtab/",
+        "about:blank"
+    )
 
     Column(
         modifier = modifier
@@ -87,12 +98,10 @@ fun BrowserControlScreen(
                 )
             )
             
-            // Open on Phone
             IconButton(onClick = { viewModel.openCurrentTabOnPhone() }) {
                 Icon(Icons.Default.PhoneAndroid, "Open on Phone", tint = MaterialTheme.colorScheme.secondary)
             }
 
-            // Paste & Go
             IconButton(onClick = { viewModel.loadUrlFromClipboard(context) }) {
                 Icon(Icons.Default.ContentPasteGo, "Paste & Go", tint = MaterialTheme.colorScheme.primary)
             }
@@ -127,7 +136,6 @@ fun BrowserControlScreen(
                 }
             }
 
-            // New Tab Toggle
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("New Tab", style = MaterialTheme.typography.bodySmall)
                 Switch(
@@ -138,7 +146,6 @@ fun BrowserControlScreen(
             }
         }
         
-        // --- 3. Add Bookmark Button ---
         Button(
             onClick = { viewModel.bookmarkCurrentTab() },
             modifier = Modifier.fillMaxWidth(),
@@ -192,16 +199,16 @@ fun BrowserControlScreen(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
+            // 1. Clean Tabs
             OutlinedButton(
                 onClick = { viewModel.sendCommand("CleanTabs") },
-                modifier = Modifier.weight(1f),
-                shape = RoundedCornerShape(8.dp)
+                shape = RoundedCornerShape(8.dp),
+                contentPadding = PaddingValues(horizontal = 12.dp)
             ) {
-                Icon(Icons.Default.CleaningServices, null, modifier = Modifier.size(18.dp))
-                Spacer(Modifier.width(8.dp))
-                Text("Clean Tabs")
+                Icon(Icons.Default.CleaningServices, null, modifier = Modifier.size(20.dp))
             }
             
+            // 2. Tab List
             OutlinedButton(
                 onClick = { 
                     showTabList = !showTabList
@@ -215,13 +222,15 @@ fun BrowserControlScreen(
                 Text("Tab List")
             }
 
+            // 3. Add current tab to cleanup
             OutlinedButton(
                 onClick = { viewModel.addCurrentTabToCleanup() },
                 shape = RoundedCornerShape(8.dp)
             ) {
-                Icon(Icons.Default.Add, "Add current tab to cleanup")
+                Icon(Icons.Default.Add, "Add current to cleanup")
             }
             
+            // 4. Show patterns
             OutlinedButton(
                 onClick = { showCleanupPatterns = !showCleanupPatterns },
                 shape = RoundedCornerShape(8.dp)
@@ -239,53 +248,58 @@ fun BrowserControlScreen(
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .weight(0.5f),
+                    .weight(1f),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
             ) {
-                LazyColumn(modifier = Modifier.padding(8.dp)) {
-                    item {
-                        Text(
-                            "Open Chrome Tabs",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                Column(modifier = Modifier.padding(8.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                        Text("Open Chrome Tabs", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+                        IconButton(onClick = { showTabList = false }, modifier = Modifier.size(24.dp)) {
+                            Icon(Icons.Default.Close, null)
+                        }
                     }
-                    items(tabList) { tab ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 4.dp)
-                                .clickable { 
-                                    val url = tab["url"] as? String ?: ""
-                                    if (url.isNotEmpty()) {
-                                        viewModel.onUrlChanged(url)
-                                        viewModel.navigate(url)
+                    LazyColumn(modifier = Modifier.fillMaxWidth()) {
+                        items(tabList) { tab ->
+                            val tabId = tab["id"]
+                            val title = tab["title"] as? String ?: "Untitled"
+                            val url = tab["url"] as? String ?: ""
+                            
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { 
+                                        if (url.isNotEmpty()) {
+                                            viewModel.onUrlChanged(url)
+                                            viewModel.navigate(url)
+                                        }
                                     }
-                                },
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = tab["title"] as? String ?: "Untitled",
-                                style = MaterialTheme.typography.bodySmall,
-                                modifier = Modifier.weight(1f),
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                            IconButton(
-                                onClick = { 
-                                    val id = tab["id"]
-                                    if (id != null) viewModel.closeSpecificTab(id)
-                                    viewModel.requestTabList() // Refresh
-                                },
-                                modifier = Modifier.size(24.dp)
+                                    .padding(vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Icon(
-                                    Icons.Default.Close,
-                                    "Close",
-                                    tint = MaterialTheme.colorScheme.error,
-                                    modifier = Modifier.size(16.dp)
-                                )
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = title,
+                                        style = MaterialTheme.typography.bodyLarge.copy(fontSize = 16.sp, fontWeight = FontWeight.Medium),
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    if (url.isNotEmpty()) {
+                                        Text(text = url, style = MaterialTheme.typography.bodySmall, color = Color.Gray, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    }
+                                }
+                                IconButton(
+                                    onClick = { 
+                                        if (tabId != null) {
+                                            viewModel.closeSpecificTab(tabId)
+                                            viewModel.requestTabList()
+                                        }
+                                    },
+                                    modifier = Modifier.size(32.dp)
+                                ) {
+                                    Icon(Icons.Default.Close, "Close", tint = MaterialTheme.colorScheme.error)
+                                }
                             }
+                            HorizontalDivider(modifier = Modifier.padding(horizontal = 4.dp), thickness = 0.5.dp, color = Color.Gray.copy(alpha = 0.3f))
                         }
                     }
                 }
@@ -300,6 +314,13 @@ fun BrowserControlScreen(
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
             ) {
                 Column(modifier = Modifier.padding(8.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                        Text("Cleanup Patterns", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+                        IconButton(onClick = { showCleanupPatterns = false }, modifier = Modifier.size(24.dp)) {
+                            Icon(Icons.Default.Close, null)
+                        }
+                    }
+                    
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically
@@ -310,7 +331,8 @@ fun BrowserControlScreen(
                             onValueChange = { newPattern = it },
                             label = { Text("New Pattern (e.g. *.google.com/*)") },
                             modifier = Modifier.weight(1f),
-                            singleLine = true
+                            singleLine = true,
+                            textStyle = TextStyle(fontSize = 14.sp)
                         )
                         IconButton(onClick = { 
                             viewModel.addCleanupPattern(newPattern)
@@ -322,25 +344,27 @@ fun BrowserControlScreen(
                     
                     Spacer(modifier = Modifier.height(8.dp))
                     
-                    Text(
-                        "Custom Cleanup Patterns",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    Text("Built-in (Non-removable):", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
+                    defaultPatterns.forEach { pattern ->
+                        Text("• $pattern", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(start = 8.dp, vertical = 1.dp))
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text("Custom:", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
                     
                     if (customCleanupPatterns.isEmpty()) {
-                        Text("No custom patterns", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(vertical = 8.dp))
+                        Text("No custom patterns", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(start = 8.dp, vertical = 4.dp))
                     }
 
                     customCleanupPatterns.forEach { pattern ->
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(vertical = 4.dp),
+                                .padding(vertical = 2.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = pattern,
+                                text = "• $pattern",
                                 style = MaterialTheme.typography.bodySmall,
                                 modifier = Modifier.weight(1f),
                                 maxLines = 1,
@@ -348,14 +372,9 @@ fun BrowserControlScreen(
                             )
                             IconButton(
                                 onClick = { viewModel.removeCleanupPattern(pattern) },
-                                modifier = Modifier.size(24.dp)
+                                modifier = Modifier.size(20.dp)
                             ) {
-                                Icon(
-                                    Icons.Default.Delete,
-                                    "Remove",
-                                    tint = MaterialTheme.colorScheme.error,
-                                    modifier = Modifier.size(16.dp)
-                                )
+                                Icon(Icons.Default.Delete, "Remove", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(14.dp))
                             }
                         }
                     }

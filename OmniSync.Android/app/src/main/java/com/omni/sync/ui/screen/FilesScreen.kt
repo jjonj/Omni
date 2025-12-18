@@ -6,6 +6,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
@@ -18,6 +19,7 @@ import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -32,6 +34,7 @@ import com.omni.sync.data.model.FileSystemEntry
 import com.omni.sync.viewmodel.FilesViewModel
 import java.text.SimpleDateFormat
 import java.util.Locale
+import androidx.activity.compose.BackHandler
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
@@ -46,7 +49,12 @@ fun FilesScreen(
     val searchQuery by filesViewModel.searchQuery.collectAsState()
     val errorMessage by filesViewModel.errorMessage.collectAsState()
 
-    var showBookmarks by remember { mutableStateOf(false) }
+    var showBookmarksList by remember { mutableStateOf(false) }
+
+    // Handle back press to navigate up
+    BackHandler(enabled = currentPath.isNotEmpty() && currentPath != "/") {
+        filesViewModel.loadDirectory(getParentPath(currentPath))
+    }
 
     // Download-specific states
     val isDownloading by filesViewModel.isDownloading.collectAsState()
@@ -76,21 +84,24 @@ fun FilesScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = { showBookmarks = !showBookmarks }) {
-                        Icon(if (showBookmarks) Icons.Default.Star else Icons.Default.StarBorder, contentDescription = "Bookmarks")
+                    IconButton(onClick = { filesViewModel.loadDirectory(currentPath) }) {
+                        Icon(Icons.Default.Refresh, contentDescription = "Refresh")
+                    }
+                    IconButton(onClick = { showBookmarksList = !showBookmarksList }) {
+                        Icon(if (showBookmarksList) Icons.Default.Star else Icons.Default.StarBorder, contentDescription = "Bookmarks")
                     }
                 }
             )
         },
         modifier = modifier
-    ) { innerPadding ->
+    ) {
         Column(
             modifier = Modifier
                 .padding(innerPadding)
                 .fillMaxSize()
         ) {
-            // --- Bookmarks List ---
-            if (showBookmarks && folderBookmarks.isNotEmpty()) {
+            // --- Bookmarks Management List (Toggleable) ---
+            if (showBookmarksList && folderBookmarks.isNotEmpty()) {
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -98,22 +109,23 @@ fun FilesScreen(
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
                 ) {
                     Column(modifier = Modifier.padding(8.dp)) {
-                        Text("Folder Bookmarks", style = MaterialTheme.typography.titleSmall)
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                            Text("Manage Bookmarks", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+                            IconButton(onClick = { showBookmarksList = false }, modifier = Modifier.size(24.dp)) {
+                                Icon(Icons.Default.Close, null)
+                            }
+                        }
                         Spacer(modifier = Modifier.height(4.dp))
                         folderBookmarks.forEach { bookmark ->
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clickable { 
-                                        filesViewModel.loadDirectory(bookmark.path)
-                                        showBookmarks = false
-                                    }
-                                    .padding(vertical = 4.dp),
+                                    .padding(vertical = 2.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Icon(Icons.Default.Folder, null, modifier = Modifier.size(20.dp), tint = MaterialTheme.colorScheme.primary)
+                                Icon(Icons.Default.Folder, null, modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.primary)
                                 Spacer(Modifier.width(8.dp))
-                                Text(bookmark.name, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+                                Text(bookmark.name, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                 
                                 IconButton(onClick = { filesViewModel.moveFolderBookmarkUp(bookmark) }, modifier = Modifier.size(24.dp)) {
                                     Icon(Icons.Default.KeyboardArrowUp, null)
@@ -136,7 +148,7 @@ fun FilesScreen(
                 onValueChange = { filesViewModel.performSearch(it) },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(8.dp),
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
                 placeholder = { Text("Search in current folder...") },
                 leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
                 trailingIcon = {
@@ -179,17 +191,18 @@ fun FilesScreen(
 
             if (fileSystemEntries.isEmpty() && !isLoading && errorMessage == null && !isDownloading) {
                 Box(
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier.weight(1f).fillMaxWidth(),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text("No files or directories found. Connect to Hub or check path.")
+                    Text("No files found.")
                 }
             } else {
                 LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier.weight(1f).fillMaxWidth(),
                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
                 ) {
-                    items(fileSystemEntries) { entry ->
+                    items(fileSystemEntries) {
+                        entry ->
                         FileSystemEntryItem(
                             entry = entry,
                             isSearching = searchQuery.isNotEmpty(),
@@ -229,6 +242,28 @@ fun FilesScreen(
                     }
                 }
             }
+
+            // --- Compact Bookmarks Area (Bottom, always visible) ---
+            if (folderBookmarks.isNotEmpty()) {
+                HorizontalDivider()
+                LazyRow(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 4.dp),
+                    contentPadding = PaddingValues(horizontal = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(folderBookmarks) {
+                        bookmark ->
+                        InputChip(
+                            selected = currentPath == bookmark.path,
+                            onClick = { filesViewModel.loadDirectory(bookmark.path) },
+                            label = { Text(bookmark.name, maxLines = 1) },
+                            leadingIcon = { Icon(Icons.Default.Folder, null, modifier = Modifier.size(16.dp)) }
+                        )
+                    }
+                }
+            }
         }
     }
 }
@@ -256,6 +291,8 @@ fun FileSystemEntryItem(
                     onLongClick = { 
                         if (!entry.isDirectory) {
                             showMenu = true 
+                        } else {
+                            showMenu = true
                         }
                     }
                 )
@@ -314,27 +351,28 @@ fun FileSystemEntryItem(
             expanded = showMenu,
             onDismissRequest = { showMenu = false }
         ) {
-            DropdownMenuItem(
-                text = { Text("Edit as Text") },
-                onClick = {
-                    showMenu = false
-                    onClick(entry)
-                }
-            )
-            DropdownMenuItem(
-                text = { Text("Download & Open (Ext App)") },
-                onClick = {
-                    showMenu = false
-                    onDownloadAndOpen(entry)
-                }
-            )
+            if (!entry.isDirectory) {
+                DropdownMenuItem(
+                    text = { Text("Edit as Text") },
+                    onClick = {
+                        showMenu = false
+                        onClick(entry)
+                    }
+                )
+                DropdownMenuItem(
+                    text = { Text("Download & Open (Ext App)") },
+                    onClick = {
+                        showMenu = false
+                        onDownloadAndOpen(entry)
+                    }
+                )
+            }
             if (isSearching) {
                 DropdownMenuItem(
                     text = { Text("Open Containing Folder") },
                     onClick = {
                         showMenu = false
-                        val parentPath = entry.path.substringBeforeLast(System.getProperty("file.separator") ?: "\\")
-                        onOpenFolder(parentPath)
+                        onOpenFolder(getParentPath(entry.path))
                     }
                 )
             }
@@ -345,18 +383,28 @@ fun FileSystemEntryItem(
                     onLongClick(entry)
                 }
             )
+            if (entry.isDirectory) {
+                DropdownMenuItem(
+                    text = { Text(if (isBookmarked) "Remove Bookmark" else "Add Bookmark") },
+                    onClick = {
+                        showMenu = false
+                        onBookmarkToggle(entry)
+                    }
+                )
+            }
         }
     }
 }
 
 private fun getParentPath(path: String): String {
-    // This function is for client-side navigation up, if the server-provided ".." path is not used
-    // However, the server now provides the correct ".." path, so this might not be needed for direct use with loadDirectory(entry.path)
-    val separator = System.getProperty("file.separator") ?: "\\"
-    return if (path.contains(separator) && path.lastIndexOf(separator) > 0) { // Check if it's not just "/"
+    val separator = if (path.contains("/")) "/" else "\\
+    return if (path.contains(separator) && path.lastIndexOf(separator) > 0) {
         path.substringBeforeLast(separator)
+    } else if (path.length >= 2 && path[1] == ':') {
+        // Handle Windows root like C:\
+        if (path.length == 2) path + "\\" else path.substring(0, 3)
     } else {
-        "" // Already at root or empty path
+        ""
     }
 }
 
@@ -366,7 +414,9 @@ fun Double.format(digits: Int) = "%.${digits}f".format(Locale.getDefault(), this
 // Helper function to check extensions
 fun isVideoFile(filename: String): Boolean {
     val lower = filename.lowercase()
-    return lower.endsWith(".mp4") || lower.endsWith(".mkv") || lower.endsWith(".avi") || lower.endsWith(".mov")
+    return lower.endsWith(".mp4") || lower.endsWith(".mkv") || lower.endsWith(".avi") || 
+           lower.endsWith(".mov") || lower.endsWith(".mpg") || lower.endsWith(".wmv") || 
+           lower.endsWith(".3gp")
 }
 
 fun isAudioFile(filename: String): Boolean {

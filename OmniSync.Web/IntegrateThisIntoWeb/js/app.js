@@ -12,6 +12,7 @@ const App = {
     isPaused: false,
     lastActiveIdx: -1,
     dragSrc: null,
+    hubConnection: null,
 
     // --- INITIALIZATION ---
     init() {
@@ -43,8 +44,33 @@ const App = {
         
         // Start GCal
         GCal.init();
+
+        // Initialize SignalR
+        this.initSignalR();
         
         setInterval(() => this.tick(), 1000);
+    },
+
+    async initSignalR() {
+        this.hubConnection = new signalR.HubConnectionBuilder()
+            .withUrl(HUB_URL)
+            .withAutomaticReconnect()
+            .build();
+
+        try {
+            await this.hubConnection.start();
+            console.log("SignalR Connected to Hub");
+            await this.hubConnection.invoke("Authenticate", API_KEY);
+        } catch (err) {
+            console.error("SignalR Connection Error: ", err);
+            setTimeout(() => this.initSignalR(), 5000);
+        }
+    },
+
+    notifyActivityChange(block) {
+        if (this.hubConnection && this.hubConnection.state === signalR.HubConnectionState.Connected) {
+            this.hubConnection.invoke("NotifyCortexActivity", block.name, block.type);
+        }
     },
 
     persist() { localStorage.setItem('cortex_v14', JSON.stringify(this.state)); },
@@ -297,6 +323,7 @@ const App = {
 
         if (idx !== -1 && idx !== this.lastActiveIdx) {
             CortexAudio.playTone(this.state.schedule[idx].type);
+            this.notifyActivityChange(this.state.schedule[idx]);
             this.lastActiveIdx = idx;
         }
 

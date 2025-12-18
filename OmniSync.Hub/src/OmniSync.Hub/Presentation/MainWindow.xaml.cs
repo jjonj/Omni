@@ -18,6 +18,7 @@ namespace OmniSync.Hub.Presentation
         private readonly HubMonitorService _hubMonitorService;
         private readonly InputService _inputService; // Add InputService
         private readonly ShutdownService _shutdownService;
+        private readonly RegistryService _registryService;
         private const string AppName = "OmniSync Hub";
 
         private int _shutdownIndex = 0;
@@ -25,12 +26,13 @@ namespace OmniSync.Hub.Presentation
         private readonly string[] _shutdownLabels = { "None", "15m", "30m", "1h", "2h", "5h", "12h" };
         private readonly DispatcherTimer _uiUpdateTimer;
 
-        public MainWindow(HubMonitorService hubMonitorService, InputService inputService, ShutdownService shutdownService) // Add ShutdownService
+        public MainWindow(HubMonitorService hubMonitorService, InputService inputService, ShutdownService shutdownService, RegistryService registryService) // Add ShutdownService
         {
             InitializeComponent();
             _hubMonitorService = hubMonitorService;
             _inputService = inputService; // Assign InputService
             _shutdownService = shutdownService;
+            _registryService = registryService;
             this.DataContext = _hubMonitorService; // Set DataContext to the HubMonitorService
 
             // Subscribe to HubMonitorService events
@@ -58,7 +60,7 @@ namespace OmniSync.Hub.Presentation
             LogTextBox.ScrollToEnd();
 
             // Initialize RunOnStartup checkbox state
-            RunOnStartupCheckBox.IsChecked = IsRunOnStartupEnabled();
+            RunOnStartupCheckBox.IsChecked = _registryService.IsRunOnStartupEnabled();
             RunOnStartupCheckBox.Checked += RunOnStartupCheckBox_Checked;
             RunOnStartupCheckBox.Unchecked += RunOnStartupCheckBox_Unchecked;
 
@@ -76,46 +78,16 @@ namespace OmniSync.Hub.Presentation
             UpdateShutdownButtonLabel(_shutdownService.GetScheduledTime());
         }
 
-        private bool IsRunOnStartupEnabled()
-        {
-            using (RegistryKey? rk = Registry.CurrentUser.OpenSubKey("SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run", false))
-            {
-                return rk?.GetValue(AppName) != null;
-            }
-        }
-
-        private void SetRunOnStartup(bool enable)
-        {
-            using (RegistryKey? rk = Registry.CurrentUser.OpenSubKey("SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run", true))
-            {
-                if (rk == null) return;
-
-                if (enable)
-                {
-                    // Get the path to the current executable
-                    string? executablePath = Environment.ProcessPath;
-                    if (executablePath != null)
-                    {
-                        rk.SetValue(AppName, executablePath);
-                        _hubMonitorService.AddLogMessage($"Enabled '{AppName}' to run on startup.");
-                    }
-                }
-                else
-                {
-                    rk.DeleteValue(AppName, false);
-                    _hubMonitorService.AddLogMessage($"Disabled '{AppName}' from running on startup.");
-                }
-            }
-        }
-
         private void RunOnStartupCheckBox_Checked(object sender, RoutedEventArgs e)
         {
-            SetRunOnStartup(true);
+            _registryService.SetRunOnStartup(true);
+            _hubMonitorService.AddLogMessage($"Enabled '{AppName}' to run on startup.");
         }
 
         private void RunOnStartupCheckBox_Unchecked(object sender, RoutedEventArgs e)
         {
-            SetRunOnStartup(false);
+            _registryService.SetRunOnStartup(false);
+            _hubMonitorService.AddLogMessage($"Disabled '{AppName}' from running on startup.");
         }
 
         private void HubMonitorService_LogEntryAdded(object? sender, string message)

@@ -81,7 +81,7 @@ fun RemoteControlScreen(
             ButtonPanel(
                 signalRClient = signalRClient,
                 mainViewModel = mainViewModel,
-                modifier = Modifier.fillMaxWidth().imePadding().navigationBarsPadding(),
+                modifier = Modifier.fillMaxWidth().imePadding(),
                 keyboardController = keyboardController,
                 focusRequester = focusRequester
             )

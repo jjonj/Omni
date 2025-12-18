@@ -20,15 +20,17 @@ namespace OmniSync.Hub.Presentation
         private readonly HubMonitorService _hubMonitorService; // New: Reference to HubMonitorService
         private readonly InputService _inputService; // Add InputService
         private readonly ShutdownService _shutdownService;
+        private readonly RegistryService _registryService;
         private TrayApplicationContext _applicationContext;
         private Thread _trayThread;
 
-        public TrayIconManager(IHostApplicationLifetime appLifetime, HubMonitorService hubMonitorService, InputService inputService, ShutdownService shutdownService) // Add InputService to constructor
+        public TrayIconManager(IHostApplicationLifetime appLifetime, HubMonitorService hubMonitorService, InputService inputService, ShutdownService shutdownService, RegistryService registryService) // Add InputService to constructor
         {
             _appLifetime = appLifetime;
             _hubMonitorService = hubMonitorService; // Assign the injected service
             _inputService = inputService; // Assign the injected service
             _shutdownService = shutdownService;
+            _registryService = registryService;
         }
 
         public Task StartAsync(CancellationToken cancellationToken)
@@ -52,7 +54,7 @@ namespace OmniSync.Hub.Presentation
             WinFormsApp.EnableVisualStyles(); // Enable visual styles for WinForms NotifyIcon
             WinFormsApp.SetCompatibleTextRenderingDefault(false); // For WinForms interop
 
-            _applicationContext = new TrayApplicationContext(_appLifetime, app, _hubMonitorService, _inputService, _shutdownService); // Pass hubMonitorService and inputService
+            _applicationContext = new TrayApplicationContext(_appLifetime, app, _hubMonitorService, _inputService, _shutdownService, _registryService); // Pass hubMonitorService and inputService
             WinFormsApp.Run(_applicationContext); // Start the message pump with our custom context
         }
 
@@ -84,15 +86,17 @@ namespace OmniSync.Hub.Presentation
             private readonly HubMonitorService _hubMonitorService; // New: Reference to HubMonitorService
             private readonly InputService _inputService; // Add InputService
             private readonly ShutdownService _shutdownService;
+            private readonly RegistryService _registryService;
             private MainWindow _mainWindow;
 
-            public TrayApplicationContext(IHostApplicationLifetime appLifetime, WpfApp wpfApplication, HubMonitorService hubMonitorService, InputService inputService, ShutdownService shutdownService) // Add InputService to constructor
+            public TrayApplicationContext(IHostApplicationLifetime appLifetime, WpfApp wpfApplication, HubMonitorService hubMonitorService, InputService inputService, ShutdownService shutdownService, RegistryService registryService) // Add InputService to constructor
             {
                 _appLifetime = appLifetime;
                 _wpfApplication = wpfApplication; // Store reference to the WPF Application instance
                 _hubMonitorService = hubMonitorService; // Assign the injected service
                 _inputService = inputService; // Assign the injected service
                 _shutdownService = shutdownService;
+                _registryService = registryService;
                 InitializeComponent();
             }
 
@@ -113,7 +117,7 @@ namespace OmniSync.Hub.Presentation
                 _notifyIcon.Visible = true; // Make visible first
 
                 // Create and store the WPF main window, passing the HubMonitorService
-                _mainWindow = new MainWindow(_hubMonitorService, _inputService, _shutdownService);
+                _mainWindow = new MainWindow(_hubMonitorService, _inputService, _shutdownService, _registryService);
 
                 // Create Context Menu
                 var contextMenu = new ContextMenuStrip();

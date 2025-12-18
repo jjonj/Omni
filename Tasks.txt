@@ -1,70 +1,76 @@
 # Tasks
-WHen starting a task edit this document by prefixing the line with IN-PROGRESS
+When finishing a task make sure to prefix the line with "DONE" and also git commit.
+
 ## General
 
 ## For the hub
 
 ### Hub window
-DONE See similar android task: Button on hub window to set PC to turn off after X time. Clicking botton toggles between None/15min/30min/60min/2hours/5hours/12hours cycling back to none. To turn off PC schedule a call to C:\Windows\explorer.exe "B:\GDrive\Tools\05 Automation\shutdown.bat"
-DONE Remove the Test Input button (do this tiny task whenever you are touching the hub code anyway)
-DONE Hub window should look better/more modern UI and have a dark theme
-DONE Hub window shutdown timer does not update (its stuck at e.g. 14m 59s without counting down)
-DONE Startup on windows start does not work
+
 
 ## in OmniSync.Android
 
 ### General
-DONE Change reconnect attempt period from 3s to 10s
-DONE Using android back button should go back to the previous screen we were on instead of closing app, remember up to 3 screens. If no previous screen in history then go to dashboard. If going back twice on dashboard then close app.
-
+Different looking buttons, more sleep/modern would be nice
 
 ### Dashboard
-DONE Quick actions, remove buttons test echo, list notes, test clipboard. Instead add buttons for Shutdown ( "B:\GDrive\Tools\05 Automation\shutdown.bat") and Sleep ("B:\GDrive\Tools\05 Automation\sleep.bat") and TV ("B:\GDrive\Tools\05 Automation\TVActive3\tv_toggle.bat")
-DONE Add quick action button to send "magic packet" for wake on lan. Use broadcast mask 10.0.0.255 and mac address 10FFE0379DAC use port 9
-DONE Remove some of the overly verbose logging to the activity hub
-
+Rename from "Dashboard" to "Dash" in the bottom navigation bar
 
 ### Remote Control Screen
-DONE Special Button panel is ugly and takes up too much space
-DONE Shift, Alt and Ctrl toggling is broken, should be intelligent about highlighting button
-DONE See similar hub task: Button to set PC to turn off after X time. Clicking botton toggles between None/15min/30min/60min/2hours/5hours/12hours cycling back to none. To turn off PC schedule a call to C:\Windows\explorer.exe "B:\GDrive\Tools\05 Automation\shutdown.bat". Text on button updates with each click.
-DONE Recent commits made it so the button panel no longer floats above the android keyboard when the keyboard pops up, refix this.
+
+When the android keyboard is not "up" then things look mostly fine, but once the keyboard comes up, there is a big black space between the keyboard and the button panel which is wasted space. I believe this is because the background of the button panel has a fixed height which include space for navigation bar. solution is probably to change the height of that background when and only when the keyboard is up.
 Stream screen, replacing background of the trackpad leaving the trackpad functioning still, options to toggle monitor, pinch to zoom, (advanced feature, do last)       
 
 ### Files Screen
+Refresh button
+We have a bookmark button but nowhere to see or use the bookmarks. Make the bottom of the screen a super compact bookmark area
 Downloading a video into app data and optionally password protecting it with encryption and password. Should be deletable
-DONE Problem when switching phone orientation the video restarts
-DONE Video player fullscreen/horizontal mode
-DONE Video player pinch to zoom.
-DONE double tapping right and left side of video should skip forward/back 10 seconds
-DONE Support to open more file types, unknown filetypes should open as a text file       
-DONE Support for editing files opened as text files
-Bookmarking folders
-DONE Video player has a previous and next button built in, hook into those buttons and find the next/previous video in the current folders
-DONE Swiping finger up and down on left side should change phone brightness and right side should change phone volume
-DONE Text editing fancy features, think like a lite code editor like notepad++ or VS code. be creative.
-DONE Search for files (relative to current folder), when file found have a button to open containing folder. Quick/long tapping file should work like normal.
+Video player pinch to zoom.
+Android back button should prefer to go up in file system, only do default screen change if at file system root
+The media player used already has next/previous buttons that work, disable the extra next/previous buttons added to the UI (we might want them back later). 
+Support to open more video file types, .mpg .wmv .3gp (these currently crash the app after loading for a while) or at least dont crash.       
+
+NOT-WORKING Swiping finger up and down on left side should change phone brightness and right side should change phone volume. Currently this is very hard to trigger, only when using multiple fingers and doing specific movements can i get it to activate
+More Text editing fancy features, think like a lite code editor like notepad++ or VS code. be creative.
+BUG When searching for a file and long tapping->open folder, it loads and times out. "Error loading directory, the source did mnot signal an event for 8 seconds".
 
 ### Browser control screen
-DONE Add a button to open current chrome tab url on phone (send to default browser)      
-DONE The [arrow down] button next to clean tabs does not do anything. its supposed to open a list of the urls to auto close during clean tabs action.
-DONE Button to open a list of all tabs open in chrome with in-row buttons to close each one (for manual tab cleanup). The tab rows should not display the URL but the tab title
-DONE Bookmark current URL should bookmark the currently open chrome tab, not the entered url
-DONE Make bookmarks reorderable
-DONE Button to play/pause whatever media is currently playing (dunno how this could be done but give it a try)
+NOT-WORKING Button to open a list of all tabs open in chrome. Closing a tab closes the current tab, not the one selected. The tab list should update after closing. The list is ugly and font a bit too small. 
+NOT-WORKING Button to play/pause whatever media is currently playing (dunno how this could be done but give it a try)
+The Clean tabs pattern window should show the default patterns as well but they should not be removable
+Change the order of the clean tabs and tab list buttons and remove the text from Clean tabs (sweep icon is enough)
+back button doesnt work (forward does). Error Uncaught (in promise) Error: Cannot find a next page in history.
+spacebar button doesnt work, i can see hub log [12.57.09] Command Received: InputKeyPress but nothing happens (this used to work)
 
 ### Notification panel
-DONE In the android notification area there should be a panel with quick actions. Touching the notification outside the buttons should open the app.
+NOT-WORKING. I think the app needs to request permissions for notifications or something. - In the android notification area there should be a panel with quick actions. Touching the notification outside the buttons should open the app.
 
 ### Settings screen (accessed by button on dashboard, not bottom panel)
-DONE Add setting for video player next/previous buttons whether they should play next video by file order or random
-DONE Add setting for how far to skip forward/back when double tapping in video player (default 10s)
 Settings for what buttons should be in the notification quick actions panel, try to add as many possibilities here that you think could be done with a single button, especially from the Dashboard/Quick actions, remote control and browser control screens. also add option for custom buttons that will send a run/cmd command that will be executed on the pc.
 
 ### AI screen (new)
-DONE An AI screen that lets us talk to an LLM chatbot in a CLI running on the PC. Will work like gemini CLI but the interface is on the phone and the actions are on the PC. probably involves making a custom version/branch/fork of gemini CLI (which is on github). I have a fork checked out at D:\SSDProjects\Tools\gemini-cli but it needs an upstream remote and to rebase on that remote, maybe diverge away from the one commit i put on top if conflicting too much for now.
+ ### AI screen (new)                                                                         │
+│ DONE An AI screen that lets us talk to an LLM chatbot in a CLI running on the PC. Will work │
+│ like gemini CLI but the interface is on the phone and the actions are on the PC. probably   │
+│ involves making a custom version/branch/fork of gemini CLI (which is on github). I have a   │
+│ fork checked out at D:\SSDProjects\Tools\gemini-cli but it needs an upstream remote and to  │
+│ rebase on that remote, maybe diverge away from the one commit i put on top if conflicting   │
+│ too much for now.   
+  Progress Overview:
+   1. Android UI: Created AiChatScreen with a modern chat interface, featuring message history,
+      sender labels ("Me", "AI"), and auto-scrolling.
+   2. Network Plumbing: Updated the Hub's RpcApiHub and the Android SignalRClient to facilitate
+      bi-directional AI messaging.
+   3. PC Listener: Developed OmniSync.Cli/ai_listener.py, which runs on your PC, listens for
+      messages from your phone, and invokes your gemini-cli fork directly via Node.js.
+   4. Verification: Validated the entire chain using TestScripts/test_ai_integration.py. The
+      SignalR roundtrip is confirmed functional.
 
+  Current Blocker:
+  While the integration is working, the feature is currently non-responsive because your
+  gemini-cli is reporting a Quota Exhaustion (429 RESOURCE_EXHAUSTED) from the Google API. The
+  system is ready to go as soon as the API quota resets (estimated ~6 hours).   
 
 ## Web (new)
-DONE Hub should include a webserver acessible on port 3333, the server should communicate with the hub like other parts of the system.
-DONE Webpage should default to a page that is a copy of OmniSync.Web\IntegrateThisIntoWeb
+Integrate cortex scheduling into hub and show notifications on android phone when switching activity. Make this disableable in settings
+Make a new page that is an exact copy of hub window

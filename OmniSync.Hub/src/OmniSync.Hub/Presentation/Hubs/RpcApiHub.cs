@@ -6,6 +6,8 @@ using System.Text.Json;
 using System.Threading.Tasks;
 using OmniSync.Hub.Logic.Services;
 using OmniSync.Hub.Infrastructure.Services; // Added for FileService
+using OmniSync.Hub.Models;
+using OmniSync.Hub.Logic.Monitoring;
 using Microsoft.Extensions.Logging; // Added for ILogger
 
 namespace OmniSync.Hub.Presentation.Hubs
@@ -28,9 +30,11 @@ namespace OmniSync.Hub.Presentation.Hubs
         private readonly InputService _inputService;
         private readonly AudioService _audioService;
         private readonly ShutdownService _shutdownService;
+        private readonly RegistryService _registryService;
+        private readonly HubMonitorService _hubMonitorService;
         private readonly ILogger<RpcApiHub> _logger; // Added for logging
 
-        public RpcApiHub(AuthService authService, FileService fileService, ClipboardService clipboardService, CommandDispatcher commandDispatcher, ProcessService processService, HubEventSender hubEventSender, InputService inputService, AudioService audioService, ShutdownService shutdownService, ILogger<RpcApiHub> logger)
+        public RpcApiHub(AuthService authService, FileService fileService, ClipboardService clipboardService, CommandDispatcher commandDispatcher, ProcessService processService, HubEventSender hubEventSender, InputService inputService, AudioService audioService, ShutdownService shutdownService, RegistryService registryService, HubMonitorService hubMonitorService, ILogger<RpcApiHub> logger)
         {
             _authService = authService;
             _fileService = fileService;
@@ -41,6 +45,8 @@ namespace OmniSync.Hub.Presentation.Hubs
             _inputService = inputService;
             _audioService = audioService;
             _shutdownService = shutdownService;
+            _registryService = registryService;
+            _hubMonitorService = hubMonitorService;
             _logger = logger;
         }
 
@@ -72,6 +78,7 @@ namespace OmniSync.Hub.Presentation.Hubs
             await Clients.Caller.SendAsync("ModifierStateUpdated", "Ctrl", _inputService.IsCtrlPressed);
             await Clients.Caller.SendAsync("ModifierStateUpdated", "Alt", _inputService.IsAltPressed);
             await Clients.Caller.SendAsync("ShutdownScheduled", _shutdownService.GetScheduledTime());
+            await Clients.Caller.SendAsync("UpdateRunOnStartup", _registryService.IsRunOnStartupEnabled());
         }
 
         public bool Authenticate(string apiKey)
@@ -91,6 +98,33 @@ namespace OmniSync.Hub.Presentation.Hubs
             _logger.LogWarning($"Client failed authentication: {Context.ConnectionId}");
             Context.Abort();
             return false;
+        }
+
+        public object GetHubStatus()
+        {
+            if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
+            {
+                return new
+                {
+                    ActiveConnections = _hubMonitorService.ActiveConnections,
+                    LogMessages = _hubMonitorService.LogMessages,
+                    LastIncomingCommand = _hubMonitorService.LastIncomingCommand,
+                    IsRunOnStartupEnabled = _registryService.IsRunOnStartupEnabled(),
+                    ScheduledShutdownTime = _shutdownService.GetScheduledTime()
+                };
+            }
+            throw new UnauthorizedAccessException();
+        }
+
+        public void SetRunOnStartup(bool enable)
+        {
+            if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
+            {
+                _registryService.SetRunOnStartup(enable);
+                _hubMonitorService.AddLogMessage($"Run on startup set to {enable} via web/API.");
+                // Broadcast update to all clients
+                _ = Clients.All.SendAsync("UpdateRunOnStartup", enable);
+            }
         }
 
         public float GetVolume()
@@ -314,14 +348,13 @@ namespace OmniSync.Hub.Presentation.Hubs
             }
         }
 
-        public async Task ListDirectory(string path)
+        public async Task<IEnumerable<FileSystemEntry>> ListDirectory(string path)
         {
             try
             {
                 if (!Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) || !(bool)isAuthenticated)
                 {
-                    await Clients.Caller.SendAsync("ReceiveError", "Unauthorized");
-                    return;
+                    throw new HubException("Unauthorized");
                 }
 
                 AnyCommandReceived?.Invoke(this, $"ListDirectory: {path}");
@@ -329,23 +362,24 @@ namespace OmniSync.Hub.Presentation.Hubs
                 var contents = _fileService.ListDirectoryContents(path);
 
                 // Python script expects "ReceiveDirectoryContents" event
-                await Clients.Caller.SendAsync("ReceiveDirectoryContents", contents);
+                await Clients.All.SendAsync("ReceiveDirectoryContents", contents);
+                
+                return contents;
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error listing directory '{path}': {ex.Message}");
-                await Clients.Caller.SendAsync("ReceiveError", $"Error listing directory: {ex.Message}");
+                _logger.LogError(ex, $"Error listing directory '{path}'");
+                throw new HubException($"Error listing directory: {ex.Message}");
             }
         }
 
-        public async Task SearchFiles(string path, string query)
+        public async Task<IEnumerable<FileSystemEntry>> SearchFiles(string path, string query)
         {
             try
             {
                 if (!Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) || !(bool)isAuthenticated)
                 {
-                    await Clients.Caller.SendAsync("ReceiveError", "Unauthorized");
-                    return;
+                    throw new HubException("Unauthorized");
                 }
 
                 AnyCommandReceived?.Invoke(this, $"SearchFiles in {path}: {query}");
@@ -354,11 +388,13 @@ namespace OmniSync.Hub.Presentation.Hubs
 
                 // Reuse ReceiveDirectoryContents for search results
                 await Clients.All.SendAsync("ReceiveDirectoryContents", contents);
+                
+                return contents;
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error searching directory '{path}': {ex.Message}");
-                await Clients.Caller.SendAsync("ReceiveError", $"Error searching: {ex.Message}");
+                _logger.LogError(ex, $"Error searching directory '{path}'");
+                throw new HubException($"Error searching: {ex.Message}");
             }
         }
 
@@ -447,7 +483,8 @@ namespace OmniSync.Hub.Presentation.Hubs
         {
             if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
             {
-                AnyCommandReceived?.Invoke(this, $"AI Message Sent: {message.Take(20)}...");
+                string preview = message.Length > 20 ? message.Substring(0, 20) + "..." : message;
+                AnyCommandReceived?.Invoke(this, $"AI Message Sent: {preview}");
                 // Broadcast the user message so other clients (like a CLI listener) can see it
                 await Clients.All.SendAsync("ReceiveAiMessage", Context.ConnectionId, message);
             }
@@ -459,6 +496,15 @@ namespace OmniSync.Hub.Presentation.Hubs
             {
                 AnyCommandReceived?.Invoke(this, "AI Response Received");
                 await Clients.All.SendAsync("ReceiveAiResponse", response);
+            }
+        }
+
+        public async Task NotifyCortexActivity(string activityName, string activityType)
+        {
+            if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
+            {
+                AnyCommandReceived?.Invoke(this, $"Cortex Activity: {activityName}");
+                await Clients.All.SendAsync("ReceiveCortexActivity", activityName, activityType);
             }
         }
 
