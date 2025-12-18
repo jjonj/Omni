@@ -14,6 +14,8 @@ import java.lang.Exception
 import java.net.DatagramPacket
 import java.net.DatagramSocket
 import java.net.InetAddress
+import android.content.Intent
+import android.net.Uri
 
 enum class AppScreen {
     DASHBOARD,
@@ -22,7 +24,8 @@ enum class AppScreen {
     PROCESS,
     FILES,
     VIDEOPLAYER,
-    EDITOR
+    EDITOR,
+    SETTINGS
 }
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
@@ -81,8 +84,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun playVideo(remotePath: String, playlist: List<String> = emptyList()) {
+        val prefs = applicationContext.getSharedPreferences("omni_settings", Context.MODE_PRIVATE)
+        val isRandom = prefs.getBoolean("video_playlist_random", false)
+        
         val baseUrl = getBaseUrl()
-        val playlistUrls = playlist.map { path ->
+        
+        var finalPlaylist = playlist
+        if (isRandom && finalPlaylist.isNotEmpty()) {
+            val otherVideos = finalPlaylist.filter { it != remotePath }.shuffled()
+            finalPlaylist = listOf(remotePath) + otherVideos
+        }
+
+        val playlistUrls = finalPlaylist.map { path ->
             val encoded = java.net.URLEncoder.encode(path, "UTF-8")
             "$baseUrl/api/stream?path=$encoded"
         }
@@ -95,6 +108,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _currentVideoUrl.value = currentUrl
         
         navigateTo(AppScreen.VIDEOPLAYER)
+    }
+
+    fun openUrlOnPhone(url: String) {
+        try {
+            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            applicationContext.startActivity(intent)
+            addLog("Opened URL: $url", LogType.SUCCESS)
+        } catch (e: Exception) {
+            addLog("Failed to open URL: ${e.message}", LogType.ERROR)
+        }
     }
 
     fun setConnected(connected: Boolean) {

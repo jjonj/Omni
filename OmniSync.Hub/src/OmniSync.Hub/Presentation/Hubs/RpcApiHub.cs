@@ -423,6 +423,15 @@ namespace OmniSync.Hub.Presentation.Hubs
             }
         }
 
+        public async Task SendTabToPhone(string url)
+        {
+            if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
+            {
+                AnyCommandReceived?.Invoke(this, $"SendTabToPhone: {url}");
+                await Clients.All.SendAsync("ReceiveTabToPhone", url);
+            }
+        }
+
         private (string commandName, List<string> args) ParseCommand(string commandString)
         {
             var parts = new List<string>();

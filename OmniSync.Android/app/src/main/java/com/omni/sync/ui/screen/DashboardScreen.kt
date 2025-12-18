@@ -9,6 +9,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -18,15 +19,23 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.omni.sync.data.repository.SignalRClient
 import com.omni.sync.viewmodel.MainViewModel
+import com.omni.sync.viewmodel.AppScreen
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.rememberCoroutineScope
+
+enum class ConnectionStatus {
+    CONNECTED,
+    DISCONNECTED,
+    ERROR,
+    UNKNOWN
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DashboardScreen(modifier: Modifier = Modifier, signalRClient: SignalRClient, mainViewModel: MainViewModel) {
     // Collect connection states
-    val connectionStateString by signalRClient?.connectionState?.collectAsState() ?: remember { mutableStateOf("No Client") }
+    val connectionStateString by signalRClient.connectionState.collectAsState()
     val isConnected by mainViewModel.isConnected.collectAsState()
     
     val logs by mainViewModel.dashboardLogs.collectAsState()
@@ -48,108 +57,122 @@ fun DashboardScreen(modifier: Modifier = Modifier, signalRClient: SignalRClient,
         }
     }
     
-    Column(modifier = modifier.fillMaxSize().padding(16.dp)) {
-        // Connection Status Card
-        HubConnectionCard(
-            connectionStatus = connectionStatus,
-            connectionMessage = connectionStateString,
-            onReconnect = { signalRClient?.manualReconnect() }
-        )
-        
-        // Test Buttons Section
-        Card(
-            modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp)
-        ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Text(
-                    text = "Quick Actions",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(bottom = 8.dp)
-                )
-                
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                    Button(
-                        onClick = {
-                            mainViewModel.addLog("Triggering Shutdown...", LogType.WARNING)
-                            signalRClient?.executeCommand("B:\\GDrive\\Tools\\05 Automation\\shutdown.bat")
-                        },
-                        modifier = Modifier.weight(1f).padding(end = 4.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
-                    ) {
-                        Text("Shutdown")
-                    }
-                    
-                    Button(
-                        onClick = {
-                            mainViewModel.addLog("Triggering Sleep...", LogType.INFO)
-                            signalRClient?.executeCommand("B:\\GDrive\\Tools\\05 Automation\\sleep.bat")
-                        },
-                        modifier = Modifier.weight(1f).padding(start = 4.dp)
-                    ) {
-                        Text("Sleep")
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("OmniSync Dashboard") },
+                actions = {
+                    IconButton(onClick = { mainViewModel.navigateTo(AppScreen.SETTINGS) }) {
+                        Icon(Icons.Default.Settings, contentDescription = "Settings")
                     }
                 }
-                
-                Spacer(modifier = Modifier.height(8.dp))
-                
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                    Button(
-                        onClick = {
-                            mainViewModel.addLog("Toggling TV...", LogType.INFO)
-                            signalRClient?.executeCommand("B:\\GDrive\\Tools\\05 Automation\\TVActive3\\tv_toggle.bat")
-                        },
-                        modifier = Modifier.weight(1f).padding(end = 4.dp)
-                    ) {
-                        Text("TV")
-                    }
-                    
-                    Button(
-                        onClick = {
-                            mainViewModel.sendWakeOnLan("10FFE0379DAC", "10.0.0.255", 9)
-                        },
-                        modifier = Modifier.weight(1f).padding(start = 4.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.tertiary)
-                    ) {
-                        Text("WOL")
-                    }
-                }
-                
-                Spacer(modifier = Modifier.height(8.dp))
-                
-                Button(
-                    onClick = {
-                        mainViewModel.clearLogs() 
-                        mainViewModel.addLog("Logs cleared", LogType.INFO)
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.secondary
+            )
+        },
+        modifier = modifier
+    ) { padding ->
+        Column(modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp)) {
+            // Connection Status Card
+            HubConnectionCard(
+                connectionStatus = connectionStatus,
+                connectionMessage = connectionStateString,
+                onReconnect = { signalRClient?.manualReconnect() }
+            )
+            
+            // Test Buttons Section
+            Card(
+                modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text(
+                        text = "Quick Actions",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(bottom = 8.dp)
                     )
-                ) {
-                    Text("Clear Logs")
+                    
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                        Button(
+                            onClick = {
+                                mainViewModel.addLog("Triggering Shutdown...", LogType.WARNING)
+                                signalRClient.executeCommand("B:\\GDrive\\Tools\\05 Automation\\shutdown.bat")
+                            },
+                            modifier = Modifier.weight(1f).padding(end = 4.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                        ) {
+                            Text("Shutdown")
+                        }
+                        
+                        Button(
+                            onClick = {
+                                mainViewModel.addLog("Triggering Sleep...", LogType.INFO)
+                                signalRClient.executeCommand("B:\\GDrive\\Tools\\05 Automation\\sleep.bat")
+                            },
+                            modifier = Modifier.weight(1f).padding(start = 4.dp)
+                        ) {
+                            Text("Sleep")
+                        }
+                    }
+                    
+                    Spacer(modifier = Modifier.height(8.dp))
+                    
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                        Button(
+                            onClick = {
+                                mainViewModel.addLog("Toggling TV...", LogType.INFO)
+                                signalRClient.executeCommand("B:\\GDrive\\Tools\\05 Automation\\TVActive3\\tv_toggle.bat")
+                            },
+                            modifier = Modifier.weight(1f).padding(end = 4.dp)
+                        ) {
+                            Text("TV")
+                        }
+                        
+                        Button(
+                            onClick = {
+                                mainViewModel.sendWakeOnLan("10FFE0379DAC", "10.0.0.255", 9)
+                            },
+                            modifier = Modifier.weight(1f).padding(start = 4.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.tertiary)
+                        ) {
+                            Text("WOL")
+                        }
+                    }
+                    
+                    Spacer(modifier = Modifier.height(8.dp))
+                    
+                    Button(
+                        onClick = {
+                            mainViewModel.clearLogs() 
+                            mainViewModel.addLog("Logs cleared", LogType.INFO)
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.secondary
+                        )
+                    ) {
+                        Text("Clear Logs")
+                    }
                 }
             }
-        }
-        
-        // Logs Section
-        Card(
-            modifier = Modifier.fillMaxWidth().weight(1f)
-        ) {
-            Column(modifier = Modifier.padding(16.dp).fillMaxSize()) {
-                Text(
-                    text = "Activity Log",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(bottom = 8.dp)
-                )
-                
-                LazyColumn(
-                    state = listState,
-                    modifier = Modifier.fillMaxSize()
-                ) {
-                    items(logs) { log ->
-                        LogItem(log)
+            
+            // Logs Section
+            Card(
+                modifier = Modifier.fillMaxWidth().weight(1f)
+            ) {
+                Column(modifier = Modifier.padding(16.dp).fillMaxSize()) {
+                    Text(
+                        text = "Activity Log",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+                    
+                    LazyColumn(
+                        state = listState,
+                        modifier = Modifier.fillMaxSize()
+                    ) {
+                        items(logs) { log ->
+                            LogItem(log)
+                        }
                     }
                 }
             }
@@ -191,13 +214,6 @@ fun LogItem(log: LogEntry) {
             color = textColor
         )
     }
-}
-
-enum class ConnectionStatus {
-    CONNECTED,
-    DISCONNECTED,
-    ERROR,
-    UNKNOWN
 }
 
 @Composable

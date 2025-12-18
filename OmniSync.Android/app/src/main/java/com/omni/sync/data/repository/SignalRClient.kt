@@ -233,6 +233,11 @@ class SignalRClient(
                 Log.e("SignalRClient", "Error parsing tab list", e)
             }
         }, Any::class.java)
+
+        hubConnection?.on("ReceiveTabToPhone", { url: String ->
+            Log.d("SignalRClient", "Received tab to phone: $url")
+            mainViewModel.openUrlOnPhone(url)
+        }, String::class.java)
     }
 
     fun stopConnection() {

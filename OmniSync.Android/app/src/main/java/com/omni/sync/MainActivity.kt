@@ -155,6 +155,9 @@ class MainActivity : ComponentActivity() {
                 filesViewModel = filesViewModel,
                 onBack = { mainViewModel.goBack() }
             )
+            AppScreen.SETTINGS -> com.omni.sync.ui.screen.SettingsScreen(
+                mainViewModel = mainViewModel
+            )
             else -> {} // Handled at top level
         }
     }

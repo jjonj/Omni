@@ -17,6 +17,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.omni.sync.data.model.FileSystemEntry
@@ -137,6 +138,7 @@ fun FilesScreen(
                     items(fileSystemEntries) { entry ->
                         FileSystemEntryItem(
                             entry = entry,
+                            isSearching = searchQuery.isNotEmpty(),
                             onClick = { clickedEntry ->
                                 if (clickedEntry.isDirectory) {
                                     filesViewModel.loadDirectory(clickedEntry.path)
@@ -163,6 +165,9 @@ fun FilesScreen(
                             onDownloadAndOpen = { clickedEntry ->
                                 filesViewModel.startFileDownload(clickedEntry)
                                 Toast.makeText(context, "Downloading ${clickedEntry.name}...", Toast.LENGTH_SHORT).show()
+                            },
+                            onOpenFolder = { path ->
+                                filesViewModel.loadDirectory(path)
                             }
                         )
                     }
@@ -176,9 +181,11 @@ fun FilesScreen(
 @Composable
 fun FileSystemEntryItem(
     entry: FileSystemEntry, 
+    isSearching: Boolean = false,
     onClick: (FileSystemEntry) -> Unit, 
     onLongClick: (FileSystemEntry) -> Unit,
-    onDownloadAndOpen: (FileSystemEntry) -> Unit
+    onDownloadAndOpen: (FileSystemEntry) -> Unit,
+    onOpenFolder: (String) -> Unit = {}
 ) {
     var showMenu by remember { mutableStateOf(false) }
 
@@ -214,6 +221,9 @@ fun FileSystemEntryItem(
             Spacer(Modifier.width(8.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(text = entry.name, style = MaterialTheme.typography.bodyLarge)
+                if (isSearching) {
+                    Text(text = entry.path, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
                 if (!entry.isDirectory) {
                     Text(text = "${(entry.size / 1024.0).format(2)} KB", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
@@ -249,6 +259,16 @@ fun FileSystemEntryItem(
                     onDownloadAndOpen(entry)
                 }
             )
+            if (isSearching) {
+                DropdownMenuItem(
+                    text = { Text("Open Containing Folder") },
+                    onClick = {
+                        showMenu = false
+                        val parentPath = entry.path.substringBeforeLast(System.getProperty("file.separator") ?: "\\")
+                        onOpenFolder(parentPath)
+                    }
+                )
+            }
             DropdownMenuItem(
                 text = { Text("Open on PC") },
                 onClick = {

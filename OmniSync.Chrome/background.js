@@ -121,6 +121,7 @@ connection.on("ReceiveBrowserCommand", async (command, url, newTab) => {
             customCleanupPatterns.push(url);
             chrome.storage.local.set({ customCleanupPatterns });
             console.log("Added cleanup pattern:", url);
+            connection.invoke("SendCleanupPatterns", customCleanupPatterns);
         }
     } else if (command === "RemoveCleanupPattern") {
         // url parameter contains the pattern to remove
@@ -129,6 +130,7 @@ connection.on("ReceiveBrowserCommand", async (command, url, newTab) => {
             customCleanupPatterns.splice(index, 1);
             chrome.storage.local.set({ customCleanupPatterns });
             console.log("Removed cleanup pattern:", url);
+            connection.invoke("SendCleanupPatterns", customCleanupPatterns);
         }
     } else if (command === "GetCleanupPatterns") {
         // Send patterns back to hub which will forward to Android
@@ -159,6 +161,12 @@ connection.on("ReceiveBrowserCommand", async (command, url, newTab) => {
                         }
                     }
                 });
+            }
+        });
+    } else if (command === "OpenCurrentTabOnPhone") {
+        chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+            if (tabs[0] && tabs[0].url) {
+                connection.invoke("SendTabToPhone", tabs[0].url);
             }
         });
     } else if (command === "AddCurrentTabToCleanup") {

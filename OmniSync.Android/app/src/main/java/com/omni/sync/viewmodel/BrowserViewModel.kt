@@ -105,6 +105,10 @@ class BrowserViewModel(
         signalRClient.sendBrowserCommand("GetTabInfo", "", false)
     }
 
+    fun openCurrentTabOnPhone() {
+        signalRClient.sendBrowserCommand("OpenCurrentTabOnPhone", "", false)
+    }
+
     fun addBookmark(name: String? = null, url: String? = null) {
         val finalUrl = url ?: _urlInput.value
         if (finalUrl.isNotBlank()) {
@@ -130,6 +134,28 @@ class BrowserViewModel(
         currentList.remove(bookmark)
         _bookmarks.value = currentList
         saveBookmarks()
+    }
+
+    fun moveBookmarkUp(bookmark: Bookmark) {
+        val currentList = _bookmarks.value.toMutableList()
+        val index = currentList.indexOf(bookmark)
+        if (index > 0) {
+            currentList.removeAt(index)
+            currentList.add(index - 1, bookmark)
+            _bookmarks.value = currentList
+            saveBookmarks()
+        }
+    }
+
+    fun moveBookmarkDown(bookmark: Bookmark) {
+        val currentList = _bookmarks.value.toMutableList()
+        val index = currentList.indexOf(bookmark)
+        if (index != -1 && index < currentList.size - 1) {
+            currentList.removeAt(index)
+            currentList.add(index + 1, bookmark)
+            _bookmarks.value = currentList
+            saveBookmarks()
+        }
     }
     
     fun loadUrlFromClipboard(context: Context) {

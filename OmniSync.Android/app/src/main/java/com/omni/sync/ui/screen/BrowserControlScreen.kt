@@ -22,6 +22,11 @@ import androidx.compose.material.icons.filled.SpaceBar
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.List
+import androidx.compose.material.icons.filled.PhoneAndroid
+import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -41,9 +46,6 @@ import com.omni.sync.data.repository.SignalRClient
 import com.omni.sync.viewmodel.Bookmark
 import com.omni.sync.viewmodel.BrowserViewModel
 import com.omni.sync.viewmodel.BrowserViewModelFactory
-
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.List
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -85,6 +87,11 @@ fun BrowserControlScreen(
                 )
             )
             
+            // Open on Phone
+            IconButton(onClick = { viewModel.openCurrentTabOnPhone() }) {
+                Icon(Icons.Default.PhoneAndroid, "Open on Phone", tint = MaterialTheme.colorScheme.secondary)
+            }
+
             // Paste & Go
             IconButton(onClick = { viewModel.loadUrlFromClipboard(context) }) {
                 Icon(Icons.Default.ContentPasteGo, "Paste & Go", tint = MaterialTheme.colorScheme.primary)
@@ -164,7 +171,9 @@ fun BrowserControlScreen(
                         viewModel.onUrlChanged(bookmark.url)
                         viewModel.navigate(bookmark.url) 
                     },
-                    onDelete = { viewModel.removeBookmark(bookmark) }
+                    onDelete = { viewModel.removeBookmark(bookmark) },
+                    onMoveUp = { viewModel.moveBookmarkUp(bookmark) },
+                    onMoveDown = { viewModel.moveBookmarkDown(bookmark) }
                 )
             }
         }
@@ -331,7 +340,13 @@ fun BrowserControlScreen(
 }
 
 @Composable
-fun BookmarkItem(bookmark: Bookmark, onClick: () -> Unit, onDelete: () -> Unit) {
+fun BookmarkItem(
+    bookmark: Bookmark, 
+    onClick: () -> Unit, 
+    onDelete: () -> Unit,
+    onMoveUp: () -> Unit,
+    onMoveDown: () -> Unit
+) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -363,6 +378,13 @@ fun BookmarkItem(bookmark: Bookmark, onClick: () -> Unit, onDelete: () -> Unit) 
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
+            }
+            
+            IconButton(onClick = onMoveUp, modifier = Modifier.size(24.dp)) {
+                Icon(Icons.Default.KeyboardArrowUp, "Move Up")
+            }
+            IconButton(onClick = onMoveDown, modifier = Modifier.size(24.dp)) {
+                Icon(Icons.Default.KeyboardArrowDown, "Move Down")
             }
             
             IconButton(onClick = onDelete, modifier = Modifier.size(24.dp)) {

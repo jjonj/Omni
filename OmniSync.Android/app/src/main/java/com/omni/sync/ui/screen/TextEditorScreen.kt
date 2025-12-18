@@ -5,9 +5,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
+import androidx.compose.runtime.*
+import androidx.compose.foundation.background
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
@@ -15,6 +14,66 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.omni.sync.viewmodel.FilesViewModel
+
+import androidx.compose.material.icons.filled.DeleteSweep
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+
+import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.input.OffsetMapping
+import androidx.compose.ui.text.input.TransformedText
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
+
+class MarkdownVisualTransformation(private val colorScheme: ColorScheme) : VisualTransformation {
+    override fun filter(text: AnnotatedString): TransformedText {
+        return TransformedText(
+            highlightMarkdown(text.text, colorScheme),
+            OffsetMapping.Identity
+        )
+    }
+
+    private fun highlightMarkdown(text: String, colorScheme: ColorScheme): AnnotatedString {
+        return buildAnnotatedString {
+            val lines = text.split("\n")
+            lines.forEachIndexed { index, line ->
+                when {
+                    line.startsWith("#") -> {
+                        withStyle(SpanStyle(color = colorScheme.primary, fontWeight = FontWeight.Bold)) {
+                            append(line)
+                        }
+                    }
+                    line.startsWith(">") -> {
+                        withStyle(SpanStyle(color = colorScheme.tertiary, fontStyle = androidx.compose.ui.text.font.FontStyle.Italic)) {
+                            append(line)
+                        }
+                    }
+                    line.contains("`") -> {
+                        // Simple code highlight
+                        val parts = line.split("`")
+                        parts.forEachIndexed { pIndex, part ->
+                            if (pIndex % 2 == 1) {
+                                withStyle(SpanStyle(background = colorScheme.surfaceVariant, color = colorScheme.onSurfaceVariant, fontFamily = FontFamily.Monospace)) {
+                                    append(part)
+                                }
+                            } else {
+                                append(part)
+                            }
+                        }
+                    }
+                    else -> {
+                        append(line)
+                    }
+                }
+                if (index < lines.size - 1) append("\n")
+            }
+        }
+    }
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -25,6 +84,10 @@ fun TextEditorScreen(
     val editingFile by filesViewModel.editingFile.collectAsState()
     val editingContent by filesViewModel.editingContent.collectAsState()
     val isSaving by filesViewModel.isSaving.collectAsState()
+    
+    val scrollState = rememberScrollState()
+    val colorScheme = MaterialTheme.colorScheme
+    val visualTransformation = remember(colorScheme) { MarkdownVisualTransformation(colorScheme) }
 
     Scaffold(
         topBar = {
@@ -36,6 +99,9 @@ fun TextEditorScreen(
                     }
                 },
                 actions = {
+                    IconButton(onClick = { filesViewModel.updateEditingContent("") }) {
+                        Icon(Icons.Default.DeleteSweep, contentDescription = "Clear All")
+                    }
                     if (isSaving) {
                         CircularProgressIndicator(
                             modifier = Modifier.size(24.dp),
@@ -51,23 +117,52 @@ fun TextEditorScreen(
             )
         }
     ) { paddingValues ->
-        TextField(
-            value = editingContent,
-            onValueChange = { filesViewModel.updateEditingContent(it) },
+        Row(
             modifier = Modifier
                 .padding(paddingValues)
-                .fillMaxSize(),
-            textStyle = TextStyle(
-                fontFamily = FontFamily.Monospace,
-                fontSize = 14.sp
-            ),
-            colors = TextFieldDefaults.colors(
-                focusedContainerColor = Color.Transparent,
-                unfocusedContainerColor = Color.Transparent,
-                disabledContainerColor = Color.Transparent,
-                focusedIndicatorColor = Color.Transparent,
-                unfocusedIndicatorColor = Color.Transparent,
+                .fillMaxSize()
+        ) {
+            // Line numbers column
+            val lines = editingContent.split("\n")
+            val lineCount = lines.size
+            val lineNumbers = (1..lineCount).joinToString("\n")
+            
+            Text(
+                text = lineNumbers,
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .width(40.dp)
+                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
+                    .padding(vertical = 16.dp, horizontal = 4.dp),
+                style = TextStyle(
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.secondary,
+                    textAlign = TextAlign.End
+                ),
+                lineHeight = 20.sp
             )
-        )
+
+            TextField(
+                value = editingContent,
+                onValueChange = { filesViewModel.updateEditingContent(it) },
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight(),
+                textStyle = TextStyle(
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 14.sp,
+                    lineHeight = 20.sp
+                ),
+                visualTransformation = if (editingFile?.name?.endsWith(".md") == true) visualTransformation else VisualTransformation.None,
+                colors = TextFieldDefaults.colors(
+                    focusedContainerColor = Color.Transparent,
+                    unfocusedContainerColor = Color.Transparent,
+                    disabledContainerColor = Color.Transparent,
+                    focusedIndicatorColor = Color.Transparent,
+                    unfocusedIndicatorColor = Color.Transparent,
+                )
+            )
+        }
     }
 }

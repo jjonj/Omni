@@ -17,7 +17,11 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Icon
@@ -49,6 +53,9 @@ import android.view.WindowManager
 import android.media.AudioManager
 import android.content.Context
 
+import androidx.compose.material.icons.filled.SkipNext
+import androidx.compose.material.icons.filled.SkipPrevious
+
 @OptIn(UnstableApi::class) 
 @Composable
 fun VideoPlayerScreen(
@@ -65,6 +72,9 @@ fun VideoPlayerScreen(
     
     val audioManager = remember { context.getSystemService(Context.AUDIO_SERVICE) as AudioManager }
     val maxVolume = remember { audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC) }
+    
+    val prefs = remember { context.getSharedPreferences("omni_settings", Context.MODE_PRIVATE) }
+    val skipIntervalMs = remember { prefs.getInt("video_skip_interval", 10) * 1000L }
 
     var scale by remember { mutableStateOf(1f) }
     var offset by remember { mutableStateOf(Offset.Zero) }
@@ -184,6 +194,31 @@ fun VideoPlayerScreen(
             }
         )
 
+        // Previous/Next Buttons Overlays
+        if (isControllerVisible && playlist.isNotEmpty()) {
+            Row(
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .fillMaxWidth()
+                    .padding(horizontal = 64.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(
+                    onClick = { exoPlayer.seekToPreviousMediaItem() },
+                    modifier = Modifier.size(64.dp).background(Color.Black.copy(alpha = 0.3f), shape = MaterialTheme.shapes.extraLarge)
+                ) {
+                    Icon(Icons.Default.SkipPrevious, "Previous", tint = Color.White, modifier = Modifier.size(48.dp))
+                }
+                IconButton(
+                    onClick = { exoPlayer.seekToNextMediaItem() },
+                    modifier = Modifier.size(64.dp).background(Color.Black.copy(alpha = 0.3f), shape = MaterialTheme.shapes.extraLarge)
+                ) {
+                    Icon(Icons.Default.SkipNext, "Next", tint = Color.White, modifier = Modifier.size(48.dp))
+                }
+            }
+        }
+
         // GESTURE OVERLAYS (Two side boxes)
         Row(
             modifier = Modifier
@@ -202,9 +237,9 @@ fun VideoPlayerScreen(
                                     scale = 1f
                                     offset = Offset.Zero
                                 } else {
-                                    val newPos = exoPlayer.currentPosition - 10000
+                                    val newPos = exoPlayer.currentPosition - skipIntervalMs
                                     exoPlayer.seekTo(newPos.coerceAtLeast(0))
-                                    skipFeedbackText = "Back 10s"
+                                    skipFeedbackText = "Back ${skipIntervalMs/1000}s"
                                 }
                             },
                             onTap = {
@@ -267,9 +302,9 @@ fun VideoPlayerScreen(
                                     offset = Offset.Zero
                                 } else {
                                     val isRightSide = true // Always right side in this box
-                                    val newPos = exoPlayer.currentPosition + 10000
+                                    val newPos = exoPlayer.currentPosition + skipIntervalMs
                                     exoPlayer.seekTo(newPos.coerceAtMost(exoPlayer.duration))
-                                    skipFeedbackText = "Forward 10s"
+                                    skipFeedbackText = "Forward ${skipIntervalMs/1000}s"
                                 }
                             },
                             onTap = {

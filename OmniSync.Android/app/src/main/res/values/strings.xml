@@ -1,4 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">OmniSync</string>
+    <string name="notification_channel_name">OmniSync Active Service</string>
+    <string name="action_shutdown">Shutdown</string>
+    <string name="action_sleep">Sleep</string>
+    <string name="action_tv">TV</string>
+    <string name="action_wol">WOL</string>
 </resources>
