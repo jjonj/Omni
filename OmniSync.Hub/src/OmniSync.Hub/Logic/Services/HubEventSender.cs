@@ -14,18 +14,26 @@ namespace OmniSync.Hub.Logic.Services
         private readonly ProcessService _processService;
         private readonly InputService _inputService;
         private readonly ShutdownService _shutdownService;
+        private readonly CommandDispatcher _commandDispatcher;
         private readonly Dictionary<string, string> _clientCommandOutputSubscriptions = new Dictionary<string, string>(); // ClientId -> ConnectionId for command output
 
-        public HubEventSender(IHubContext<RpcApiHub> hubContext, ProcessService processService, InputService inputService, ShutdownService shutdownService)
+        public HubEventSender(IHubContext<RpcApiHub> hubContext, ProcessService processService, InputService inputService, ShutdownService shutdownService, CommandDispatcher commandDispatcher)
         {
             _hubContext = hubContext;
             _processService = processService;
             _inputService = inputService;
             _shutdownService = shutdownService;
+            _commandDispatcher = commandDispatcher;
 
             _processService.CommandOutputReceived += OnCommandOutputReceived;
             _inputService.ModifierStateChanged += OnModifierStateChanged;
             _shutdownService.ShutdownScheduled += OnShutdownScheduled;
+            _commandDispatcher.AddCleanupPatternRequested += OnAddCleanupPatternRequested;
+        }
+
+        private async void OnAddCleanupPatternRequested(object? sender, string pattern)
+        {
+            await _hubContext.Clients.All.SendAsync("ReceiveBrowserCommand", "AddCleanupPattern", pattern, false);
         }
 
         private async void OnModifierStateChanged(object? sender, ModifierStateEventArgs e)

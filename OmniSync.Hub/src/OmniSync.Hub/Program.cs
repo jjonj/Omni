@@ -46,7 +46,14 @@ builder.Services.AddSingleton<FileService>(provider =>
     return new FileService(noteRootPath, browseRootPath);
 });
 builder.Services.AddSingleton<ClipboardService>();
-builder.Services.AddSingleton<CommandDispatcher>();
+builder.Services.AddSingleton<CommandDispatcher>(provider => {
+    var inputService = provider.GetRequiredService<InputService>();
+    var fileService = provider.GetRequiredService<FileService>();
+    var audioService = provider.GetRequiredService<AudioService>();
+    var processService = provider.GetRequiredService<ProcessService>();
+    var shutdownService = provider.GetRequiredService<ShutdownService>();
+    return new CommandDispatcher(inputService, fileService, audioService, processService, shutdownService);
+});
 builder.Services.AddSingleton<ProcessService>();
 builder.Services.AddSingleton<InputService>(provider =>
 {

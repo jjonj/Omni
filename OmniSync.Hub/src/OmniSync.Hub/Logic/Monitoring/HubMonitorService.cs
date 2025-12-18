@@ -75,10 +75,13 @@ namespace OmniSync.Hub.Logic.Monitoring
             // Define the event handler for RpcApiHub.ClientConnectedEvent
             _clientConnectedHandler = (sender, connectionId) =>
             {
-                if (!ActiveConnections.Contains(connectionId))
+                SafeUpdateConnections(() =>
                 {
-                    ActiveConnections.Add(connectionId);
-                }
+                    if (!ActiveConnections.Contains(connectionId))
+                    {
+                        ActiveConnections.Add(connectionId);
+                    }
+                });
                 ConnectionAdded?.Invoke(this, connectionId); // Now raises event
                 AddLogMessage($"Client Connected: {connectionId}");
             };
@@ -86,7 +89,10 @@ namespace OmniSync.Hub.Logic.Monitoring
             // Define the event handler for RpcApiHub.ClientDisconnectedEvent
             _clientDisconnectedHandler = (sender, connectionId) =>
             {
-                ActiveConnections.Remove(connectionId);
+                SafeUpdateConnections(() =>
+                {
+                    ActiveConnections.Remove(connectionId);
+                });
                 ConnectionRemoved?.Invoke(this, connectionId); // Now raises event
                 AddLogMessage($"Client Disconnected: {connectionId}");
             };
@@ -133,11 +139,34 @@ namespace OmniSync.Hub.Logic.Monitoring
 
         public void AddLogMessage(string message)
         {
-            // This ensures thread safety for ObservableCollection when updated from different threads
-            // For UI updates, it's best to Invoke on the Dispatcher, which the MainWindow does.
-            // For now, we'll just add to the collection and invoke the event.
-            LogMessages.Add($"[{DateTime.Now:HH:mm:ss}] {message}");
-            LogEntryAdded?.Invoke(this, $"[{DateTime.Now:HH:mm:ss}] {message}");
+            var logEntry = $"[{DateTime.Now:HH:mm:ss}] {message}";
+            
+            // WPF Compatibility: Ensure ObservableCollection is updated on the UI thread if we are in a WPF context
+            if (System.Windows.Application.Current != null)
+            {
+                System.Windows.Application.Current.Dispatcher.BeginInvoke(() =>
+                {
+                    LogMessages.Add(logEntry);
+                });
+            }
+            else
+            {
+                LogMessages.Add(logEntry);
+            }
+
+            LogEntryAdded?.Invoke(this, logEntry);
+        }
+
+        private void SafeUpdateConnections(Action action)
+        {
+            if (System.Windows.Application.Current != null)
+            {
+                System.Windows.Application.Current.Dispatcher.BeginInvoke(action);
+            }
+            else
+            {
+                action();
+            }
         }
     }
 }

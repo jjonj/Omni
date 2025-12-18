@@ -450,17 +450,6 @@ namespace OmniSync.Hub.Presentation.Hubs
             }
         }
 
-        public async Task AddCleanupPattern(string pattern)
-        {
-            if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
-            {
-                AnyCommandReceived?.Invoke(this, $"AddCleanupPattern: {pattern}");
-                
-                // Forward to all clients (Chrome extension will pick this up)
-                await Clients.All.SendAsync("ReceiveBrowserCommand", "AddCleanupPattern", pattern, false);
-            }
-        }
-
         public async Task SendTabInfo(string title, string url)
         {
             if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)

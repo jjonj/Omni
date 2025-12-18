@@ -37,21 +37,17 @@ namespace OmniSync.Hub.Presentation
 
             // Subscribe to HubMonitorService events
             _hubMonitorService.LogEntryAdded += HubMonitorService_LogEntryAdded;
-            _hubMonitorService.CommandUpdateOccurred += HubMonitorService_CommandUpdateOccurred;
-            _hubMonitorService.ConnectionAdded += HubMonitorService_ConnectionAdded; // New subscription
-            _hubMonitorService.ConnectionRemoved += HubMonitorService_ConnectionRemoved; // New subscription
             _shutdownService.ShutdownScheduled += ShutdownService_ShutdownScheduled;
 
             // Initialize UI elements with current data from HubMonitorService
             // ConnectionsListBox is bound directly to ActiveConnections in XAML and ObservableCollection handles updates
-            // LogTextBox.Text and LastCommandTextBlock.Text will be updated via events and binding
+            // LastCommandTextBlock.Text is bound to LastIncomingCommand
             
-            // Initial load for LogTextBox and LastCommandTextBlock
+            // Initial load for LogTextBox
             foreach (var logEntry in _hubMonitorService.LogMessages)
             {
                 LogTextBox.AppendText(logEntry + Environment.NewLine);
             }
-            LastCommandTextBlock.Text = _hubMonitorService.LastIncomingCommand;
 
             // Initial load for ShutdownButton
             UpdateShutdownButtonLabel(_shutdownService.GetScheduledTime());
@@ -81,45 +77,19 @@ namespace OmniSync.Hub.Presentation
         private void RunOnStartupCheckBox_Checked(object sender, RoutedEventArgs e)
         {
             _registryService.SetRunOnStartup(true);
-            _hubMonitorService.AddLogMessage($"Enabled '{AppName}' to run on startup.");
         }
 
         private void RunOnStartupCheckBox_Unchecked(object sender, RoutedEventArgs e)
         {
             _registryService.SetRunOnStartup(false);
-            _hubMonitorService.AddLogMessage($"Disabled '{AppName}' from running on startup.");
         }
 
         private void HubMonitorService_LogEntryAdded(object? sender, string message)
         {
-            Dispatcher.Invoke(() =>
+            Dispatcher.BeginInvoke(() =>
             {
                 LogTextBox.AppendText(message + Environment.NewLine);
                 LogTextBox.ScrollToEnd();
-            });
-        }
-
-        private void HubMonitorService_CommandUpdateOccurred(object? sender, string command)
-        {
-            Dispatcher.Invoke(() =>
-            {
-                LastCommandTextBlock.Text = command;
-            });
-        }
-
-        private void HubMonitorService_ConnectionAdded(object? sender, string connectionId) // New handler
-        {
-            Dispatcher.Invoke(() =>
-            {
-                _hubMonitorService.ActiveConnections.Add(connectionId);
-            });
-        }
-
-        private void HubMonitorService_ConnectionRemoved(object? sender, string connectionId) // New handler
-        {
-            Dispatcher.Invoke(() =>
-            {
-                _hubMonitorService.ActiveConnections.Remove(connectionId);
             });
         }
 
@@ -131,7 +101,7 @@ namespace OmniSync.Hub.Presentation
 
         private void ShutdownService_ShutdownScheduled(object? sender, DateTime? scheduledTime)
         {
-            Dispatcher.Invoke(() =>
+            Dispatcher.BeginInvoke(() =>
             {
                 UpdateShutdownButtonLabel(scheduledTime);
             });
