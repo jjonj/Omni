@@ -28,7 +28,13 @@ namespace OmniSync.Hub.Logic.Services
             _processService.CommandOutputReceived += OnCommandOutputReceived;
             _inputService.ModifierStateChanged += OnModifierStateChanged;
             _shutdownService.ShutdownScheduled += OnShutdownScheduled;
+            _shutdownService.ModeChanged += OnShutdownModeChanged;
             _commandDispatcher.AddCleanupPatternRequested += OnAddCleanupPatternRequested;
+        }
+
+        private async void OnShutdownModeChanged(object? sender, ShutdownMode mode)
+        {
+            await _hubContext.Clients.All.SendAsync("ShutdownModeUpdated", mode.ToString());
         }
 
         private async void OnAddCleanupPatternRequested(object? sender, string pattern)

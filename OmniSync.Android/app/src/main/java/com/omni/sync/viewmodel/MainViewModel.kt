@@ -57,6 +57,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _scheduledShutdownTime = MutableStateFlow<String?>(null)
     val scheduledShutdownTime: StateFlow<String?> = _scheduledShutdownTime
 
+    private val _shutdownMode = MutableStateFlow("Shutdown")
+    val shutdownMode: StateFlow<String> = _shutdownMode
+
     // --- Command Output ---
     private val _commandOutput = MutableStateFlow("")
     val commandOutput: StateFlow<String> = _commandOutput
@@ -165,6 +168,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setScheduledShutdownTime(time: String?) {
         _scheduledShutdownTime.value = time
+    }
+
+    fun setShutdownMode(mode: String) {
+        _shutdownMode.value = mode
     }
     
     // Updated Clipboard logic if needed, omitted for brevity but keep your existing logic

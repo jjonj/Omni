@@ -13,6 +13,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardBackspace
 import androidx.compose.material.icons.automirrored.filled.KeyboardReturn
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.ModeNight
 import androidx.compose.material.icons.filled.PowerSettingsNew
 import androidx.compose.material.icons.filled.VolumeOff
 import androidx.compose.material.icons.filled.VolumeUp
@@ -180,6 +181,7 @@ fun ButtonPanel(
     val isCtrlPressed by mainViewModel.isCtrlPressed.collectAsState()
     val isAltPressed by mainViewModel.isAltPressed.collectAsState()
     val scheduledShutdownTime by mainViewModel.scheduledShutdownTime.collectAsState()
+    val shutdownMode by mainViewModel.shutdownMode.collectAsState()
 
     var volumeLevel by remember { mutableStateOf(50f) }
     var isMutedState by remember { mutableStateOf(false) }
@@ -347,10 +349,21 @@ fun ButtonPanel(
                     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                     clipboard.primaryClip?.getItemAt(0)?.text?.let { signalRClient.sendText(it.toString()) }
                 }
-                ActionKeyButton(icon = Icons.Default.PowerSettingsNew, text = shutdownLabel, modifier = Modifier.weight(1f)) {
-                    shutdownIndex = (shutdownIndex + 1) % shutdownTimes.size
-                    signalRClient.sendScheduleShutdown(shutdownTimes[shutdownIndex])
-                }
+                
+                val isSleep = shutdownMode.contains("Sleep", ignoreCase = true)
+                ActionKeyButton(
+                    icon = if (isSleep) Icons.Default.ModeNight else Icons.Default.PowerSettingsNew, 
+                    text = shutdownLabel, 
+                    modifier = Modifier.weight(1f),
+                    onClick = {
+                        shutdownIndex = (shutdownIndex + 1) % shutdownTimes.size
+                        signalRClient.sendScheduleShutdown(shutdownTimes[shutdownIndex])
+                    },
+                    onLongClick = {
+                        signalRClient.toggleShutdownMode()
+                    }
+                )
+                
                 ActionKeyButton(text = "Kbd", modifier = Modifier.weight(1f)) {
                     if (isKeyboardVisible) keyboardController?.hide()
                     else keyboardController?.show()
@@ -398,11 +411,23 @@ fun ActionKeyButton(
     modifier: Modifier = Modifier, 
     icon: androidx.compose.ui.graphics.vector.ImageVector? = null, 
     text: String? = null, 
+    onLongClick: (() -> Unit)? = null,
     onClick: () -> Unit
 ) {
     FilledTonalButton(
         onClick = onClick, 
-        modifier = modifier.height(48.dp),
+        modifier = modifier
+            .height(48.dp)
+            .then(
+                if (onLongClick != null) {
+                    Modifier.pointerInput(Unit) {
+                        detectTapGestures(
+                            onLongPress = { onLongClick() },
+                            onTap = { onClick() }
+                        )
+                    }
+                } else Modifier
+            ),
         shape = RoundedCornerShape(8.dp),
         colors = ButtonDefaults.filledTonalButtonColors(containerColor = MaterialTheme.colorScheme.surfaceContainer, contentColor = MaterialTheme.colorScheme.onSurface),
         contentPadding = PaddingValues(4.dp)

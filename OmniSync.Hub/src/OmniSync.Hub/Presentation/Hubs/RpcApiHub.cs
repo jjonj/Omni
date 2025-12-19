@@ -78,7 +78,20 @@ namespace OmniSync.Hub.Presentation.Hubs
             await Clients.Caller.SendAsync("ModifierStateUpdated", "Ctrl", _inputService.IsCtrlPressed);
             await Clients.Caller.SendAsync("ModifierStateUpdated", "Alt", _inputService.IsAltPressed);
             await Clients.Caller.SendAsync("ShutdownScheduled", _shutdownService.GetScheduledTime());
+            await Clients.Caller.SendAsync("ShutdownModeUpdated", _shutdownService.GetCurrentMode().ToString());
             await Clients.Caller.SendAsync("UpdateRunOnStartup", _registryService.IsRunOnStartupEnabled());
+        }
+
+        public void ToggleShutdownMode()
+        {
+            if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
+            {
+                var currentMode = _shutdownService.GetCurrentMode();
+                var newMode = currentMode == ShutdownMode.Shutdown 
+                    ? ShutdownMode.Sleep 
+                    : ShutdownMode.Shutdown;
+                _shutdownService.SetMode(newMode);
+            }
         }
 
         public bool Authenticate(string apiKey)

@@ -49,7 +49,7 @@ namespace OmniSync.Hub.Presentation
         {
             // Initialize WPF Application on this thread
             var app = new WpfApp();
-            app.ShutdownMode = ShutdownMode.OnExplicitShutdown; // Manage shutdown manually
+            app.ShutdownMode = System.Windows.ShutdownMode.OnExplicitShutdown; // Manage shutdown manually
 
             WinFormsApp.EnableVisualStyles(); // Enable visual styles for WinForms NotifyIcon
             WinFormsApp.SetCompatibleTextRenderingDefault(false); // For WinForms interop

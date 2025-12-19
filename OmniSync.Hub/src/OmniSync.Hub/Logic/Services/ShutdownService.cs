@@ -7,60 +7,85 @@ using OmniSync.Hub.Infrastructure.Services;
 
 namespace OmniSync.Hub.Logic.Services
 {
-    public class ShutdownService
-    {
-        private readonly ILogger<ShutdownService> _logger;
-        private readonly ProcessService _processService;
-        private CancellationTokenSource? _shutdownCts;
-        private DateTime? _scheduledTime;
-
-        public event EventHandler<DateTime?>? ShutdownScheduled;
-
-        public ShutdownService(ILogger<ShutdownService> logger, ProcessService processService)
+        public enum ShutdownMode
         {
-            _logger = logger;
-            _processService = processService;
+            Shutdown,
+            Sleep
         }
-
-        public void ScheduleShutdown(int minutes)
+    
+        public class ShutdownService
         {
-            _shutdownCts?.Cancel();
-            _shutdownCts = null;
-            _scheduledTime = null;
-
-            if (minutes <= 0)
+            private readonly ILogger<ShutdownService> _logger;
+            private readonly ProcessService _processService;
+            private CancellationTokenSource? _shutdownCts;
+            private DateTime? _scheduledTime;
+            private ShutdownMode _currentMode = ShutdownMode.Shutdown;
+    
+            public event EventHandler<DateTime?>? ShutdownScheduled;
+            public event EventHandler<ShutdownMode>? ModeChanged;
+    
+            public ShutdownService(ILogger<ShutdownService> logger, ProcessService processService)
             {
-                _logger.LogInformation("Shutdown timer cancelled.");
-                ShutdownScheduled?.Invoke(this, null);
-                return;
+                _logger = logger;
+                _processService = processService;
             }
-
-            _scheduledTime = DateTime.Now.AddMinutes(minutes);
-            ShutdownScheduled?.Invoke(this, _scheduledTime);
-            _shutdownCts = new CancellationTokenSource();
-            var token = _shutdownCts.Token;
-
-            _logger.LogInformation($"Shutdown scheduled in {minutes} minutes (at {_scheduledTime}).");
-
-            Task.Run(async () =>
+    
+            public ShutdownMode GetCurrentMode() => _currentMode;
+    
+            public void SetMode(ShutdownMode mode)
             {
-                try
+                if (_currentMode != mode)
                 {
-                    await Task.Delay(TimeSpan.FromMinutes(minutes), token);
-                    _logger.LogInformation("Shutdown timer expired. Executing shutdown command.");
-                    await _processService.ExecuteCommand(@"C:\Windows\explorer.exe ""B:\GDrive\Tools\05 Automation\shutdown.bat""");
+                    _currentMode = mode;
+                    _logger.LogInformation($"Shutdown mode changed to: {mode}");
+                    ModeChanged?.Invoke(this, _currentMode);
                 }
-                catch (TaskCanceledException)
+            }
+    
+            public void ScheduleShutdown(int minutes)
+            {
+                _shutdownCts?.Cancel();
+                _shutdownCts = null;
+                _scheduledTime = null;
+    
+                if (minutes <= 0)
                 {
-                    _logger.LogInformation("Shutdown task was cancelled.");
+                    _logger.LogInformation($"{_currentMode} timer cancelled.");
+                    ShutdownScheduled?.Invoke(this, null);
+                    return;
                 }
-                catch (Exception ex)
+    
+                _scheduledTime = DateTime.Now.AddMinutes(minutes);
+                ShutdownScheduled?.Invoke(this, _scheduledTime);
+                _shutdownCts = new CancellationTokenSource();
+                var token = _shutdownCts.Token;
+    
+                _logger.LogInformation($"{_currentMode} scheduled in {minutes} minutes (at {_scheduledTime}).");
+    
+                Task.Run(async () =>
                 {
-                    _logger.LogError(ex, "Error executing scheduled shutdown.");
-                }
-            }, token);
+                    try
+                    {
+                        await Task.Delay(TimeSpan.FromMinutes(minutes), token);
+                        _logger.LogInformation($"{_currentMode} timer expired. Executing command.");
+                        
+                        string command = _currentMode == ShutdownMode.Shutdown 
+                            ? @"C:\Windows\explorer.exe ""B:\GDrive\Tools\05 Automation\shutdown.bat"""
+                            : @"C:\Windows\explorer.exe ""B:\GDrive\Tools\05 Automation\sleep.bat""";
+    
+                        await _processService.ExecuteCommand(command);
+                    }
+                    catch (TaskCanceledException)
+                    {
+                        _logger.LogInformation($"{_currentMode} task was cancelled.");
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, $"Error executing scheduled {_currentMode}.");
+                    }
+                }, token);
+            }
+    
+            public DateTime? GetScheduledTime() => _scheduledTime;
         }
-
-        public DateTime? GetScheduledTime() => _scheduledTime;
-    }
 }

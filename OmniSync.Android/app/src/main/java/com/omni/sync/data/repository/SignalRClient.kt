@@ -227,6 +227,11 @@ class SignalRClient(
             Log.d("SignalRClient", "ShutdownScheduled: $scheduledTime")
             mainViewModel.setScheduledShutdownTime(scheduledTime)
         }, String::class.java)
+
+        hubConnection?.on("ShutdownModeUpdated", { mode: String ->
+            Log.d("SignalRClient", "ShutdownModeUpdated: $mode")
+            mainViewModel.setShutdownMode(mode)
+        }, String::class.java)
         
         // Handler for cleanup patterns from Chrome extension
         hubConnection?.on("ReceiveCleanupPatterns", { patternsData: Any ->
@@ -543,6 +548,12 @@ class SignalRClient(
             mainViewModel.addLog("Scheduled shutdown: $minutes min", com.omni.sync.ui.screen.LogType.INFO)
         } else {
             mainViewModel.setErrorMessage("Not connected.")
+        }
+    }
+
+    fun toggleShutdownMode() {
+        if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
+            hubConnection?.send("ToggleShutdownMode")
         }
     }
 
