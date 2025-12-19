@@ -81,7 +81,7 @@ class ForegroundService : Service() {
             val serviceChannel = NotificationChannel(
                 CHANNEL_ID,
                 getString(R.string.notification_channel_name),
-                NotificationManager.IMPORTANCE_LOW
+                NotificationManager.IMPORTANCE_LOW // Keep LOW to avoid popup but stay in tray
             )
             val manager = getSystemService(NotificationManager::class.java)
             manager.createNotificationChannel(serviceChannel)
@@ -108,16 +108,18 @@ class ForegroundService : Service() {
         val intent = Intent(this, MainActivity::class.java)
         val pendingIntent = PendingIntent.getActivity(this, 0, intent, PendingIntent.FLAG_IMMUTABLE)
 
+        val actions = getSavedActions()
+        
         val builder = NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("OmniSync Hub")
             .setContentText("Connected and monitoring.")
             .setSmallIcon(R.drawable.ic_notification)
             .setContentIntent(pendingIntent)
             .setOngoing(true)
-            .setPriority(NotificationCompat.PRIORITY_LOW) // LOW so it doesn't pop up but stays in tray
+            .setPriority(NotificationCompat.PRIORITY_LOW)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setStyle(NotificationCompat.BigTextStyle().bigText("Connected and monitoring. Quick actions available."))
 
-        val actions = getSavedActions()
         actions.take(6).forEach { action -> 
             val triggerIntent = Intent(this, ForegroundService::class.java).apply {
                 this.action = ACTION_TRIGGER_NOTIFICATION_ACTION

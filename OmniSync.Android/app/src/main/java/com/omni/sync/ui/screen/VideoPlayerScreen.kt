@@ -9,6 +9,8 @@ import androidx.activity.compose.BackHandler
 import androidx.annotation.OptIn
 import android.content.res.Configuration
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.*
@@ -154,12 +156,19 @@ fun VideoPlayerScreen(
             .background(Color.Black)
             .onSizeChanged { containerSize = it }
             .pointerInput(Unit) {
+                // Use awaitEachGesture to manually handle taps and pans together
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false)
+                    var isDoubleTap = false
+                    
+                    // Simple manual double tap detection or just use standard detectTapGestures in a separate block
+                    // but that might conflict. Let's try separate blocks but with different gesture recognizers.
+                }
+            }
+            .pointerInput(Unit) {
                 detectTapGestures(
                     onDoubleTap = { tapOffset ->
-                        if (scale > 1.05f) {
-                            scale = 1f
-                            offset = Offset.Zero
-                        } else {
+                        if (scale <= 1.05f) {
                             if (tapOffset.x < size.width / 2) {
                                 val newPos = exoPlayer.currentPosition - skipIntervalMs
                                 exoPlayer.seekTo(newPos.coerceAtLeast(0))
@@ -169,6 +178,9 @@ fun VideoPlayerScreen(
                                 exoPlayer.seekTo(newPos.coerceAtMost(exoPlayer.duration))
                                 skipFeedbackText = "Forward ${skipIntervalMs / 1000}s"
                             }
+                        } else {
+                            scale = 1f
+                            offset = Offset.Zero
                         }
                     },
                     onTap = {
@@ -178,9 +190,8 @@ fun VideoPlayerScreen(
                 )
             }
             .pointerInput(Unit) {
-                detectTransformGestures { centroid, pan, zoom, _ ->
+                detectTransformGestures(panZoomLock = true) { centroid, pan, zoom, _ ->
                     if (zoom != 1f || scale > 1.05f) {
-                        // Handle Zoom and Pan when zoomed in
                         scale = (scale * zoom).coerceIn(1f, 5f)
                         if (scale > 1f) {
                             val extraWidth = (scale - 1) * containerSize.width
@@ -194,10 +205,10 @@ fun VideoPlayerScreen(
                         } else {
                             offset = Offset.Zero
                         }
-                    } else if (Math.abs(pan.y) > Math.abs(pan.x) && Math.abs(pan.y) > 2f) {
-                        // Handle Brightness/Volume when not zoomed in and vertical movement is dominant
+                    } else if (Math.abs(pan.y) > Math.abs(pan.x) && Math.abs(pan.y) > 3f) {
+                        // Vertical Swipe
                         if (centroid.x < containerSize.width / 2) {
-                            // Left side: Brightness
+                            // Brightness
                             val delta = -pan.y / containerSize.height
                             val newBrightness = (currentBrightness + delta).coerceIn(0.01f, 1f)
                             currentBrightness = newBrightness
@@ -206,14 +217,11 @@ fun VideoPlayerScreen(
                             activity?.window?.attributes = lp
                             skipFeedbackText = "Brightness: ${(newBrightness * 100).toInt()}%"
                         } else {
-                            // Right side: Volume
+                            // Volume
                             val deltaY = -pan.y
-                            // Increase sensitivity for volume
                             val deltaVolume = (deltaY / (containerSize.height / 2f)) * maxVolume 
-                            
                             val currentVol = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
                             val newVol = (currentVol + deltaVolume).toInt().coerceIn(0, maxVolume)
-                            
                             if (newVol != currentVol) {
                                 audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, newVol, 0)
                                 skipFeedbackText = "Volume: ${(newVol.toFloat() / maxVolume * 100).toInt()}%"

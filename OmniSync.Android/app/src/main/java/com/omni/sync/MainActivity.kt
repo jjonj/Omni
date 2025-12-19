@@ -43,10 +43,25 @@ import android.content.pm.PackageManager
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.snapshotFlow
+
 class MainActivity : ComponentActivity() {
     private lateinit var mainViewModel: MainViewModel
     private lateinit var omniSyncApplication: OmniSyncApplication
 
+    private val swipeableScreens = listOf(
+        AppScreen.DASHBOARD,
+        AppScreen.REMOTECONTROL,
+        AppScreen.BROWSER,
+        AppScreen.PROCESS,
+        AppScreen.FILES,
+        AppScreen.AI_CHAT
+    )
+
+    @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
@@ -112,6 +127,26 @@ class MainActivity : ComponentActivity() {
                             factory = BrowserViewModelFactory(application, signalRClient)
                         )
 
+                        val pagerState = rememberPagerState(pageCount = { swipeableScreens.size })
+
+                        // Sync ViewModel screen to Pager
+                        LaunchedEffect(currentScreen) {
+                            val index = swipeableScreens.indexOf(currentScreen)
+                            if (index != -1 && pagerState.currentPage != index) {
+                                pagerState.animateScrollToPage(index)
+                            }
+                        }
+
+                        // Sync Pager to ViewModel screen
+                        LaunchedEffect(pagerState) {
+                            snapshotFlow { pagerState.currentPage }.collect { page ->
+                                val screen = swipeableScreens[page]
+                                if (mainViewModel.currentScreen.value != screen) {
+                                    mainViewModel.navigateTo(screen)
+                                }
+                            }
+                        }
+
                         // Using Scaffold to organize the layout professionally
                         androidx.compose.material3.Scaffold(
                             bottomBar = {
@@ -125,7 +160,18 @@ class MainActivity : ComponentActivity() {
                                 .fillMaxSize()
                                 .padding(innerPadding)
                             ) {
-                                MainScreenContent(currentScreen, signalRClient, browserViewModel, filesViewModel, mainViewModel)
+                                if (currentScreen == AppScreen.EDITOR || currentScreen == AppScreen.SETTINGS) {
+                                    // Non-swipeable standalone screens
+                                    MainScreenContent(currentScreen, signalRClient, browserViewModel, filesViewModel, mainViewModel)
+                                } else {
+                                    HorizontalPager(
+                                        state = pagerState,
+                                        modifier = Modifier.fillMaxSize(),
+                                        userScrollEnabled = currentScreen != AppScreen.REMOTECONTROL // Disable swipe on trackpad
+                                    ) { page ->
+                                        MainScreenContent(swipeableScreens[page], signalRClient, browserViewModel, filesViewModel, mainViewModel)
+                                    }
+                                }
                             }
                         }
                     }

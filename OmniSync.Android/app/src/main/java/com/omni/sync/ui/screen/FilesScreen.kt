@@ -20,6 +20,7 @@ import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -87,8 +88,19 @@ fun FilesScreen(
                     IconButton(onClick = { filesViewModel.loadDirectory(currentPath) }) {
                         Icon(Icons.Default.Refresh, contentDescription = "Refresh")
                     }
-                    IconButton(onClick = { showBookmarksList = !showBookmarksList }) {
-                        Icon(if (showBookmarksList) Icons.Default.Star else Icons.Default.StarBorder, contentDescription = "Bookmarks")
+                    val isCurrentBookmarked = filesViewModel.isFolderBookmarked(currentPath)
+                    IconButton(onClick = { 
+                        filesViewModel.toggleFolderBookmark(
+                            FileSystemEntry(
+                                name = currentPath.substringAfterLast("\\").substringAfterLast("/").ifEmpty { "Root" },
+                                path = currentPath,
+                                isDirectory = true,
+                                size = 0,
+                                lastModified = java.util.Date()
+                            )
+                        )
+                    }) {
+                        Icon(if (isCurrentBookmarked) Icons.Default.Star else Icons.Default.StarBorder, contentDescription = "Bookmark Current")
                     }
                 }
             )
@@ -99,21 +111,26 @@ fun FilesScreen(
                 Surface(tonalElevation = 2.dp) {
                     Column {
                         HorizontalDivider()
-                        LazyRow(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 4.dp),
-                            contentPadding = PaddingValues(horizontal = 8.dp),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth().padding(end = 8.dp)
                         ) {
-                            items(folderBookmarks) {
-                                bookmark ->
-                                InputChip(
-                                    selected = currentPath == bookmark.path,
-                                    onClick = { filesViewModel.loadDirectory(bookmark.path) },
-                                    label = { Text(bookmark.name, maxLines = 1) },
-                                    leadingIcon = { Icon(Icons.Default.Folder, null, modifier = Modifier.size(16.dp)) }
-                                )
+                            IconButton(onClick = { showBookmarksList = !showBookmarksList }) {
+                                Icon(if (showBookmarksList) Icons.Default.Close else Icons.Default.Menu, contentDescription = "Manage Bookmarks")
+                            }
+                            LazyRow(
+                                modifier = Modifier.weight(1f).padding(vertical = 4.dp),
+                                contentPadding = PaddingValues(horizontal = 4.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                items(folderBookmarks) { bookmark ->
+                                    InputChip(
+                                        selected = currentPath == bookmark.path,
+                                        onClick = { filesViewModel.loadDirectory(bookmark.path) },
+                                        label = { Text(bookmark.name, maxLines = 1) },
+                                        leadingIcon = { Icon(Icons.Default.Folder, null, modifier = Modifier.size(16.dp)) }
+                                    )
+                                }
                             }
                         }
                     }

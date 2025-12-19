@@ -7,6 +7,8 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -76,24 +78,23 @@ fun RemoteControlScreen(
         focusRequester.requestFocus()
     }
 
-    Box(modifier = modifier.fillMaxSize()) {
-        Column(modifier = Modifier.fillMaxSize().statusBarsPadding()) {
-            TrackpadArea(
-                signalRClient = signalRClient,
-                modifier = Modifier.weight(1f)
-            )
-            
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant, thickness = 1.dp)
-            
-            ButtonPanel(
-                signalRClient = signalRClient,
-                mainViewModel = mainViewModel,
-                modifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface).imePadding(),
-                keyboardController = keyboardController,
-                isKeyboardVisible = isKeyboardVisible,
-                focusRequester = focusRequester
-            )
-        }
+    // Use a single Column with no gaps to avoid "jagged" look
+    Column(modifier = modifier.fillMaxSize().statusBarsPadding().background(MaterialTheme.colorScheme.surface)) {
+        TrackpadArea(
+            signalRClient = signalRClient,
+            modifier = Modifier.weight(1f)
+        )
+        
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant, thickness = 1.dp)
+        
+        ButtonPanel(
+            signalRClient = signalRClient,
+            mainViewModel = mainViewModel,
+            modifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface).imePadding(),
+            keyboardController = keyboardController,
+            isKeyboardVisible = isKeyboardVisible,
+            focusRequester = focusRequester
+        )
     }
 }
 
@@ -224,8 +225,7 @@ fun ButtonPanel(
 
     Column(
         modifier = modifier
-            .background(MaterialTheme.colorScheme.surface)
-            .padding(8.dp) // Slightly reduced padding
+            .padding(8.dp)
             .onPreviewKeyEvent { keyEvent ->
                 if (keyEvent.type == KeyEventType.KeyDown) {
                     val unicodeChar = keyEvent.nativeKeyEvent.unicodeChar
@@ -261,8 +261,8 @@ fun ButtonPanel(
             IconButton(onClick = {
                 signalRClient.sendToggleMute()
                 isMutedState = !isMutedState
-            }) {
-                Icon(if (isMutedState) Icons.Filled.VolumeOff else Icons.Filled.VolumeUp, null)
+            }, modifier = Modifier.size(32.dp)) {
+                Icon(if (isMutedState) Icons.Filled.VolumeOff else Icons.Filled.VolumeUp, null, modifier = Modifier.size(20.dp))
             }
             Slider(
                 value = volumeLevel,
@@ -388,7 +388,7 @@ fun ModifierKeyButton(
         onClick = { onToggle(!isToggled) },
         colors = ButtonDefaults.filledTonalButtonColors(containerColor = containerColor, contentColor = contentColor),
         modifier = modifier
-            .height(48.dp)
+            .height(36.dp) // Reduced height
             .pointerInput(Unit) {
                 detectTapGestures(
                     onDoubleTap = {
@@ -400,9 +400,9 @@ fun ModifierKeyButton(
                 )
             },
         shape = RoundedCornerShape(8.dp),
-        contentPadding = PaddingValues(4.dp)
+        contentPadding = PaddingValues(0.dp) // Minimal padding
     ) {
-        Text(text, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Visible, fontSize = 12.sp)
+        Text(text, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Visible, fontSize = 11.sp)
     }
 }
 
@@ -414,26 +414,36 @@ fun ActionKeyButton(
     onLongClick: (() -> Unit)? = null,
     onClick: () -> Unit
 ) {
-    FilledTonalButton(
-        onClick = onClick, 
+    // If we have a long click, we use pointerInput to manage BOTH tap and long press
+    // This avoids the gesture conflict with standard onClick
+    val clickModifier = if (onLongClick != null) {
+        Modifier.pointerInput(Unit) {
+            detectTapGestures(
+                onLongPress = { onLongClick() },
+                onTap = { onClick() }
+            )
+        }
+    } else {
+        Modifier.clickable { onClick() }
+    }
+
+    Surface(
         modifier = modifier
-            .height(48.dp)
-            .then(
-                if (onLongClick != null) {
-                    Modifier.pointerInput(Unit) {
-                        detectTapGestures(
-                            onLongPress = { onLongClick() },
-                            onTap = { onClick() }
-                        )
-                    }
-                } else Modifier
-            ),
+            .height(36.dp)
+            .then(clickModifier),
         shape = RoundedCornerShape(8.dp),
-        colors = ButtonDefaults.filledTonalButtonColors(containerColor = MaterialTheme.colorScheme.surfaceContainer, contentColor = MaterialTheme.colorScheme.onSurface),
-        contentPadding = PaddingValues(4.dp)
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        contentColor = MaterialTheme.colorScheme.onSurface
     ) {
-        if (icon != null) Icon(icon, contentDescription = text, modifier = Modifier.size(20.dp))
-        if (text != null) Text(text, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Visible, fontSize = 12.sp)
+        Row(
+            modifier = Modifier.fillMaxSize(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center
+        ) {
+            if (icon != null) Icon(icon, contentDescription = text, modifier = Modifier.size(18.dp))
+            if (icon != null && text != null) Spacer(Modifier.width(4.dp))
+            if (text != null) Text(text, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Visible, fontSize = 11.sp)
+        }
     }
 }
 

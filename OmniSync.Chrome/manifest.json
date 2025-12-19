@@ -11,6 +11,8 @@
     "service_worker": "background.js"
   },
   "host_permissions": [
-    "http://10.0.0.37/*"
+    "http://10.0.0.37/*",
+    "http://127.0.0.1/*",
+    "<all_urls>"
   ]
 }
