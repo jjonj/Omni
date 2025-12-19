@@ -14,6 +14,10 @@ using System.IO; // Added for Path.Combine and Directory.GetCurrentDirectory()
 using Microsoft.Extensions.FileProviders; // Added for PhysicalFileProvider
 using Microsoft.AspNetCore.Hosting; // Added for ConfigureKestrel
 
+// Set the current directory to the location of the executable to ensure
+// consistent behavior for file paths (config, static files) regardless of startup method.
+Directory.SetCurrentDirectory(AppContext.BaseDirectory);
+
 var builder = WebApplication.CreateBuilder(args);
 
 // Configure Kestrel to listen on multiple ports
@@ -24,7 +28,8 @@ builder.WebHost.ConfigureKestrel(options =>
 });
 
 // Explicitly load appsettings.json using absolute path - Make optional so it doesn't crash in production
-string appSettingsPath = Path.Combine(Directory.GetCurrentDirectory(), "..", "..", "appsettings.json");
+// Attempt to load from solution root if running locally (5 levels up from bin/Debug/net9.0-windows)
+string appSettingsPath = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "appsettings.json");
 builder.Configuration.AddJsonFile(appSettingsPath, optional: true, reloadOnChange: true);
 
 
@@ -94,8 +99,7 @@ app.UseRouting();
 // Try to find the folder relative to CWD (Dev) or relative to BaseDirectory (Prod)
 string[] possibleWebPaths = new[]
 {
-    Path.Combine(Directory.GetCurrentDirectory(), "..", "..", "..", "OmniSync.Web", "www"), // Dev: src/OmniSync.Hub -> Root -> OmniSync.Webroot
-    Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "..", "OmniSync.Web", "www") // Prod: bin/Debug/net9.0-windows -> Root -> OmniSync.Webroot
+    Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "..", "OmniSync.Web", "www") // 6 levels up from bin/Debug/net9.0-windows to Root -> OmniSync.Webroot
 };
 
 string? webContentPath = possibleWebPaths.FirstOrDefault(Directory.Exists);
