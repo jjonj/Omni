@@ -194,8 +194,8 @@ fun VideoPlayerScreen(
                         } else {
                             offset = Offset.Zero
                         }
-                    } else if (pan.y != 0f && Math.abs(pan.y) > Math.abs(pan.x)) {
-                        // Handle Brightness/Volume when not zoomed in
+                    } else if (Math.abs(pan.y) > Math.abs(pan.x) && Math.abs(pan.y) > 2f) {
+                        // Handle Brightness/Volume when not zoomed in and vertical movement is dominant
                         if (centroid.x < containerSize.width / 2) {
                             // Left side: Brightness
                             val delta = -pan.y / containerSize.height
@@ -208,7 +208,8 @@ fun VideoPlayerScreen(
                         } else {
                             // Right side: Volume
                             val deltaY = -pan.y
-                            val deltaVolume = (deltaY / containerSize.height) * maxVolume * 2f
+                            // Increase sensitivity for volume
+                            val deltaVolume = (deltaY / (containerSize.height / 2f)) * maxVolume 
                             
                             val currentVol = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
                             val newVol = (currentVol + deltaVolume).toInt().coerceIn(0, maxVolume)

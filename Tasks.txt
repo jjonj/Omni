@@ -19,10 +19,10 @@ DONE Reconnect
 ### Dashboard
 
 ### Remote Control Screen
-The buttons look good but are a bit too tall taking up too much vertical space
-FAILED FIX There is STILL a weird jagged overlapping issue between the black area of the button panel and the trackpad area, the bottom and top dont align/meet properly causing janky look. Careful not to break the button panel moving/resizing.
+DONE The buttons look good but are a bit too tall taking up too much vertical space
+DONE FAILED FIX There is STILL a weird jagged overlapping issue between the black area of the button panel and the trackpad area, the bottom and top dont align/meet properly causing janky look. Careful not to break the button panel moving/resizing.
 Stream PC monitor, replacing background of the trackpad leaving the trackpad functioning still, options to toggle monitor, pinch to zoom, (advanced feature, do last)       
-Kbd button works to show keyboard but it should toggle so it can also hide it
+DONE Kbd button works to show keyboard but it should toggle so it can also hide it
 See also ### Hub window. The shutdown timer button should have a long press action that toggles it between shutdown and sleep
 
 ### Files Screen
@@ -30,14 +30,13 @@ DONE We have a bookmark button but nowhere to see or use the bookmarks. Make the
 DONE For some folders I get error "Error loading directory: failed parsing '0001-01-01T00:00:00' as date at path $[0].lastmodified. Try to fix but also add a try catch, date issues should not prevent opening. Issue with some folders but might at teh same time be related to back button, after using back button, every folder starts giving that error and back button doesnt work.
 Downloading a video into app data and optionally password protecting it with encryption and password. Should be deletable
 Long press should also have an option to Open folder in AI chat. Which will switch to the AI chat mode and set hte working dir to the pressed folder
-Attempting to open an flv video file file freezes and crashes the app
-There is still no  bookmarks panel at the bottom of the screen.
+DONE Attempting to open an flv video file file freezes and crashes the app
+DONE There is still no  bookmarks panel at the bottom of the screen.
 
-DONE  Swiping finger up and down on left side should change phone brightness 
-NOT-WORKING Swiping finger up and down on  right side should change phone volume.
-Double tap to skip forward/back no longer working. (probably broke when fixing brightness sliding
+DONE  Swiping finger up and down on left side should change phone brightness
+DONE NOT-WORKING Swiping finger up and down on  right side should change phone volume.
+DONE Double tap to skip forward/back no longer working. (probably broke when fixing brightness sliding
 EVEN MORE Text editing fancy features, think like a lite code editor like notepad++ or VS code. be creative. Make a burger menu with lots of options
-
 ### Browser control screen
 STILL NOT-WORKING Button to play/pause whatever media is currently playing. Maybe we just need to try like 5 different ways at once and if that works we can narrow done which one is actually doing it. This requires lots of research.
 

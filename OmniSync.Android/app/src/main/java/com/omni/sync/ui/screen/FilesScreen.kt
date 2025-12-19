@@ -93,6 +93,33 @@ fun FilesScreen(
                 }
             )
         },
+        bottomBar = {
+            // --- Compact Bookmarks Area (Bottom, always visible) ---
+            if (folderBookmarks.isNotEmpty()) {
+                Surface(tonalElevation = 2.dp) {
+                    Column {
+                        HorizontalDivider()
+                        LazyRow(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 4.dp),
+                            contentPadding = PaddingValues(horizontal = 8.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            items(folderBookmarks) {
+                                bookmark ->
+                                InputChip(
+                                    selected = currentPath == bookmark.path,
+                                    onClick = { filesViewModel.loadDirectory(bookmark.path) },
+                                    label = { Text(bookmark.name, maxLines = 1) },
+                                    leadingIcon = { Icon(Icons.Default.Folder, null, modifier = Modifier.size(16.dp)) }
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        },
         modifier = modifier
     ) { innerPadding ->
         Column(
@@ -213,6 +240,9 @@ fun FilesScreen(
                                     filesViewModel.loadDirectory(clickedEntry.path)
                                 } else {
                                     when {
+                                        clickedEntry.name.lowercase().endsWith(".flv") -> {
+                                            Toast.makeText(context, "FLV format not supported by player", Toast.LENGTH_SHORT).show()
+                                        }
                                         isVideoFile(clickedEntry.name) -> {
                                             val playlist = fileSystemEntries.filter { isVideoFile(it.name) }.map { it.path }
                                             filesViewModel.mainViewModel.playVideo(clickedEntry.path, playlist)
@@ -238,28 +268,6 @@ fun FilesScreen(
                             onOpenFolder = { path ->
                                 filesViewModel.loadDirectory(path)
                             }
-                        )
-                    }
-                }
-            }
-
-            // --- Compact Bookmarks Area (Bottom, always visible) ---
-            if (folderBookmarks.isNotEmpty()) {
-                HorizontalDivider()
-                LazyRow(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 4.dp),
-                    contentPadding = PaddingValues(horizontal = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    items(folderBookmarks) {
-                        bookmark ->
-                        InputChip(
-                            selected = currentPath == bookmark.path,
-                            onClick = { filesViewModel.loadDirectory(bookmark.path) },
-                            label = { Text(bookmark.name, maxLines = 1) },
-                            leadingIcon = { Icon(Icons.Default.Folder, null, modifier = Modifier.size(16.dp)) }
                         )
                     }
                 }

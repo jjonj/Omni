@@ -60,6 +60,7 @@ const val VK_F4: UShort = 0x73u // F4 key
 const val VK_A: UShort = 0x41u // A key
 const val VK_W: UShort = 0x57u // W key
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun RemoteControlScreen(
     modifier: Modifier = Modifier,
@@ -68,25 +69,27 @@ fun RemoteControlScreen(
 ) {
     val keyboardController = LocalSoftwareKeyboardController.current
     val focusRequester = remember { FocusRequester() }
+    val isKeyboardVisible = WindowInsets.isImeVisible
 
     LaunchedEffect(Unit) {
         focusRequester.requestFocus()
     }
 
-    Box(modifier = modifier.fillMaxSize().statusBarsPadding()) {
-        Column(modifier = Modifier.fillMaxSize()) {
+    Box(modifier = modifier.fillMaxSize()) {
+        Column(modifier = Modifier.fillMaxSize().statusBarsPadding()) {
             TrackpadArea(
                 signalRClient = signalRClient,
                 modifier = Modifier.weight(1f)
             )
             
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant, thickness = 1.dp)
             
             ButtonPanel(
                 signalRClient = signalRClient,
                 mainViewModel = mainViewModel,
-                modifier = Modifier.fillMaxWidth().imePadding(),
+                modifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface).imePadding(),
                 keyboardController = keyboardController,
+                isKeyboardVisible = isKeyboardVisible,
                 focusRequester = focusRequester
             )
         }
@@ -169,6 +172,7 @@ fun ButtonPanel(
     mainViewModel: MainViewModel,
     modifier: Modifier = Modifier,
     keyboardController: androidx.compose.ui.platform.SoftwareKeyboardController?,
+    isKeyboardVisible: Boolean,
     focusRequester: FocusRequester
 ) {
     val coroutineScope = rememberCoroutineScope()
@@ -219,7 +223,7 @@ fun ButtonPanel(
     Column(
         modifier = modifier
             .background(MaterialTheme.colorScheme.surface)
-            .padding(12.dp) // Increased padding
+            .padding(8.dp) // Slightly reduced padding
             .onPreviewKeyEvent { keyEvent ->
                 if (keyEvent.type == KeyEventType.KeyDown) {
                     val unicodeChar = keyEvent.nativeKeyEvent.unicodeChar
@@ -267,12 +271,12 @@ fun ButtonPanel(
             )
         }
 
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(4.dp))
 
         // Key Grids
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) { // Increased spacing
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
             // Grid 1
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 ModifierKeyButton("Shift", isShiftPressed, Modifier.weight(1f), onToggle = { 
                     if (it) signalRClient.sendKeyEvent("INPUT_KEY_DOWN", VK_SHIFT)
                     else signalRClient.sendKeyEvent("INPUT_KEY_UP", VK_SHIFT)
@@ -309,7 +313,7 @@ fun ButtonPanel(
             }
 
             // Grid 2
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 ActionKeyButton(text = "Esc", modifier = Modifier.weight(1f)) {
                     signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_ESCAPE)
                 }
@@ -333,7 +337,7 @@ fun ButtonPanel(
             // Grid 3
             val shutdownTimes = listOf(0, 15, 30, 60, 120, 300, 720)
             val context = LocalContext.current
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 ActionKeyButton(text = "Alt+Tab", modifier = Modifier.weight(1f)) {
                     signalRClient.sendKeyEvent("INPUT_KEY_DOWN", VK_MENU)
                     signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_TAB)
@@ -348,7 +352,8 @@ fun ButtonPanel(
                     signalRClient.sendScheduleShutdown(shutdownTimes[shutdownIndex])
                 }
                 ActionKeyButton(text = "Kbd", modifier = Modifier.weight(1f)) {
-                    keyboardController?.show()
+                    if (isKeyboardVisible) keyboardController?.hide()
+                    else keyboardController?.show()
                 }
             }
         }
@@ -370,7 +375,7 @@ fun ModifierKeyButton(
         onClick = { onToggle(!isToggled) },
         colors = ButtonDefaults.filledTonalButtonColors(containerColor = containerColor, contentColor = contentColor),
         modifier = modifier
-            .height(56.dp)
+            .height(48.dp)
             .pointerInput(Unit) {
                 detectTapGestures(
                     onDoubleTap = {
@@ -381,7 +386,7 @@ fun ModifierKeyButton(
                     }
                 )
             },
-        shape = RoundedCornerShape(12.dp),
+        shape = RoundedCornerShape(8.dp),
         contentPadding = PaddingValues(4.dp)
     ) {
         Text(text, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Visible, fontSize = 12.sp)
@@ -397,8 +402,8 @@ fun ActionKeyButton(
 ) {
     FilledTonalButton(
         onClick = onClick, 
-        modifier = modifier.height(56.dp),
-        shape = RoundedCornerShape(12.dp),
+        modifier = modifier.height(48.dp),
+        shape = RoundedCornerShape(8.dp),
         colors = ButtonDefaults.filledTonalButtonColors(containerColor = MaterialTheme.colorScheme.surfaceContainer, contentColor = MaterialTheme.colorScheme.onSurface),
         contentPadding = PaddingValues(4.dp)
     ) {
