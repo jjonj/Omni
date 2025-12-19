@@ -40,8 +40,6 @@ namespace OmniSync.Hub.Presentation
             _trayThread.SetApartmentState(ApartmentState.STA); // Set apartment state for UI components
             _trayThread.Start();
 
-            _appLifetime.ApplicationStopping.Register(OnStopping);
-            
             return Task.CompletedTask;
         }
 
@@ -60,21 +58,12 @@ namespace OmniSync.Hub.Presentation
 
         public Task StopAsync(CancellationToken cancellationToken)
         {
-            // Signal the ApplicationContext to exit its thread
-            _applicationContext?.ExitThread();
-            // _trayThread?.Join(); // Do not join here. This will cause a deadlock because the call to StopApplication() originates from this thread.
             return Task.CompletedTask;
-        }
-
-        private void OnStopping()
-        {
-            Dispose();
         }
 
         public void Dispose()
         {
-            // Dispose is called by the framework.
-            // Cleanup happens in StopAsync via _applicationContext.ExitThread()
+            _applicationContext?.Dispose();
         }
 
         // Nested class to manage the NotifyIcon and its ApplicationContext
@@ -171,6 +160,7 @@ namespace OmniSync.Hub.Presentation
 
             private void OnExit(object? sender, EventArgs e)
             {
+                _hubMonitorService.AddLogMessage("Exit clicked from tray icon.");
                 // Signal the main application to stop
                 _appLifetime.StopApplication();
             }
@@ -184,13 +174,25 @@ namespace OmniSync.Hub.Presentation
                         _notifyIcon.Visible = false;
                         _notifyIcon.Dispose();
                     }
-                    if (_mainWindow != null)
+                    
+                    try
                     {
-                        _mainWindow.Close(); // Close the WPF window
+                        _wpfApplication.Dispatcher.Invoke(() =>
+                        {
+                            if (_mainWindow != null)
+                            {
+                                _mainWindow.Close(); // Close the WPF window
+                            }
+                            _wpfApplication.Shutdown(); // Shut down the WPF Application
+                        });
                     }
-                    _wpfApplication.Shutdown(); // Shut down the WPF Application
+                    catch (Exception)
+                    {
+                        // Ignore errors during shutdown
+                    }
                 }
                 base.Dispose(disposing);
+                ExitThread();
             }
         }
     }

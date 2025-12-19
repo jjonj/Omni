@@ -52,7 +52,8 @@ builder.Services.AddSingleton<CommandDispatcher>(provider => {
     var audioService = provider.GetRequiredService<AudioService>();
     var processService = provider.GetRequiredService<ProcessService>();
     var shutdownService = provider.GetRequiredService<ShutdownService>();
-    return new CommandDispatcher(inputService, fileService, audioService, processService, shutdownService);
+    var appLifetime = provider.GetRequiredService<IHostApplicationLifetime>();
+    return new CommandDispatcher(inputService, fileService, audioService, processService, shutdownService, appLifetime);
 });
 builder.Services.AddSingleton<ProcessService>();
 builder.Services.AddSingleton<InputService>(provider =>
