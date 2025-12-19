@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OmniSync Hub Monitor</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #1e1e1e; color: #d4d4d4; margin: 0; padding: 20px; }
+        .container { display: grid; grid-template-columns: 250px 1fr; gap: 20px; }
+        .box { background: #252526; border: 1px solid #333337; border-radius: 4px; padding: 15px; }
+        h2 { font-size: 1rem; margin-top: 0; border-bottom: 1px solid #333; padding-bottom: 10px; color: #fff; }
+        #log-output { height: calc(100vh - 120px); background: #1e1e1e; border: none; width: 100%; color: #d4d4d4; font-family: Consolas, monospace; font-size: 0.9rem; overflow-y: scroll; white-space: pre-wrap; padding: 5px; }
+        #connections-list { list-style: none; padding: 0; margin: 0; }
+        #connections-list li { padding: 5px 0; border-bottom: 1px solid #333; font-size: 0.8rem; }
+        .status-item { margin-bottom: 10px; }
+        .status-label { font-weight: bold; font-size: 0.8rem; color: #888; }
+        .status-value { font-style: italic; opacity: 0.8; }
+    </style>
+</head>
+<body>
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+        <h1 style="margin: 0; font-size: 1.5rem;">OmniSync Hub Monitor</h1>
+        <div class="status-item" style="margin: 0;">
+            <span class="status-label">Last Command:</span>
+            <span id="last-command" class="status-value">None</span>
+        </div>
+    </div>
+    <div class="container">
+        <div class="box">
+            <h2>Active Connections</h2>
+            <ul id="connections-list"></ul>
+        </div>
+        <div class="box" style="flex-grow: 1;">
+            <h2>Log Output</h2>
+            <div id="log-output"></div>
+        </div>
+    </div>
+
+    <script src="js/signalr.min.js"></script>
+    <script src="js/config.js"></script>
+    <script>
+        let hubConnection = null;
+
+        async function init() {
+            hubConnection = new signalR.HubConnectionBuilder()
+                .withUrl(HUB_URL)
+                .withAutomaticReconnect()
+                .build();
+
+            hubConnection.on("LogEntryAdded", (message) => {
+                const log = document.getElementById("log-output");
+                log.innerText += message + "\n";
+                log.scrollTop = log.scrollHeight;
+            });
+
+            hubConnection.on("CommandUpdateOccurred", (command) => {
+                document.getElementById("last-command").innerText = command;
+            });
+
+            hubConnection.on("ConnectionAdded", (id) => {
+                const li = document.createElement("li");
+                li.id = "conn-" + id;
+                li.innerText = id;
+                document.getElementById("connections-list").appendChild(li);
+            });
+
+            hubConnection.on("ConnectionRemoved", (id) => {
+                const el = document.getElementById("conn-" + id);
+                if (el) el.remove();
+            });
+
+            try {
+                await hubConnection.start();
+                console.log("Connected");
+                await hubConnection.invoke("Authenticate", API_KEY);
+                
+                // Get initial status
+                const status = await hubConnection.invoke("GetHubStatus");
+                document.getElementById("log-output").innerText = status.logMessages.join("\n") + "\n";
+                document.getElementById("last-command").innerText = status.lastIncomingCommand;
+                
+                const connList = document.getElementById("connections-list");
+                status.activeConnections.forEach(id => {
+                    const li = document.createElement("li");
+                    li.id = "conn-" + id;
+                    li.innerText = id;
+                    connList.appendChild(li);
+                });
+
+            } catch (err) {
+                console.error(err);
+            }
+        }
+
+        init();
+    </script>
+</body>
+</html>

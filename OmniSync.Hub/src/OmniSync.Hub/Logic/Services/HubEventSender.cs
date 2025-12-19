@@ -46,6 +46,26 @@ namespace OmniSync.Hub.Logic.Services
             await _hubContext.Clients.All.SendAsync("ShutdownScheduled", scheduledTime);
         }
 
+        public async Task BroadcastLogEntryAdded(string message)
+        {
+            await _hubContext.Clients.All.SendAsync("LogEntryAdded", message);
+        }
+
+        public async Task BroadcastCommandUpdate(string command)
+        {
+            await _hubContext.Clients.All.SendAsync("CommandUpdateOccurred", command);
+        }
+
+        public async Task BroadcastConnectionAdded(string connectionId)
+        {
+            await _hubContext.Clients.All.SendAsync("ConnectionAdded", connectionId);
+        }
+
+        public async Task BroadcastConnectionRemoved(string connectionId)
+        {
+            await _hubContext.Clients.All.SendAsync("ConnectionRemoved", connectionId);
+        }
+
         // Method to be called by RpcApiHub when a client connects and wants command output
         public void SubscribeForCommandOutput(string clientId, string connectionId)
         {

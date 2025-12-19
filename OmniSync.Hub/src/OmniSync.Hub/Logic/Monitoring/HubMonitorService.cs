@@ -62,6 +62,7 @@ namespace OmniSync.Hub.Logic.Monitoring
             {
                 LastIncomingCommand = command;
                 CommandUpdateOccurred?.Invoke(this, command);
+                _ = _hubEventSender.BroadcastCommandUpdate(command);
                 
                 // Filter out verbose commands from the persistent log
                 if (command == "MouseMove" || command.Contains("GetVolume") || command.Contains("GetFileChunk"))
@@ -83,6 +84,7 @@ namespace OmniSync.Hub.Logic.Monitoring
                     }
                 });
                 ConnectionAdded?.Invoke(this, connectionId); // Now raises event
+                _ = _hubEventSender.BroadcastConnectionAdded(connectionId);
                 AddLogMessage($"Client Connected: {connectionId}");
             };
 
@@ -94,6 +96,7 @@ namespace OmniSync.Hub.Logic.Monitoring
                     ActiveConnections.Remove(connectionId);
                 });
                 ConnectionRemoved?.Invoke(this, connectionId); // Now raises event
+                _ = _hubEventSender.BroadcastConnectionRemoved(connectionId);
                 AddLogMessage($"Client Disconnected: {connectionId}");
             };
 
@@ -155,6 +158,9 @@ namespace OmniSync.Hub.Logic.Monitoring
             }
 
             LogEntryAdded?.Invoke(this, logEntry);
+            
+            // Broadcast to SignalR clients (e.g. Web Monitor)
+            _ = _hubEventSender.BroadcastLogEntryAdded(logEntry);
         }
 
         private void SafeUpdateConnections(Action action)

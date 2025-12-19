@@ -73,4 +73,4 @@ DONE Nothing happens when i say hello to AI. (I see [08.50.56] Command Received:
 AI should have same features as gemini CLI if it doesnt already. e.g. /dir add C:/MyDir
 ## Web (new)
 Integrate cortex scheduling into hub and show notifications on android phone when switching activity. Make this disableable in settings
-Make a new page that is an exact copy of hub window
+DONE Make a new page that is an exact copy of hub window
