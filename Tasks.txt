@@ -3,73 +3,60 @@ When finishing a task make sure to prefix the line with "DONE" and also git comm
 
 ## General
 
-## For the hub
-
-DONE Running D:\SSDProjects\Omni\OmniSync.Hub\src\OmniSync.Hub\bin\Debug\net9.0-windows\OmniSync.Hub.exe directly does not work, nothing happens. Have to run with dotnet which is annoying
+## For the hub	
 DONE Run on startup is not working, windows is trying to run D:\SSDProjects\Omni\OmniSync.Hub\src\OmniSync.Hub\bin\Debug\net9.0-windows\OmniSync.Hub.dll on startup which is nonsensical
-DONE Automatic reconnect doesnt work properly. When the hub is not running it will correctly show an error message, but when the hub IS running it will not show an error message but not actually connect and keep tryign to reconnect. As soon as i click the manual reconnect button it works perfectly.
 
 
 ### Hub window
-
+See also ### Remote Control Screen. The shutdown timer button should have a long press action that toggles it between shutdown and sleep. should ofc sync between app and hub
 
 ## in OmniSync.Android
 
 ### General
-DONE Different looking buttons, more sleep/modern would be nice
+
 DONE Reconnect
 
 ### Dashboard
 
 ### Remote Control Screen
-DONE There is a weird jagged overlapping issue between the black area of the button panel and the trackpad area, the bottom and top dont align/meet properly causing janky look. Careful not to break the button panel moving/resizing.
+The buttons look good but are a bit too tall taking up too much vertical space
+FAILED FIX There is STILL a weird jagged overlapping issue between the black area of the button panel and the trackpad area, the bottom and top dont align/meet properly causing janky look. Careful not to break the button panel moving/resizing.
 Stream PC monitor, replacing background of the trackpad leaving the trackpad functioning still, options to toggle monitor, pinch to zoom, (advanced feature, do last)       
+Kbd button works to show keyboard but it should toggle so it can also hide it
+See also ### Hub window. The shutdown timer button should have a long press action that toggles it between shutdown and sleep
 
 ### Files Screen
 DONE We have a bookmark button but nowhere to see or use the bookmarks. Make the bottom of the screen a super compact bookmark area
 DONE For some folders I get error "Error loading directory: failed parsing '0001-01-01T00:00:00' as date at path $[0].lastmodified. Try to fix but also add a try catch, date issues should not prevent opening. Issue with some folders but might at teh same time be related to back button, after using back button, every folder starts giving that error and back button doesnt work.
 Downloading a video into app data and optionally password protecting it with encryption and password. Should be deletable
+Long press should also have an option to Open folder in AI chat. Which will switch to the AI chat mode and set hte working dir to the pressed folder
+Attempting to open an flv video file file freezes and crashes the app
+There is still no  bookmarks panel at the bottom of the screen.
 
-UNKNOWN-STATUS The media player used already has next/previous buttons that work, disable the extra next/previous buttons added to the UI (we might want them back later). 
-UNKNOWN-STATUS Support to open more video file types, .mpg .wmv .3gp (these currently crash the app after loading for a while) or at least dont crash.       
-
-UNKNOWN-STATUS  Swiping finger up and down on left side should change phone brightness and right side should change phone volume. Currently this is very hard to trigger, only when using multiple fingers and doing specific movements can i get it to activate
-DONE More Text editing fancy features, think like a lite code editor like notepad++ or VS code. be creative.
-DONE UNKNOWN-STATUS BUG When searching for a file and long tapping->open folder, it loads and times out. "Error loading directory, the source did mnot signal an event for 8 seconds".       
+DONE  Swiping finger up and down on left side should change phone brightness 
+NOT-WORKING Swiping finger up and down on  right side should change phone volume.
+Double tap to skip forward/back no longer working. (probably broke when fixing brightness sliding
+EVEN MORE Text editing fancy features, think like a lite code editor like notepad++ or VS code. be creative. Make a burger menu with lots of options
 
 ### Browser control screen
-DONE NOT-WORKING Button to play/pause whatever media is currently playing (dunno how this could be done but give it a try)
+STILL NOT-WORKING Button to play/pause whatever media is currently playing. Maybe we just need to try like 5 different ways at once and if that works we can narrow done which one is actually doing it. This requires lots of research.
+
+
 ### Notification panel
+The quick actions work but preferably the buttons dont require expanding the notification and exist straight on the notification.
 
 ### Settings screen (accessed by button on dashboard, not bottom panel)
-Settings for what buttons should be in the notification quick actions panel, try to add as many possibilities here that you think could be done with a single button, especially from the Dashboard/Quick actions, remote control and browser control screens. also add option for custom buttons that will send a run/cmd command that will be executed on the pc.
+For the settings for what buttons should be in the notification quick actions panel, max should be 6, not 3. I can remove actions but can't add any, I want a dropdown thing to add. try to add as many possibilities here that you think could be done with a single button, especially from the Dashboard/Quick actions, remote control and browser control screens. also add option for custom buttons that will send a run/cmd command that will be executed on the pc.
 
 ### AI screen (new)
- ### AI screen (new)                                                                         │
-│ DONE An AI screen that lets us talk to an LLM chatbot in a CLI running on the PC. Will work │
-│ like gemini CLI but the interface is on the phone and the actions are on the PC. probably   │
-│ involves making a custom version/branch/fork of gemini CLI (which is on github). I have a   │
-│ fork checked out at D:\SSDProjects\Tools\gemini-cli but it needs an upstream remote and to  │
-│ rebase on that remote, maybe diverge away from the one commit i put on top if conflicting   │
-│ too much for now.   
-  Progress Overview:
-   1. Android UI: Created AiChatScreen with a modern chat interface, featuring message history,
-      sender labels ("Me", "AI"), and auto-scrolling.
-   2. Network Plumbing: Updated the Hub's RpcApiHub and the Android SignalRClient to facilitate
-      bi-directional AI messaging.
-   3. PC Listener: Developed OmniSync.Cli/ai_listener.py, which runs on your PC, listens for
-      messages from your phone, and invokes your gemini-cli fork directly via Node.js.
-   4. Verification: Validated the entire chain using TestScripts/test_ai_integration.py. The
-      SignalR roundtrip is confirmed functional.
-
-  Current Blocker:
-  While the integration is working, the feature is currently non-responsive because your
-  gemini-cli is reporting a Quota Exhaustion (429 RESOURCE_EXHAUSTED) from the Google API. The
-  system is ready to go as soon as the API quota resets (estimated ~6 hours).   
-
-### AI Screen
-DONE Nothing happens when i say hello to AI. (I see [08.50.56] Command Received: AI Message Sent: hello in hub log). Start by checking test_ai_integration.py.
+AI Chat doesnt seem to work from android.  I sent too messages with minutes apart and the AI just doesnt respond. I have before seen it respond after i came back to the app after a while but that was at an earlier state not sure how that works.
+When the android keyboard is up, it pushes up the start of the conversation hiding it
+Need an animated "..." when waiting for AI to respond and a timeout if not already implemented. If we could get an inline status for the AI, e.g. "System starting", "AI Responding" that would be even better and ensure i can see any errors if i cant already. 
 AI should have same features as gemini CLI if it doesnt already. e.g. /dir add C:/MyDir
+Compact panel similar to remotecontrolscreen to clear chat and other available quick actions
+
 ## Web (new)
-DONE Integrate cortex scheduling into hub and show notifications on android phone when switching activity. Make this disableable in settings
-DONE Make a new page that is an exact copy of hub window
+"IntegrateThisIntoWeb" ugly name, refactor the folder structure.
+Add modern menu/buttons to navigate between pages
+Having both hubcontrol and hubmonitor is redundant
+HubControl/hubmonitor has the same layout as the hub window but no active connections listed and no log output.
