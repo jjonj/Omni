@@ -109,14 +109,16 @@ class ForegroundService : Service() {
         val pendingIntent = PendingIntent.getActivity(this, 0, intent, PendingIntent.FLAG_IMMUTABLE)
 
         val builder = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("OmniSync is Active")
-            .setContentText("Quick actions available below.")
+            .setContentTitle("OmniSync Hub")
+            .setContentText("Connected and monitoring.")
             .setSmallIcon(R.drawable.ic_notification)
             .setContentIntent(pendingIntent)
             .setOngoing(true)
+            .setPriority(NotificationCompat.PRIORITY_LOW) // LOW so it doesn't pop up but stays in tray
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
 
         val actions = getSavedActions()
-        actions.take(3).forEach { action -> // Android notifications usually limit to 3 actions
+        actions.take(6).forEach { action -> 
             val triggerIntent = Intent(this, ForegroundService::class.java).apply {
                 this.action = ACTION_TRIGGER_NOTIFICATION_ACTION
                 putExtra(EXTRA_ACTION_ID, action.id)

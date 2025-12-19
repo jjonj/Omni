@@ -97,7 +97,7 @@ if (webContentPath != null)
     app.UseDefaultFiles(new DefaultFilesOptions
     {
         FileProvider = new PhysicalFileProvider(webContentPath),
-        DefaultFileNames = new List<string> { "HubMonitor.html", "HubControl.html", "Scheduler.html", "Test.html" } 
+        DefaultFileNames = new List<string> { "index.html", "Scheduler.html", "Test.html" } 
     });
     app.UseStaticFiles(new StaticFileOptions
     {

@@ -3,13 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>OmniSync Hub Monitor</title>
+    <title>OmniSync Hub</title>
     <link rel="stylesheet" href="css/style.css">
 </head>
 <body style="flex-direction: column;">
     <nav class="nav-menu">
-        <a href="HubMonitor.html" class="nav-item active">Monitor</a>
-        <a href="HubControl.html" class="nav-item">Control</a>
+        <a href="index.html" class="nav-item active">Hub</a>
         <a href="Scheduler.html" class="nav-item">Scheduler</a>
         <a href="Test.html" class="nav-item">Test</a>
     </nav>
@@ -24,12 +23,29 @@
                     <span class="hub-status-label">Last Command:</span><br>
                     <span id="last-command" class="hub-status-value">None</span>
                 </div>
+                <div style="margin-top: 15px;">
+                    <label class="hub-status-label" style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                        <input type="checkbox" id="run-on-startup" onchange="toggleStartup(this.checked)">
+                        Run on Startup
+                    </label>
+                </div>
             </div>
         </div>
 
         <div class="hub-box">
             <h2>System Log</h2>
             <div id="log-output"></div>
+            
+            <div class="hub-footer">
+                <div id="shutdown-mode-display">
+                    <span class="hub-status-label">Timer Mode:</span>
+                    <span id="current-mode" class="hub-status-value">Shutdown</span>
+                </div>
+                <div style="display: flex; gap: 10px;">
+                    <button class="modern-btn" onclick="toggleMode()">Toggle Mode</button>
+                    <button id="shutdown-btn" class="modern-btn primary" onclick="cycleShutdown()">Shutdown: None</button>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -37,6 +53,10 @@
     <script src="js/config.js"></script>
     <script>
         let hubConnection = null;
+        let shutdownIndex = 0;
+        const shutdownTimes = [0, 15, 30, 60, 120, 300, 720];
+        let scheduledTime = null;
+        let currentMode = "Shutdown";
 
         async function init() {
             hubConnection = new signalR.HubConnectionBuilder()
@@ -68,6 +88,21 @@
                 if (el) el.remove();
             });
 
+            hubConnection.on("ShutdownScheduled", (time) => {
+                scheduledTime = time ? new Date(time) : null;
+                updateShutdownButton();
+            });
+
+            hubConnection.on("ShutdownModeUpdated", (mode) => {
+                currentMode = mode;
+                document.getElementById("current-mode").innerText = mode;
+                updateShutdownButton();
+            });
+
+            hubConnection.on("UpdateRunOnStartup", (enabled) => {
+                document.getElementById("run-on-startup").checked = enabled;
+            });
+
             try {
                 await hubConnection.start();
                 console.log("Connected");
@@ -85,6 +120,8 @@
                 log.scrollTop = log.scrollHeight;
 
                 document.getElementById("last-command").innerText = status.lastIncomingCommand;
+                document.getElementById("run-on-startup").checked = status.isRunOnStartupEnabled;
+                scheduledTime = status.scheduledShutdownTime ? new Date(status.scheduledShutdownTime) : null;
                 
                 const connList = document.getElementById("connections-list");
                 connList.innerHTML = "";
@@ -95,9 +132,45 @@
                     connList.appendChild(li);
                 });
 
+                updateShutdownButton();
+                setInterval(updateShutdownButton, 1000);
+
             } catch (err) {
                 console.error(err);
             }
+        }
+
+        function updateShutdownButton() {
+            const btn = document.getElementById("shutdown-btn");
+            const label = currentMode === "Sleep" ? "Sleep" : "Shutdown";
+            
+            if (!scheduledTime) {
+                btn.innerText = `${label}: None`;
+                shutdownIndex = 0;
+            } else {
+                const diff = scheduledTime - new Date();
+                if (diff <= 0) {
+                    btn.innerText = `${label}: Now`;
+                } else {
+                    const mins = Math.floor(diff / 60000);
+                    const secs = Math.floor((diff % 60000) / 1000);
+                    btn.innerText = `${label}: ${mins}m ${secs}s`;
+                }
+            }
+        }
+
+        function cycleShutdown() {
+            shutdownIndex = (shutdownIndex + 1) % shutdownTimes.length;
+            const mins = shutdownTimes[shutdownIndex];
+            hubConnection.invoke("SendPayload", "SCHEDULE_SHUTDOWN", { Minutes: mins });
+        }
+
+        function toggleMode() {
+            hubConnection.invoke("ToggleShutdownMode");
+        }
+
+        function toggleStartup(enabled) {
+            hubConnection.invoke("SetRunOnStartup", enabled);
         }
 
         init();
