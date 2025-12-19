@@ -16,18 +16,18 @@ Automatic reconnect doesnt work properly. When the hub is not running it will co
 ## in OmniSync.Android
 
 ### General
-Different looking buttons, more sleep/modern would be nice
+DONE Different looking buttons, more sleep/modern would be nice
 Reconnect
 
 ### Dashboard
 
 ### Remote Control Screen
-There is a weird jagged overlapping issue between the black area of the button panel and the trackpad area, the bottom and top dont align/meet properly causing janky look. Careful not to break the button panel moving/resizing.
+DONE There is a weird jagged overlapping issue between the black area of the button panel and the trackpad area, the bottom and top dont align/meet properly causing janky look. Careful not to break the button panel moving/resizing.
 Stream PC monitor, replacing background of the trackpad leaving the trackpad functioning still, options to toggle monitor, pinch to zoom, (advanced feature, do last)       
 
 ### Files Screen
-We have a bookmark button but nowhere to see or use the bookmarks. Make the bottom of the screen a super compact bookmark area
-For some folders I get error "Error loading directory: failed parsing '0001-01-01T00:00:00' as date at path $[0].lastmodified. Try to fix but also add a try catch, date issues should not prevent opening. Issue with some folders but might at teh same time be related to back button, after using back button, every folder starts giving that error and back button doesnt work.
+DONE We have a bookmark button but nowhere to see or use the bookmarks. Make the bottom of the screen a super compact bookmark area
+DONE For some folders I get error "Error loading directory: failed parsing '0001-01-01T00:00:00' as date at path $[0].lastmodified. Try to fix but also add a try catch, date issues should not prevent opening. Issue with some folders but might at teh same time be related to back button, after using back button, every folder starts giving that error and back button doesnt work.
 Downloading a video into app data and optionally password protecting it with encryption and password. Should be deletable
 
 UNKNOWN-STATUS The media player used already has next/previous buttons that work, disable the extra next/previous buttons added to the UI (we might want them back later). 

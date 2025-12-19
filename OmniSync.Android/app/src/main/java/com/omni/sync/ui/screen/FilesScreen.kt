@@ -393,15 +393,26 @@ fun FileSystemEntryItem(
 }
 
 private fun getParentPath(path: String): String {
+    if (path.isEmpty()) return ""
     val separator = if (path.contains("/")) "/" else "\\"
-    return if (path.contains(separator) && path.lastIndexOf(separator) > 0) {
-        path.substringBeforeLast(separator)
-    } else if (path.length >= 2 && path[1] == ':') {
-        // Handle Windows root like C:\
-        if (path.length == 2) path + "\\" else path.substring(0, 3)
-    } else {
-        ""
+    
+    // Check if it's a root drive (e.g. "C:\" or "C:/")
+    if (path.length <= 3 && path.contains(":")) {
+        return "" // Go to drive list (root)
     }
+
+    val lastIndex = path.lastIndexOf(separator)
+    if (lastIndex > 0) {
+        // If we are at "C:\Users", lastIndex is 2. Substring(0, 2) is "C:".
+        // We want to return "C:\" so we include the separator if it's the root.
+        // Or simply: if the result ends in ":", append separator.
+        val parent = path.substring(0, lastIndex)
+        if (parent.endsWith(":")) {
+            return parent + separator
+        }
+        return parent
+    }
+    return ""
 }
 
 

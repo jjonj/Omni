@@ -2,6 +2,7 @@ package com.omni.sync.ui.screen
 
 import android.util.Log
 import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectDragGestures
@@ -78,6 +79,9 @@ fun RemoteControlScreen(
                 signalRClient = signalRClient,
                 modifier = Modifier.weight(1f)
             )
+            
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            
             ButtonPanel(
                 signalRClient = signalRClient,
                 mainViewModel = mainViewModel,
@@ -215,7 +219,7 @@ fun ButtonPanel(
     Column(
         modifier = modifier
             .background(MaterialTheme.colorScheme.surface)
-            .padding(8.dp)
+            .padding(12.dp) // Increased padding
             .onPreviewKeyEvent { keyEvent ->
                 if (keyEvent.type == KeyEventType.KeyDown) {
                     val unicodeChar = keyEvent.nativeKeyEvent.unicodeChar
@@ -263,10 +267,12 @@ fun ButtonPanel(
             )
         }
 
+        Spacer(Modifier.height(8.dp))
+
         // Key Grids
-        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) { // Increased spacing
             // Grid 1
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 ModifierKeyButton("Shift", isShiftPressed, Modifier.weight(1f), onToggle = { 
                     if (it) signalRClient.sendKeyEvent("INPUT_KEY_DOWN", VK_SHIFT)
                     else signalRClient.sendKeyEvent("INPUT_KEY_UP", VK_SHIFT)
@@ -303,7 +309,7 @@ fun ButtonPanel(
             }
 
             // Grid 2
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 ActionKeyButton(text = "Esc", modifier = Modifier.weight(1f)) {
                     signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_ESCAPE)
                 }
@@ -327,7 +333,7 @@ fun ButtonPanel(
             // Grid 3
             val shutdownTimes = listOf(0, 15, 30, 60, 120, 300, 720)
             val context = LocalContext.current
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 ActionKeyButton(text = "Alt+Tab", modifier = Modifier.weight(1f)) {
                     signalRClient.sendKeyEvent("INPUT_KEY_DOWN", VK_MENU)
                     signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_TAB)
@@ -357,24 +363,28 @@ fun ModifierKeyButton(
     onToggle: (Boolean) -> Unit,
     onDoubleClick: () -> Unit
 ) {
-    val colors = if (isToggled) ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
-    else ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
+    val containerColor = if (isToggled) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainer
+    val contentColor = if (isToggled) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
 
-    Button(
+    FilledTonalButton(
         onClick = { onToggle(!isToggled) },
-        colors = colors,
+        colors = ButtonDefaults.filledTonalButtonColors(containerColor = containerColor, contentColor = contentColor),
         modifier = modifier
-            .height(40.dp)
+            .height(56.dp)
             .pointerInput(Unit) {
                 detectTapGestures(
                     onDoubleTap = {
                         onDoubleClick()
+                    },
+                    onTap = {
+                         onToggle(!isToggled)
                     }
                 )
             },
-        contentPadding = PaddingValues(0.dp)
+        shape = RoundedCornerShape(12.dp),
+        contentPadding = PaddingValues(4.dp)
     ) {
-        Text(text, softWrap = false, fontSize = 10.sp)
+        Text(text, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Visible, fontSize = 12.sp)
     }
 }
 
@@ -385,13 +395,15 @@ fun ActionKeyButton(
     text: String? = null, 
     onClick: () -> Unit
 ) {
-    Button(
+    FilledTonalButton(
         onClick = onClick, 
-        modifier = modifier.height(40.dp),
-        contentPadding = PaddingValues(0.dp)
+        modifier = modifier.height(56.dp),
+        shape = RoundedCornerShape(12.dp),
+        colors = ButtonDefaults.filledTonalButtonColors(containerColor = MaterialTheme.colorScheme.surfaceContainer, contentColor = MaterialTheme.colorScheme.onSurface),
+        contentPadding = PaddingValues(4.dp)
     ) {
-        if (icon != null) Icon(icon, contentDescription = text)
-        if (text != null) Text(text, softWrap = false, fontSize = 10.sp)
+        if (icon != null) Icon(icon, contentDescription = text, modifier = Modifier.size(20.dp))
+        if (text != null) Text(text, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Visible, fontSize = 12.sp)
     }
 }
 

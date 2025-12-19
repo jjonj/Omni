@@ -59,6 +59,24 @@ class SignalRClient(
     private var hubConnection: HubConnection? = null
     private val clipboardManager = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
     private val gson = GsonBuilder()
+        .registerTypeAdapter(Date::class.java, JsonDeserializer<Date> { json, _, _ ->
+            try {
+                // Try parsing standard ISO format (used by C# DateTime)
+                val format = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", java.util.Locale.US)
+                format.parse(json.asString)
+            } catch (e: Exception) {
+                // If it fails (e.g. milliseconds included, or different format), try others or fallback
+                try {
+                    // Try with milliseconds
+                     val formatMs = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSSSSS", java.util.Locale.US)
+                     formatMs.parse(json.asString)
+                } catch (e2: Exception) {
+                     // Log or ignore, return "empty" date which FilesScreen handles (ts <= 0)
+                     // returning Date(0) or Date(-62135769600000L) for Year 1
+                     Date(-62135769600000L) // Year 0001
+                }
+            }
+        })
         .create()
     private val coroutineScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var reconnectJob: Job? = null
