@@ -3,6 +3,7 @@ package com.omni.sync.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.omni.sync.data.model.FileSystemEntry
+import com.omni.sync.data.model.PendingEdit
 import com.omni.sync.data.repository.SignalRClient
 import com.omni.sync.viewmodel.MainViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -79,10 +80,22 @@ class FilesViewModel(
     val folderBookmarks: StateFlow<List<FileSystemEntry>> = _folderBookmarks
     
     private val prefs = application.getSharedPreferences("files_prefs", Context.MODE_PRIVATE)
+    private val cachePrefs = application.getSharedPreferences("files_cache_prefs", Context.MODE_PRIVATE)
+    private val textCachePrefs = application.getSharedPreferences("text_cache_prefs", Context.MODE_PRIVATE)
+    private val pendingEditsPrefs = application.getSharedPreferences("pending_edits_prefs", Context.MODE_PRIVATE)
     private val gson = com.google.gson.Gson()
 
     init {
         loadFolderBookmarks()
+        
+        // Listen for connection changes to trigger sync
+        viewModelScope.launch {
+            mainViewModel.isConnected.collect { connected ->
+                if (connected) {
+                    syncPendingChanges()
+                }
+            }
+        }
     }
 
     private fun loadFolderBookmarks() {
@@ -96,6 +109,31 @@ class FilesViewModel(
     private fun saveFolderBookmarks() {
         val json = gson.toJson(_folderBookmarks.value)
         prefs.edit().putString("folder_bookmarks", json).apply()
+    }
+
+    private fun isPathInsideAnyBookmark(path: String): Boolean {
+        if (path.isEmpty()) return true // Always cache root/drives for navigation
+        val normalizedPath = path.replace("\\", "/").lowercase()
+        return _folderBookmarks.value.any { bookmark ->
+            val bookmarkPath = bookmark.path.replace("\\", "/").lowercase()
+            normalizedPath == bookmarkPath || 
+            normalizedPath.startsWith(if (bookmarkPath.endsWith("/")) bookmarkPath else "$bookmarkPath/")
+        }
+    }
+
+    private fun saveToCache(path: String, entries: List<FileSystemEntry>) {
+        val json = gson.toJson(entries)
+        cachePrefs.edit().putString("cache_$path", json).apply()
+    }
+
+    private fun getFromCache(path: String): List<FileSystemEntry>? {
+        val json = cachePrefs.getString("cache_$path", null) ?: return null
+        val type = object : com.google.gson.reflect.TypeToken<List<FileSystemEntry>>() {}.type
+        return try {
+            gson.fromJson(json, type)
+        } catch (e: Exception) {
+            null
+        }
     }
 
     fun toggleFolderBookmark(entry: FileSystemEntry) {
@@ -149,7 +187,15 @@ class FilesViewModel(
 
     fun loadDirectory(path: String) {
         if (!mainViewModel.isConnected.value) {
-            _errorMessage.value = "Not connected to OmniSync Hub. Please connect first."
+            val cachedEntries = getFromCache(path)
+            if (cachedEntries != null) {
+                _fileSystemEntries.value = cachedEntries
+                _currentPath.value = path
+                _errorMessage.value = null
+                mainViewModel.addLog("Loaded directory from cache: ${if (path.isEmpty()) "(root)" else path}", com.omni.sync.ui.screen.LogType.INFO)
+            } else {
+                _errorMessage.value = "Not connected and directory not cached."
+            }
             return
         }
 
@@ -178,6 +224,11 @@ class FilesViewModel(
                     _currentPath.value = path
                     _isLoading.value = false
                     _errorMessage.value = null
+
+                    // Cache if it's inside a bookmark or root
+                    if (isPathInsideAnyBookmark(path)) {
+                        saveToCache(path, entries)
+                    }
                 },
                 { error ->
                     _errorMessage.value = "Error loading directory: ${error.message}"
@@ -309,7 +360,15 @@ class FilesViewModel(
 
     fun openForEditing(entry: FileSystemEntry) {
         if (!mainViewModel.isConnected.value) {
-            _errorMessage.value = "Not connected to OmniSync Hub. Please connect first."
+            val cachedContent = textCachePrefs.getString("text_${entry.path}", null)
+            if (cachedContent != null) {
+                _editingFile.value = entry
+                _editingContent.value = cachedContent
+                mainViewModel.navigateTo(AppScreen.EDITOR)
+                mainViewModel.addLog("Opened file from cache: ${entry.name}", com.omni.sync.ui.screen.LogType.INFO)
+            } else {
+                _errorMessage.value = "Not connected and file not cached."
+            }
             return
         }
 
@@ -342,10 +401,14 @@ class FilesViewModel(
                     }
                 }
 
+                val content = contentBuilder.toString()
                 _editingFile.value = entry
-                _editingContent.value = contentBuilder.toString()
+                _editingContent.value = content
                 _isLoading.value = false
                 
+                // Cache it
+                textCachePrefs.edit().putString("text_${entry.path}", content).apply()
+
                 viewModelScope.launch(AndroidSchedulers.mainThread().asCoroutineDispatcher()) {
                     mainViewModel.navigateTo(AppScreen.EDITOR)
                 }
@@ -362,16 +425,38 @@ class FilesViewModel(
 
     fun saveEditingContent() {
         val entry = _editingFile.value ?: return
-        if (!mainViewModel.isConnected.value) return
+        val content = _editingContent.value
+
+        if (!mainViewModel.isConnected.value) {
+            // Save as pending edit
+            val pendingEdit = PendingEdit(
+                path = entry.path,
+                content = content,
+                originalLastModified = entry.lastModified.time,
+                isNewFile = entry.size == -1L // Marker for new files
+            )
+            val json = gson.toJson(pendingEdit)
+            pendingEditsPrefs.edit().putString("pending_${entry.path}", json).apply()
+            
+            // Also update text cache so if we reopen it offline, we see our changes
+            textCachePrefs.edit().putString("text_${entry.path}", content).apply()
+
+            mainViewModel.addLog("Saved locally (offline): ${entry.name}", com.omni.sync.ui.screen.LogType.INFO)
+            mainViewModel.goBack()
+            return
+        }
 
         _isSaving.value = true
         viewModelScope.launch(Schedulers.io().asCoroutineDispatcher()) {
             try {
                 signalRClient.sendPayload("SAVE_FILE", mapOf(
                     "Path" to entry.path,
-                    "Content" to _editingContent.value
+                    "Content" to content
                 ))
                 
+                // Update cache
+                textCachePrefs.edit().putString("text_${entry.path}", content).apply()
+
                 viewModelScope.launch(AndroidSchedulers.mainThread().asCoroutineDispatcher()) {
                     mainViewModel.addLog("File saved: ${entry.name}", com.omni.sync.ui.screen.LogType.SUCCESS)
                     _isSaving.value = false
@@ -382,6 +467,105 @@ class FilesViewModel(
                 _errorMessage.value = "Save failed: ${e.message}"
             }
         }
+    }
+
+    private fun syncPendingChanges() {
+        val allPending = pendingEditsPrefs.all
+        if (allPending.isEmpty()) return
+
+        viewModelScope.launch(Schedulers.io().asCoroutineDispatcher()) {
+            for ((key, value) in allPending) {
+                if (value !is String) continue
+                val pendingEdit = try {
+                    gson.fromJson(value, PendingEdit::class.java)
+                } catch (e: Exception) {
+                    continue
+                }
+
+                try {
+                    // 1. Get current file info from Hub
+                    val parentPath = getParentPath(pendingEdit.path)
+                    val currentEntries = signalRClient.listDirectory(parentPath)
+                        ?.subscribeOn(Schedulers.io())
+                        ?.blockingGet()
+                    
+                    val currentEntry = currentEntries?.find { it.path == pendingEdit.path }
+
+                    val savePath: String
+
+                    if (pendingEdit.isNewFile) {
+                        savePath = if (currentEntry != null) {
+                            pendingEdit.path + ".conflicted"
+                        } else {
+                            pendingEdit.path
+                        }
+                    } else {
+                        savePath = if (currentEntry == null || currentEntry.lastModified.time != pendingEdit.originalLastModified) {
+                            pendingEdit.path + ".conflicted"
+                        } else {
+                            pendingEdit.path
+                        }
+                    }
+
+                    signalRClient.sendPayload("SAVE_FILE", mapOf(
+                        "Path" to savePath,
+                        "Content" to pendingEdit.content
+                    ))
+                    
+                    viewModelScope.launch(AndroidSchedulers.mainThread().asCoroutineDispatcher()) {
+                        mainViewModel.addLog("Synced offline edit: ${savePath}", com.omni.sync.ui.screen.LogType.SUCCESS)
+                    }
+
+                    // Remove from pending
+                    pendingEditsPrefs.edit().remove(key).apply()
+
+                } catch (e: Exception) {
+                    viewModelScope.launch(AndroidSchedulers.mainThread().asCoroutineDispatcher()) {
+                        mainViewModel.addLog("Failed to sync ${pendingEdit.path}: ${e.message}", com.omni.sync.ui.screen.LogType.ERROR)
+                    }
+                }
+            }
+        }
+    }
+
+    private fun getParentPath(path: String): String {
+        if (path.isEmpty()) return ""
+        val separator = if (path.contains("/")) "/" else "\\"
+        
+        // Check if it's a root drive (e.g. "C:\" or "C:/")
+        if (path.length <= 3 && path.contains(":")) {
+            return "" // Go to drive list (root)
+        }
+
+        val lastIndex = path.lastIndexOf(separator)
+        if (lastIndex > 0) {
+            val parent = path.substring(0, lastIndex)
+            if (parent.endsWith(":")) {
+                return parent + separator
+            }
+            return parent
+        }
+        return ""
+    }
+
+    fun createNewFile(name: String) {
+        val separator = if (_currentPath.value.contains("/")) "/" else "\\"
+        val fullPath = if (_currentPath.value.isEmpty()) name else {
+            if (_currentPath.value.endsWith(separator)) _currentPath.value + name
+            else _currentPath.value + separator + name
+        }
+        
+        val newEntry = FileSystemEntry(
+            name = name,
+            path = fullPath,
+            isDirectory = false,
+            size = -1L, // Marker for new file
+            lastModified = java.util.Date()
+        )
+        
+        _editingFile.value = newEntry
+        _editingContent.value = ""
+        mainViewModel.navigateTo(AppScreen.EDITOR)
     }
 
     private fun resetDownloadState() {

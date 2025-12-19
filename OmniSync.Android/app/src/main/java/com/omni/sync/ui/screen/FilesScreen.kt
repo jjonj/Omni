@@ -35,6 +35,7 @@ import com.omni.sync.data.model.FileSystemEntry
 import com.omni.sync.viewmodel.FilesViewModel
 import java.text.SimpleDateFormat
 import java.util.Locale
+import androidx.compose.material.icons.filled.Add
 import androidx.activity.compose.BackHandler
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
@@ -51,6 +52,8 @@ fun FilesScreen(
     val errorMessage by filesViewModel.errorMessage.collectAsState()
 
     var showBookmarksList by remember { mutableStateOf(false) }
+    var showCreateFileDialog by remember { mutableStateOf(false) }
+    var newFileName by remember { mutableStateOf("") }
 
     // Handle back press to navigate up
     BackHandler(enabled = currentPath.isNotEmpty() && currentPath != "/") {
@@ -85,6 +88,11 @@ fun FilesScreen(
                     }
                 },
                 actions = {
+                    if (currentPath.isNotEmpty()) {
+                        IconButton(onClick = { showCreateFileDialog = true }) {
+                            Icon(Icons.Default.Add, contentDescription = "Create File")
+                        }
+                    }
                     IconButton(onClick = { filesViewModel.loadDirectory(currentPath) }) {
                         Icon(Icons.Default.Refresh, contentDescription = "Refresh")
                     }
@@ -294,6 +302,40 @@ fun FilesScreen(
                 }
             }
         }
+    }
+
+    if (showCreateFileDialog) {
+        AlertDialog(
+            onDismissRequest = { showCreateFileDialog = false },
+            title = { Text("Create New File") },
+            text = {
+                OutlinedTextField(
+                    value = newFileName,
+                    onValueChange = { newFileName = it },
+                    label = { Text("Filename (e.g. note.txt)") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (newFileName.isNotBlank()) {
+                            filesViewModel.createNewFile(newFileName)
+                            showCreateFileDialog = false
+                            newFileName = ""
+                        }
+                    }
+                ) {
+                    Text("Create")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showCreateFileDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
     }
 }
 

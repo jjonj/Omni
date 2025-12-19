@@ -5,39 +5,43 @@ When finishing a task make sure to prefix the line with "DONE" and also git comm
 
 ## For the hub
 DONE Run on startup is not working, windows is trying to run D:\SSDProjects\Omni\OmniSync.Hub\src\OmniSync.Hub\bin\Debug\net9.0-windows\OmniSync.Hub.dll on startup which is nonsensical
-DONE Long press on shutdown should switch to sleep instead, syncing with android app button state.
+Play a sound 1 minute before shutdown will activate, use Resources/shut1min.wav
+
 
 ### Hub window
+Long press on shutdown should switch to sleep instead, syncing with android app button state.
+
 
 ## in OmniSync.Android
 
 ### General
-DONE Swiping navigation bar does not work well at all. Swiping does nothing. But now if i tap a button that isnt the adjacent one it goes very janky and switches over like 1.5 screens leaving me between two screens. It shouldnt be doing anything fancy when im just tapping buttons
 
 ### Dashboard
 
 ### Remote Control Screen
-DONE STILL FAILED FIX There is STILL a weird jagged overlapping issue between the black area of the button panel and the trackpad area, the bottom and top dont align/meet properly causing janky look. Careful not to break the button panel moving/resizing.
+There is a wierd jagged overlapping issue  at the border between the black area of the button panel and the trackpad area, the bottom and top dont align/meet properly causing janky look. Careful not to break the button panel moving/resizing. Maybe ensure that the panel is always infront of the trackpad or make sure their borders align
 Stream PC monitor, replacing background of the trackpad leaving the trackpad functioning still, options to toggle monitor, pinch to zoom, (advanced feature, do last)       
-DONE Long press on shutdown button does switch it to a sleep icon but the hub still shows shutdown, so i dont know if it will shutdown or sleep
+Long press on shutdown button does switch it to a sleep icon but the hub still shows shutdown, so i dont know if it will shutdown or sleep
 
 ### Files Screen
-DONE Bookmarking works! but The manage bookmark panel should be at the bottom of the files screen, not bottom
+Bookmarking works! but The manage bookmark panel should be at the bottom of the files screen, not bottom
 Downloading a video into app data and optionally password protecting it with encryption and password. Should be deletable
 
-DONE  Swiping finger up and down on left side should change phone brightness
-DONE Changing brightness changes it for the whole app and only while the app is running. I want it to preferably change it for the entire android system or if not possible then only for the video player and nowhere else.
-DONE STILL-NOT-WORKING Swiping finger up and down on  right side should change phone volume.     
-DONE STILL-NOT-WORKING  Double tap to skip forward/back no longer working. (probably broke when fixing brightness sliding
+WORKING Swiping finger up and down on left side should change phone brightness
+NOT-WORKING Swiping finger up and down on  right side should change phone or video volume.     
+NOT-WORKING  Double tap to skip forward/back no longer working. (probably broke when fixing brightness sliding. We used to have this working using overlay boxes on the left and right side that could also be used for volume change (and brightness?)
 EVEN MORE Text editing fancy features, think like a lite code editor like notepad++ or VS code. be creative. MORE options in burger menu with lots of options
-DONE Using android back button when watching a video should go back to file system folder, it currently goes to last used screen
+DONE File system caching - remember all paths all files that have been listed IF They are inside (recursively) any bookmark, allowing to browse file system even after disconnecting
+DONE Text file content caching - remember the content of all files opened as text even when disconnected
+DONE File Cached editing - ALlow editing text files while disconnected, apply the change when reconnecting IF and only IF the the file date modified before saving matches the cached one  (aka the file hasnt changed since we last cached it). Otherwise save it with postfix .conflicted
+DONE Cached file creation - Allow creating text files while disconnected that will be saved to PC when reconnecting
+
 
 ### Browser control screen
-DONE Play/Pause media finally works, but it works on current tab. Could we try getting it to work for whatever is/was the currently/most recently playing media. Or alternatively pause all playing media if any, otherwise play current tabs media would also be ok
+Play/Pause media works, but it works on current tab. Could we try getting it to work for whatever is/was the currently/most recently playing media. Or alternatively pause all playing media if any, otherwise play current tabs media would also be ok
 
 
 ### Notification panel
-DONE The notificaiton currently reads "OmniSync Hub\nConnected and Monitoring\[Buttons]. Make it two lines instead of 3, merge the first two, e.g. "Omni - Connected" would be a good title. 
 Make the buttons have different/better background
 
 ### Home screen widgets
@@ -47,8 +51,7 @@ Add support for widgets, when you add a widget you can choose a quick action (sa
 Quick actions dropdown: Add options to go directly to each screen in the app, add options to go to open a bookmark from the browser control screen (opens on the pc like the bookmarks do)
 
 ### AI screen (new)
-DONE AI Chat still doesnt work from android.  I get Error: Gemini CLI timed out after 120 seconds. are we sure D:\SSDProjects\Omni\TestScripts\test_ai_integration.py works? Why does it work but android doesnt? If its not responding because quota exhausted then I need to be able to see that in the chat window
-AI should have same features as gemini CLI if it doesnt already. e.g. /dir add C:/MyDir     
+I want to be able to use gemini commands, e.g. /dir add D:/SSDProjects, currently it just sends it as a string to gemini and the ai responds instead of affecting the gemini cli harness. Please carefully read through the 
 
 ## Web (new)
 DONE Hub screen doesnt work/receive updates.
