@@ -29,7 +29,7 @@ DONE See also ### Hub window. The shutdown timer button should have a long press
 DONE We have a bookmark button but nowhere to see or use the bookmarks. Make the bottom of the screen a super compact bookmark area
 DONE For some folders I get error "Error loading directory: failed parsing '0001-01-01T00:00:00' as date at path $[0].lastmodified. Try to fix but also add a try catch, date issues should not prevent opening. Issue with some folders but might at teh same time be related to back button, after using back button, every folder starts giving that error and back button doesnt work.
 Downloading a video into app data and optionally password protecting it with encryption and password. Should be deletable
-Long press should also have an option to Open folder in AI chat. Which will switch to the AI chat mode and set hte working dir to the pressed folder
+DONE Long press should also have an option to Open folder in AI chat. Which will switch to the AI chat mode and set hte working dir to the pressed folder
 DONE Attempting to open an flv video file file freezes and crashes the app
 DONE There is still no  bookmarks panel at the bottom of the screen.
 
@@ -37,25 +37,26 @@ DONE  Swiping finger up and down on left side should change phone brightness
 DONE NOT-WORKING Swiping finger up and down on  right side should change phone volume.
 DONE Double tap to skip forward/back no longer working. (probably broke when fixing brightness sliding
 EVEN MORE Text editing fancy features, think like a lite code editor like notepad++ or VS code. be creative. Make a burger menu with lots of options
+
 ### Browser control screen
-STILL NOT-WORKING Button to play/pause whatever media is currently playing. Maybe we just need to try like 5 different ways at once and if that works we can narrow done which one is actually doing it. This requires lots of research.
+DONE STILL NOT-WORKING Button to play/pause whatever media is currently playing. Maybe we just need to try like 5 different ways at once and if that works we can narrow done which one is actually doing it. This requires lots of research.
 
 
 ### Notification panel
 The quick actions work but preferably the buttons dont require expanding the notification and exist straight on the notification.
 
 ### Settings screen (accessed by button on dashboard, not bottom panel)
-For the settings for what buttons should be in the notification quick actions panel, max should be 6, not 3. I can remove actions but can't add any, I want a dropdown thing to add. try to add as many possibilities here that you think could be done with a single button, especially from the Dashboard/Quick actions, remote control and browser control screens. also add option for custom buttons that will send a run/cmd command that will be executed on the pc.
+For the settings for what buttons should be in the notification quick actions panel, max should be 6, not 3. I can remove actions but can't add any, I want a dropdown thing to add. try to add as many possibilities here that you think could be done with a single button, especially from the Dashboard/Quick actions, remote control and browser control screens. also add option for custom buttons that will send a run/cmd command that will be executed on the pc. 
 
 ### AI screen (new)
 AI Chat doesnt seem to work from android.  I sent too messages with minutes apart and the AI just doesnt respond. I have before seen it respond after i came back to the app after a while but that was at an earlier state not sure how that works.
-When the android keyboard is up, it pushes up the start of the conversation hiding it
-Need an animated "..." when waiting for AI to respond and a timeout if not already implemented. If we could get an inline status for the AI, e.g. "System starting", "AI Responding" that would be even better and ensure i can see any errors if i cant already. 
-AI should have same features as gemini CLI if it doesnt already. e.g. /dir add C:/MyDir
-Compact panel similar to remotecontrolscreen to clear chat and other available quick actions
+DONE When the android keyboard is up, it pushes up the start of the conversation hiding it       
+DONE Need an animated "..." when waiting for AI to respond and a timeout if not already implemented. If we could get an inline status for the AI, e.g. "System starting", "AI Responding" that would be even better and ensure i can see any errors if i cant already.
+AI should have same features as gemini CLI if it doesnt already. e.g. /dir add C:/MyDir     
+DONE Compact panel similar to remotecontrolscreen to clear chat and other available quick actions
 
 ## Web (new)
-"IntegrateThisIntoWeb" ugly name, refactor the folder structure.
-Add modern menu/buttons to navigate between pages
-Having both hubcontrol and hubmonitor is redundant
+DONE "IntegrateThisIntoWeb" ugly name, refactor the folder structure.
+DONE Add modern menu/buttons to navigate between pages
+DONE Having both hubcontrol and hubmonitor is redundant
 HubControl/hubmonitor has the same layout as the hub window but no active connections listed and no log output.
