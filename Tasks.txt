@@ -6,7 +6,7 @@ When finishing a task make sure to prefix the line with "DONE" and also git comm
 ## For the hub
 DONE Run on startup is not working, windows is trying to run D:\SSDProjects\Omni\OmniSync.Hub\src\OmniSync.Hub\bin\Debug\net9.0-windows\OmniSync.Hub.dll on startup which is nonsensical
 Play a sound 1 minute before shutdown will activate, use Resources/shut1min.wav
-
+Right click tray icon -> exit doesnt work
 
 ### Hub window
 Long press on shutdown should switch to sleep instead, syncing with android app button state.

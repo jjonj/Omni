@@ -40,7 +40,7 @@ namespace OmniSync.Hub.Presentation
             // Subscribe to HubMonitorService events
             _hubMonitorService.LogEntryAdded += HubMonitorService_LogEntryAdded;
             _shutdownService.ShutdownScheduled += ShutdownService_ShutdownScheduled;
-            _shutdownService.ModeChanged += (s, e) => Dispatcher.BeginInvoke(() => UpdateShutdownButtonLabel(_shutdownService.GetScheduledTime()));
+            _shutdownService.ModeChanged += (s, e) => UpdateShutdownButtonLabel(_shutdownService.GetScheduledTime());
 
             // Initialize UI elements with current data from HubMonitorService
             // ConnectionsListBox is bound directly to ActiveConnections in XAML and ObservableCollection handles updates
@@ -102,7 +102,9 @@ namespace OmniSync.Hub.Presentation
             
             // Toggle mode
             var currentMode = _shutdownService.GetCurrentMode();
-            var newMode = currentMode == ShutdownMode.Shutdown ? ShutdownMode.Sleep : ShutdownMode.Shutdown;
+            var newMode = currentMode == OmniSync.Hub.Logic.Services.ShutdownMode.Shutdown 
+                ? OmniSync.Hub.Logic.Services.ShutdownMode.Sleep 
+                : OmniSync.Hub.Logic.Services.ShutdownMode.Shutdown;
             _shutdownService.SetMode(newMode);
         }
 
@@ -138,40 +140,40 @@ namespace OmniSync.Hub.Presentation
 
         private void ShutdownService_ShutdownScheduled(object? sender, DateTime? scheduledTime)
         {
-            Dispatcher.BeginInvoke(() =>
-            {
-                UpdateShutdownButtonLabel(scheduledTime);
-            });
+            UpdateShutdownButtonLabel(scheduledTime);
         }
 
         private void UpdateShutdownButtonLabel(DateTime? scheduledTime)
         {
-            string modeLabel = _shutdownService.GetCurrentMode() == ShutdownMode.Shutdown ? "Shutdown" : "Sleep";
+            Dispatcher.BeginInvoke(() =>
+            {
+                string modeLabel = _shutdownService.GetCurrentMode() == OmniSync.Hub.Logic.Services.ShutdownMode.Shutdown ? "Shutdown" : "Sleep";
 
-            if (scheduledTime == null)
-            {
-                ShutdownButton.Content = $"{modeLabel}: None";
-                _shutdownIndex = 0;
-            }
-            else
-            {
-                var remaining = scheduledTime.Value - DateTime.Now;
-                if (remaining.TotalSeconds > 0)
+                if (scheduledTime == null)
                 {
-                    if (remaining.TotalHours >= 1)
-                    {
-                        ShutdownButton.Content = $"{modeLabel}: {(int)remaining.TotalHours}h {remaining.Minutes}m {remaining.Seconds}s";
-                    }
-                    else
-                    {
-                        ShutdownButton.Content = $"{modeLabel}: {remaining.Minutes}m {remaining.Seconds}s";
-                    }
+                    ShutdownButton.Content = $"{modeLabel}: None";
+                    _shutdownIndex = 0;
                 }
                 else
                 {
-                    ShutdownButton.Content = $"{modeLabel}: Now";
+                    var remaining = scheduledTime.Value - DateTime.Now;
+                    if (remaining.TotalSeconds > 0)
+                    {
+                        if (remaining.TotalHours >= 1)
+                        {
+                            ShutdownButton.Content = $"{modeLabel}: {(int)remaining.TotalHours}h {remaining.Minutes}m {remaining.Seconds}s";
+                        }
+                        else
+                        {
+                            ShutdownButton.Content = $"{modeLabel}: {remaining.Minutes}m {remaining.Seconds}s";
+                        }
+                    }
+                    else
+                    {
+                        ShutdownButton.Content = $"{modeLabel}: Now";
+                    }
                 }
-            }
+            });
         }
 
         private void ShutdownButton_Click(object sender, RoutedEventArgs e)

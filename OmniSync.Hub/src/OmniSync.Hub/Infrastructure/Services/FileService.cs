@@ -51,6 +51,19 @@ namespace OmniSync.Hub.Infrastructure.Services
             return _browseRootPath;
         }
 
+        public string GetResourcePath(string relativePath)
+        {
+            // Dev: src/OmniSync.Hub -> Root -> relativePath
+            string devPath = Path.Combine(Directory.GetCurrentDirectory(), "..", "..", "..", relativePath);
+            if (File.Exists(devPath) || Directory.Exists(devPath)) return Path.GetFullPath(devPath);
+
+            // Prod: bin/Debug/net9.0-windows -> Root -> relativePath
+            string prodPath = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "..", relativePath);
+            if (File.Exists(prodPath) || Directory.Exists(prodPath)) return Path.GetFullPath(prodPath);
+
+            return relativePath;
+        }
+
         public string ReadFile(string filePath)
         {
             var fullPath = SanitizeAndGetNoteFullPath(filePath);

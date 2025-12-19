@@ -37,6 +37,25 @@ namespace OmniSync.Hub.Infrastructure.Services
             return _defaultDevice.AudioEndpointVolume.Mute;
         }
 
+        public void PlaySound(string filePath)
+        {
+            try
+            {
+                if (System.IO.File.Exists(filePath))
+                {
+                    using (var player = new System.Media.SoundPlayer(filePath))
+                    {
+                        player.Play();
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                // Log error or handle silently for now as requested for high privilege personal ecosystem
+                Console.WriteLine($"Error playing sound {filePath}: {ex.Message}");
+            }
+        }
+
         public void Dispose()
         {
             _defaultDevice?.Dispose();

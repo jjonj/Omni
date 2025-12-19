@@ -62,7 +62,14 @@ builder.Services.AddSingleton<InputService>(provider =>
     return new InputService(logger, keyboardHook);
 });
 builder.Services.AddSingleton<AudioService>();
-builder.Services.AddSingleton<ShutdownService>();
+builder.Services.AddSingleton<ShutdownService>(provider =>
+{
+    var logger = provider.GetRequiredService<ILogger<ShutdownService>>();
+    var processService = provider.GetRequiredService<ProcessService>();
+    var audioService = provider.GetRequiredService<AudioService>();
+    var fileService = provider.GetRequiredService<FileService>();
+    return new ShutdownService(logger, processService, audioService, fileService);
+});
 builder.Services.AddSingleton<RegistryService>();
 builder.Services.AddSingleton<HubEventSender>();
 builder.Services.AddSingleton<HubMonitorService>(); // Register the new monitoring service

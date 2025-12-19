@@ -2,6 +2,7 @@ using System;
 using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
+using System.IO;
 using Microsoft.Extensions.Logging;
 using OmniSync.Hub.Infrastructure.Services;
 
@@ -13,24 +14,48 @@ namespace OmniSync.Hub.Logic.Services
             Sleep
         }
     
-        public class ShutdownService
-        {
-            private readonly ILogger<ShutdownService> _logger;
-            private readonly ProcessService _processService;
-            private CancellationTokenSource? _shutdownCts;
-            private DateTime? _scheduledTime;
-            private ShutdownMode _currentMode = ShutdownMode.Shutdown;
+                public class ShutdownService
     
-            public event EventHandler<DateTime?>? ShutdownScheduled;
-            public event EventHandler<ShutdownMode>? ModeChanged;
+                {
     
-            public ShutdownService(ILogger<ShutdownService> logger, ProcessService processService)
-            {
-                _logger = logger;
-                _processService = processService;
-            }
+                    private readonly ILogger<ShutdownService> _logger;
     
-            public ShutdownMode GetCurrentMode() => _currentMode;
+                    private readonly ProcessService _processService;
+    
+                    private readonly AudioService _audioService;
+    
+                    private readonly FileService _fileService;
+    
+                    private CancellationTokenSource? _shutdownCts;
+    
+                    private DateTime? _scheduledTime;
+    
+                    private ShutdownMode _currentMode = ShutdownMode.Shutdown;
+    
+            
+    
+                    public event EventHandler<DateTime?>? ShutdownScheduled;
+    
+                    public event EventHandler<ShutdownMode>? ModeChanged;
+    
+            
+    
+                    public ShutdownService(ILogger<ShutdownService> logger, ProcessService processService, AudioService audioService, FileService fileService)
+    
+                    {
+    
+                        _logger = logger;
+    
+                        _processService = processService;
+    
+                        _audioService = audioService;
+    
+                        _fileService = fileService;
+    
+                    }
+    
+            
+                    public ShutdownMode GetCurrentMode() => _currentMode;
     
             public void SetMode(ShutdownMode mode)
             {
@@ -66,7 +91,19 @@ namespace OmniSync.Hub.Logic.Services
                 {
                     try
                     {
-                        await Task.Delay(TimeSpan.FromMinutes(minutes), token);
+                        if (minutes > 1)
+                        {
+                            await Task.Delay(TimeSpan.FromMinutes(minutes - 1), token);
+                            _logger.LogInformation($"Playing shutdown warning sound.");
+                            string soundPath = _fileService.GetResourcePath(Path.Combine("Resources", "shut1min.wav"));
+                            _audioService.PlaySound(soundPath);
+                            await Task.Delay(TimeSpan.FromMinutes(1), token);
+                        }
+                        else
+                        {
+                            await Task.Delay(TimeSpan.FromMinutes(minutes), token);
+                        }
+
                         _logger.LogInformation($"{_currentMode} timer expired. Executing command.");
                         
                         string command = _currentMode == ShutdownMode.Shutdown 
