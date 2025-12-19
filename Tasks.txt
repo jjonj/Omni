@@ -8,7 +8,7 @@ DONE Run on startup is not working, windows is trying to run D:\SSDProjects\Omni
 
 
 ### Hub window
-See also ### Remote Control Screen. The shutdown timer button should have a long press action that toggles it between shutdown and sleep. should ofc sync between app and hub
+DONE See also ### Remote Control Screen. The shutdown timer button should have a long press action that toggles it between shutdown and sleep. should ofc sync between app and hub
 
 ## in OmniSync.Android
 
@@ -23,7 +23,7 @@ DONE The buttons look good but are a bit too tall taking up too much vertical sp
 DONE FAILED FIX There is STILL a weird jagged overlapping issue between the black area of the button panel and the trackpad area, the bottom and top dont align/meet properly causing janky look. Careful not to break the button panel moving/resizing.
 Stream PC monitor, replacing background of the trackpad leaving the trackpad functioning still, options to toggle monitor, pinch to zoom, (advanced feature, do last)       
 DONE Kbd button works to show keyboard but it should toggle so it can also hide it
-See also ### Hub window. The shutdown timer button should have a long press action that toggles it between shutdown and sleep
+DONE See also ### Hub window. The shutdown timer button should have a long press action that toggles it between shutdown and sleep
 
 ### Files Screen
 DONE We have a bookmark button but nowhere to see or use the bookmarks. Make the bottom of the screen a super compact bookmark area
