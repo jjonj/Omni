@@ -72,7 +72,8 @@ fun VideoPlayerScreen(
     var containerSize by remember { mutableStateOf(IntSize.Zero) }
     var skipFeedbackText by remember { mutableStateOf<String?>(null) }
     
-    var currentBrightness by remember { mutableStateOf(activity?.window?.attributes?.screenBrightness ?: 0.5f) }
+    var currentBrightness by remember { mutableStateOf(activity?.window?.attributes?.screenBrightness ?: -1f) }
+    val initialBrightness = remember { activity?.window?.attributes?.screenBrightness ?: -1f }
 
     // Handle system back press
     BackHandler {
@@ -103,11 +104,15 @@ fun VideoPlayerScreen(
         }
 
         onDispose {
-            // Restore visibility when component is destroyed
+            // Restore visibility and brightness when component is destroyed
             val window = activity?.window
             if (window != null) {
                 val insetsController = WindowCompat.getInsetsController(window, window.decorView)
                 insetsController.show(WindowInsetsCompat.Type.systemBars())
+                
+                val lp = window.attributes
+                lp.screenBrightness = initialBrightness
+                window.attributes = lp
             }
         }
     }

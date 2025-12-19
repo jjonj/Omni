@@ -3,47 +3,52 @@ When finishing a task make sure to prefix the line with "DONE" and also git comm
 
 ## General
 
-## For the hub	
+## For the hub
 DONE Run on startup is not working, windows is trying to run D:\SSDProjects\Omni\OmniSync.Hub\src\OmniSync.Hub\bin\Debug\net9.0-windows\OmniSync.Hub.dll on startup which is nonsensical
-
+DONE Long press on shutdown should switch to sleep instead, syncing with android app button state.
 
 ### Hub window
-DONE NOT WORKING - Long press on the button just acts as a normal press - See also ### Remote Control Screen. The shutdown timer button should have a long press action that toggles it between shutdown and sleep. should ofc sync between app and hub
 
 ## in OmniSync.Android
 
 ### General
-DONE Swiping on the navigation bar should switch screens left/right
+DONE Swiping navigation bar does not work well at all. Swiping does nothing. But now if i tap a button that isnt the adjacent one it goes very janky and switches over like 1.5 screens leaving me between two screens. It shouldnt be doing anything fancy when im just tapping buttons
 
 ### Dashboard
 
 ### Remote Control Screen
-DONE The buttons look good but are STILL a bit too tall taking up too much vertical space
-DONE FAILED FIX There is STILL a weird jagged overlapping issue between the black area of the button panel and the trackpad area, the bottom and top dont align/meet properly causing janky look. Careful not to break the button panel moving/resizing.
+DONE STILL FAILED FIX There is STILL a weird jagged overlapping issue between the black area of the button panel and the trackpad area, the bottom and top dont align/meet properly causing janky look. Careful not to break the button panel moving/resizing.
 Stream PC monitor, replacing background of the trackpad leaving the trackpad functioning still, options to toggle monitor, pinch to zoom, (advanced feature, do last)       
-DONE NOT WORKING - Long press on the button just acts as a normal press - See also ### Hub window. The shutdown timer button should have a long press action that toggles it between shutdown and sleep
+DONE Long press on shutdown button does switch it to a sleep icon but the hub still shows shutdown, so i dont know if it will shutdown or sleep
 
 ### Files Screen
-DONE The top right of the files screen has a Star bookmark button, that button should bookmark the current folder, not open a bookmarks manager. The manage bookmarks window should be opened by a burger menu in the bookmarks panel at the bottom. The bookmarks manager should be at the bottom with the bookmarks, not at the top.
+DONE Bookmarking works! but The manage bookmark panel should be at the bottom of the files screen, not bottom
 Downloading a video into app data and optionally password protecting it with encryption and password. Should be deletable
 
 DONE  Swiping finger up and down on left side should change phone brightness
+DONE Changing brightness changes it for the whole app and only while the app is running. I want it to preferably change it for the entire android system or if not possible then only for the video player and nowhere else.
 DONE STILL-NOT-WORKING Swiping finger up and down on  right side should change phone volume.     
 DONE STILL-NOT-WORKING  Double tap to skip forward/back no longer working. (probably broke when fixing brightness sliding
-EVEN MORE Text editing fancy features, think like a lite code editor like notepad++ or VS code. be creative. Make a burger menu with lots of options
+EVEN MORE Text editing fancy features, think like a lite code editor like notepad++ or VS code. be creative. MORE options in burger menu with lots of options
+DONE Using android back button when watching a video should go back to file system folder, it currently goes to last used screen
 
 ### Browser control screen
-DONE STILL-NOT-WORKING - - extension gives error: Uncaught (in promise) Error: Cannot access contents of url "https://www.youtube.com/watch?v=ojTSVmRmLFs". Extension manifest must request permission to access this host." - Button to play/pause whatever media is currently playing. Maybe we just need to try like 5 different ways at once and if that works we can narrow done which one is actually doing it. This requires lots of research.
+DONE Play/Pause media finally works, but it works on current tab. Could we try getting it to work for whatever is/was the currently/most recently playing media. Or alternatively pause all playing media if any, otherwise play current tabs media would also be ok
 
 
 ### Notification panel
-DONE The quick actions work but preferably the buttons dont require expanding the notification and exist straight on the notification.
-DONE Adding/removing actions does not update the notification.
+DONE The notificaiton currently reads "OmniSync Hub\nConnected and Monitoring\[Buttons]. Make it two lines instead of 3, merge the first two, e.g. "Omni - Connected" would be a good title. 
+Make the buttons have different/better background
+
+### Home screen widgets
+Add support for widgets, when you add a widget you can choose a quick action (same as the list from notifications)
+
 ### Settings screen (accessed by button on dashboard, not bottom panel)
+Quick actions dropdown: Add options to go directly to each screen in the app, add options to go to open a bookmark from the browser control screen (opens on the pc like the bookmarks do)
 
 ### AI screen (new)
-DONE AI Chat doesnt seem to work from android.  I get Error: Gemini CLI timed out after 60 seconds. are we sure D:\SSDProjects\Omni\TestScripts\test_ai_integration.py works? Why does it work but android doesnt? (Fixed by increasing timeout, but Gemini API is currently reporting 429 Quota Exhausted).
+DONE AI Chat still doesnt work from android.  I get Error: Gemini CLI timed out after 120 seconds. are we sure D:\SSDProjects\Omni\TestScripts\test_ai_integration.py works? Why does it work but android doesnt? If its not responding because quota exhausted then I need to be able to see that in the chat window
 AI should have same features as gemini CLI if it doesnt already. e.g. /dir add C:/MyDir     
-DONE We currently have two clear buttons, one upper right and one in the bottom panel. only keep the bottom panel one.
 
 ## Web (new)
+DONE Hub screen doesnt work/receive updates.

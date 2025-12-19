@@ -9,18 +9,10 @@
         android:id="@+id/notification_title"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="OmniSync Hub"
+        android:text="Omni - Connected"
         android:textStyle="bold"
         android:textColor="#FFFFFF"
         android:textSize="14sp" />
-
-    <TextView
-        android:id="@+id/notification_text"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="Connected and monitoring"
-        android:textColor="#CCCCCC"
-        android:textSize="12sp" />
 
     <LinearLayout
         android:id="@+id/notification_button_container"

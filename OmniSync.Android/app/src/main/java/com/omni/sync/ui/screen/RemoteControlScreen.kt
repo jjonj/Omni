@@ -63,7 +63,7 @@ const val VK_F4: UShort = 0x73u // F4 key
 const val VK_A: UShort = 0x41u // A key
 const val VK_W: UShort = 0x57u // W key
 
-@OptIn(ExperimentalLayoutApi::class)
+@OptIn(ExperimentalLayoutApi::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun RemoteControlScreen(
     modifier: Modifier = Modifier,
@@ -78,14 +78,12 @@ fun RemoteControlScreen(
         focusRequester.requestFocus()
     }
 
-    // Use a single Column with no gaps to avoid "jagged" look
+    // Use a single Column with no gaps and solid background to avoid "jagged" look
     Column(modifier = modifier.fillMaxSize().statusBarsPadding().background(MaterialTheme.colorScheme.surface)) {
         TrackpadArea(
             signalRClient = signalRClient,
             modifier = Modifier.weight(1f)
         )
-        
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant, thickness = 1.dp)
         
         ButtonPanel(
             signalRClient = signalRClient,
@@ -388,7 +386,7 @@ fun ModifierKeyButton(
         onClick = { onToggle(!isToggled) },
         colors = ButtonDefaults.filledTonalButtonColors(containerColor = containerColor, contentColor = contentColor),
         modifier = modifier
-            .height(36.dp) // Reduced height
+            .height(40.dp) // Reduced height // Reduced height
             .pointerInput(Unit) {
                 detectTapGestures(
                     onDoubleTap = {
@@ -429,7 +427,7 @@ fun ActionKeyButton(
 
     Surface(
         modifier = modifier
-            .height(36.dp)
+            .height(40.dp) // Reduced height
             .then(clickModifier),
         shape = RoundedCornerShape(8.dp),
         color = MaterialTheme.colorScheme.surfaceContainer,
