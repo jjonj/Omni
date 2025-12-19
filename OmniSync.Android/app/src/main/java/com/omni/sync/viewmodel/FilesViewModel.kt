@@ -27,7 +27,7 @@ import android.webkit.MimeTypeMap
 
 class FilesViewModel(
     application: Application, // Add application to constructor
-    private val signalRClient: SignalRClient,
+    val signalRClient: SignalRClient,
     val mainViewModel: MainViewModel // To access connection status, etc.
 ) : AndroidViewModel(application) {
 

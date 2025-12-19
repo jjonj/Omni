@@ -74,13 +74,25 @@ def on_ai_message(args):
         logger.error(f"Error in on_ai_message callback: {e}")
 
 async def handle_and_reply(message):
+    try:
+        logger.info("Sending AI Status: AI Responding...")
+        hub.send("SendAiStatus", ["AI Responding..."])
+    except Exception as e:
+        logger.error(f"Error sending status to hub: {e}")
+
     response = await run_gemini_cli(message)
+    
     if response:
         logger.info("Sending AI Response back to Hub")
         try:
             hub.send("SendAiResponse", [response])
+            hub.send("SendAiStatus", [None]) # Clear status
         except Exception as e:
             logger.error(f"Error sending response to hub: {e}")
+    else:
+        try:
+            hub.send("SendAiStatus", [None]) # Clear status anyway
+        except: pass
 
 def on_close():
     global connection_started

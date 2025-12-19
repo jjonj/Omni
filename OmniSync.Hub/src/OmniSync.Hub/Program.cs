@@ -82,12 +82,12 @@ if (app.Environment.IsDevelopment())
 
 app.UseRouting();
 
-// Serve static files from OmniSync.Web\IntegrateThisIntoWeb
+// Serve static files from OmniSync.Web\www
 // Try to find the folder relative to CWD (Dev) or relative to BaseDirectory (Prod)
 string[] possibleWebPaths = new[]
 {
-    Path.Combine(Directory.GetCurrentDirectory(), "..", "..", "..", "OmniSync.Web", "IntegrateThisIntoWeb"), // Dev: src/OmniSync.Hub -> Root -> OmniSync.Web
-    Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "..", "OmniSync.Web", "IntegrateThisIntoWeb") // Prod: bin/Debug/net9.0-windows -> Root -> OmniSync.Web
+    Path.Combine(Directory.GetCurrentDirectory(), "..", "..", "..", "OmniSync.Web", "www"), // Dev: src/OmniSync.Hub -> Root -> OmniSync.Webroot
+    Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "..", "OmniSync.Web", "www") // Prod: bin/Debug/net9.0-windows -> Root -> OmniSync.Webroot
 };
 
 string? webContentPath = possibleWebPaths.FirstOrDefault(Directory.Exists);
@@ -97,7 +97,7 @@ if (webContentPath != null)
     app.UseDefaultFiles(new DefaultFilesOptions
     {
         FileProvider = new PhysicalFileProvider(webContentPath),
-        DefaultFileNames = new List<string> { "Scheduler.html", "Test.html", "HubControl.html" } 
+        DefaultFileNames = new List<string> { "HubMonitor.html", "HubControl.html", "Scheduler.html", "Test.html" } 
     });
     app.UseStaticFiles(new StaticFileOptions
     {

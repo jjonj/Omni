@@ -510,6 +510,14 @@ namespace OmniSync.Hub.Presentation.Hubs
             }
         }
 
+        public async Task SendAiStatus(string status)
+        {
+            if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
+            {
+                await Clients.All.SendAsync("ReceiveAiStatus", status);
+            }
+        }
+
         public async Task NotifyCortexActivity(string activityName, string activityType)
         {
             if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)

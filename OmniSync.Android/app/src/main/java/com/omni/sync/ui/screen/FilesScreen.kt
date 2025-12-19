@@ -267,6 +267,10 @@ fun FilesScreen(
                             },
                             onOpenFolder = { path ->
                                 filesViewModel.loadDirectory(path)
+                            },
+                            onOpenInAiChat = { entry ->
+                                filesViewModel.mainViewModel.navigateTo(com.omni.sync.viewmodel.AppScreen.AI_CHAT)
+                                filesViewModel.signalRClient.sendAiMessage("/dir add \"${entry.path}\"")
                             }
                         )
                     }
@@ -286,7 +290,8 @@ fun FileSystemEntryItem(
     onClick: (FileSystemEntry) -> Unit, 
     onLongClick: (FileSystemEntry) -> Unit,
     onDownloadAndOpen: (FileSystemEntry) -> Unit,
-    onOpenFolder: (String) -> Unit = {}
+    onOpenFolder: (String) -> Unit = {},
+    onOpenInAiChat: (FileSystemEntry) -> Unit = {}
 ) {
     var showMenu by remember { mutableStateOf(false) }
 
@@ -388,6 +393,13 @@ fun FileSystemEntryItem(
                 }
             )
             if (entry.isDirectory) {
+                DropdownMenuItem(
+                    text = { Text("Open folder in AI chat") },
+                    onClick = {
+                        showMenu = false
+                        onOpenInAiChat(entry)
+                    }
+                )
                 DropdownMenuItem(
                     text = { Text(if (isBookmarked) "Remove Bookmark" else "Add Bookmark") },
                     onClick = {

@@ -101,6 +101,9 @@ class SignalRClient(
     private val _aiMessages = MutableStateFlow<List<Pair<String, String>>>(emptyList())
     val aiMessages: StateFlow<List<Pair<String, String>>> = _aiMessages
 
+    private val _aiStatus = MutableStateFlow<String?>(null)
+    val aiStatus: StateFlow<String?> = _aiStatus
+
     init {
        // Only if you haven't put the startConnection logic here yet.
     }
@@ -279,6 +282,10 @@ class SignalRClient(
             _aiMessages.value = _aiMessages.value + Pair("AI", response)
         }, String::class.java)
 
+        hubConnection?.on("ReceiveAiStatus", { status: String? ->
+            _aiStatus.value = status
+        }, String::class.java)
+
         hubConnection?.on("ReceiveCortexActivity", { name: String, type: String ->
             Log.d("SignalRClient", "Cortex Activity: $name ($type)")
             mainViewModel.onCortexActivityChanged(name, type)
@@ -289,6 +296,10 @@ class SignalRClient(
         if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
             hubConnection?.send("SendAiMessage", message)
         }
+    }
+
+    fun clearAiMessages() {
+        _aiMessages.value = emptyList()
     }
 
     fun stopConnection() {

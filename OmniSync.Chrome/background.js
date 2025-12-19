@@ -157,22 +157,55 @@ connection.on("ReceiveBrowserCommand", async (command, url, newTab) => {
             connection.invoke("SendTabList", tabList);
         });
     } else if (command === "MediaPlayPause") {
-        // Broad search for any tab with media if active tab doesn't have it?
-        // For now, let's just do active tab but with better detection
         chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
             if (tabs[0]) {
                 chrome.scripting.executeScript({
-                    target: { tabId: tabs[0].id },
+                    target: { tabId: tabs[0].id, allFrames: true },
                     func: () => {
+                        // Strategy 1: Media Session API (Modern standard)
+                        if (navigator.mediaSession && navigator.mediaSession.playbackState !== 'none') {
+                            if (navigator.mediaSession.playbackState === 'playing') {
+                                document.querySelectorAll('video, audio').forEach(m => m.pause());
+                            } else {
+                                document.querySelectorAll('video, audio').forEach(m => m.play());
+                            }
+                            // Note: playbackState is sometimes read-only or inaccurate, proceed to other strategies
+                        }
+
+                        // Strategy 2: Direct Video/Audio elements
                         const media = document.querySelectorAll('video, audio');
                         if (media.length > 0) {
                             media.forEach(m => {
-                                if (m.paused) m.play();
+                                if (m.paused) m.play().catch(() => {});
                                 else m.pause();
                             });
-                        } else {
-                            // Try to find iframes (like youtube embeds) - limited by same-origin
-                            console.log("No direct media found in active tab");
+                        }
+
+                        // Strategy 3: Common Play/Pause button classes/IDs (YouTube, Spotify, etc.)
+                        const commonSelectors = [
+                            '.ytp-play-button', // YouTube
+                            '.play-pause-button', 
+                            '[aria-label="Play"]', 
+                            '[aria-label="Pause"]',
+                            '.spoticon-play-32', 
+                            '.spoticon-pause-32',
+                            'button.play',
+                            'button.pause'
+                        ];
+                        commonSelectors.forEach(selector => {
+                            document.querySelectorAll(selector).forEach(el => el.click());
+                        });
+
+                        // Strategy 4: Keyboard events (Spacebar fallback)
+                        // Only if no media was found
+                        if (media.length === 0) {
+                            const spaceEvent = new KeyboardEvent('keydown', {
+                                'view': window,
+                                'bubbles': true,
+                                'cancelable': true,
+                                'keyCode': 32
+                            });
+                            document.dispatchEvent(spaceEvent);
                         }
                     }
                 });

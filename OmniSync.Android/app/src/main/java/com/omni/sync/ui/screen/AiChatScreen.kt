@@ -19,6 +19,9 @@ import androidx.compose.ui.unit.sp
 import com.omni.sync.data.repository.SignalRClient
 import com.omni.sync.viewmodel.MainViewModel
 
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.animation.core.*
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AiChatScreen(
@@ -26,25 +29,45 @@ fun AiChatScreen(
     mainViewModel: MainViewModel
 ) {
     val messages by signalRClient.aiMessages.collectAsState()
+    val aiStatus by signalRClient.aiStatus.collectAsState()
     var inputText by remember { mutableStateOf("") }
     val listState = rememberLazyListState()
+    
+    val isAiTyping = aiStatus != null
 
     // Auto-scroll to bottom
-    LaunchedEffect(messages.size) {
-        if (messages.isNotEmpty()) {
-            listState.animateScrollToItem(messages.size - 1)
+    LaunchedEffect(messages.size, isAiTyping) {
+        if (messages.isNotEmpty() || isAiTyping) {
+            // Give a tiny delay for the layout to settle
+            kotlinx.coroutines.delay(100)
+            listState.animateScrollToItem(if (isAiTyping) messages.size else messages.size - 1)
         }
     }
 
     Scaffold(
         topBar = {
-            TopAppBar(title = { Text("OmniSync AI Chat") })
+            TopAppBar(
+                title = { 
+                    Column {
+                        Text("OmniSync AI Chat")
+                        if (aiStatus != null) {
+                            Text(aiStatus!!, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                        }
+                    }
+                },
+                actions = {
+                    IconButton(onClick = { signalRClient.clearAiMessages() }) {
+                        Icon(Icons.Default.Delete, contentDescription = "Clear Chat")
+                    }
+                }
+            )
         }
     ) { padding ->
         Column(
             modifier = Modifier
                 .padding(padding)
                 .fillMaxSize()
+                .imePadding() // Fixes keyboard pushing up start of conversation
         ) {
             LazyColumn(
                 state = listState,
@@ -56,6 +79,12 @@ fun AiChatScreen(
             ) {
                 items(messages) { (sender, content) ->
                     ChatBubble(sender, content)
+                }
+                
+                if (isAiTyping) {
+                    item {
+                        AiTypingIndicator()
+                    }
                 }
             }
 
@@ -86,8 +115,85 @@ fun AiChatScreen(
                     Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Send")
                 }
             }
+            
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            QuickActionPanel(signalRClient)
         }
     }
+}
+
+@Composable
+fun QuickActionPanel(signalRClient: SignalRClient) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.surface)
+            .padding(8.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        FilledTonalButton(
+            onClick = { signalRClient.clearAiMessages() },
+            modifier = Modifier.weight(1f).height(40.dp),
+            shape = RoundedCornerShape(8.dp),
+            contentPadding = PaddingValues(0.dp)
+        ) {
+            Icon(Icons.Default.Delete, null, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(4.dp))
+            Text("Clear Chat", fontSize = 12.sp)
+        }
+        
+        // Placeholder for other AI quick actions (e.g. "Summarize", "Fix Grammar")
+        Box(modifier = Modifier.weight(2f)) 
+    }
+}
+
+@Composable
+fun AiTypingIndicator() {
+    val infiniteTransition = rememberInfiniteTransition(label = "typing")
+    val dotAlpha1 by infiniteTransition.animateFloat(
+        initialValue = 0.2f, targetValue = 1f,
+        animationSpec = infiniteRepeatable(animation = tween(600), repeatMode = RepeatMode.Reverse), label = "dot1"
+    )
+    val dotAlpha2 by infiniteTransition.animateFloat(
+        initialValue = 0.2f, targetValue = 1f,
+        animationSpec = infiniteRepeatable(animation = tween(600, delayMillis = 200), repeatMode = RepeatMode.Reverse), label = "dot2"
+    )
+    val dotAlpha3 by infiniteTransition.animateFloat(
+        initialValue = 0.2f, targetValue = 1f,
+        animationSpec = infiniteRepeatable(animation = tween(600, delayMillis = 400), repeatMode = RepeatMode.Reverse), label = "dot3"
+    )
+
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalAlignment = Alignment.Start
+    ) {
+        Text(
+            text = "AI",
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(horizontal = 4.dp)
+        )
+        Surface(
+            color = MaterialTheme.colorScheme.secondaryContainer,
+            shape = RoundedCornerShape(12.dp),
+            modifier = Modifier.widthIn(max = 300.dp)
+        ) {
+            Row(modifier = Modifier.padding(12.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                Dot(dotAlpha1)
+                Dot(dotAlpha2)
+                Dot(dotAlpha3)
+            }
+        }
+    }
+}
+
+@Composable
+fun Dot(alpha: Float) {
+    Box(
+        modifier = Modifier
+            .size(8.dp)
+            .background(MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = alpha), CircleShape)
+    )
 }
 
 @Composable

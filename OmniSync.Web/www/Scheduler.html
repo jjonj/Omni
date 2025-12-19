@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cortex Scheduler</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body style="flex-direction: column;">
+    <nav class="nav-menu">
+        <a href="HubMonitor.html" class="nav-item">Monitor</a>
+        <a href="HubControl.html" class="nav-item">Control</a>
+        <a href="Scheduler.html" class="nav-item active">Scheduler</a>
+        <a href="Test.html" class="nav-item">Test</a>
+    </nav>
+    
+    <div class="sidebar">
+        <div style="padding:20px; border-bottom:1px solid #222;">
+            <h1 style="font-size:1rem; color:#fff; letter-spacing:2px;">CORTEX v14.0</h1>
+            <div style="font-size:0.7rem; color:#555; margin-top:5px;">INTEGRATED</div>
+        </div>
+        <div class="sidebar-content">
+            
+            <!-- CALENDAR MODULE -->
+            <div class="control-box" style="border-color: #00aeff44;">
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <h2>Calendar Events</h2>
+                    <span id="gcal-status" style="font-size:0.6rem; color:#666;">INIT</span>
+                </div>
+                <div id="gcal-sidebar-list" style="margin-top:5px;">
+                    <!-- All Day Events Go Here -->
+                </div>
+            </div>
+
+            <div class="control-box">
+                <h2>Time Config</h2>
+                <div class="row"><label>Wake Up</label> <input type="time" id="wakeTime" value="07:00" onchange="App.regenerate()"></div>
+                <div class="btn-group">
+                    <button onclick="App.adjBoot(30)">Boot +30</button>
+                    <button onclick="App.adjBoot(-30)">Boot -30</button>
+                    <button class="btn-reset" onclick="App.hardReset()">⚠ RESET DAY</button>
+                </div>
+            </div>
+
+            <div class="control-box">
+                <h2>Condition</h2>
+                <div style="text-align:center; font-size:1.5rem; color:var(--c-work); margin-bottom:5px;" id="cond-display">100%</div>
+                <div style="text-align:center; font-size:0.7rem; color:#555; margin-bottom:10px;" id="cond-text">STANDARD DAY</div>
+                <input type="range" id="rn-cond" min="0" max="100" value="100" oninput="App.updateCondUI()" onchange="App.regenerate()">
+                <div class="row" style="margin-top:15px;">
+                    <label>Wednesday?</label> <input type="checkbox" id="cb-wed" onchange="App.regenerate()">
+                </div>
+                <div class="row">
+                    <label>Obsession?</label> <input type="checkbox" id="cb-obsess" onchange="App.regenerate()">
+                </div>
+            </div>
+
+            <div class="control-box">
+                <h2>Video Library</h2>
+                <div style="display:flex; gap:5px; margin-bottom:10px;">
+                    <input type="text" id="new-vid-url" placeholder="URL">
+                    <button onclick="App.addVideo()">+</button>
+                </div>
+                <div id="library-list"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MAIN INTERFACE -->
+    <div class="main">
+        <div class="status-bar">
+            <div class="clock" id="clock">00:00</div>
+            <div class="tokens">
+                <div class="token" id="t0" onclick="App.useToken(0)">30</div>
+                <div class="token" id="t1" onclick="App.useToken(1)">30</div>
+                <div class="token" id="t2" onclick="App.useToken(2)">30</div>
+                <div class="token" id="t3" onclick="App.useToken(3)">30</div>
+            </div>
+        </div>
+
+        <div class="focus-module" id="focus-panel">
+            <div class="focus-info">
+                <h3 id="active-type">CURRENT</h3>
+                <h1 id="active-name">IDLE</h1>
+                <div class="controls">
+                    <button style="background:#222; border:1px solid #444; color:#fff; padding:8px 20px; font-weight:bold; cursor:pointer;" onclick="App.togglePause()" id="btn-pause">PAUSE</button>
+                </div>
+            </div>
+            <div class="timer-huge" id="countdown">--:--</div>
+        </div>
+
+        <div class="vis-container">
+            <div class="timeline-track" id="vis-track"></div>
+        </div>
+
+        <div class="schedule-container" id="list-container"></div>
+    </div>
+
+    <!-- SCRIPTS -->
+    <script src="js/signalr.min.js"></script>
+    <script src="js/config.js"></script>
+    <script src="js/audio.js"></script>
+    <script src="js/gcal.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>

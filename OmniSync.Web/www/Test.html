@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+<title>SignalR Test Page</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body style="flex-direction: column; padding: 0;">
+    <nav class="nav-menu">
+        <a href="HubMonitor.html" class="nav-item">Monitor</a>
+        <a href="HubControl.html" class="nav-item">Control</a>
+        <a href="Scheduler.html" class="nav-item">Scheduler</a>
+        <a href="Test.html" class="nav-item active">Test</a>
+    </nav>
+    <div style="padding: 20px;">
+        <h1>SignalR Test</h1>
+    
+    <div class="box">
+        <p><strong>Target URL:</strong> <span id="target-url" style="color: #00aeff;">...</span></p>
+        <button onclick="fetchCalendar()">FETCH & PARSE</button>
+        <div id="status" style="margin-top: 10px; color: #888;">Ready.</div>
+    </div>
+
+    <div class="box">
+        <h2>Events Found (Today & Future)</h2>
+        <div id="events-list"></div>
+    </div>
+
+    <script>
+        // YOUR PUBLIC URL
+        const GCAL_URL = "https://calendar.google.com/calendar/ical/jjonjex%40gmail.com/public/basic.ics";
+        
+        // CORS PROXY (Necessary for local files to talk to Google)
+        const PROXY_URL = "https://corsproxy.io/?";
+
+        document.getElementById('target-url').innerText = GCAL_URL;
+
+        async function fetchCalendar() {
+            const status = document.getElementById('status');
+            const list = document.getElementById('events-list');
+            
+            status.innerText = "Fetching via Proxy...";
+            list.innerHTML = "";
+
+            try {
+                // 1. Fetch Raw Data
+                const response = await fetch(PROXY_URL + encodeURIComponent(GCAL_URL));
+                if (!response.ok) throw new Error("Network response failed");
+                
+                const icsData = await response.text();
+                status.innerText = "Data received (" + icsData.length + " bytes). Parsing...";
+
+                // 2. Parse ICS
+                const events = parseICS(icsData);
+                
+                // 3. Render
+                if (events.length === 0) {
+                    list.innerHTML = "<div style='color:orange'>No events found in file (or parsing failed).</div>";
+                } else {
+                    // Sort by time
+                    events.sort((a,b) => a.start - b.start);
+
+                    events.forEach(ev => {
+                        const div = document.createElement('div');
+                        div.className = 'event';
+                        
+                        // Format Time
+                        const timeStr = ev.allDay 
+                            ? "ALL DAY" 
+                            : ev.start.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+
+                        div.innerHTML = `
+                            <div class="time">${ev.start.toLocaleDateString()} <br> ${timeStr}</div>
+                            <div>
+                                <div class="title">${ev.summary}</div>
+                                <div class="raw">${ev.description || ""}</div>
+                            </div>
+                        `;
+                        list.appendChild(div);
+                    });
+                    status.innerText = `Success. Found ${events.length} upcoming events.`;
+                }
+
+            } catch (error) {
+                console.error(error);
+                status.innerText = "Error: " + error.message;
+                status.style.color = "red";
+            }
+        }
+
+        // --- SIMPLE ICS PARSER ---
+        function parseICS(data) {
+            const events = [];
+            const lines = data.split(/\r\n|\n|\r/);
+            let inEvent = false;
+            let currentEvent = {};
+            
+            const now = new Date();
+            // Filter: Only show events from yesterday onwards (to catch ongoing)
+            const cutoff = new Date();
+            cutoff.setDate(cutoff.getDate() - 1);
+
+            lines.forEach(line => {
+                if (line.startsWith("BEGIN:VEVENT")) {
+                    inEvent = true;
+                    currentEvent = {};
+                } else if (line.startsWith("END:VEVENT")) {
+                    inEvent = false;
+                    // Finish processing event
+                    if (currentEvent.dtstart) {
+                        const start = parseIcalDate(currentEvent.dtstart);
+                        if (start > cutoff) {
+                            events.push({
+                                start: start,
+                                summary: currentEvent.summary || "No Title",
+                                description: currentEvent.description,
+                                allDay: currentEvent.isAllDay
+                            });
+                        }
+                    }
+                } else if (inEvent) {
+                    // Simple Key:Value splitting
+                    // Note: This fails on multi-line descriptions, but works for PoC
+                    if (line.startsWith("DTSTART")) {
+                        currentEvent.dtstart = line.split(':')[1];
+                        if (line.includes("VALUE=DATE")) currentEvent.isAllDay = true;
+                    }
+                    else if (line.startsWith("SUMMARY")) currentEvent.summary = line.substring(8);
+                    else if (line.startsWith("DESCRIPTION")) currentEvent.description = line.substring(12);
+                }
+            });
+            return events;
+        }
+
+        // Convert 20231124T090000Z to JS Date
+        function parseIcalDate(icalStr) {
+            // Handle YYYYMMDD (All Day)
+            if (icalStr.length === 8) {
+                const y = icalStr.substr(0,4);
+                const m = icalStr.substr(4,2);
+                const d = icalStr.substr(6,2);
+                return new Date(`${y}-${m}-${d}T00:00:00`);
+            }
+
+            // Handle YYYYMMDDThhmmss
+            // Strip 'Z' if present (treating UTC as local for simplicity in PoC, or use real UTC parsing)
+            const clean = icalStr.replace('Z', '');
+            const y = clean.substr(0,4);
+            const m = clean.substr(4,2);
+            const d = clean.substr(6,2);
+            const h = clean.substr(9,2);
+            const min = clean.substr(11,2);
+            const s = clean.substr(13,2);
+            
+            // Create date
+            return new Date(`${y}-${m}-${d}T${h}:${min}:${s}`);
+        }
+    </script>
+</body>
+</html>
