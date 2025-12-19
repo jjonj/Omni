@@ -7,7 +7,7 @@ When finishing a task make sure to prefix the line with "DONE" and also git comm
 
 DONE Running D:\SSDProjects\Omni\OmniSync.Hub\src\OmniSync.Hub\bin\Debug\net9.0-windows\OmniSync.Hub.exe directly does not work, nothing happens. Have to run with dotnet which is annoying
 DONE Run on startup is not working, windows is trying to run D:\SSDProjects\Omni\OmniSync.Hub\src\OmniSync.Hub\bin\Debug\net9.0-windows\OmniSync.Hub.dll on startup which is nonsensical
-Automatic reconnect doesnt work properly. When the hub is not running it will correctly show an error message, but when the hub IS running it will not show an error message but not actually connect and keep tryign to reconnect. As soon as i click the manual reconnect button it works perfectly.
+DONE Automatic reconnect doesnt work properly. When the hub is not running it will correctly show an error message, but when the hub IS running it will not show an error message but not actually connect and keep tryign to reconnect. As soon as i click the manual reconnect button it works perfectly.
 
 
 ### Hub window
@@ -17,7 +17,7 @@ Automatic reconnect doesnt work properly. When the hub is not running it will co
 
 ### General
 DONE Different looking buttons, more sleep/modern would be nice
-Reconnect
+DONE Reconnect
 
 ### Dashboard
 

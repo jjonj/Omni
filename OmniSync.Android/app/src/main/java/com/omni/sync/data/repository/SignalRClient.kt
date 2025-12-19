@@ -110,6 +110,23 @@ class SignalRClient(
         const val KEY_LAST_CONNECTED_HUB_URL = "last_connected_hub_url"
     }
     
+    private fun onConnected() {
+        _connectionState.value = "Connected"
+        mainViewModel.setConnected(true)
+        authenticateClient()
+        // Save the connected hub URL to SharedPreferences
+        val sharedPrefs = context.getSharedPreferences(SHARED_PREFS_NAME, Context.MODE_PRIVATE)
+        sharedPrefs.edit().putString(KEY_LAST_CONNECTED_HUB_URL, hubUrl).apply()
+        mainViewModel.addLog("Connected to hub: $hubUrl", com.omni.sync.ui.screen.LogType.SUCCESS)
+
+        // If we were reconnecting, stop the loop
+        if (isReconnecting.compareAndSet(true, false)) {
+            reconnectJob?.cancel()
+            reconnectJob = null
+            mainViewModel.addLog("Reconnection successful!", com.omni.sync.ui.screen.LogType.SUCCESS)
+        }
+    }
+
     fun startConnection() {
         _connectionState.value = "Connecting..."
         mainViewModel.setErrorMessage(null) // Clear previous errors
@@ -128,11 +145,12 @@ class SignalRClient(
                         delay(10000)
                         mainViewModel.addLog("Attempting to reconnect...", com.omni.sync.ui.screen.LogType.INFO)
                         try {
-                            hubConnection?.start()?.subscribe({}, { e -> 
-                                mainViewModel.addLog("Reconnect attempt failed: ${e.message}", com.omni.sync.ui.screen.LogType.ERROR)
-                            })
+                            hubConnection?.start()?.blockingAwait()
+                            // If we get here, connection succeeded
+                            onConnected()
+                            break 
                         } catch (e: Exception) {
-                            mainViewModel.addLog("Reconnect attempt failed unexpectedly: ${e.message}", com.omni.sync.ui.screen.LogType.ERROR)
+                            mainViewModel.addLog("Reconnect attempt failed: ${e.message}", com.omni.sync.ui.screen.LogType.ERROR)
                         }
                     }
                 }
@@ -141,20 +159,7 @@ class SignalRClient(
 
         hubConnection?.start()
             ?.doOnComplete {
-                _connectionState.value = "Connected"
-                mainViewModel.setConnected(true)
-                authenticateClient()
-                // Save the connected hub URL to SharedPreferences
-                val sharedPrefs = context.getSharedPreferences(SHARED_PREFS_NAME, Context.MODE_PRIVATE)
-                sharedPrefs.edit().putString(KEY_LAST_CONNECTED_HUB_URL, hubUrl).apply()
-                mainViewModel.addLog("Connected to hub: $hubUrl", com.omni.sync.ui.screen.LogType.SUCCESS)
-
-                // If we were reconnecting, stop the loop
-                if (isReconnecting.compareAndSet(true, false)) {
-                    reconnectJob?.cancel()
-                    reconnectJob = null
-                    mainViewModel.addLog("Reconnection successful!", com.omni.sync.ui.screen.LogType.SUCCESS)
-                }
+                onConnected()
             }
             ?.doOnError { error ->
                 _connectionState.value = "Error: ${error.message}"
