@@ -19,12 +19,12 @@ Long press on shutdown should switch to sleep instead, syncing with android app 
 ### Dashboard
 
 ### Remote Control Screen
-There is a wierd jagged overlapping issue  at the border between the black area of the button panel and the trackpad area, the bottom and top dont align/meet properly causing janky look. Careful not to break the button panel moving/resizing. Maybe ensure that the panel is always infront of the trackpad or make sure their borders align
+DONE There is a wierd jagged overlapping issue  at the border between the black area of the button panel and the trackpad area, the bottom and top dont align/meet properly causing janky look. Careful not to break the button panel moving/resizing. Maybe ensure that the panel is always infront of the trackpad or make sure their borders align
 Stream PC monitor, replacing background of the trackpad leaving the trackpad functioning still, options to toggle monitor, pinch to zoom, (advanced feature, do last)       
 Long press on shutdown button does switch it to a sleep icon but the hub still shows shutdown, so i dont know if it will shutdown or sleep
 
 ### Files Screen
-Bookmarking works! but The manage bookmark panel should be at the bottom of the files screen, not bottom
+Bookmarking works! but DONE The manage bookmark panel should be at the bottom of the files screen, not top
 Downloading a video into app data and optionally password protecting it with encryption and password. Should be deletable
 
 WORKING Swiping finger up and down on left side should change phone brightness

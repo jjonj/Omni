@@ -20,9 +20,11 @@ import androidx.compose.material.icons.filled.PowerSettingsNew
 import androidx.compose.material.icons.filled.VolumeOff
 import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.*
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
@@ -78,21 +80,37 @@ fun RemoteControlScreen(
         focusRequester.requestFocus()
     }
 
-    // Use a single Column with no gaps and solid background to avoid "jagged" look
-    Column(modifier = modifier.fillMaxSize().statusBarsPadding().background(MaterialTheme.colorScheme.surface)) {
+    // Clean layout with proper divider
+    Column(modifier = modifier.fillMaxSize().statusBarsPadding()) {
         TrackpadArea(
             signalRClient = signalRClient,
-            modifier = Modifier.weight(1f)
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f, fill = true)
         )
         
-        ButtonPanel(
-            signalRClient = signalRClient,
-            mainViewModel = mainViewModel,
-            modifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface).imePadding(),
-            keyboardController = keyboardController,
-            isKeyboardVisible = isKeyboardVisible,
-            focusRequester = focusRequester
+        // Clean 1dp divider
+        HorizontalDivider(
+            thickness = 1.dp,
+            color = MaterialTheme.colorScheme.outlineVariant
         )
+        
+        // ButtonPanel with proper background
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(MaterialTheme.colorScheme.surface)
+                .imePadding()
+        ) {
+            ButtonPanel(
+                signalRClient = signalRClient,
+                mainViewModel = mainViewModel,
+                modifier = Modifier.fillMaxWidth(),
+                keyboardController = keyboardController,
+                isKeyboardVisible = isKeyboardVisible,
+                focusRequester = focusRequester
+            )
+        }
     }
 }
 
@@ -235,7 +253,7 @@ fun ButtonPanel(
                 false
             }
     ) {
-        // Hidden TextField for keyboard
+        // Hidden TextField for keyboard - made invisible with alpha
         TextField(
             value = textInput,
             onValueChange = { newText ->
@@ -246,7 +264,11 @@ fun ButtonPanel(
                 }
                 textInput = newText
             },
-            modifier = Modifier.height(0.dp).focusRequester(focusRequester),
+            modifier = Modifier
+                .height(1.dp)
+                .fillMaxWidth()
+                .alpha(0f)
+                .focusRequester(focusRequester),
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
             keyboardActions = KeyboardActions(onSend = {
                 signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_RETURN)
