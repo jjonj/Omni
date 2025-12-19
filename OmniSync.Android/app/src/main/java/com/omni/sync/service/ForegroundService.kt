@@ -17,6 +17,8 @@ import com.omni.sync.MainActivity
 import com.omni.sync.OmniSyncApplication
 import com.omni.sync.data.model.NotificationAction
 
+import android.widget.RemoteViews
+
 class ForegroundService : Service() {
 
     private val CHANNEL_ID = "OmniSyncForegroundServiceChannel"
@@ -81,7 +83,7 @@ class ForegroundService : Service() {
             val serviceChannel = NotificationChannel(
                 CHANNEL_ID,
                 getString(R.string.notification_channel_name),
-                NotificationManager.IMPORTANCE_LOW // Keep LOW to avoid popup but stay in tray
+                NotificationManager.IMPORTANCE_LOW
             )
             val manager = getSystemService(NotificationManager::class.java)
             manager.createNotificationChannel(serviceChannel)
@@ -110,24 +112,34 @@ class ForegroundService : Service() {
 
         val actions = getSavedActions()
         
-        val builder = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("OmniSync Hub")
-            .setContentText("Connected and monitoring.")
-            .setSmallIcon(R.drawable.ic_notification)
-            .setContentIntent(pendingIntent)
-            .setOngoing(true)
-            .setPriority(NotificationCompat.PRIORITY_LOW)
-            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-            .setStyle(NotificationCompat.BigTextStyle().bigText("Connected and monitoring. Quick actions available."))
+        val customLayout = RemoteViews(packageName, R.layout.notification_layout)
+        
+        // Hide all buttons initially
+        val btnIds = listOf(R.id.btn1, R.id.btn2, R.id.btn3, R.id.btn4, R.id.btn5, R.id.btn6)
+        btnIds.forEach { customLayout.setViewVisibility(it, android.view.View.GONE) }
 
-        actions.take(6).forEach { action -> 
+        actions.take(6).forEachIndexed { index, action ->
+            val btnId = btnIds[index]
+            customLayout.setViewVisibility(btnId, android.view.View.VISIBLE)
+            customLayout.setTextViewText(btnId, action.label)
+            
             val triggerIntent = Intent(this, ForegroundService::class.java).apply {
                 this.action = ACTION_TRIGGER_NOTIFICATION_ACTION
                 putExtra(EXTRA_ACTION_ID, action.id)
             }
             val triggerPendingIntent = PendingIntent.getService(this, action.id.hashCode(), triggerIntent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
-            builder.addAction(0, action.label, triggerPendingIntent)
+            customLayout.setOnClickPendingIntent(btnId, triggerPendingIntent)
         }
+
+        val builder = NotificationCompat.Builder(this, CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setContentIntent(pendingIntent)
+            .setOngoing(true)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setCustomContentView(customLayout)
+            .setCustomBigContentView(customLayout)
+            .setStyle(NotificationCompat.DecoratedCustomViewStyle())
 
         return builder.build()
     }

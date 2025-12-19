@@ -5,6 +5,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.ContentPaste
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.foundation.background
@@ -86,6 +87,8 @@ fun TextEditorScreen(
     val editingContent by filesViewModel.editingContent.collectAsState()
     val isSaving by filesViewModel.isSaving.collectAsState()
     
+    var showMenu by remember { mutableStateOf(false) }
+    
     val scrollState = rememberScrollState()
     val colorScheme = MaterialTheme.colorScheme
     val visualTransformation = remember(colorScheme) { MarkdownVisualTransformation(colorScheme) }
@@ -111,18 +114,46 @@ fun TextEditorScreen(
                     }) {
                         Icon(Icons.Default.ContentPaste, contentDescription = "Paste")
                     }
-                    IconButton(onClick = { filesViewModel.updateEditingContent("") }) {
-                        Icon(Icons.Default.DeleteSweep, contentDescription = "Clear All")
-                    }
+                    
                     if (isSaving) {
                         CircularProgressIndicator(
                             modifier = Modifier.size(24.dp),
-                            color = MaterialTheme.colorScheme.onPrimary,
+                            color = MaterialTheme.colorScheme.primary,
                             strokeWidth = 2.dp
                         )
                     } else {
                         IconButton(onClick = { filesViewModel.saveEditingContent() }) {
                             Icon(Icons.Default.Save, contentDescription = "Save")
+                        }
+                    }
+
+                    Box {
+                        IconButton(onClick = { showMenu = true }) {
+                            Icon(Icons.Default.MoreVert, contentDescription = "Menu")
+                        }
+                        DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
+                            DropdownMenuItem(
+                                text = { Text("To Upper Case") },
+                                onClick = {
+                                    filesViewModel.updateEditingContent(editingContent.uppercase())
+                                    showMenu = false
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("To Lower Case") },
+                                onClick = {
+                                    filesViewModel.updateEditingContent(editingContent.lowercase())
+                                    showMenu = false
+                                }
+                            )
+                            Divider()
+                            DropdownMenuItem(
+                                text = { Text("Clear All") },
+                                onClick = {
+                                    filesViewModel.updateEditingContent("")
+                                    showMenu = false
+                                }
+                            )
                         }
                     }
                 }

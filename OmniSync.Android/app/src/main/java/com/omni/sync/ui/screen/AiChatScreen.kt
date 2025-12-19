@@ -54,11 +54,6 @@ fun AiChatScreen(
                             Text(aiStatus!!, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
                         }
                     }
-                },
-                actions = {
-                    IconButton(onClick = { signalRClient.clearAiMessages() }) {
-                        Icon(Icons.Default.Delete, contentDescription = "Clear Chat")
-                    }
                 }
             )
         }

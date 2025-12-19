@@ -35,11 +35,11 @@ async def run_gemini_cli(message):
         )
         
         try:
-            stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=60.0)
+            stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=120.0)
         except asyncio.TimeoutError:
             process.kill()
             logger.error("Gemini CLI timed out.")
-            return "Error: Gemini CLI timed out after 60 seconds."
+            return "Error: Gemini CLI timed out after 120 seconds."
 
         if process.returncode == 0:
             response = stdout.decode().strip()

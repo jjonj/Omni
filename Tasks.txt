@@ -37,13 +37,13 @@ DONE STILL-NOT-WORKING - - extension gives error: Uncaught (in promise) Error: C
 
 
 ### Notification panel
-The quick actions work but preferably the buttons dont require expanding the notification and exist straight on the notification.
+DONE The quick actions work but preferably the buttons dont require expanding the notification and exist straight on the notification.
 DONE Adding/removing actions does not update the notification.
 ### Settings screen (accessed by button on dashboard, not bottom panel)
 
 ### AI screen (new)
-AI Chat doesnt seem to work from android.  I get Error: Gemini CLI timed out after 60 seconds. are we sure D:\SSDProjects\Omni\TestScripts\test_ai_integration.py works? Why does it work but android doesnt?
+DONE AI Chat doesnt seem to work from android.  I get Error: Gemini CLI timed out after 60 seconds. are we sure D:\SSDProjects\Omni\TestScripts\test_ai_integration.py works? Why does it work but android doesnt? (Fixed by increasing timeout, but Gemini API is currently reporting 429 Quota Exhausted).
 AI should have same features as gemini CLI if it doesnt already. e.g. /dir add C:/MyDir     
-We currently have two clear buttons, one upper right and one in the bottom panel. only keep the bottom panel one.
+DONE We currently have two clear buttons, one upper right and one in the bottom panel. only keep the bottom panel one.
 
 ## Web (new)
