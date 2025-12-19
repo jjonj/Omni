@@ -59,4 +59,4 @@ DONE Compact panel similar to remotecontrolscreen to clear chat and other availa
 DONE "IntegrateThisIntoWeb" ugly name, refactor the folder structure.
 DONE Add modern menu/buttons to navigate between pages
 DONE Having both hubcontrol and hubmonitor is redundant
-HubControl/hubmonitor has the same layout as the hub window but no active connections listed and no log output.
+DONE HubControl/hubmonitor has the same layout as the hub window but no active connections listed and no log output.
