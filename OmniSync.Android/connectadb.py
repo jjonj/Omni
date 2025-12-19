@@ -28,11 +28,11 @@ def list_devices():
     return [l.split()[0] for l in out.splitlines() if "\tdevice" in l]
 
 
-def main():
+def connect():
     devices = list_devices()
     if devices:
         print(f"Already connected: {devices[0]}")
-        return
+        return devices[0]
 
     pairing_port = input("Pairing port: ").strip()
     pairing_code = input("Pairing code: ").strip()
@@ -52,7 +52,8 @@ def main():
         sys.exit("Connection failed.")
 
     print(f"Connected: {devices[0]}")
+    return devices[0]
 
 
 if __name__ == "__main__":
-    main()
+    connect()

@@ -22,19 +22,13 @@ import os
 import time
 import argparse
 from pathlib import Path
+import connectadb
 
 # Configuration
 PACKAGE = "com.omni.sync"
 PROJECT_DIR = Path(__file__).parent
 APK_DEBUG = PROJECT_DIR / "app" / "build" / "outputs" / "apk" / "debug" / "app-debug.apk"
 APK_RELEASE = PROJECT_DIR / "app" / "build" / "outputs" / "apk" / "release" / "app-release.apk"
-
-# ADB Configuration - Update this if ADB is in a different location
-ADB_PATH = r"E:\SDKS\AndroidSDK\platform-tools"
-# Add ADB to PATH if not already there
-if ADB_PATH not in os.environ.get("PATH", ""):
-    os.environ["PATH"] = f"{ADB_PATH};{os.environ.get('PATH', '')}"
-
 
 def run_command(cmd, check=True, capture_output=True):
     """Run a shell command and return the result."""
@@ -60,94 +54,26 @@ def adb(args, device=None, check=True):
     cmd += args
     return run_command(cmd, check=check)
 
-
-def list_devices():
-    """List all connected ADB devices."""
-    result = run_command(["adb", "devices"])
-    lines = result.stdout.splitlines()
-    devices = []
-    for line in lines:
-        if "\tdevice" in line:
-            device_id = line.split()[0]
-            devices.append(device_id)
-    return devices
-
-
-def connect_device(ip_port=None):
-    """Connect to a device via TCP/IP."""
-    if not ip_port:
-        print("\n=== Device Connection ===")
-        print("No device connected. Let's set one up.")
-        ip = input("Phone IP address: ").strip()
-        
-        # Try pairing first (for Android 11+)
-        try_pairing = input("Need to pair? (y/n, default: n): ").strip().lower()
-        
-        if try_pairing == 'y':
-            pairing_port = input("Pairing port: ").strip()
-            pairing_code = input("Pairing code: ").strip()
-            
-            print(f"Pairing with {ip}:{pairing_port}...")
-            proc = subprocess.Popen(
-                ["adb", "pair", f"{ip}:{pairing_port}"],
-                stdin=subprocess.PIPE,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True
-            )
-            proc.communicate(pairing_code + "\n")
-            time.sleep(1)
-        
-        connect_port = input("Connect port (default: 5555): ").strip() or "5555"
-        ip_port = f"{ip}:{connect_port}"
-    
-    print(f"Connecting to {ip_port}...")
-    result = run_command(["adb", "connect", ip_port], check=False)
-    
-    if result.returncode != 0:
-        print(f"Failed to connect to {ip_port}")
-        return None
-    
-    time.sleep(1)
-    devices = list_devices()
-    
-    if ip_port in devices:
-        print(f"[OK] Connected to {ip_port}")
-        return ip_port
-    
-    print(f"[FAIL] Connection failed")
-    return None
-
-
 def ensure_device(specified_device=None):
     """Ensure a device is connected, either specified or auto-detected."""
     if specified_device:
         print(f"Using specified device: {specified_device}")
-        devices = list_devices()
+        devices = connectadb.list_devices()
         if specified_device in devices:
             return specified_device
         else:
             print(f"Specified device {specified_device} not found. Attempting to connect...")
-            device = connect_device(specified_device)
-            if device:
-                return device
-            sys.exit("Failed to connect to specified device.")
-    
-    devices = list_devices()
-    
-    if devices:
-        device = devices[0]
-        print(f"[OK] Using device: {device}")
-        return device
-    
-    print("No devices connected.")
-    device = connect_device()
-    
-    if not device:
-        sys.exit("Failed to connect to any device.")
-    
-    return device
+            # We can try to connect to the specified device if it looks like an IP:Port
+            if ":" in specified_device:
+                 run_command(["adb", "connect", specified_device], check=False)
+                 time.sleep(1)
+                 if specified_device in connectadb.list_devices():
+                     return specified_device
+            
+            print(f"Could not connect to {specified_device}. Falling back to standard connection...")
 
+    # Use connectadb logic to connect
+    return connectadb.connect()
 
 def build_apk(clean=False, release=False):
     """Build the Android APK."""
@@ -182,7 +108,6 @@ def build_apk(clean=False, release=False):
     
     return apk_path
 
-
 def install_apk(device, apk_path):
     """Install APK on the device."""
     print(f"\n=== Installing APK ===")
@@ -197,7 +122,6 @@ def install_apk(device, apk_path):
     
     print(f"[OK] Installation successful!")
     return True
-
 
 def launch_app(device):
     """Launch the app on the device."""
@@ -221,7 +145,6 @@ def launch_app(device):
     
     print(f"[OK] App launched successfully!")
     return True
-
 
 def main():
     parser = argparse.ArgumentParser(

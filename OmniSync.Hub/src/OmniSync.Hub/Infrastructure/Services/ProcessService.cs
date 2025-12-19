@@ -18,7 +18,7 @@ namespace OmniSync.Hub.Infrastructure.Services
                 var processStartInfo = new ProcessStartInfo
                 {
                     FileName = "cmd.exe",
-                    Arguments = $"/c {command}", // /c carries out the command then terminates
+                    Arguments = $"/c \"{command}\"", // Wrap command in quotes to handle spaces
                     RedirectStandardOutput = true,
                     RedirectStandardError = true,
                     UseShellExecute = false,
