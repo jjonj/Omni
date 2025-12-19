@@ -2,32 +2,39 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-<title>SignalR Test Page</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SignalR Test</title>
     <link rel="stylesheet" href="css/style.css">
 </head>
-<body style="flex-direction: column; padding: 0;">
-    <nav class="nav-menu">
-        <a href="index.html" class="nav-item">Hub</a>
-        <a href="Scheduler.html" class="nav-item">Scheduler</a>
-        <a href="Test.html" class="nav-item active">Test</a>
-    </nav>
-    <div style="padding: 20px;">
-        <h1>SignalR Test</h1>
-    
-    <div class="box">
-        <p><strong>Target URL:</strong> <span id="target-url" style="color: #00aeff;">...</span></p>
-        <button onclick="fetchCalendar()">FETCH & PARSE</button>
-        <div id="status" style="margin-top: 10px; color: #888;">Ready.</div>
-    </div>
+<body>
+    <div class="app-layout">
+        <!-- Navigation -->
+        <nav class="nav-menu">
+            <div class="nav-brand">OMNISYNC</div>
+            <a href="index.html" class="nav-item">Hub</a>
+            <a href="Scheduler.html" class="nav-item">Scheduler</a>
+            <a href="Test.html" class="nav-item active">Test</a>
+        </nav>
+        
+        <!-- Test Content -->
+        <div class="test-container">
+            <h1>Google Calendar Integration Test</h1>
+        
+            <div class="box">
+                <p><strong>Target URL:</strong> <span id="target-url" style="color: var(--c-cal);">...</span></p>
+                <button class="primary" onclick="fetchCalendar()">FETCH & PARSE</button>
+                <div id="status">Ready.</div>
+            </div>
 
-    <div class="box">
-        <h2>Events Found (Today & Future)</h2>
-        <div id="events-list"></div>
+            <div class="box">
+                <h2>Events Found (Today & Future)</h2>
+                <div id="events-list"></div>
+            </div>
+        </div>
     </div>
 
     <script>
-        // YOUR PUBLIC URL
-        const GCAL_URL = "https://calendar.google.com/calendar/ical/jjonjex%40gmail.com/public/basic.ics";
+        // YOUR PUBLIC URL        const GCAL_URL = "https://calendar.google.com/calendar/ical/jjonjex%40gmail.com/public/basic.ics";
         
         // CORS PROXY (Necessary for local files to talk to Google)
         const PROXY_URL = "https://corsproxy.io/?";
@@ -39,6 +46,7 @@
             const list = document.getElementById('events-list');
             
             status.innerText = "Fetching via Proxy...";
+            status.style.color = "var(--text-dim)";
             list.innerHTML = "";
 
             try {
@@ -54,7 +62,7 @@
                 
                 // 3. Render
                 if (events.length === 0) {
-                    list.innerHTML = "<div style='color:orange'>No events found in file (or parsing failed).</div>";
+                    list.innerHTML = "<div style='color:var(--c-work)'>No events found in file (or parsing failed).</div>";
                 } else {
                     // Sort by time
                     events.sort((a,b) => a.start - b.start);
@@ -64,8 +72,7 @@
                         div.className = 'event';
                         
                         // Format Time
-                        const timeStr = ev.allDay 
-                            ? "ALL DAY" 
+                        const timeStr = ev.allDay                             ? "ALL DAY" 
                             : ev.start.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
 
                         div.innerHTML = `
@@ -78,12 +85,13 @@
                         list.appendChild(div);
                     });
                     status.innerText = `Success. Found ${events.length} upcoming events.`;
+                    status.style.color = "var(--success)";
                 }
 
             } catch (error) {
                 console.error(error);
                 status.innerText = "Error: " + error.message;
-                status.style.color = "red";
+                status.style.color = "var(--danger)";
             }
         }
 
@@ -101,8 +109,7 @@
 
             lines.forEach(line => {
                 if (line.startsWith("BEGIN:VEVENT")) {
-                    inEvent = true;
-                    currentEvent = {};
+                    inEvent = true;                    currentEvent = {};
                 } else if (line.startsWith("END:VEVENT")) {
                     inEvent = false;
                     // Finish processing event
@@ -141,8 +148,7 @@
                 return new Date(`${y}-${m}-${d}T00:00:00`);
             }
 
-            // Handle YYYYMMDDThhmmss
-            // Strip 'Z' if present (treating UTC as local for simplicity in PoC, or use real UTC parsing)
+            // Handle YYYYMMDDThhmmss            // Strip 'Z' if present (treating UTC as local for simplicity in PoC, or use real UTC parsing)
             const clean = icalStr.replace('Z', '');
             const y = clean.substr(0,4);
             const m = clean.substr(4,2);

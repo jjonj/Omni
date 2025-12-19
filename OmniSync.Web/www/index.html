@@ -6,44 +6,50 @@
     <title>OmniSync Hub</title>
     <link rel="stylesheet" href="css/style.css">
 </head>
-<body style="flex-direction: column;">
-    <nav class="nav-menu">
-        <a href="index.html" class="nav-item active">Hub</a>
-        <a href="Scheduler.html" class="nav-item">Scheduler</a>
-        <a href="Test.html" class="nav-item">Test</a>
-    </nav>
+<body>
+    <div class="app-layout">
+        <!-- Navigation -->
+        <nav class="nav-menu">
+            <div class="nav-brand">OMNISYNC</div>
+            <a href="index.html" class="nav-item active">Hub</a>
+            <a href="Scheduler.html" class="nav-item">Scheduler</a>
+            <a href="Test.html" class="nav-item">Test</a>
+        </nav>
 
-    <div class="hub-container">
-        <div class="hub-box">
-            <h2>Active Connections</h2>
-            <ul id="connections-list"></ul>
-            
-            <div style="margin-top: auto;">
-                <div class="hub-status-item">
-                    <span class="hub-status-label">Last Command:</span><br>
-                    <span id="last-command" class="hub-status-value">None</span>
-                </div>
-                <div style="margin-top: 15px;">
-                    <label class="hub-status-label" style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
-                        <input type="checkbox" id="run-on-startup" onchange="toggleStartup(this.checked)">
-                        Run on Startup
-                    </label>
+        <!-- Hub Content -->
+        <div class="hub-container">
+            <!-- Active Connections Panel -->
+            <div class="hub-box">
+                <h2>Active Connections</h2>
+                <ul id="connections-list"></ul>
+                
+                <div style="margin-top: auto;">
+                    <div class="hub-status-item">
+                        <span class="hub-status-label">Last Command:</span><br>
+                        <span id="last-command" class="hub-status-value">None</span>
+                    </div>
+                    <div style="margin-top: 15px;">
+                        <label class="hub-status-label" style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                            <input type="checkbox" id="run-on-startup" onchange="toggleStartup(this.checked)">
+                            Run on Startup
+                        </label>
+                    </div>
                 </div>
             </div>
-        </div>
 
-        <div class="hub-box">
-            <h2>System Log</h2>
-            <div id="log-output"></div>
-            
-            <div class="hub-footer">
-                <div id="shutdown-mode-display">
-                    <span class="hub-status-label">Timer Mode:</span>
-                    <span id="current-mode" class="hub-status-value">Shutdown</span>
-                </div>
-                <div style="display: flex; gap: 10px;">
-                    <button class="modern-btn" onclick="toggleMode()">Toggle Mode</button>
-                    <button id="shutdown-btn" class="modern-btn primary" onclick="cycleShutdown()">Shutdown: None</button>
+            <!-- System Log Panel -->            <div class="hub-box">
+                <h2>System Log</h2>
+                <div id="log-output"></div>
+                
+                <div class="hub-footer">
+                    <div id="shutdown-mode-display">
+                        <span class="hub-status-label">Timer Mode:</span>
+                        <span id="current-mode" class="hub-status-value">Shutdown</span>
+                    </div>
+                    <div style="display: flex; gap: 10px;">
+                        <button class="modern-btn" onclick="toggleMode()">Toggle Mode</button>
+                        <button id="shutdown-btn" class="modern-btn primary" onclick="cycleShutdown()">Shutdown: None</button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -67,8 +73,7 @@
             hubConnection.on("LogEntryAdded", (message) => {
                 const log = document.getElementById("log-output");
                 const div = document.createElement("div");
-                div.innerText = message;
-                log.appendChild(div);
+                div.innerText = message;                log.appendChild(div);
                 log.scrollTop = log.scrollHeight;
             });
 
@@ -106,8 +111,7 @@
             try {
                 await hubConnection.start();
                 console.log("Connected");
-                await hubConnection.invoke("Authenticate", API_KEY);
-                
+                await hubConnection.invoke("Authenticate", API_KEY);                
                 // Get initial status
                 const status = await hubConnection.invoke("GetHubStatus");
                 const log = document.getElementById("log-output");
@@ -143,7 +147,7 @@
         function updateShutdownButton() {
             const btn = document.getElementById("shutdown-btn");
             const label = currentMode === "Sleep" ? "Sleep" : "Shutdown";
-            
+                        
             if (!scheduledTime) {
                 btn.innerText = `${label}: None`;
                 shutdownIndex = 0;

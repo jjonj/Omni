@@ -102,9 +102,11 @@ const App = {
 
     renderAllDayEvents() {
         const list = document.getElementById('gcal-sidebar-list');
+        if (!list) return; // Guard against missing element
+        
         list.innerHTML = '';
         if (this.state.calAllDay.length === 0) {
-            list.innerHTML = '<div style="font-size:0.7rem; color:#444; padding:5px;">NO ALL-DAY EVENTS</div>';
+            list.innerHTML = '<div style="font-size:11px; color:var(--text-dimmer); padding:8px; text-align:center;">No all-day events</div>';
             return;
         }
         this.state.calAllDay.forEach(e => {
@@ -353,8 +355,10 @@ const App = {
                     let colorVar = `var(--c-${b.type})`;
                     if (b.type === 'calendar') colorVar = 'var(--c-cal)';
                     
+                    const focusPanel = document.getElementById('focus-panel');
                     document.getElementById('active-type').style.color = colorVar;
-                    document.getElementById('focus-panel').style.borderLeftColor = colorVar;
+                    focusPanel.style.borderLeftColor = colorVar;
+                    focusPanel.style.borderLeftWidth = '4px';
                 } else document.getElementById('countdown').innerText = "PAUSED";
             }
         } else document.getElementById('countdown').innerText = "--:--";

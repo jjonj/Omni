@@ -14,8 +14,10 @@ const GCal = {
 
     async sync() {
         const status = document.getElementById('gcal-status');
-        status.innerText = "SYNCING...";
-        status.style.color = "#666";
+        if (!status) return; // Guard against missing element
+        
+        status.innerText = "SYNC...";
+        status.style.color = "var(--text-dimmer)";
 
         try {
             const response = await fetch(this.PROXY + encodeURIComponent(this.URL));
@@ -33,13 +35,13 @@ const GCal = {
             App.receiveCalendarData(timed, allDay);
             
             const time = new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
-            status.innerText = `UPDATED ${time}`;
-            status.style.color = "#2d5a27"; 
+            status.innerText = `✓ ${time}`;
+            status.style.color = "var(--success)"; 
 
         } catch (e) {
             console.error(e);
-            status.innerText = "SYNC FAILED";
-            status.style.color = "#8a1c1c"; 
+            status.innerText = "FAILED";
+            status.style.color = "var(--danger)"; 
         }
     },
 
