@@ -8,7 +8,7 @@ import os
 from signalrcore.hub_connection_builder import HubConnectionBuilder
 
 # --- CONFIGURATION ---
-HUB_URL = "http://10.0.0.37:5000/signalrhub"
+HUB_URL = "http://127.0.0.1:5000/signalrhub"
 API_KEY = "test_api_key"
 GEMINI_CLI_DIR = r"D:\\SSDProjects\\Tools\\gemini-cli"
 # ---------------------

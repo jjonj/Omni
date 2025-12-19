@@ -23,9 +23,9 @@ builder.WebHost.ConfigureKestrel(options =>
     options.ListenAnyIP(3333); // Webserver
 });
 
-// Explicitly load appsettings.json using absolute path
+// Explicitly load appsettings.json using absolute path - Make optional so it doesn't crash in production
 string appSettingsPath = Path.Combine(Directory.GetCurrentDirectory(), "..", "..", "appsettings.json");
-builder.Configuration.AddJsonFile(appSettingsPath, optional: false, reloadOnChange: true);
+builder.Configuration.AddJsonFile(appSettingsPath, optional: true, reloadOnChange: true);
 
 
 // Add services to the container.
@@ -83,8 +83,16 @@ if (app.Environment.IsDevelopment())
 app.UseRouting();
 
 // Serve static files from OmniSync.Web\IntegrateThisIntoWeb
-var webContentPath = Path.Combine(Directory.GetCurrentDirectory(), "..", "..", "..", "OmniSync.Web", "IntegrateThisIntoWeb");
-if (Directory.Exists(webContentPath))
+// Try to find the folder relative to CWD (Dev) or relative to BaseDirectory (Prod)
+string[] possibleWebPaths = new[]
+{
+    Path.Combine(Directory.GetCurrentDirectory(), "..", "..", "..", "OmniSync.Web", "IntegrateThisIntoWeb"), // Dev: src/OmniSync.Hub -> Root -> OmniSync.Web
+    Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "..", "OmniSync.Web", "IntegrateThisIntoWeb") // Prod: bin/Debug/net9.0-windows -> Root -> OmniSync.Web
+};
+
+string? webContentPath = possibleWebPaths.FirstOrDefault(Directory.Exists);
+
+if (webContentPath != null)
 {
     app.UseDefaultFiles(new DefaultFilesOptions
     {

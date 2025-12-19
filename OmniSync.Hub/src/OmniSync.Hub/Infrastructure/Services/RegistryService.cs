@@ -44,6 +44,10 @@ namespace OmniSync.Hub.Infrastructure.Services
                         string? executablePath = Environment.ProcessPath;
                         if (executablePath != null)
                         {
+                            if (executablePath.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
+                            {
+                                executablePath = System.IO.Path.ChangeExtension(executablePath, ".exe");
+                            }
                             rk.SetValue(AppName, executablePath);
                             _logger.LogInformation($"Enabled '{AppName}' to run on startup.");
                         }
