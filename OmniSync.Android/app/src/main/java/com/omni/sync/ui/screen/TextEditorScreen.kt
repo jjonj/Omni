@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Save
+import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.foundation.background
@@ -99,6 +100,17 @@ fun TextEditorScreen(
                     }
                 },
                 actions = {
+                    val context = androidx.compose.ui.platform.LocalContext.current
+                    IconButton(onClick = {
+                        val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                        val clip = clipboard.primaryClip
+                        if (clip != null && clip.itemCount > 0) {
+                            val text = clip.getItemAt(0).text.toString()
+                            filesViewModel.updateEditingContent(editingContent + text)
+                        }
+                    }) {
+                        Icon(Icons.Default.ContentPaste, contentDescription = "Paste")
+                    }
                     IconButton(onClick = { filesViewModel.updateEditingContent("") }) {
                         Icon(Icons.Default.DeleteSweep, contentDescription = "Clear All")
                     }
