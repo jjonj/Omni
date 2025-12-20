@@ -175,7 +175,7 @@ class MainActivity : ComponentActivity() {
                                     HorizontalPager(
                                         state = pagerState,
                                         modifier = Modifier.fillMaxSize(),
-                                        userScrollEnabled = currentScreen != AppScreen.REMOTECONTROL // Disable swipe on trackpad
+                                        userScrollEnabled = true // Enable horizontal swiping for all screens
                                     ) { page ->
                                         MainScreenContent(swipeableScreens[page], signalRClient, browserViewModel, filesViewModel, mainViewModel)
                                     }
