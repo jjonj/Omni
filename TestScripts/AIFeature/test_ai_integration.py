@@ -67,13 +67,14 @@ class AiTester:
         await asyncio.sleep(1)
 
         # Send test message
-        test_msg = "Hello AI, this is a automated test."
+        test_msg = sys.argv[1] if len(sys.argv) > 1 else "Hello AI, this is a automated test."
         logger.info(f"Sending message: {test_msg}")
         self.hub.send("SendAiMessage", [test_msg])
 
         # Wait for events
         start_time = time.time()
-        while time.time() - start_time < 30:
+        timeout = 60 if len(sys.argv) > 1 else 30 # Longer timeout for custom messages
+        while time.time() - start_time < timeout:
             if self.message_received and self.response_received:
                 break
             await asyncio.sleep(1)

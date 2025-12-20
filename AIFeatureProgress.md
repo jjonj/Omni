@@ -39,23 +39,22 @@ The SignalR hub that manages the traffic.
 ### 3. AI Gateway (`OmniSync.Cli`)
 
 #### `ai_listener.py`
-The gateway has been refined significantly through iterative testing:
+The gateway has evolved from UI automation to a robust programmatic control system:
 
 **Key Findings & Solutions:**
-- **Window Identification**: Initial title-based matching was too broad, often picking up TortoiseGit log windows. We implemented a strict **Title + Window Class** matching system. It now specifically targets `OMNI_GEMINI_INTERACTIVE` and verifies the window class is either `ConsoleWindowClass` or `CASCADIA_HOSTING_WINDOW_CLASS` (Windows Terminal).
-- **Safe Copying**: Using `Ctrl+C` for scraping terminal output was found to be destructive, often sending a SIGINT signal that cancelled the AI's response processing. We switched to **`Ctrl+Insert`**, which is the standard Windows "Safe Copy" that does not trigger interrupts.
-- **Focus Management**: Windows protects against background processes "focus stealing." We implemented an **Alt-key "jab" technique** combined with multiple `SetForegroundWindow` attempts and `ShowWindow` calls to reliably bring the terminal to the foreground before typing.
-- **Stabilization Logic**: The listener now waits 5 seconds after sending a command before the first copy attempt. It then uses a loop to compare "Cleaned" versions of the console history (removing spinners/artifacts) until the output length stops growing, ensuring a complete response is captured.
-- **Click-to-Focus Safety**: Added physical clicks to the terminal prompt area to ensure keyboard focus, followed by de-selection clicks to prevent highlighted text from being mistaken for a new prompt.
+- **Programmatic Hook**: We moved away from brittle UI automation (typing and scraping) to a **Named Pipe Programmatic Hook**. A custom listener was added to the Gemini CLI (`packages/cli/src/utils/remoteControl.ts`) that opens a pipe at `\\.\pipe\gemini-cli-<pid>`.
+- **Bidirectional Events**: The CLI now supports `RemotePrompt` and `RemoteResponse` events. The listener injects prompts directly into the model's stream and captures the full response buffer upon completion.
+- **Reliability**: This method eliminates issues with window focus, "focus stealing" protections, and terminal character artifacts. It also correctly handles multi-paragraph responses without risk of truncation or corruption from "safe copy" timing issues.
+- **PID Detection**: The Python listener dynamically discovers the correct Gemini process PID to establish the pipe connection, supporting various launch environments (bundled node vs global npm).
 
 ---
 
 ### 4. Testing & Validation (`TestScripts/AIFeature`)
 
 The AI test suite has been moved to a dedicated `AIFeature` subfolder for better organization:
-- `test_ai_integration.py`: Validates the full SignalR roundtrip.
-- `poc_gemini_control.py`: Refines the UI automation logic.
-- `test_read_gemini_cli.py`: Specifically tests the console buffer reading.
+- `run_full_ai_test.py`: Orchestrates the launch of the CLI, Listener, and runs the integration test.
+- `test_ai_integration.py`: Validates the full SignalR roundtrip via Named Pipes.
+- `diagnose_gemini_window.py`: (Legacy) Used for identifying window classes.
 
 ---
 
@@ -64,9 +63,9 @@ The AI test suite has been moved to a dedicated `AIFeature` subfolder for better
 | Feature | Status | Notes |
 | :--- | :--- | :--- |
 | **SignalR AI Relay** | Stable | Verified with `test_ai_integration.py` |
-| **Interactive Terminal Injection** | Stable | Uses `Ctrl+Insert` and Window Class filtering |
-| **Focus Management** | Robust | Employs Alt-key jab and HWND-based verification |
-| **Output Scraping** | Stable | Uses artifact cleaning and stabilization detection |
+| **Named Pipe Injection** | Stable | Programmatic and robust |
+| **Response Capture** | Stable | Captured via event emitter after stream finish |
+| **Multi-line Support** | Stable | Verified with long story prompts |
 
 **Upcoming Improvements:**
 1.  **Direct Hub Commands**: Allow the AI to emit JSON payloads to trigger native Hub actions.
