@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Security;
 using OmniSync.Hub.Models; // Add using statement for the new DTO
+using OmniSync.Hub.Logic.Services; // Added for HubEventSender
 
 namespace OmniSync.Hub.Infrastructure.Services
 {
@@ -11,9 +12,11 @@ namespace OmniSync.Hub.Infrastructure.Services
     {
         private readonly string _noteRootPath; // Renamed from _rootPath to clarify its purpose
         private readonly string _browseRootPath; // New field for the configurable browse root
+        private readonly HubEventSender _hubEventSender; // Injected HubEventSender
 
-        public FileService()
+        public FileService(HubEventSender hubEventSender)
         {
+            _hubEventSender = hubEventSender;
             // Default constructor, maintains original behavior for _noteRootPath
             _noteRootPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "Obsidian");
             if (!Directory.Exists(_noteRootPath))
@@ -24,8 +27,9 @@ namespace OmniSync.Hub.Infrastructure.Services
             _browseRootPath = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         }
 
-        public FileService(string noteRootPath, string browseRootPath)
+        public FileService(string noteRootPath, string browseRootPath, HubEventSender hubEventSender)
         {
+            _hubEventSender = hubEventSender;
             _noteRootPath = noteRootPath;
             _browseRootPath = browseRootPath;
 
@@ -74,12 +78,14 @@ namespace OmniSync.Hub.Infrastructure.Services
         {
             var fullPath = SanitizeAndGetNoteFullPath(filePath);
             File.WriteAllText(fullPath, content);
+            _hubEventSender.BroadcastLogEntryAdded($"File '{filePath}' synced to PC.");
         }
 
         public void WriteBrowseFile(string filePath, string content)
         {
             var fullPath = SanitizeAndGetBrowseFullPath(filePath);
             File.WriteAllText(fullPath, content);
+            _hubEventSender.BroadcastLogEntryAdded($"Browse file '{filePath}' synced to PC.");
         }
 
         public void AppendToFile(string filePath, string content)

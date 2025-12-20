@@ -38,6 +38,7 @@ builder.Services.AddSingleton<AuthService>(new AuthService(builder.Configuration
 builder.Services.AddSingleton<FileService>(provider =>
 {
     var configuration = provider.GetRequiredService<IConfiguration>();
+    var hubEventSender = provider.GetRequiredService<HubEventSender>(); // Get HubEventSender
     var noteRootPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "Obsidian"); // Default to Obsidian
     var browseRootPath = configuration["FileService:BrowseRootPath"] ?? Environment.GetFolderPath(Environment.SpecialFolder.UserProfile); // Configurable, or default to user profile
 
@@ -48,7 +49,7 @@ builder.Services.AddSingleton<FileService>(provider =>
     }
     // No need to ensure browseRootPath exists here, as it's for browsing
     
-    return new FileService(noteRootPath, browseRootPath);
+    return new FileService(noteRootPath, browseRootPath, hubEventSender); // Pass hubEventSender
 });
 builder.Services.AddSingleton<ClipboardService>();
 builder.Services.AddSingleton<CommandDispatcher>(provider => {
