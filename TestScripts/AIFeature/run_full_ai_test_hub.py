@@ -50,9 +50,33 @@ def run_script(path, new_console=False):
     else:
         return subprocess.run([sys.executable, full_path], cwd=ROOT_DIR)
 
+def kill_gemini_instances():
+    print("Cleaning up existing Gemini instances, avoiding ancestors...")
+    my_pid = os.getpid()
+    ancestor_pids = set()
+    try:
+        curr = psutil.Process(my_pid)
+        while curr:
+            ancestor_pids.add(curr.pid)
+            curr = curr.parent()
+    except: pass
+
+    for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
+        try:
+            if proc.info['pid'] in ancestor_pids:
+                continue
+
+            cmdline = " ".join(proc.info['cmdline'] or [])
+            if 'node' in proc.info['name'].lower() and 'gemini' in cmdline.lower():
+                if 'bundle/gemini.js' in cmdline.replace('\\', '/'):
+                    print(f"  Killing PID {proc.info['pid']}")
+                    proc.kill()
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            pass
+
 def main():
     print("\n" + "="*60)
-    print("      OMNISYNC: FULL AI INTEGRATION REGRESSION TEST")
+    print("      OMNISYNC: FULL HUB-MEDIATED AI REGRESSION")
     print("="*60 + "\n")
     
     # 1. Check Hub
@@ -65,12 +89,13 @@ def main():
     # 2. Cleanup existing AI components
     print("[2/5] Cleaning up stale AI components...")
     kill_process_by_name("ai_listener.py")
-    time.sleep(1)
+    kill_gemini_instances()
+    time.sleep(2)
 
     # 3. Launch Gemini CLI (interactive)
     print("[3/5] Launching Gemini CLI...")
     run_script("launch_gemini_cli.py")
-    time.sleep(3)
+    time.sleep(10)
 
     # 4. Launch AI Listener
     print("[4/5] Launching AI Listener...")
@@ -79,10 +104,9 @@ def main():
     time.sleep(8)
 
     # 5. Run Integration Test
-    print("[5/5] Running SignalR Roundtrip Test...")
+    print("[5/5] Running SignalR-only Integration Test...")
     print("-"*60)
-    # Note: path is relative to ROOT_DIR
-    test_path = os.path.join("TestScripts", "AIFeature", "test_ai_integration.py")
+    test_path = os.path.join("TestScripts", "AIFeature", "test_ai_command_integration_hub.py")
     result = subprocess.run([sys.executable, test_path], cwd=ROOT_DIR)
     print("-"*60)
     

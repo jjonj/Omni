@@ -96,7 +96,7 @@ export function startRemoteControl() {
     });
   });
 
-  server.on('error', (err: any) => {
+  server.on('error', (err: Error) => {
     debugLogger.error(`Remote control server error: ${err}`);
   });
 
@@ -111,7 +111,9 @@ export function startRemoteControl() {
   process.on('exit', () => {
     try {
       server.close();
-    } catch (e) {}
+    } catch (_e) {
+      // Ignore closure errors on exit
+    }
   });
 }
 '''

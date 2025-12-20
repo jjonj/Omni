@@ -518,6 +518,22 @@ namespace OmniSync.Hub.Presentation.Hubs
             }
         }
 
+        public async Task SendAiHubCommand(string command, JsonElement payload)
+        {
+            if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
+            {
+                AnyCommandReceived?.Invoke(this, $"AI HUB COMMAND: {command}");
+                try
+                {
+                    _commandDispatcher.Dispatch(command, payload);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, $"Error dispatching AI Hub command '{command}'");
+                }
+            }
+        }
+
         public async Task NotifyCortexActivity(string activityName, string activityType)
         {
             if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)

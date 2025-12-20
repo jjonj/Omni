@@ -11,10 +11,22 @@ GEMINI_DIR = r"D:\\SSDProjects\\Tools\\gemini-cli"
 OMNI_DIR = r"D:\\SSDProjects\\Omni"
 
 def kill_gemini_instances():
-    """Kills all Gemini CLI node processes."""
+    """Kills all Gemini CLI node processes, avoiding ancestors."""
     print("Cleaning up existing Gemini instances...")
+    my_pid = os.getpid()
+    ancestor_pids = set()
+    try:
+        curr = psutil.Process(my_pid)
+        while curr:
+            ancestor_pids.add(curr.pid)
+            curr = curr.parent()
+    except: pass
+
     for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
         try:
+            if proc.info['pid'] in ancestor_pids:
+                continue
+
             cmdline = " ".join(proc.info['cmdline'] or [])
             if 'node' in proc.info['name'].lower() and 'gemini' in cmdline.lower():
                 if 'bundle/gemini.js' in cmdline.replace('\\', '/'):
