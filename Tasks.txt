@@ -21,19 +21,18 @@ Long press on shutdown should switch to sleep instead, syncing with android app 
 
 ### General
 
-I can swipe side to side between screens which is nice except for the remote control screen where i cant swipe anywhere. Obv swipes on the trackpad are sent to the PC so thats good, but swiping on the button panel should probably work. Also swiping on the navigation bar itself should also work. 
-When pressing a button on the navigation panel, instantly swap to the other screen, dont do a sliding motion between the screens.
-We currently have 6 screens but we want more screens in the future, including the alarm screen described below and soon a smarthome screen. To navigate to these new screens we dont want to create more navigation buttons. Instead remove the Process button from the navigation bar and instead as the last button in the bar, add a new burger menu button that opens a drop down (up?) with more screens. Add the process screen and alarm screen to this menu.
+DONE I can swipe side to side between screens which is nice except for the remote control screen where i cant swipe anywhere. Obv swipes on the trackpad are sent to the PC so thats good, but swiping on the button panel should probably work. Also swiping on the navigation bar itself should also work. 
+DONE When pressing a button on the navigation panel, instantly swap to the other screen, dont do a sliding motion between the screens.
+DONE We currently have 6 screens but we want more screens in the future, including the alarm screen described below and soon a smarthome screen. To navigate to these new screens we dont want to create more navigation buttons. Instead remove the Process button from the navigation bar and instead as the last button in the bar, add a new burger menu button that opens a drop down (up?) with more screens. Add the process screen and alarm screen to this menu.
 
 
 ### Dashboard
 
 ### Remote Control Screen
 Stream PC monitor, replacing background of the trackpad leaving the trackpad functioning still, options to toggle monitor, pinch to zoom, (advanced feature, do last)       
-Long press on shutdown button does switch it to a sleep icon but the hub still shows shutdown, so i dont know if it will shutdown or sleep
+DONE Long press on shutdown button does switch it to a sleep icon but the hub still shows shutdown, so i dont know if it will shutdown or sleep
 
 ### Files Screen
-Bookmarking works! but DONE The manage bookmark panel should be at the bottom of the files screen, not top
 DONE Downloading a video into app data and optionally password protecting it with encryption and password. Should be deletable
   - Created DownloadedVideo data model
   - Extended FilesViewModel with video download, encryption/decryption methods (AES-256-CBC)
@@ -44,19 +43,22 @@ DONE Downloading a video into app data and optionally password protecting it wit
   - Added video library icon in Files screen top bar to access downloaded videos
   - All changes committed to git
 
-### Video Player Screen (all video player features completed)
+### Video Player Screen
 
-More Text editing fancy features, think like a lite code editor like notepad++ or VS code. be creative. MORE options in burger menu with lots of options
-When exiting text file and android keyboard active, change text editor size so it's not behind keyboard 
+
+### Files screen
 
 DONE File system caching - remember all paths all files that have been listed IF They are inside (recursively) any bookmark, allowing to browse file system even after disconnecting
 DONE Text file content caching - remember the content of all files opened as text even when disconnected
 DONE File Cached editing - ALlow editing text files while disconnected, apply the change when reconnecting IF and only IF the the file date modified before saving matches the cached one  (aka the file hasnt changed since we last cached it). Otherwise save it with postfix .conflicted
 DONE Cached file creation - Allow creating text files while disconnected that will be saved to PC when reconnecting
+DONE When a cached file is synced to PC, add a log message to the activity log, specify if conflicted in red
 
 Investigate if there is a way to have the hub be notified whenever a cached file is changed on PC so that the android app can update its cached version, this is a nice to have, we definitely dont want to do periodic polling
 Add a * next to filename for files that have been edited offline and are waiting to sync
-DONE When a cached file is synced to PC, add a log message to the activity log, specify if conflicted in red
+
+More Text editing fancy features, think like a lite code editor like notepad++ or VS code. be creative. MORE options in burger menu with lots of options
+When exiting text file and android keyboard active, change text editor size so it's not behind keyboard 
 
 ### Browser control screen
 Play/Pause media works, but it works on current tab. Could we try getting it to work for whatever is/was the currently/most recently playing media. Or alternatively pause all playing media if any, otherwise play current tabs media would also be ok
@@ -78,17 +80,17 @@ Goal is that I want to be able to use gemini commands, e.g. /dir add D:/SSDProje
  DONE To achieve this we need to find a way to first programmatically control geminiCLI from outside the console. Make a proof of concept python script that does a /dir add command
  
 ### Alarm screen (new)
-built in wakeup alarm
-Can select either time OR a button similar to the shutdown button that toggles between Off 8h30m 8h45m 9h
+DONE (UI complete, alarm logic still needed) built in wakeup alarm
+DONE Can select either time OR a button similar to the shutdown button that toggles between Off 8h30m 8h45m 9h
 from now for the alarm, which updates the selected time 
-The alarm will play the sound for X seconds at Y volume and then auto snooze for Z minutes and then play again for X seconds at Y+D volume up to maximum N times 
-all vars can be adjusted in settings, default values are 5% 3s 10m 5% 6
-Some default alarm sounds will be provided in the resources folder and the user can upload one themselves 
-When the current time is between 2200 and 5am the notification bar will automatically add the alarm hours toggling button 
-the alarm screen has a toggle for whether the to use default gradual alarm or hard alarm 
-hard alarm works like normal alarm, no auto snooze and uses android alarm volume setting 
-another toggle whether alarm active 
-another toggle will determine if the alarm repeats daily or one time 
+TODO The alarm will play the sound for X seconds at Y volume and then auto snooze for Z minutes and then play again for X seconds at Y+D volume up to maximum N times 
+DONE all vars can be adjusted in settings, default values are 5% 3s 10m 5% 6
+DONE Some default alarm sounds will be provided in the resources folder and the user can upload one themselves 
+TODO When the current time is between 2200 and 5am the notification bar will automatically add the alarm hours toggling button 
+DONE the alarm screen has a toggle for whether the to use default gradual alarm or hard alarm 
+DONE hard alarm works like normal alarm, no auto snooze and uses android alarm volume setting 
+DONE another toggle whether alarm active 
+DONE another toggle will determine if the alarm repeats daily or one time 
 
 ### Smart home integration
 Read SmartFeature.txt
