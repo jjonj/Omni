@@ -40,7 +40,7 @@ namespace OmniSync.Hub.Presentation
             // Subscribe to HubMonitorService events
             _hubMonitorService.LogEntryAdded += HubMonitorService_LogEntryAdded;
             _shutdownService.ShutdownScheduled += ShutdownService_ShutdownScheduled;
-            _shutdownService.ModeChanged += (s, e) => UpdateShutdownButtonLabel(_shutdownService.GetScheduledTime());
+            _shutdownService.ModeChanged += (s, mode) => Dispatcher.BeginInvoke(() => UpdateShutdownButtonLabel(_shutdownService.GetScheduledTime()));
 
             // Initialize UI elements with current data from HubMonitorService
             // ConnectionsListBox is bound directly to ActiveConnections in XAML and ObservableCollection handles updates
