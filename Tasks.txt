@@ -74,7 +74,7 @@ another toggle whether alarm active
 another toggle will determine if the alarm repeats daily or one time 
 
 ## Web
-Hub screen on web doesnt work/receive updates.
+DONE Hub screen on web doesnt work/receive updates.
 
 
 

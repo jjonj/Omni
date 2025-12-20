@@ -82,6 +82,18 @@ builder.Services.AddSingleton<HubMonitorService>(); // Register the new monitori
 builder.Services.AddHostedService<TrayIconManager>();
 builder.Services.AddSingleton<KeyboardHook>(); // Register KeyboardHook
 
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowAll",
+        builder =>
+        {
+            builder.SetIsOriginAllowed(_ => true)
+                   .AllowAnyMethod()
+                   .AllowAnyHeader()
+                   .AllowCredentials();
+        });
+});
+
 builder.Services.AddSignalR();
 builder.Services.AddControllers();
 
@@ -92,6 +104,8 @@ if (app.Environment.IsDevelopment())
 {
     app.UseDeveloperExceptionPage();
 }
+
+app.UseCors("AllowAll");
 
 app.UseRouting();
 

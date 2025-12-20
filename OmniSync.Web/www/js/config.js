@@ -1,7 +1,8 @@
 /* =========================================
    HUB CONFIGURATION
    ========================================= */
-const HUB_URL = "http://10.0.0.37:5000/signalrhub";
+const HUB_PORT = 5000;
+const HUB_URL = `http://${window.location.hostname}:${HUB_PORT}/signalrhub`;
 const API_KEY = "test_api_key";
 
 /* =========================================
