@@ -1,12 +1,15 @@
 # Tasks
+
 When finishing a task make sure to prefix the line with "DONE" and also git commit between each one.
+if told to do a megasession then fix/implement as many issues of the ones below as possible without user intervention. Make sure to git commit and mark as DONE between each one. Start with any tasks that can be validated with a script in D:\SSDProjects\Omni\TestScripts. If strictly necessary you may use AISpeak to ask the user for help/clarifications.
 
 ## General
+When app is in horizontal mode, hide the navigation bar
 
 ## For the hub
 DONE Run on startup is not working, windows is trying to run D:\SSDProjects\Omni\OmniSync.Hub\src\OmniSync.Hub\bin\Debug\net9.0-windows\OmniSync.Hub.dll on startup which is nonsensical
-Play a sound 1 minute before shutdown will activate, use Resources/shut1min.wav
-Right click tray icon -> exit doesnt work
+DONE Play a sound 1 minute before shutdown will activate, use Resources/shut1min.wav
+DONE Right click tray icon -> exit doesnt work
 
 ### Hub window
 Long press on shutdown should switch to sleep instead, syncing with android app button state.
@@ -19,7 +22,6 @@ Long press on shutdown should switch to sleep instead, syncing with android app 
 ### Dashboard
 
 ### Remote Control Screen
-DONE There is a wierd jagged overlapping issue  at the border between the black area of the button panel and the trackpad area, the bottom and top dont align/meet properly causing janky look. Careful not to break the button panel moving/resizing. Maybe ensure that the panel is always infront of the trackpad or make sure their borders align
 Stream PC monitor, replacing background of the trackpad leaving the trackpad functioning still, options to toggle monitor, pinch to zoom, (advanced feature, do last)       
 Long press on shutdown button does switch it to a sleep icon but the hub still shows shutdown, so i dont know if it will shutdown or sleep
 
@@ -27,15 +29,19 @@ Long press on shutdown button does switch it to a sleep icon but the hub still s
 Bookmarking works! but DONE The manage bookmark panel should be at the bottom of the files screen, not top
 Downloading a video into app data and optionally password protecting it with encryption and password. Should be deletable
 
-WORKING Swiping finger up and down on left side should change phone brightness
-NOT-WORKING Swiping finger up and down on  right side should change phone or video volume.     
-NOT-WORKING  Double tap to skip forward/back no longer working. (probably broke when fixing brightness sliding. We used to have this working using overlay boxes on the left and right side that could also be used for volume change (and brightness?)
-EVEN MORE Text editing fancy features, think like a lite code editor like notepad++ or VS code. be creative. MORE options in burger menu with lots of options
+
+
+DONE Swiping finger up and down on left side should change phone brightness
+BUG Swiping finger up and down on  right side should change phone or video volume, this is really hard to trigger (can only do it 10% of the time and it only adjusts for like a millisecond) for some reason even though brightness is easy
+NOT-WORKING  Double tap to skip forward/back no longer working. (probably broke when fixing brightness sliding. We used to have this working using overlay boxes on the left and right side that could also be used for volume change (and brightness?). Tap or double tap instead activates the video player which is fine for single tap but not double on the sides.
+MORE Text editing fancy features, think like a lite code editor like notepad++ or VS code. be creative. MORE options in burger menu with lots of options
+When exiting text file and android keyboard active, change text editor size so it's not behind keyboard 
 DONE File system caching - remember all paths all files that have been listed IF They are inside (recursively) any bookmark, allowing to browse file system even after disconnecting
 DONE Text file content caching - remember the content of all files opened as text even when disconnected
 DONE File Cached editing - ALlow editing text files while disconnected, apply the change when reconnecting IF and only IF the the file date modified before saving matches the cached one  (aka the file hasnt changed since we last cached it). Otherwise save it with postfix .conflicted
 DONE Cached file creation - Allow creating text files while disconnected that will be saved to PC when reconnecting
-
+Add a * next to filename for files that have been edited offline and are waiting to sync
+When a cached file is synced to PC, add a log message to the actitivty log, specify if conflicted in red
 
 ### Browser control screen
 Play/Pause media works, but it works on current tab. Could we try getting it to work for whatever is/was the currently/most recently playing media. Or alternatively pause all playing media if any, otherwise play current tabs media would also be ok
@@ -50,8 +56,36 @@ Add support for widgets, when you add a widget you can choose a quick action (sa
 ### Settings screen (accessed by button on dashboard, not bottom panel)
 Quick actions dropdown: Add options to go directly to each screen in the app, add options to go to open a bookmark from the browser control screen (opens on the pc like the bookmarks do)
 
-### AI screen (new)
-I want to be able to use gemini commands, e.g. /dir add D:/SSDProjects, currently it just sends it as a string to gemini and the ai responds instead of affecting the gemini cli harness. Please carefully read through the 
+### AI screen
+Goal is that I want to be able to use gemini commands, e.g. /dir add D:/SSDProjects, currently it just sends it as a string to gemini and the ai responds instead of affecting the gemini cli harness. Please carefully read through the 
+ - To achieve this we need to find a way to first programmatically control geminiCLI from outside the console. Make a proof of concept python script that does a /dir add command
+ 
+### Alarm (new)
+built in wakeup alarm, added to bottom of dashboard, scroll down on dash enabled 
+Can select either time OR a button similar to the shutdown button that toggles between Off 8h30m 8h45m 9h
+from now for the alarm, which updates the selected time 
+The alarm will play the sound for X seconds at Y volume and then auto snooze for Z minutes and then play again for X seconds at Y+D volume up to maximum N times 
+all vars can be adjusted in settings, default values are 5% 3s 10m 5% 6
+Some default alarm sounds will be provided in the resources folder and the user can upload one themselves 
+When the current time is between 2200 and 5am the notification bar will automatically add the alarm hours toggling button 
+the alarm screen has a toggle for whether the to use default gradual alarm or hard alarm 
+hard alarm works like normal alarm, no auto snooze and uses android alarm volume setting 
+another toggle whether alarm active 
+another toggle will determine if the alarm repeats daily or one time 
 
-## Web (new)
-DONE Hub screen doesnt work/receive updates.
+## Web
+Hub screen on web doesnt work/receive updates.
+
+
+
+
+
+
+
+
+
+
+
+
+
+

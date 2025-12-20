@@ -53,16 +53,20 @@ namespace OmniSync.Hub.Presentation
             WinFormsApp.SetCompatibleTextRenderingDefault(false); // For WinForms interop
 
             _applicationContext = new TrayApplicationContext(_appLifetime, app, _hubMonitorService, _inputService, _shutdownService, _registryService); // Pass hubMonitorService and inputService
+            Console.WriteLine("TrayIconManager: Starting WinForms message loop.");
             WinFormsApp.Run(_applicationContext); // Start the message pump with our custom context
+            Console.WriteLine("TrayIconManager: WinForms message loop finished.");
         }
 
         public Task StopAsync(CancellationToken cancellationToken)
         {
+            Console.WriteLine("TrayIconManager: StopAsync called.");
             return Task.CompletedTask;
         }
 
         public void Dispose()
         {
+            Console.WriteLine("TrayIconManager: Dispose called.");
             _applicationContext?.Dispose();
         }
 
@@ -167,6 +171,7 @@ namespace OmniSync.Hub.Presentation
 
             protected override void Dispose(bool disposing)
             {
+                Console.WriteLine($"TrayApplicationContext: Dispose called (disposing={disposing})");
                 if (disposing)
                 {
                     if (_notifyIcon != null)
@@ -177,14 +182,15 @@ namespace OmniSync.Hub.Presentation
                     
                     try
                     {
-                        _wpfApplication.Dispatcher.Invoke(() =>
+                        // Use BeginInvoke to avoid blocking if the UI thread is stuck or busy
+                        _wpfApplication.Dispatcher.BeginInvoke(new Action(() =>
                         {
                             if (_mainWindow != null)
                             {
                                 _mainWindow.Close(); // Close the WPF window
                             }
                             _wpfApplication.Shutdown(); // Shut down the WPF Application
-                        });
+                        }));
                     }
                     catch (Exception)
                     {
@@ -192,7 +198,8 @@ namespace OmniSync.Hub.Presentation
                     }
                 }
                 base.Dispose(disposing);
-                ExitThread();
+                Console.WriteLine("TrayApplicationContext: Calling Application.Exit()");
+                System.Windows.Forms.Application.Exit();
             }
         }
     }

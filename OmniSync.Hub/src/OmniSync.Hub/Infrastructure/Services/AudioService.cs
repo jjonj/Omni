@@ -45,7 +45,7 @@ namespace OmniSync.Hub.Infrastructure.Services
                 {
                     using (var player = new System.Media.SoundPlayer(filePath))
                     {
-                        player.Play();
+                        player.PlaySync();
                     }
                 }
             }
