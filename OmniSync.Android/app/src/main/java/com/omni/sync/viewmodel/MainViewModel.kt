@@ -30,7 +30,8 @@ enum class AppScreen {
     EDITOR,
     SETTINGS,
     AI_CHAT,
-    DOWNLOADED_VIDEOS
+    DOWNLOADED_VIDEOS,
+    ALARM
 }
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {

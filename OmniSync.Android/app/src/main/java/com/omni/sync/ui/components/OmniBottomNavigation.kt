@@ -4,7 +4,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.Gamepad
 import androidx.compose.material.icons.filled.Public
-import androidx.compose.material.icons.filled.Memory
+import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
@@ -19,6 +19,14 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.material.icons.filled.Memory
+import androidx.compose.material.icons.filled.Alarm
 
 // Create a simple data class to hold nav info
 data class NavItem(
@@ -27,14 +35,19 @@ data class NavItem(
     val icon: ImageVector
 )
 
-// Define the list of tabs
+// Define the main navigation tabs (without Process)
 val navigationItems = listOf(
     NavItem(AppScreen.DASHBOARD, "Dash", Icons.Default.Dashboard),
     NavItem(AppScreen.REMOTECONTROL, "Remote", Icons.Default.Gamepad),
     NavItem(AppScreen.BROWSER, "Browser", Icons.Default.Public),
-    NavItem(AppScreen.PROCESS, "Process", Icons.Default.Memory),
     NavItem(AppScreen.FILES, "Files", Icons.Default.Folder),
     NavItem(AppScreen.AI_CHAT, "AI", Icons.Default.SmartToy)
+)
+
+// Define the burger menu items
+val burgerMenuItems = listOf(
+    NavItem(AppScreen.PROCESS, "Process", Icons.Default.Memory),
+    NavItem(AppScreen.ALARM, "Alarm", Icons.Default.Alarm)
 )
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -43,14 +56,19 @@ fun OmniBottomNavigation(
     currentScreen: AppScreen,
     onNavigate: (AppScreen) -> Unit
 ) {
+    var showBurgerMenu by remember { mutableStateOf(false) }
+    
     // We only want to show the Bottom Bar if we are on one of the main screens.    
     // If we are in the Video Player, we usually want to hide it (optional).        
     // Also hide when keyboard is up to save space.
     val isKeyboardVisible = WindowInsets.isImeVisible
-    val showBottomBar = navigationItems.any { it.screen == currentScreen } && !isKeyboardVisible
+    val allVisibleScreens = navigationItems.map { it.screen } + burgerMenuItems.map { it.screen }
+    val showBottomBar = allVisibleScreens.any { it == currentScreen } && !isKeyboardVisible
 
     if (showBottomBar) {
-        NavigationBar {            navigationItems.forEach { item ->
+        NavigationBar {
+            // Main navigation items
+            navigationItems.forEach { item ->
                 val isSelected = currentScreen == item.screen
                 
                 NavigationBarItem(
@@ -63,10 +81,47 @@ fun OmniBottomNavigation(
                         ) 
                     },
                     label = { Text(text = item.title) },
-                    // specialized configuration for professional look:
-                    alwaysShowLabel = false // Only show label when selected (cleaner for 5 items)
+                    alwaysShowLabel = false
                 )
             }
+            
+            // Burger menu button
+            NavigationBarItem(
+                selected = burgerMenuItems.any { it.screen == currentScreen },
+                onClick = { showBurgerMenu = true },
+                icon = { 
+                    Icon(
+                        imageVector = Icons.Default.Menu, 
+                        contentDescription = "More" 
+                    )
+                    
+                    // Dropdown menu
+                    DropdownMenu(
+                        expanded = showBurgerMenu,
+                        onDismissRequest = { showBurgerMenu = false }
+                    ) {
+                        burgerMenuItems.forEach { item ->
+                            DropdownMenuItem(
+                                text = { 
+                                    Text(text = item.title) 
+                                },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = item.icon,
+                                        contentDescription = item.title
+                                    )
+                                },
+                                onClick = {
+                                    showBurgerMenu = false
+                                    onNavigate(item.screen)
+                                }
+                            )
+                        }
+                    }
+                },
+                label = { Text(text = "More") },
+                alwaysShowLabel = false
+            )
         }
     }
 }

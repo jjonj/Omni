@@ -59,7 +59,6 @@ class MainActivity : ComponentActivity() {
         AppScreen.DASHBOARD,
         AppScreen.REMOTECONTROL,
         AppScreen.BROWSER,
-        AppScreen.PROCESS,
         AppScreen.FILES,
         AppScreen.AI_CHAT
     )
@@ -168,7 +167,8 @@ class MainActivity : ComponentActivity() {
                                 .fillMaxSize()
                                 .padding(innerPadding)
                             ) {
-                                if (currentScreen == AppScreen.EDITOR || currentScreen == AppScreen.SETTINGS) {
+                                if (currentScreen == AppScreen.EDITOR || currentScreen == AppScreen.SETTINGS || 
+                                    currentScreen == AppScreen.PROCESS || currentScreen == AppScreen.ALARM) {
                                     // Non-swipeable standalone screens
                                     MainScreenContent(currentScreen, signalRClient, browserViewModel, filesViewModel, mainViewModel)
                                 } else {
@@ -229,6 +229,10 @@ class MainActivity : ComponentActivity() {
             )
             AppScreen.DOWNLOADED_VIDEOS -> com.omni.sync.ui.screen.DownloadedVideosScreen(
                 filesViewModel = filesViewModel,
+                onBack = { mainViewModel.goBack() }
+            )
+            AppScreen.ALARM -> com.omni.sync.ui.screen.AlarmScreen(
+                mainViewModel = mainViewModel,
                 onBack = { mainViewModel.goBack() }
             )
             else -> {} // Handled at top level
