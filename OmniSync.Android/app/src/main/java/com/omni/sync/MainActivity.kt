@@ -224,6 +224,10 @@ class MainActivity : ComponentActivity() {
                 signalRClient = signalRClient,
                 mainViewModel = mainViewModel
             )
+            AppScreen.DOWNLOADED_VIDEOS -> com.omni.sync.ui.screen.DownloadedVideosScreen(
+                filesViewModel = filesViewModel,
+                onBack = { mainViewModel.goBack() }
+            )
             else -> {} // Handled at top level
         }
     }

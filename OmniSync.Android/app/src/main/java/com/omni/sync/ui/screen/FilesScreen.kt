@@ -20,7 +20,7 @@ import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -88,6 +88,11 @@ fun FilesScreen(
                     }
                 },
                 actions = {
+                    IconButton(onClick = { 
+                        filesViewModel.mainViewModel.navigateTo(com.omni.sync.viewmodel.AppScreen.DOWNLOADED_VIDEOS)
+                    }) {
+                        Icon(Icons.Default.VideoLibrary, contentDescription = "Downloaded Videos")
+                    }
                     if (currentPath.isNotEmpty()) {
                         IconButton(onClick = { showCreateFileDialog = true }) {
                             Icon(Icons.Default.Add, contentDescription = "Create File")
@@ -254,6 +259,10 @@ fun FilesScreen(
                             onOpenInAiChat = { entry ->
                                 filesViewModel.mainViewModel.navigateTo(com.omni.sync.viewmodel.AppScreen.AI_CHAT)
                                 filesViewModel.signalRClient.sendAiMessage("/dir add \"${entry.path}\"")
+                            },
+                            onDownloadVideo = { entry, password ->
+                                filesViewModel.downloadVideoToAppData(entry, password)
+                                Toast.makeText(context, "Downloading video...", Toast.LENGTH_SHORT).show()
                             }
                         )
                     }
@@ -350,9 +359,11 @@ fun FileSystemEntryItem(
     onLongClick: (FileSystemEntry) -> Unit,
     onDownloadAndOpen: (FileSystemEntry) -> Unit,
     onOpenFolder: (String) -> Unit = {},
-    onOpenInAiChat: (FileSystemEntry) -> Unit = {}
+    onOpenInAiChat: (FileSystemEntry) -> Unit = {},
+    onDownloadVideo: (FileSystemEntry, String?) -> Unit = { _, _ -> }
 ) {
     var showMenu by remember { mutableStateOf(false) }
+    var showDownloadDialog by remember { mutableStateOf(false) }
 
     Box {
         Row(
@@ -434,6 +445,15 @@ fun FileSystemEntryItem(
                         onDownloadAndOpen(entry)
                     }
                 )
+                if (isVideoFile(entry.name)) {
+                    DropdownMenuItem(
+                        text = { Text("Download Video to App") },
+                        onClick = {
+                            showMenu = false
+                            showDownloadDialog = true
+                        }
+                    )
+                }
             }
             if (isSearching) {
                 DropdownMenuItem(
@@ -467,6 +487,57 @@ fun FileSystemEntryItem(
                     }
                 )
             }
+        }
+        
+        if (showDownloadDialog) {
+            var password by remember { mutableStateOf("") }
+            var encrypt by remember { mutableStateOf(false) }
+            
+            AlertDialog(
+                onDismissRequest = { showDownloadDialog = false },
+                title = { Text("Download Video") },
+                text = {
+                    Column {
+                        Text("Download '${entry.name}' to app storage?")
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Checkbox(
+                                checked = encrypt,
+                                onCheckedChange = { encrypt = it }
+                            )
+                            Text("Encrypt with password")
+                        }
+                        if (encrypt) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            OutlinedTextField(
+                                value = password,
+                                onValueChange = { password = it },
+                                label = { Text("Password") },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            showDownloadDialog = false
+                            onDownloadVideo(entry, if (encrypt && password.isNotBlank()) password else null)
+                        }
+                    ) {
+                        Text("Download")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showDownloadDialog = false }) {
+                        Text("Cancel")
+                    }
+                }
+            )
         }
     }
 }

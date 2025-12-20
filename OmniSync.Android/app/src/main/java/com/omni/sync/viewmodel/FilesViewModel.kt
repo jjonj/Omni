@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.omni.sync.data.model.FileSystemEntry
 import com.omni.sync.data.model.PendingEdit
+import com.omni.sync.data.model.DownloadedVideo
 import com.omni.sync.data.repository.SignalRClient
 import com.omni.sync.viewmodel.MainViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -25,6 +26,13 @@ import androidx.core.content.FileProvider
 import android.content.Intent
 import android.net.Uri
 import android.webkit.MimeTypeMap
+import java.security.SecureRandom
+import javax.crypto.Cipher
+import javax.crypto.spec.SecretKeySpec
+import javax.crypto.spec.IvParameterSpec
+import java.security.MessageDigest
+import java.io.FileInputStream
+import java.util.UUID
 
 class FilesViewModel(
     application: Application, // Add application to constructor
@@ -64,6 +72,13 @@ class FilesViewModel(
     val downloadErrorMessage: StateFlow<String?> = _downloadErrorMessage
     // -------------------------------------
 
+    // --- Downloaded Videos State ---
+    private val _downloadedVideos = MutableStateFlow<List<DownloadedVideo>>(emptyList())
+    val downloadedVideos: StateFlow<List<DownloadedVideo>> = _downloadedVideos
+    
+    private val downloadedVideosPrefs = application.getSharedPreferences("downloaded_videos_prefs", Context.MODE_PRIVATE)
+    // -------------------------------------
+
     // --- Text Editor State ---
     private val _editingFile = MutableStateFlow<FileSystemEntry?>(null)
     val editingFile: StateFlow<FileSystemEntry?> = _editingFile
@@ -87,6 +102,7 @@ class FilesViewModel(
 
     init {
         loadFolderBookmarks()
+        loadDownloadedVideos()
         
         // Listen for connection changes to trigger sync
         viewModelScope.launch {
@@ -625,6 +641,230 @@ class FilesViewModel(
             bytesPerSecond >= 1_000_000 -> "${df.format(bytesPerSecond / 1_000_000)} MB/s"
             bytesPerSecond >= 1_000 -> "${df.format(bytesPerSecond / 1_000)} KB/s"
             else -> "${df.format(bytesPerSecond)} B/s"
+        }
+    }
+
+    // ============ Downloaded Videos Management ============
+    
+    private fun loadDownloadedVideos() {
+        val json = downloadedVideosPrefs.getString("downloaded_videos", null)
+        if (json != null) {
+            val type = object : com.google.gson.reflect.TypeToken<List<DownloadedVideo>>() {}.type
+            _downloadedVideos.value = gson.fromJson(json, type)
+        }
+    }
+
+    private fun saveDownloadedVideos() {
+        val json = gson.toJson(_downloadedVideos.value)
+        downloadedVideosPrefs.edit().putString("downloaded_videos", json).apply()
+    }
+
+    fun downloadVideoToAppData(entry: FileSystemEntry, password: String? = null) {
+        if (!mainViewModel.isConnected.value) {
+            _downloadErrorMessage.value = "Not connected to OmniSync Hub."
+            return
+        }
+        if (entry.isDirectory) {
+            _downloadErrorMessage.value = "Cannot download a directory."
+            return
+        }
+        if (_isDownloading.value) {
+            _downloadErrorMessage.value = "Another download is already in progress."
+            return
+        }
+
+        _downloadingFile.value = entry
+        _downloadProgress.value = 0
+        _downloadingSpeed.value = null
+        _downloadErrorMessage.value = null
+        _isDownloading.value = true
+
+        viewModelScope.launch(Schedulers.io().asCoroutineDispatcher()) {
+            try {
+                val videoId = UUID.randomUUID().toString()
+                val videosDir = File(mainViewModel.applicationContext.filesDir, "downloaded_videos")
+                if (!videosDir.exists()) {
+                    videosDir.mkdirs()
+                }
+
+                val chunkSize = 64 * 1024
+                var currentOffset = 0L
+                val totalSize = entry.size
+                var downloadedBytes = 0L
+                val startTime = System.currentTimeMillis()
+
+                val fileName = if (password != null) "$videoId.encrypted" else "$videoId.${entry.name.substringAfterLast('.')}"
+                val outputFile = File(videosDir, fileName)
+                
+                val fos = FileOutputStream(outputFile)
+                val cipher = if (password != null) {
+                    val key = deriveKeyFromPassword(password)
+                    Cipher.getInstance("AES/CBC/PKCS5Padding").apply {
+                        val iv = ByteArray(16)
+                        SecureRandom().nextBytes(iv)
+                        init(Cipher.ENCRYPT_MODE, SecretKeySpec(key, "AES"), IvParameterSpec(iv))
+                        fos.write(iv) // Write IV at the beginning of file
+                    }
+                } else null
+
+                try {
+                    while (currentOffset < totalSize) {
+                        val remainingBytes = totalSize - currentOffset
+                        val currentChunkSize = minOf(chunkSize.toLong(), remainingBytes).toInt()
+
+                        if (currentChunkSize == 0) break
+
+                        signalRClient.getFileChunk(entry.path, currentOffset, currentChunkSize)
+                            ?.subscribeOn(Schedulers.io())
+                            ?.blockingGet()
+                            ?.let { chunk ->
+                                val bytes = chunk as ByteArray
+                                val processedBytes = if (cipher != null) {
+                                    cipher.update(bytes)
+                                } else bytes
+                                
+                                fos.write(processedBytes)
+                                downloadedBytes += bytes.size
+                                currentOffset += bytes.size
+
+                                val progress = ((downloadedBytes * 100) / totalSize).toInt()
+                                _downloadProgress.value = progress
+
+                                val elapsedSeconds = (System.currentTimeMillis() - startTime) / 1000.0
+                                if (elapsedSeconds > 0) {
+                                    val speedBps = downloadedBytes / elapsedSeconds
+                                    _downloadingSpeed.value = formatBytesPerSecond(speedBps)
+                                }
+                            } ?: throw Exception("Failed to get file chunk.")
+                    }
+                    
+                    if (cipher != null) {
+                        val finalBytes = cipher.doFinal()
+                        fos.write(finalBytes)
+                    }
+                } finally {
+                    fos.close()
+                }
+
+                val downloadedVideo = DownloadedVideo(
+                    id = videoId,
+                    originalPath = entry.path,
+                    fileName = entry.name,
+                    localPath = outputFile.absolutePath,
+                    fileSize = entry.size,
+                    downloadDate = java.util.Date(),
+                    isEncrypted = password != null
+                )
+
+                val updatedList = _downloadedVideos.value.toMutableList()
+                updatedList.add(downloadedVideo)
+                _downloadedVideos.value = updatedList
+                saveDownloadedVideos()
+
+                _downloadErrorMessage.value = null
+                mainViewModel.addLog("Video downloaded: ${entry.name}", com.omni.sync.ui.screen.LogType.SUCCESS)
+            } catch (e: Exception) {
+                _downloadErrorMessage.value = "Download failed: ${e.message}"
+                Log.e("FilesViewModel", "Video download error", e)
+            } finally {
+                _isDownloading.value = false
+                _downloadingFile.value = null
+                _downloadProgress.value = 0
+                _downloadingSpeed.value = null
+            }
+        }
+    }
+
+    fun deleteDownloadedVideo(video: DownloadedVideo) {
+        try {
+            val file = File(video.localPath)
+            if (file.exists()) {
+                file.delete()
+            }
+
+            val updatedList = _downloadedVideos.value.toMutableList()
+            updatedList.remove(video)
+            _downloadedVideos.value = updatedList
+            saveDownloadedVideos()
+
+            mainViewModel.addLog("Deleted video: ${video.fileName}", com.omni.sync.ui.screen.LogType.INFO)
+        } catch (e: Exception) {
+            _errorMessage.value = "Failed to delete video: ${e.message}"
+            Log.e("FilesViewModel", "Delete video error", e)
+        }
+    }
+
+    fun playDownloadedVideo(video: DownloadedVideo, password: String? = null) {
+        if (video.isEncrypted && password == null) {
+            _errorMessage.value = "Password required to play encrypted video."
+            return
+        }
+
+        viewModelScope.launch(Schedulers.io().asCoroutineDispatcher()) {
+            try {
+                val file = File(video.localPath)
+                if (!file.exists()) {
+                    _errorMessage.value = "Video file not found."
+                    return@launch
+                }
+
+                val playableFile = if (video.isEncrypted && password != null) {
+                    val decryptedFile = File(mainViewModel.applicationContext.cacheDir, "temp_${video.id}.${video.fileName.substringAfterLast('.')}")
+                    decryptVideo(file, decryptedFile, password)
+                    decryptedFile
+                } else {
+                    file
+                }
+
+                val uri = FileProvider.getUriForFile(
+                    getApplication(),
+                    getApplication<Application>().packageName + ".fileprovider",
+                    playableFile
+                )
+
+                viewModelScope.launch(AndroidSchedulers.mainThread().asCoroutineDispatcher()) {
+                    mainViewModel.playVideo(uri.toString(), emptyList())
+                }
+            } catch (e: Exception) {
+                _errorMessage.value = "Failed to play video: ${e.message}"
+                Log.e("FilesViewModel", "Play video error", e)
+            }
+        }
+    }
+
+    private fun deriveKeyFromPassword(password: String): ByteArray {
+        val digest = MessageDigest.getInstance("SHA-256")
+        return digest.digest(password.toByteArray(Charsets.UTF_8))
+    }
+
+    private fun decryptVideo(encryptedFile: File, decryptedFile: File, password: String) {
+        val key = deriveKeyFromPassword(password)
+        val fis = FileInputStream(encryptedFile)
+        val fos = FileOutputStream(decryptedFile)
+
+        try {
+            val iv = ByteArray(16)
+            fis.read(iv)
+
+            val cipher = Cipher.getInstance("AES/CBC/PKCS5Padding")
+            cipher.init(Cipher.DECRYPT_MODE, SecretKeySpec(key, "AES"), IvParameterSpec(iv))
+
+            val buffer = ByteArray(8192)
+            var bytesRead: Int
+            while (fis.read(buffer).also { bytesRead = it } != -1) {
+                val decrypted = cipher.update(buffer, 0, bytesRead)
+                if (decrypted != null) {
+                    fos.write(decrypted)
+                }
+            }
+
+            val finalBytes = cipher.doFinal()
+            if (finalBytes != null) {
+                fos.write(finalBytes)
+            }
+        } finally {
+            fis.close()
+            fos.close()
         }
     }
 }
