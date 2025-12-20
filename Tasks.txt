@@ -29,7 +29,7 @@ Long press on shutdown button does switch it to a sleep icon but the hub still s
 
 ### Files Screen
 Bookmarking works! but DONE The manage bookmark panel should be at the bottom of the files screen, not top
-Downloading a video into app data and optionally password protecting it with encryption and password. Should be deletable
+DONE Downloading a video into app data and optionally password protecting it with encryption and password. Should be deletable
 
 
 
