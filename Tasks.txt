@@ -21,6 +21,11 @@ Long press on shutdown should switch to sleep instead, syncing with android app 
 
 ### General
 
+I can swipe side to side between screens which is nice except for the remote control screen where i cant swipe anywhere. Obv swipes on the trackpad are sent to the PC so thats good, but swiping on the button panel should probably work. Also swiping on the navigation bar itself should also work. 
+When pressing a button on the navigation panel, instantly swap to the other screen, dont do a sliding motion between the screens.
+We currently have 6 screens but we want more screens in the future, including the alarm screen described below and soon a smarthome screen. To navigate to these new screens we dont want to create more navigation buttons. Instead remove the Process button from the navigation bar and instead as the last button in the bar, add a new burger menu button that opens a drop down (up?) with more screens. Add the process screen and alarm screen to this menu.
+
+
 ### Dashboard
 
 ### Remote Control Screen
@@ -41,21 +46,17 @@ DONE Downloading a video into app data and optionally password protecting it wit
 
 ### Video Player Screen (all video player features completed)
 
-DONE The following 3 features worked previously but are now completely broken. I suspect that the video player is absorbing all taps/interactions
-DONE 1. Swiping finger up and down on left side should change phone brightness
-DONE 2. Swiping finger up and down on right side should change phone or video volume, t
-DONE 3. Double tap to skip forward/back no longer working. (probably broke when fixing brightness sliding. We used to have this working using overlay boxes on the left and right side that could also be used for volume change (and brightness?). Tap or double tap instead activates the video player which is fine for single tap but not double on the sides.
-
-
-BUILD STATUS: APK built successfully (19.62 MB), ready for deployment when device is connected
-MORE Text editing fancy features, think like a lite code editor like notepad++ or VS code. be creative. MORE options in burger menu with lots of options
+More Text editing fancy features, think like a lite code editor like notepad++ or VS code. be creative. MORE options in burger menu with lots of options
 When exiting text file and android keyboard active, change text editor size so it's not behind keyboard 
+
 DONE File system caching - remember all paths all files that have been listed IF They are inside (recursively) any bookmark, allowing to browse file system even after disconnecting
 DONE Text file content caching - remember the content of all files opened as text even when disconnected
 DONE File Cached editing - ALlow editing text files while disconnected, apply the change when reconnecting IF and only IF the the file date modified before saving matches the cached one  (aka the file hasnt changed since we last cached it). Otherwise save it with postfix .conflicted
 DONE Cached file creation - Allow creating text files while disconnected that will be saved to PC when reconnecting
+
+Investigate if there is a way to have the hub be notified whenever a cached file is changed on PC so that the android app can update its cached version, this is a nice to have, we definitely dont want to do periodic polling
 Add a * next to filename for files that have been edited offline and are waiting to sync
-When a cached file is synced to PC, add a log message to the actitivty log, specify if conflicted in red
+DONE When a cached file is synced to PC, add a log message to the activity log, specify if conflicted in red
 
 ### Browser control screen
 Play/Pause media works, but it works on current tab. Could we try getting it to work for whatever is/was the currently/most recently playing media. Or alternatively pause all playing media if any, otherwise play current tabs media would also be ok
@@ -64,9 +65,9 @@ An action to send the latest video from YouTube history to browser OR to phone
 
 
 ### Notification panel
-Make the buttons have different/better background
+DONE Make the buttons have different/better background
 
-### Home screen widgets
+### Android Home screen widgets
 Add support for widgets, when you add a widget you can choose a quick action (same as the list from notifications)
 
 ### Settings screen (accessed by button on dashboard, not bottom panel)
@@ -76,8 +77,8 @@ Quick actions dropdown: Add options to go directly to each screen in the app, ad
 Goal is that I want to be able to use gemini commands, e.g. /dir add D:/SSDProjects, currently it just sends it as a string to gemini and the ai responds instead of affecting the gemini cli harness. Please carefully read through the 
  DONE To achieve this we need to find a way to first programmatically control geminiCLI from outside the console. Make a proof of concept python script that does a /dir add command
  
-### Alarm (new)
-built in wakeup alarm, added to bottom of dashboard, scroll down on dash enabled 
+### Alarm screen (new)
+built in wakeup alarm
 Can select either time OR a button similar to the shutdown button that toggles between Off 8h30m 8h45m 9h
 from now for the alarm, which updates the selected time 
 The alarm will play the sound for X seconds at Y volume and then auto snooze for Z minutes and then play again for X seconds at Y+D volume up to maximum N times 
@@ -88,6 +89,9 @@ the alarm screen has a toggle for whether the to use default gradual alarm or ha
 hard alarm works like normal alarm, no auto snooze and uses android alarm volume setting 
 another toggle whether alarm active 
 another toggle will determine if the alarm repeats daily or one time 
+
+### Smart home integration
+Read SmartFeature.txt
 
 ## Web
 DONE Hub screen on web doesnt work/receive updates.
