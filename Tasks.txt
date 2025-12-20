@@ -6,7 +6,7 @@ if told to do a megasession then fix/implement as many issues of the ones below 
 
 
 ## General
-When app is in horizontal mode, hide the navigation bar
+DONE When app is in horizontal mode, hide the navigation bar
 
 ## For the hub
 DONE Run on startup is not working, windows is trying to run D:\SSDProjects\Omni\OmniSync.Hub\src\OmniSync.Hub\bin\Debug\net9.0-windows\OmniSync.Hub.dll on startup which is nonsensical
