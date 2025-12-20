@@ -136,12 +136,8 @@ class MainActivity : ComponentActivity() {
                         LaunchedEffect(currentScreen) {
                             val index = swipeableScreens.indexOf(currentScreen)
                             if (index != -1 && pagerState.currentPage != index) {
-                                // If distance > 1, use scrollToPage to avoid janky animation through intermediate pages
-                                if (Math.abs(pagerState.currentPage - index) > 1) {
-                                    pagerState.scrollToPage(index)
-                                } else {
-                                    pagerState.animateScrollToPage(index)
-                                }
+                                // Always use scrollToPage to instantly swap, no animation
+                                pagerState.scrollToPage(index)
                             }
                         }
 
