@@ -29,15 +29,6 @@ def launch_gemini():
         print("Success.")
     except Exception as e:
         print(f"Error: {e}")
-    try:
-        subprocess.Popen(
-            ['cmd.exe', '/K', cmd],
-            creationflags=subprocess.CREATE_NEW_CONSOLE,
-            close_fds=True
-        )
-        print("Success.")
-    except Exception as e:
-        print(f"Error: {e}")
 
 if __name__ == "__main__":
     launch_gemini()

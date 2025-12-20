@@ -1,6 +1,0 @@
-Implement Web Monitor page and Hub broadcasting
-
-- Created OmniSync.Web/IntegrateThisIntoWeb/HubMonitor.html as a dedicated read-only monitor page.
-- Updated HubEventSender to broadcast LogEntryAdded, CommandUpdateOccurred, ConnectionAdded, and ConnectionRemoved events to all SignalR clients.
-- Updated HubMonitorService to trigger these broadcasts.
-- Marked 'Make a new page that is an exact copy of hub window' as DONE in Tasks.txt.

@@ -2,7 +2,7 @@
 
 This document tracks the implementation, architecture, and status of AI-related features within the OmniSync ecosystem.
 
-NOTE: Do not kill all node instances as you will kill yourself as you are a node instance.
+Always use cleanup_gemini_windows.py between test runs, or even better, adjust all scripts to call cleanup_gemini_windows.py as the first thing.
 
 ## Architectural Overview
 
@@ -15,6 +15,10 @@ The AI system has transitioned from brittle UI automation to a robust **Programm
 5.  **Response Relay**: The Python listener captures the response from the pipe and relays it back to the Hub.
 
 ---
+
+The project uses two workspaces
+D:\SSDProjects\Omni, the main omni project with the hub, test scripts and android app
+D:\SSDProjects\Tools\gemini-cli a custom/forked version/repo of gemini CLI with custom hooks into the CLI to be used by Omni
 
 ## Component Deep-Dive
 
@@ -37,6 +41,8 @@ The test suite has been expanded to cover advanced scenarios:
 - `test_auto_multi_cli.py`: Automates launching multiple Gemini instances and verifies parallel communication with each via unique pipes.
 - `test_command_injection.py`: Validates slash command injection (`/dir add`) and context-aware file reading (tasks.txt).
 - `run_full_ai_test.py`: Orchestrates the full stack for regression testing.
+These are the first generation proof of concept test scripts
+A new generation of scripts that do the same but indirectly by communicating with the hub is in the works
 
 ---
 
@@ -59,10 +65,14 @@ The readback hang in `test_command_injection.py` was resolved by:
 
 ---
 
+## Ultimate goal
+The ability to create, List, switch-between, close and interact with multiple CLI windows on the PC from the Android app through the hub as the middleman.
+We are achieving this by first establishing full control over gemini cli, then integrating the control into the hub and finally android to give us the full CLI <--> Hub <--> Android. 
+Android already has barebones AI control but its somewhat outdated.
+
 ## Next Steps
-1.  **Direct Hub Commands**: Allow the AI to emit JSON payloads to trigger native Hub actions (e.g., "Toggle Lights"). **[IN PROGRESS]**
-2.  **UI Feedback**: Implement better visual feedback in the Android app for when the AI is "Thinking" vs "Responding".
-3.  **Refactor AI Listener**: Further optimize `ai_listener.py` for multi-turn reliability.
+Develop hub versions of test scripts. The scripts should ONLY communicate with the hub and tell the hub to start CLIs, send slash commands and messages to the CLIs and getting back messages and events from AI etc.
+
 
 ## Completed Recently
 - **Process Cleanup Safety**: `cleanup_gemini_windows.py` now uses `Get-Process` with window title filtering (`-notlike "*Omni*"`) to avoid killing the active Gemini CLI session.

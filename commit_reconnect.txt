@@ -1,6 +1,0 @@
-Fix Automatic Reconnect logic in SignalRClient
-
-- Extracted connection success logic to onConnected().
-- Ensured onConnected() is called both on initial connection completion and after a successful reconnection attempt in the loop.
-- This fixes the issue where the app would stay in a disconnected state even after the Hub came back online.
-- Marked 'Automatic reconnect' and 'Reconnect' as DONE in Tasks.txt.

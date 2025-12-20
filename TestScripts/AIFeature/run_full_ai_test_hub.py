@@ -74,11 +74,19 @@ def kill_gemini_instances():
         except (psutil.NoSuchProcess, psutil.AccessDenied):
             pass
 
+def cleanup_all_gemini_windows():
+    print("[0/5] Thoroughly cleaning up all Gemini windows...")
+    cleanup_script = os.path.join(ROOT_DIR, "TestScripts", "AIFeature", "cleanup_gemini_windows.py")
+    subprocess.run([sys.executable, cleanup_script], cwd=ROOT_DIR)
+
 def main():
     print("\n" + "="*60)
     print("      OMNISYNC: FULL HUB-MEDIATED AI REGRESSION")
     print("="*60 + "\n")
     
+    # 0. Thorough cleanup
+    cleanup_all_gemini_windows()
+
     # 1. Check Hub
     print("[1/5] Checking OmniSync Hub status...")
     if not is_port_in_use(HUB_PORT):

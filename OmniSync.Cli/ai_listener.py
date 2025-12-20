@@ -44,9 +44,9 @@ def get_gemini_pid():
             if 'node' in proc.info['name'].lower() and 'gemini' in cmdline.lower():
                 # Exclude the listener itself
                 if "ai_listener" not in cmdline.lower() and "modify_gemini" not in cmdline.lower():
-                    # Prioritize the bundle version
-                    if 'bundle/gemini.js' in cmdline.replace('\\', '/'):
-                        logger.info(f"Found Gemini bundle process: PID {proc.info['pid']}")
+                    # Prioritize the bundle or dist version
+                    if 'bundle/gemini.js' in cmdline.replace('\\', '/') or 'dist/index.js' in cmdline.replace('\\', '/'):
+                        logger.info(f"Found Gemini process: PID {proc.info['pid']} (Cmd: {cmdline})")
                         return proc.info['pid']
                     best_pid = proc.info['pid']
         except (psutil.NoSuchProcess, psutil.AccessDenied):

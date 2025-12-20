@@ -50,12 +50,20 @@ def run_script(path, new_console=False):
     else:
         return subprocess.run([sys.executable, full_path], cwd=ROOT_DIR)
 
+def cleanup_all_gemini_windows():
+    print("[0/5] Thoroughly cleaning up all Gemini windows...")
+    cleanup_script = os.path.join(ROOT_DIR, "TestScripts", "AIFeature", "cleanup_gemini_windows.py")
+    subprocess.run([sys.executable, cleanup_script], cwd=ROOT_DIR)
+
 def main():
     print("\n" + "="*60)
     print("      OMNISYNC: FULL AI INTEGRATION REGRESSION TEST")
     print("="*60 + "\n")
-    
-    # 1. Check Hub
+
+    # 0. Thorough cleanup
+    cleanup_all_gemini_windows()
+
+    # 1. Check OmniSync Hub status...
     print("[1/5] Checking OmniSync Hub status...")
     if not is_port_in_use(HUB_PORT):
         print("!! Hub is not running on port 5000. Please run run_omnihub.py first.")
