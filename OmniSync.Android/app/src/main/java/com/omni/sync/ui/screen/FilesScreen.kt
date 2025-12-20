@@ -51,6 +51,7 @@ fun FilesScreen(
     val isLoading by filesViewModel.isLoading.collectAsState()
     val searchQuery by filesViewModel.searchQuery.collectAsState()
     val errorMessage by filesViewModel.errorMessage.collectAsState()
+    val pendingEditPaths by filesViewModel.pendingEditPaths.collectAsState()
 
     var showBookmarksList by remember { mutableStateOf(false) }
     var showCreateFileDialog by remember { mutableStateOf(false) }
@@ -217,12 +218,13 @@ fun FilesScreen(
                     modifier = Modifier.weight(1f).fillMaxWidth(),
                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
                 ) {
-                    items(fileSystemEntries) {
-                        entry ->
+                    items(fileSystemEntries) { entry ->
+                        val hasPendingEdit = !entry.isDirectory && pendingEditPaths.contains(entry.path)
                         FileSystemEntryItem(
                             entry = entry,
                             isSearching = searchQuery.isNotEmpty(),
                             isBookmarked = filesViewModel.isFolderBookmarked(entry.path),
+                            hasPendingEdit = hasPendingEdit,
                             onBookmarkToggle = { filesViewModel.toggleFolderBookmark(it) },
                             onClick = { clickedEntry ->
                                 if (clickedEntry.isDirectory) {
@@ -355,6 +357,7 @@ fun FileSystemEntryItem(
     entry: FileSystemEntry, 
     isSearching: Boolean = false,
     isBookmarked: Boolean = false,
+    hasPendingEdit: Boolean = false,
     onBookmarkToggle: (FileSystemEntry) -> Unit = {},
     onClick: (FileSystemEntry) -> Unit, 
     onLongClick: (FileSystemEntry) -> Unit,
@@ -395,7 +398,8 @@ fun FileSystemEntryItem(
             )
             Spacer(Modifier.width(8.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Text(text = entry.name, style = MaterialTheme.typography.bodyLarge)
+                val displayName = if (!entry.isDirectory && hasPendingEdit) entry.name + " *" else entry.name
+                Text(text = displayName, style = MaterialTheme.typography.bodyLarge)
                 if (isSearching) {
                     Text(text = entry.path, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }

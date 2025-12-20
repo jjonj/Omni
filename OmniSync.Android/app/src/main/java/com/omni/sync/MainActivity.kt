@@ -9,6 +9,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -43,13 +44,23 @@ import android.content.pm.PackageManager
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 
-import android.content.res.Configuration // Import Configuration
-import androidx.compose.ui.platform.LocalConfiguration // Import LocalConfiguration
+import android.content.res.Configuration
+import androidx.compose.ui.platform.LocalConfiguration
 
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.snapshotFlow
+import com.omni.sync.service.AlarmService
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.foundation.layout.size
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AlarmOff
+import androidx.compose.material3.Icon
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalContext
 
 class MainActivity : ComponentActivity() {
     private lateinit var mainViewModel: MainViewModel
@@ -67,23 +78,19 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
-        // Request notification permission if needed
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
                 ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.POST_NOTIFICATIONS), 101)
             }
         }
 
-        // This is crucial for making the IME (keyboard) work correctly with padding
         WindowCompat.setDecorFitsSystemWindows(window, false)
 
         omniSyncApplication = application as OmniSyncApplication
         mainViewModel = omniSyncApplication.mainViewModel
         
-        // Start the SignalR connection (if not already started)
         omniSyncApplication.signalRClient.startConnection()
 
-        // Start the Foreground Service
         Intent(this, ForegroundService::class.java).also { intent ->
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
                 startForegroundService(intent)
@@ -97,9 +104,11 @@ class MainActivity : ComponentActivity() {
                 val currentScreen by mainViewModel.currentScreen.collectAsState()
                 val canGoBack by mainViewModel.canGoBack.collectAsState()
                 val signalRClient = omniSyncApplication.signalRClient
+                
+                // Observe Alarm State
+                val isAlarmRinging by AlarmService.isRinging.collectAsState()
 
                 if (currentScreen == AppScreen.VIDEOPLAYER) {
-                    // Truly Fullscreen for video player - Bypass everything
                     val videoUrl by mainViewModel.currentVideoUrl.collectAsState()
                     val playlist by mainViewModel.videoPlaylist.collectAsState()
                     val initialIndex by mainViewModel.currentVideoIndex.collectAsState()
@@ -117,7 +126,6 @@ class MainActivity : ComponentActivity() {
                         modifier = Modifier.fillMaxSize(),
                         color = MaterialTheme.colorScheme.background
                     ) {
-                        // Handle global back navigation
                         BackHandler(enabled = true) {
                             mainViewModel.handleBackPress { finish() }
                         }
@@ -131,16 +139,13 @@ class MainActivity : ComponentActivity() {
 
                         val pagerState = rememberPagerState(pageCount = { swipeableScreens.size })
 
-                        // Sync ViewModel screen to Pager
                         LaunchedEffect(currentScreen) {
                             val index = swipeableScreens.indexOf(currentScreen)
                             if (index != -1 && pagerState.currentPage != index) {
-                                // Always use scrollToPage to instantly swap, no animation
                                 pagerState.scrollToPage(index)
                             }
                         }
 
-                        // Sync Pager to ViewModel screen
                         LaunchedEffect(pagerState) {
                             snapshotFlow { pagerState.currentPage }.collect { page ->
                                 val screen = swipeableScreens[page]
@@ -150,7 +155,6 @@ class MainActivity : ComponentActivity() {
                             }
                         }
 
-                        // Using Scaffold to organize the layout professionally
                         androidx.compose.material3.Scaffold(
                             bottomBar = {
                                 val configuration = LocalConfiguration.current
@@ -169,13 +173,12 @@ class MainActivity : ComponentActivity() {
                             ) {
                                 if (currentScreen == AppScreen.EDITOR || currentScreen == AppScreen.SETTINGS || 
                                     currentScreen == AppScreen.PROCESS || currentScreen == AppScreen.ALARM) {
-                                    // Non-swipeable standalone screens
                                     MainScreenContent(currentScreen, signalRClient, browserViewModel, filesViewModel, mainViewModel)
                                 } else {
                                     HorizontalPager(
                                         state = pagerState,
                                         modifier = Modifier.fillMaxSize(),
-                                        userScrollEnabled = true // Enable horizontal swiping for all screens
+                                        userScrollEnabled = true 
                                     ) { page ->
                                         MainScreenContent(swipeableScreens[page], signalRClient, browserViewModel, filesViewModel, mainViewModel)
                                     }
@@ -183,6 +186,30 @@ class MainActivity : ComponentActivity() {
                             }
                         }
                     }
+                }
+
+                // Global Alarm Dismiss Overlay
+                if (isAlarmRinging) {
+                    val context = LocalContext.current
+                    AlertDialog(
+                        onDismissRequest = { /* Prevent dismissal by clicking outside */ },
+                        icon = { Icon(Icons.Default.AlarmOff, null, modifier = Modifier.size(48.dp)) },
+                        title = { Text("Alarm Ringing!", style = MaterialTheme.typography.headlineMedium) },
+                        text = { 
+                            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+                                Text("Wake up!", style = MaterialTheme.typography.bodyLarge) 
+                            }
+                        },
+                        confirmButton = {
+                            Button(
+                                onClick = { AlarmService.stopAlarm(context) },
+                                modifier = Modifier.fillMaxWidth().padding(8.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                            ) {
+                                Text("DISMISS", style = MaterialTheme.typography.titleLarge)
+                            }
+                        }
+                    )
                 }
             }
         }
@@ -235,7 +262,7 @@ class MainActivity : ComponentActivity() {
                 mainViewModel = mainViewModel,
                 onBack = { mainViewModel.goBack() }
             )
-            else -> {} // Handled at top level
+            else -> {} 
         }
     }
 }

@@ -98,6 +98,10 @@ class SignalRClient(
     private val _tabListReceived = MutableStateFlow<List<Map<String, Any>>>(emptyList())
     val tabListReceived: StateFlow<List<Map<String, Any>>> = _tabListReceived
 
+    // File change events from Hub (path, unixMillis)
+    private val _fileChangeEvents = MutableSharedFlow<Pair<String, Long>>(extraBufferCapacity = 64)
+    val fileChangeEvents: SharedFlow<Pair<String, Long>> = _fileChangeEvents.asSharedFlow()
+
     private val _aiMessages = MutableStateFlow<List<Pair<String, String>>>(emptyList())
     val aiMessages: StateFlow<List<Pair<String, String>>> = _aiMessages
 
@@ -236,7 +240,13 @@ class SignalRClient(
             mainViewModel.setShutdownMode(mode)
         }, String::class.java)
         
-        // Handler for cleanup patterns from Chrome extension
+        // File change notifications from Hub (no polling)
+       hubConnection?.on("FileChanged", { path: String, unixMillis: Long ->
+           Log.d("SignalRClient", "FileChanged: $path @ $unixMillis")
+           coroutineScope.launch { _fileChangeEvents.emit(Pair(path, unixMillis)) }
+       }, String::class.java, java.lang.Long::class.java)
+
+       // Handler for cleanup patterns from Chrome extension
         hubConnection?.on("ReceiveCleanupPatterns", { patternsData: Any ->
             Log.d("SignalRClient", "Received cleanup patterns: $patternsData")
             try {

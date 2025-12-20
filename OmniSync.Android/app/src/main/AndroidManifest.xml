@@ -8,7 +8,13 @@
     <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
+    <!-- Added for Alarm Service -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.VIBRATE" />
 
     <application
         android:name=".OmniSyncApplication"
@@ -45,6 +51,21 @@
         <service android:name=".service.ForegroundService"
             android:foregroundServiceType="connectedDevice"
             android:exported="false"/>
+
+        <!-- New Alarm Service -->
+        <service 
+            android:name=".service.AlarmService"
+            android:foregroundServiceType="mediaPlayback"
+            android:exported="false" />
+
+        <!-- New Alarm Receiver -->
+        <receiver 
+            android:name=".receiver.AlarmReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.omni.sync.ALARM_TRIGGER" />
+            </intent-filter>
+        </receiver>
 
         <provider
             android:name="androidx.core.content.FileProvider"

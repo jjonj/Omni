@@ -40,6 +40,10 @@ class FilesViewModel(
     val mainViewModel: MainViewModel // To access connection status, etc.
 ) : AndroidViewModel(application) {
 
+    // Track pending offline edits (paths waiting to sync)
+    private val _pendingEditPaths = MutableStateFlow<Set<String>>(emptySet())
+    val pendingEditPaths: StateFlow<Set<String>> = _pendingEditPaths
+
     private val _currentPath = MutableStateFlow("")
     val currentPath: StateFlow<String> = _currentPath
 
@@ -103,6 +107,7 @@ class FilesViewModel(
     init {
         loadFolderBookmarks()
         loadDownloadedVideos()
+        loadPendingEditPaths()
         
         // Listen for connection changes to trigger sync
         viewModelScope.launch {
@@ -110,6 +115,13 @@ class FilesViewModel(
                 if (connected) {
                     syncPendingChanges()
                 }
+            }
+        }
+
+        // Listen to Hub file change events to invalidate caches (no polling)
+        viewModelScope.launch {
+            signalRClient.fileChangeEvents.collect { (path, _) ->
+                onHubFileChanged(path)
             }
         }
     }
@@ -454,6 +466,9 @@ class FilesViewModel(
             val json = gson.toJson(pendingEdit)
             pendingEditsPrefs.edit().putString("pending_${entry.path}", json).apply()
             
+            // Track pending path for UI indicator
+            addPendingPath(entry.path)
+            
             // Also update text cache so if we reopen it offline, we see our changes
             textCachePrefs.edit().putString("text_${entry.path}", content).apply()
 
@@ -532,8 +547,9 @@ class FilesViewModel(
                         mainViewModel.addLog("Synced offline edit: ${savePath}", com.omni.sync.ui.screen.LogType.SUCCESS)
                     }
 
-                    // Remove from pending
+                    // Remove from pending and update indicator set
                     pendingEditsPrefs.edit().remove(key).apply()
+                    removePendingPath(pendingEdit.path)
 
                 } catch (e: Exception) {
                     viewModelScope.launch(AndroidSchedulers.mainThread().asCoroutineDispatcher()) {
@@ -542,6 +558,37 @@ class FilesViewModel(
                 }
             }
         }
+    }
+
+    private fun loadPendingEditPaths() {
+        val paths = pendingEditsPrefs.all.keys
+            .filter { it.startsWith("pending_") }
+            .map { it.removePrefix("pending_") }
+            .toSet()
+        _pendingEditPaths.value = paths
+    }
+
+    private fun addPendingPath(path: String) {
+        _pendingEditPaths.value = _pendingEditPaths.value + path
+    }
+
+    private fun removePendingPath(path: String) {
+        _pendingEditPaths.value = _pendingEditPaths.value - path
+    }
+
+    private fun onHubFileChanged(path: String) {
+        try {
+            // Invalidate text cache for this exact file
+            textCachePrefs.edit().remove("text_${'$'}path").apply()
+            // Invalidate directory cache for its parent so next browse reloads
+            val parent = getParentPath(path)
+            cachePrefs.edit().remove("cache_${'$'}parent").apply()
+            // If we are currently in that parent directory and connected, refresh listing
+            if (mainViewModel.isConnected.value && _currentPath.value == parent) {
+                loadDirectory(parent)
+            }
+            // If this was pending, keep the pending mark until a successful sync clears it
+        } catch (_: Exception) {}
     }
 
     private fun getParentPath(path: String): String {
