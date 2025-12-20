@@ -43,6 +43,9 @@ import android.content.pm.PackageManager
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 
+import android.content.res.Configuration // Import Configuration
+import androidx.compose.ui.platform.LocalConfiguration // Import LocalConfiguration
+
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.runtime.LaunchedEffect
@@ -155,10 +158,14 @@ class MainActivity : ComponentActivity() {
                         // Using Scaffold to organize the layout professionally
                         androidx.compose.material3.Scaffold(
                             bottomBar = {
-                                OmniBottomNavigation(
-                                    currentScreen = currentScreen,
-                                    onNavigate = { screen -> mainViewModel.navigateTo(screen) }
-                                )
+                                val configuration = LocalConfiguration.current
+                                val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+                                if (!isLandscape) {
+                                    OmniBottomNavigation(
+                                        currentScreen = currentScreen,
+                                        onNavigate = { screen -> mainViewModel.navigateTo(screen) }
+                                    )
+                                }
                             }
                         ) { innerPadding ->
                             Box(modifier = Modifier
