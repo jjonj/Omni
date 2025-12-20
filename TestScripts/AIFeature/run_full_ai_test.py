@@ -39,41 +39,49 @@ def run_script(path, new_console=False):
         return subprocess.run([sys.executable, full_path], cwd=ROOT_DIR)
 
 def main():
-    print("=== STARTING FULL AI INTEGRATION TEST ===")
+    print("\n" + "="*60)
+    print("      OMNISYNC: FULL AI INTEGRATION REGRESSION TEST")
+    print("="*60 + "\n")
     
     # 1. Check Hub
+    print("[1/5] Checking OmniSync Hub status...")
     if not is_port_in_use(HUB_PORT):
-        print("Hub is not running on port 5000. Please run run_omnihub.py first.")
-        # We don't auto-run hub as it might require rebuild which is slow
+        print("!! Hub is not running on port 5000. Please run run_omnihub.py first.")
         return
+    print("  - Hub is ONLINE.")
 
     # 2. Cleanup existing AI components
+    print("[2/5] Cleaning up stale AI components...")
     kill_process_by_name("ai_listener.py")
-    # We don't necessarily kill Gemini CLI to preserve history, 
-    # but we need to ensure the Listener can find it.
+    time.sleep(1)
 
     # 3. Launch Gemini CLI (interactive)
+    print("[3/5] Launching Gemini CLI...")
     run_script("launch_gemini_cli.py")
-    time.sleep(2)
+    time.sleep(3)
 
     # 4. Launch AI Listener
+    print("[4/5] Launching AI Listener...")
     run_script("launch_ai_listener.py")
-    print("Waiting for AI Listener to authenticate...")
+    print("  - Waiting 8s for Listener to discover pipe and authenticate...")
     time.sleep(8)
 
     # 5. Run Integration Test
-    print("\n--- Running Integration Test ---")
+    print("[5/5] Running SignalR Roundtrip Test...")
+    print("-"*60)
     # Note: path is relative to ROOT_DIR
     test_path = os.path.join("TestScripts", "AIFeature", "test_ai_integration.py")
     result = subprocess.run([sys.executable, test_path], cwd=ROOT_DIR)
+    print("-"*60)
     
     if result.returncode == 0:
-        print("\nSUCCESS: AI Integration test passed!")
+        print("\nOVERALL STATUS: SUCCESS")
     else:
-        print(f"\nFAILED: AI Integration test exited with code {result.returncode}")
+        print(f"\nOVERALL STATUS: FAILED (Exit Code: {result.returncode})")
 
-    print("\n=== TEST COMPLETE ===")
-    print("Gemini CLI and AI Listener are still running in their consoles.")
+    print("\n" + "="*60)
+    print("TEST COMPLETE. Gemini CLI and Listener consoles remain open.")
+    print("="*60)
 
 if __name__ == "__main__":
     main()

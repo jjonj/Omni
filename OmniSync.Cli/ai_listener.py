@@ -114,6 +114,9 @@ async def handle_and_reply(message):
     
     if response:
         logger.info("Sending AI Response back to Hub")
+        print("\n" + "="*60)
+        print(f"CAPTURED AI RESPONSE:\n{response}")
+        print("="*60 + "\n")
         try:
             hub.send("SendAiResponse", [response])
             hub.send("SendAiStatus", [None]) 
