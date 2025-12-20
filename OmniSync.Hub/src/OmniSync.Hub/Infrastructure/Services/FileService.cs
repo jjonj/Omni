@@ -8,31 +8,32 @@ using OmniSync.Hub.Logic.Services; // Added for HubEventSender
 
 namespace OmniSync.Hub.Infrastructure.Services
 {
-    public class FileService
-    {
-        private readonly string _noteRootPath; // Renamed from _rootPath to clarify its purpose
-        private readonly string _browseRootPath; // New field for the configurable browse root
-        private readonly HubEventSender _hubEventSender; // Injected HubEventSender
-
-        public FileService(HubEventSender hubEventSender)
+            public class FileService
         {
-            _hubEventSender = hubEventSender;
-            // Default constructor, maintains original behavior for _noteRootPath
-            _noteRootPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "Obsidian");
-            if (!Directory.Exists(_noteRootPath))
+            private readonly string _noteRootPath; // Renamed from _rootPath to clarify its purpose
+            private readonly string _browseRootPath; // New field for the configurable browse root
+    
+            // Events to notify about file write operations
+            public event EventHandler<string>? FileWritten;
+            public event EventHandler<string>? BrowseFileWritten;
+    
+            public FileService()
             {
-                Directory.CreateDirectory(_noteRootPath);
+                // Default constructor, maintains original behavior for _noteRootPath
+                _noteRootPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "Obsidian");
+                if (!Directory.Exists(_noteRootPath))
+                {
+                    Directory.CreateDirectory(_noteRootPath);
+                }
+                // Default _browseRootPath to a common starting point, e.g., user's home directory
+                _browseRootPath = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
             }
-            // Default _browseRootPath to a common starting point, e.g., user's home directory
-            _browseRootPath = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        }
-
-        public FileService(string noteRootPath, string browseRootPath, HubEventSender hubEventSender)
-        {
-            _hubEventSender = hubEventSender;
-            _noteRootPath = noteRootPath;
-            _browseRootPath = browseRootPath;
-
+    
+            public FileService(string noteRootPath, string browseRootPath)
+            {
+                _noteRootPath = noteRootPath;
+                _browseRootPath = browseRootPath;
+    
             if (!Directory.Exists(_noteRootPath))
             {
                 Directory.CreateDirectory(_noteRootPath);
@@ -79,6 +80,7 @@ namespace OmniSync.Hub.Infrastructure.Services
             var fullPath = SanitizeAndGetNoteFullPath(filePath);
             File.WriteAllText(fullPath, content);
             _hubEventSender.BroadcastLogEntryAdded($"File '{filePath}' synced to PC.");
+            FileWritten?.Invoke(this, filePath); // Invoke the event
         }
 
         public void WriteBrowseFile(string filePath, string content)
@@ -86,6 +88,7 @@ namespace OmniSync.Hub.Infrastructure.Services
             var fullPath = SanitizeAndGetBrowseFullPath(filePath);
             File.WriteAllText(fullPath, content);
             _hubEventSender.BroadcastLogEntryAdded($"Browse file '{filePath}' synced to PC.");
+            BrowseFileWritten?.Invoke(this, filePath); // Invoke the event
         }
 
         public void AppendToFile(string filePath, string content)

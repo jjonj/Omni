@@ -78,7 +78,17 @@ builder.Services.AddSingleton<ShutdownService>(provider =>
     return new ShutdownService(logger, processService, audioService, fileService);
 });
 builder.Services.AddSingleton<RegistryService>();
-builder.Services.AddSingleton<HubEventSender>();
+builder.Services.AddSingleton<HubEventSender>(provider =>
+{
+    var hubContext = provider.GetRequiredService<IHubContext<RpcApiHub>>();
+    var processService = provider.GetRequiredService<ProcessService>();
+    var inputService = provider.GetRequiredService<InputService>();
+    var shutdownService = provider.GetRequiredService<ShutdownService>();
+    var commandDispatcher = provider.GetRequiredService<CommandDispatcher>();
+    var fileService = provider.GetRequiredService<FileService>(); // Get FileService
+
+    return new HubEventSender(hubContext, processService, inputService, shutdownService, commandDispatcher, fileService);
+});
 builder.Services.AddSingleton<HubMonitorService>(); // Register the new monitoring service
 builder.Services.AddHostedService<TrayIconManager>();
 builder.Services.AddSingleton<KeyboardHook>(); // Register KeyboardHook

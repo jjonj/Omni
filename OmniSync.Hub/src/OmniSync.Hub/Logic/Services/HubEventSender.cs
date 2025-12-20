@@ -15,21 +15,26 @@ namespace OmniSync.Hub.Logic.Services
         private readonly InputService _inputService;
         private readonly ShutdownService _shutdownService;
         private readonly CommandDispatcher _commandDispatcher;
+        private readonly FileService _fileService; // Added FileService dependency
         private readonly Dictionary<string, string> _clientCommandOutputSubscriptions = new Dictionary<string, string>(); // ClientId -> ConnectionId for command output
 
-        public HubEventSender(IHubContext<RpcApiHub> hubContext, ProcessService processService, InputService inputService, ShutdownService shutdownService, CommandDispatcher commandDispatcher)
+        public HubEventSender(IHubContext<RpcApiHub> hubContext, ProcessService processService, InputService inputService, ShutdownService shutdownService, CommandDispatcher commandDispatcher, FileService fileService) // Added FileService
         {
             _hubContext = hubContext;
             _processService = processService;
             _inputService = inputService;
             _shutdownService = shutdownService;
             _commandDispatcher = commandDispatcher;
+            _fileService = fileService; // Assign FileService
 
             _processService.CommandOutputReceived += OnCommandOutputReceived;
             _inputService.ModifierStateChanged += OnModifierStateChanged;
             _shutdownService.ShutdownScheduled += OnShutdownScheduled;
             _shutdownService.ModeChanged += OnShutdownModeChanged;
             _commandDispatcher.AddCleanupPatternRequested += OnAddCleanupPatternRequested;
+            // Subscribe to FileService events
+            _fileService.FileWritten += OnFileWritten;
+            _fileService.BrowseFileWritten += OnBrowseFileWritten;
         }
 
         private async void OnShutdownModeChanged(object? sender, ShutdownMode mode)
@@ -81,6 +86,16 @@ namespace OmniSync.Hub.Logic.Services
         public void UnsubscribeFromCommandOutput(string clientId)
         {
             _clientCommandOutputSubscriptions.Remove(clientId);
+        }
+
+        private async void OnFileWritten(object? sender, string filePath)
+        {
+            await BroadcastLogEntryAdded($"File '{filePath}' synced to PC.");
+        }
+
+        private async void OnBrowseFileWritten(object? sender, string filePath)
+        {
+            await BroadcastLogEntryAdded($"Browse file '{filePath}' synced to PC.");
         }
 
         private async void OnCommandOutputReceived(object sender, string output)
