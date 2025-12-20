@@ -13,6 +13,7 @@ using System.IO; // Added for Path.Combine and Directory.GetCurrentDirectory()
 
 using Microsoft.Extensions.FileProviders; // Added for PhysicalFileProvider
 using Microsoft.AspNetCore.Hosting; // Added for ConfigureKestrel
+using Microsoft.AspNetCore.SignalR; // Added for IHubContext
 
 // Set the current directory to the location of the executable to ensure
 // consistent behavior for file paths (config, static files) regardless of startup method.
@@ -38,7 +39,6 @@ builder.Services.AddSingleton<AuthService>(new AuthService(builder.Configuration
 builder.Services.AddSingleton<FileService>(provider =>
 {
     var configuration = provider.GetRequiredService<IConfiguration>();
-    var hubEventSender = provider.GetRequiredService<HubEventSender>(); // Get HubEventSender
     var noteRootPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "Obsidian"); // Default to Obsidian
     var browseRootPath = configuration["FileService:BrowseRootPath"] ?? Environment.GetFolderPath(Environment.SpecialFolder.UserProfile); // Configurable, or default to user profile
 
@@ -49,7 +49,7 @@ builder.Services.AddSingleton<FileService>(provider =>
     }
     // No need to ensure browseRootPath exists here, as it's for browsing
     
-    return new FileService(noteRootPath, browseRootPath, hubEventSender); // Pass hubEventSender
+    return new FileService(noteRootPath, browseRootPath);
 });
 builder.Services.AddSingleton<ClipboardService>();
 builder.Services.AddSingleton<CommandDispatcher>(provider => {

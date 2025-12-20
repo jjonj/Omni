@@ -79,7 +79,6 @@ namespace OmniSync.Hub.Infrastructure.Services
         {
             var fullPath = SanitizeAndGetNoteFullPath(filePath);
             File.WriteAllText(fullPath, content);
-            _hubEventSender.BroadcastLogEntryAdded($"File '{filePath}' synced to PC.");
             FileWritten?.Invoke(this, filePath); // Invoke the event
         }
 
@@ -87,7 +86,6 @@ namespace OmniSync.Hub.Infrastructure.Services
         {
             var fullPath = SanitizeAndGetBrowseFullPath(filePath);
             File.WriteAllText(fullPath, content);
-            _hubEventSender.BroadcastLogEntryAdded($"Browse file '{filePath}' synced to PC.");
             BrowseFileWritten?.Invoke(this, filePath); // Invoke the event
         }
 
