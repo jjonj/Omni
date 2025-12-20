@@ -17,7 +17,7 @@ HUB_URL = "http://127.0.0.1:5000/signalrhub"
 API_KEY = "test_api_key"
 GEMINI_CLI_DIR = r"D:\\SSDProjects\\Tools\\gemini-cli"
 # Specific titles to avoid accidental matches
-TARGET_WINDOW_TITLES = ['OMNI_GEMINI_INTERACTIVE'] 
+TARGET_WINDOW_TITLES = ['OMNI_GEMINI_INTERACTIVE', 'Gemini - gemini-cli'] 
 # ---------------------
 
 # Configure logging

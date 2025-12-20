@@ -169,18 +169,37 @@ fun VideoPlayerScreen(
                 .width((containerSize.width * 0.25f).dp / LocalContext.current.resources.displayMetrics.density)
                 .align(Alignment.CenterStart)
                 .pointerInput(Unit) {
-                    detectVerticalDragGestures { _, dragAmount ->
-                        if (scale <= 1.05f) {
-                            val delta = -dragAmount / containerSize.height.toFloat()
-                            val newBrightness = (currentBrightness + delta).coerceIn(0.01f, 1f)
-                            currentBrightness = newBrightness
-                            val lp = activity?.window?.attributes
-                            lp?.screenBrightness = newBrightness
-                            activity?.window?.attributes = lp
-                            scope.launch {
-                                skipFeedbackText = "Brightness: ${(newBrightness * 100).toInt()}%"
+                    awaitEachGesture {
+                        val down = awaitFirstDown(requireUnconsumed = false)
+                        var dragStarted = false
+                        var totalDrag = 0f
+                        
+                        do {
+                            val event = awaitPointerEvent()
+                            val dragAmount = event.changes.firstOrNull()?.let { 
+                                it.position.y - it.previousPosition.y 
+                            } ?: 0f
+                            
+                            if (kotlin.math.abs(dragAmount) > 0.1f) {
+                                dragStarted = true
+                                totalDrag += dragAmount
+                                
+                                if (scale <= 1.05f) {
+                                    val delta = -totalDrag / containerSize.height.toFloat()
+                                    val newBrightness = (currentBrightness + delta).coerceIn(0.01f, 1f)
+                                    if (kotlin.math.abs(newBrightness - currentBrightness) > 0.01f) {
+                                        currentBrightness = newBrightness
+                                        val lp = activity?.window?.attributes
+                                        lp?.screenBrightness = newBrightness
+                                        activity?.window?.attributes = lp
+                                        totalDrag = 0f
+                                        scope.launch {
+                                            skipFeedbackText = "Brightness: ${(newBrightness * 100).toInt()}%"
+                                        }
+                                    }
+                                }
                             }
-                        }
+                        } while (event.changes.any { it.pressed })
                     }
                 }
                 .pointerInput(Unit) {
@@ -203,18 +222,35 @@ fun VideoPlayerScreen(
                 .width((containerSize.width * 0.25f).dp / LocalContext.current.resources.displayMetrics.density)
                 .align(Alignment.CenterEnd)
                 .pointerInput(Unit) {
-                    detectVerticalDragGestures { _, dragAmount ->
-                        if (scale <= 1.05f) {
-                            val deltaVolume = (-dragAmount / containerSize.height.toFloat()) * maxVolume.toFloat()
-                            val currentVol = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
-                            val newVol = (currentVol + deltaVolume.toInt()).coerceIn(0, maxVolume)
-                            if (newVol != currentVol) {
-                                audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, newVol, 0)
-                                scope.launch {
-                                    skipFeedbackText = "Volume: ${(newVol.toFloat() / maxVolume.toFloat() * 100).toInt()}%"
+                    awaitEachGesture {
+                        val down = awaitFirstDown(requireUnconsumed = false)
+                        var dragStarted = false
+                        var totalDrag = 0f
+                        
+                        do {
+                            val event = awaitPointerEvent()
+                            val dragAmount = event.changes.firstOrNull()?.let { 
+                                it.position.y - it.previousPosition.y 
+                            } ?: 0f
+                            
+                            if (kotlin.math.abs(dragAmount) > 0.1f) {
+                                dragStarted = true
+                                totalDrag += dragAmount
+                                
+                                if (scale <= 1.05f) {
+                                    val deltaVolume = (-totalDrag / containerSize.height.toFloat()) * maxVolume.toFloat()
+                                    val currentVol = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
+                                    val newVol = (currentVol + deltaVolume.toInt()).coerceIn(0, maxVolume)
+                                    if (newVol != currentVol) {
+                                        audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, newVol, 0)
+                                        totalDrag = 0f
+                                        scope.launch {
+                                            skipFeedbackText = "Volume: ${(newVol.toFloat() / maxVolume.toFloat() * 100).toInt()}%"
+                                        }
+                                    }
                                 }
                             }
-                        }
+                        } while (event.changes.any { it.pressed })
                     }
                 }
                 .pointerInput(Unit) {
