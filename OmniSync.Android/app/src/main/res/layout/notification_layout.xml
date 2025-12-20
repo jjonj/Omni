@@ -24,57 +24,57 @@
 
         <Button
             android:id="@+id/btn1"
-            style="@android:style/Widget.Material.Button.Borderless"
+            android:background="@drawable/button_background"
             android:layout_width="0dp"
             android:layout_height="32dp"
             android:layout_weight="1"
             android:textSize="10sp"
             android:visibility="gone"
-            android:textColor="#00AAFF" />
+            android:textColor="#FFFFFF" />
         <Button
             android:id="@+id/btn2"
-            style="@android:style/Widget.Material.Button.Borderless"
+            android:background="@drawable/button_background"
             android:layout_width="0dp"
             android:layout_height="32dp"
             android:layout_weight="1"
             android:textSize="10sp"
             android:visibility="gone"
-            android:textColor="#00AAFF" />
+            android:textColor="#FFFFFF" />
         <Button
             android:id="@+id/btn3"
-            style="@android:style/Widget.Material.Button.Borderless"
+            android:background="@drawable/button_background"
             android:layout_width="0dp"
             android:layout_height="32dp"
             android:layout_weight="1"
             android:textSize="10sp"
             android:visibility="gone"
-            android:textColor="#00AAFF" />
+            android:textColor="#FFFFFF" />
         <Button
             android:id="@+id/btn4"
-            style="@android:style/Widget.Material.Button.Borderless"
+            android:background="@drawable/button_background"
             android:layout_width="0dp"
             android:layout_height="32dp"
             android:layout_weight="1"
             android:textSize="10sp"
             android:visibility="gone"
-            android:textColor="#00AAFF" />
+            android:textColor="#FFFFFF" />
         <Button
             android:id="@+id/btn5"
-            style="@android:style/Widget.Material.Button.Borderless"
+            android:background="@drawable/button_background"
             android:layout_width="0dp"
             android:layout_height="32dp"
             android:layout_weight="1"
             android:textSize="10sp"
             android:visibility="gone"
-            android:textColor="#00AAFF" />
+            android:textColor="#FFFFFF" />
         <Button
             android:id="@+id/btn6"
-            style="@android:style/Widget.Material.Button.Borderless"
+            android:background="@drawable/button_background"
             android:layout_width="0dp"
             android:layout_height="32dp"
             android:layout_weight="1"
             android:textSize="10sp"
             android:visibility="gone"
-            android:textColor="#00AAFF" />
+            android:textColor="#FFFFFF" />
     </LinearLayout>
 </LinearLayout>
