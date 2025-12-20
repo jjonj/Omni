@@ -211,5 +211,3 @@ fun DownloadedVideosScreen(
         )
     }
 }
-
-private fun Double.format(digits: Int) = "%.${digits}f".format(Locale.getDefault(), this)

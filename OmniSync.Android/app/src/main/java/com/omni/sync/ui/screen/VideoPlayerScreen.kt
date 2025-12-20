@@ -333,6 +333,7 @@ fun VideoPlayerScreen(
                 }
             }
         )
+    }
 
         // Skip Feedback Overlay
         skipFeedbackText?.let { text ->
