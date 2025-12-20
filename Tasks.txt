@@ -40,14 +40,12 @@ DONE Downloading a video into app data and optionally password protecting it wit
   - All changes committed to git
 
 ### Video Player Screen (all video player features completed)
-DONE Swiping finger up and down on left side should change phone brightness
-DONE Swiping finger up and down on right side should change phone or video volume, this is really hard to trigger (can only do it 10% of the time and it only adjusts for like a millisecond) for some reason even though brightness is easy
-  - Fixed by replacing detectVerticalDragGestures with awaitEachGesture for more reliable gesture detection
-  - Volume and brightness controls now work consistently and smoothly
-DONE Double tap to skip forward/back no longer working. (probably broke when fixing brightness sliding. We used to have this working using overlay boxes on the left and right side that could also be used for volume change (and brightness?). Tap or double tap instead activates the video player which is fine for single tap but not double on the sides.
-  - Fixed double-tap gestures working alongside the new swipe gesture detection
-  - Left side double-tap skips back, right side double-tap skips forward
-  - All video player tasks completed and committed to git
+
+DONE The following 3 features worked previously but are now completely broken. I suspect that the video player is absorbing all taps/interactions
+DONE 1. Swiping finger up and down on left side should change phone brightness
+DONE 2. Swiping finger up and down on right side should change phone or video volume, t
+DONE 3. Double tap to skip forward/back no longer working. (probably broke when fixing brightness sliding. We used to have this working using overlay boxes on the left and right side that could also be used for volume change (and brightness?). Tap or double tap instead activates the video player which is fine for single tap but not double on the sides.
+
 
 BUILD STATUS: APK built successfully (19.62 MB), ready for deployment when device is connected
 MORE Text editing fancy features, think like a lite code editor like notepad++ or VS code. be creative. MORE options in burger menu with lots of options
@@ -61,6 +59,8 @@ When a cached file is synced to PC, add a log message to the actitivty log, spec
 
 ### Browser control screen
 Play/Pause media works, but it works on current tab. Could we try getting it to work for whatever is/was the currently/most recently playing media. Or alternatively pause all playing media if any, otherwise play current tabs media would also be ok
+
+An action to send the latest video from YouTube history to browser OR to phone 
 
 
 ### Notification panel
