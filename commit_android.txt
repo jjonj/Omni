@@ -1,0 +1,10 @@
+Fix Android UI bugs and modernize Remote Control
+
+- Fixed Gson date parsing error for '0001-01-01T00:00:00' in SignalRClient.kt.
+- Fixed FilesScreen.kt getParentPath logic to handle Windows drive roots (C:\) correctly, fixing the back button issue.
+- Modernized RemoteControlScreen.kt UI:
+  - Added HorizontalDivider between trackpad and button panel.
+  - Updated buttons to use FilledTonalButton with rounded corners.
+  - Improved layout spacing.
+- Verified build with --no-install.
+- Marked completed tasks in Tasks.txt.

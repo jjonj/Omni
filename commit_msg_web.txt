@@ -1,0 +1,5 @@
+Fix Web Hub connection issues
+
+- Added CORS policy to OmniSync.Hub (Program.cs) to allow browser connections.
+- Updated OmniSync.Web/www/js/config.js to use dynamic hostname instead of hardcoded IP.
+- Marked Web task as DONE in Tasks.txt.

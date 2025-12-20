@@ -1,0 +1,7 @@
+Fix Hub shutdown sound and Tray Icon exit issues
+
+- Changed AudioService.PlaySound to use PlaySync to ensure sound finishes before disposal in background tasks.
+- Fixed TrayIconManager.Dispose to use BeginInvoke for WPF shutdown and Application.Exit to cleanly terminate WinForms message loop.
+- Updated TestScripts/test_hub_exit.py to wait longer for shutdown verification.
+- Validated with TestScripts/test_shutdown_sound.py and test_hub_exit.py.
+- Marked tasks as DONE in Tasks.txt.

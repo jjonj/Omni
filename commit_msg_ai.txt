@@ -1,0 +1,7 @@
+Implement AI CLI command integration
+
+- Updated AIListener to support typing commands starting with '/' into a visible Gemini CLI window.
+- Added logic to capture console output via clipboard after command execution.
+- Added launch_ai_listener.py and launch_gemini_cli.py for clean process management and visibility.
+- Verified with TestScripts/test_ai_command_integration.py.
+- Marked task as DONE in Tasks.txt.

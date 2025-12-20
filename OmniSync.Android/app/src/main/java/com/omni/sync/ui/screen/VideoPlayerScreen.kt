@@ -161,70 +161,116 @@ fun VideoPlayerScreen(
             .fillMaxSize()
             .background(Color.Black)
             .onSizeChanged { containerSize = it }
-            .pointerInput(Unit) {
-                detectTapGestures(
-                    onDoubleTap = { tapOffset ->
+    ) {
+        // Brightness control area (left side)
+        Box(
+            modifier = Modifier
+                .fillMaxHeight()
+                .width((containerSize.width * 0.25f).dp / LocalContext.current.resources.displayMetrics.density)
+                .align(Alignment.CenterStart)
+                .pointerInput(Unit) {
+                    detectVerticalDragGestures { _, dragAmount ->
                         if (scale <= 1.05f) {
-                            if (tapOffset.x < size.width / 2) {
-                                val newPos = exoPlayer.currentPosition - skipIntervalMs
-                                exoPlayer.seekTo(newPos.coerceAtLeast(0))
-                                skipFeedbackText = "Back ${skipIntervalMs / 1000}s"
-                            } else {
-                                val newPos = exoPlayer.currentPosition + skipIntervalMs
-                                exoPlayer.seekTo(newPos.coerceAtMost(exoPlayer.duration))
-                                skipFeedbackText = "Forward ${skipIntervalMs / 1000}s"
-                            }
-                        } else {
-                            scale = 1f
-                            offset = Offset.Zero
-                        }
-                    },
-                    onTap = {
-                        if (isControllerVisible) playerViewInstance?.hideController()
-                        else playerViewInstance?.showController()
-                    }
-                )
-            }
-            .pointerInput(Unit) {
-                detectTransformGestures { centroid, pan, zoom, _ ->
-                    if (zoom != 1f || scale > 1.05f) {
-                        scale = (scale * zoom).coerceIn(1f, 5f)
-                        if (scale > 1f) {
-                            val extraWidth = (scale - 1) * containerSize.width
-                            val extraHeight = (scale - 1) * containerSize.height
-                            val maxX = extraWidth / 2f
-                            val maxY = extraHeight / 2f
-                            offset = Offset(
-                                x = (offset.x + pan.x * scale).coerceIn(-maxX, maxX),
-                                y = (offset.y + pan.y * scale).coerceIn(-maxY, maxY)
-                            )
-                        } else {
-                            offset = Offset.Zero
-                        }
-                    } else if (Math.abs(pan.y) > Math.abs(pan.x) && Math.abs(pan.y) > 2f) {
-                        if (centroid.x < containerSize.width / 2f) {
-                            // Brightness
-                            val delta = -pan.y / containerSize.height.toFloat()
+                            val delta = -dragAmount / containerSize.height.toFloat()
                             val newBrightness = (currentBrightness + delta).coerceIn(0.01f, 1f)
                             currentBrightness = newBrightness
                             val lp = activity?.window?.attributes
                             lp?.screenBrightness = newBrightness
                             activity?.window?.attributes = lp
-                            skipFeedbackText = "Brightness: ${(newBrightness * 100).toInt()}%"
-                        } else {
-                            // Volume
-                            val deltaY = -pan.y
-                            val deltaVolume = (deltaY / (containerSize.height / 2f)) * maxVolume.toFloat()
-                            val currentVol = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC).toFloat()
-                            val newVol = (currentVol + deltaVolume).toInt().coerceIn(0, maxVolume)
-                            if (newVol != currentVol.toInt()) {
-                                audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, newVol, 0)
-                                skipFeedbackText = "Volume: ${(newVol.toFloat() / maxVolume.toFloat() * 100).toInt()}%"
+                            scope.launch {
+                                skipFeedbackText = "Brightness: ${(newBrightness * 100).toInt()}%"
                             }
                         }
                     }
                 }
-            }
+                .pointerInput(Unit) {
+                    detectTapGestures(
+                        onDoubleTap = {
+                            if (scale <= 1.05f) {
+                                val newPos = exoPlayer.currentPosition - skipIntervalMs
+                                exoPlayer.seekTo(newPos.coerceAtLeast(0))
+                                skipFeedbackText = "Back ${skipIntervalMs / 1000}s"
+                            }
+                        }
+                    )
+                }
+        ) {}
+
+        // Volume control area (right side)
+        Box(
+            modifier = Modifier
+                .fillMaxHeight()
+                .width((containerSize.width * 0.25f).dp / LocalContext.current.resources.displayMetrics.density)
+                .align(Alignment.CenterEnd)
+                .pointerInput(Unit) {
+                    detectVerticalDragGestures { _, dragAmount ->
+                        if (scale <= 1.05f) {
+                            val deltaVolume = (-dragAmount / containerSize.height.toFloat()) * maxVolume.toFloat()
+                            val currentVol = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
+                            val newVol = (currentVol + deltaVolume.toInt()).coerceIn(0, maxVolume)
+                            if (newVol != currentVol) {
+                                audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, newVol, 0)
+                                scope.launch {
+                                    skipFeedbackText = "Volume: ${(newVol.toFloat() / maxVolume.toFloat() * 100).toInt()}%"
+                                }
+                            }
+                        }
+                    }
+                }
+                .pointerInput(Unit) {
+                    detectTapGestures(
+                        onDoubleTap = {
+                            if (scale <= 1.05f) {
+                                val newPos = exoPlayer.currentPosition + skipIntervalMs
+                                exoPlayer.seekTo(newPos.coerceAtMost(exoPlayer.duration))
+                                skipFeedbackText = "Forward ${skipIntervalMs / 1000}s"
+                            }
+                        }
+                    )
+                }
+        ) {}
+
+        // Center area for tap to show/hide controls and pinch zoom
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .pointerInput(Unit) {
+                    detectTapGestures(
+                        onTap = {
+                            if (isControllerVisible) playerViewInstance?.hideController()
+                            else playerViewInstance?.showController()
+                        }
+                    )
+                }
+                .pointerInput(Unit) {
+                    detectTransformGestures { centroid, pan, zoom, _ ->
+                        if (zoom != 1f || scale > 1.05f) {
+                            scale = (scale * zoom).coerceIn(1f, 5f)
+                            if (scale > 1f) {
+                                val extraWidth = (scale - 1) * containerSize.width
+                                val extraHeight = (scale - 1) * containerSize.height
+                                val maxX = extraWidth / 2f
+                                val maxY = extraHeight / 2f
+                                offset = Offset(
+                                    x = (offset.x + pan.x * scale).coerceIn(-maxX, maxX),
+                                    y = (offset.y + pan.y * scale).coerceIn(-maxY, maxY)
+                                )
+                            } else {
+                                offset = Offset.Zero
+                            }
+                        }
+                    }
+                }
+                .pointerInput(Unit) {
+                    detectTapGestures(
+                        onDoubleTap = {
+                            if (scale > 1.05f) {
+                                scale = 1f
+                                offset = Offset.Zero
+                            }
+                        }
+                    )
+                }
     ) {
         AndroidView(
             modifier = Modifier

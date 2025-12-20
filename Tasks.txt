@@ -3,6 +3,8 @@
 When finishing a task make sure to prefix the line with "DONE" and also git commit between each one.
 if told to do a megasession then fix/implement as many issues of the ones below as possible without user intervention. Make sure to git commit and mark as DONE between each one. Start with any tasks that can be validated with a script in D:\SSDProjects\Omni\TestScripts. If strictly necessary you may use AISpeak to ask the user for help/clarifications.
 
+
+
 ## General
 When app is in horizontal mode, hide the navigation bar
 

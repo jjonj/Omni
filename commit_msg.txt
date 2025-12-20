@@ -1,0 +1,7 @@
+Fix Hub startup/execution and AI integration
+
+- Fixed OmniSync.Hub.exe not running directly by making appsettings.json optional and fixing web content path logic.
+- Fixed startup logic to correctly register the .exe instead of the .dll in the Windows registry.
+- Fixed ai_listener.py configuration to use 127.0.0.1 instead of a hardcoded LAN IP for local reliability.
+- Verified AI integration with updated TestScripts/test_ai_integration.py.
+- Marked completed tasks in Tasks.txt.

@@ -152,48 +152,6 @@ fun FilesScreen(
                 .padding(innerPadding)
                 .fillMaxSize()
         ) {
-            // --- Bookmarks Management List (Toggleable) ---
-            if (showBookmarksList && folderBookmarks.isNotEmpty()) {
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(8.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-                ) {
-                    Column(modifier = Modifier.padding(8.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                            Text("Manage Bookmarks", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
-                            IconButton(onClick = { showBookmarksList = false }, modifier = Modifier.size(24.dp)) {
-                                Icon(Icons.Default.Close, null)
-                            }
-                        }
-                        Spacer(modifier = Modifier.height(4.dp))
-                        folderBookmarks.forEach { bookmark ->
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 2.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(Icons.Default.Folder, null, modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.primary)
-                                Spacer(Modifier.width(8.dp))
-                                Text(bookmark.name, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                
-                                IconButton(onClick = { filesViewModel.moveFolderBookmarkUp(bookmark) }, modifier = Modifier.size(24.dp)) {
-                                    Icon(Icons.Default.KeyboardArrowUp, null)
-                                }
-                                IconButton(onClick = { filesViewModel.moveFolderBookmarkDown(bookmark) }, modifier = Modifier.size(24.dp)) {
-                                    Icon(Icons.Default.KeyboardArrowDown, null)
-                                }
-                                IconButton(onClick = { filesViewModel.removeFolderBookmark(bookmark) }, modifier = Modifier.size(24.dp)) {
-                                    Icon(Icons.Default.Delete, null, tint = MaterialTheme.colorScheme.error)
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
             // --- Search Bar ---
             OutlinedTextField(
                 value = searchQuery,
@@ -298,6 +256,48 @@ fun FilesScreen(
                                 filesViewModel.signalRClient.sendAiMessage("/dir add \"${entry.path}\"")
                             }
                         )
+                    }
+                }
+            }
+
+            // --- Bookmarks Management List (Toggleable) - Moved to bottom ---
+            if (showBookmarksList && folderBookmarks.isNotEmpty()) {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(8.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                ) {
+                    Column(modifier = Modifier.padding(8.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                            Text("Manage Bookmarks", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+                            IconButton(onClick = { showBookmarksList = false }, modifier = Modifier.size(24.dp)) {
+                                Icon(Icons.Default.Close, null)
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(4.dp))
+                        folderBookmarks.forEach { bookmark ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 2.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(Icons.Default.Folder, null, modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.primary)
+                                Spacer(Modifier.width(8.dp))
+                                Text(bookmark.name, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                
+                                IconButton(onClick = { filesViewModel.moveFolderBookmarkUp(bookmark) }, modifier = Modifier.size(24.dp)) {
+                                    Icon(Icons.Default.KeyboardArrowUp, null)
+                                }
+                                IconButton(onClick = { filesViewModel.moveFolderBookmarkDown(bookmark) }, modifier = Modifier.size(24.dp)) {
+                                    Icon(Icons.Default.KeyboardArrowDown, null)
+                                }
+                                IconButton(onClick = { filesViewModel.removeFolderBookmark(bookmark) }, modifier = Modifier.size(24.dp)) {
+                                    Icon(Icons.Default.Delete, null, tint = MaterialTheme.colorScheme.error)
+                                }
+                            }
+                        }
                     }
                 }
             }
