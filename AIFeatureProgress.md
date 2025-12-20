@@ -49,6 +49,7 @@ The test suite has been expanded to cover advanced scenarios:
 | **Slash Command Injection**| Stable | Verified `/dir add` works correctly. |
 | **Multi-Session Support** | Stable | Parallel injection to multiple PIDs verified. |
 | **Response Detection** | Stable | Fixed by implementing persistent Turn-Finished detection. |
+| **Process Cleanup Safety**| Stable | Cleanup scripts now protect ancestors and windows with "Omni" in title to avoid self-termination. **Note: `cleanup_gemini_windows.py` should be used between test runs to ensure a clean state, or invoked at the start of integration tests.** |
 
 ### Resolved: IPC Read Reliability
 The readback hang in `test_command_injection.py` was resolved by:
@@ -59,6 +60,10 @@ The readback hang in `test_command_injection.py` was resolved by:
 ---
 
 ## Next Steps
-1.  **Refactor AI Listener**: Apply the `[TURN_FINISHED]` logic to `ai_listener.py` to ensure it relays full multi-turn AI responses back to the Hub/Mobile client.
-2.  **Direct Hub Commands**: Allow the AI to emit JSON payloads to trigger native Hub actions (e.g., "Toggle Lights").
-3.  **UI Feedback**: Implement better visual feedback in the Android app for when the AI is "Thinking" vs "Responding".
+1.  **Direct Hub Commands**: Allow the AI to emit JSON payloads to trigger native Hub actions (e.g., "Toggle Lights"). **[IN PROGRESS]**
+2.  **UI Feedback**: Implement better visual feedback in the Android app for when the AI is "Thinking" vs "Responding".
+3.  **Refactor AI Listener**: Further optimize `ai_listener.py` for multi-turn reliability.
+
+## Completed Recently
+- **Process Cleanup Safety**: `cleanup_gemini_windows.py` now uses `Get-Process` with window title filtering (`-notlike "*Omni*"`) to avoid killing the active Gemini CLI session.
+- **IPC Read Reliability**: Implemented `[TURN_FINISHED]` marker in `gemini-cli` and updated listener logic.
