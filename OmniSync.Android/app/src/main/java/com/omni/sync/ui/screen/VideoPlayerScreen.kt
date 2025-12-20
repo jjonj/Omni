@@ -71,6 +71,7 @@ fun VideoPlayerScreen(
     var isControllerVisible by remember { mutableStateOf(true) }
     var containerSize by remember { mutableStateOf(IntSize.Zero) }
     var skipFeedbackText by remember { mutableStateOf<String?>(null) }
+    var lastTapTime by remember { mutableStateOf(0L) }
     
     var currentBrightness by remember { mutableStateOf(activity?.window?.attributes?.screenBrightness ?: -1f) }
     val initialBrightness = remember { activity?.window?.attributes?.screenBrightness ?: -1f }
@@ -161,30 +162,33 @@ fun VideoPlayerScreen(
             .fillMaxSize()
             .background(Color.Black)
             .onSizeChanged { containerSize = it }
-    ) {
-        // Brightness control area (left side)
-        Box(
-            modifier = Modifier
-                .fillMaxHeight()
-                .width((containerSize.width * 0.25f).dp / LocalContext.current.resources.displayMetrics.density)
-                .align(Alignment.CenterStart)
-                .pointerInput(Unit) {
-                    awaitEachGesture {
-                        val down = awaitFirstDown(requireUnconsumed = false)
-                        var dragStarted = false
-                        var totalDrag = 0f
+            // Unified gesture handler for vertical drag (brightness/volume) and double-tap (skip)
+            .pointerInput(containerSize) {
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false)
+                    val downX = down.position.x
+                    val downTime = down.uptimeMillis
+                    var totalDrag = 0f
+                    var isDragging = false
+                    
+                    // Determine which zone was tapped
+                    val leftZone = downX < containerSize.width * 0.25f
+                    val rightZone = downX > containerSize.width * 0.75f
+                    val centerZone = !leftZone && !rightZone
+                    
+                    do {
+                        val event = awaitPointerEvent()
+                        val dragAmount = event.changes.firstOrNull()?.let { 
+                            it.position.y - it.previousPosition.y 
+                        } ?: 0f
                         
-                        do {
-                            val event = awaitPointerEvent()
-                            val dragAmount = event.changes.firstOrNull()?.let { 
-                                it.position.y - it.previousPosition.y 
-                            } ?: 0f
+                        if (kotlin.math.abs(dragAmount) > 0.1f) {
+                            isDragging = true
+                            totalDrag += dragAmount
                             
-                            if (kotlin.math.abs(dragAmount) > 0.1f) {
-                                dragStarted = true
-                                totalDrag += dragAmount
-                                
-                                if (scale <= 1.05f) {
+                            if (scale <= 1.05f) {
+                                // Left zone: brightness control
+                                if (leftZone) {
                                     val delta = -totalDrag / containerSize.height.toFloat()
                                     val newBrightness = (currentBrightness + delta).coerceIn(0.01f, 1f)
                                     if (kotlin.math.abs(newBrightness - currentBrightness) > 0.01f) {
@@ -197,47 +201,10 @@ fun VideoPlayerScreen(
                                             skipFeedbackText = "Brightness: ${(newBrightness * 100).toInt()}%"
                                         }
                                     }
+                                    event.changes.forEach { it.consume() }
                                 }
-                            }
-                        } while (event.changes.any { it.pressed })
-                    }
-                }
-                .pointerInput(Unit) {
-                    detectTapGestures(
-                        onDoubleTap = {
-                            if (scale <= 1.05f) {
-                                val newPos = exoPlayer.currentPosition - skipIntervalMs
-                                exoPlayer.seekTo(newPos.coerceAtLeast(0))
-                                skipFeedbackText = "Back ${skipIntervalMs / 1000}s"
-                            }
-                        }
-                    )
-                }
-        ) {}
-
-        // Volume control area (right side)
-        Box(
-            modifier = Modifier
-                .fillMaxHeight()
-                .width((containerSize.width * 0.25f).dp / LocalContext.current.resources.displayMetrics.density)
-                .align(Alignment.CenterEnd)
-                .pointerInput(Unit) {
-                    awaitEachGesture {
-                        val down = awaitFirstDown(requireUnconsumed = false)
-                        var dragStarted = false
-                        var totalDrag = 0f
-                        
-                        do {
-                            val event = awaitPointerEvent()
-                            val dragAmount = event.changes.firstOrNull()?.let { 
-                                it.position.y - it.previousPosition.y 
-                            } ?: 0f
-                            
-                            if (kotlin.math.abs(dragAmount) > 0.1f) {
-                                dragStarted = true
-                                totalDrag += dragAmount
-                                
-                                if (scale <= 1.05f) {
+                                // Right zone: volume control
+                                else if (rightZone) {
                                     val deltaVolume = (-totalDrag / containerSize.height.toFloat()) * maxVolume.toFloat()
                                     val currentVol = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
                                     val newVol = (currentVol + deltaVolume.toInt()).coerceIn(0, maxVolume)
@@ -248,65 +215,74 @@ fun VideoPlayerScreen(
                                             skipFeedbackText = "Volume: ${(newVol.toFloat() / maxVolume.toFloat() * 100).toInt()}%"
                                         }
                                     }
+                                    event.changes.forEach { it.consume() }
                                 }
                             }
-                        } while (event.changes.any { it.pressed })
-                    }
-                }
-                .pointerInput(Unit) {
-                    detectTapGestures(
-                        onDoubleTap = {
-                            if (scale <= 1.05f) {
+                        }
+                    } while (event.changes.any { it.pressed })
+                    
+                    // Handle tap gestures after pointer release
+                    if (!isDragging) {
+                        val tapTime = System.currentTimeMillis()
+                        val isDoubleTap = (tapTime - lastTapTime) < 300
+                        
+                        if (isDoubleTap) {
+                            // Left zone: skip back
+                            if (leftZone && scale <= 1.05f) {
+                                val newPos = exoPlayer.currentPosition - skipIntervalMs
+                                exoPlayer.seekTo(newPos.coerceAtLeast(0))
+                                skipFeedbackText = "Back ${skipIntervalMs / 1000}s"
+                            }
+                            // Right zone: skip forward
+                            else if (rightZone && scale <= 1.05f) {
                                 val newPos = exoPlayer.currentPosition + skipIntervalMs
                                 exoPlayer.seekTo(newPos.coerceAtMost(exoPlayer.duration))
                                 skipFeedbackText = "Forward ${skipIntervalMs / 1000}s"
                             }
-                        }
-                    )
-                }
-        ) {}
-
-        // Center area for tap to show/hide controls and pinch zoom
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .pointerInput(Unit) {
-                    detectTapGestures(
-                        onTap = {
-                            if (isControllerVisible) playerViewInstance?.hideController()
-                            else playerViewInstance?.showController()
-                        }
-                    )
-                }
-                .pointerInput(Unit) {
-                    detectTransformGestures { centroid, pan, zoom, _ ->
-                        if (zoom != 1f || scale > 1.05f) {
-                            scale = (scale * zoom).coerceIn(1f, 5f)
-                            if (scale > 1f) {
-                                val extraWidth = (scale - 1) * containerSize.width
-                                val extraHeight = (scale - 1) * containerSize.height
-                                val maxX = extraWidth / 2f
-                                val maxY = extraHeight / 2f
-                                offset = Offset(
-                                    x = (offset.x + pan.x * scale).coerceIn(-maxX, maxX),
-                                    y = (offset.y + pan.y * scale).coerceIn(-maxY, maxY)
-                                )
-                            } else {
+                            // Center zone: reset zoom
+                            else if (centerZone && scale > 1.05f) {
+                                scale = 1f
                                 offset = Offset.Zero
+                            }
+                            lastTapTime = 0L
+                        } else {
+                            // Center zone single tap: toggle controls (with delay to detect double-tap)
+                            if (centerZone) {
+                                lastTapTime = tapTime
+                                scope.launch {
+                                    delay(310) // Wait slightly longer than double-tap threshold
+                                    if (lastTapTime == tapTime) { // Check if wasn't reset by double-tap
+                                        if (isControllerVisible) playerViewInstance?.hideController()
+                                        else playerViewInstance?.showController()
+                                    }
+                                }
+                            } else {
+                                // Side zones: just update tap time for double-tap detection
+                                lastTapTime = tapTime
                             }
                         }
                     }
                 }
-                .pointerInput(Unit) {
-                    detectTapGestures(
-                        onDoubleTap = {
-                            if (scale > 1.05f) {
-                                scale = 1f
-                                offset = Offset.Zero
-                            }
+            }
+            .pointerInput(Unit) {
+                detectTransformGestures { centroid, pan, zoom, _ ->
+                    if (zoom != 1f || scale > 1.05f) {
+                        scale = (scale * zoom).coerceIn(1f, 5f)
+                        if (scale > 1f) {
+                            val extraWidth = (scale - 1) * containerSize.width
+                            val extraHeight = (scale - 1) * containerSize.height
+                            val maxX = extraWidth / 2f
+                            val maxY = extraHeight / 2f
+                            offset = Offset(
+                                x = (offset.x + pan.x * scale).coerceIn(-maxX, maxX),
+                                y = (offset.y + pan.y * scale).coerceIn(-maxY, maxY)
+                            )
+                        } else {
+                            offset = Offset.Zero
                         }
-                    )
+                    }
                 }
+            }
     ) {
         AndroidView(
             modifier = Modifier
@@ -333,7 +309,6 @@ fun VideoPlayerScreen(
                 }
             }
         )
-    }
 
         // Skip Feedback Overlay
         skipFeedbackText?.let { text ->
