@@ -58,7 +58,7 @@ Quick actions dropdown: Add options to go directly to each screen in the app, ad
 
 ### AI screen
 Goal is that I want to be able to use gemini commands, e.g. /dir add D:/SSDProjects, currently it just sends it as a string to gemini and the ai responds instead of affecting the gemini cli harness. Please carefully read through the 
- - To achieve this we need to find a way to first programmatically control geminiCLI from outside the console. Make a proof of concept python script that does a /dir add command
+ DONE To achieve this we need to find a way to first programmatically control geminiCLI from outside the console. Make a proof of concept python script that does a /dir add command
  
 ### Alarm (new)
 built in wakeup alarm, added to bottom of dashboard, scroll down on dash enabled 
