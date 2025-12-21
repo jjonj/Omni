@@ -81,8 +81,8 @@ Version history / undo across sessions
 
 ### Browser control screen
 
-Change button text from  "↺📱" and "↺🌐" to "▶↺📱" and "▶↺🌐"
-Make the ▶↺🌐 button respect the New tab toggle
+DONE Change button text from  "↺📱" and "↺🌐" to "▶↺📱" and "▶↺🌐"
+DONE Make the ▶↺🌐 button respect the New tab toggle
 Move the button to the right of the URL bar to open current remote tab on phone to the advanced buttons panel and change icon to "🌐→📱"
 Add clear icon to the right of URL bar. 
 
