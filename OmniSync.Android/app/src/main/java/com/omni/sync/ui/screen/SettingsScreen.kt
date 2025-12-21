@@ -54,17 +54,24 @@ fun SettingsScreen(
     var notificationActions by remember { mutableStateOf<List<NotificationAction>>(initialActions) }
     var showAddMenu by remember { mutableStateOf(false) }
 
+    val browserPrefs = remember { context.getSharedPreferences("browser_prefs", Context.MODE_PRIVATE) }
+    val bookmarksJson = browserPrefs.getString("bookmarks", null)
+    val bookmarks: List<com.omni.sync.viewmodel.Bookmark> = if (bookmarksJson != null) {
+        val type = object : TypeToken<List<com.omni.sync.viewmodel.Bookmark>>() {}.type
+        gson.fromJson(bookmarksJson, type)
+    } else emptyList()
+
     val predefinedActions = listOf(
         NotificationAction("pre-1", "Shutdown PC", "B:\\GDrive\\Tools\\05 Automation\\shutdown.bat"),
         NotificationAction("pre-2", "Sleep PC", "B:\\GDrive\\Tools\\05 Automation\\sleep.bat"),
         NotificationAction("pre-3", "Toggle TV", "B:\\GDrive\\Tools\\05 Automation\\TVActive3\\tv_toggle.bat"),
         NotificationAction("pre-4", "WOL PC", "", isWol = true, macAddress = "10FFE0379DAC"),
-        NotificationAction("pre-5", "Kill Browser", "taskkill /IM chrome.exe /F"),
-        NotificationAction("pre-6", "Volume Up", "nircmd.exe changesysvolume 2000"),
-        NotificationAction("pre-7", "Volume Down", "nircmd.exe changesysvolume -2000"),
-        NotificationAction("pre-8", "Mute Toggle", "nircmd.exe mutesysvolume 2"),
-        NotificationAction("pre-9", "Media Next", "nircmd.exe multiman setvolume 0 0 0"), // Dummy example
-        NotificationAction("pre-10", "Monitor OFF", "nircmd.exe monitor off")
+        NotificationAction("pre-nav-dash", "Go to Dashboard", "NAV:DASHBOARD"),
+        NotificationAction("pre-nav-remote", "Go to Remote", "NAV:REMOTECONTROL"),
+        NotificationAction("pre-nav-browser", "Go to Browser", "NAV:BROWSER"),
+        NotificationAction("pre-nav-files", "Go to Files", "NAV:FILES"),
+        NotificationAction("pre-nav-ai", "Go to AI Chat", "NAV:AI_CHAT"),
+        NotificationAction("pre-nav-alarm", "Go to Alarm", "NAV:ALARM")
     )
 
     fun saveActions(actions: List<NotificationAction>) {
@@ -172,6 +179,7 @@ fun SettingsScreen(
                         Icon(Icons.Default.Add, "Add Action")
                     }
                     DropdownMenu(expanded = showAddMenu, onDismissRequest = { showAddMenu = false }) {
+                        Text("Predefined", modifier = Modifier.padding(8.dp), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
                         predefinedActions.forEach { action ->
                             DropdownMenuItem(
                                 text = { Text(action.label) },
@@ -183,6 +191,23 @@ fun SettingsScreen(
                                     showAddMenu = false
                                 }
                             )
+                        }
+                        
+                        if (bookmarks.isNotEmpty()) {
+                            HorizontalDivider()
+                            Text("Bookmarks", modifier = Modifier.padding(8.dp), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                            bookmarks.take(10).forEach { bookmark ->
+                                DropdownMenuItem(
+                                    text = { Text(bookmark.name) },
+                                    onClick = {
+                                        val newActions = notificationActions.toMutableList()
+                                        val id = java.util.UUID.randomUUID().toString()
+                                        newActions.add(NotificationAction(id, bookmark.name, "BOOKMARK:${bookmark.url}"))
+                                        saveActions(newActions)
+                                        showAddMenu = false
+                                    }
+                                )
+                            }
                         }
                     }
                 }

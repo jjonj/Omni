@@ -90,7 +90,10 @@ namespace OmniSync.Hub.Presentation.Hubs
                 var newMode = currentMode == ShutdownMode.Shutdown 
                     ? ShutdownMode.Sleep 
                     : ShutdownMode.Shutdown;
+                
                 _shutdownService.SetMode(newMode);
+                _hubMonitorService.AddLogMessage($"Shutdown mode toggled to: {newMode} via remote.");
+                AnyCommandReceived?.Invoke(this, $"ToggleShutdownMode: {newMode}");
             }
         }
 

@@ -62,11 +62,31 @@ fun AlarmScreen(
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
+    val prefs = remember { context.getSharedPreferences("alarm_prefs", Context.MODE_PRIVATE) }
+    val gson = remember { com.google.gson.Gson() }
+
+    var alarm1 by remember { 
+        val json = prefs.getString("alarm1", null)
+        mutableStateOf(if (json != null) gson.fromJson(json, AlarmData::class.java) else AlarmData(enabled = false, hour = 8, minute = 30, isAM = true))
+    }
+    var alarm2 by remember { 
+        val json = prefs.getString("alarm2", null)
+        mutableStateOf(if (json != null) gson.fromJson(json, AlarmData::class.java) else AlarmData(enabled = false, hour = 9, minute = 0, isAM = true))
+    }
+    var config by remember { 
+        val json = prefs.getString("config", null)
+        mutableStateOf(if (json != null) gson.fromJson(json, GradualConfig::class.java) else GradualConfig())
+    }
     
-    var alarm1 by remember { mutableStateOf(AlarmData(enabled = false, hour = 8, minute = 30, isAM = true)) }
-    var alarm2 by remember { mutableStateOf(AlarmData(enabled = false, hour = 9, minute = 0, isAM = true)) }
-    var config by remember { mutableStateOf(GradualConfig()) }
-    
+    fun saveAlarms() {
+        prefs.edit().apply {
+            putString("alarm1", gson.toJson(alarm1))
+            putString("alarm2", gson.toJson(alarm2))
+            putString("config", gson.toJson(config))
+            apply()
+        }
+    }
+
     var showTimePicker by remember { mutableStateOf<Int?>(null) } 
     var showSoundPicker by remember { mutableStateOf<Int?>(null) }
     
@@ -99,6 +119,7 @@ fun AlarmScreen(
     }
 
     fun updateSchedule(id: Int, data: AlarmData) {
+        saveAlarms()
         if (data.enabled) {
             AlarmScheduler.scheduleAlarm(context, id, data, config)
         } else {
@@ -208,11 +229,11 @@ fun AlarmScreen(
                     }
                     HorizontalDivider()
                     
-                    AdjustableSettingRow("Initial Volume: ${config.initialVolume}%", config.initialVolume, { config = config.copy(initialVolume = it) }, 0, 100)
-                    AdjustableSettingRow("Alarm Duration: ${config.alarmDuration}s", config.alarmDuration, { config = config.copy(alarmDuration = it) }, 1, 300)
-                    AdjustableSettingRow("Auto-Snooze: ${config.snoozeDuration}m", config.snoozeDuration, { config = config.copy(snoozeDuration = it) }, 1, 60)
-                    AdjustableSettingRow("Volume Increase: +${config.volumeIncrement}%", config.volumeIncrement, { config = config.copy(volumeIncrement = it) }, 1, 20)
-                    AdjustableSettingRow("Max Repetitions: ${config.maxRepetitions}", config.maxRepetitions, { config = config.copy(maxRepetitions = it) }, 1, 20)
+                    AdjustableSettingRow("Initial Volume: ${config.initialVolume}%", config.initialVolume, { config = config.copy(initialVolume = it); saveAlarms() }, 0, 100)
+                    AdjustableSettingRow("Alarm Duration: ${config.alarmDuration}s", config.alarmDuration, { config = config.copy(alarmDuration = it); saveAlarms() }, 1, 300)
+                    AdjustableSettingRow("Auto-Snooze: ${config.snoozeDuration}m", config.snoozeDuration, { config = config.copy(snoozeDuration = it); saveAlarms() }, 1, 60)
+                    AdjustableSettingRow("Volume Increase: +${config.volumeIncrement}%", config.volumeIncrement, { config = config.copy(volumeIncrement = it); saveAlarms() }, 1, 20)
+                    AdjustableSettingRow("Max Repetitions: ${config.maxRepetitions}", config.maxRepetitions, { config = config.copy(maxRepetitions = it); saveAlarms() }, 1, 20)
                 }
             }
         }

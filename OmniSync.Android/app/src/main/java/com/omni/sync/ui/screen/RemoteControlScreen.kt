@@ -15,6 +15,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardBackspace
 import androidx.compose.material.icons.automirrored.filled.KeyboardReturn
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.ModeNight
 import androidx.compose.material.icons.filled.PowerSettingsNew
 import androidx.compose.material.icons.filled.VolumeOff
@@ -359,34 +361,69 @@ fun ButtonPanel(
             // Grid 3
             val shutdownTimes = listOf(0, 15, 30, 60, 120, 300, 720)
             val context = LocalContext.current
+            var showMoreButtons by remember { mutableStateOf(false) }
+
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                ActionKeyButton(text = "Alt+Tab", modifier = Modifier.weight(1f)) {
-                    signalRClient.sendKeyEvent("INPUT_KEY_DOWN", VK_MENU)
-                    signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_TAB)
-                    signalRClient.sendKeyEvent("INPUT_KEY_UP", VK_MENU)
-                }
-                ActionKeyButton(text = "Paste", modifier = Modifier.weight(1f)) {
-                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                    clipboard.primaryClip?.getItemAt(0)?.text?.let { signalRClient.sendText(it.toString()) }
-                }
-                
-                val isSleep = shutdownMode.contains("Sleep", ignoreCase = true)
-                ActionKeyButton(
-                    icon = if (isSleep) Icons.Default.ModeNight else Icons.Default.PowerSettingsNew, 
-                    text = shutdownLabel, 
-                    modifier = Modifier.weight(1f),
-                    onClick = {
-                        shutdownIndex = (shutdownIndex + 1) % shutdownTimes.size
-                        signalRClient.sendScheduleShutdown(shutdownTimes[shutdownIndex])
-                    },
-                    onLongClick = {
-                        signalRClient.toggleShutdownMode()
+                if (!showMoreButtons) {
+                    ActionKeyButton(text = "Paste", modifier = Modifier.weight(1f)) {
+                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                        clipboard.primaryClip?.getItemAt(0)?.text?.let { signalRClient.sendText(it.toString()) }
                     }
-                )
-                
-                ActionKeyButton(text = "Kbd", modifier = Modifier.weight(1f)) {
-                    if (isKeyboardVisible) keyboardController?.hide()
-                    else keyboardController?.show()
+                    
+                    val isSleep = shutdownMode.contains("Sleep", ignoreCase = true)
+                    ActionKeyButton(
+                        icon = if (isSleep) Icons.Default.ModeNight else Icons.Default.PowerSettingsNew, 
+                        text = shutdownLabel, 
+                        modifier = Modifier.weight(1f),
+                        onClick = {
+                            shutdownIndex = (shutdownIndex + 1) % shutdownTimes.size
+                            signalRClient.sendScheduleShutdown(shutdownTimes[shutdownIndex])
+                        },
+                        onLongClick = {
+                            signalRClient.toggleShutdownMode()
+                        }
+                    )
+                    
+                    ActionKeyButton(text = "Kbd", modifier = Modifier.weight(1f)) {
+                        if (isKeyboardVisible) keyboardController?.hide()
+                        else keyboardController?.show()
+                    }
+
+                    ActionKeyButton(text = "More", modifier = Modifier.weight(1f)) {
+                        showMoreButtons = true
+                    }
+                } else {
+                    // Second set of buttons
+                    ActionKeyButton(text = "Alt+Tab", modifier = Modifier.weight(1f)) {
+                        signalRClient.sendKeyEvent("INPUT_KEY_DOWN", VK_MENU)
+                        signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_TAB)
+                        signalRClient.sendKeyEvent("INPUT_KEY_UP", VK_MENU)
+                    }
+                    
+                    // Arrow Keys
+                    val VK_LEFT: UShort = 0x25u
+                    val VK_UP: UShort = 0x26u
+                    val VK_RIGHT: UShort = 0x27u
+                    val VK_DOWN: UShort = 0x28u
+
+                    ActionKeyButton(icon = Icons.AutoMirrored.Filled.KeyboardBackspace, modifier = Modifier.weight(0.8f)) {
+                        signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_LEFT)
+                    }
+                    Column(modifier = Modifier.weight(0.8f)) {
+                        ActionKeyButton(icon = Icons.Default.KeyboardArrowUp, modifier = Modifier.fillMaxWidth().height(20.dp)) {
+                            signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_UP)
+                        }
+                        ActionKeyButton(icon = Icons.Default.KeyboardArrowDown, modifier = Modifier.fillMaxWidth().height(20.dp)) {
+                            signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_DOWN)
+                        }
+                    }
+                    ActionKeyButton(icon = Icons.AutoMirrored.Filled.KeyboardReturn, modifier = Modifier.weight(0.8f)) {
+                        signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_RIGHT)
+                    }
+
+                    ActionKeyButton(text = "Back", modifier = Modifier.weight(1f)) {
+                        showMoreButtons = false
+                    }
                 }
             }
         }

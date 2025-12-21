@@ -32,12 +32,17 @@ class AlarmService : Service() {
     // Metadata for the current running alarm to handle snooze logic
     private var currentAlarmId: Int = 0
     private var currentSoundId: String = "gentle"
+    private var currentHour: Int = 0
+    private var currentMinute: Int = 0
+    private var currentIsAM: Boolean = true
     private var currentVolume: Int = 5
     private var currentRepetition: Int = 0
     private var maxRepetitions: Int = 0
     private var volumeIncrement: Int = 5
     private var snoozeDurationMin: Int = 10
     private var repeatDaily: Boolean = false
+    private var currentDurationSec: Int = 3
+    private var snoozeMessage: String? = null
 
     companion object {
         const val CHANNEL_ID = "OmniAlarmChannel"
@@ -79,8 +84,11 @@ class AlarmService : Service() {
         // Extract Alarm Data
         currentAlarmId = intent?.getIntExtra("ALARM_ID", 0) ?: 0
         currentSoundId = intent?.getStringExtra("SOUND_ID") ?: "gentle"
+        currentHour = intent?.getIntExtra("HOUR", 0) ?: 0
+        currentMinute = intent?.getIntExtra("MINUTE", 0) ?: 0
+        currentIsAM = intent?.getBooleanExtra("IS_AM", true) ?: true
         currentVolume = intent?.getIntExtra("CURRENT_VOLUME", 5) ?: 5
-        val durationSec = intent?.getIntExtra("ALARM_DURATION", 3) ?: 3
+        currentDurationSec = intent?.getIntExtra("ALARM_DURATION", 3) ?: 3
         
         // Gradual/Snooze Data
         maxRepetitions = intent?.getIntExtra("MAX_REPETITIONS", 5) ?: 5
@@ -90,15 +98,20 @@ class AlarmService : Service() {
         repeatDaily = intent?.getBooleanExtra("REPEAT_DAILY", false) ?: false
 
         _isRinging.value = true
-        startForeground(999 + currentAlarmId, createNotification()) // Use ID to allow multiple notifications if needed
+        val notification = createNotification()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            startForeground(1, notification, android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK)
+        } else {
+            startForeground(1, notification)
+        }
         
         playAlarm(currentSoundId, currentVolume)
         
         // Schedule Auto-Snooze Timeout
         timeoutJob?.cancel()
         timeoutJob = serviceScope.launch {
-            Log.d("AlarmService", "Alarm playing for $durationSec seconds")
-            delay(durationSec * 1000L)
+            Log.d("AlarmService", "Alarm playing for $currentDurationSec seconds")
+            delay(currentDurationSec * 1000L)
             handleAutoSnooze()
         }
 
@@ -152,14 +165,20 @@ class AlarmService : Service() {
             val nextVolume = (currentVolume + volumeIncrement).coerceAtMost(100)
             val nextRepetition = currentRepetition + 1
             
+            val triggerTime = System.currentTimeMillis() + (snoozeDurationMin * 60 * 1000L)
+            snoozeMessage = "Snoozed until ${java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()).format(java.util.Date(triggerTime))}"
+
             Log.i("AlarmService", "Scheduling snooze: Rep $nextRepetition, Vol $nextVolume in $snoozeDurationMin mins")
             
             AlarmScheduler.scheduleSnooze(
                 context = this,
                 alarmId = currentAlarmId,
                 soundId = currentSoundId,
+                hour = currentHour,
+                minute = currentMinute,
+                isAM = currentIsAM,
                 volume = nextVolume,
-                durationSec = (timeoutJob?.toString() ?: "3").toInt(), // Use stored duration or re-pass it? Re-pass easier.
+                durationSec = currentDurationSec,
                 snoozeMin = snoozeDurationMin,
                 volIncrement = volumeIncrement,
                 maxReps = maxRepetitions,
@@ -195,6 +214,17 @@ class AlarmService : Service() {
     }
     
     private fun disableAlarmState() {
+        // Update SharedPreferences
+        val prefs = getSharedPreferences("alarm_prefs", Context.MODE_PRIVATE)
+        val key = if (currentAlarmId == 1) "alarm1" else "alarm2"
+        val json = prefs.getString(key, null)
+        if (json != null) {
+            val gson = com.google.gson.Gson()
+            val data = gson.fromJson(json, com.omni.sync.ui.screen.AlarmData::class.java)
+            data.enabled = false
+            prefs.edit().putString(key, gson.toJson(data)).apply()
+        }
+
         // Send broadcast to UI to turn off the switch
         val intent = Intent(ACTION_ALARM_DISABLED).apply {
             putExtra("ALARM_ID", currentAlarmId)
@@ -220,6 +250,7 @@ class AlarmService : Service() {
 
         val fullScreenIntent = Intent(this, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+            putExtra("OPEN_SCREEN", "ALARM")
         }
         val pendingFullScreen = PendingIntent.getActivity(this, 0, fullScreenIntent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
 
@@ -263,6 +294,18 @@ class AlarmService : Service() {
         } catch (e: Exception) {
             Log.e("AlarmService", "Error releasing wake lock", e)
         }
+
+        // Restore ForegroundService notification
+        val refreshIntent = Intent(this, ForegroundService::class.java).apply {
+            action = ForegroundService.ACTION_REFRESH_NOTIFICATION
+            putExtra(ForegroundService.EXTRA_STATUS_MESSAGE, snoozeMessage)
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            startForegroundService(refreshIntent)
+        } else {
+            startService(refreshIntent)
+        }
+
         super.onDestroy()
     }
 }

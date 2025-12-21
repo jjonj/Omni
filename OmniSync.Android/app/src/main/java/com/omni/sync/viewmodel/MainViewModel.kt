@@ -7,6 +7,8 @@ import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.launch
 import com.omni.sync.ui.screen.LogEntry // We will define this or use the one from Dashboard
 import com.omni.sync.ui.screen.LogType
@@ -150,10 +152,24 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         notificationManager.notify(2, notification) // ID 2 for activity changes
     }
 
+    private val _toastMessage = kotlinx.coroutines.flow.MutableSharedFlow<String>()
+    val toastMessage = _toastMessage.asSharedFlow()
+
+    fun showToast(message: String) {
+        viewModelScope.launch {
+            _toastMessage.emit(message)
+        }
+    }
+
     fun setConnected(connected: Boolean) {
         _isConnected.value = connected
-        if (connected) addLog("Hub Connected", LogType.SUCCESS)
-        else addLog("Hub Disconnected", LogType.ERROR)
+        if (connected) {
+            addLog("Hub Connected", LogType.SUCCESS)
+            showToast("Hub Connected")
+        } else {
+            addLog("Hub Disconnected", LogType.ERROR)
+            showToast("Hub Disconnected")
+        }
     }
     
     fun setShiftPressed(isPressed: Boolean) {

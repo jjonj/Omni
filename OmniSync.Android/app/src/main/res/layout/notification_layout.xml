@@ -14,6 +14,24 @@
         android:textColor="#FFFFFF"
         android:textSize="14sp" />
 
+    <TextView
+        android:id="@+id/notification_status"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:textColor="#FF9800"
+        android:textSize="12sp"
+        android:visibility="gone" />
+
+    <Button
+        android:id="@+id/btn_dismiss_alarm"
+        android:layout_width="wrap_content"
+        android:layout_height="32dp"
+        android:text="Dismiss Alarm"
+        android:textSize="10sp"
+        android:visibility="gone"
+        android:background="@drawable/button_background"
+        android:textColor="#FFFFFF" />
+
     <LinearLayout
         android:id="@+id/notification_button_container"
         android:layout_width="match_parent"

@@ -113,6 +113,8 @@ class FilesViewModel(
         viewModelScope.launch {
             mainViewModel.isConnected.collect { connected ->
                 if (connected) {
+                    _errorMessage.value = null
+                    _downloadErrorMessage.value = null
                     syncPendingChanges()
                 }
             }
@@ -155,13 +157,73 @@ class FilesViewModel(
     }
 
     private fun getFromCache(path: String): List<FileSystemEntry>? {
-        val json = cachePrefs.getString("cache_$path", null) ?: return null
-        val type = object : com.google.gson.reflect.TypeToken<List<FileSystemEntry>>() {}.type
-        return try {
-            gson.fromJson(json, type)
-        } catch (e: Exception) {
-            null
+        val json = cachePrefs.getString("cache_$path", null)
+        if (json != null) {
+            val type = object : com.google.gson.reflect.TypeToken<List<FileSystemEntry>>() {}.type
+            return try {
+                gson.fromJson(json, type)
+            } catch (e: Exception) {
+                null
+            }
         }
+
+        // If not explicitly cached, check if this path is a parent of any cached paths
+        // This allows navigating C -> A -> B -> C if C:/A/B/C is cached
+        val allCachedPaths = cachePrefs.all.keys
+            .filter { it.startsWith("cache_") }
+            .map { it.removePrefix("cache_") }
+
+        val normalizedPath = path.replace("\\", "/").removeSuffix("/")
+        
+        // Find cached paths that are deeper than current path
+        val deeperCachedPaths = allCachedPaths.filter { cachedPath ->
+            val normalizedCached = cachedPath.replace("\\", "/").removeSuffix("/")
+            if (normalizedPath.isEmpty()) true 
+            else normalizedCached.startsWith("$normalizedPath/") && normalizedCached.length > normalizedPath.length
+        }
+
+        if (deeperCachedPaths.isNotEmpty()) {
+            val entries = mutableListOf<FileSystemEntry>()
+            
+            // Add ".." if not at root
+            if (normalizedPath.isNotEmpty()) {
+                val parentPath = getParentPath(path)
+                entries.add(FileSystemEntry(
+                    name = "..",
+                    path = parentPath,
+                    isDirectory = true,
+                    size = 0,
+                    lastModified = java.util.Date(0)
+                ))
+            }
+
+            // Synthesize immediate children that lead to cached paths
+            val immediateChildren = deeperCachedPaths.map { childPath ->
+                val normalizedChild = childPath.replace("\\", "/").removeSuffix("/")
+                val relativeToParent = if (normalizedPath.isEmpty()) normalizedChild else normalizedChild.removePrefix("$normalizedPath/")
+                val parts = relativeToParent.split("/").filter { it.isNotEmpty() }
+                parts.firstOrNull() ?: ""
+            }.filter { it.isNotEmpty() }.distinct()
+
+            for (childName in immediateChildren) {
+                val childPath = if (normalizedPath.isEmpty()) childName else {
+                    if (normalizedPath.endsWith(":")) "$normalizedPath/$childName" // Handle C:/
+                    else "$normalizedPath/$childName"
+                }
+                
+                entries.add(FileSystemEntry(
+                    name = childName,
+                    path = childPath,
+                    isDirectory = true,
+                    size = 0,
+                    lastModified = java.util.Date(0)
+                ))
+            }
+            
+            return entries.sortedWith(compareByDescending<FileSystemEntry> { it.name == ".." }.thenBy { it.name })
+        }
+
+        return null
     }
 
     fun toggleFolderBookmark(entry: FileSystemEntry) {
@@ -217,7 +279,8 @@ class FilesViewModel(
         if (!mainViewModel.isConnected.value) {
             val cachedEntries = getFromCache(path)
             if (cachedEntries != null) {
-                _fileSystemEntries.value = cachedEntries
+                val enrichedEntries = enrichWithPendingFiles(path, cachedEntries)
+                _fileSystemEntries.value = enrichedEntries
                 _currentPath.value = path
                 _errorMessage.value = null
                 mainViewModel.addLog("Loaded directory from cache: ${if (path.isEmpty()) "(root)" else path}", com.omni.sync.ui.screen.LogType.INFO)
@@ -248,7 +311,8 @@ class FilesViewModel(
             .subscribe(
                 { entries ->
                     mainViewModel.addLog("Loaded ${entries.size} entries", com.omni.sync.ui.screen.LogType.SUCCESS)
-                    _fileSystemEntries.value = entries
+                    val enrichedEntries = enrichWithPendingFiles(path, entries)
+                    _fileSystemEntries.value = enrichedEntries
                     _currentPath.value = path
                     _isLoading.value = false
                     _errorMessage.value = null
@@ -265,6 +329,38 @@ class FilesViewModel(
                     Log.e("FilesViewModel", "Error loading directory", error)
                 }
             )
+    }
+
+    private fun enrichWithPendingFiles(directoryPath: String, entries: List<FileSystemEntry>): List<FileSystemEntry> {
+        val pendingPaths = _pendingEditPaths.value
+        if (pendingPaths.isEmpty()) return entries
+
+        val normalizedDir = directoryPath.replace("\\", "/").removeSuffix("/")
+        val newEntries = entries.toMutableList()
+        
+        for (pendingPath in pendingPaths) {
+            val parent = getParentPath(pendingPath).replace("\\", "/").removeSuffix("/")
+            
+            if (parent == normalizedDir) {
+                val fileName = pendingPath.substringAfterLast("/").substringAfterLast("\\")
+                if (newEntries.none { it.name == fileName }) {
+                    // It's a new file created offline
+                    newEntries.add(FileSystemEntry(
+                        name = fileName,
+                        path = pendingPath,
+                        isDirectory = false,
+                        size = 0,
+                        lastModified = java.util.Date()
+                    ))
+                }
+            }
+        }
+        
+        return newEntries.sortedWith(
+            compareByDescending<FileSystemEntry> { it.name == ".." }
+                .thenByDescending { it.isDirectory }
+                .thenBy { it.name }
+        )
     }
 
     fun performSearch(query: String) {
@@ -579,10 +675,10 @@ class FilesViewModel(
     private fun onHubFileChanged(path: String) {
         try {
             // Invalidate text cache for this exact file
-            textCachePrefs.edit().remove("text_${'$'}path").apply()
+            textCachePrefs.edit().remove("text_$path").apply()
             // Invalidate directory cache for its parent so next browse reloads
             val parent = getParentPath(path)
-            cachePrefs.edit().remove("cache_${'$'}parent").apply()
+            cachePrefs.edit().remove("cache_$parent").apply()
             // If we are currently in that parent directory and connected, refresh listing
             if (mainViewModel.isConnected.value && _currentPath.value == parent) {
                 loadDirectory(parent)
@@ -612,14 +708,19 @@ class FilesViewModel(
     }
 
     fun createNewFile(name: String) {
+        var fileName = name
+        if (!fileName.contains(".")) {
+            fileName += ".txt"
+        }
+        
         val separator = if (_currentPath.value.contains("/")) "/" else "\\"
-        val fullPath = if (_currentPath.value.isEmpty()) name else {
-            if (_currentPath.value.endsWith(separator)) _currentPath.value + name
-            else _currentPath.value + separator + name
+        val fullPath = if (_currentPath.value.isEmpty()) fileName else {
+            if (_currentPath.value.endsWith(separator)) _currentPath.value + fileName
+            else _currentPath.value + separator + fileName
         }
         
         val newEntry = FileSystemEntry(
-            name = name,
+            name = fileName,
             path = fullPath,
             isDirectory = false,
             size = -1L, // Marker for new file

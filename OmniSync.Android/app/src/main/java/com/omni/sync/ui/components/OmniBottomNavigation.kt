@@ -27,6 +27,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.Alarm
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.Modifier
+import kotlin.math.abs
 
 // Create a simple data class to hold nav info
 data class NavItem(
@@ -54,9 +58,11 @@ val burgerMenuItems = listOf(
 @Composable
 fun OmniBottomNavigation(
     currentScreen: AppScreen,
-    onNavigate: (AppScreen) -> Unit
+    onNavigate: (AppScreen) -> Unit,
+    onSwipe: (Int) -> Unit = {}
 ) {
     var showBurgerMenu by remember { mutableStateOf(false) }
+    var totalDrag by remember { mutableStateOf(0f) }
     
     // We only want to show the Bottom Bar if we are on one of the main screens.    
     // If we are in the Video Player, we usually want to hide it (optional).        
@@ -66,7 +72,23 @@ fun OmniBottomNavigation(
     val showBottomBar = allVisibleScreens.any { it == currentScreen } && !isKeyboardVisible
 
     if (showBottomBar) {
-        NavigationBar {
+        NavigationBar(
+            modifier = Modifier.pointerInput(Unit) {
+                detectHorizontalDragGestures(
+                    onDragEnd = {
+                        if (abs(totalDrag) > 100) {
+                            if (totalDrag > 0) onSwipe(-1)
+                            else onSwipe(1)
+                        }
+                        totalDrag = 0f
+                    },
+                    onHorizontalDrag = { change, dragAmount ->
+                        totalDrag += dragAmount
+                        change.consume()
+                    }
+                )
+            }
+        ) {
             // Main navigation items
             navigationItems.forEach { item ->
                 val isSelected = currentScreen == item.screen

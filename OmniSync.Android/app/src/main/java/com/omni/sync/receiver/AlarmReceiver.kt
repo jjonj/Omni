@@ -22,19 +22,22 @@ class AlarmReceiver : BroadcastReceiver() {
             val alarmId = intent.getIntExtra("ALARM_ID", 0)
 
             if (repeatDaily && !isSnooze) {
-                // To keep it simple, we don't reconstruct the full AlarmData here.
-                // A robust app would pull from DB. 
-                // For this implementation, the "Exact" alarm is consumed. 
-                // The user needs to toggle it off/on or we rely on the Service 'onStart' logic?
-                // Actually, the best place to schedule "Tomorrow" is right now.
-                // But we lost the hour/minute data in the Intent extras unless we pass them.
-                // Assuming the user doesn't close the app and lose state, the UI might reschedule?
-                // No, background logic.
-                // Constraint: Without a DB, rescheduling "Next Day" perfectly is hard.
-                // Current solution: The Alarm fires once. 
-                // We rely on the Service logic to handle the Gradual flow.
-                // The "Next Day" schedule is omitted in this file-based snippet set 
-                // as it requires passing all Hour/Minute data through extras or a DB.
+                val hour = intent.getIntExtra("HOUR", 0)
+                val minute = intent.getIntExtra("MINUTE", 0)
+                val isAM = intent.getBooleanExtra("IS_AM", true)
+                val soundId = intent.getStringExtra("SOUND_ID") ?: "gentle"
+                
+                val alarmData = AlarmData(enabled = true, hour = hour, minute = minute, isAM = isAM, soundId = soundId, repeatDaily = true)
+                val config = GradualConfig(
+                    initialVolume = intent.getIntExtra("CURRENT_VOLUME", 5),
+                    alarmDuration = intent.getIntExtra("ALARM_DURATION", 3),
+                    snoozeDuration = intent.getIntExtra("SNOOZE_DURATION", 10),
+                    volumeIncrement = intent.getIntExtra("VOLUME_INCREMENT", 5),
+                    maxRepetitions = intent.getIntExtra("MAX_REPETITIONS", 6)
+                )
+                
+                AlarmScheduler.scheduleAlarm(context, alarmId, alarmData, config)
+                Log.d("AlarmReceiver", "Rescheduled alarm $alarmId for tomorrow.")
             }
 
             // 2. Start the Service to play sound

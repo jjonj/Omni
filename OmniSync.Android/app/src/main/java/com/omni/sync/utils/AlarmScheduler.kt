@@ -33,6 +33,9 @@ object AlarmScheduler {
             action = "com.omni.sync.ALARM_TRIGGER"
             putExtra("ALARM_ID", alarmId)
             putExtra("SOUND_ID", data.soundId)
+            putExtra("HOUR", data.hour)
+            putExtra("MINUTE", data.minute)
+            putExtra("IS_AM", data.isAM)
             
             // Initial Config
             putExtra("CURRENT_VOLUME", config.initialVolume)
@@ -101,6 +104,9 @@ object AlarmScheduler {
         context: Context, 
         alarmId: Int, 
         soundId: String, 
+        hour: Int,
+        minute: Int,
+        isAM: Boolean,
         volume: Int, 
         durationSec: Int, 
         snoozeMin: Int,
@@ -115,6 +121,9 @@ object AlarmScheduler {
             action = "com.omni.sync.ALARM_TRIGGER"
             putExtra("ALARM_ID", alarmId)
             putExtra("SOUND_ID", soundId)
+            putExtra("HOUR", hour)
+            putExtra("MINUTE", minute)
+            putExtra("IS_AM", isAM)
             
             // Updated Step Config
             putExtra("CURRENT_VOLUME", volume)

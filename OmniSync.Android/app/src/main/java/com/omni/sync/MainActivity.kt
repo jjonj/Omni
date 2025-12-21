@@ -62,6 +62,9 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.LocalContext
 
+import androidx.compose.runtime.remember
+import kotlinx.coroutines.launch
+
 class MainActivity : ComponentActivity() {
     private lateinit var mainViewModel: MainViewModel
     private lateinit var omniSyncApplication: OmniSyncApplication
@@ -78,6 +81,8 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
+        handleIntent(intent)
+
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
                 ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.POST_NOTIFICATIONS), 101)
@@ -105,6 +110,14 @@ class MainActivity : ComponentActivity() {
                 val canGoBack by mainViewModel.canGoBack.collectAsState()
                 val signalRClient = omniSyncApplication.signalRClient
                 
+                val context = LocalContext.current
+
+                LaunchedEffect(Unit) {
+                    mainViewModel.toastMessage.collect { message ->
+                        android.widget.Toast.makeText(context, message, android.widget.Toast.LENGTH_SHORT).show()
+                    }
+                }
+
                 // Observe Alarm State
                 val isAlarmRinging by AlarmService.isRinging.collectAsState()
 
@@ -160,9 +173,16 @@ class MainActivity : ComponentActivity() {
                                 val configuration = LocalConfiguration.current
                                 val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
                                 if (!isLandscape) {
+                                    val coroutineScope = androidx.compose.runtime.rememberCoroutineScope()
                                     OmniBottomNavigation(
                                         currentScreen = currentScreen,
-                                        onNavigate = { screen -> mainViewModel.navigateTo(screen) }
+                                        onNavigate = { screen -> mainViewModel.navigateTo(screen) },
+                                        onSwipe = { delta ->
+                                            coroutineScope.launch {
+                                                val next = (pagerState.currentPage + delta).coerceIn(0, swipeableScreens.size - 1)
+                                                pagerState.animateScrollToPage(next)
+                                            }
+                                        }
                                     )
                                 }
                             }
@@ -175,12 +195,23 @@ class MainActivity : ComponentActivity() {
                                     currentScreen == AppScreen.PROCESS || currentScreen == AppScreen.ALARM) {
                                     MainScreenContent(currentScreen, signalRClient, browserViewModel, filesViewModel, mainViewModel)
                                 } else {
-                                    HorizontalPager(
-                                        state = pagerState,
-                                        modifier = Modifier.fillMaxSize(),
-                                        userScrollEnabled = true 
-                                    ) { page ->
-                                        MainScreenContent(swipeableScreens[page], signalRClient, browserViewModel, filesViewModel, mainViewModel)
+                                    // Custom touch slop to make paging less sensitive to diagonal swipes
+                                    val viewConfig = androidx.compose.ui.platform.LocalViewConfiguration.current
+                                    val customViewConfig = remember {
+                                        object : androidx.compose.ui.platform.ViewConfiguration by viewConfig {
+                                            override val touchSlop: Float get() = viewConfig.touchSlop * 2.5f
+                                        }
+                                    }
+                                    androidx.compose.runtime.CompositionLocalProvider(
+                                        androidx.compose.ui.platform.LocalViewConfiguration provides customViewConfig
+                                    ) {
+                                        HorizontalPager(
+                                            state = pagerState,
+                                            modifier = Modifier.fillMaxSize(),
+                                            userScrollEnabled = true 
+                                        ) { page ->
+                                            MainScreenContent(swipeableScreens[page], signalRClient, browserViewModel, filesViewModel, mainViewModel)
+                                        }
                                     }
                                 }
                             }
@@ -212,6 +243,18 @@ class MainActivity : ComponentActivity() {
                     )
                 }
             }
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        handleIntent(intent)
+    }
+
+    private fun handleIntent(intent: Intent?) {
+        val openScreen = intent?.getStringExtra("OPEN_SCREEN")
+        if (openScreen == "ALARM") {
+            mainViewModel.navigateTo(AppScreen.ALARM)
         }
     }
 

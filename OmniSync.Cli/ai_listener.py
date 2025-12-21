@@ -10,6 +10,8 @@ import psutil
 import win32file
 import win32pipe
 import pywintypes
+import pygetwindow as gw
+import pyautogui
 from signalrcore.hub_connection_builder import HubConnectionBuilder
 
 # --- CONFIGURATION ---
@@ -136,6 +138,34 @@ async def send_remote_command(command_text):
     # Run synchronous pipe I/O in a separate thread to avoid blocking the event loop
     return await asyncio.to_thread(sync_pipe_comm, pid, command_text)
 
+def handle_slash_command(command):
+    """Types a slash command into the Gemini CLI window using pyautogui."""
+    try:
+        logger.info(f"Handling slash command: {command}")
+        titles = gw.getAllTitles()
+        # Heuristic to find Gemini window
+        candidates = [t for t in titles if 'gemini' in t.lower() or 'OMNI_COMMAND_TEST' in t]
+        if not candidates:
+            candidates = [t for t in titles if 'powershell' in t.lower()]
+        
+        if not candidates:
+            return "Error: Could not find Gemini CLI window."
+
+        target_title = candidates[0]
+        window = gw.getWindowsWithTitle(target_title)[0]
+        
+        if window.isMinimized:
+            window.restore()
+        window.activate()
+        time.sleep(0.5)
+        
+        pyautogui.write(command, interval=0.01)
+        pyautogui.press('enter')
+        return f"[Command Sent to Window: {target_title}]"
+    except Exception as e:
+        logger.error(f"Error in handle_slash_command: {e}")
+        return f"Error: {str(e)}"
+
 async def handle_and_reply(message):
     try:
         logger.info("Sending AI Status: Thinking...")
@@ -143,7 +173,12 @@ async def handle_and_reply(message):
     except Exception as e:
         logger.error(f"Error sending status to hub: {e}")
 
-    response = await send_remote_command(message)
+    if message.strip().startswith("/"):
+        # Use pyautogui for slash commands as requested
+        response = await asyncio.to_thread(handle_slash_command, message.strip())
+    else:
+        # Use named pipe for normal prompts
+        response = await send_remote_command(message)
     
     if response:
         logger.info("Sending AI Response back to Hub")

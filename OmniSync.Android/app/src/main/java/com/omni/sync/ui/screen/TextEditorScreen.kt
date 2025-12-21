@@ -88,10 +88,12 @@ fun TextEditorScreen(
     val isSaving by filesViewModel.isSaving.collectAsState()
     
     var showMenu by remember { mutableStateOf(false) }
+    var lastContent by remember { mutableStateOf(editingContent) }
     
     val scrollState = rememberScrollState()
     val colorScheme = MaterialTheme.colorScheme
     val visualTransformation = remember(colorScheme) { MarkdownVisualTransformation(colorScheme) }
+    val context = androidx.compose.ui.platform.LocalContext.current
 
     Scaffold(
         topBar = {
@@ -103,12 +105,12 @@ fun TextEditorScreen(
                     }
                 },
                 actions = {
-                    val context = androidx.compose.ui.platform.LocalContext.current
                     IconButton(onClick = {
                         val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
                         val clip = clipboard.primaryClip
                         if (clip != null && clip.itemCount > 0) {
                             val text = clip.getItemAt(0).text.toString()
+                            lastContent = editingContent
                             filesViewModel.updateEditingContent(editingContent + text)
                         }
                     }) {
@@ -133,8 +135,55 @@ fun TextEditorScreen(
                         }
                         DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
                             DropdownMenuItem(
+                                text = { Text("Undo") },
+                                onClick = {
+                                    val temp = editingContent
+                                    filesViewModel.updateEditingContent(lastContent)
+                                    lastContent = temp
+                                    showMenu = false
+                                }
+                            )
+                            Divider()
+                            DropdownMenuItem(
+                                text = { Text("Copy All") },
+                                onClick = {
+                                    val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                                    val clip = android.content.ClipData.newPlainText("OmniEditor", editingContent)
+                                    clipboard.setPrimaryClip(clip)
+                                    showMenu = false
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Insert Timestamp") },
+                                onClick = {
+                                    val ts = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.getDefault()).format(java.util.Date())
+                                    lastContent = editingContent
+                                    filesViewModel.updateEditingContent(editingContent + "\n" + ts + "\n")
+                                    showMenu = false
+                                }
+                            )
+                            Divider()
+                            DropdownMenuItem(
+                                text = { Text("Add H1 Header (#)") },
+                                onClick = {
+                                    lastContent = editingContent
+                                    filesViewModel.updateEditingContent("# " + editingContent)
+                                    showMenu = false
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Add Bullet Point (-)") },
+                                onClick = {
+                                    lastContent = editingContent
+                                    filesViewModel.updateEditingContent("- " + editingContent)
+                                    showMenu = false
+                                }
+                            )
+                            Divider()
+                            DropdownMenuItem(
                                 text = { Text("To Upper Case") },
                                 onClick = {
+                                    lastContent = editingContent
                                     filesViewModel.updateEditingContent(editingContent.uppercase())
                                     showMenu = false
                                 }
@@ -142,6 +191,7 @@ fun TextEditorScreen(
                             DropdownMenuItem(
                                 text = { Text("To Lower Case") },
                                 onClick = {
+                                    lastContent = editingContent
                                     filesViewModel.updateEditingContent(editingContent.lowercase())
                                     showMenu = false
                                 }
@@ -150,6 +200,7 @@ fun TextEditorScreen(
                             DropdownMenuItem(
                                 text = { Text("Clear All") },
                                 onClick = {
+                                    lastContent = editingContent
                                     filesViewModel.updateEditingContent("")
                                     showMenu = false
                                 }
@@ -164,6 +215,7 @@ fun TextEditorScreen(
             modifier = Modifier
                 .padding(paddingValues)
                 .fillMaxSize()
+                .imePadding()
         ) {
             // Line numbers column
             val lines = editingContent.split("\n")

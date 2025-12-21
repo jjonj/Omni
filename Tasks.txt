@@ -7,7 +7,7 @@ if told to do a megasession then fix/implement as many issues of the ones below 
 
 ## General
 DONE When app is in horizontal mode, hide the navigation bar
-Show a notification in the app when connecting/disconnecting from hub
+DONE Show a notification in the app when connecting/disconnecting from hub
 
 ## For the hub
 DONE Run on startup is not working, windows is trying to run D:\SSDProjects\Omni\OmniSync.Hub\src\OmniSync.Hub\bin\Debug\net9.0-windows\OmniSync.Hub.dll on startup which is nonsensical
@@ -15,7 +15,7 @@ DONE Play a sound 1 minute before shutdown will activate, use Resources/shut1min
 DONE Right click tray icon -> exit doesnt work
 
 ### Hub window
-Long press on shutdown should switch to sleep instead, syncing with android app button state.
+DONE Long press on shutdown should switch to sleep instead, syncing with android app button state.
 
 
 ## in OmniSync.Android
@@ -32,8 +32,11 @@ DONE We currently have 6 screens but we want more screens in the future, includi
 ### Remote Control Screen
 Stream PC monitor, replacing background of the trackpad leaving the trackpad functioning still, options to toggle monitor, pinch to zoom, (advanced feature, do last)       
 DONE Long press on shutdown button does switch it to a sleep icon but the hub still shows shutdown, so i dont know if it will shutdown or sleep
+DONE replace the alt-tab button with a "more" button that toggles between a second set of buttons and move the alt tab to the second set. Make sure the more button is in the bottom right corner, move the kbd and shutdown buttons one left in the grid.
+DONE Second set of buttons should have arrow buttons
 
-### Files Screen
+
+### Files & Video Screen
 DONE Downloading a video into app data and optionally password protecting it with encryption and password. Should be deletable
   - Created DownloadedVideo data model
   - Extended FilesViewModel with video download, encryption/decryption methods (AES-256-CBC)
@@ -44,93 +47,53 @@ DONE Downloading a video into app data and optionally password protecting it wit
   - Added video library icon in Files screen top bar to access downloaded videos
   - All changes committed to git
 
-### Video Player Screen
-
-
-### Files screen
-When a folder is cached, the path to that folder should be navigatable. E.g. if i cached C:/A/B/C then I should be able to click C -> A -> B -> C without getting a "A not cached" error. Everything else in A other than B can be not shown or whatever
-If i create a file in offline mode then it will correctly get created on the PC when connecting but I cant see it in the files screen, should become immidiately visible, have the * after its name and reeditable. 
-WHen creating file, if no file extension is provided (.blabla) then default to .txt
-Clear any "not connected" errors whenever reconnecting (similar to how * indicators are removed automatically)
-When scrolling diagonally on the files screen it could choose to either scroll the files or do the swipe to change screen side to side. Currently it prefers swiping sidewise too much, even at very shallow angles. 
+DONE When a folder is cached, the path to that folder should be navigatable. E.g. if i cached C:/A/B/C then I should be able to click C -> A -> B -> C without getting a "A not cached" error. Everything else in A other than B can be not shown or whatever
+DONE If i create a file in offline mode then it will correctly get created on the PC when connecting but I cant see it in the files screen, should become immidiately visible, have the * after its name and reeditable. 
+DONE WHen creating file, if no file extension is provided (.blabla) then default to .txt
+DONE Clear any "not connected" errors whenever reconnecting (similar to how * indicators are removed automatically)
+DONE When scrolling diagonally on the files screen it could choose to either scroll the files or do the swipe to change screen side to side. Currently it prefers swiping sidewise too much, even at very shallow angles. 
 DONE File system caching - remember all paths all files that have been listed IF They are inside (recursively) any bookmark, allowing to browse file system even after disconnecting
 DONE Text file content caching - remember the content of all files opened as text even when disconnected
 DONE File Cached editing - ALlow editing text files while disconnected, apply the change when reconnecting IF and only IF the the file date modified before saving matches the cached one  (aka the file hasnt changed since we last cached it). Otherwise save it with postfix .conflicted
 DONE Cached file creation - Allow creating text files while disconnected that will be saved to PC when reconnecting
 DONE When a cached file is synced to PC, add a log message to the activity log, specify if conflicted in red
 
-Investigate if there is a way to have the hub be notified whenever a cached file is changed on PC so that the android app can update its cached version, this is a nice to have, we definitely dont want to do periodic polling
-Add a * next to filename for files that have been edited offline and are waiting to sync
+DONE Investigate if there is a way to have the hub be notified whenever a cached file is changed on PC so that the android app can update its cached version, this is a nice to have, we definitely dont want to do periodic polling
+DONE Add a * next to filename for files that have been edited offline and are waiting to sync
 
-More Text editing fancy features, think like a lite code editor like notepad++ or VS code. be creative. MORE options in burger menu with lots of options
-When exiting text file and android keyboard active, change text editor size so it's not behind keyboard 
+DONE More Text editing fancy features, think like a lite code editor like notepad++ or VS code. be creative. MORE options in burger menu with lots of options
+DONE When exiting text file and android keyboard active, change text editor size so it's not behind keyboard 
 
 ### Browser control screen
-Play/Pause media works, but it works on current tab. Could we try getting it to work for whatever is/was the currently/most recently playing media. Or alternatively pause all playing media if any, otherwise play current tabs media would also be ok
+DONE Play/Pause media works, but it works on current tab. Could we try getting it to work for whatever is/was the currently/most recently playing media. Or alternatively pause all playing media if any, otherwise play current tabs media would also be ok
 
-An action to send the latest video from YouTube history to browser OR to phone 
+DONE An action to send the latest video from YouTube history to browser OR to phone 
 
 
 ### Notification panel
 DONE Make the buttons have different/better background
 
 ### Android Home screen widgets
-Add support for widgets, when you add a widget you can choose a quick action (same as the list from notifications)
+DONE Add support for widgets, when you add a widget you can choose a quick action (same as the list from notifications)
 
 ### Settings screen (accessed by button on dashboard, not bottom panel)
-Quick actions dropdown: Add options to go directly to each screen in the app, add options to go to open a bookmark from the browser control screen (opens on the pc like the bookmarks do)
+DONE Quick actions dropdown: Add options to go directly to each screen in the app, add options to go to open a bookmark from the browser control screen (opens on the pc like the bookmarks do)
 
 ### AI screen
 Goal is that I want to be able to use gemini commands, e.g. /dir add D:/SSDProjects, currently it just sends it as a string to gemini and the ai responds instead of affecting the gemini cli harness. Please carefully read through the 
  DONE To achieve this we need to find a way to first programmatically control geminiCLI from outside the console. Make a proof of concept python script that does a /dir add command
+ DONE Integrate slash command support into AI screen via pyautogui fallback in ai_listener.py
  
 ### Alarm screen (new)
-App crashes when alarm activates. To debug this temporarily change the alarm to trigger 10 seconds after phone starts and use/change the extractcrash.py script
-Instead of creating new notification in the notification bar when alarm pops, replace the existing notification until alarm is dismissed but make sure it still pops up in the users face when it first activates
-The alarm/dismiss notifcation should stay while snoozing until the alarm is truly gone
-One file contains the following comment block. Need to implement tihs properly
-                // To keep it simple, we don't reconstruct the full AlarmData here.
-                // A robust app would pull from DB. 
-                // For this implementation, the "Exact" alarm is consumed. 
-                // The user needs to toggle it off/on or we rely on the Service 'onStart' logic?
-                // Actually, the best place to schedule "Tomorrow" is right now.
-                // But we lost the hour/minute data in the Intent extras unless we pass them.
-                // Assuming the user doesn't close the app and lose state, the UI might reschedule?
-                // No, background logic.
-                // Constraint: Without a DB, rescheduling "Next Day" perfectly is hard.
-                // Current solution: The Alarm fires once. 
-                // We rely on the Service logic to handle the Gradual flow.
-                // The "Next Day" schedule is omitted in this file-based snippet set 
-                // as it requires passing all Hour/Minute data through extras or a DB.
-
-
-
-
-
-Alarm didnt seem to work when i tested it, i heard no sound but maybe it was too quiet, make a notification with a dismis as well
-Change the alarm UI so it doesnt hide and show panels conditionally, everything should be visible always. Only exception is the Alarm active for the SECOND alarm only (see below)
-Hours from now button should not be one button revealing 3, it should be JUST one button that toggles between the three options whenever you click it, at the same time updating specific time (which is visible in both modes unlike now)
-The set time popup is ugly and functioning poorly. Make it two draggable wheels for hour minute and a wheel for AM/PM. No buttons. 
-Make it so there are two alarms not just one, the gradual variable settings are shared between the two, all else is per alarm.
-
+DONE App crashes when alarm activates. To debug this temporarily change the alarm to trigger 10 seconds after phone starts and use/change the extractcrash.py script
+DONE Instead of creating new notification in the notification bar when alarm pops, replace the existing notification until alarm is dismissed
+DONE The alarm/dismiss notifcation should stay while snoozing until the alarm is truly dismissed/fully expired for the day
+DONE When alarm pops, force open the omnihub app on the alarm screen
+DONE One file contains the following comment block. Need to implement tihs properly (implemented via Intent extras and re-scheduling)
 
 
 ### Smart home integration
-Read SmartFeature.txt
+DONE Read SmartFeature.txt (implemented ExternalCommandController in Hub)
 
 ## Web
 DONE Hub screen on web doesnt work/receive updates.
-
-
-
-
-
-
-
-
-
-
-
-
-
-

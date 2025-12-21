@@ -157,56 +157,56 @@ connection.on("ReceiveBrowserCommand", async (command, url, newTab) => {
             connection.invoke("SendTabList", tabList);
         });
     } else if (command === "MediaPlayPause") {
-        chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-            if (tabs[0]) {
-                chrome.scripting.executeScript({
-                    target: { tabId: tabs[0].id, allFrames: true },
-                    func: () => {
-                        // Strategy 1: Media Session API (Modern standard)
-                        if (navigator.mediaSession && navigator.mediaSession.playbackState !== 'none') {
-                            if (navigator.mediaSession.playbackState === 'playing') {
-                                document.querySelectorAll('video, audio').forEach(m => m.pause());
-                            } else {
-                                document.querySelectorAll('video, audio').forEach(m => m.play());
+        // First check for any audible tabs (currently playing sound)
+        chrome.tabs.query({ audible: true }, (audibleTabs) => {
+            if (audibleTabs.length > 0) {
+                console.log(`Found ${audibleTabs.length} audible tabs. Pausing them.`);
+                audibleTabs.forEach(tab => {
+                    chrome.scripting.executeScript({
+                        target: { tabId: tab.id, allFrames: true },
+                        func: () => {
+                            const media = document.querySelectorAll('video, audio');
+                            media.forEach(m => m.pause());
+                            // Also try clicking common pause buttons
+                            ['.ytp-play-button', '[aria-label="Pause"]', '.spoticon-pause-32', 'button.pause'].forEach(s => {
+                                document.querySelectorAll(s).forEach(el => {
+                                    // Only click if it looks like a pause button or we don't know
+                                    el.click();
+                                });
+                            });
+                        }
+                    });
+                });
+            } else {
+                // No audible tabs, fall back to active tab toggle
+                chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+                    if (tabs[0]) {
+                        chrome.scripting.executeScript({
+                            target: { tabId: tabs[0].id, allFrames: true },
+                            func: () => {
+                                const media = document.querySelectorAll('video, audio');
+                                if (media.length > 0) {
+                                    let anyPaused = false;
+                                    media.forEach(m => { if (m.paused) anyPaused = true; });
+                                    if (anyPaused) media.forEach(m => m.play().catch(() => {}));
+                                    else media.forEach(m => m.pause());
+                                } else {
+                                    // Fallback to clicking or spacebar
+                                    const commonSelectors = [
+                                        '.ytp-play-button', '.play-pause-button', '[aria-label="Play"]', 
+                                        '[aria-label="Pause"]', '.spoticon-play-32', '.spoticon-pause-32'
+                                    ];
+                                    let clicked = false;
+                                    commonSelectors.forEach(selector => {
+                                        document.querySelectorAll(selector).forEach(el => { el.click(); clicked = true; });
+                                    });
+                                    if (!clicked) {
+                                        const spaceEvent = new KeyboardEvent('keydown', { 'view': window, 'bubbles': true, 'cancelable': true, 'keyCode': 32 });
+                                        document.dispatchEvent(spaceEvent);
+                                    }
+                                }
                             }
-                            // Note: playbackState is sometimes read-only or inaccurate, proceed to other strategies
-                        }
-
-                        // Strategy 2: Direct Video/Audio elements
-                        const media = document.querySelectorAll('video, audio');
-                        if (media.length > 0) {
-                            media.forEach(m => {
-                                if (m.paused) m.play().catch(() => {});
-                                else m.pause();
-                            });
-                        }
-
-                        // Strategy 3: Common Play/Pause button classes/IDs (YouTube, Spotify, etc.)
-                        const commonSelectors = [
-                            '.ytp-play-button', // YouTube
-                            '.play-pause-button', 
-                            '[aria-label="Play"]', 
-                            '[aria-label="Pause"]',
-                            '.spoticon-play-32', 
-                            '.spoticon-pause-32',
-                            'button.play',
-                            'button.pause'
-                        ];
-                        commonSelectors.forEach(selector => {
-                            document.querySelectorAll(selector).forEach(el => el.click());
                         });
-
-                        // Strategy 4: Keyboard events (Spacebar fallback)
-                        // Only if no media was found
-                        if (media.length === 0) {
-                            const spaceEvent = new KeyboardEvent('keydown', {
-                                'view': window,
-                                'bubbles': true,
-                                'cancelable': true,
-                                'keyCode': 32
-                            });
-                            document.dispatchEvent(spaceEvent);
-                        }
                     }
                 });
             }
@@ -229,6 +229,20 @@ connection.on("ReceiveBrowserCommand", async (command, url, newTab) => {
                     // Notify hub of updated patterns
                     connection.invoke("SendCleanupPatterns", customCleanupPatterns);
                 }
+            }
+        });
+    } else if (command === "SendLatestYouTubeToPhone") {
+        chrome.history.search({ text: 'youtube.com/watch', maxResults: 1 }, (results) => {
+            if (results.length > 0) {
+                console.log("Found latest YouTube video in history:", results[0].url);
+                connection.invoke("SendTabToPhone", results[0].url);
+            }
+        });
+    } else if (command === "OpenLatestYouTubeOnPC") {
+        chrome.history.search({ text: 'youtube.com/watch', maxResults: 1 }, (results) => {
+            if (results.length > 0) {
+                console.log("Opening latest YouTube video on PC:", results[0].url);
+                chrome.tabs.create({ url: results[0].url, active: true });
             }
         });
     }

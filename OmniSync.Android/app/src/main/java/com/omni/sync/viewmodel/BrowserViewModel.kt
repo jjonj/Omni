@@ -120,6 +120,14 @@ class BrowserViewModel(
         signalRClient.sendBrowserCommand("OpenCurrentTabOnPhone", "", false)
     }
 
+    fun sendLatestYouTubeToPhone() {
+        signalRClient.sendBrowserCommand("SendLatestYouTubeToPhone", "", false)
+    }
+
+    fun openLatestYouTubeOnPC() {
+        signalRClient.sendBrowserCommand("OpenLatestYouTubeOnPC", "", false)
+    }
+
     fun addBookmark(name: String? = null, url: String? = null) {
         val finalUrl = url ?: _urlInput.value
         if (finalUrl.isNotBlank()) {

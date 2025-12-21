@@ -200,6 +200,33 @@ fun BrowserControlScreen(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
+            // 1. Latest YT to Phone
+            OutlinedButton(
+                onClick = { viewModel.sendLatestYouTubeToPhone() },
+                modifier = Modifier.weight(1f),
+                shape = RoundedCornerShape(8.dp),
+                contentPadding = PaddingValues(horizontal = 8.dp)
+            ) {
+                Text("YT to Phone", fontSize = 11.sp)
+            }
+
+            // 2. Latest YT on PC
+            OutlinedButton(
+                onClick = { viewModel.openLatestYouTubeOnPC() },
+                modifier = Modifier.weight(1f),
+                shape = RoundedCornerShape(8.dp),
+                contentPadding = PaddingValues(horizontal = 8.dp)
+            ) {
+                Text("YT on PC", fontSize = 11.sp)
+            }
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
             // 1. Clean Tabs
             OutlinedButton(
                 onClick = { viewModel.sendCommand("CleanTabs") },

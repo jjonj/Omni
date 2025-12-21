@@ -22,11 +22,13 @@ import android.widget.RemoteViews
 class ForegroundService : Service() {
 
     private val CHANNEL_ID = "OmniSyncForegroundServiceChannel"
+    private var statusMessage: String? = null
 
     companion object {
         const val ACTION_TRIGGER_NOTIFICATION_ACTION = "com.omni.sync.TRIGGER_ACTION"
         const val EXTRA_ACTION_ID = "extra_action_id"
         const val ACTION_REFRESH_NOTIFICATION = "com.omni.sync.REFRESH_NOTIFICATION"
+        const val EXTRA_STATUS_MESSAGE = "extra_status_message"
     }
 
     override fun onCreate() {
@@ -43,6 +45,12 @@ class ForegroundService : Service() {
                 }
             }
             ACTION_REFRESH_NOTIFICATION -> {
+                statusMessage = intent.getStringExtra(EXTRA_STATUS_MESSAGE)
+                updateNotification()
+            }
+            AlarmService.ACTION_DISMISS -> {
+                statusMessage = null
+                AlarmService.stopAlarm(this)
                 updateNotification()
             }
         }
@@ -63,6 +71,17 @@ class ForegroundService : Service() {
 
         if (action.isWol && action.macAddress != null) {
             mainViewModel.sendWakeOnLan(action.macAddress)
+        } else if (action.command.startsWith("NAV:")) {
+            val screenName = action.command.substring(4)
+            val intent = Intent(this, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+                putExtra("OPEN_SCREEN", screenName)
+            }
+            startActivity(intent)
+        } else if (action.command.startsWith("BOOKMARK:")) {
+            val url = action.command.substring(9)
+            mainViewModel.addLog("Notification: Opening bookmark on PC...", com.omni.sync.ui.screen.LogType.INFO)
+            signalRClient.sendBrowserCommand("Navigate", url, true)
         } else {
             mainViewModel.addLog("Notification: Triggering ".plus(action.label).plus("..."), com.omni.sync.ui.screen.LogType.INFO)
             signalRClient.executeCommand(action.command)
@@ -114,6 +133,21 @@ class ForegroundService : Service() {
         
         val customLayout = RemoteViews(packageName, R.layout.notification_layout)
         
+        if (statusMessage != null) {
+            customLayout.setViewVisibility(R.id.notification_status, android.view.View.VISIBLE)
+            customLayout.setTextViewText(R.id.notification_status, statusMessage)
+            
+            customLayout.setViewVisibility(R.id.btn_dismiss_alarm, android.view.View.VISIBLE)
+            val dismissIntent = Intent(this, ForegroundService::class.java).apply {
+                action = AlarmService.ACTION_DISMISS
+            }
+            val pendingDismiss = PendingIntent.getService(this, 999, dismissIntent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+            customLayout.setOnClickPendingIntent(R.id.btn_dismiss_alarm, pendingDismiss)
+        } else {
+            customLayout.setViewVisibility(R.id.notification_status, android.view.View.GONE)
+            customLayout.setViewVisibility(R.id.btn_dismiss_alarm, android.view.View.GONE)
+        }
+
         // Hide all buttons initially
         val btnIds = listOf(R.id.btn1, R.id.btn2, R.id.btn3, R.id.btn4, R.id.btn5, R.id.btn6)
         btnIds.forEach { customLayout.setViewVisibility(it, android.view.View.GONE) }
