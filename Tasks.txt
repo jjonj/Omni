@@ -21,7 +21,7 @@ Right click tray icon -> exit is slow, can we be more forceful?
 ### General
 
 DONE Can we make settings/configurations persistent between reinstalls of the app? (implemented via ConfigManager in external storage)
-The dashboard has two cog icons with settings in the upper right, merge them into one. 
+DONE The dashboard has two cog icons with settings in the upper right, merge them into one. 
 
 ### Dashboard
 
