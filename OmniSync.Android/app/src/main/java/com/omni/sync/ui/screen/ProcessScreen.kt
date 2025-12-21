@@ -234,15 +234,7 @@ fun ProcessItem(process: ProcessInfo, signalRClient: SignalRClient?, onProcessKi
                                     style = MaterialTheme.typography.bodyMedium,
                                     maxLines = 1
                                 )
-                                if (!process.mainWindowTitle.isNullOrEmpty()) {
-                                    Text(
-                                        text = process.mainWindowTitle ?: "",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        maxLines = 1,
-                                        fontSize = 10.sp
-                                    )
-                                }            }
+            }
             
             // Stats
             Column(

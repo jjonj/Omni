@@ -45,7 +45,6 @@ import com.google.gson.annotations.SerializedName
 data class ProcessInfo(
     @SerializedName("id") val id: Double,
     @SerializedName("name") val name: String,
-    @SerializedName("mainWindowTitle") val mainWindowTitle: String?,
     @SerializedName("cpuUsage") val cpuUsage: Double = 0.0,
     @SerializedName("memoryUsage") val memoryUsage: Long = 0
 )

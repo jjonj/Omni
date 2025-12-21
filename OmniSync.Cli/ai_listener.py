@@ -39,20 +39,40 @@ GLOBAL_LOOP = None
 def get_gemini_pid():
     """Finds the PID of the Gemini CLI process."""
     best_pid = None
+    logger.info("Searching for Gemini processes...")
     for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
         try:
-            cmdline = " ".join(proc.info['cmdline'] or [])
+            cmdline_list = proc.info['cmdline'] or []
+            cmdline = " ".join(cmdline_list)
+            name = proc.info['name'] or ""
+            
             # Target the node process running the gemini bundle
-            if 'node' in proc.info['name'].lower() and 'gemini' in cmdline.lower():
+            if 'node' in name.lower() and 'gemini' in cmdline.lower():
+                logger.info(f"Checking potential node/gemini process: PID {proc.info['pid']} - Cmd: {cmdline}")
                 # Exclude the listener itself
                 if "ai_listener" not in cmdline.lower() and "modify_gemini" not in cmdline.lower():
-                    # Prioritize the bundle or dist version
-                    if 'bundle/gemini.js' in cmdline.replace('\\', '/') or 'dist/index.js' in cmdline.replace('\\', '/'):
-                        logger.info(f"Found Gemini process: PID {proc.info['pid']} (Cmd: {cmdline})")
+                    # STRONGLY Prioritize the local bundle version
+                    if 'bundle/gemini.js' in cmdline.replace('\\', '/'):
+                        logger.info(f"MATCH: Found local Gemini bundle process: PID {proc.info['pid']}")
                         return proc.info['pid']
-                    best_pid = proc.info['pid']
+                    
+                    # Also prioritize SSDProjects dist version
+                    if 'ssdprojects' in cmdline.lower() and 'dist/index.js' in cmdline.replace('\\', '/'):
+                        logger.info(f"MATCH: Found local Gemini dist process: PID {proc.info['pid']}")
+                        return proc.info['pid']
+                    
+                    # Fallback to other bundle/dist versions
+                    if 'bundle/gemini.js' in cmdline.replace('\\', '/') or 'dist/index.js' in cmdline.replace('\\', '/'):
+                        if not best_pid: # Keep the first one found as fallback
+                            best_pid = proc.info['pid']
+                            logger.info(f"POTENTIAL FALLBACK: Found generic bundle process: PID {proc.info['pid']}")
         except (psutil.NoSuchProcess, psutil.AccessDenied):
             pass
+    
+    if best_pid:
+        logger.info(f"FALLBACK: Using best found PID {best_pid}")
+    else:
+        logger.warning("No Gemini process found.")
     return best_pid
 
 def sync_pipe_comm(pid, command_text):
@@ -101,7 +121,8 @@ def sync_pipe_comm(pid, command_text):
                     continue
                 
                 # Each line is a JSON message
-                for line in chunk.split('\n'):
+                lines = chunk.split('\n')
+                for line in lines:
                     if not line.strip(): continue
                     try:
                         msg = json.loads(line)
@@ -111,10 +132,21 @@ def sync_pipe_comm(pid, command_text):
                                 win32file.CloseHandle(handle)
                                 return full_text.strip() or "[No Output]"
                             elif text == '[Command Handled]':
-                                # Don't add to full_text unless we want to see it in the final output
                                 pass
                             else:
                                 full_text += text + "\n"
+                        
+                        # If we received exactly one line and it was a valid 'response' 
+                        # but NOT a finished marker, and there's no more data available,
+                        # it might be an older CLI version that sends everything in one go.
+                        if len(lines) == 1 and not text == '[TURN_FINISHED]':
+                            # Check if more data is coming
+                            time.sleep(0.5)
+                            _, still_avail, _ = win32pipe.PeekNamedPipe(handle, 0)
+                            if still_avail == 0:
+                                win32file.CloseHandle(handle)
+                                return full_text.strip() or "[No Output]"
+                                
                     except json.JSONDecodeError:
                         continue
             else:

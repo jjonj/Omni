@@ -56,7 +56,6 @@ namespace OmniSync.Hub.Infrastructure.Services
             {
                 Id = p.Id,
                 Name = p.ProcessName,
-                MainWindowTitle = p.MainWindowTitle, // Can be empty for background processes
                 MemoryUsage = p.WorkingSet64,
                 CpuUsage = 0
             }).ToList();
