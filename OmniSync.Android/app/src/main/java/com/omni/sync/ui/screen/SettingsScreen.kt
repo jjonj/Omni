@@ -28,7 +28,8 @@ import androidx.compose.material.icons.filled.MoreVert
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
-    mainViewModel: MainViewModel
+    mainViewModel: MainViewModel,
+    signalRClient: com.omni.sync.data.repository.SignalRClient
 ) {
     val context = mainViewModel.applicationContext
     val appConfig = mainViewModel.appConfig
@@ -143,7 +144,7 @@ fun SettingsScreen(
                     appConfig.hubUrl = hubUrl
                     appConfig.apiKey = apiKey
                     mainViewModel.saveAppConfig()
-                    mainViewModel.signalRClient?.manualReconnect()
+                    signalRClient.manualReconnect()
                 },
                 modifier = Modifier.align(Alignment.End)
             ) {

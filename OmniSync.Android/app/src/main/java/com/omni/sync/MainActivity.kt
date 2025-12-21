@@ -307,7 +307,8 @@ class MainActivity : ComponentActivity() {
                 onBack = { mainViewModel.goBack() }
             )
             AppScreen.SETTINGS -> com.omni.sync.ui.screen.SettingsScreen(
-                mainViewModel = mainViewModel
+                mainViewModel = mainViewModel,
+                signalRClient = signalRClient
             )
             AppScreen.AI_CHAT -> com.omni.sync.ui.screen.AiChatScreen(
                 signalRClient = signalRClient,
