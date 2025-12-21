@@ -208,7 +208,7 @@ fun BrowserControlScreen(
                 shape = RoundedCornerShape(8.dp),
                 contentPadding = PaddingValues(horizontal = 8.dp)
             ) {
-                Text("↺📱", fontSize = 16.sp)
+                Text("▶↺📱", fontSize = 16.sp)
             }
 
             // 2. Latest YT on PC
@@ -218,7 +218,7 @@ fun BrowserControlScreen(
                 shape = RoundedCornerShape(8.dp),
                 contentPadding = PaddingValues(horizontal = 8.dp)
             ) {
-                Text("↺🌐", fontSize = 16.sp)
+                Text("▶↺🌐", fontSize = 16.sp)
             }
         }
 
