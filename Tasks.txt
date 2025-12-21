@@ -29,7 +29,7 @@ The dashboard has two cog icons with settings in the upper right, merge them int
 Stream PC monitor, replacing background of the trackpad leaving the trackpad functioning still, options to toggle monitor, pinch to zoom, (advanced feature, do last)       
 We are using a text field to trick android into letting us use the keyboard which works really well but has some minor issues:
  - NOT WORKING (In fact got worse) Android erase from right button works but only when the textfield has content. Could we maybe ensure the textfield always has a character to erase (ofc without sending that character to the pc)
-Reduce trackpad sensitivity by another 20%
+DONE Reduce trackpad sensitivity by another 20%
 
 ### Files & Video Screen
 
