@@ -652,7 +652,6 @@ class FilesViewModel(
             markSaved()
 
             mainViewModel.addLog("Saved locally (offline): ${entry.name}", com.omni.sync.ui.screen.LogType.INFO)
-            mainViewModel.goBack()
             return
         }
 
@@ -671,7 +670,6 @@ class FilesViewModel(
                 viewModelScope.launch(AndroidSchedulers.mainThread().asCoroutineDispatcher()) {
                     mainViewModel.addLog("File saved: ${entry.name}", com.omni.sync.ui.screen.LogType.SUCCESS)
                     _isSaving.value = false
-                    mainViewModel.goBack()
                 }
             } catch (e: Exception) {
                 _isSaving.value = false
