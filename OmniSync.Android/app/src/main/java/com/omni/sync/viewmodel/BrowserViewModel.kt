@@ -125,7 +125,7 @@ class BrowserViewModel(
     }
 
     fun openLatestYouTubeOnPC() {
-        signalRClient.sendBrowserCommand("OpenLatestYouTubeOnPC", "", false)
+        signalRClient.sendBrowserCommand("OpenLatestYouTubeOnPC", "", _openInNewTab.value)
     }
 
     fun addBookmark(name: String? = null, url: String? = null) {
