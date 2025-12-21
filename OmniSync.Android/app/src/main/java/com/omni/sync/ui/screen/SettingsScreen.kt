@@ -37,6 +37,9 @@ fun SettingsScreen(
     var videoSkipInterval by remember { mutableIntStateOf(appConfig.videoSkipInterval) }
     var videoPlaylistRandom by remember { mutableStateOf(appConfig.videoPlaylistRandom) }
     var cortexNotificationsEnabled by remember { mutableStateOf(appConfig.cortexNotificationsEnabled) }
+    
+    var hubUrl by remember { mutableStateOf(appConfig.hubUrl) }
+    var apiKey by remember { mutableStateOf(appConfig.apiKey) }
 
     val initialActions = appConfig.notificationActions.ifEmpty {
         listOf(
@@ -114,6 +117,43 @@ fun SettingsScreen(
                 .padding(16.dp)
                 .verticalScroll(rememberScrollState())
         ) {
+            Text("Hub Connection", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+            Spacer(modifier = Modifier.height(8.dp))
+            
+            OutlinedTextField(
+                value = hubUrl,
+                onValueChange = { hubUrl = it },
+                label = { Text("Hub URL") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            
+            OutlinedTextField(
+                value = apiKey,
+                onValueChange = { apiKey = it },
+                label = { Text("API Key") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            
+            Button(
+                onClick = {
+                    appConfig.hubUrl = hubUrl
+                    appConfig.apiKey = apiKey
+                    mainViewModel.saveAppConfig()
+                    mainViewModel.signalRClient?.manualReconnect()
+                },
+                modifier = Modifier.align(Alignment.End)
+            ) {
+                Text("Save & Reconnect")
+            }
+            
+            Spacer(modifier = Modifier.height(24.dp))
+            HorizontalDivider()
+            Spacer(modifier = Modifier.height(24.dp))
+            
             Text("Video Player", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
             Spacer(modifier = Modifier.height(8.dp))
             
