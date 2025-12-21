@@ -17,17 +17,23 @@ def kill_existing_listeners():
         except (psutil.NoSuchProcess, psutil.AccessDenied):
             pass
 
-def launch():
-    kill_existing_listeners()
+def launch(pid=None):
+    if not pid:
+        kill_existing_listeners()
     time.sleep(1) # Wait for cleanup
     
     script_path = os.path.join("OmniSync.Cli", "ai_listener.py")
-    print(f"Launching {script_path} in a new console...")
+    args = [sys.executable, script_path]
+    if pid:
+        args.extend(["--pid", str(pid)])
+        print(f"Launching {script_path} for PID {pid} in a new console...")
+    else:
+        print(f"Launching {script_path} in a new console...")
     
     try:
         # Use CREATE_NEW_CONSOLE to make it visible
         subprocess.Popen(
-            [sys.executable, script_path],
+            args,
             creationflags=subprocess.CREATE_NEW_CONSOLE,
             close_fds=True 
         )
@@ -36,4 +42,5 @@ def launch():
         print(f"Failed to launch: {e}")
 
 if __name__ == "__main__":
-    launch()
+    target_pid = int(sys.argv[1]) if len(sys.argv) > 1 else None
+    launch(target_pid)

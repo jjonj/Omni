@@ -90,7 +90,7 @@ def main():
     print("[5/5] Running SignalR Roundtrip Test...")
     print("-"*60)
     # Note: path is relative to ROOT_DIR
-    test_path = os.path.join("TestScripts", "AIFeature", "test_ai_integration.py")
+    test_path = os.path.join("TestScripts", "AIFeature", "test_hub_mediated_roundtrip.py")
     result = subprocess.run([sys.executable, test_path], cwd=ROOT_DIR)
     print("-"*60)
     

@@ -12,6 +12,7 @@ import win32pipe
 import pywintypes
 import pygetwindow as gw
 import pyautogui
+import argparse
 from signalrcore.hub_connection_builder import HubConnectionBuilder
 
 # --- CONFIGURATION ---
@@ -275,9 +276,25 @@ def on_open():
 def on_error(error):
     logger.error(f"Connection error: {error}")
 
+import argparse
+
+# ... existing imports ...
+
 async def main():
     global hub, GLOBAL_LOOP
     GLOBAL_LOOP = asyncio.get_running_loop()
+
+    parser = argparse.ArgumentParser(description="AI Listener for OmniSync")
+    parser.add_argument("--pid", type=int, help="Specific Gemini PID to target")
+    args = parser.parse_args()
+    
+    target_pid = args.pid
+    if target_pid:
+        logger.info(f"Targeting specific Gemini PID: {target_pid}")
+        # Override get_gemini_pid to return this PID
+        global get_gemini_pid
+        original_get_pid = get_gemini_pid
+        get_gemini_pid = lambda: target_pid
 
     hub = HubConnectionBuilder()\
         .with_url(HUB_URL)\

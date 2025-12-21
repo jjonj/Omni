@@ -114,7 +114,7 @@ def main():
     # 5. Run Integration Test
     print("[5/5] Running SignalR-only Integration Test...")
     print("-"*60)
-    test_path = os.path.join("TestScripts", "AIFeature", "test_ai_command_integration_hub.py")
+    test_path = os.path.join("TestScripts", "AIFeature", "test_hub_mediated_commands.py")
     result = subprocess.run([sys.executable, test_path], cwd=ROOT_DIR)
     print("-"*60)
     
