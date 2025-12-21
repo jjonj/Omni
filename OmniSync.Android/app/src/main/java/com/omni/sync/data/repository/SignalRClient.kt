@@ -23,23 +23,20 @@ import kotlinx.coroutines.launch
 import io.reactivex.rxjava3.core.Single
 import io.reactivex.rxjava3.core.Completable
 import java.lang.Exception
-import com.omni.sync.data.model.FileSystemEntry // New import
-import com.google.gson.Gson 
+import com.omni.sync.data.model.FileSystemEntry
+import com.google.gson.Gson
 import com.google.gson.GsonBuilder
 import com.google.gson.JsonDeserializer
 import com.google.gson.JsonElement
 import com.google.gson.reflect.TypeToken
-import java.util.Date // Added for FileSystemEntry deserialization
-import java.io.File // Added for getFileChunk logic if needed, might remove later
+import java.util.Date
+import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
 import java.time.LocalDateTime
 import java.time.OffsetDateTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
-
-import android.content.SharedPreferences // Import SharedPreferences
-
-
+import android.content.SharedPreferences
 import com.google.gson.annotations.SerializedName
 
 data class ProcessInfo(
@@ -54,7 +51,6 @@ class SignalRClient(
     private val mainViewModel: MainViewModel
 ) {
     private var hubConnection: HubConnection? = null
-    // Use properties to access values from config
     private val hubUrl: String get() = mainViewModel.appConfig.hubUrl
     private val apiKey: String get() = mainViewModel.appConfig.apiKey
 
@@ -62,24 +58,19 @@ class SignalRClient(
     private val gson = GsonBuilder()
         .registerTypeAdapter(Date::class.java, JsonDeserializer<Date> { json, _, _ ->
             try {
-                // Try parsing standard ISO format (used by C# DateTime)
                 val format = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", java.util.Locale.US)
                 format.parse(json.asString)
             } catch (e: Exception) {
-                // If it fails (e.g. milliseconds included, or different format), try others or fallback
                 try {
-                    // Try with milliseconds
                      val formatMs = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSSSSS", java.util.Locale.US)
                      formatMs.parse(json.asString)
                 } catch (e2: Exception) {
-                     // Log or ignore, return "empty" date which FilesScreen handles (ts <= 0)
-                     // returning Date(0) or Date(-62135769600000L) for Year 1
                      Date(-62135769600000L) // Year 0001
                 }
             }
         })
         .create()
-    private val coroutineScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private val coroutineScope = CoroutineScope(Dispatchers.IO + SupervisorJob())   
     private var reconnectJob: Job? = null
     private val isReconnecting = AtomicBoolean(false)
 
@@ -89,17 +80,16 @@ class SignalRClient(
 
     private val _connectionState = MutableStateFlow("Disconnected")
     val connectionState: StateFlow<String> = _connectionState
-    
-    private val _cleanupPatterns = MutableStateFlow<List<String>>(emptyList())
+
+    private val _cleanupPatterns = MutableStateFlow<List<String>>(emptyList())      
     val cleanupPatterns: StateFlow<List<String>> = _cleanupPatterns
 
-    private val _tabInfoReceived = MutableSharedFlow<Pair<String, String>>()
+    private val _tabInfoReceived = MutableSharedFlow<Pair<String, String>>()        
     val tabInfoReceived: SharedFlow<Pair<String, String>> = _tabInfoReceived.asSharedFlow()
 
     private val _tabListReceived = MutableStateFlow<List<Map<String, Any>>>(emptyList())
-    val tabListReceived: StateFlow<List<Map<String, Any>>> = _tabListReceived
+    val tabListReceived: StateFlow<List<Map<String, Any>>> = _tabListReceived       
 
-    // File change events from Hub (path, unixMillis)
     private val _fileChangeEvents = MutableSharedFlow<Pair<String, Long>>(extraBufferCapacity = 64)
     val fileChangeEvents: SharedFlow<Pair<String, Long>> = _fileChangeEvents.asSharedFlow()
 
@@ -109,25 +99,22 @@ class SignalRClient(
     private val _aiStatus = MutableStateFlow<String?>(null)
     val aiStatus: StateFlow<String?> = _aiStatus
 
-    init {
-       // Only if you haven't put the startConnection logic here yet.
-    }
-    
+    private val _aiSessions = MutableStateFlow<List<Int>>(emptyList())
+    val aiSessions: StateFlow<List<Int>> = _aiSessions
+
     companion object {
         const val SHARED_PREFS_NAME = "OmniSyncPrefs"
         const val KEY_LAST_CONNECTED_HUB_URL = "last_connected_hub_url"
     }
-    
+
     private fun onConnected() {
         _connectionState.value = "Connected"
         mainViewModel.setConnected(true)
         authenticateClient()
-        // Save the connected hub URL to SharedPreferences
         val sharedPrefs = context.getSharedPreferences(SHARED_PREFS_NAME, Context.MODE_PRIVATE)
-        sharedPrefs.edit().putString(KEY_LAST_CONNECTED_HUB_URL, hubUrl).apply()
+        sharedPrefs.edit().putString(KEY_LAST_CONNECTED_HUB_URL, hubUrl).apply()    
         mainViewModel.addLog("Connected to hub: $hubUrl", com.omni.sync.ui.screen.LogType.SUCCESS)
 
-        // If we were reconnecting, stop the loop
         if (isReconnecting.compareAndSet(true, false)) {
             reconnectJob?.cancel()
             reconnectJob = null
@@ -137,8 +124,8 @@ class SignalRClient(
 
     fun startConnection() {
         _connectionState.value = "Connecting..."
-        mainViewModel.setErrorMessage(null) // Clear previous errors
-        
+        mainViewModel.setErrorMessage(null)
+
         hubConnection = HubConnectionBuilder.create(hubUrl).build()
 
         hubConnection?.onClosed { error ->
@@ -154,9 +141,8 @@ class SignalRClient(
                         mainViewModel.addLog("Attempting to reconnect...", com.omni.sync.ui.screen.LogType.INFO)
                         try {
                             hubConnection?.start()?.blockingAwait()
-                            // If we get here, connection succeeded
                             onConnected()
-                            break 
+                            break
                         } catch (e: Exception) {
                             mainViewModel.addLog("Reconnect attempt failed: ${e.message}", com.omni.sync.ui.screen.LogType.ERROR)
                         }
@@ -166,64 +152,37 @@ class SignalRClient(
         }
 
         hubConnection?.start()
-            ?.doOnComplete {
-                onConnected()
-            }
+            ?.doOnComplete { onConnected() }
             ?.doOnError { error ->
                 _connectionState.value = "Error: ${error.message}"
-                Log.e("SignalR", "Connection failed side-effect", error)
-                mainViewModel.setConnected(false) // Ensure connected state is false on error
+                mainViewModel.setConnected(false)
             }
-            ?.subscribe({
-                Log.d("SignalR", "Connection process started successfully")
-            }, { error ->
-                Log.e("SignalR", "Fatal error in connection subscription", error)
-                mainViewModel.setConnected(false) // Ensure connected state is false on fatal error
-            })
-        
-        // Register handlers
+            ?.subscribe()
+
         registerHubHandlers()
     }
 
     private fun registerHubHandlers() {
-
         hubConnection?.on("ClipboardUpdated", { newText: String ->
-            Log.d("SignalRClient", "Received clipboard update: $newText")
             try {
                 isUpdatingClipboardInternally = true
                 val clip = ClipData.newPlainText("OmniSyncClipboard", newText)
                 clipboardManager.setPrimaryClip(clip)
                 mainViewModel.updateClipboardContent(newText)
-                mainViewModel.setErrorMessage(null) // Clear any previous errors
-            } catch (e: Exception) {
-                val errorMessage = "Error setting Android clipboard: ${e.message}"
-                mainViewModel.setErrorMessage(errorMessage)
-                Log.e("SignalRClient", errorMessage, e)
             } finally {
                 isUpdatingClipboardInternally = false
             }
         }, String::class.java)
 
         hubConnection?.on("InjectText", { text: String ->
-            Log.d("SignalRClient", "Received inject text command: $text")
-            try {
-                OmniAccessibilityService.getInstance()?.injectText(text)
-                mainViewModel.setErrorMessage(null) // Clear any previous errors
-            } catch (e: Exception) {
-                val errorMessage = "Error injecting text via accessibility service: ${e.message}"
-                mainViewModel.setErrorMessage(errorMessage)
-                Log.e("SignalRClient", errorMessage, e)
-            }
+            OmniAccessibilityService.getInstance()?.injectText(text)
         }, String::class.java)
 
         hubConnection?.on("ReceiveCommandOutput", { output: String ->
-            Log.d("SignalRClient", "Received command output: $output")
             mainViewModel.appendCommandOutput(output)
         }, String::class.java)
 
-        // New handler for modifier key state updates from the Hub
         hubConnection?.on("ModifierStateUpdated", { modifierName: String, isPressed: Boolean ->
-            Log.d("SignalRClient", "ModifierStateUpdated: $modifierName = $isPressed")
             when (modifierName) {
                 "Shift" -> mainViewModel.setShiftPressed(isPressed)
                 "Ctrl" -> mainViewModel.setCtrlPressed(isPressed)
@@ -232,24 +191,18 @@ class SignalRClient(
         }, String::class.java, Boolean::class.java)
 
         hubConnection?.on("ShutdownScheduled", { scheduledTime: String? ->
-            Log.d("SignalRClient", "ShutdownScheduled: $scheduledTime")
             mainViewModel.setScheduledShutdownTime(scheduledTime)
         }, String::class.java)
 
         hubConnection?.on("ShutdownModeUpdated", { mode: String ->
-            Log.d("SignalRClient", "ShutdownModeUpdated: $mode")
             mainViewModel.setShutdownMode(mode)
         }, String::class.java)
-        
-        // File change notifications from Hub (no polling)
+
        hubConnection?.on("FileChanged", { path: String, unixMillis: Long ->
-           Log.d("SignalRClient", "FileChanged: $path @ $unixMillis")
-           coroutineScope.launch { _fileChangeEvents.emit(Pair(path, unixMillis)) }
+           coroutineScope.launch { _fileChangeEvents.emit(Pair(path, unixMillis)) } 
        }, String::class.java, java.lang.Long::class.java)
 
-       // Handler for cleanup patterns from Chrome extension
         hubConnection?.on("ReceiveCleanupPatterns", { patternsData: Any ->
-            Log.d("SignalRClient", "Received cleanup patterns: $patternsData")
             try {
                 val jsonStr = gson.toJson(patternsData)
                 val type = object : TypeToken<List<String>>() {}.type
@@ -261,14 +214,10 @@ class SignalRClient(
         }, Any::class.java)
 
         hubConnection?.on("ReceiveTabInfo", { title: String, url: String ->
-            Log.d("SignalRClient", "Received tab info: $title -> $url")
-            coroutineScope.launch {
-                _tabInfoReceived.emit(Pair(title, url))
-            }
+            coroutineScope.launch { _tabInfoReceived.emit(Pair(title, url)) }
         }, String::class.java, String::class.java)
 
         hubConnection?.on("ReceiveTabList", { tabsData: Any ->
-            Log.d("SignalRClient", "Received tab list: $tabsData")
             try {
                 val jsonStr = gson.toJson(tabsData)
                 val type = object : TypeToken<List<Map<String, Any>>>() {}.type
@@ -280,7 +229,6 @@ class SignalRClient(
         }, Any::class.java)
 
         hubConnection?.on("ReceiveTabToPhone", { url: String ->
-            Log.d("SignalRClient", "Received tab to phone: $url")
             mainViewModel.openUrlOnPhone(url)
         }, String::class.java)
 
@@ -294,7 +242,7 @@ class SignalRClient(
                 _aiStatus.value = null
                 return@on
             }
-            
+
             val currentMessages = _aiMessages.value.toMutableList()
             if (currentMessages.isNotEmpty() && currentMessages.last().first == "AI") {
                 val lastMsg = currentMessages.last()
@@ -310,9 +258,29 @@ class SignalRClient(
         }, String::class.java)
 
         hubConnection?.on("ReceiveCortexActivity", { name: String, type: String ->
-            Log.d("SignalRClient", "Cortex Activity: $name ($type)")
             mainViewModel.onCortexActivityChanged(name, type)
         }, String::class.java, String::class.java)
+
+        hubConnection?.on("ReceiveAiSessions", { pids: Any ->
+            try {
+                val jsonStr = gson.toJson(pids)
+                val type = object : TypeToken<List<Int>>() {}.type
+                val pidsList: List<Int> = gson.fromJson(jsonStr, type)
+                _aiSessions.value = pidsList
+            } catch (e: Exception) {
+                Log.e("SignalRClient", "Error parsing AI sessions", e)
+            }
+        }, Any::class.java)
+
+        hubConnection?.on("ReceiveAiHistory", { historyJson: String ->
+            try {
+                val type = object : TypeToken<List<Map<String, String>>>() {}.type
+                val history: List<Map<String, String>> = gson.fromJson(historyJson, type)
+                _aiMessages.value = history.map { Pair(it["sender"] ?: "Unknown", it["text"] ?: "") }
+            } catch (e: Exception) {
+                Log.e("SignalRClient", "Error parsing AI history", e)
+            }
+        }, String::class.java)
     }
 
     fun sendAiMessage(message: String) {
@@ -321,7 +289,28 @@ class SignalRClient(
         }
     }
 
+    fun getAiSessions() {
+        if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
+            hubConnection?.send("GetAiSessions")
+        }
+    }
+
+    fun switchAiSession(pid: Int) {
+        if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
+            hubConnection?.send("SwitchAiSession", pid)
+        }
+    }
+
+    fun startNewAiSession() {
+        if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
+            hubConnection?.send("StartNewAiSession")
+        }
+    }
+
     fun clearAiMessages() {
+        if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
+            hubConnection?.send("SendAiMessage", "/clear")
+        }
         _aiMessages.value = emptyList()
     }
 
@@ -332,13 +321,9 @@ class SignalRClient(
         hubConnection?.stop()
         _connectionState.value = "Disconnected"
         mainViewModel.setConnected(false)
-        mainViewModel.setScheduledShutdownTime(null)
-        mainViewModel.setErrorMessage(null) // Clear any previous errors
-        Log.d("SignalRClient", "Connection stopped.")
     }
 
     fun manualReconnect() {
-        mainViewModel.addLog("Manual reconnection initiated", com.omni.sync.ui.screen.LogType.INFO)
         coroutineScope.launch {
             stopConnection()
             delay(500)
@@ -346,158 +331,66 @@ class SignalRClient(
         }
     }
 
-    // Specific function for Mouse Move to ensure it hits the right Hub method
     fun sendMouseMove(x: Float, y: Float) {
         if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
             val payload = mapOf("X" to x, "Y" to y)
-            // Try specific method name "MouseMove" if "SendPayload" isn't routing it
             hubConnection?.send("MouseMove", payload)
-        } else {
-            val warningMessage = "Not connected, cannot send mouse move."
-            mainViewModel.setErrorMessage(warningMessage)
-            Log.w("SignalRClient", warningMessage)
         }
     }
 
     fun sendClipboardUpdate(text: String) {
         if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
-            try {
-                hubConnection?.send("UpdateClipboard", text)
-                Log.d("SignalRClient", "Sent clipboard update: $text")
-                mainViewModel.setErrorMessage(null) // Clear any previous errors
-            } catch (e: Exception) {
-                val errorMessage = "Error sending clipboard update: ${e.message}"
-                mainViewModel.setErrorMessage(errorMessage)
-                Log.e("SignalRClient", errorMessage, e)
-            }
-        } else {
-            val warningMessage = "Not connected, cannot send clipboard update."
-            mainViewModel.setErrorMessage(warningMessage)
-            Log.w("SignalRClient", warningMessage)
+            hubConnection?.send("UpdateClipboard", text)
         }
-    }
-
-
-
-    fun listNotes(): Single<List<String>>? {
-        if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
-            return hubConnection?.invoke(List::class.java, "ListNotes")?.doOnError { error ->
-                val errorMessage = "Error listing notes: ${error.message}"
-                mainViewModel.setErrorMessage(errorMessage)
-                Log.e("SignalRClient", errorMessage, error)
-            } as? Single<List<String>>
-        }
-        val warningMessage = "Not connected, cannot list notes."
-        mainViewModel.setErrorMessage(warningMessage)
-        Log.w("SignalRClient", warningMessage)
-        return null
-    }
-
-    fun getNoteContent(filename: String): Single<String>? {
-        if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
-            return hubConnection?.invoke(String::class.java, "GetNoteContent", filename)?.doOnError { error ->
-                val errorMessage = "Error getting note content for $filename: ${error.message}"
-                mainViewModel.setErrorMessage(errorMessage)
-                Log.e("SignalRClient", errorMessage, error)
-            } as? Single<String>
-        }
-        val warningMessage = "Not connected, cannot get note content for $filename."
-        mainViewModel.setErrorMessage(warningMessage)
-        Log.w("SignalRClient", warningMessage)
-        return null
     }
 
     fun executeCommand(command: String) {
         if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
-            try {
-                hubConnection?.send("ExecuteCommand", command)
-                mainViewModel.setErrorMessage(null) // Clear any previous errors
-            } catch (e: Exception) {
-                val errorMessage = "Error executing command: ${e.message}"
-                mainViewModel.setErrorMessage(errorMessage)
-                Log.e("SignalRClient", errorMessage, e)
-            }
-        } else {
-            val warningMessage = "Not connected, cannot execute command."
-            mainViewModel.setErrorMessage(warningMessage)
-            Log.w("SignalRClient", warningMessage)
+            hubConnection?.send("ExecuteCommand", command)
         }
     }
 
-    // FIX: List Processes (Manual Deserialization)
     fun listProcesses(): Single<List<ProcessInfo>>? {
         if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
             return hubConnection?.invoke(Any::class.java, "ListProcesses")?.map { rawResponse ->
                 try {
-                    Log.d("SignalRClient", "Raw response from ListProcesses: $rawResponse")
-                    // Convert the raw object to JSON tree, then back to List<ProcessInfo>
                     val jsonElement = gson.toJsonTree(rawResponse)
-                    Log.d("SignalRClient", "JsonElement for ListProcesses: $jsonElement")
-                    val listType = object : TypeToken<List<ProcessInfo>>() {}.type
-                    val list: List<ProcessInfo> = gson.fromJson(jsonElement, listType)
-                    list
+                    val listType = object : TypeToken<List<ProcessInfo>>() {}.type  
+                    gson.fromJson(jsonElement, listType)
                 } catch (e: Exception) {
-                    Log.e("SignalR", "Deserialization error", e)
                     emptyList<ProcessInfo>()
                 }
-            }?.doOnError { error ->
-                mainViewModel.setErrorMessage("Error listing processes: ${error.message}")
             }
         }
-        mainViewModel.setErrorMessage("Not connected.")
         return null
     }
 
     fun killProcess(processId: Int): Single<Boolean>? {
         if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
-            return hubConnection?.invoke(Boolean::class.java, "KillProcess", processId)?.doOnError { error ->
-                val errorMessage = "Error killing process $processId: ${error.message}"
-                mainViewModel.setErrorMessage(errorMessage)
-                Log.e("SignalRClient", errorMessage, error)
-            } as? Single<Boolean>
+            return hubConnection?.invoke(Boolean::class.java, "KillProcess", processId) as? Single<Boolean>
         }
-        val warningMessage = "Not connected, cannot kill process $processId."
-        mainViewModel.setErrorMessage(warningMessage)
-        Log.w("SignalRClient", warningMessage)
         return null
     }
 
-    // List Directory using invoke for reliability
-    fun listDirectory(relativePath: String): Single<List<FileSystemEntry>>? {
+    fun listDirectory(relativePath: String): Single<List<FileSystemEntry>>? {       
         if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
-            mainViewModel.addLog("Requesting directory: ${if (relativePath.isEmpty()) "(root)" else relativePath}", com.omni.sync.ui.screen.LogType.INFO)
             return hubConnection?.invoke(List::class.java, "ListDirectory", relativePath)
                 ?.map { rawList ->
                     val jsonElement = gson.toJsonTree(rawList)
                     val listType = object : TypeToken<List<FileSystemEntry>>() {}.type
-                    val results: List<FileSystemEntry> = gson.fromJson(jsonElement, listType)
-                    mainViewModel.addLog("Received ${results.size} entries", com.omni.sync.ui.screen.LogType.SUCCESS)
-                    results
-                }
-                ?.doOnError { error ->
-                    val msg = "Error for directory '$relativePath': ${error.message}"
-                    mainViewModel.setErrorMessage(msg)
-                    Log.e("SignalRClient", msg, error)
+                    gson.fromJson(jsonElement, listType)
                 } as? Single<List<FileSystemEntry>>
         }
         return null
     }
 
-    fun searchFiles(path: String, query: String): Single<List<FileSystemEntry>>? {
+    fun searchFiles(path: String, query: String): Single<List<FileSystemEntry>>? {  
         if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
-            mainViewModel.addLog("Searching in $path for: $query", com.omni.sync.ui.screen.LogType.INFO)
             return hubConnection?.invoke(List::class.java, "SearchFiles", path, query)
                 ?.map { rawList ->
                     val jsonElement = gson.toJsonTree(rawList)
                     val listType = object : TypeToken<List<FileSystemEntry>>() {}.type
-                    val results: List<FileSystemEntry> = gson.fromJson(jsonElement, listType)
-                    mainViewModel.addLog("Found ${results.size} matches", com.omni.sync.ui.screen.LogType.SUCCESS)
-                    results
-                }
-                ?.doOnError { error ->
-                    val msg = "Search error in '$path': ${error.message}"
-                    mainViewModel.setErrorMessage(msg)
-                    Log.e("SignalRClient", msg, error)
+                    gson.fromJson(jsonElement, listType)
                 } as? Single<List<FileSystemEntry>>
         }
         return null
@@ -508,47 +401,22 @@ class SignalRClient(
             return hubConnection?.invoke(String::class.java, "GetFileChunk", filePath, offset, chunkSize)
                 ?.map { base64String ->
                     android.util.Base64.decode(base64String, android.util.Base64.DEFAULT)
-                }
-                ?.doOnError { error ->
-                    val errorMessage = "Error getting file chunk for '$filePath' at offset $offset: ${error.message}"
-                    mainViewModel.setErrorMessage(errorMessage)
-                    Log.e("SignalRClient", errorMessage, error)
                 } as? Single<ByteArray>
         }
-        val warningMessage = "Not connected, cannot get file chunk for '$filePath'."
-        mainViewModel.setErrorMessage(warningMessage)
-        Log.w("SignalRClient", warningMessage)
         return null
     }
 
-    // Update sendKeyEvent
     fun sendKeyEvent(command: String, keyCode: UShort) {
         if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
             val payload = mapOf("KeyCode" to keyCode.toInt())
-            // Ensure command string is what server expects (e.g. "InputKeyDown")
             hubConnection?.send("SendPayload", command, payload)
-        } else {
-            val warningMessage = "Not connected, cannot send key event $command."
-            mainViewModel.setErrorMessage(warningMessage)
-            Log.w("SignalRClient", warningMessage)
         }
     }
 
     fun sendText(text: String) {
         if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
-            try {
-                val payload = mapOf("Text" to text)
-                hubConnection?.send("SendPayload", "INPUT_TEXT", payload)
-                mainViewModel.setErrorMessage(null)
-            } catch (e: Exception) {
-                val errorMessage = "Error sending text '$text': ${e.message}"
-                mainViewModel.setErrorMessage(errorMessage)
-                Log.e("SignalRClient", errorMessage, e)
-            }
-        } else {
-            val warningMessage = "Not connected, cannot send text '$text'."
-            mainViewModel.setErrorMessage(warningMessage)
-            Log.w("SignalRClient", warningMessage)
+            val payload = mapOf("Text" to text)
+            hubConnection?.send("SendPayload", "INPUT_TEXT", payload)
         }
     }
 
@@ -556,22 +424,12 @@ class SignalRClient(
         if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
             val payload = mapOf("VolumePercentage" to volumePercentage)
             hubConnection?.send("SendPayload", "SET_VOLUME", payload)
-            mainViewModel.addLog("Sent SET_VOLUME: $volumePercentage", com.omni.sync.ui.screen.LogType.INFO)
-        } else {
-            val warningMessage = "Not connected, cannot set volume."
-            mainViewModel.setErrorMessage(warningMessage)
-            Log.w("SignalRClient", warningMessage)
         }
     }
 
     fun sendToggleMute() {
         if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
             hubConnection?.send("SendPayload", "TOGGLE_MUTE", null)
-            mainViewModel.addLog("Sent TOGGLE_MUTE", com.omni.sync.ui.screen.LogType.INFO)
-        } else {
-            val warningMessage = "Not connected, cannot toggle mute."
-            mainViewModel.setErrorMessage(warningMessage)
-            Log.w("SignalRClient", warningMessage)
         }
     }
 
@@ -579,9 +437,6 @@ class SignalRClient(
         if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
             val payload = mapOf("Minutes" to minutes)
             hubConnection?.send("SendPayload", "SCHEDULE_SHUTDOWN", payload)
-            mainViewModel.addLog("Scheduled shutdown: $minutes min", com.omni.sync.ui.screen.LogType.INFO)
-        } else {
-            mainViewModel.setErrorMessage("Not connected.")
         }
     }
 
@@ -594,44 +449,25 @@ class SignalRClient(
     fun sendLeftClick() {
         if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
             hubConnection?.send("SendPayload", "LEFT_CLICK", null)
-        } else {
-            val warningMessage = "Not connected, cannot send left click."
-            mainViewModel.setErrorMessage(warningMessage)
-            Log.w("SignalRClient", warningMessage)
         }
     }
 
     fun sendRightClick() {
         if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
             hubConnection?.send("SendPayload", "RIGHT_CLICK", null)
-        } else {
-            val warningMessage = "Not connected, cannot send right click."
-            mainViewModel.setErrorMessage(warningMessage)
-            Log.w("SignalRClient", warningMessage)
-            }
         }
+    }
 
     fun sendMouseClick(button: String) {
         if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
             val command = "${button.uppercase()}_CLICK"
             hubConnection?.send(command)
-        } else {
-            val warningMessage = "Not connected, cannot send $button click."
-            mainViewModel.setErrorMessage(warningMessage)
-            Log.w("SignalRClient", warningMessage)
         }
     }
 
     fun sendBrowserCommand(command: String, url: String, newTab: Boolean) {
         if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
-            try {
-                hubConnection?.send("SendBrowserCommand", command, url, newTab)
-                mainViewModel.addLog("Browser: $command", com.omni.sync.ui.screen.LogType.INFO)
-            } catch (e: Exception) {
-                mainViewModel.setErrorMessage("Browser command failed: ${e.message}")
-            }
-        } else {
-            mainViewModel.setErrorMessage("Not connected.")
+            hubConnection?.send("SendBrowserCommand", command, url, newTab)
         }
     }
 
@@ -645,53 +481,46 @@ class SignalRClient(
         }
     }
 
+    fun listNotes(): Single<List<String>>? {
+        if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
+            return hubConnection?.invoke(List::class.java, "ListNotes") as? Single<List<String>>
+        }
+        return null
+    }
+
+    fun getNoteContent(filename: String): Single<String>? {
+        if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
+            return hubConnection?.invoke(String::class.java, "GetNoteContent", filename) as? Single<String>
+        }
+        return null
+    }
+
     fun getVolume(): Single<Float>? {
         if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
             return hubConnection?.invoke(Float::class.java, "GetVolume")
-                ?.doOnError { error ->
-                    val errorMessage = "Error getting volume: ${error.message}"
-                    mainViewModel.setErrorMessage(errorMessage)
-                    Log.e("SignalRClient", errorMessage, error)
-                }
         }
-        val warningMessage = "Not connected, cannot get volume."
-        mainViewModel.setErrorMessage(warningMessage)
-        Log.w("SignalRClient", warningMessage)
         return null
     }
 
     fun isMuted(): Single<Boolean>? {
         if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
             return hubConnection?.invoke(Boolean::class.java, "IsMuted")
-                ?.doOnError { error ->
-                    val errorMessage = "Error getting mute state: ${error.message}"
-                    mainViewModel.setErrorMessage(errorMessage)
-                    Log.e("SignalRClient", errorMessage, error)
-                }
         }
-        val warningMessage = "Not connected, cannot get mute state."
-        mainViewModel.setErrorMessage(warningMessage)
-        Log.w("SignalRClient", warningMessage)
         return null
     }
 
     fun sendPayload(command: String, payload: Any?) {
         if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
-            try {
-                hubConnection?.send("SendPayload", command, payload)
-                Log.d("SignalRClient", "Sent payload: $command")
-            } catch (e: Exception) {
-                Log.e("SignalRClient", "Error sending payload $command", e)
-            }
+            hubConnection?.send("SendPayload", command, payload)
         }
     }
 
     private fun authenticateClient() {
         hubConnection?.invoke(Boolean::class.java, "Authenticate", apiKey)
-            ?.subscribe({ success -> 
-                Log.d("SignalR", "Auth success: $success") 
-            }, { error -> 
-                Log.e("SignalR", "Auth failed", error) 
+            ?.subscribe({ success ->
+                Log.d("SignalR", "Auth success: $success")
+            }, { error ->
+                Log.e("SignalR", "Auth failed", error)
             })
     }
 }

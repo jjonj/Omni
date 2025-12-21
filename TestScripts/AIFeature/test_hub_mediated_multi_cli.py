@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import time
+import argparse
 from signalrcore.hub_connection_builder import HubConnectionBuilder
 
 # --- CONFIGURATION ---
@@ -12,12 +13,15 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger("MultiCliHubTester")
 
 class MultiCliHubTester:
-    def __init__(self):
+    def __init__(self, target_pids=None):
         self.connection_started = False
         self.hub = None
         self.responses = []
         self.response_event = asyncio.Event()
         self.loop = None
+        self.target_pids = target_pids
+        self.sessions_received_event = asyncio.Event()
+        self.pids = []
 
     def on_open(self):
         logger.info("Connection opened.")
@@ -33,8 +37,17 @@ class MultiCliHubTester:
         if self.loop:
             self.loop.call_soon_threadsafe(self._add_response, response)
 
+    def on_ai_sessions(self, args):
+        pids = args[0]
+        logger.info(f"Received AI Sessions: {pids}")
+        self.pids = pids
+        self.sessions_received_event.set()
+
     async def run_test(self):
         self.loop = asyncio.get_running_loop()
+        self.sessions_received_event = asyncio.Event()
+        self.pids = []
+        
         self.hub = HubConnectionBuilder() \
             .with_url(HUB_URL) \
             .configure_logging(logging.INFO) \
@@ -42,6 +55,7 @@ class MultiCliHubTester:
 
         self.hub.on_open(self.on_open)
         self.hub.on("ReceiveAiResponse", self.on_ai_response)
+        self.hub.on("ReceiveAiSessions", self.on_ai_sessions)
 
         self.hub.start()
 
@@ -62,29 +76,49 @@ class MultiCliHubTester:
         print("      HUB-MEDIATED MULTI-CLI TEST")
         print("="*60 + "\n")
 
-        prompt = "Please identify yourself by responding with your PID and tell me what time it is (roughly)."
-        logger.info(f"Broadcasting prompt to all listeners via Hub: {prompt}")
-        
-        self.hub.send("SendAiMessage", [prompt])
-
-        print("Waiting for responses (broadcast mode - all listeners should respond)...")
-        
-        # Wait up to 30 seconds for at least one response, then wait a bit more for others
-        start_wait = time.time()
-        while time.time() - start_wait < 60:
+        # Step 1: Resolve PIDs
+        if self.target_pids:
+            logger.info(f"Using explicitly provided PIDs: {self.target_pids}")
+            self.pids = self.target_pids
+        else:
+            logger.info("Requesting AI sessions from Hub...")
+            self.hub.send("GetAiSessions", [])
             try:
-                await asyncio.wait_for(self.response_event.wait(), timeout=10)
-                self.response_event.clear()
-                # Give a small window for other responses to arrive
-                await asyncio.sleep(5) 
-                if len(self.responses) > 0:
-                    break
+                await asyncio.wait_for(self.sessions_received_event.wait(), timeout=10)
             except asyncio.TimeoutError:
-                if len(self.responses) > 0:
-                    break
-                continue
+                logger.error("Timed out waiting for session list.")
+                self.hub.stop()
+                return
 
-        print(f"\nCaptured {len(self.responses)} response(s):")
+        if not self.pids:
+            logger.error("No active AI sessions found.")
+            self.hub.stop()
+            return
+
+        # Step 2: Iterate through sessions and test
+        for i, pid in enumerate(self.pids):
+            instance_id = i + 1
+            logger.info(f"--- Testing Session {instance_id} (PID: {pid}) ---")
+            
+            # Switch to this session
+            self.hub.send("SwitchAiSession", [pid])
+            await asyncio.sleep(2) 
+            
+            # Send targeted prompt
+            prompt = f"Confirming multi-instance test. You are designated as Instance {instance_id}. Please repeat back: 'I confirm I am Instance {instance_id}'"
+            logger.info(f"Sending prompt to PID {pid}: {prompt}")
+            
+            self.response_event.clear()
+            self.hub.send("SendAiMessage", [prompt])
+            
+            # Wait for response
+            try:
+                await asyncio.wait_for(self.response_event.wait(), timeout=60)
+                logger.info(f"Response received for Instance {instance_id}")
+            except asyncio.TimeoutError:
+                logger.error(f"Timed out waiting for response from Instance {instance_id}")
+
+        print(f"\nCaptured {len(self.responses)} total response(s) across all instances.")
         for i, res in enumerate(self.responses):
             print(f"\n--- Response {i+1} ---")
             print(res)
@@ -93,4 +127,8 @@ class MultiCliHubTester:
         print("\nTest Complete.")
 
 if __name__ == "__main__":
-    asyncio.run(MultiCliHubTester().run_test())
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--pids", type=int, nargs='+', help="Specific PIDs to test")
+    args = parser.parse_args()
+    
+    asyncio.run(MultiCliHubTester(target_pids=args.pids).run_test())

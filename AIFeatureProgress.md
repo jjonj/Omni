@@ -3,6 +3,8 @@
 This document tracks the implementation, architecture, and status of AI-related features within the OmniSync ecosystem.
 
 Always use cleanup_gemini_windows.py between test runs, or even better, adjust all scripts to call cleanup_gemini_windows.py as the first thing. Careful not to kill yourself as YOU are a cli gemini window but the cleanup script protects you.
+NEVER run commands like "Shell taskkill /IM node.exe /F [current working directory D:\SSDProjects\Omni]   "
+as that will kill yourself and prevent you from fufilling any tasks.
 
 ## Architectural Overview
 
@@ -10,7 +12,7 @@ The AI system has transitioned from brittle UI automation to a robust **Programm
 
 1.  **Mobile Client (Android)**: Sends prompts via SignalR to the Hub.
 2.  **Omni Hub (C#)**: Broadcasts prompts to all authenticated listeners.
-3.  **AI Listener (Python)**: Discovers running Gemini instances, connects to their unique named pipes (\.\pipe\gemini-cli-<pid>), and injects prompts.
+3.  **AI Listener (Python)**: Discovers running Gemini instances, connects to their unique named pipes (\\.\pipe\gemini-cli-<pid>), and injects prompts.
 4.  **Gemini CLI (Node/React)**: A custom `remoteControl.ts` server listens for `RemotePrompt` events, submits them to the model, and emits `RemoteResponse` events upon completion.
 5.  **Response Relay**: The Python listener captures the response from the pipe and relays it back to the Hub.
 
@@ -25,13 +27,16 @@ D:\SSDProjects\Tools\gemini-cli a custom/forked version/repo of gemini CLI with 
 ### 1. AI Gateway (`OmniSync.Cli`)
 
 #### `ai_listener.py`
-Refactored to support the Named Pipe architecture.
-- **PID Discovery**: Automatically finds the correct `node` process running `bundle/gemini.js`.
+Refactored to support the Named Pipe architecture and session management.
+- **PID Discovery**: Automatically finds all `node` processes running `bundle/gemini.js` or `dist/index.js`.
 - **Async I/O**: Uses `asyncio.to_thread` to handle synchronous pipe communication without blocking the SignalR loop.
+- **Auto-Launch**: Automatically invokes `launch_gemini_cli.py` if no active session is found when a message arrives.
+- **History Relay**: Handles the `getHistory` IPC command to fetch and relay conversation history from the CLI to the Hub.
 
 #### `gemini-cli` Customizations
-- **`remoteControl.ts`**: Implements the IPC server. Now includes debug logging for incoming prompts and outgoing responses.
-- **`useGeminiStream.ts`**: Modified to emit `RemoteResponse` both after model turns and specifically when slash commands (like `/dir`) are handled internally, preventing IPC hangs.
+- **`remoteControl.ts`**: Implements the IPC server. Supports `prompt` and `getHistory` commands.
+- **`useGeminiStream.ts`**: Modified to emit `RemoteResponse` both after model turns and specifically when slash commands are handled.
+- **`AppContainer.tsx`**: Listens for `RequestRemoteHistory` and serializes the React history state for transport over the pipe.
 
 ---
 
@@ -39,10 +44,7 @@ Refactored to support the Named Pipe architecture.
 
 The test suite has been expanded to cover advanced scenarios:
 - `test_auto_multi_cli.py`: Automates launching multiple Gemini instances and verifies parallel communication with each via unique pipes.
-- `test_command_injection.py`: Validates slash command injection (`/dir add`) and context-aware file reading (tasks.txt).
-- `run_full_ai_test.py`: Orchestrates the full stack for regression testing.
-These are the first generation proof of concept test scripts
-A new generation of scripts that do the same but indirectly by communicating with the hub is in the works
+- `full_stack_hub_mediated_multi_instance_test.py`: Validates the Hub's ability to coordinate multiple sessions and relay history.
 
 ---
 
@@ -53,26 +55,22 @@ A new generation of scripts that do the same but indirectly by communicating wit
 | **SignalR AI Relay** | Stable | Verified with automated tests. |
 | **Named Pipe IPC** | Stable | High performance, no focus-stealing issues. |
 | **Slash Command Injection**| Stable | Now fully programmatic via Named Pipe (no pyautogui). Feedback captured. |
-| **Multi-Session Support** | Stable | Parallel injection to multiple PIDs verified. |
-| **Response Detection** | Stable | Fixed by implementing persistent Turn-Finished detection. |
+| **Multi-Session Support** | Stable | **ENHANCED**: Full lifecycle (Start, List, Switch) integrated into Android UI. |
+| **History Synchronization** | Stable | Conversations are synced when switching sessions or starting new ones. |
 | **Process Cleanup Safety**| Stable | Cleanup scripts now protect ancestors and windows with "Omni" in title to avoid self-termination. |
+| **Android AI Chat** | Stable | **ENHANCED**: Multi-session UI, /clear command, and auto-sync history. |
 
-### Resolved: IPC Read Reliability & Slash Command Support
-1.  **turnFinished Event**: Modified `AppContainer.tsx` to emit a `[TURN_FINISHED]` message whenever the `streamingState` returns to `Idle`.
-2.  **Slash Command IPC**: Updated `slashCommandProcessor.ts` to emit `RemoteResponse` for command outputs and errors, followed by `[TURN_FINISHED]`. This allows slash commands to be handled entirely over the named pipe.
-3.  **Persistent Collection**: Updating test scripts to maintain the connection and accumulate response chunks until the finished marker is received, ensuring multi-turn tool interactions are fully captured.
+### Resolved: Multi-Session Management & History Synchronization
+1.  **Session Discovery**: AI Listener now scans for all active Gemini processes and reports their PIDs back to the Hub.
+2.  **On-Demand Launch**: Hub startup no longer auto-launches Gemini CLI. The AI Listener now triggers `launch_gemini_cli.py` on-demand.
+3.  **IPC History Export**: Added `getHistory` command to the Named Pipe IPC. `AppContainer.tsx` serializes the current `historyManager` state, wrapped in `[HISTORY_START]` and `[HISTORY_END]` markers.
+4.  **Session Switching**: Android UI now features a dropdown to switch between active sessions. Switching triggers a history sync.
+5.  **SignalR Core Extensions**: Added session management methods to `RpcApiHub.cs` and `SignalRClient.kt`.
 
 ---
 
 ## Ultimate goal
 The ability to create, List, switch-between, close and interact with multiple CLI windows on the PC from the Android app through the hub as the middleman.
 We are achieving this by first establishing full control over gemini cli, then integrating the control into the hub and finally android to give us the full CLI <--> Hub <--> Android. 
-Android already has barebones AI control but its somewhat outdated.
 
 ## Next Steps
-It is unclear if the hub versions of scripts are all passing
-Check if android app looks like it will be able to communicate properly with the AI through hub. 
-
-## Completed Recently
-- **Process Cleanup Safety**: `cleanup_gemini_windows.py` now uses `Get-Process` with window title filtering (`-notlike "*Omni*"`) to avoid killing the active Gemini CLI session.
-- **IPC Read Reliability**: Implemented `[TURN_FINISHED]` marker in `gemini-cli` and updated listener logic.

@@ -34,10 +34,50 @@ logger = logging.getLogger("AIListener")
 connection_started = False
 hub = None
 GLOBAL_LOOP = None
+TARGET_PID = None
+
+def get_all_gemini_pids():
+    """Finds all PIDs of Gemini CLI processes."""
+    pids = []
+    for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
+        try:
+            cmdline = " ".join(proc.info['cmdline'] or [])
+            name = proc.info['name'] or ""
+            if 'node' in name.lower() and 'gemini' in cmdline.lower():
+                # Check for bundle/gemini.js or dist/index.js
+                if 'bundle/gemini.js' in cmdline.replace('\\', '/') or 'dist/index.js' in cmdline.replace('\\', '/'):
+                    pids.append(proc.info['pid'])
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            pass
+    return pids
+
+async def handle_get_sessions(args):
+    pids = get_all_gemini_pids()
+    logger.info(f"Discovery found PIDs: {pids}")
+    hub.send("ReceiveAiSessions", [pids])
+
+async def handle_switch_session(args):
+    global TARGET_PID
+    pid = args[0]
+    TARGET_PID = pid
+    logger.info(f"Switched to Gemini PID: {pid}")
+    
+    # Fetch history for the new session
+    history_resp = await asyncio.to_thread(sync_pipe_comm, pid, "", "getHistory")
+    if history_resp.startswith("[HISTORY_DATA]"):
+        history_json = history_resp[len("[HISTORY_DATA]"):]
+        hub.send("ReceiveAiHistory", [history_json])
+
+def on_get_sessions(args):
+    asyncio.run_coroutine_threadsafe(handle_get_sessions(args), GLOBAL_LOOP)
+
+def on_switch_session(args):
+    asyncio.run_coroutine_threadsafe(handle_switch_session(args), GLOBAL_LOOP)
 
 def get_gemini_pid():
-    """Finds the PID of the Gemini CLI process."""
+    """Finds the PID of the Gemini CLI process, prioritizing local development versions."""
     best_pid = None
+    fallback_pid = None
     logger.info("Searching for Gemini processes...")
     for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
         try:
@@ -45,42 +85,43 @@ def get_gemini_pid():
             cmdline = " ".join(cmdline_list)
             name = proc.info['name'] or ""
             
-            # Target the node process running the gemini bundle
             if 'node' in name.lower() and 'gemini' in cmdline.lower():
-                logger.info(f"Checking potential node/gemini process: PID {proc.info['pid']} - Cmd: {cmdline}")
-                # Exclude the listener itself
+                # Exclude the listener itself and other helper scripts
                 if "ai_listener" not in cmdline.lower() and "modify_gemini" not in cmdline.lower():
-                    # STRONGLY Prioritize the local bundle version
-                    if 'bundle/gemini.js' in cmdline.replace('\\', '/'):
-                        logger.info(f"MATCH: Found local Gemini bundle process: PID {proc.info['pid']}")
+                    cmdline_norm = cmdline.replace('\\', '/')
+                    
+                    # Highest priority: Local bundle version
+                    if 'bundle/gemini.js' in cmdline_norm and 'SSDProjects' in cmdline:
+                        logger.info(f"MATCH (High Priority): Found local Gemini bundle: PID {proc.info['pid']}")
                         return proc.info['pid']
                     
-                    # Also prioritize SSDProjects dist version
-                    if 'ssdprojects' in cmdline.lower() and 'dist/index.js' in cmdline.replace('\\', '/'):
-                        logger.info(f"MATCH: Found local Gemini dist process: PID {proc.info['pid']}")
-                        return proc.info['pid']
-                    
-                    # Fallback to other bundle/dist versions
-                    if 'bundle/gemini.js' in cmdline.replace('\\', '/') or 'dist/index.js' in cmdline.replace('\\', '/'):
-                        if not best_pid: # Keep the first one found as fallback
+                    # High priority: Any bundle version
+                    if 'bundle/gemini.js' in cmdline_norm:
+                        if not best_pid:
+                            logger.info(f"MATCH (Medium Priority): Found bundle process: PID {proc.info['pid']}")
                             best_pid = proc.info['pid']
-                            logger.info(f"POTENTIAL FALLBACK: Found generic bundle process: PID {proc.info['pid']}")
+                    
+                    # Fallback: Any dist version
+                    if 'dist/index.js' in cmdline_norm:
+                        if not fallback_pid:
+                            logger.info(f"MATCH (Low Priority): Found dist process: PID {proc.info['pid']}")
+                            fallback_pid = proc.info['pid']
+                            
         except (psutil.NoSuchProcess, psutil.AccessDenied):
             pass
-    
+            
     if best_pid:
-        logger.info(f"FALLBACK: Using best found PID {best_pid}")
-    else:
-        logger.warning("No Gemini process found.")
-    return best_pid
+        return best_pid
+    if fallback_pid:
+        logger.warning(f"Using fallback dist process: PID {fallback_pid}")
+    return fallback_pid
 
-def sync_pipe_comm(pid, command_text):
+def sync_pipe_comm(pid, command_text, command_type="prompt"):
     """Synchronous part of pipe communication to be run in a thread."""
     pipe_path = f"\\\\.\\pipe\\gemini-cli-{pid}"
-    logger.info(f"Connecting to pipe: {pipe_path}")
+    logger.info(f"Connecting to pipe: {pipe_path} for {command_type}")
     
     handle = None
-    # Retry connecting for a few seconds if pipe is not yet available
     for i in range(10):
         try:
             handle = win32file.CreateFile(
@@ -100,26 +141,24 @@ def sync_pipe_comm(pid, command_text):
             time.sleep(1)
             
     try:
-        payload = json.dumps({"command": "prompt", "text": command_text}) + "\n"
+        if command_type == "getHistory":
+            payload = json.dumps({"command": "getHistory"}) + "\n"
+        else:
+            payload = json.dumps({"command": "prompt", "text": command_text}) + "\n"
+            
         win32file.WriteFile(handle, payload.encode())
         
-        logger.info("Command sent. Collecting response parts...")
-        
         full_text = ""
-        # We'll use a timeout to avoid hanging forever if something goes wrong
         start_time = time.time()
-        timeout = 120 # 2 minutes
+        timeout = 120 
         
         while time.time() - start_time < timeout:
-            # Peek to see if data is available
             _, bytes_avail, _ = win32pipe.PeekNamedPipe(handle, 0)
             if bytes_avail > 0:
                 hr, data = win32file.ReadFile(handle, bytes_avail)
                 chunk = data.decode().strip()
-                if not chunk:
-                    continue
+                if not chunk: continue
                 
-                # Each line is a JSON message
                 lines = chunk.split('\n')
                 for line in lines:
                     if not line.strip(): continue
@@ -127,6 +166,15 @@ def sync_pipe_comm(pid, command_text):
                         msg = json.loads(line)
                         if msg.get('type') == 'response':
                             text = msg.get('text', '')
+                            
+                            if '[HISTORY_START]' in text:
+                                start_idx = text.find('[HISTORY_START]') + len('[HISTORY_START]')
+                                end_idx = text.find('[HISTORY_END]', start_idx)
+                                if end_idx != -1:
+                                    history_json = text[start_idx:end_idx]
+                                    win32file.CloseHandle(handle)
+                                    return f"[HISTORY_DATA]{history_json}"
+
                             if text == '[TURN_FINISHED]':
                                 win32file.CloseHandle(handle)
                                 return full_text.strip() or "[No Output]"
@@ -134,62 +182,64 @@ def sync_pipe_comm(pid, command_text):
                                 pass
                             else:
                                 full_text += text + "\n"
-                        
-                        # If we received exactly one line and it was a valid 'response' 
-                        # but NOT a finished marker, and there's no more data available,
-                        # it might be an older CLI version that sends everything in one go.
-                        if len(lines) == 1 and not text == '[TURN_FINISHED]':
-                            # Check if more data is coming
-                            time.sleep(0.5)
-                            _, still_avail, _ = win32pipe.PeekNamedPipe(handle, 0)
-                            if still_avail == 0:
-                                win32file.CloseHandle(handle)
-                                return full_text.strip() or "[No Output]"
-                                
                     except json.JSONDecodeError:
                         continue
             else:
-                # Sleep briefly to avoid busy loop
                 time.sleep(0.1)
                 
         win32file.CloseHandle(handle)
-        if full_text:
-            return full_text.strip()
-        return "Error: Timeout waiting for [TURN_FINISHED] response from pipe."
+        return full_text.strip() or "Error: Timeout waiting for response."
             
     except Exception as e:
+        if handle: win32file.CloseHandle(handle)
         logger.error(f"Pipe communication failed: {e}")
         return f"Error: {str(e)}"
 
 async def send_remote_command(command_text):
-    pid = get_gemini_pid()
-    if not pid:
-        return "Error: Could not find Gemini CLI process. Is it running?"
+    global TARGET_PID
+    pid = TARGET_PID if TARGET_PID else get_gemini_pid()
     
+    if not pid:
+        logger.info("No Gemini CLI found. Auto-starting new session...")
+        hub.send("SendAiStatus", ["Starting Gemini..."])
+        
+        # Launch Gemini CLI
+        launch_script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "launch_gemini_cli.py")
+        if os.path.exists(launch_script):
+            subprocess.Popen(['python', launch_script], shell=True)
+        else:
+            # Fallback if running from a different working dir
+            subprocess.Popen(['python', r'D:\SSDProjects\Omni\launch_gemini_cli.py'], shell=True)
+            
+        # Wait for it to appear
+        for i in range(20): # Wait up to 10 seconds
+            await asyncio.sleep(0.5)
+            pid = get_gemini_pid()
+            if pid:
+                logger.info(f"Gemini started with PID: {pid}")
+                TARGET_PID = pid
+                hub.send("SendAiStatus", ["Thinking..."])
+                break
+        
+        if not pid:
+            return "Error: Failed to auto-start Gemini CLI."
+
     # Run synchronous pipe I/O in a separate thread to avoid blocking the event loop
     return await asyncio.to_thread(sync_pipe_comm, pid, command_text)
 
 async def handle_and_reply(message):
     try:
-        logger.info("Sending AI Status: Thinking...")
         hub.send("SendAiStatus", ["Thinking..."])
     except Exception as e:
         logger.error(f"Error sending status to hub: {e}")
 
-    # Use named pipe for all commands (including slash commands)
     response = await send_remote_command(message)
     
     if response:
-        logger.info("Sending AI Response back to Hub")
-        
-        # Check if the response contains a Hub Command
-        # Format: HUB_COMMAND: {"Command": "...", "Payload": {...}}
         if "HUB_COMMAND:" in response:
             try:
                 parts = response.split("HUB_COMMAND:", 1)
                 cmd_json_str = parts[1].strip()
-                # Extract only the first valid JSON object if there's trailing text
-                # Simple heuristic: find the last '}'
                 last_brace = cmd_json_str.rfind('}')
                 if last_brace != -1:
                     cmd_json_str = cmd_json_str[:last_brace+1]
@@ -204,9 +254,6 @@ async def handle_and_reply(message):
             except Exception as e:
                 logger.error(f"Failed to parse AI Hub Command: {e}")
 
-        print("\n" + "="*60)
-        print(f"CAPTURED AI RESPONSE:\n{response}")
-        print("="*60 + "\n")
         try:
             hub.send("SendAiResponse", [response])
             hub.send("SendAiStatus", [None]) 
@@ -242,10 +289,6 @@ def on_open():
 def on_error(error):
     logger.error(f"Connection error: {error}")
 
-import argparse
-
-# ... existing imports ...
-
 async def main():
     global hub, GLOBAL_LOOP
     GLOBAL_LOOP = asyncio.get_running_loop()
@@ -254,13 +297,10 @@ async def main():
     parser.add_argument("--pid", type=int, help="Specific Gemini PID to target")
     args = parser.parse_args()
     
-    target_pid = args.pid
-    if target_pid:
-        logger.info(f"Targeting specific Gemini PID: {target_pid}")
-        # Override get_gemini_pid to return this PID
-        global get_gemini_pid
-        original_get_pid = get_gemini_pid
-        get_gemini_pid = lambda: target_pid
+    global TARGET_PID
+    if args.pid:
+        TARGET_PID = args.pid
+        logger.info(f"Initial target Gemini PID: {TARGET_PID}")
 
     hub = HubConnectionBuilder()\
         .with_url(HUB_URL)\
@@ -273,6 +313,8 @@ async def main():
         }).build()
 
     hub.on("ReceiveAiMessage", on_ai_message)
+    hub.on("RequestAiSessions", on_get_sessions)
+    hub.on("SwitchAiSession", on_switch_session)
     hub.on_close(on_close) 
     hub.on_open(on_open)   
     hub.on_error(on_error) 

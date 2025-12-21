@@ -8,6 +8,9 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -18,8 +21,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.omni.sync.data.repository.SignalRClient
 import com.omni.sync.viewmodel.MainViewModel
-
-import androidx.compose.material.icons.filled.Delete
 import androidx.compose.animation.core.*
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -30,28 +31,70 @@ fun AiChatScreen(
 ) {
     val messages by signalRClient.aiMessages.collectAsState()
     val aiStatus by signalRClient.aiStatus.collectAsState()
+    val sessions by signalRClient.aiSessions.collectAsState()
     var inputText by remember { mutableStateOf("") }
-    val listState = rememberLazyListState()
+    var showSessionMenu by remember { mutableStateOf(false) }
     
+    val listState = rememberLazyListState()
     val isAiTyping = aiStatus != null
 
     // Auto-scroll to bottom
     LaunchedEffect(messages.size, isAiTyping) {
         if (messages.isNotEmpty() || isAiTyping) {
-            // Give a tiny delay for the layout to settle
             kotlinx.coroutines.delay(100)
             listState.animateScrollToItem(if (isAiTyping) messages.size else messages.size - 1)
         }
     }
 
+    // Initial session discovery
+    LaunchedEffect(Unit) {
+        signalRClient.getAiSessions()
+    }
+
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { 
-                    Column {
-                        Text("OmniSync AI Chat")
+            CenterAlignedTopAppBar(
+                title = {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("OmniSync AI Chat", style = MaterialTheme.typography.titleMedium)
                         if (aiStatus != null) {
                             Text(aiStatus!!, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                        } else {
+                            Text("${sessions.size} sessions active", style = MaterialTheme.typography.labelSmall)
+                        }
+                    }
+                },
+                actions = {
+                    IconButton(onClick = { signalRClient.startNewAiSession() }) {
+                        Icon(Icons.Default.Add, contentDescription = "New Session")
+                    }
+                    Box {
+                        IconButton(onClick = { 
+                            signalRClient.getAiSessions()
+                            showSessionMenu = true 
+                        }) {
+                            Icon(Icons.Default.MoreVert, contentDescription = "Sessions")
+                        }
+                        DropdownMenu(
+                            expanded = showSessionMenu,
+                            onDismissRequest = { showSessionMenu = false }
+                        ) {
+                            if (sessions.isEmpty()) {
+                                DropdownMenuItem(
+                                    text = { Text("No active sessions") },
+                                    onClick = { showSessionMenu = false },
+                                    enabled = false
+                                )
+                            }
+                            sessions.forEach { pid ->
+                                DropdownMenuItem(
+                                    text = { Text("Session PID: $pid") },
+                                    onClick = {
+                                        signalRClient.switchAiSession(pid)
+                                        showSessionMenu = false
+                                    }
+                                )
+                            }
                         }
                     }
                 }
@@ -62,7 +105,7 @@ fun AiChatScreen(
             modifier = Modifier
                 .padding(padding)
                 .fillMaxSize()
-                .imePadding() // Fixes keyboard pushing up start of conversation
+                .imePadding()
         ) {
             LazyColumn(
                 state = listState,
@@ -75,7 +118,7 @@ fun AiChatScreen(
                 items(messages) { (sender, content) ->
                     ChatBubble(sender, content)
                 }
-                
+
                 if (isAiTyping) {
                     item {
                         AiTypingIndicator()
@@ -110,7 +153,7 @@ fun AiChatScreen(
                     Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Send")
                 }
             }
-            
+
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             QuickActionPanel(signalRClient)
         }
@@ -136,9 +179,8 @@ fun QuickActionPanel(signalRClient: SignalRClient) {
             Spacer(Modifier.width(4.dp))
             Text("Clear Chat", fontSize = 12.sp)
         }
-        
-        // Placeholder for other AI quick actions (e.g. "Summarize", "Fix Grammar")
-        Box(modifier = Modifier.weight(2f)) 
+
+        Box(modifier = Modifier.weight(2f))
     }
 }
 
@@ -195,7 +237,7 @@ fun Dot(alpha: Float) {
 fun ChatBubble(sender: String, content: String) {
     val isMe = sender == "Me"
     val isAi = sender == "AI"
-    
+
     val alignment = if (isMe) Alignment.End else Alignment.Start
     val bgColor = when {
         isMe -> MaterialTheme.colorScheme.primaryContainer

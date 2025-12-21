@@ -85,36 +85,55 @@ async def run_hub_multi_test(num_instances=2):
         return
 
     # 2. Launch Gemini Instances
+    popens = []
     for i in range(num_instances):
-        launch_gemini_instance(i + 1)
+        p = launch_gemini_instance(i + 1)
+        popens.append(p)
     
     print("\nWaiting for instances to initialize...")
     await asyncio.sleep(5) 
 
-    # 3. Discover PIDs
-    pids = get_gemini_pids()
-    print(f"Discovered {len(pids)} PIDs: {pids}")
+    # 3. Discover PIDs of the specific instances we launched
+    pids = []
+    for p in popens:
+        try:
+            parent = psutil.Process(p.pid)
+            for child in parent.children(recursive=True):
+                if 'node' in child.name().lower():
+                    cmdline = " ".join(child.cmdline())
+                    if 'gemini' in cmdline.lower():
+                        pids.append(child.pid)
+                        break
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            pass
+
+    print(f"Discovered {len(pids)} PIDs from launched instances: {pids}")
     
     if len(pids) < num_instances:
-        print(f"Error: Only found {len(pids)} instances, expected {num_instances}")
-        return
+        print(f"Warning: Only found {len(pids)} specific child PIDs, falling back to general search...")
+        pids = get_gemini_pids()
+        print(f"General search found: {pids}")
 
-    # 4. Launch Listeners for each PID
-    print("\nLaunching Listeners for each PID...")
-    for pid in pids:
-        subprocess.Popen(
-            [sys.executable, os.path.join(ROOT_DIR, "launch_ai_listener.py"), str(pid)],
-            cwd=ROOT_DIR
-        )
+    # 4. Launch a single Listener
+    print("\nLaunching a single AI Listener...")
+    subprocess.Popen(
+        [sys.executable, os.path.join(ROOT_DIR, "launch_ai_listener.py")],
+        cwd=ROOT_DIR
+    )
     
-    print("Waiting 10s for Listeners to initialize and authenticate...")
+    print("Waiting 10s for Listener to initialize and authenticate...")
     await asyncio.sleep(10)
 
     # 5. Run Integration Test
     print("\nRunning SignalR Multi-Response Test...")
     print("-"*60)
     test_path = os.path.join(ROOT_DIR, "TestScripts", "AIFeature", "test_hub_mediated_multi_cli.py")
-    result = subprocess.run([sys.executable, test_path], cwd=ROOT_DIR)
+    
+    cmd = [sys.executable, test_path]
+    if pids:
+        cmd.extend(["--pids"] + [str(pid) for pid in pids])
+        
+    result = subprocess.run(cmd, cwd=ROOT_DIR)
     print("-"*60)
     
     if result.returncode == 0:

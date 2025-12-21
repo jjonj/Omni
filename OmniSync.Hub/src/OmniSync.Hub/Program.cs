@@ -91,6 +91,7 @@ builder.Services.AddSingleton<HubEventSender>(provider =>
 });
 builder.Services.AddSingleton<HubMonitorService>(); // Register the new monitoring service
 builder.Services.AddHostedService<TrayIconManager>();
+builder.Services.AddHostedService<HubStartupService>(); // Auto-launch AI components
 builder.Services.AddSingleton<KeyboardHook>(); // Register KeyboardHook
 
 builder.Services.AddCors(options =>

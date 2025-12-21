@@ -538,6 +538,64 @@ namespace OmniSync.Hub.Presentation.Hubs
             }
         }
 
+                public async Task StartNewAiSession()
+        {
+            if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
+            {
+                AnyCommandReceived?.Invoke(this, "StartNewAiSession");
+                // Navigate up from bin/Debug/net9.0-windows to the project root
+                string rootPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", ".."));
+                string scriptPath = Path.Combine(rootPath, "launch_gemini_cli.py");
+
+                if (File.Exists(scriptPath))
+                {
+                    _logger.LogInformation($"RpcApiHub: Launching new AI session...");
+                    var startInfo = new System.Diagnostics.ProcessStartInfo
+                    {
+                        FileName = "python",
+                        Arguments = scriptPath,
+                        WorkingDirectory = rootPath,
+                        UseShellExecute = true,
+                        CreateNoWindow = false
+                    };
+                    System.Diagnostics.Process.Start(startInfo);
+                }
+            }
+        }
+
+        public async Task GetAiSessions()
+        {
+            if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
+            {
+                await Clients.All.SendAsync("RequestAiSessions");
+            }
+        }
+
+        public async Task SwitchAiSession(int pid)
+        {
+            if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
+            {
+                AnyCommandReceived?.Invoke(this, $"SwitchAiSession: {pid}");
+                await Clients.All.SendAsync("SwitchAiSession", pid);
+            }
+        }
+
+        public async Task ReceiveAiSessions(List<int> pids)
+        {
+            if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
+            {
+                await Clients.All.SendAsync("ReceiveAiSessions", pids);
+            }
+        }
+
+        public async Task ReceiveAiHistory(string historyJson)
+        {
+            if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
+            {
+                await Clients.All.SendAsync("ReceiveAiHistory", historyJson);
+            }
+        }
+
         public async Task NotifyCortexActivity(string activityName, string activityType)
         {
             if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
@@ -603,4 +661,5 @@ namespace OmniSync.Hub.Presentation.Hubs
         }
     }
 }
+
 
