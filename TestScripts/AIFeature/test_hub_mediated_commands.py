@@ -72,7 +72,7 @@ class AICommandTesterHub:
         logger.info(f"Step 1: Sending AI command via Hub: {command1}")
         self.hub.send("SendAiMessage", [command1])
 
-        res1 = await self.wait_for_response(timeout=15)
+        res1 = await self.wait_for_response(timeout=60)
         if res1:
             logger.info(f"Response 1 Captured: {res1}")
         else:

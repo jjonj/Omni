@@ -17,7 +17,6 @@ def launch_gemini():
     
     new_env = os.environ.copy()
     new_env["GEMINI_DEBUG_LOG_FILE"] = log_file
-    new_env["DEBUG"] = "1"
     
     try:
         subprocess.Popen(

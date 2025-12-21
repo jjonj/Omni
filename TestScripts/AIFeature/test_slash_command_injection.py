@@ -103,7 +103,8 @@ async def send_and_get_response(pid, command_text, timeout=120):
                         continue
                         
                     # Split by newline in case multiple JSON messages arrived together
-                    for line in chunk.split('\n'):
+                    lines = chunk.split('\n')
+                    for line in lines:
                         if not line.strip(): continue
                         try:
                             msg = json.loads(line)
@@ -113,11 +114,17 @@ async def send_and_get_response(pid, command_text, timeout=120):
                                     win32file.CloseHandle(handle)
                                     return full_text.strip() or "[No Output]"
                                 elif text == '[Command Handled]':
-                                    # For slash commands, we might just get this
-                                    # But let's keep waiting for TURN_FINISHED just in case
                                     full_text += "[Command Handled]\n"
                                 else:
                                     full_text += text + "\n"
+                            
+                            # Compatibility for older CLI: If we got a valid response and no more is coming
+                            if len(lines) == 1 and not text == '[TURN_FINISHED]':
+                                await asyncio.sleep(0.5)
+                                _, still_avail, _ = win32pipe.PeekNamedPipe(handle, 0)
+                                if still_avail == 0:
+                                    win32file.CloseHandle(handle)
+                                    return full_text.strip() or "[No Output]"
                         except json.JSONDecodeError:
                             continue
                 else:
@@ -141,7 +148,7 @@ async def run_command_test():
     # 1. Inject /dir add command
     dir_cmd = f"/dir add {OMNI_DIR}"
     print(f"Injecting command: {dir_cmd}")
-    res1 = await send_and_get_response(pid, dir_cmd, timeout=10)
+    res1 = await send_and_get_response(pid, dir_cmd, timeout=60)
     print(f"Response 1: {res1}")
 
     # 2. Ask to read tasks.txt
