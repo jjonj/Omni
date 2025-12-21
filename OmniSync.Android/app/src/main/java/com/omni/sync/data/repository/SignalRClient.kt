@@ -290,7 +290,19 @@ class SignalRClient(
         }, String::class.java, String::class.java)
 
         hubConnection?.on("ReceiveAiResponse", { response: String ->
-            _aiMessages.value = _aiMessages.value + Pair("AI", response)
+            if (response == "[TURN_FINISHED]") {
+                _aiStatus.value = null
+                return@on
+            }
+            
+            val currentMessages = _aiMessages.value.toMutableList()
+            if (currentMessages.isNotEmpty() && currentMessages.last().first == "AI") {
+                val lastMsg = currentMessages.last()
+                currentMessages[currentMessages.size - 1] = Pair("AI", lastMsg.second + response)
+                _aiMessages.value = currentMessages
+            } else {
+                _aiMessages.value = _aiMessages.value + Pair("AI", response)
+            }
         }, String::class.java)
 
         hubConnection?.on("ReceiveAiStatus", { status: String? ->
