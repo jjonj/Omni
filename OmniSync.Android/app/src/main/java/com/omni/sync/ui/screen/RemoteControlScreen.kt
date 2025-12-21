@@ -192,8 +192,8 @@ fun TrackpadArea(signalRClient: SignalRClient, modifier: Modifier = Modifier) {
                                 if (isDrag) {
                                     val delta = change.positionChange()
                                     if (delta != Offset.Zero) {
-                                        // Reduced sensitivity by 25% (1.2f * 0.75 = 0.9f)
-                                        val sensitivity = 0.9f
+                                        // Reduced sensitivity by 40% from original (1.2f * 0.6 = 0.72f)
+                                        val sensitivity = 0.72f
                                         signalRClient.sendMouseMove(delta.x * sensitivity, delta.y * sensitivity)
                                         change.consume()
                                     }
