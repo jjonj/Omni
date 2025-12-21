@@ -17,6 +17,7 @@ class AiTester:
         self.connection_started = False
         self.message_received = False
         self.response_received = False
+        self.failure_detected = False
         self.hub = None
 
     def on_open(self):
@@ -37,6 +38,10 @@ class AiTester:
     def on_ai_response(self, args):
         response = args[0]
         logger.info(f"HUB BROADCAST: AI Response: {response}")
+        # Check for error indicators in the response
+        if str(response).startswith("Error:") or "Error:" in str(response)[:20]:
+            logger.error(f"FAIL: AI Response indicated an error: {response}")
+            self.failure_detected = True
         self.response_received = True
 
     async def run_test(self):
@@ -59,8 +64,8 @@ class AiTester:
             await asyncio.sleep(1)
         
         if not self.connection_started:
-            logger.error("Failed to connect.")
-            return
+            logger.error("Failed to connect to Hub.")
+            sys.exit(1)
 
         # Authenticate
         self.hub.send("Authenticate", [API_KEY])
@@ -73,21 +78,33 @@ class AiTester:
 
         # Wait for events
         start_time = time.time()
-        timeout = 60 if len(sys.argv) > 1 else 30 # Longer timeout for custom messages
+        timeout = 60 if len(sys.argv) > 1 else 30 
         while time.time() - start_time < timeout:
             if self.message_received and self.response_received:
                 break
             await asyncio.sleep(1)
 
+        exit_code = 0
+        
         if not self.message_received:
             logger.error("FAIL: Did not receive ReceiveAiMessage broadcast from Hub.")
+            exit_code = 1
+            
         if not self.response_received:
             logger.error("FAIL: Did not receive ReceiveAiResponse broadcast (is ai_listener.py running?)")
+            exit_code = 1
         
-        if self.message_received and self.response_received:
+        if self.failure_detected:
+            logger.error("FAIL: Test failed due to error response from AI.")
+            exit_code = 1
+
+        if exit_code == 0:
             logger.info("SUCCESS: Full AI roundtrip confirmed.")
+        else:
+            logger.error("TEST FAILED.")
 
         self.hub.stop()
+        sys.exit(exit_code)
 
 if __name__ == "__main__":
     tester = AiTester()

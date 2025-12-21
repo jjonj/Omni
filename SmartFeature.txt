@@ -1,0 +1,136 @@
+This guide will walk you through the "Hybrid" integration. Since your **Omni Hub** is a C# .NET 9 application, we will use **Node-RED** as the bridge to handle the complex Google/OAuth2 security layer, and then have Node-RED talk to your Hub via simple HTTP requests.
+
+---
+
+### Phase 1: The "Non-Programming" Setup
+Before you write a single line of code, you need to set up the plumbing that allows Google’s servers to talk to your home network.
+
+#### 1. Choose your Bridge Service
+Because Google requires a 24/7 HTTPS endpoint with a valid SSL certificate and an OAuth2 server, developers usually use a "Bridge." The most reliable free option for Node-RED is the **[Google Home Bridge](https://googlehome.hardill.me.uk/)** (created by Ben Hardill).
+1.  Go to [googlehome.hardill.me.uk](https://googlehome.hardill.me.uk/).
+2.  Create an account.
+3.  Log in and go to **"Devices."** You won't add them yet, but this is where you will define your "Virtual Devices" (e.g., "The PC" or "Volume").
+
+#### 2. Install Node-RED on Windows
+Since Omni Hub is already running on Windows, we’ll run Node-RED there too.
+1.  Download and install **[Node.js](https://nodejs.org/)** (LTS version).
+2.  Open PowerShell as Administrator and run:
+    ```powershell
+    npm install -g --unsafe-perm node-red
+    ```
+3.  Start it by typing `node-red` in PowerShell. It will now be running at `http://localhost:1880`.
+
+#### 3. Connect Google Home to the Bridge
+1.  On your phone, open the **Google Home App**.
+2.  Tap **+** -> **Set up device** -> **Works with Google**.
+3.  Search for **"Node-RED"** (it might appear as "Node-RED Google Home Bridge").
+4.  Log in with the account you created in Step 1.
+
+---
+
+### Phase 2: Preparing Omni Hub (C#)
+Your Hub currently uses **SignalR**, which is great for your Android app, but Node-RED works most reliably with standard **HTTP REST APIs**. We need to add a small Controller to Omni so Node-RED can "fire and forget" commands to it.
+
+**Add this Controller to your OmniSync.Hub project:**
+
+```csharp
+// Presentation/Controllers/ExternalCommandController.cs
+using Microsoft.AspNetCore.Mvc;
+using System.Text.Json;
+using OmniSync.Hub.Logic.Services;
+
+[Route("api/external")]
+[ApiController]
+public class ExternalCommandController : ControllerBase
+{
+    private readonly CommandDispatcher _dispatcher;
+    private readonly string _apiKey = "test_api_key"; // Match your appsettings.json
+
+    public ExternalCommandController(CommandDispatcher dispatcher)
+    {
+        _dispatcher = dispatcher;
+    }
+
+    [HttpPost("command")]
+    public IActionResult Execute([FromQuery] string key, [FromQuery] string cmd, [FromBody] JsonElement payload)
+    {
+        if (key != _apiKey) return Unauthorized();
+        
+        // This leverages your existing CommandDispatcher!
+        _dispatcher.Dispatch(cmd.ToUpper(), payload);
+        return Ok();
+    }
+}
+```
+
+---
+
+### Phase 3: Node-RED Configuration
+Now we build the bridge.
+
+1.  Open Node-RED (`http://localhost:1880`).
+2.  Click the Menu (top right) -> **Manage Palette**.
+3.  Go to the **Install** tab and search for: `node-red-contrib-googlehome`. Install it.
+4.  Drag a **"Google Home"** node onto the canvas.
+5.  Double-click it. Click the **Edit (pencil)** icon to add your Bridge Account credentials from Phase 1.
+
+#### Example 1: The Master Power Switch
+1.  On the [Bridge Website](https://googlehome.hardill.me.uk/), add a device: 
+    *   **Name:** "The Computer"
+    *   **Type:** Switch
+    *   **Trait:** OnOff
+2.  In Node-RED, drag a **Google Home** node. Select "The Computer."
+3.  Connect it to a **"Switch"** node to separate "On" from "Off."
+4.  Connect those to **"HTTP Request"** nodes.
+    *   **Method:** POST
+    *   **URL:** `http://localhost:5000/api/external/command?key=test_api_key&cmd=SCHEDULE_SHUTDOWN`
+    *   **Payload (JSON):** `{"Minutes": 0}` (to shut down immediately)
+
+#### Example 2: Volume Control (The "Set" Command)
+1.  On the Bridge Website, add a device: 
+    *   **Name:** "PC Volume"
+    *   **Type:** Light (We use Light because it has a 0-100% "Brightness" trait)
+    *   **Trait:** Brightness
+2.  In Node-RED, drag the "PC Volume" node.
+3.  Connect it to a **"Function"** node with this code:
+    ```javascript
+    // Convert Google's brightness to Omni's volume percentage
+    msg.payload = {
+        "VolumePercentage": msg.payload
+    };
+    return msg;
+    ```
+4.  Connect to an **HTTP Request** node:
+    *   **URL:** `http://localhost:5000/api/external/command?key=test_api_key&cmd=SET_VOLUME`
+
+---
+
+### Phase 4: Full List of Available Commands
+Because you have a `CommandDispatcher` in your C# code, you can now trigger any of these via Node-RED:
+
+| Virtual Device in Google | Google Command | Omni Hub Command (`cmd=`) | JSON Payload Needed |
+| :--- | :--- | :--- | :--- |
+| **Switch** (The PC) | "Turn on/off" | `SCHEDULE_SHUTDOWN` | `{"Minutes": 0}` |
+| **Light** (PC Volume) | "Set volume to X%" | `SET_VOLUME` | `{"VolumePercentage": X}` |
+| **Switch** (Mute) | "Turn on/off Mute" | `TOGGLE_MUTE` | `{}` |
+| **Scene** (Gaming Mode) | "Activate Gaming" | `OPEN_ON_PC` | `{"Path": "C:\\Games\\Steam.exe"}` |
+| **Switch** (The Screen) | "Turn off Screen" | `INPUT_KEY_PRESS` | `{"KeyCode": 173}` (Mute/Vol keys) |
+
+---
+
+### Phase 5: The "Stretch Goal" (Hub Controlling Other Devices)
+Since Node-RED is now running on your PC, your **Omni Hub can control your whole house** by sending requests *back* to Node-RED.
+
+1.  **In Node-RED:** Install nodes for your devices (e.g., `node-red-contrib-tp-link`, `node-red-contrib-tuyapi`).
+2.  **In Node-RED:** Drag an **"HTTP In"** node. Set it to `GET /control-lights`.
+3.  **In Omni Hub (C#):** When you want to turn off the lights, just call:
+    ```csharp
+    var client = new HttpClient();
+    await client.GetAsync("http://localhost:1880/control-lights");
+    ```
+
+### Why this is the best path for you:
+1.  **Low Latency:** Node-RED and Omni talk over `localhost`, so the reaction is instant.
+2.  **No OAuth Headache:** You never have to write security code for Google.
+3.  **C# Ownership:** You keep all your "hard logic" (process killing, file system browsing) in C#, where it's most powerful.
+4.  **Expandability:** If you buy a new smart bulb tomorrow, you just add one "node" in Node-RED and Omni can control it immediately without you needing to update any C# libraries.

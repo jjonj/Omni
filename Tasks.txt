@@ -11,7 +11,7 @@ DONE Show a notification in the app when connecting/disconnecting from hub
 The app is somehow fullscreen all the time, hiding the top android bar that shows time and notification icons etc. I only want this in horizontal mode. 
 
 ## For the hub
-DONE Right click tray icon -> exit doesnt work
+Right click tray icon -> exit is slow, can we be more forceful?
 
 ### Hub window
 
@@ -102,8 +102,6 @@ NOT-WORKING Add support for android launcher widgets, when you add a widget you 
 
 
 
-
-
 ### Alarm screen
 NOT WORKING When alarm pops, force open the omnihub app to open. Do we not have permission from android to open an app automatically? im pressure sure other alarm apps do. 
 Dismissing alarm from notification does not seem to work, at least while its snoozing
@@ -113,4 +111,3 @@ Dismissing alarm from alarm screen does not deactivate a non repeating alarm lik
 DONE Read SmartFeature.txt (implemented ExternalCommandController in Hub)
 
 ## Web
-DONE Hub screen on web doesnt work/receive updates.

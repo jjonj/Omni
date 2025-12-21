@@ -2,7 +2,7 @@
 
 This document tracks the implementation, architecture, and status of AI-related features within the OmniSync ecosystem.
 
-Always use cleanup_gemini_windows.py between test runs, or even better, adjust all scripts to call cleanup_gemini_windows.py as the first thing.
+Always use cleanup_gemini_windows.py between test runs, or even better, adjust all scripts to call cleanup_gemini_windows.py as the first thing. Careful not to kill yourself as YOU are a cli gemini window but the cleanup script protects you.
 
 ## Architectural Overview
 
@@ -71,7 +71,6 @@ We are achieving this by first establishing full control over gemini cli, then i
 Android already has barebones AI control but its somewhat outdated.
 
 ## Next Steps
-Develop hub versions of test scripts. The scripts should ONLY communicate with the hub and tell the hub to start CLIs, send slash commands and messages to the CLIs and getting back messages and events from AI etc.
 
 
 ## Completed Recently
