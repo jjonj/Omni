@@ -4,7 +4,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -31,28 +31,28 @@ fun SettingsScreen(
     mainViewModel: MainViewModel
 ) {
     val context = mainViewModel.applicationContext
-    val prefs = remember { context.getSharedPreferences("omni_settings", Context.MODE_PRIVATE) }
+    val appConfig = mainViewModel.appConfig
     val gson = remember { Gson() }
     
-    var videoSkipInterval by remember { mutableIntStateOf(prefs.getInt("video_skip_interval", 10)) }
-    var videoPlaylistRandom by remember { mutableStateOf(prefs.getBoolean("video_playlist_random", false)) }
-    var cortexNotificationsEnabled by remember { mutableStateOf(prefs.getBoolean("cortex_notifications_enabled", true)) }
+    var videoSkipInterval by remember { mutableIntStateOf(appConfig.videoSkipInterval) }
+    var videoPlaylistRandom by remember { mutableStateOf(appConfig.videoPlaylistRandom) }
+    var cortexNotificationsEnabled by remember { mutableStateOf(appConfig.cortexNotificationsEnabled) }
 
-    val initialActionsJson = prefs.getString("notification_actions", null)
-    val initialActions = if (initialActionsJson == null) {
+    val initialActions = appConfig.notificationActions.ifEmpty {
         listOf(
             NotificationAction("1", "Shutdown", "B:\\GDrive\\Tools\\05 Automation\\shutdown.bat"),
             NotificationAction("2", "Sleep", "B:\\GDrive\\Tools\\05 Automation\\sleep.bat"),
             NotificationAction("3", "TV", "B:\\GDrive\\Tools\\05 Automation\\TVActive3\\tv_toggle.bat"),
             NotificationAction("4", "WOL", "", isWol = true, macAddress = "10FFE0379DAC")
         )
-    } else {
-        val type = object : TypeToken<List<NotificationAction>>() {}.type
-        gson.fromJson(initialActionsJson, type)
     }
     
     var notificationActions by remember { mutableStateOf<List<NotificationAction>>(initialActions) }
     var showAddMenu by remember { mutableStateOf(false) }
+    
+    var showPathPrompt by remember { mutableStateOf(false) }
+    var pathInput by remember { mutableStateOf("") }
+    var pendingAction by remember { mutableStateOf<NotificationAction?>(null) }
 
     val browserPrefs = remember { context.getSharedPreferences("browser_prefs", Context.MODE_PRIVATE) }
     val bookmarksJson = browserPrefs.getString("bookmarks", null)
@@ -71,12 +71,23 @@ fun SettingsScreen(
         NotificationAction("pre-nav-browser", "Go to Browser", "NAV:BROWSER"),
         NotificationAction("pre-nav-files", "Go to Files", "NAV:FILES"),
         NotificationAction("pre-nav-ai", "Go to AI Chat", "NAV:AI_CHAT"),
-        NotificationAction("pre-nav-alarm", "Go to Alarm", "NAV:ALARM")
+        NotificationAction("pre-nav-alarm", "Go to Alarm", "NAV:ALARM"),
+        NotificationAction("pre-nav-file", "Open Folder...", "NAV_FILE:PROMPT"),
+        NotificationAction("pre-alarm-830", "Alarm 8h 30m", "ALARM:510"),
+        NotificationAction("pre-alarm-845", "Alarm 8h 45m", "ALARM:525"),
+        NotificationAction("pre-alarm-900", "Alarm 9h", "ALARM:540"),
+        NotificationAction("pre-br-back", "Browser Back", "BROWSER:Back"),
+        NotificationAction("pre-br-refresh", "Browser Refresh", "BROWSER:Refresh"),
+        NotificationAction("pre-br-forward", "Browser Forward", "BROWSER:Forward"),
+        NotificationAction("pre-br-close", "Browser Close Tab", "BROWSER:CloseTab"),
+        NotificationAction("pre-br-play", "Browser Play/Pause", "BROWSER:MediaPlayPause"),
+        NotificationAction("pre-br-phone", "Open Tab on Phone", "BROWSER:OpenCurrentTabOnPhone")
     )
 
     fun saveActions(actions: List<NotificationAction>) {
         notificationActions = actions
-        prefs.edit().putString("notification_actions", gson.toJson(actions)).apply()
+        appConfig.notificationActions = actions
+        mainViewModel.saveAppConfig()
         // Refresh service
         val intent = Intent(context, ForegroundService::class.java).apply {
             action = ForegroundService.ACTION_REFRESH_NOTIFICATION
@@ -90,7 +101,7 @@ fun SettingsScreen(
                 title = { Text("Settings") },
                 navigationIcon = {
                     IconButton(onClick = { mainViewModel.goBack() }) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 }
             )
@@ -118,7 +129,8 @@ fun SettingsScreen(
                         value = videoSkipInterval.toFloat(),
                         onValueChange = { 
                             videoSkipInterval = it.toInt()
-                            prefs.edit().putInt("video_skip_interval", videoSkipInterval).apply()
+                            appConfig.videoSkipInterval = videoSkipInterval
+                            mainViewModel.saveAppConfig()
                         },
                         valueRange = 5f..60f,
                         steps = 11,
@@ -139,7 +151,8 @@ fun SettingsScreen(
                     checked = videoPlaylistRandom,
                     onCheckedChange = { 
                         videoPlaylistRandom = it
-                        prefs.edit().putBoolean("video_playlist_random", videoPlaylistRandom).apply()
+                        appConfig.videoPlaylistRandom = videoPlaylistRandom
+                        mainViewModel.saveAppConfig()
                     }
                 )
             }
@@ -159,7 +172,8 @@ fun SettingsScreen(
                     checked = cortexNotificationsEnabled,
                     onCheckedChange = { 
                         cortexNotificationsEnabled = it
-                        prefs.edit().putBoolean("cortex_notifications_enabled", cortexNotificationsEnabled).apply()
+                        appConfig.cortexNotificationsEnabled = cortexNotificationsEnabled
+                        mainViewModel.saveAppConfig()
                     }
                 )
             }
@@ -184,10 +198,15 @@ fun SettingsScreen(
                             DropdownMenuItem(
                                 text = { Text(action.label) },
                                 onClick = {
-                                    val newActions = notificationActions.toMutableList()
-                                    val id = java.util.UUID.randomUUID().toString()
-                                    newActions.add(action.copy(id = id))
-                                    saveActions(newActions)
+                                    if (action.command == "NAV_FILE:PROMPT") {
+                                        pendingAction = action
+                                        showPathPrompt = true
+                                    } else {
+                                        val newActions = notificationActions.toMutableList()
+                                        val id = java.util.UUID.randomUUID().toString()
+                                        newActions.add(action.copy(id = id))
+                                        saveActions(newActions)
+                                    }
                                     showAddMenu = false
                                 }
                             )
@@ -247,5 +266,41 @@ fun SettingsScreen(
             
             Text("Current Hub: ${mainViewModel.getBaseUrl()}", style = MaterialTheme.typography.bodySmall)
         }
+    }
+
+    if (showPathPrompt) {
+        AlertDialog(
+            onDismissRequest = { showPathPrompt = false; pathInput = "" },
+            title = { Text("Enter folder/file path") },
+            text = {
+                OutlinedTextField(
+                    value = pathInput,
+                    onValueChange = { pathInput = it },
+                    label = { Text("e.g. D:\\\\Videos") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            },
+            confirmButton = {
+                Button(onClick = {
+                    if (pathInput.isNotBlank()) {
+                        val newActions = notificationActions.toMutableList()
+                        val id = java.util.UUID.randomUUID().toString()
+                        val label = pathInput.substringAfterLast("\\\\").substringAfterLast("/").ifEmpty { pathInput }
+                        newActions.add(NotificationAction(id, "Open $label", "NAV_FILE:$pathInput"))
+                        saveActions(newActions)
+                        showPathPrompt = false
+                        pathInput = ""
+                    }
+                }) {
+                    Text("Add")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showPathPrompt = false; pathInput = "" }) {
+                    Text("Cancel")
+                }
+            }
+        )
     }
 }

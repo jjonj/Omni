@@ -78,10 +78,49 @@ class ForegroundService : Service() {
                 putExtra("OPEN_SCREEN", screenName)
             }
             startActivity(intent)
+        } else if (action.command.startsWith("NAV_FILE:")) {
+            val path = action.command.substring(9)
+            val intent = Intent(this, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+                putExtra("OPEN_SCREEN", "FILES")
+                putExtra("FILE_PATH", path)
+            }
+            startActivity(intent)
+        } else if (action.command.startsWith("ALARM:")) {
+            val minutesStr = action.command.substring(6)
+            val minutes = minutesStr.toIntOrNull() ?: 0
+            if (minutes > 0) {
+                // We need AlarmScheduler here. 
+                // Since ForegroundService is a service, we can call it.
+                // We need the data from SharedPreferences though for gradual config.
+                val prefs = getSharedPreferences("alarm_prefs", Context.MODE_PRIVATE)
+                val configJson = prefs.getString("config", null)
+                val gson = Gson()
+                val config = if (configJson != null) gson.fromJson(configJson, com.omni.sync.ui.screen.GradualConfig::class.java) else com.omni.sync.ui.screen.GradualConfig()
+                
+                val cal = java.util.Calendar.getInstance()
+                cal.add(java.util.Calendar.MINUTE, minutes)
+                
+                val alarmData = com.omni.sync.ui.screen.AlarmData(
+                    enabled = true,
+                    hour = cal.get(java.util.Calendar.HOUR_OF_DAY).let { if (it == 0 || it == 12) 12 else it % 12 },
+                    minute = cal.get(java.util.Calendar.MINUTE),
+                    isAM = cal.get(java.util.Calendar.AM_PM) == java.util.Calendar.AM,
+                    repeatDaily = false
+                )
+                com.omni.sync.utils.AlarmScheduler.scheduleAlarm(this, 1, alarmData, config)
+                // Update prefs so UI reflects it
+                prefs.edit().putString("alarm1", gson.toJson(alarmData)).apply()
+                mainViewModel.addLog("Quick Alarm set for $minutes minutes from now", com.omni.sync.ui.screen.LogType.SUCCESS)
+            }
         } else if (action.command.startsWith("BOOKMARK:")) {
             val url = action.command.substring(9)
             mainViewModel.addLog("Notification: Opening bookmark on PC...", com.omni.sync.ui.screen.LogType.INFO)
             signalRClient.sendBrowserCommand("Navigate", url, true)
+        } else if (action.command.startsWith("BROWSER:")) {
+            val cmd = action.command.substring(8)
+            mainViewModel.addLog("Notification: Browser $cmd...", com.omni.sync.ui.screen.LogType.INFO)
+            signalRClient.sendBrowserCommand(cmd, "", false)
         } else {
             mainViewModel.addLog("Notification: Triggering ".plus(action.label).plus("..."), com.omni.sync.ui.screen.LogType.INFO)
             signalRClient.executeCommand(action.command)

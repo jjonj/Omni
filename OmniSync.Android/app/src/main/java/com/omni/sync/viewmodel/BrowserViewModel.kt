@@ -187,11 +187,31 @@ class BrowserViewModel(
         }
     }
 
+    private fun getBookmarksFile(): java.io.File {
+        val dir = getApplication<Application>().getExternalFilesDir(null)
+        return java.io.File(dir, "bookmarks.json")
+    }
+
     private fun loadBookmarks() {
+        val file = getBookmarksFile()
+        if (file.exists()) {
+            try {
+                val json = file.readText()
+                val type = object : TypeToken<List<Bookmark>>() {}.type
+                _bookmarks.value = gson.fromJson(json, type)
+                return
+            } catch (e: Exception) {
+                android.util.Log.e("BrowserViewModel", "Error reading bookmarks file", e)
+            }
+        }
+
+        // Fallback/Migration from SharedPreferences
         val json = prefs.getString("bookmarks", null)
         if (json != null) {
             val type = object : TypeToken<List<Bookmark>>() {}.type
             _bookmarks.value = gson.fromJson(json, type)
+            // Migrate to file
+            saveBookmarks()
         } else {
             // Default bookmarks
             _bookmarks.value = listOf(
@@ -199,12 +219,22 @@ class BrowserViewModel(
                 Bookmark("YouTube", "https://youtube.com"),
                 Bookmark("ChatGPT", "https://chatgpt.com")
             )
+            saveBookmarks()
         }
     }
 
     private fun saveBookmarks() {
         val json = gson.toJson(_bookmarks.value)
+        // Save to SharedPreferences (as backup/standard)
         prefs.edit().putString("bookmarks", json).apply()
+        
+        // Save to external file for persistence between reinstalls
+        try {
+            val file = getBookmarksFile()
+            file.writeText(json)
+        } catch (e: Exception) {
+            android.util.Log.e("BrowserViewModel", "Error saving bookmarks to file", e)
+        }
     }
 }
 

@@ -9,7 +9,9 @@ import com.omni.sync.data.repository.SignalRClient
 import com.omni.sync.viewmodel.MainViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 import io.reactivex.rxjava3.android.schedulers.AndroidSchedulers
 import io.reactivex.rxjava3.schedulers.Schedulers
 import android.util.Log
@@ -126,6 +128,16 @@ class FilesViewModel(
                 onHubFileChanged(path)
             }
         }
+
+        // Listen for deep link navigation
+        viewModelScope.launch {
+            mainViewModel.pendingNavigationPath.collect { path ->
+                if (path != null) {
+                    loadDirectory(path)
+                    mainViewModel.setPendingNavigationPath(null) // Consume it
+                }
+            }
+        }
     }
 
     private fun loadFolderBookmarks() {
@@ -226,6 +238,22 @@ class FilesViewModel(
         return null
     }
 
+    fun getAllCachedPaths(): List<String> {
+        return cachePrefs.all.keys
+            .filter { it.startsWith("cache_") }
+            .map { it.removePrefix("cache_") }
+            .sorted()
+    }
+
+    fun uncachePath(path: String) {
+        cachePrefs.edit().remove("cache_$path").apply()
+    }
+
+    fun clearAllCaches() {
+        cachePrefs.edit().clear().apply()
+        textCachePrefs.edit().clear().apply()
+    }
+
     fun toggleFolderBookmark(entry: FileSystemEntry) {
         if (!entry.isDirectory) return
         
@@ -276,6 +304,30 @@ class FilesViewModel(
     }
 
     fun loadDirectory(path: String) {
+        if (path == "" || path == "/") {
+            // Root
+        } else if (path == "VIRTUAL_DOWNLOADS") {
+            val entries = _downloadedVideos.value.filter { !it.isEncrypted }.map { video ->
+                FileSystemEntry(video.fileName, video.localPath, false, video.fileSize, video.downloadDate)
+            }.toMutableList()
+            // Add ".." to go back to root
+            entries.add(0, FileSystemEntry("..", "", true, 0, java.util.Date(0)))
+            _fileSystemEntries.value = entries
+            _currentPath.value = path
+            _isLoading.value = false
+            return
+        } else if (path == "VIRTUAL_ENCRYPTED") {
+            val entries = _downloadedVideos.value.filter { it.isEncrypted }.map { video ->
+                FileSystemEntry(video.fileName, video.localPath, false, video.fileSize, video.downloadDate)
+            }.toMutableList()
+            // Add ".." to go back to root
+            entries.add(0, FileSystemEntry("..", "", true, 0, java.util.Date(0)))
+            _fileSystemEntries.value = entries
+            _currentPath.value = path
+            _isLoading.value = false
+            return
+        }
+
         if (!mainViewModel.isConnected.value) {
             val cachedEntries = getFromCache(path)
             if (cachedEntries != null) {
@@ -332,11 +384,34 @@ class FilesViewModel(
     }
 
     private fun enrichWithPendingFiles(directoryPath: String, entries: List<FileSystemEntry>): List<FileSystemEntry> {
+        val newEntries = entries.toMutableList()
+
+        if (directoryPath.isEmpty() || directoryPath == "/") {
+            // Add virtual folders
+            if (newEntries.none { it.path == "VIRTUAL_DOWNLOADS" }) {
+                newEntries.add(FileSystemEntry(
+                    name = "Downloads:/",
+                    path = "VIRTUAL_DOWNLOADS",
+                    isDirectory = true,
+                    size = 0,
+                    lastModified = java.util.Date(0)
+                ))
+            }
+            if (newEntries.none { it.path == "VIRTUAL_ENCRYPTED" }) {
+                newEntries.add(FileSystemEntry(
+                    name = "Add...",
+                    path = "VIRTUAL_ENCRYPTED",
+                    isDirectory = true,
+                    size = 0,
+                    lastModified = java.util.Date(0)
+                ))
+            }
+        }
+
         val pendingPaths = _pendingEditPaths.value
-        if (pendingPaths.isEmpty()) return entries
+        if (pendingPaths.isEmpty()) return newEntries
 
         val normalizedDir = directoryPath.replace("\\", "/").removeSuffix("/")
-        val newEntries = entries.toMutableList()
         
         for (pendingPath in pendingPaths) {
             val parent = getParentPath(pendingPath).replace("\\", "/").removeSuffix("/")
@@ -544,7 +619,14 @@ class FilesViewModel(
     }
 
     fun updateEditingContent(newContent: String) {
-        _editingContent.value = newContent
+        if (_editingContent.value != newContent) {
+            _editingContent.value = newContent
+            _hasUnsavedChanges.value = true
+        }
+    }
+
+    fun markSaved() {
+        _hasUnsavedChanges.value = false
     }
 
     fun saveEditingContent() {
@@ -567,6 +649,7 @@ class FilesViewModel(
             
             // Also update text cache so if we reopen it offline, we see our changes
             textCachePrefs.edit().putString("text_${entry.path}", content).apply()
+            markSaved()
 
             mainViewModel.addLog("Saved locally (offline): ${entry.name}", com.omni.sync.ui.screen.LogType.INFO)
             mainViewModel.goBack()
@@ -583,6 +666,7 @@ class FilesViewModel(
                 
                 // Update cache
                 textCachePrefs.edit().putString("text_${entry.path}", content).apply()
+                markSaved()
 
                 viewModelScope.launch(AndroidSchedulers.mainThread().asCoroutineDispatcher()) {
                     mainViewModel.addLog("File saved: ${entry.name}", com.omni.sync.ui.screen.LogType.SUCCESS)
@@ -672,8 +756,29 @@ class FilesViewModel(
         _pendingEditPaths.value = _pendingEditPaths.value - path
     }
 
+    private val _remoteChangeDetected = kotlinx.coroutines.flow.MutableSharedFlow<String>()
+    val remoteChangeDetected: kotlinx.coroutines.flow.SharedFlow<String> = _remoteChangeDetected.asSharedFlow()
+
+    private val _recentlyChangedPaths = MutableStateFlow<Set<String>>(emptySet())
+    val recentlyChangedPaths: StateFlow<Set<String>> = _recentlyChangedPaths
+
     private fun onHubFileChanged(path: String) {
         try {
+            // Check if currently editing this file
+            val currentEditing = _editingFile.value
+            if (currentEditing != null && currentEditing.path == path) {
+                viewModelScope.launch {
+                    _remoteChangeDetected.emit(currentEditing.name)
+                }
+            }
+
+            // Track for flashing in UI
+            _recentlyChangedPaths.value = _recentlyChangedPaths.value + path
+            viewModelScope.launch {
+                delay(3000) // Flash for 3 seconds
+                _recentlyChangedPaths.value = _recentlyChangedPaths.value - path
+            }
+
             // Invalidate text cache for this exact file
             textCachePrefs.edit().remove("text_$path").apply()
             // Invalidate directory cache for its parent so next browse reloads
@@ -781,7 +886,30 @@ class FilesViewModel(
         return mimeType?.startsWith("audio/") == true || mimeType?.startsWith("video/") == true
     }
     
-    // Helper to format bytes per second
+    // --- UI State Helpers ---
+    private val _scrollPositions = mutableMapOf<String, Int>() // Path -> Index
+    private val _scrollOffsets = mutableMapOf<String, Int>() // Path -> Offset
+
+    private val _hasUnsavedChanges = MutableStateFlow(false)
+    val hasUnsavedChanges: StateFlow<Boolean> = _hasUnsavedChanges
+
+    private val _autoSaveEnabled = MutableStateFlow(prefs.getBoolean("autosave_enabled", false))
+    val autoSaveEnabled: StateFlow<Boolean> = _autoSaveEnabled
+
+    fun setAutoSaveEnabled(enabled: Boolean) {
+        _autoSaveEnabled.value = enabled
+        prefs.edit().putBoolean("autosave_enabled", enabled).apply()
+    }
+
+    fun saveScrollPosition(path: String, index: Int, offset: Int) {
+        _scrollPositions[path] = index
+        _scrollOffsets[path] = offset
+    }
+
+    fun getScrollPosition(path: String): Pair<Int, Int> {
+        return Pair(_scrollPositions[path] ?: 0, _scrollOffsets[path] ?: 0)
+    }
+
     private fun formatBytesPerSecond(bytesPerSecond: Double): String {
         val df = DecimalFormat("#.##")
         return when {
@@ -790,6 +918,12 @@ class FilesViewModel(
             bytesPerSecond >= 1_000 -> "${df.format(bytesPerSecond / 1_000)} KB/s"
             else -> "${df.format(bytesPerSecond)} B/s"
         }
+    }
+
+    fun formatFileSize(size: Long): String {
+        if (size < 0) return "" // New file
+        val mb = size.toDouble() / (1024.0 * 1024.0)
+        return "${mb.toInt()} MB"
     }
 
     // ============ Downloaded Videos Management ============
@@ -807,7 +941,38 @@ class FilesViewModel(
         downloadedVideosPrefs.edit().putString("downloaded_videos", json).apply()
     }
 
-    fun downloadVideoToAppData(entry: FileSystemEntry, password: String? = null) {
+    fun deleteByPath(path: String) {
+        val video = _downloadedVideos.value.find { it.localPath == path }
+        if (video != null) {
+            deleteDownloadedVideo(video)
+        }
+    }
+
+    fun deleteAllEncrypted() {
+        val encrypted = _downloadedVideos.value.filter { it.isEncrypted }
+        encrypted.forEach { deleteDownloadedVideo(it) }
+    }
+
+    fun downloadVideoToAppData(entry: FileSystemEntry, isEncrypted: Boolean) {
+        if (!mainViewModel.isConnected.value) {
+            _downloadErrorMessage.value = "Not connected to OmniSync Hub."
+            return
+        }
+        
+        val password = if (isEncrypted) {
+            // Get from settings? User wants ONE global password. 
+            // We should have it cached or prompt? 
+            // Design says "one global password that can be set in settings"
+            // For download, we need the actual password string to derive the key.
+            // We can't use the hash. We'll have to ask the user for it or store it temporarily.
+            // Let's assume for now we pass it in.
+            null // Placeholder
+        } else null
+
+        // Need to refactor this to take the password string from UI
+    }
+
+    fun downloadVideoWithGlobalPassword(entry: FileSystemEntry, password: String?, isEncrypted: Boolean) {
         if (!mainViewModel.isConnected.value) {
             _downloadErrorMessage.value = "Not connected to OmniSync Hub."
             return
@@ -817,7 +982,7 @@ class FilesViewModel(
             return
         }
         if (_isDownloading.value) {
-            _downloadErrorMessage.value = "Another download is already in progress."
+            _errorMessage.value = "Another download is already in progress."
             return
         }
 
@@ -841,11 +1006,11 @@ class FilesViewModel(
                 var downloadedBytes = 0L
                 val startTime = System.currentTimeMillis()
 
-                val fileName = if (password != null) "$videoId.encrypted" else "$videoId.${entry.name.substringAfterLast('.')}"
+                val fileName = if (isEncrypted) "$videoId.encrypted" else "$videoId.${entry.name.substringAfterLast('.')}"
                 val outputFile = File(videosDir, fileName)
                 
                 val fos = FileOutputStream(outputFile)
-                val cipher = if (password != null) {
+                val cipher = if (isEncrypted && password != null) {
                     val key = deriveKeyFromPassword(password)
                     Cipher.getInstance("AES/CBC/PKCS5Padding").apply {
                         val iv = ByteArray(16)
@@ -901,7 +1066,7 @@ class FilesViewModel(
                     localPath = outputFile.absolutePath,
                     fileSize = entry.size,
                     downloadDate = java.util.Date(),
-                    isEncrypted = password != null
+                    isEncrypted = isEncrypted
                 )
 
                 val updatedList = _downloadedVideos.value.toMutableList()
@@ -978,6 +1143,32 @@ class FilesViewModel(
                 Log.e("FilesViewModel", "Play video error", e)
             }
         }
+    }
+
+    fun setGlobalPassword(oldPassword: String?, newPassword: String): Boolean {
+        val currentHash = prefs.getString("global_password_hash", null)
+        if (currentHash != null) {
+            if (oldPassword == null || hashPassword(oldPassword) != currentHash) {
+                return false
+            }
+        }
+        prefs.edit().putString("global_password_hash", hashPassword(newPassword)).apply()
+        return true
+    }
+
+    fun verifyGlobalPassword(password: String): Boolean {
+        val currentHash = prefs.getString("global_password_hash", null) ?: return true // No password set
+        return hashPassword(password) == currentHash
+    }
+
+    fun isGlobalPasswordSet(): Boolean {
+        return prefs.contains("global_password_hash")
+    }
+
+    private fun hashPassword(password: String): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        val bytes = digest.digest(password.toByteArray(Charsets.UTF_8))
+        return bytes.joinToString("") { "%02x".format(it) }
     }
 
     private fun deriveKeyFromPassword(password: String): ByteArray {

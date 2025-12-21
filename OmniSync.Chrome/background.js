@@ -162,25 +162,26 @@ connection.on("ReceiveBrowserCommand", async (command, url, newTab) => {
             if (audibleTabs.length > 0) {
                 console.log(`Found ${audibleTabs.length} audible tabs. Pausing them.`);
                 audibleTabs.forEach(tab => {
-                    chrome.scripting.executeScript({
-                        target: { tabId: tab.id, allFrames: true },
-                        func: () => {
-                            const media = document.querySelectorAll('video, audio');
-                            media.forEach(m => m.pause());
-                            // Also try clicking common pause buttons
-                            ['.ytp-play-button', '[aria-label="Pause"]', '.spoticon-pause-32', 'button.pause'].forEach(s => {
-                                document.querySelectorAll(s).forEach(el => {
-                                    // Only click if it looks like a pause button or we don't know
-                                    el.click();
+                    if (tab.url && !tab.url.startsWith("chrome://") && !tab.url.startsWith("edge://")) {
+                        chrome.scripting.executeScript({
+                            target: { tabId: tab.id, allFrames: true },
+                            func: () => {
+                                const media = document.querySelectorAll('video, audio');
+                                media.forEach(m => m.pause());
+                                // Also try clicking common pause buttons
+                                ['.ytp-play-button', '[aria-label="Pause"]', '.spoticon-pause-32', 'button.pause'].forEach(s => {
+                                    document.querySelectorAll(s).forEach(el => {
+                                        el.click();
+                                    });
                                 });
-                            });
-                        }
-                    });
+                            }
+                        }).catch(err => console.log("Failed to pause tab:", tab.id, err));
+                    }
                 });
             } else {
                 // No audible tabs, fall back to active tab toggle
                 chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-                    if (tabs[0]) {
+                    if (tabs[0] && tabs[0].url && !tabs[0].url.startsWith("chrome://") && !tabs[0].url.startsWith("edge://")) {
                         chrome.scripting.executeScript({
                             target: { tabId: tabs[0].id, allFrames: true },
                             func: () => {
@@ -206,7 +207,7 @@ connection.on("ReceiveBrowserCommand", async (command, url, newTab) => {
                                     }
                                 }
                             }
-                        });
+                        }).catch(err => console.log("Failed to toggle media on tab:", tabs[0].id, err));
                     }
                 });
             }
@@ -232,20 +233,34 @@ connection.on("ReceiveBrowserCommand", async (command, url, newTab) => {
             }
         });
     } else if (command === "SendLatestYouTubeToPhone") {
-        chrome.history.search({ text: 'youtube.com/watch', maxResults: 1 }, (results) => {
-            if (results.length > 0) {
-                console.log("Found latest YouTube video in history:", results[0].url);
-                connection.invoke("SendTabToPhone", results[0].url);
-            }
-        });
+        if (chrome.history) {
+            chrome.history.search({ text: 'youtube.com/watch', maxResults: 1 }, (results) => {
+                if (results && results.length > 0) {
+                    console.log("Found latest YouTube video in history:", results[0].url);
+                    connection.invoke("SendTabToPhone", results[0].url);
+                }
+            });
+        }
     } else if (command === "OpenLatestYouTubeOnPC") {
-        chrome.history.search({ text: 'youtube.com/watch', maxResults: 1 }, (results) => {
-            if (results.length > 0) {
-                console.log("Opening latest YouTube video on PC:", results[0].url);
-                chrome.tabs.create({ url: results[0].url, active: true });
-            }
-        });
+        if (chrome.history) {
+            chrome.history.search({ text: 'youtube.com/watch', maxResults: 1 }, (results) => {
+                if (results && results.length > 0) {
+                    console.log("Opening latest YouTube video on PC:", results[0].url);
+                    chrome.tabs.create({ url: results[0].url, active: true });
+                }
+            });
+        }
     }
+});
+
+chrome.runtime.onStartup.addListener(() => {
+    console.log("Extension startup - connecting...");
+    start();
+});
+
+chrome.runtime.onInstalled.addListener(() => {
+    console.log("Extension installed/updated - connecting...");
+    start();
 });
 
 start();

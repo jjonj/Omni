@@ -27,6 +27,20 @@ class OmniWidgetProvider : AppWidgetProvider() {
         }
     }
 
+    override fun onReceive(context: Context, intent: Intent) {
+        super.onReceive(context, intent)
+        if (intent.action == "com.omni.sync.WIDGET_CLICK") {
+            val actionId = intent.getStringExtra(ForegroundService.EXTRA_ACTION_ID)
+            if (actionId != null) {
+                val serviceIntent = Intent(context, ForegroundService::class.java).apply {
+                    action = ForegroundService.ACTION_TRIGGER_NOTIFICATION_ACTION
+                    putExtra(ForegroundService.EXTRA_ACTION_ID, actionId)
+                }
+                androidx.core.content.ContextCompat.startForegroundService(context, serviceIntent)
+            }
+        }
+    }
+
     companion object {
         fun updateAppWidget(context: Context, appWidgetManager: AppWidgetManager, appWidgetId: Int) {
             val prefs = context.getSharedPreferences("widget_prefs", Context.MODE_PRIVATE)
@@ -37,12 +51,13 @@ class OmniWidgetProvider : AppWidgetProvider() {
             views.setTextViewText(R.id.widget_text, action?.label ?: "Omni")
 
             if (action != null) {
-                val intent = Intent(context, ForegroundService::class.java).apply {
-                    this.action = ForegroundService.ACTION_TRIGGER_NOTIFICATION_ACTION
+                // Send broadcast to self
+                val intent = Intent(context, OmniWidgetProvider::class.java).apply {
+                    this.action = "com.omni.sync.WIDGET_CLICK"
                     putExtra(ForegroundService.EXTRA_ACTION_ID, action.id)
                 }
                 // Need unique request code per widget to avoid intent collision
-                val pendingIntent = PendingIntent.getService(context, appWidgetId, intent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+                val pendingIntent = PendingIntent.getBroadcast(context, appWidgetId, intent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
                 views.setOnClickPendingIntent(R.id.widget_container, pendingIntent)
             }
 

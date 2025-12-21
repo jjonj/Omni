@@ -2,14 +2,17 @@ package com.omni.sync.ui.screen
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.foundation.background
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
@@ -86,22 +89,52 @@ fun TextEditorScreen(
     val editingFile by filesViewModel.editingFile.collectAsState()
     val editingContent by filesViewModel.editingContent.collectAsState()
     val isSaving by filesViewModel.isSaving.collectAsState()
+    val hasUnsavedChanges by filesViewModel.hasUnsavedChanges.collectAsState()
+    val autoSaveEnabled by filesViewModel.autoSaveEnabled.collectAsState()
     
     var showMenu by remember { mutableStateOf(false) }
     var lastContent by remember { mutableStateOf(editingContent) }
+    var showUnsavedDialog by remember { mutableStateOf(false) }
+    var showRemoteChangeDialog by remember { mutableStateOf<String?>(null) }
     
     val scrollState = rememberScrollState()
     val colorScheme = MaterialTheme.colorScheme
     val visualTransformation = remember(colorScheme) { MarkdownVisualTransformation(colorScheme) }
     val context = androidx.compose.ui.platform.LocalContext.current
 
+    LaunchedEffect(Unit) {
+        filesViewModel.remoteChangeDetected.collect { fileName: String ->
+            showRemoteChangeDialog = fileName
+        }
+    }
+
+    val exitHandler = {
+        if (hasUnsavedChanges) {
+            if (autoSaveEnabled) {
+                filesViewModel.saveEditingContent()
+            } else {
+                showUnsavedDialog = true
+            }
+        } else {
+            onBack()
+        }
+    }
+
+    androidx.activity.compose.BackHandler(enabled = true) {
+        exitHandler()
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(text = "Editing: ${editingFile?.name ?: "Unknown"}") },
+                title = { 
+                    val fileName = editingFile?.name ?: "Unknown"
+                    val displayName = if (hasUnsavedChanges) "$fileName *" else fileName
+                    Text(text = "Editing: $displayName") 
+                },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+                    IconButton(onClick = exitHandler) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
                 actions = {
@@ -124,8 +157,38 @@ fun TextEditorScreen(
                             strokeWidth = 2.dp
                         )
                     } else {
-                        IconButton(onClick = { filesViewModel.saveEditingContent() }) {
-                            Icon(Icons.Default.Save, contentDescription = "Save")
+                        // Custom Save Button with long-press for autosave
+                        Box {
+                            IconButton(
+                                onClick = { filesViewModel.saveEditingContent() }
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        Icons.Default.Save, 
+                                        contentDescription = "Save",
+                                        modifier = Modifier.pointerInput(Unit) {
+                                            detectTapGestures(
+                                                onLongPress = {
+                                                    filesViewModel.setAutoSaveEnabled(!autoSaveEnabled)
+                                                    android.widget.Toast.makeText(context, "Autosave: ${if (!autoSaveEnabled) "ON" else "OFF"}", android.widget.Toast.LENGTH_SHORT).show()
+                                                },
+                                                onTap = {
+                                                    filesViewModel.saveEditingContent()
+                                                }
+                                            )
+                                        }
+                                    )
+                                    if (autoSaveEnabled) {
+                                        Text(
+                                            "A", 
+                                            color = Color.Green, 
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 10.sp,
+                                            modifier = Modifier.align(Alignment.BottomEnd).offset(x = 4.dp, y = 4.dp)
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
 
@@ -143,7 +206,7 @@ fun TextEditorScreen(
                                     showMenu = false
                                 }
                             )
-                            Divider()
+                            HorizontalDivider()
                             DropdownMenuItem(
                                 text = { Text("Copy All") },
                                 onClick = {
@@ -162,7 +225,7 @@ fun TextEditorScreen(
                                     showMenu = false
                                 }
                             )
-                            Divider()
+                            HorizontalDivider()
                             DropdownMenuItem(
                                 text = { Text("Add H1 Header (#)") },
                                 onClick = {
@@ -179,7 +242,7 @@ fun TextEditorScreen(
                                     showMenu = false
                                 }
                             )
-                            Divider()
+                            HorizontalDivider()
                             DropdownMenuItem(
                                 text = { Text("To Upper Case") },
                                 onClick = {
@@ -196,7 +259,7 @@ fun TextEditorScreen(
                                     showMenu = false
                                 }
                             )
-                            Divider()
+                            HorizontalDivider()
                             DropdownMenuItem(
                                 text = { Text("Clear All") },
                                 onClick = {
@@ -259,5 +322,48 @@ fun TextEditorScreen(
                 )
             )
         }
+    }
+
+    if (showUnsavedDialog) {
+        AlertDialog(
+            onDismissRequest = { showUnsavedDialog = false },
+            title = { Text("Unsaved Changes") },
+            text = { Text("You have unsaved changes. What would you like to do?") },
+            confirmButton = {
+                Button(onClick = {
+                    showUnsavedDialog = false
+                    filesViewModel.saveEditingContent()
+                }) {
+                    Text("Save & Exit")
+                }
+            },
+            dismissButton = {
+                Row {
+                    TextButton(onClick = {
+                        showUnsavedDialog = false
+                        filesViewModel.markSaved()
+                        onBack()
+                    }) {
+                        Text("Discard", color = MaterialTheme.colorScheme.error)
+                    }
+                    TextButton(onClick = { showUnsavedDialog = false }) {
+                        Text("Cancel")
+                    }
+                }
+            }
+        )
+    }
+
+    if (showRemoteChangeDialog != null) {
+        AlertDialog(
+            onDismissRequest = { showRemoteChangeDialog = null },
+            title = { Text("Remote Change Detected") },
+            text = { Text("The file '${showRemoteChangeDialog}' was modified on the Hub. Your local changes may conflict.") },
+            confirmButton = {
+                Button(onClick = { showRemoteChangeDialog = null }) {
+                    Text("OK")
+                }
+            }
+        )
     }
 }

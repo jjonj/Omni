@@ -34,6 +34,7 @@ enum class ConnectionStatus {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DashboardScreen(modifier: Modifier = Modifier, signalRClient: SignalRClient, mainViewModel: MainViewModel) {
+    val appConfig = mainViewModel.appConfig
     // Collect connection states
     val connectionStateString by signalRClient.connectionState.collectAsState()
     val isConnected by mainViewModel.isConnected.collectAsState()
@@ -42,6 +43,10 @@ fun DashboardScreen(modifier: Modifier = Modifier, signalRClient: SignalRClient,
     val listState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
     
+    var showEditConfig by remember { mutableStateOf(false) }
+    var tempHubUrl by remember { mutableStateOf(appConfig.hubUrl) }
+    var tempApiKey by remember { mutableStateOf(appConfig.apiKey) }
+
     // Determine connection status based on actual isConnected state
     val connectionStatus = when {
         isConnected -> ConnectionStatus.CONNECTED
@@ -62,8 +67,11 @@ fun DashboardScreen(modifier: Modifier = Modifier, signalRClient: SignalRClient,
             TopAppBar(
                 title = { Text("OmniSync Dashboard") },
                 actions = {
+                    IconButton(onClick = { showEditConfig = true }) {
+                        Icon(Icons.Default.Settings, contentDescription = "Connection Settings")
+                    }
                     IconButton(onClick = { mainViewModel.navigateTo(AppScreen.SETTINGS) }) {
-                        Icon(Icons.Default.Settings, contentDescription = "Settings")
+                        Icon(Icons.Default.Settings, contentDescription = "App Settings")
                     }
                 }
             )
@@ -77,6 +85,49 @@ fun DashboardScreen(modifier: Modifier = Modifier, signalRClient: SignalRClient,
                 connectionMessage = connectionStateString,
                 onReconnect = { signalRClient?.manualReconnect() }
             )
+            
+            // Edit Config Dialog
+            if (showEditConfig) {
+                AlertDialog(
+                    onDismissRequest = { showEditConfig = false },
+                    title = { Text("Hub Connection Settings") },
+                    text = {
+                        Column {
+                            OutlinedTextField(
+                                value = tempHubUrl,
+                                onValueChange = { tempHubUrl = it },
+                                label = { Text("Hub URL") },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            OutlinedTextField(
+                                value = tempApiKey,
+                                onValueChange = { tempApiKey = it },
+                                label = { Text("API Key") },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                    },
+                    confirmButton = {
+                        Button(onClick = {
+                            appConfig.hubUrl = tempHubUrl
+                            appConfig.apiKey = tempApiKey
+                            mainViewModel.saveAppConfig()
+                            showEditConfig = false
+                            signalRClient.manualReconnect()
+                        }) {
+                            Text("Save & Reconnect")
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showEditConfig = false }) {
+                            Text("Cancel")
+                        }
+                    }
+                )
+            }
             
             // Test Buttons Section
             Card(

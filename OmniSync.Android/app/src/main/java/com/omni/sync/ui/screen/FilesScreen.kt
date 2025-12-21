@@ -10,6 +10,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.InsertDriveFile
 import androidx.compose.material.icons.filled.Search
@@ -36,6 +37,8 @@ import com.omni.sync.data.model.FileSystemEntry
 import com.omni.sync.viewmodel.FilesViewModel
 import java.text.SimpleDateFormat
 import java.util.Locale
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.ui.graphics.Color
 import androidx.compose.material.icons.filled.Add
 import androidx.activity.compose.BackHandler
 
@@ -52,10 +55,17 @@ fun FilesScreen(
     val searchQuery by filesViewModel.searchQuery.collectAsState()
     val errorMessage by filesViewModel.errorMessage.collectAsState()
     val pendingEditPaths by filesViewModel.pendingEditPaths.collectAsState()
+    val recentlyChangedPaths by filesViewModel.recentlyChangedPaths.collectAsState()
 
     var showBookmarksList by remember { mutableStateOf(false) }
+    var showCachesList by remember { mutableStateOf(false) }
     var showCreateFileDialog by remember { mutableStateOf(false) }
     var newFileName by remember { mutableStateOf("") }
+    
+    var showPasswordDialog by remember { mutableStateOf(false) }
+    var passwordInput by remember { mutableStateOf("") }
+    var passwordTargetEntry by remember { mutableStateOf<FileSystemEntry?>(null) }
+    var passwordAction by remember { mutableStateOf<(() -> Unit)?>(null) }
 
     // Handle back press to navigate up
     BackHandler(enabled = currentPath.isNotEmpty() && currentPath != "/") {
@@ -71,6 +81,21 @@ fun FilesScreen(
 
     val context = LocalContext.current // Get context for Toast
 
+    val listState = rememberLazyListState()
+    
+    // Restore scroll position when currentPath changes
+    LaunchedEffect(currentPath) {
+        val (index, offset) = filesViewModel.getScrollPosition(currentPath)
+        listState.scrollToItem(index, offset)
+    }
+
+    // Save scroll position when navigating away or scrolling
+    DisposableEffect(currentPath) {
+        onDispose {
+            filesViewModel.saveScrollPosition(currentPath, listState.firstVisibleItemIndex, listState.firstVisibleItemScrollOffset)
+        }
+    }
+
     LaunchedEffect(Unit) {
         if (fileSystemEntries.isEmpty()) {
             filesViewModel.loadDirectory("")
@@ -82,10 +107,13 @@ fun FilesScreen(
             TopAppBar(
                 title = { Text(text = "Files: ${currentPath.ifEmpty { "/" }}") },
                 navigationIcon = {
-                    // Only show back button if currentPath is not empty and not just "/"
-                    if (currentPath.isNotEmpty() && currentPath != "/") {
+                    if (showBookmarksList) {
+                        IconButton(onClick = { showBookmarksList = false }) {
+                            Icon(Icons.Default.Close, "Close Bookmarks")
+                        }
+                    } else if (currentPath.isNotEmpty() && currentPath != "/") {
                         IconButton(onClick = { filesViewModel.loadDirectory(getParentPath(currentPath)) }) {
-                            Icon(Icons.Filled.ArrowBack, "Back")
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back")
                         }
                     }
                 },
@@ -103,20 +131,6 @@ fun FilesScreen(
                     IconButton(onClick = { filesViewModel.loadDirectory(currentPath) }) {
                         Icon(Icons.Default.Refresh, contentDescription = "Refresh")
                     }
-                    val isCurrentBookmarked = filesViewModel.isFolderBookmarked(currentPath)
-                    IconButton(onClick = { 
-                        filesViewModel.toggleFolderBookmark(
-                            FileSystemEntry(
-                                name = currentPath.substringAfterLast("\\").substringAfterLast("/").ifEmpty { "Root" },
-                                path = currentPath,
-                                isDirectory = true,
-                                size = 0,
-                                lastModified = java.util.Date()
-                            )
-                        )
-                    }) {
-                        Icon(if (isCurrentBookmarked) Icons.Default.Star else Icons.Default.StarBorder, contentDescription = "Bookmark Current")
-                    }
                 }
             )
         },
@@ -130,8 +144,17 @@ fun FilesScreen(
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier.fillMaxWidth().padding(end = 8.dp)
                         ) {
-                            IconButton(onClick = { showBookmarksList = !showBookmarksList }) {
+                            IconButton(onClick = { 
+                                showBookmarksList = !showBookmarksList
+                                if (showBookmarksList) showCachesList = false
+                            }) {
                                 Icon(if (showBookmarksList) Icons.Default.Close else Icons.Default.Menu, contentDescription = "Manage Bookmarks")
+                            }
+                            IconButton(onClick = { 
+                                showCachesList = !showCachesList
+                                if (showCachesList) showBookmarksList = false
+                            }) {
+                                Icon(if (showCachesList) Icons.Default.Close else Icons.Default.Refresh, contentDescription = "Manage Caches")
                             }
                             LazyRow(
                                 modifier = Modifier.weight(1f).padding(vertical = 4.dp),
@@ -215,20 +238,35 @@ fun FilesScreen(
                 }
             } else {
                 LazyColumn(
+                    state = listState,
                     modifier = Modifier.weight(1f).fillMaxWidth(),
                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
                 ) {
                     items(fileSystemEntries) { entry ->
                         val hasPendingEdit = !entry.isDirectory && pendingEditPaths.contains(entry.path)
+                        val isRecentlyChanged = recentlyChangedPaths.contains(entry.path)
                         FileSystemEntryItem(
                             entry = entry,
                             isSearching = searchQuery.isNotEmpty(),
                             isBookmarked = filesViewModel.isFolderBookmarked(entry.path),
                             hasPendingEdit = hasPendingEdit,
+                            isRecentlyChanged = isRecentlyChanged,
+                            formatFileSize = { filesViewModel.formatFileSize(it) },
                             onBookmarkToggle = { filesViewModel.toggleFolderBookmark(it) },
                             onClick = { clickedEntry ->
                                 if (clickedEntry.isDirectory) {
-                                    filesViewModel.loadDirectory(clickedEntry.path)
+                                    if (clickedEntry.path == "VIRTUAL_ENCRYPTED") {
+                                        if (filesViewModel.isGlobalPasswordSet()) {
+                                            passwordAction = { filesViewModel.loadDirectory(clickedEntry.path) }
+                                            showPasswordDialog = true
+                                        } else {
+                                            // First time setup handled in dialog
+                                            passwordTargetEntry = clickedEntry
+                                            showPasswordDialog = true
+                                        }
+                                    } else {
+                                        filesViewModel.loadDirectory(clickedEntry.path)
+                                    }
                                 } else {
                                     when {
                                         clickedEntry.name.lowercase().endsWith(".flv") -> {
@@ -263,10 +301,27 @@ fun FilesScreen(
                                 filesViewModel.mainViewModel.navigateTo(com.omni.sync.viewmodel.AppScreen.AI_CHAT)
                                 filesViewModel.signalRClient.sendAiMessage("/dir add \"${entry.path}\"")
                             },
-                            onDownloadVideo = { entry, password ->
-                                filesViewModel.downloadVideoToAppData(entry, password)
-                                Toast.makeText(context, "Downloading video...", Toast.LENGTH_SHORT).show()
-                            }
+                            onDownloadVideo = { entry, isEncrypted ->
+                                if (isEncrypted) {
+                                    if (filesViewModel.isGlobalPasswordSet()) {
+                                        passwordAction = { 
+                                            // We need to pass the actual password to derive the key
+                                            // This is a bit tricky since verifyGlobalPassword only checks hash.
+                                            // I'll store the password briefly or re-prompt.
+                                            filesViewModel.downloadVideoWithGlobalPassword(entry, passwordInput, true)
+                                        }
+                                        showPasswordDialog = true
+                                    } else {
+                                        // Force setup password first
+                                        Toast.makeText(context, "Set global password in settings or by opening 'Add...' first", Toast.LENGTH_LONG).show()
+                                    }
+                                } else {
+                                    filesViewModel.downloadVideoWithGlobalPassword(entry, null, false)
+                                    Toast.makeText(context, "Downloading video...", Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            onDeleteByPath = { filesViewModel.deleteByPath(it) },
+                            onDeleteAllEncrypted = { filesViewModel.deleteAllEncrypted() }
                         )
                     }
                 }
@@ -313,6 +368,50 @@ fun FilesScreen(
                     }
                 }
             }
+
+            if (showCachesList) {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(8.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                ) {
+                    Column(modifier = Modifier.padding(8.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                            Text("Manage Caches", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+                            TextButton(onClick = { filesViewModel.clearAllCaches() }) {
+                                Text("Clear All", color = MaterialTheme.colorScheme.error)
+                            }
+                            IconButton(onClick = { showCachesList = false }, modifier = Modifier.size(24.dp)) {
+                                Icon(Icons.Default.Close, null)
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(4.dp))
+                        val cachedPaths = filesViewModel.getAllCachedPaths()
+                        if (cachedPaths.isEmpty()) {
+                            Text("No directories cached", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(8.dp))
+                        }
+                        LazyColumn(modifier = Modifier.heightIn(max = 200.dp)) {
+                            items(cachedPaths) { path ->
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 2.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(Icons.Default.Refresh, null, modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.secondary)
+                                    Spacer(Modifier.width(8.dp))
+                                    Text(path, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    
+                                    IconButton(onClick = { filesViewModel.uncachePath(path) }, modifier = Modifier.size(24.dp)) {
+                                        Icon(Icons.Default.Delete, null, tint = MaterialTheme.colorScheme.error)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -349,6 +448,62 @@ fun FilesScreen(
             }
         )
     }
+
+    if (showPasswordDialog) {
+        AlertDialog(
+            onDismissRequest = { showPasswordDialog = false; passwordInput = ""; passwordTargetEntry = null; passwordAction = null },
+            title = { 
+                if (filesViewModel.isGlobalPasswordSet()) Text("Enter Password")
+                else Text("Create drive")
+            },
+            text = {
+                Column {
+                    if (!filesViewModel.isGlobalPasswordSet()) {
+                        Text("Name: Add...", style = MaterialTheme.typography.bodySmall)
+                        Spacer(modifier = Modifier.height(8.dp))
+                    }
+                    OutlinedTextField(
+                        value = passwordInput,
+                        onValueChange = { passwordInput = it },
+                        label = { Text("Password") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (filesViewModel.isGlobalPasswordSet()) {
+                            if (filesViewModel.verifyGlobalPassword(passwordInput)) {
+                                passwordAction?.invoke()
+                                showPasswordDialog = false
+                                passwordInput = ""
+                            } else {
+                                Toast.makeText(context, "Incorrect Password", Toast.LENGTH_SHORT).show()
+                            }
+                        } else {
+                            if (passwordInput.isNotBlank()) {
+                                filesViewModel.setGlobalPassword(null, passwordInput)
+                                if (passwordTargetEntry != null) {
+                                    filesViewModel.loadDirectory(passwordTargetEntry!!.path)
+                                }
+                                showPasswordDialog = false
+                                passwordInput = ""
+                            }
+                        }
+                    }
+                ) {
+                    Text("Confirm")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showPasswordDialog = false; passwordInput = ""; passwordTargetEntry = null; passwordAction = null }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
 }
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -358,18 +513,27 @@ fun FileSystemEntryItem(
     isSearching: Boolean = false,
     isBookmarked: Boolean = false,
     hasPendingEdit: Boolean = false,
+    isRecentlyChanged: Boolean = false,
+    formatFileSize: (Long) -> String = { "" },
     onBookmarkToggle: (FileSystemEntry) -> Unit = {},
     onClick: (FileSystemEntry) -> Unit, 
     onLongClick: (FileSystemEntry) -> Unit,
     onDownloadAndOpen: (FileSystemEntry) -> Unit,
     onOpenFolder: (String) -> Unit = {},
     onOpenInAiChat: (FileSystemEntry) -> Unit = {},
-    onDownloadVideo: (FileSystemEntry, String?) -> Unit = { _, _ -> }
+    onDownloadVideo: (FileSystemEntry, Boolean) -> Unit = { _, _ -> },
+    onDeleteByPath: (String) -> Unit = {},
+    onDeleteAllEncrypted: () -> Unit = {}
 ) {
     var showMenu by remember { mutableStateOf(false) }
     var showDownloadDialog by remember { mutableStateOf(false) }
 
-    Box {
+    val flashColor by androidx.compose.animation.animateColorAsState(
+        targetValue = if (isRecentlyChanged) MaterialTheme.colorScheme.tertiaryContainer else Color.Transparent,
+        animationSpec = androidx.compose.animation.core.tween(durationMillis = 500)
+    )
+
+    Box(modifier = Modifier.background(flashColor, RoundedCornerShape(8.dp))) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -404,7 +568,7 @@ fun FileSystemEntryItem(
                     Text(text = entry.path, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
                 if (!entry.isDirectory) {
-                    Text(text = "${(entry.size / 1024.0).format(2)} KB", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(text = formatFileSize(entry.size), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
             
@@ -435,6 +599,24 @@ fun FileSystemEntryItem(
             expanded = showMenu,
             onDismissRequest = { showMenu = false }
         ) {
+            if (entry.path == "VIRTUAL_ENCRYPTED") {
+                DropdownMenuItem(
+                    text = { Text("Delete All Encrypted") },
+                    onClick = {
+                        showMenu = false
+                        onDeleteAllEncrypted()
+                    }
+                )
+            } else if (entry.path.contains("downloaded_videos")) {
+                DropdownMenuItem(
+                    text = { Text("Delete Local File") },
+                    onClick = {
+                        showMenu = false
+                        onDeleteByPath(entry.path)
+                    }
+                )
+            }
+
             if (!entry.isDirectory) {
                 DropdownMenuItem(
                     text = { Text("Edit as Text") },
@@ -495,7 +677,6 @@ fun FileSystemEntryItem(
         }
         
         if (showDownloadDialog) {
-            var password by remember { mutableStateOf("") }
             var encrypt by remember { mutableStateOf(false) }
             
             AlertDialog(
@@ -513,17 +694,7 @@ fun FileSystemEntryItem(
                                 checked = encrypt,
                                 onCheckedChange = { encrypt = it }
                             )
-                            Text("Encrypt with password")
-                        }
-                        if (encrypt) {
-                            Spacer(modifier = Modifier.height(8.dp))
-                            OutlinedTextField(
-                                value = password,
-                                onValueChange = { password = it },
-                                label = { Text("Password") },
-                                singleLine = true,
-                                modifier = Modifier.fillMaxWidth()
-                            )
+                            Text("Encrypt with global password")
                         }
                     }
                 },
@@ -531,7 +702,7 @@ fun FileSystemEntryItem(
                     Button(
                         onClick = {
                             showDownloadDialog = false
-                            onDownloadVideo(entry, if (encrypt && password.isNotBlank()) password else null)
+                            onDownloadVideo(entry, encrypt)
                         }
                     ) {
                         Text("Download")

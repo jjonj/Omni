@@ -52,11 +52,13 @@ data class ProcessInfo(
 
 class SignalRClient(
     private val context: Context,
-    private val hubUrl: String,
-    private val apiKey: String,
     private val mainViewModel: MainViewModel
 ) {
     private var hubConnection: HubConnection? = null
+    // Use properties to access values from config
+    private val hubUrl: String get() = mainViewModel.appConfig.hubUrl
+    private val apiKey: String get() = mainViewModel.appConfig.apiKey
+
     private val clipboardManager = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
     private val gson = GsonBuilder()
         .registerTypeAdapter(Date::class.java, JsonDeserializer<Date> { json, _, _ ->

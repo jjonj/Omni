@@ -73,6 +73,10 @@ The Android app is the primary sensor and remote control.
 
 **Layer 3: The Repository (Data/Network)**
 *   **`SignalRClient`:** Singleton. Manages the WebSocket connection, auto-reconnect policy, and incoming message parsing.
+*   **`CachingSystem`:** Multi-layer persistence for offline functionality:
+    *   **Directory Cache:** Stores JSON-serialized listings of directories inside bookmarked paths. Allows browsing the hierarchy while disconnected.
+    *   **Content Cache:** Stores full text content of opened files.
+    *   **Pending Edits:** Tracks local modifications made offline, queued for synchronization upon reconnection.
 
 **Layer 4: System Services**
 *   **`OmniAccessibilityService`:** Listens for volume button presses (hardware macros) and injects text into other apps.
@@ -113,9 +117,14 @@ The system will initially support these command sets:
 
 ### 5.3. Conflict Resolution Strategy
 *   **Clipboard:** Last Write Wins. If the PC and Phone copy text at the exact same second, the one that arrives at the Hub last overwrites the buffer.
-*   **Files:**
+*   **Files (Online):** 
     *   **Reading:** The PC reads the file from the disk *at the moment of request*.
-    *   **Writing:** The Android app is restricted to **Append Only** or **Create New**. It cannot overwrite existing lines in Markdown files to prevent corrupting Obsidian's own sync process.
+    *   **Writing:** The Android app is restricted to **Append Only** or **Create New** for Obsidian notes.
+*   **Files (Offline/Sync):**
+    *   **Validation:** Upon reconnection, the app compares the `LastModified` timestamp of the local cached version with the current Hub version.
+    *   **Safe Sync:** If timestamps match, the local changes are pushed to the Hub.
+    *   **Conflict:** If timestamps differ, the local version is saved to the Hub with a `.conflicted` suffix to prevent data loss.
+    *   **Real-time Invalidation:** The Hub uses `FileSystemWatcher` to broadcast `FileChanged` events. The Android app listens for these to invalidate local caches immediately or warn the user if a file is currently open for editing.
 
 ---
 

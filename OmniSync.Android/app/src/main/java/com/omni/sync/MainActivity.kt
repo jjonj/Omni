@@ -74,7 +74,9 @@ class MainActivity : ComponentActivity() {
         AppScreen.REMOTECONTROL,
         AppScreen.BROWSER,
         AppScreen.FILES,
-        AppScreen.AI_CHAT
+        AppScreen.AI_CHAT,
+        AppScreen.ALARM,
+        AppScreen.PROCESS
     )
 
     @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
@@ -192,7 +194,7 @@ class MainActivity : ComponentActivity() {
                                 .padding(innerPadding)
                             ) {
                                 if (currentScreen == AppScreen.EDITOR || currentScreen == AppScreen.SETTINGS || 
-                                    currentScreen == AppScreen.PROCESS || currentScreen == AppScreen.ALARM) {
+                                    currentScreen == AppScreen.DOWNLOADED_VIDEOS) {
                                     MainScreenContent(currentScreen, signalRClient, browserViewModel, filesViewModel, mainViewModel)
                                 } else {
                                     // Custom touch slop to make paging less sensitive to diagonal swipes
@@ -252,9 +254,23 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun handleIntent(intent: Intent?) {
-        val openScreen = intent?.getStringExtra("OPEN_SCREEN")
-        if (openScreen == "ALARM") {
-            mainViewModel.navigateTo(AppScreen.ALARM)
+        val screenName = intent?.getStringExtra("OPEN_SCREEN")
+        if (screenName != null) {
+            try {
+                val screen = AppScreen.valueOf(screenName)
+                mainViewModel.navigateTo(screen)
+                
+                if (screen == AppScreen.FILES) {
+                    val filePath = intent.getStringExtra("FILE_PATH")
+                    if (filePath != null) {
+                        // We need access to filesViewModel here or pass it through mainViewModel
+                        // For now let's use a shared state in MainViewModel
+                        mainViewModel.setPendingNavigationPath(filePath)
+                    }
+                }
+            } catch (e: Exception) {
+                // Ignore invalid screen names
+            }
         }
     }
 

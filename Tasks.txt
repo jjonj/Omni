@@ -22,19 +22,23 @@ DONE Long press on shutdown should switch to sleep instead, syncing with android
 
 ### General
 
-DONE I can swipe side to side between screens which is nice except for the remote control screen where i cant swipe anywhere. Obv swipes on the trackpad are sent to the PC so thats good, but swiping on the button panel should probably work. Also swiping on the navigation bar itself should also work. 
-DONE When pressing a button on the navigation panel, instantly swap to the other screen, dont do a sliding motion between the screens.
-DONE We currently have 6 screens but we want more screens in the future, including the alarm screen described below and soon a smarthome screen. To navigate to these new screens we dont want to create more navigation buttons. Instead remove the Process button from the navigation bar and instead as the last button in the bar, add a new burger menu button that opens a drop down (up?) with more screens. Add the process screen and alarm screen to this menu.
+DONE Can we make settings/configurations persistent between reinstalls of the app? (implemented via ConfigManager in external storage)
 
+DONE We currently have 6 screens but we want more screens in the future, including the alarm screen described below and soon a smarthome screen. To navigate to these new screens we dont want to create more navigation buttons. Instead remove the Process button from the navigation bar and instead as the last button in the bar, add a new burger menu button that opens a drop down (up?) with more screens. Add the process screen and alarm screen to this menu.
+DONE Allow Swiping screen to more screens so Swiping right from ai screen should go to alarm and process and then further to the other 
 
 ### Dashboard
 
 ### Remote Control Screen
 Stream PC monitor, replacing background of the trackpad leaving the trackpad functioning still, options to toggle monitor, pinch to zoom, (advanced feature, do last)       
-DONE Long press on shutdown button does switch it to a sleep icon but the hub still shows shutdown, so i dont know if it will shutdown or sleep
-DONE replace the alt-tab button with a "more" button that toggles between a second set of buttons and move the alt tab to the second set. Make sure the more button is in the bottom right corner, move the kbd and shutdown buttons one left in the grid.
 DONE Second set of buttons should have arrow buttons
-
+DONE - the right arrow button has wrong icon
+DONE Second set of buttons should also have kbd button
+DONE Two finger swiping trackpad should scroll (Hub support added for MOUSE_SCROLL)
+DONE Double tap then swipe (quick tap->swipe) should hold down left button while moving mouse (Hub support added for MOUSE_CLICK_DOWN/UP)
+DONE We are using a text field to trick android into letting us use the keyboard which works really well but has some minor issues:
+ - Android erase from right button works but only when the textfield has content. Could we maybe ensure the textfield always has a character to erase (ofc without sending that character to the pc)
+DONE Reduce trackpad sensitivity by 25%
 
 ### Files & Video Screen
 DONE Downloading a video into app data and optionally password protecting it with encryption and password. Should be deletable
@@ -47,6 +51,11 @@ DONE Downloading a video into app data and optionally password protecting it wit
   - Added video library icon in Files screen top bar to access downloaded videos
   - All changes committed to git
 
+DONE When exiting a file with unsaved changes make a warning popup with save and exit 
+DONE Long press save button should add an A subicon and turn it green enabling autosave on exit persistent setting 
+DONE Normal tap on save button would not exit, just save 
+DONE Add a * next to the open filename to indicate unsaved changes 
+
 DONE When a folder is cached, the path to that folder should be navigatable. E.g. if i cached C:/A/B/C then I should be able to click C -> A -> B -> C without getting a "A not cached" error. Everything else in A other than B can be not shown or whatever
 DONE If i create a file in offline mode then it will correctly get created on the PC when connecting but I cant see it in the files screen, should become immidiately visible, have the * after its name and reeditable. 
 DONE WHen creating file, if no file extension is provided (.blabla) then default to .txt
@@ -57,39 +66,62 @@ DONE Text file content caching - remember the content of all files opened as tex
 DONE File Cached editing - ALlow editing text files while disconnected, apply the change when reconnecting IF and only IF the the file date modified before saving matches the cached one  (aka the file hasnt changed since we last cached it). Otherwise save it with postfix .conflicted
 DONE Cached file creation - Allow creating text files while disconnected that will be saved to PC when reconnecting
 DONE When a cached file is synced to PC, add a log message to the activity log, specify if conflicted in red
+DONE Describe the caching feature in high detail in design.txt
+DONE Add a panel similar to bookmarks to manage cached files, where they can be uncached
 
 DONE Investigate if there is a way to have the hub be notified whenever a cached file is changed on PC so that the android app can update its cached version, this is a nice to have, we definitely dont want to do periodic polling
+DONE - Use this feature to notify user with a popup if the file was changed remotely while the file is open as text
+DONE - Use this feature to briefly flash filenames that changed remotely when listing the file
+ 
+DONE List filesizes in mb not kb and remove decimals
+DONE When i scroll down the folder, open a file, and then use back button to go back, it does not remember my scroll position, fix.
+DONE Inform user what the button to the left of the + button does (removed redundant button as requested)
+DONE Currently when encrypting videos we have a password per file. Change that to be one global password that can be set in settings (obv require existing password if any to change and dont store the password in plaintext)
+DONE In the root of Files:/ where the drives are listed, also list two virtual folders one for unencrypted downloaded files named "Downloads:/" and one for encrypted downloaded. The encrypted with a obscured name like "Add..." that prompts for password when opened, with a obscured message like "Create drive\n Name: ___" letting the user enter password.
+DONE - Long pressing "Add..." gives an option to "Delete" which will wipe all downloaded encrypted files. (Implemented via menu)
+DONE - Long pressing a downloaded video encrypted or not lets you choose option to delete that individual file
+ 
+ 
+Video:
+DONE - Cant use the back button in upper right, probably because the overlay areas are blocking it, make the overlay areas less wide on the outer area
+DONE - The embedded video player we are using is being a bit annoying with showing/hiding its built in buttons after e.g. jumping to a time in the video. This didnt used to happen, it just kinda got slightly unstable in its activation. - fixing this requires user to check for regressions
+
+
 DONE Add a * next to filename for files that have been edited offline and are waiting to sync
 
 DONE More Text editing fancy features, think like a lite code editor like notepad++ or VS code. be creative. MORE options in burger menu with lots of options
-DONE When exiting text file and android keyboard active, change text editor size so it's not behind keyboard 
+
 
 ### Browser control screen
-DONE Play/Pause media works, but it works on current tab. Could we try getting it to work for whatever is/was the currently/most recently playing media. Or alternatively pause all playing media if any, otherwise play current tabs media would also be ok
 
 DONE An action to send the latest video from YouTube history to browser OR to phone 
+DONE - Change button text to "↺📱" and "↺🌐"
 
+DONE chrome extension does not seem to work on startup need to disable/reenable for it to connect properly it seems
+DONE chrome extension errors (added URL checks and history permission)
 
 ### Notification panel
 DONE Make the buttons have different/better background
 
 ### Android Home screen widgets
-DONE Add support for widgets, when you add a widget you can choose a quick action (same as the list from notifications)
+DONE Add support for android launcher widgets, when you add a widget you can choose a quick action (same as the list from notifications)
 
 ### Settings screen (accessed by button on dashboard, not bottom panel)
-DONE Quick actions dropdown: Add options to go directly to each screen in the app, add options to go to open a bookmark from the browser control screen (opens on the pc like the bookmarks do)
+DONE Quick actions dropdown: 
+DONE - Add options to set alarm 8:30/8:45/9 hours from now. 
+DONE - Add options to open a specific file or folder in the files tab (popup with custom input). 
+DONE - Add options for all browser actions
+
 
 ### AI screen
 Goal is that I want to be able to use gemini commands, e.g. /dir add D:/SSDProjects, currently it just sends it as a string to gemini and the ai responds instead of affecting the gemini cli harness. Please carefully read through the 
- DONE To achieve this we need to find a way to first programmatically control geminiCLI from outside the console. Make a proof of concept python script that does a /dir add command
- DONE Integrate slash command support into AI screen via pyautogui fallback in ai_listener.py
- 
+DONE Read the aifeatureprogress.md file
+DONE Integrated slash command support via pyautogui in ai_listener.py
+
+
 ### Alarm screen (new)
-DONE App crashes when alarm activates. To debug this temporarily change the alarm to trigger 10 seconds after phone starts and use/change the extractcrash.py script
-DONE Instead of creating new notification in the notification bar when alarm pops, replace the existing notification until alarm is dismissed
-DONE The alarm/dismiss notifcation should stay while snoozing until the alarm is truly dismissed/fully expired for the day
-DONE When alarm pops, force open the omnihub app on the alarm screen
-DONE One file contains the following comment block. Need to implement tihs properly (implemented via Intent extras and re-scheduling)
+DONE When alarm pops, force open the omnihub app to open
+DONE when changing gradual variables they currently dont apply until next alarm fix that (implemented via PreferenceChangeListener)
 
 
 ### Smart home integration

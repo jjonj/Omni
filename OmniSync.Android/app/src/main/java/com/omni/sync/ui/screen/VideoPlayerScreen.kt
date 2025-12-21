@@ -175,9 +175,9 @@ fun VideoPlayerScreen(
                     var isDragging = false
                     var hasMoved = false
                     
-                    // Determine which zone was tapped
-                    val leftZone = downX < containerSize.width * 0.25f
-                    val rightZone = downX > containerSize.width * 0.75f
+                    // Determine which zone was tapped - Reduced from 25% to 15% to avoid back button
+                    val leftZone = downX < containerSize.width * 0.15f
+                    val rightZone = downX > containerSize.width * 0.85f
                     val centerZone = !leftZone && !rightZone
                     
                     do {
@@ -308,6 +308,8 @@ fun VideoPlayerScreen(
             factory = { ctx ->
                 PlayerView(ctx).apply {
                     player = exoPlayer
+                    useController = true
+                    setShowBuffering(PlayerView.SHOW_BUFFERING_ALWAYS)
                     layoutParams = FrameLayout.LayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT,
                         ViewGroup.LayoutParams.MATCH_PARENT

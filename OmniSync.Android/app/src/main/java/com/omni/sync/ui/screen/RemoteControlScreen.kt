@@ -12,8 +12,11 @@ import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.KeyboardBackspace
 import androidx.compose.material.icons.automirrored.filled.KeyboardReturn
+import androidx.compose.material.icons.automirrored.filled.VolumeOff
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.KeyboardArrowDown
@@ -119,6 +122,9 @@ fun RemoteControlScreen(
 @Composable
 fun TrackpadArea(signalRClient: SignalRClient, modifier: Modifier = Modifier) {
     val coroutineScope = rememberCoroutineScope()
+    var lastTapTime by remember { mutableLongStateOf(0L) }
+    var isDraggingLeftClick by remember { mutableStateOf(false) }
+
     Box(
         modifier = modifier
             .fillMaxWidth()
@@ -129,11 +135,14 @@ fun TrackpadArea(signalRClient: SignalRClient, modifier: Modifier = Modifier) {
                     val downPoint = down.position
                     var isDrag = false
                     var isRightClickTriggered = false
-                    val movementThreshold = 10.dp.toPx()
+                    val movementThreshold = 5.dp.toPx()
+                    
+                    val currentTime = System.currentTimeMillis()
+                    val isDoubleTapCandidate = currentTime - lastTapTime < 300
                     
                     val longPressJob = coroutineScope.launch {
                         delay(1750)
-                        if (!isDrag) {
+                        if (!isDrag && !isDoubleTapCandidate) {
                             isRightClickTriggered = true
                             signalRClient.sendRightClick()
                         }
@@ -142,36 +151,68 @@ fun TrackpadArea(signalRClient: SignalRClient, modifier: Modifier = Modifier) {
                     try {
                         while (true) {
                             val event = awaitPointerEvent()
-                            val change = event.changes.firstOrNull { it.id == down.id }
+                            val changes = event.changes
+                            val pressedCount = changes.count { it.pressed }
                             
-                            if (change == null || !change.pressed) {
-                                change?.consume()
-                                break
-                            }
-
-                            val positionChange = change.position - downPoint
-                            val distance = positionChange.getDistance()
-
-                            if (!isDrag && distance > movementThreshold) {
+                            if (pressedCount >= 2) {
+                                // Scroll logic
+                                val scrollDelta = changes.first().positionChange()
+                                if (scrollDelta != Offset.Zero) {
+                                    // We don't have a direct scroll command in signalRClient yet, 
+                                    // but we can send it as a custom command or through mouse_move if hub supports it.
+                                    // For now, let's assume we might need a new Hub command for scroll.
+                                    // signalRClient.sendScroll(scrollDelta.y)
+                                    
+                                    // Actually, let's use sendPayload if it's not implemented yet
+                                    signalRClient.sendPayload("MOUSE_SCROLL", mapOf("Delta" to scrollDelta.y.toInt()))
+                                }
                                 isDrag = true
                                 longPressJob.cancel()
-                            }
+                            } else {
+                                val change = changes.firstOrNull { it.id == down.id }
+                                if (change == null || !change.pressed) {
+                                    change?.consume()
+                                    break
+                                }
 
-                            if (isDrag) {
-                                val delta = change.positionChange()
-                                if (delta != Offset.Zero) {
-                                    val sensitivity = 1.2f
-                                    signalRClient.sendMouseMove(delta.x * sensitivity, delta.y * sensitivity)
-                                    change.consume()
+                                val positionChange = change.position - downPoint
+                                val distance = positionChange.getDistance()
+
+                                if (!isDrag && distance > movementThreshold) {
+                                    isDrag = true
+                                    longPressJob.cancel()
+                                    
+                                    if (isDoubleTapCandidate) {
+                                        isDraggingLeftClick = true
+                                        // Send Left Down
+                                        signalRClient.sendPayload("MOUSE_CLICK_DOWN", mapOf("Button" to "Left"))
+                                    }
+                                }
+
+                                if (isDrag) {
+                                    val delta = change.positionChange()
+                                    if (delta != Offset.Zero) {
+                                        // Reduced sensitivity by 25% (1.2f * 0.75 = 0.9f)
+                                        val sensitivity = 0.9f
+                                        signalRClient.sendMouseMove(delta.x * sensitivity, delta.y * sensitivity)
+                                        change.consume()
+                                    }
                                 }
                             }
                         }
                     } finally {
                         longPressJob.cancel()
-                    }
-
-                    if (!isDrag && !isRightClickTriggered) {
-                        signalRClient.sendLeftClick()
+                        if (isDraggingLeftClick) {
+                            // Send Left Up
+                            signalRClient.sendPayload("MOUSE_CLICK_UP", mapOf("Button" to "Left"))
+                            isDraggingLeftClick = false
+                            lastTapTime = 0 // Reset to avoid triple tap drag
+                        } else if (!isDrag && !isRightClickTriggered) {
+                            signalRClient.sendLeftClick()
+                            lastTapTime = System.currentTimeMillis()
+                        } else {
+                            lastTapTime = 0
+                        }
                     }
                 }
             }
@@ -255,28 +296,40 @@ fun ButtonPanel(
                 false
             }
     ) {
-        // Hidden TextField for keyboard - made invisible with alpha
-        TextField(
-            value = textInput,
-            onValueChange = { newText ->
-                if (newText.length > textInput.length) {
-                    signalRClient.sendText(newText.last().toString())
-                } else if (newText.length < textInput.length) {
-                    signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_BACK)
+    // Hidden TextField for keyboard - made invisible with alpha
+    TextField(
+        value = textInput,
+        onValueChange = { newText ->
+            if (newText.length > textInput.length) {
+                signalRClient.sendText(newText.last().toString())
+                textInput = " " // Always keep a space to allow backspace
+            } else if (newText.length < textInput.length) {
+                signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_BACK)
+                if (newText.isEmpty()) {
+                    textInput = " " // Restore the space
+                } else {
+                    textInput = newText
                 }
+            } else {
                 textInput = newText
-            },
-            modifier = Modifier
-                .height(1.dp)
-                .fillMaxWidth()
-                .alpha(0f)
-                .focusRequester(focusRequester),
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-            keyboardActions = KeyboardActions(onSend = {
-                signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_RETURN)
-                textInput = ""
-            })
-        )
+            }
+        },
+        modifier = Modifier
+            .height(1.dp)
+            .fillMaxWidth()
+            .alpha(0f)
+            .focusRequester(focusRequester),
+        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+        keyboardActions = KeyboardActions(onSend = {
+            signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_RETURN)
+            textInput = " "
+        })
+    )
+
+    // Ensure initial space
+    LaunchedEffect(Unit) {
+        if (textInput.isEmpty()) textInput = " "
+    }
 
         // Volume Slider
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -284,7 +337,7 @@ fun ButtonPanel(
                 signalRClient.sendToggleMute()
                 isMutedState = !isMutedState
             }, modifier = Modifier.size(32.dp)) {
-                Icon(if (isMutedState) Icons.Filled.VolumeOff else Icons.Filled.VolumeUp, null, modifier = Modifier.size(20.dp))
+                Icon(if (isMutedState) Icons.AutoMirrored.Filled.VolumeOff else Icons.AutoMirrored.Filled.VolumeUp, null, modifier = Modifier.size(20.dp))
             }
             Slider(
                 value = volumeLevel,
@@ -417,8 +470,13 @@ fun ButtonPanel(
                             signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_DOWN)
                         }
                     }
-                    ActionKeyButton(icon = Icons.AutoMirrored.Filled.KeyboardReturn, modifier = Modifier.weight(0.8f)) {
+                    ActionKeyButton(icon = Icons.AutoMirrored.Filled.ArrowForward, modifier = Modifier.weight(0.8f)) {
                         signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_RIGHT)
+                    }
+
+                    ActionKeyButton(text = "Kbd", modifier = Modifier.weight(1f)) {
+                        if (isKeyboardVisible) keyboardController?.hide()
+                        else keyboardController?.show()
                     }
 
                     ActionKeyButton(text = "Back", modifier = Modifier.weight(1f)) {

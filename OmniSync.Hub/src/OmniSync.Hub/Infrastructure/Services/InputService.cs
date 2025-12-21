@@ -81,6 +81,8 @@ namespace OmniSync.Hub.Infrastructure.Services
         private const uint MOUSEEVENTF_LEFTUP = 0x0004;
         private const uint MOUSEEVENTF_RIGHTDOWN = 0x0008;
         private const uint MOUSEEVENTF_RIGHTUP = 0x0010;
+        private const uint MOUSEEVENTF_WHEEL = 0x0800;
+        private const uint MOUSEEVENTF_HWHEEL = 0x01000;
 
         // Keyboard Flags
         private const uint KEYEVENTF_KEYUP = 0x0002;
@@ -176,6 +178,47 @@ namespace OmniSync.Hub.Infrastructure.Services
             inputs[0].U.mi = new MOUSEINPUT { dx = 0, dy = 0, dwFlags = MOUSEEVENTF_RIGHTDOWN };
             inputs[1].type = INPUT_MOUSE;
             inputs[1].U.mi = new MOUSEINPUT { dx = 0, dy = 0, dwFlags = MOUSEEVENTF_RIGHTUP };
+            SendInputWithLogging(inputs);
+        }
+
+        public void MouseScroll(int delta)
+        {
+            INPUT[] inputs = new INPUT[1];
+            inputs[0].type = INPUT_MOUSE;
+            // delta should be multiplied by WHEEL_DELTA (120), but since we are getting small increments 
+            // from the trackpad, we can use them directly or scale them.
+            // Negative delta in Win32 means scroll down.
+            inputs[0].U.mi = new MOUSEINPUT { mouseData = (uint)-delta, dwFlags = MOUSEEVENTF_WHEEL };
+            SendInputWithLogging(inputs);
+        }
+
+        public void MouseDown(string button)
+        {
+            uint flag = button.ToLower() switch
+            {
+                "left" => MOUSEEVENTF_LEFTDOWN,
+                "right" => MOUSEEVENTF_RIGHTDOWN,
+                _ => 0
+            };
+            if (flag == 0) return;
+            INPUT[] inputs = new INPUT[1];
+            inputs[0].type = INPUT_MOUSE;
+            inputs[0].U.mi = new MOUSEINPUT { dwFlags = flag };
+            SendInputWithLogging(inputs);
+        }
+
+        public void MouseUp(string button)
+        {
+            uint flag = button.ToLower() switch
+            {
+                "left" => MOUSEEVENTF_LEFTUP,
+                "right" => MOUSEEVENTF_RIGHTUP,
+                _ => 0
+            };
+            if (flag == 0) return;
+            INPUT[] inputs = new INPUT[1];
+            inputs[0].type = INPUT_MOUSE;
+            inputs[0].U.mi = new MOUSEINPUT { dwFlags = flag };
             SendInputWithLogging(inputs);
         }
 

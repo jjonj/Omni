@@ -10,6 +10,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.ContentPasteGo
 import androidx.compose.material.icons.filled.Delete
@@ -207,7 +208,7 @@ fun BrowserControlScreen(
                 shape = RoundedCornerShape(8.dp),
                 contentPadding = PaddingValues(horizontal = 8.dp)
             ) {
-                Text("YT to Phone", fontSize = 11.sp)
+                Text("↺📱", fontSize = 16.sp)
             }
 
             // 2. Latest YT on PC
@@ -217,7 +218,7 @@ fun BrowserControlScreen(
                 shape = RoundedCornerShape(8.dp),
                 contentPadding = PaddingValues(horizontal = 8.dp)
             ) {
-                Text("YT on PC", fontSize = 11.sp)
+                Text("↺🌐", fontSize = 16.sp)
             }
         }
 
@@ -245,7 +246,7 @@ fun BrowserControlScreen(
                 modifier = Modifier.weight(1f),
                 shape = RoundedCornerShape(8.dp)
             ) {
-                Icon(Icons.Default.List, null, modifier = Modifier.size(18.dp))
+                Icon(Icons.AutoMirrored.Filled.List, null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(8.dp))
                 Text("Tab List")
             }

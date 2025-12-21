@@ -38,6 +38,8 @@ enum class AppScreen {
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
     val applicationContext: Context = application.applicationContext
+    private val configManager = com.omni.sync.data.config.ConfigManager(applicationContext)
+    val appConfig = configManager.loadConfig()
     
     private val _isConnected = MutableStateFlow(false)
     val isConnected: StateFlow<Boolean> = _isConnected
@@ -89,9 +91,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     
     private var lastDashboardBackPressTime = 0L
 
+    private val _pendingNavigationPath = MutableStateFlow<String?>(null)
+    val pendingNavigationPath: StateFlow<String?> = _pendingNavigationPath
+
+    fun setPendingNavigationPath(path: String?) {
+        _pendingNavigationPath.value = path
+    }
+
     // Helper to extract the base URL (http://10.0.0.37:5000) from the specific Hub URL
     fun getBaseUrl(): String {
-        return "http://10.0.0.37:5000" 
+        return appConfig.hubUrl.substringBefore("/signalrhub")
+    }
+
+    fun saveAppConfig() {
+        configManager.saveConfig(appConfig)
     }
 
     fun playVideo(remotePath: String, playlist: List<String> = emptyList()) {

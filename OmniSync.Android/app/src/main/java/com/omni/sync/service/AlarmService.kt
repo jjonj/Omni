@@ -22,12 +22,13 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 
-class AlarmService : Service() {
+class AlarmService : Service(), android.content.SharedPreferences.OnSharedPreferenceChangeListener {
 
     private var mediaPlayer: MediaPlayer? = null
     private var timeoutJob: Job? = null
     private val serviceScope = CoroutineScope(Dispatchers.Main + Job())
     private var wakeLock: PowerManager.WakeLock? = null
+    private lateinit var prefs: android.content.SharedPreferences
 
     // Metadata for the current running alarm to handle snooze logic
     private var currentAlarmId: Int = 0
@@ -66,6 +67,9 @@ class AlarmService : Service() {
         super.onCreate()
         createNotificationChannel()
         
+        prefs = getSharedPreferences("alarm_prefs", Context.MODE_PRIVATE)
+        prefs.registerOnSharedPreferenceChangeListener(this)
+
         val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
         @Suppress("DEPRECATION")
         wakeLock = powerManager.newWakeLock(
@@ -73,6 +77,21 @@ class AlarmService : Service() {
             "OmniSync::AlarmServiceWakeLock"
         )
         wakeLock?.acquire(20 * 60 * 1000L) 
+    }
+
+    override fun onSharedPreferenceChanged(sharedPreferences: android.content.SharedPreferences?, key: String?) {
+        if (key == "config") {
+            val configJson = sharedPreferences?.getString("config", null)
+            if (configJson != null) {
+                val gson = com.google.gson.Gson()
+                val config = gson.fromJson(configJson, com.omni.sync.ui.screen.GradualConfig::class.java)
+                maxRepetitions = config.maxRepetitions
+                volumeIncrement = config.volumeIncrement
+                snoozeDurationMin = config.snoozeDuration
+                currentDurationSec = config.alarmDuration
+                Log.d("AlarmService", "Gradual config updated immediately: reps=$maxRepetitions, inc=$volumeIncrement, snooze=$snoozeDurationMin")
+            }
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -287,6 +306,9 @@ class AlarmService : Service() {
         _isRinging.value = false
         timeoutJob?.cancel()
         stopSound()
+        
+        prefs.unregisterOnSharedPreferenceChangeListener(this)
+
         try {
             if (wakeLock?.isHeld == true) {
                 wakeLock?.release()
