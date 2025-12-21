@@ -52,16 +52,15 @@ A new generation of scripts that do the same but indirectly by communicating wit
 | :--- | :--- | :--- |
 | **SignalR AI Relay** | Stable | Verified with automated tests. |
 | **Named Pipe IPC** | Stable | High performance, no focus-stealing issues. |
-| **Slash Command Injection**| Stable | Verified `/dir add` works correctly. |
+| **Slash Command Injection**| Stable | Now fully programmatic via Named Pipe (no pyautogui). Feedback captured. |
 | **Multi-Session Support** | Stable | Parallel injection to multiple PIDs verified. |
 | **Response Detection** | Stable | Fixed by implementing persistent Turn-Finished detection. |
-| **Process Cleanup Safety**| Stable | Cleanup scripts now protect ancestors and windows with "Omni" in title to avoid self-termination. **Note: `cleanup_gemini_windows.py` should be used between test runs to ensure a clean state, or invoked at the start of integration tests.** |
+| **Process Cleanup Safety**| Stable | Cleanup scripts now protect ancestors and windows with "Omni" in title to avoid self-termination. |
 
-### Resolved: IPC Read Reliability
-The readback hang in `test_command_injection.py` was resolved by:
-1.  **turnFinished Event**: Modifying `useGeminiStream.ts` to emit a `[TURN_FINISHED]` message whenever the `streamingState` returns to `Idle`.
-2.  **Persistent Collection**: Updating test scripts to maintain the connection and accumulate response chunks until the finished marker is received, ensuring multi-turn tool interactions are fully captured.
-3.  **Descriptive Placeholders**: Ensuring slash commands (which might not produce model output) emit a `[Command Handled]` placeholder to prevent IPC timeouts.
+### Resolved: IPC Read Reliability & Slash Command Support
+1.  **turnFinished Event**: Modified `AppContainer.tsx` to emit a `[TURN_FINISHED]` message whenever the `streamingState` returns to `Idle`.
+2.  **Slash Command IPC**: Updated `slashCommandProcessor.ts` to emit `RemoteResponse` for command outputs and errors, followed by `[TURN_FINISHED]`. This allows slash commands to be handled entirely over the named pipe.
+3.  **Persistent Collection**: Updating test scripts to maintain the connection and accumulate response chunks until the finished marker is received, ensuring multi-turn tool interactions are fully captured.
 
 ---
 
@@ -71,7 +70,8 @@ We are achieving this by first establishing full control over gemini cli, then i
 Android already has barebones AI control but its somewhat outdated.
 
 ## Next Steps
-
+It is unclear if the hub versions of scripts are all passing
+Check if android app looks like it will be able to communicate properly with the AI through hub. 
 
 ## Completed Recently
 - **Process Cleanup Safety**: `cleanup_gemini_windows.py` now uses `Get-Process` with window title filtering (`-notlike "*Omni*"`) to avoid killing the active Gemini CLI session.
