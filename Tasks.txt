@@ -40,7 +40,7 @@ Right click menu for a downloaded file should not show "open on pc" or "download
 Deleting local files work but the file list doesnt update. 
 The password is not currently changable, should be set in dashboard->settings
 
-Normal tap on save button should not save->exit, just save 
+DONE Normal tap on save button should not save->exit, just save 
 
 
 DONE Add a panel similar to bookmarks to manage cached files, where they can be uncached
