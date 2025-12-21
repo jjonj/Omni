@@ -92,6 +92,13 @@ fun BrowserControlScreen(
                 label = { Text("URL") },
                 placeholder = { Text("google.com") },
                 leadingIcon = { Icon(Icons.Default.Public, contentDescription = null) },
+                trailingIcon = {
+                    if (urlInput.isNotBlank()) {
+                        IconButton(onClick = { viewModel.onUrlChanged("") }) {
+                            Icon(Icons.Default.Close, contentDescription = "Clear URL")
+                        }
+                    }
+                },
                 singleLine = true,
                 modifier = Modifier.weight(1f),
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Go),
