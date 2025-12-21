@@ -893,12 +893,13 @@ class FilesViewModel(
     private val _hasUnsavedChanges = MutableStateFlow(false)
     val hasUnsavedChanges: StateFlow<Boolean> = _hasUnsavedChanges
 
-    private val _autoSaveEnabled = MutableStateFlow(prefs.getBoolean("autosave_enabled", false))
+    private val _autoSaveEnabled = MutableStateFlow(mainViewModel.appConfig.autosaveEnabled)
     val autoSaveEnabled: StateFlow<Boolean> = _autoSaveEnabled
 
     fun setAutoSaveEnabled(enabled: Boolean) {
         _autoSaveEnabled.value = enabled
-        prefs.edit().putBoolean("autosave_enabled", enabled).apply()
+        mainViewModel.appConfig.autosaveEnabled = enabled
+        mainViewModel.saveAppConfig()
     }
 
     fun saveScrollPosition(path: String, index: Int, offset: Int) {
@@ -908,6 +909,33 @@ class FilesViewModel(
 
     fun getScrollPosition(path: String): Pair<Int, Int> {
         return Pair(_scrollPositions[path] ?: 0, _scrollOffsets[path] ?: 0)
+    }
+
+    fun setGlobalPassword(oldPassword: String?, newPassword: String): Boolean {
+        val currentHash = mainViewModel.appConfig.globalPasswordHash
+        if (currentHash != null) {
+            if (oldPassword == null || hashPassword(oldPassword) != currentHash) {
+                return false
+            }
+        }
+        mainViewModel.appConfig.globalPasswordHash = hashPassword(newPassword)
+        mainViewModel.saveAppConfig()
+        return true
+    }
+
+    fun verifyGlobalPassword(password: String): Boolean {
+        val currentHash = mainViewModel.appConfig.globalPasswordHash ?: return true // No password set
+        return hashPassword(password) == currentHash
+    }
+
+    fun isGlobalPasswordSet(): Boolean {
+        return mainViewModel.appConfig.globalPasswordHash != null
+    }
+
+    private fun hashPassword(password: String): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        val bytes = digest.digest(password.toByteArray(Charsets.UTF_8))
+        return bytes.joinToString("") { "%02x".format(it) }
     }
 
     private fun formatBytesPerSecond(bytesPerSecond: Double): String {
@@ -1146,23 +1174,24 @@ class FilesViewModel(
     }
 
     fun setGlobalPassword(oldPassword: String?, newPassword: String): Boolean {
-        val currentHash = prefs.getString("global_password_hash", null)
+        val currentHash = mainViewModel.appConfig.globalPasswordHash
         if (currentHash != null) {
             if (oldPassword == null || hashPassword(oldPassword) != currentHash) {
                 return false
             }
         }
-        prefs.edit().putString("global_password_hash", hashPassword(newPassword)).apply()
+        mainViewModel.appConfig.globalPasswordHash = hashPassword(newPassword)
+        mainViewModel.saveAppConfig()
         return true
     }
 
     fun verifyGlobalPassword(password: String): Boolean {
-        val currentHash = prefs.getString("global_password_hash", null) ?: return true // No password set
+        val currentHash = mainViewModel.appConfig.globalPasswordHash ?: return true // No password set
         return hashPassword(password) == currentHash
     }
 
     fun isGlobalPasswordSet(): Boolean {
-        return prefs.contains("global_password_hash")
+        return mainViewModel.appConfig.globalPasswordHash != null
     }
 
     private fun hashPassword(password: String): String {

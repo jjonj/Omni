@@ -6,16 +6,14 @@ if told to do a megasession then fix/implement as many issues of the ones below 
 
 
 ## General
-DONE When app is in horizontal mode, hide the navigation bar
+
 DONE Show a notification in the app when connecting/disconnecting from hub
+The app is somehow fullscreen all the time, hiding the top android bar that shows time and notification icons etc. I only want this in horizontal mode. 
 
 ## For the hub
-DONE Run on startup is not working, windows is trying to run D:\SSDProjects\Omni\OmniSync.Hub\src\OmniSync.Hub\bin\Debug\net9.0-windows\OmniSync.Hub.dll on startup which is nonsensical
-DONE Play a sound 1 minute before shutdown will activate, use Resources/shut1min.wav
 DONE Right click tray icon -> exit doesnt work
 
 ### Hub window
-DONE Long press on shutdown should switch to sleep instead, syncing with android app button state.
 
 
 ## in OmniSync.Android
@@ -23,106 +21,93 @@ DONE Long press on shutdown should switch to sleep instead, syncing with android
 ### General
 
 DONE Can we make settings/configurations persistent between reinstalls of the app? (implemented via ConfigManager in external storage)
-
-DONE We currently have 6 screens but we want more screens in the future, including the alarm screen described below and soon a smarthome screen. To navigate to these new screens we dont want to create more navigation buttons. Instead remove the Process button from the navigation bar and instead as the last button in the bar, add a new burger menu button that opens a drop down (up?) with more screens. Add the process screen and alarm screen to this menu.
-DONE Allow Swiping screen to more screens so Swiping right from ai screen should go to alarm and process and then further to the other 
+The dashboard has two cog icons with settings in the upper right, merge them into one. 
 
 ### Dashboard
 
 ### Remote Control Screen
 Stream PC monitor, replacing background of the trackpad leaving the trackpad functioning still, options to toggle monitor, pinch to zoom, (advanced feature, do last)       
-DONE Second set of buttons should have arrow buttons
-DONE - the right arrow button has wrong icon
-DONE Second set of buttons should also have kbd button
-DONE Two finger swiping trackpad should scroll (Hub support added for MOUSE_SCROLL)
-DONE Double tap then swipe (quick tap->swipe) should hold down left button while moving mouse (Hub support added for MOUSE_CLICK_DOWN/UP)
-DONE We are using a text field to trick android into letting us use the keyboard which works really well but has some minor issues:
- - Android erase from right button works but only when the textfield has content. Could we maybe ensure the textfield always has a character to erase (ofc without sending that character to the pc)
-DONE Reduce trackpad sensitivity by 25%
+We are using a text field to trick android into letting us use the keyboard which works really well but has some minor issues:
+ - NOT WORKING (In fact got worse) Android erase from right button works but only when the textfield has content. Could we maybe ensure the textfield always has a character to erase (ofc without sending that character to the pc)
+Reduce trackpad sensitivity by another 20%
 
 ### Files & Video Screen
-DONE Downloading a video into app data and optionally password protecting it with encryption and password. Should be deletable
-  - Created DownloadedVideo data model
-  - Extended FilesViewModel with video download, encryption/decryption methods (AES-256-CBC)
-  - Created DownloadedVideosScreen for managing downloaded videos
-  - Added "Download Video to App" option in file context menu
-  - Videos can be encrypted with password during download
-  - New screen shows all downloaded videos (tap to play, with password prompt if encrypted, delete functionality)
-  - Added video library icon in Files screen top bar to access downloaded videos
-  - All changes committed to git
 
-DONE When exiting a file with unsaved changes make a warning popup with save and exit 
-DONE Long press save button should add an A subicon and turn it green enabling autosave on exit persistent setting 
-DONE Normal tap on save button would not exit, just save 
-DONE Add a * next to the open filename to indicate unsaved changes 
+  
+Downloading a video as encrypted currently prompts for the password, is it possible to encrypt without asking for password? isnt that what a public key is for? Only ask for password if no global password is set
+Downloaded videos (encrypted or not) do not play. The player just shows 0.00/0.00 and black screen
+Right click menu for a downloaded file should not show "open on pc" or "download video to app" as it doesnt make sense. The "Download & Open (Ext app)" option should not have the "Download" and doesnt work as it tries to download. 
+Deleting local files work but the file list doesnt update. 
+The password is not currently changable, should be set in dashboard->settings
 
-DONE When a folder is cached, the path to that folder should be navigatable. E.g. if i cached C:/A/B/C then I should be able to click C -> A -> B -> C without getting a "A not cached" error. Everything else in A other than B can be not shown or whatever
-DONE If i create a file in offline mode then it will correctly get created on the PC when connecting but I cant see it in the files screen, should become immidiately visible, have the * after its name and reeditable. 
-DONE WHen creating file, if no file extension is provided (.blabla) then default to .txt
-DONE Clear any "not connected" errors whenever reconnecting (similar to how * indicators are removed automatically)
-DONE When scrolling diagonally on the files screen it could choose to either scroll the files or do the swipe to change screen side to side. Currently it prefers swiping sidewise too much, even at very shallow angles. 
-DONE File system caching - remember all paths all files that have been listed IF They are inside (recursively) any bookmark, allowing to browse file system even after disconnecting
-DONE Text file content caching - remember the content of all files opened as text even when disconnected
-DONE File Cached editing - ALlow editing text files while disconnected, apply the change when reconnecting IF and only IF the the file date modified before saving matches the cached one  (aka the file hasnt changed since we last cached it). Otherwise save it with postfix .conflicted
-DONE Cached file creation - Allow creating text files while disconnected that will be saved to PC when reconnecting
-DONE When a cached file is synced to PC, add a log message to the activity log, specify if conflicted in red
-DONE Describe the caching feature in high detail in design.txt
+Normal tap on save button should not save->exit, just save 
+
+
 DONE Add a panel similar to bookmarks to manage cached files, where they can be uncached
-
+ - Menu added but when clearing all or individual cahced files/folders the list does not update. 
+ - The menu only lists cached folders, should include files
 DONE Investigate if there is a way to have the hub be notified whenever a cached file is changed on PC so that the android app can update its cached version, this is a nice to have, we definitely dont want to do periodic polling
 DONE - Use this feature to notify user with a popup if the file was changed remotely while the file is open as text
-DONE - Use this feature to briefly flash filenames that changed remotely when listing the file
- 
-DONE List filesizes in mb not kb and remove decimals
-DONE When i scroll down the folder, open a file, and then use back button to go back, it does not remember my scroll position, fix.
-DONE Inform user what the button to the left of the + button does (removed redundant button as requested)
-DONE Currently when encrypting videos we have a password per file. Change that to be one global password that can be set in settings (obv require existing password if any to change and dont store the password in plaintext)
-DONE In the root of Files:/ where the drives are listed, also list two virtual folders one for unencrypted downloaded files named "Downloads:/" and one for encrypted downloaded. The encrypted with a obscured name like "Add..." that prompts for password when opened, with a obscured message like "Create drive\n Name: ___" letting the user enter password.
-DONE - Long pressing "Add..." gives an option to "Delete" which will wipe all downloaded encrypted files. (Implemented via menu)
-DONE - Long pressing a downloaded video encrypted or not lets you choose option to delete that individual file
- 
- 
+       -- Feature works but add buttons to discard local changes and reload
+       -- Ensure auto save feature doesnt overwrite remote changes, add star icon to indicate autosave isnt saving in this state
+	   
+	   
+Remove the button left of + that opens list of downloaded files. we now have the root virtual folders for that. 
+
 Video:
-DONE - Cant use the back button in upper right, probably because the overlay areas are blocking it, make the overlay areas less wide on the outer area
-DONE - The embedded video player we are using is being a bit annoying with showing/hiding its built in buttons after e.g. jumping to a time in the video. This didnt used to happen, it just kinda got slightly unstable in its activation. - fixing this requires user to check for regressions
+Still Cant use the back button in upper right, probably because the overlay areas are blocking it, make the overlay areas less wide on the outer area
+ - I think you changed the overlay area to be less wide but it is still covering the edges of the screen. There should be non overlayed space on the edges as well as in the middle
+The embedded video player we are using is still being a bit annoying with showing/hiding the player buttons. This didnt used to happen, it just kinda got slightly unstable in its activation. - fixing this requires user to check for regressions
+ - When i tap the screen and the player buttons are not visible then they will turn visible for a second and then unexpected disappear again, as if i tapped twice. Same happens when they are visible and i tap to hide them, then they hide for 1sec then reappear. I have to tap 3 times to actually toggle their visibility
 
+More Text editing fancy features, think like a lite code editor like notepad++ or VS code. be creative. MORE options in burger menu with lots of options
+Search/replace menu with higlighting findings and next/prev found
+Toggle word wrap
+Save as copy
+Have multiple files open at once (Swiping side by side between them, have a button opening dropdown with them, option to close all with a dialog for each unsaved file whether to save
+Bold/italic/strikethrough options on right clicking selected text
+Link insertion in burger menu
+Advanced bar below the header with the following options (use icons not text)
+	Duplicate line
+	Delete line
+	Move line up/down
+	Copy line
+	Paste
 
-DONE Add a * next to filename for files that have been edited offline and are waiting to sync
-
-DONE More Text editing fancy features, think like a lite code editor like notepad++ or VS code. be creative. MORE options in burger menu with lots of options
+Highlight matching brackets/parentheses
+Pinch to zoom (font size change), allow zooming out very far
+Version history / undo across sessions
 
 
 ### Browser control screen
 
-DONE An action to send the latest video from YouTube history to browser OR to phone 
-DONE - Change button text to "↺📱" and "↺🌐"
+Change button text from  "↺📱" and "↺🌐" to "▶↺📱" and "▶↺🌐"
+Make the ▶↺🌐 button respect the New tab toggle
+Move the button to the right of the URL bar to open current remote tab on phone to the advanced buttons panel and change icon to "🌐→📱"
+Add clear icon to the right of URL bar. 
+
 
 DONE chrome extension does not seem to work on startup need to disable/reenable for it to connect properly it seems
-DONE chrome extension errors (added URL checks and history permission)
 
 ### Notification panel
-DONE Make the buttons have different/better background
+Make the buttons have 2 pixels margin between them and use a dark blue background istead of the current blue
+When changing quick actions the notification does not instantly update
+Hide the "Omni - COnnected" title, just show buttons.
+
 
 ### Android Home screen widgets
-DONE Add support for android launcher widgets, when you add a widget you can choose a quick action (same as the list from notifications)
+NOT-WORKING Add support for android launcher widgets, when you add a widget you can choose a quick action (same as the list from notifications)
 
 ### Settings screen (accessed by button on dashboard, not bottom panel)
-DONE Quick actions dropdown: 
-DONE - Add options to set alarm 8:30/8:45/9 hours from now. 
-DONE - Add options to open a specific file or folder in the files tab (popup with custom input). 
-DONE - Add options for all browser actions
 
 
-### AI screen
-Goal is that I want to be able to use gemini commands, e.g. /dir add D:/SSDProjects, currently it just sends it as a string to gemini and the ai responds instead of affecting the gemini cli harness. Please carefully read through the 
-DONE Read the aifeatureprogress.md file
-DONE Integrated slash command support via pyautogui in ai_listener.py
 
 
-### Alarm screen (new)
-DONE When alarm pops, force open the omnihub app to open
-DONE when changing gradual variables they currently dont apply until next alarm fix that (implemented via PreferenceChangeListener)
 
+### Alarm screen
+NOT WORKING When alarm pops, force open the omnihub app to open. Do we not have permission from android to open an app automatically? im pressure sure other alarm apps do. 
+Dismissing alarm from notification does not seem to work, at least while its snoozing
+Dismissing alarm from alarm screen does not deactivate a non repeating alarm like expected.
 
 ### Smart home integration
 DONE Read SmartFeature.txt (implemented ExternalCommandController in Hub)

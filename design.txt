@@ -73,10 +73,11 @@ The Android app is the primary sensor and remote control.
 
 **Layer 3: The Repository (Data/Network)**
 *   **`SignalRClient`:** Singleton. Manages the WebSocket connection, auto-reconnect policy, and incoming message parsing.
-*   **`CachingSystem`:** Multi-layer persistence for offline functionality:
-    *   **Directory Cache:** Stores JSON-serialized listings of directories inside bookmarked paths. Allows browsing the hierarchy while disconnected.
-    *   **Content Cache:** Stores full text content of opened files.
-    *   **Pending Edits:** Tracks local modifications made offline, queued for synchronization upon reconnection.
+*   **`CachingSystem`:** High-performance, multi-layer persistence for seamless offline/online operation:
+    *   **Directory Cache:** A path-indexed JSON store. Whenever a directory inside a bookmarked path is listed while online, its content is serialized and cached. This allows recursive browsing of the remote filesystem even without a network connection.
+    *   **Content Cache:** Full-text persistence for documents. Files opened for reading or editing are cached locally. This enables immediate access to recent notes and allows editing to begin instantly, regardless of connection state.
+    *   **Edit Queue (Pending Edits):** A transactional queue for local modifications. Offline saves are stored as `PendingEdit` objects containing the new content and the `LastModified` timestamp of the version they originated from.
+*   **`ConfigManager`:** Ensures persistence of application settings (Hub URL, API Key, UI preferences) across app reinstalls. It uses a JSON file stored in the device's external storage (`/Android/data/...`), which survives the deletion of the primary APK data. It automatically migrates settings from standard `SharedPreferences` on the first run.
 
 **Layer 4: System Services**
 *   **`OmniAccessibilityService`:** Listens for volume button presses (hardware macros) and injects text into other apps.
