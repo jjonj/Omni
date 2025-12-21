@@ -12,10 +12,17 @@ namespace OmniSync.Hub.Infrastructure.Services
         {
             private readonly string _noteRootPath; // Renamed from _rootPath to clarify its purpose
             private readonly string _browseRootPath; // New field for the configurable browse root
+
+            // File change watching (Hub -> Android invalidation)
+            private readonly Dictionary<string, FileSystemWatcher> _watchers = new();
+            private readonly Dictionary<string, DateTime> _lastEventTimes = new();
+            private readonly object _watcherLock = new();
+            private static readonly TimeSpan EventDebounce = TimeSpan.FromMilliseconds(300);
     
             // Events to notify about file write operations
             public event EventHandler<string>? FileWritten;
             public event EventHandler<string>? BrowseFileWritten;
+            public event EventHandler<string>? FileChanged; // New: raised when watched file/dir changes
     
             public FileService()
             {
@@ -138,6 +145,9 @@ namespace OmniSync.Hub.Infrastructure.Services
             {
                 throw new DirectoryNotFoundException($"Directory not found: {targetPath}");
             }
+
+            // Ensure a watcher for this target path (helps Android invalidate caches without polling)
+            EnsureWatcherForDirectory(targetPath);
 
             var entries = new List<FileSystemEntry>();
 
@@ -308,6 +318,58 @@ namespace OmniSync.Hub.Infrastructure.Services
                 throw new SecurityException("Access to the browse path is denied.");
             }
             return fullPath;
+        }
+
+        // Create and manage a FileSystemWatcher for a directory path (absolute)
+        public void EnsureWatcherForDirectory(string absoluteDirectory)
+        {
+            if (string.IsNullOrWhiteSpace(absoluteDirectory) || !Directory.Exists(absoluteDirectory)) return;
+
+            lock (_watcherLock)
+            {
+                if (_watchers.ContainsKey(absoluteDirectory)) return;
+
+                var fsw = new FileSystemWatcher(absoluteDirectory)
+                {
+                    IncludeSubdirectories = false,
+                    NotifyFilter = NotifyFilters.FileName | NotifyFilters.DirectoryName | NotifyFilters.LastWrite | NotifyFilters.Size
+                };
+
+                FileSystemEventHandler onChanged = (s, e) => HandleFsEvent(e.FullPath);
+                RenamedEventHandler onRenamed = (s, e) =>
+                {
+                    HandleFsEvent(e.FullPath);
+                    if (!string.IsNullOrEmpty(e.OldFullPath)) HandleFsEvent(e.OldFullPath);
+                };
+
+                fsw.Created += onChanged;
+                fsw.Changed += onChanged;
+                fsw.Deleted += onChanged;
+                fsw.Renamed += onRenamed;
+                fsw.EnableRaisingEvents = true;
+
+                _watchers[absoluteDirectory] = fsw;
+            }
+        }
+
+        private void HandleFsEvent(string fullPath)
+        {
+            try
+            {
+                lock (_watcherLock)
+                {
+                    var now = DateTime.UtcNow;
+                    if (_lastEventTimes.TryGetValue(fullPath, out var last) && (now - last) < EventDebounce)
+                    {
+                        return; // debounce
+                    }
+                    _lastEventTimes[fullPath] = now;
+                }
+
+                // Emit event with relative or absolute? We send absolute so Android can match its entries
+                FileChanged?.Invoke(this, fullPath);
+            }
+            catch { }
         }
     }
 }

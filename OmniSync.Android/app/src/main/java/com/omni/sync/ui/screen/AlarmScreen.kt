@@ -1,6 +1,9 @@
 package com.omni.sync.ui.screen
 
+import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.media.MediaPlayer
 import android.net.Uri
 import androidx.compose.animation.AnimatedVisibility
@@ -24,6 +27,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import com.omni.sync.service.AlarmService
 import com.omni.sync.utils.AlarmScheduler
 import com.omni.sync.viewmodel.MainViewModel
 import kotlinx.coroutines.Job
@@ -70,8 +74,24 @@ fun AlarmScreen(
     val scope = rememberCoroutineScope()
     var previewJob by remember { mutableStateOf<Job?>(null) }
 
+    // Listen for Alarm Disable Broadcasts
     DisposableEffect(Unit) {
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context?, intent: Intent?) {
+                if (intent?.action == AlarmService.ACTION_ALARM_DISABLED) {
+                    val id = intent.getIntExtra("ALARM_ID", 0)
+                    if (id == 1) alarm1 = alarm1.copy(enabled = false)
+                    if (id == 2) alarm2 = alarm2.copy(enabled = false)
+                }
+            }
+        }
+        val filter = IntentFilter(AlarmService.ACTION_ALARM_DISABLED)
+        // Register receiver (LocalBroadcastManager is deprecated, using global with package protection if needed, or just context)
+        // For simplicity in this scope:
+        context.registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
+        
         onDispose {
+            context.unregisterReceiver(receiver)
             previewJob?.cancel()
             if (mediaPlayer.isPlaying) mediaPlayer.stop()
             mediaPlayer.release()
@@ -96,6 +116,7 @@ fun AlarmScreen(
         "water2" to "Water 2"
     )
     
+    // 24 Hour Format for Display
     val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
     
     fun playPreview(soundId: String) {
@@ -331,7 +352,7 @@ fun AlarmCard(
                         Text("Hours from now: $text")
                     }
 
-                    // Display Time (24h calculation fixed)
+                    // Display Time (24h)
                     val hour24 = if (alarm.isAM) {
                         if (alarm.hour == 12) 0 else alarm.hour
                     } else {

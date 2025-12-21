@@ -373,6 +373,7 @@ namespace OmniSync.Hub.Presentation.Hubs
                 AnyCommandReceived?.Invoke(this, $"ListDirectory: {path}");
 
                 var contents = _fileService.ListDirectoryContents(path);
+                // Ensure watcher for target path happens in the service; no extra logic needed here
 
                 // Python script expects "ReceiveDirectoryContents" event
                 await Clients.All.SendAsync("ReceiveDirectoryContents", contents);

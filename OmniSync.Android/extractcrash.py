@@ -5,7 +5,6 @@ from datetime import datetime
 import os
 
 PACKAGE = "com.omni.sync"
-DEFAULT_DEVICE = "10.0.0.236:41391"
 LOG_TIMEOUT_SECONDS = 5
 
 # ADB Configuration - Update this if ADB is in a different location
@@ -44,22 +43,7 @@ def ensure_device():
         print(f"Using device: {devices[0]}")
         return devices[0]
 
-    print("No connected devices.")
-    ip = input("Phone IP: ").strip()
-    pairing_port = input("Pairing port: ").strip()
-    pairing_code = input("Pairing code: ").strip()
 
-    p = subprocess.Popen(
-        ["adb", "pair", f"{ip}:{pairing_port}"],
-        stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True
-    )
-    p.communicate(pairing_code + "\n")
-
-    connect_port = input("Connect port: ").strip()
-    run(["adb", "connect", f"{ip}:{connect_port}"], check=True)
 
     devices = list_devices()
     if not devices:

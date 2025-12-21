@@ -17,6 +17,7 @@ import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.omni.sync.R
 import com.omni.sync.MainActivity
+import com.omni.sync.utils.AlarmScheduler
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -24,16 +25,25 @@ import kotlinx.coroutines.flow.StateFlow
 class AlarmService : Service() {
 
     private var mediaPlayer: MediaPlayer? = null
-    private var volumeJob: Job? = null
     private var timeoutJob: Job? = null
     private val serviceScope = CoroutineScope(Dispatchers.Main + Job())
     private var wakeLock: PowerManager.WakeLock? = null
 
+    // Metadata for the current running alarm to handle snooze logic
+    private var currentAlarmId: Int = 0
+    private var currentSoundId: String = "gentle"
+    private var currentVolume: Int = 5
+    private var currentRepetition: Int = 0
+    private var maxRepetitions: Int = 0
+    private var volumeIncrement: Int = 5
+    private var snoozeDurationMin: Int = 10
+    private var repeatDaily: Boolean = false
+
     companion object {
         const val CHANNEL_ID = "OmniAlarmChannel"
         const val ACTION_DISMISS = "com.omni.sync.ALARM_DISMISS"
+        const val ACTION_ALARM_DISABLED = "com.omni.sync.ALARM_DISABLED"
         
-        // Global state for UI to observe
         private val _isRinging = MutableStateFlow(false)
         val isRinging: StateFlow<Boolean> = _isRinging
 
@@ -52,45 +62,56 @@ class AlarmService : Service() {
         createNotificationChannel()
         
         val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
-        // Suppressing deprecation because for an alarm service ensuring the device wakes up 
-        // to show a full-screen notification, this flag is still often required in conjunction with fullScreenIntent.
         @Suppress("DEPRECATION")
         wakeLock = powerManager.newWakeLock(
             PowerManager.PARTIAL_WAKE_LOCK or PowerManager.ACQUIRE_CAUSES_WAKEUP,
             "OmniSync::AlarmServiceWakeLock"
         )
-        wakeLock?.acquire(20 * 60 * 1000L) // 20 mins max safety
+        wakeLock?.acquire(20 * 60 * 1000L) 
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_DISMISS) {
-            stopSelf()
+            handleDismiss()
             return START_NOT_STICKY
         }
 
-        _isRinging.value = true
+        // Extract Alarm Data
+        currentAlarmId = intent?.getIntExtra("ALARM_ID", 0) ?: 0
+        currentSoundId = intent?.getStringExtra("SOUND_ID") ?: "gentle"
+        currentVolume = intent?.getIntExtra("CURRENT_VOLUME", 5) ?: 5
+        val durationSec = intent?.getIntExtra("ALARM_DURATION", 3) ?: 3
+        
+        // Gradual/Snooze Data
+        maxRepetitions = intent?.getIntExtra("MAX_REPETITIONS", 5) ?: 5
+        volumeIncrement = intent?.getIntExtra("VOLUME_INCREMENT", 5) ?: 5
+        snoozeDurationMin = intent?.getIntExtra("SNOOZE_DURATION", 10) ?: 10
+        currentRepetition = intent?.getIntExtra("CURRENT_REPETITION", 0) ?: 0
+        repeatDaily = intent?.getBooleanExtra("REPEAT_DAILY", false) ?: false
 
-        val soundId = intent?.getStringExtra("SOUND_ID") ?: "gentle"
-        val initialVolume = intent?.getIntExtra("INITIAL_VOLUME", 5) ?: 5
-        val maxVolume = 100
-        val rampUpDurationSec = intent?.getIntExtra("ALARM_DURATION", 3) ?: 3
+        _isRinging.value = true
+        startForeground(999 + currentAlarmId, createNotification()) // Use ID to allow multiple notifications if needed
         
-        startForeground(999, createNotification())
-        playAlarm(soundId, initialVolume, maxVolume, rampUpDurationSec)
+        playAlarm(currentSoundId, currentVolume)
         
-        // Auto-stop after duration + buffer
+        // Schedule Auto-Snooze Timeout
         timeoutJob?.cancel()
         timeoutJob = serviceScope.launch {
-            delay(rampUpDurationSec * 1000L + 10000) // Buffer 10s
-            Log.i("AlarmService", "Alarm timeout reached. Stopping.")
-            stopSelf()
+            Log.d("AlarmService", "Alarm playing for $durationSec seconds")
+            delay(durationSec * 1000L)
+            handleAutoSnooze()
         }
 
         return START_STICKY
     }
 
-    private fun playAlarm(soundId: String, initialVol: Int, maxVol: Int, durationSec: Int) {
+    private fun playAlarm(soundId: String, volume: Int) {
         try {
+            if (mediaPlayer?.isPlaying == true) {
+                mediaPlayer?.stop()
+                mediaPlayer?.release()
+            }
+
             val resId = resources.getIdentifier(soundId, "raw", packageName)
             val uri = if (resId != 0) {
                 Uri.parse("android.resource://$packageName/$resId")
@@ -106,12 +127,15 @@ class AlarmService : Service() {
                         .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
                         .build()
                 )
-                isLooping = true
+                isLooping = true // Loop *during* the X seconds
                 prepare()
+                
+                // Set constant volume (0.0 to 1.0)
+                val volFloat = (volume / 100f).coerceIn(0f, 1f)
+                setVolume(volFloat, volFloat)
             }
-
             mediaPlayer?.start()
-            startVolumeRamp(initialVol, maxVol, durationSec)
+            Log.d("AlarmService", "Playing alarm $soundId at volume $volume")
 
         } catch (e: Exception) {
             Log.e("AlarmService", "Failed to play alarm", e)
@@ -119,27 +143,74 @@ class AlarmService : Service() {
         }
     }
 
-    private fun startVolumeRamp(startVol: Int, maxVol: Int, durationSec: Int) {
-        volumeJob?.cancel()
-        volumeJob = serviceScope.launch {
-            val steps = 20
-            val totalMillis = durationSec * 1000L
-            val stepTime = totalMillis / steps
-            val volStep = (maxVol - startVol) / steps.toFloat()
+    private fun handleAutoSnooze() {
+        Log.i("AlarmService", "Auto-snooze triggered.")
+        stopSound()
+
+        if (currentRepetition < maxRepetitions) {
+            // Schedule Snooze
+            val nextVolume = (currentVolume + volumeIncrement).coerceAtMost(100)
+            val nextRepetition = currentRepetition + 1
             
-            var currentVol = startVol.toFloat()
+            Log.i("AlarmService", "Scheduling snooze: Rep $nextRepetition, Vol $nextVolume in $snoozeDurationMin mins")
             
-            for (i in 0..steps) {
-                if (mediaPlayer == null) break
-                val logVol = 1f - (kotlin.math.ln(100f - currentVol) / kotlin.math.ln(100f))
-                try {
-                    val safeVol = logVol.coerceIn(0f, 1f)
-                    mediaPlayer?.setVolume(safeVol, safeVol)
-                } catch (e: Exception) { break }
-                
-                currentVol = (currentVol + volStep).coerceAtMost(99f)
-                delay(stepTime)
+            AlarmScheduler.scheduleSnooze(
+                context = this,
+                alarmId = currentAlarmId,
+                soundId = currentSoundId,
+                volume = nextVolume,
+                durationSec = (timeoutJob?.toString() ?: "3").toInt(), // Use stored duration or re-pass it? Re-pass easier.
+                snoozeMin = snoozeDurationMin,
+                volIncrement = volumeIncrement,
+                maxReps = maxRepetitions,
+                repetition = nextRepetition,
+                repeatDaily = repeatDaily
+            )
+        } else {
+            // Max repetitions reached. 
+            // If repeatDaily is true, the next day is already scheduled by AlarmScheduler when it first fired (or should be).
+            // If repeatDaily is false, we should disable the alarm.
+            if (!repeatDaily) {
+                disableAlarmState()
             }
+        }
+        
+        stopSelf()
+    }
+
+    private fun handleDismiss() {
+        Log.i("AlarmService", "User Dismissed Alarm.")
+        stopSound()
+        timeoutJob?.cancel()
+
+        // Cancel any pending snoozes for this alarm
+        AlarmScheduler.cancelSnooze(this, currentAlarmId)
+
+        // If not repeating, update UI to disabled
+        if (!repeatDaily) {
+            disableAlarmState()
+        }
+
+        stopSelf()
+    }
+    
+    private fun disableAlarmState() {
+        // Send broadcast to UI to turn off the switch
+        val intent = Intent(ACTION_ALARM_DISABLED).apply {
+            putExtra("ALARM_ID", currentAlarmId)
+        }
+        sendBroadcast(intent)
+    }
+
+    private fun stopSound() {
+        try {
+            if (mediaPlayer?.isPlaying == true) {
+                mediaPlayer?.stop()
+            }
+            mediaPlayer?.release()
+            mediaPlayer = null
+        } catch (e: Exception) {
+            Log.e("AlarmService", "Error stopping sound", e)
         }
     }
 
@@ -153,8 +224,8 @@ class AlarmService : Service() {
         val pendingFullScreen = PendingIntent.getActivity(this, 0, fullScreenIntent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
 
         return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("Alarm Ringing")
-            .setContentText("Tap to Dismiss")
+            .setContentTitle("Alarm")
+            .setContentText("Volume: $currentVolume% | Tap to Dismiss")
             .setSmallIcon(R.drawable.ic_notification)
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setCategory(NotificationCompat.CATEGORY_ALARM)
@@ -183,17 +254,8 @@ class AlarmService : Service() {
 
     override fun onDestroy() {
         _isRinging.value = false
-        volumeJob?.cancel()
         timeoutJob?.cancel()
-        try {
-            if (mediaPlayer?.isPlaying == true) {
-                mediaPlayer?.stop()
-            }
-            mediaPlayer?.release()
-        } catch (e: Exception) {
-            Log.e("AlarmService", "Error cleaning up media player", e)
-        }
-        mediaPlayer = null
+        stopSound()
         try {
             if (wakeLock?.isHeld == true) {
                 wakeLock?.release()

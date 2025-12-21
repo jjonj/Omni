@@ -35,6 +35,7 @@ namespace OmniSync.Hub.Logic.Services
             // Subscribe to FileService events
             _fileService.FileWritten += OnFileWritten;
             _fileService.BrowseFileWritten += OnBrowseFileWritten;
+            _fileService.FileChanged += OnFileSystemChanged;
         }
 
         private async void OnShutdownModeChanged(object? sender, ShutdownMode mode)
@@ -96,6 +97,18 @@ namespace OmniSync.Hub.Logic.Services
         private async void OnBrowseFileWritten(object? sender, string filePath)
         {
             await BroadcastLogEntryAdded($"Browse file '{filePath}' synced to PC.");
+        }
+
+        private async void OnFileSystemChanged(object? sender, string fullPath)
+        {
+            try
+            {
+                await _hubContext.Clients.All.SendAsync("FileChanged", fullPath, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Failed to broadcast FileChanged for {fullPath}: {ex.Message}");
+            }
         }
 
         private async void OnCommandOutputReceived(object sender, string output)
