@@ -84,7 +84,7 @@ Version history / undo across sessions
 DONE Change button text from  "↺📱" and "↺🌐" to "▶↺📱" and "▶↺🌐"
 DONE Make the ▶↺🌐 button respect the New tab toggle
 Move the button to the right of the URL bar to open current remote tab on phone to the advanced buttons panel and change icon to "🌐→📱"
-Add clear icon to the right of URL bar. 
+DONE Add clear icon to the right of URL bar. 
 
 
 DONE chrome extension does not seem to work on startup need to disable/reenable for it to connect properly it seems
