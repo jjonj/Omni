@@ -108,6 +108,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun playVideo(remotePath: String, playlist: List<String> = emptyList()) {
+        if (remotePath.startsWith("content://")) {
+            _videoPlaylist.value = playlist
+            _currentVideoIndex.value = if (playlist.contains(remotePath)) playlist.indexOf(remotePath) else 0
+            _currentVideoUrl.value = remotePath
+            navigateTo(AppScreen.VIDEOPLAYER)
+            return
+        }
+
         val prefs = applicationContext.getSharedPreferences("omni_settings", Context.MODE_PRIVATE)
         val isRandom = prefs.getBoolean("video_playlist_random", false)
         

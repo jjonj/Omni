@@ -117,7 +117,7 @@ fun DownloadedVideosScreen(
                                     }
                                     Spacer(Modifier.height(4.dp))
                                     Text(
-                                        text = "${(video.fileSize / 1024.0 / 1024.0).format(2)} MB",
+                                        text = String.format("%.2f MB", video.fileSize / 1024.0 / 1024.0),
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )

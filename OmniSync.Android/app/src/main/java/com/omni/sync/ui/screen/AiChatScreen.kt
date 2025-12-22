@@ -241,7 +241,18 @@ fun QuickActionPanel(signalRClient: SignalRClient, coroutineScope: kotlinx.corou
                 Spacer(Modifier.width(4.dp))
                 Text("Clear Chat", fontSize = 12.sp)
             }
-            Spacer(modifier = Modifier.weight(3f))
+            
+            FilledTonalButton(
+                onClick = { signalRClient.requestAiHistory() },
+                modifier = Modifier.weight(1f).height(40.dp),
+                shape = RoundedCornerShape(8.dp),
+                contentPadding = PaddingValues(0.dp)
+            ) {
+                Icon(imageVector = Icons.Default.Cached, contentDescription = "Reload History", modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(4.dp))
+                Text("Reload History", fontSize = 12.sp)
+            }
+            Spacer(modifier = Modifier.weight(1f))
         }
     }
 }

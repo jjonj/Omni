@@ -309,6 +309,12 @@ class SignalRClient(
         }
     }
 
+    fun requestAiHistory() {
+        if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
+            hubConnection?.send("RequestAiHistory")
+        }
+    }
+
     fun switchAiSession(pid: Int) {
         if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
             hubConnection?.send("SwitchAiSession", pid)
@@ -328,7 +334,7 @@ class SignalRClient(
     }
 
     fun clearAiMessages() {
-        if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
+        if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED && aiSessions.value.isNotEmpty()) {
             hubConnection?.send("SendAiMessage", "/clear")
         }
         _aiMessages.value = emptyList()

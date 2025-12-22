@@ -1,0 +1,14 @@
+Mega-update Part 2: Final features and bug fixes
+
+- Added 'AI CLI Here' option to folder right-click menu
+- Implemented Bold/Italic/Strikethrough formatting in Text Editor
+- Added 'Reload AI History' button to AI screen
+- Fixed local video playback by supporting content URIs in MainViewModel
+- Fixed 'Remote changes detected' popup suppression when saving
+- Fixed NullPointerException in FilesViewModel initialization
+- Implemented caching of verified global password in memory
+- Improved Alarm behavior: force-open activity when ringing and added dismiss button
+- Fixed 'val' reassignment in AlarmService
+- Fixed missing icon in AiChatScreen
+- Shared file type helpers via FileUtils.kt
+- Cleaned up right-click menus for local files

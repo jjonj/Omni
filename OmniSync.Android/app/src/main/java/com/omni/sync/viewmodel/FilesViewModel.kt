@@ -97,6 +97,9 @@ class FilesViewModel(
 
     private val _isSaving = MutableStateFlow(false)
     val isSaving: StateFlow<Boolean> = _isSaving
+
+    private var verifiedGlobalPassword: String? = null
+    private var suppressNextRemoteChange: String? = null
     // -------------------------
 
     // --- Bookmarks State ---
@@ -726,6 +729,7 @@ class FilesViewModel(
         }
 
         _isSaving.value = true
+        suppressNextRemoteChange = entry.path
         viewModelScope.launch(Schedulers.io().asCoroutineDispatcher()) {
             try {
                 signalRClient.sendPayload("SAVE_FILE", mapOf(
@@ -829,6 +833,19 @@ class FilesViewModel(
     val remoteChangeDetected: kotlinx.coroutines.flow.SharedFlow<String> = _remoteChangeDetected.asSharedFlow()
 
     private fun onHubFileChanged(path: String) {
+        if (suppressNextRemoteChange == path) {
+            suppressNextRemoteChange = null
+            // Still invalidate cache and refresh listing, but don't show popup
+            textCachePrefs.edit().remove("text_$path").apply()
+            val parent = getParentPath(path)
+            cachePrefs.edit().remove("cache_$parent").apply()
+            refreshCachedPaths()
+            if (mainViewModel.isConnected.value && _currentPath.value == parent) {
+                loadDirectory(parent)
+            }
+            return
+        }
+
         try {
             // Check if currently editing this file
             val currentEditing = _editingFile.value
@@ -877,6 +894,69 @@ class FilesViewModel(
             return parent
         }
         return ""
+    }
+
+    fun duplicateFile(entry: FileSystemEntry) {
+        if (!mainViewModel.isConnected.value) {
+            _errorMessage.value = "Not connected to OmniSync Hub."
+            return
+        }
+        if (entry.isDirectory) {
+            _errorMessage.value = "Cannot duplicate directories yet."
+            return
+        }
+
+        val dotIndex = entry.name.lastIndexOf('.')
+        val newName = if (dotIndex != -1) {
+            entry.name.substring(0, dotIndex) + ".copy" + entry.name.substring(dotIndex)
+        } else {
+            entry.name + ".copy"
+        }
+
+        val parent = getParentPath(entry.path)
+        val separator = if (entry.path.contains("/")) "/" else "\\"
+        val newPath = if (parent.isEmpty()) newName else {
+            if (parent.endsWith(separator)) parent + newName else parent + separator + newName
+        }
+
+        _isSaving.value = true
+        viewModelScope.launch(Schedulers.io().asCoroutineDispatcher()) {
+            try {
+                // 1. Get original content
+                val totalSize = entry.size
+                val contentBuilder = StringBuilder()
+                val chunkSize = 128 * 1024
+                var currentOffset = 0L
+                while (currentOffset < totalSize) {
+                    val remainingBytes = totalSize - currentOffset
+                    val currentChunkSize = minOf(chunkSize.toLong(), remainingBytes).toInt()
+                    if (currentChunkSize == 0) break
+                    val chunk = signalRClient.getFileChunk(entry.path, currentOffset, currentChunkSize)
+                        ?.subscribeOn(Schedulers.io())
+                        ?.blockingGet() as? ByteArray
+                    if (chunk != null) {
+                        contentBuilder.append(String(chunk, Charsets.UTF_8))
+                        currentOffset += chunk.size
+                    } else break
+                }
+
+                // 2. Write to new path
+                signalRClient.writeFileContent(newPath, contentBuilder.toString())
+                    ?.subscribeOn(Schedulers.io())
+                    ?.blockingGet()
+
+                mainViewModel.addLog("Duplicated file: $newName", com.omni.sync.ui.screen.LogType.SUCCESS)
+                
+                // 3. Refresh directory
+                viewModelScope.launch(AndroidSchedulers.mainThread().asCoroutineDispatcher()) {
+                    loadDirectory(_currentPath.value)
+                    _isSaving.value = false
+                }
+            } catch (e: Exception) {
+                _isSaving.value = false
+                _errorMessage.value = "Duplicate failed: ${e.message}"
+            }
+        }
     }
 
     fun createNewFile(name: String) {
@@ -998,23 +1078,33 @@ class FilesViewModel(
     fun setGlobalPassword(oldPassword: String?, newPassword: String): Boolean {
         val currentHash = mainViewModel.appConfig.globalPasswordHash
         if (currentHash != null) {
-            if (oldPassword == null || hashPassword(oldPassword) != currentHash) {
+            if (oldPassword == null || !verifyGlobalPassword(oldPassword)) {
+                mainViewModel.addLog("Incorrect old password", com.omni.sync.ui.screen.LogType.ERROR)
                 return false
             }
         }
+
         mainViewModel.appConfig.globalPasswordHash = hashPassword(newPassword)
+        verifiedGlobalPassword = newPassword
         mainViewModel.saveAppConfig()
+        mainViewModel.addLog("Global password set successfully", com.omni.sync.ui.screen.LogType.SUCCESS)
         return true
     }
 
     fun verifyGlobalPassword(password: String): Boolean {
         val currentHash = mainViewModel.appConfig.globalPasswordHash ?: return true // No password set
-        return hashPassword(password) == currentHash
+        val verified = currentHash == hashPassword(password)
+        if (verified) {
+            verifiedGlobalPassword = password
+        }
+        return verified
     }
 
     fun isGlobalPasswordSet(): Boolean {
         return mainViewModel.appConfig.globalPasswordHash != null
     }
+
+    fun getVerifiedPassword(): String? = verifiedGlobalPassword
 
     private fun hashPassword(password: String): String {
         val digest = MessageDigest.getInstance("SHA-256")

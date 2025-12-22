@@ -35,6 +35,10 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.omni.sync.data.model.FileSystemEntry
 import com.omni.sync.viewmodel.FilesViewModel
+import com.omni.sync.utils.isAudioFile
+import com.omni.sync.utils.isImageFile
+import com.omni.sync.utils.isPdfFile
+import com.omni.sync.utils.isVideoFile
 import java.text.SimpleDateFormat
 import java.util.Locale
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -294,26 +298,34 @@ fun FilesScreen(
                                 filesViewModel.mainViewModel.navigateTo(com.omni.sync.viewmodel.AppScreen.AI_CHAT)
                                 filesViewModel.signalRClient.sendAiMessage("/dir add \"${entry.path}\"")
                             },
+                            onAiCliHere = { entry ->
+                                filesViewModel.mainViewModel.navigateTo(com.omni.sync.viewmodel.AppScreen.AI_CHAT)
+                                filesViewModel.signalRClient.sendAiMessage("/cli \"${entry.path}\"")
+                            },
+                            onDuplicate = { entry ->
+                                filesViewModel.duplicateFile(entry)
+                            },
                             onCliHere = { entry ->
                                 filesViewModel.openCliHere(entry)
                             },
                             onDownloadVideo = { entry, isEncrypted ->
                                 if (isEncrypted) {
-                                    if (filesViewModel.isGlobalPasswordSet()) {
+                                    val cachedPassword = filesViewModel.getVerifiedPassword()
+                                    if (cachedPassword != null) {
+                                        filesViewModel.downloadVideoWithGlobalPassword(entry, cachedPassword, true)
+                                    } else if (filesViewModel.isGlobalPasswordSet()) {
                                         passwordAction = { 
-                                            // We need to pass the actual password to derive the key
-                                            // This is a bit tricky since verifyGlobalPassword only checks hash.
-                                            // I'll store the password briefly or re-prompt.
-                                            filesViewModel.downloadVideoWithGlobalPassword(entry, passwordInput, true)
+                                            filesViewModel.downloadVideoWithGlobalPassword(entry, filesViewModel.getVerifiedPassword(), true)
                                         }
+                                        passwordTargetEntry = entry
                                         showPasswordDialog = true
                                     } else {
-                                        // Force setup password first
-                                        Toast.makeText(context, "Set global password in settings or by opening 'Add...' first", Toast.LENGTH_LONG).show()
+                                        // First time setup handled in dialog
+                                        passwordTargetEntry = entry
+                                        showPasswordDialog = true
                                     }
                                 } else {
                                     filesViewModel.downloadVideoWithGlobalPassword(entry, null, false)
-                                    Toast.makeText(context, "Downloading video...", Toast.LENGTH_SHORT).show()
                                 }
                             },
                             onDeleteByPath = { filesViewModel.deleteByPath(it) },
@@ -517,6 +529,8 @@ fun FileSystemEntryItem(
     onDownloadAndOpen: (FileSystemEntry) -> Unit,
     onOpenFolder: (String) -> Unit = {},
     onOpenInAiChat: (FileSystemEntry) -> Unit = {},
+    onAiCliHere: (FileSystemEntry) -> Unit = {},
+    onDuplicate: (FileSystemEntry) -> Unit = {},
     onCliHere: (FileSystemEntry) -> Unit = {},
     onDownloadVideo: (FileSystemEntry, Boolean) -> Unit = { _, _ -> },
     onDeleteByPath: (String) -> Unit = {},
@@ -625,6 +639,13 @@ fun FileSystemEntryItem(
                     }
                 )
                 DropdownMenuItem(
+                    text = { Text("Duplicate") },
+                    onClick = {
+                        showMenu = false
+                        onDuplicate(entry)
+                    }
+                )
+                DropdownMenuItem(
                     text = { Text(if (isLocal) "Open (Ext App)" else "Download & Open (Ext App)") },
                     onClick = {
                         showMenu = false
@@ -665,6 +686,13 @@ fun FileSystemEntryItem(
                     onClick = {
                         showMenu = false
                         onOpenInAiChat(entry)
+                    }
+                )
+                DropdownMenuItem(
+                    text = { Text("AI CLI Here") },
+                    onClick = {
+                        showMenu = false
+                        onAiCliHere(entry)
                     }
                 )
                 DropdownMenuItem(
@@ -737,9 +765,6 @@ private fun getParentPath(path: String): String {
 
     val lastIndex = path.lastIndexOf(separator)
     if (lastIndex > 0) {
-        // If we are at "C:\Users", lastIndex is 2. Substring(0, 2) is "C:".
-        // We want to return "C:\" so we include the separator if it's the root.
-        // Or simply: if the result ends in ":", append separator.
         val parent = path.substring(0, lastIndex)
         if (parent.endsWith(":")) {
             return parent + separator
@@ -747,29 +772,4 @@ private fun getParentPath(path: String): String {
         return parent
     }
     return ""
-}
-
-
-fun Double.format(digits: Int) = "%.${digits}f".format(Locale.getDefault(), this)
-
-// Helper function to check extensions
-fun isVideoFile(filename: String): Boolean {
-    val lower = filename.lowercase()
-    return lower.endsWith(".mp4") || lower.endsWith(".mkv") || lower.endsWith(".avi") || 
-           lower.endsWith(".mov") || lower.endsWith(".mpg") || lower.endsWith(".wmv") || 
-           lower.endsWith(".3gp")
-}
-
-fun isAudioFile(filename: String): Boolean {
-    val lower = filename.lowercase()
-    return lower.endsWith(".mp3") || lower.endsWith(".wav") || lower.endsWith(".flac") || lower.endsWith(".ogg") || lower.endsWith(".m4a")
-}
-
-fun isImageFile(filename: String): Boolean {
-    val lower = filename.lowercase()
-    return lower.endsWith(".jpg") || lower.endsWith(".jpeg") || lower.endsWith(".png") || lower.endsWith(".gif") || lower.endsWith(".webp") || lower.endsWith(".bmp")
-}
-
-fun isPdfFile(filename: String): Boolean {
-    return filename.lowercase().endsWith(".pdf")
 }

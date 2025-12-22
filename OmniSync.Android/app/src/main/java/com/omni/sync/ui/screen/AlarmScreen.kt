@@ -214,6 +214,18 @@ fun AlarmScreen(
                 onShowSoundPicker = { showSoundPicker = 2 },
                 hideOptionsWhenDisabled = true
             )
+
+            // Dismiss Button when ringing
+            val isRinging by AlarmService.isRinging.collectAsState()
+            if (isRinging) {
+                Button(
+                    onClick = { AlarmService.stopAlarm(context) },
+                    modifier = Modifier.fillMaxWidth().height(64.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Text("DISMISS ALARM", style = MaterialTheme.typography.headlineSmall)
+                }
+            }
             
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(

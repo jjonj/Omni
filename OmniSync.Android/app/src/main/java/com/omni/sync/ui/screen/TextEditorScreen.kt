@@ -32,9 +32,12 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.TextRange
-import androidx.compose.foundation.text.BasicTextField
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import com.omni.sync.utils.isAudioFile
+import com.omni.sync.utils.isImageFile
+import com.omni.sync.utils.isPdfFile
+import com.omni.sync.utils.isVideoFile
 
 class EditorVisualTransformation(
     private val colorScheme: ColorScheme, 
@@ -456,12 +459,10 @@ fun TextEditorScreen(
                     }
                     IconButton(onClick = {
                         val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-                        val clip = clipboard.primaryClip
-                        if (clip != null && clip.itemCount > 0) {
-                            val clipText = clip.getItemAt(0).text.toString()
+                        clipboard.primaryClip?.getItemAt(0)?.text?.let { clipText ->
                             val text = textFieldValue.text
                             val sel = textFieldValue.selection
-                            filesViewModel.updateEditingContent(text.replaceRange(sel.start, sel.end, clipText))
+                            filesViewModel.updateEditingContent(text.replaceRange(sel.start, sel.end, clipText.toString()))
                         }
                     }, modifier = btnModifier) {
                         Icon(Icons.Default.ContentPaste, "Paste", modifier = iconModifier)
@@ -504,7 +505,7 @@ fun TextEditorScreen(
             )
 
             Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
-                BasicTextField(
+                TextField(
                     value = textFieldValue,
                     onValueChange = { 
                         textFieldValue = it
@@ -515,8 +516,7 @@ fun TextEditorScreen(
                     modifier = Modifier
                         .fillMaxSize()
                         .then(if (wordWrap) Modifier else Modifier.horizontalScroll(horizontalScrollState))
-                        .verticalScroll(verticalScrollState)
-                        .padding(16.dp),
+                        .verticalScroll(verticalScrollState),
                     textStyle = TextStyle(
                         fontFamily = FontFamily.Monospace,
                         fontSize = fontSize.sp,
@@ -524,7 +524,13 @@ fun TextEditorScreen(
                         color = MaterialTheme.colorScheme.onSurface
                     ),
                     visualTransformation = visualTransformation,
-                    cursorBrush = androidx.compose.ui.graphics.SolidColor(MaterialTheme.colorScheme.primary)
+                    colors = TextFieldDefaults.colors(
+                        focusedContainerColor = Color.Transparent,
+                        unfocusedContainerColor = Color.Transparent,
+                        disabledContainerColor = Color.Transparent,
+                        focusedIndicatorColor = Color.Transparent,
+                        unfocusedIndicatorColor = Color.Transparent,
+                    )
                 )
             }
         }

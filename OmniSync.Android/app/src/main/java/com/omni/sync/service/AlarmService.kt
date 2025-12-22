@@ -117,6 +117,14 @@ class AlarmService : Service(), android.content.SharedPreferences.OnSharedPrefer
         repeatDaily = intent?.getBooleanExtra("REPEAT_DAILY", false) ?: false
 
         _isRinging.value = true
+        
+        // Force open activity
+        val alarmActivityIntent = Intent(this, MainActivity::class.java).apply {
+            this.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+            this.putExtra("OPEN_SCREEN", "ALARM")
+        }
+        startActivity(alarmActivityIntent)
+
         val notification = createNotification()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             startForeground(1, notification, android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK)
