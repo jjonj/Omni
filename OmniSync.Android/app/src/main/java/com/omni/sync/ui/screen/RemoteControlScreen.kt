@@ -391,17 +391,20 @@ fun ButtonPanel(
                 ActionKeyButton(text = "Esc", modifier = Modifier.weight(1f)) {
                     signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_ESCAPE)
                 }
-                ActionKeyButton(icon = Icons.AutoMirrored.Filled.KeyboardReturn, modifier = Modifier.weight(1f)) {
-                    signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_RETURN)
+                // Arrow Keys in Grid 2
+                ActionKeyButton(icon = Icons.AutoMirrored.Filled.ArrowBack, modifier = Modifier.weight(1f)) {
+                    signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_LEFT)
                 }
-                ActionKeyButton(icon = Icons.Default.Delete, modifier = Modifier.weight(1f)) {
-                    coroutineScope.launch {
-                        signalRClient.sendKeyEvent("INPUT_KEY_DOWN", VK_CONTROL)
-                        signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_A)
-                        delay(100)
-                        signalRClient.sendKeyEvent("INPUT_KEY_UP", VK_CONTROL)
-                        signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_BACK)
+                Column(modifier = Modifier.weight(1f)) {
+                    ActionKeyButton(icon = Icons.Default.KeyboardArrowUp, modifier = Modifier.fillMaxWidth().height(20.dp)) {
+                        signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_UP)
                     }
+                    ActionKeyButton(icon = Icons.Default.KeyboardArrowDown, modifier = Modifier.fillMaxWidth().height(20.dp)) {
+                        signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_DOWN)
+                    }
+                }
+                ActionKeyButton(icon = Icons.AutoMirrored.Filled.ArrowForward, modifier = Modifier.weight(1f)) {
+                    signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_RIGHT)
                 }
                 ActionKeyButton(icon = Icons.AutoMirrored.Filled.KeyboardBackspace, modifier = Modifier.weight(1f)) {
                     signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_BACK)
@@ -419,7 +422,12 @@ fun ButtonPanel(
                         if (isKeyboardVisible) keyboardController?.hide()
                         else keyboardController?.show()
                     }
-                    
+                    ActionKeyButton(text = "Space", modifier = Modifier.weight(1f)) {
+                        signalRClient.sendText(" ")
+                    }
+                    ActionKeyButton(icon = Icons.AutoMirrored.Filled.KeyboardReturn, modifier = Modifier.weight(1f)) {
+                        signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_RETURN)
+                    }
                     ActionKeyButton(text = "More", modifier = Modifier.weight(1f)) {
                         showMoreButtons = true
                     }
@@ -428,10 +436,6 @@ fun ButtonPanel(
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     // Set 2 - Row 1
                     Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        ActionKeyButton(text = "Space", modifier = Modifier.weight(1f)) {
-                            signalRClient.sendText(" ")
-                        }
-
                         ActionKeyButton(text = "Paste", modifier = Modifier.weight(1f)) {
                             val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                             clipboard.primaryClip?.getItemAt(0)?.text?.let { signalRClient.sendText(it.toString()) }
@@ -458,22 +462,16 @@ fun ButtonPanel(
                         }
                     }
 
-                    // Set 2 - Row 2 (Arrows and Back)
+                    // Set 2 - Row 2
                     Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        // Arrow Keys
-                        ActionKeyButton(icon = Icons.AutoMirrored.Filled.ArrowBack, modifier = Modifier.weight(1f)) {
-                            signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_LEFT)
-                        }
-                        Column(modifier = Modifier.weight(1f)) {
-                            ActionKeyButton(icon = Icons.Default.KeyboardArrowUp, modifier = Modifier.fillMaxWidth().height(20.dp)) {
-                                signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_UP)
+                        ActionKeyButton(icon = Icons.Default.Delete, modifier = Modifier.weight(1f)) {
+                            coroutineScope.launch {
+                                signalRClient.sendKeyEvent("INPUT_KEY_DOWN", VK_CONTROL)
+                                signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_A)
+                                delay(100)
+                                signalRClient.sendKeyEvent("INPUT_KEY_UP", VK_CONTROL)
+                                signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_BACK)
                             }
-                            ActionKeyButton(icon = Icons.Default.KeyboardArrowDown, modifier = Modifier.fillMaxWidth().height(20.dp)) {
-                                signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_DOWN)
-                            }
-                        }
-                        ActionKeyButton(icon = Icons.AutoMirrored.Filled.ArrowForward, modifier = Modifier.weight(1f)) {
-                            signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_RIGHT)
                         }
 
                         ActionKeyButton(text = "Back", modifier = Modifier.weight(1f)) {

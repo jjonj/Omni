@@ -1,51 +1,53 @@
 # Tasks
 
+
 When finishing a task make sure to prefix the line with "DONE" and also git commit between each one.
 if told to do a megasession then fix/implement as many issues of the ones below as possible without user intervention. Make sure to git commit and mark as DONE between each one. Start with any tasks that can be validated with a script in D:\SSDProjects\Omni\TestScripts. If strictly necessary you may use AISpeak to ask the user for help/clarifications.
-
-
-
 ## General
-
-DONE Show a notification in the app when connecting/disconnecting from hub
-The app is somehow fullscreen all the time, hiding the top android bar that shows time and notification icons etc. I only want this in horizontal mode. 
-
+STILL-ISSUE The app is somehow in some kind of fullscreen all the time, hiding the top android bar that shows time and notification icons etc. I only want this in horizontal mode. 
 ## For the hub
 Right click tray icon -> exit is slow, can we be more forceful?
-
 ### Hub window
+
+Clear log on startup
 
 
 ## in OmniSync.Android
-
 ### General
-
 DONE Can we make settings/configurations persistent between reinstalls of the app? (implemented via ConfigManager in external storage)
 DONE The dashboard has two cog icons with settings in the upper right, merge them into one. 
-
 ### Dashboard
-
 ### Remote Control Screen
 Stream PC monitor, replacing background of the trackpad leaving the trackpad functioning still, options to toggle monitor, pinch to zoom, (advanced feature, do last)       
-We are using a text field to trick android into letting us use the keyboard which works really well but has some minor issues:
- - NOT WORKING (In fact got worse) Android erase from right button works but only when the textfield has content. Could we maybe ensure the textfield always has a character to erase (ofc without sending that character to the pc)
-move arrow buttons to second set of btns and move paste and shutdown to second set
-add spacebar to set2
+DONE We are using a text field to trick android into letting us use the keyboard which works really well but has some minor issues:
+ - DONE Android erase from right button works but only when the textfield has content. Could we maybe ensure the textfield always has a character to erase (ofc without sending that character to the pc)
+DONE Move the arrow buttons to button page1
+DONE Move the clear all (thrashcan) button to page2
 
 
 ### Files & Video Screen
 
-  
+Allow bookmarking files, not just folders 
+
+STILL ISSUE when clicking save txt file, it always popups remote changes detected which is true becayse we just sent an updated ver but should be suppressed when saving. 
+DONE long press menu for duplicate
+
+Search in txt file next prev buttons not jumping around in file like expected
+
+Line numbers dont work right when wrapping lines, it counts a wrapping line as a new one (Disabled word wrap for now when line numbers shown)
+
+when word wrap disabled then allow scrolling horizontally 
+
+thrashcan btn and arrow up down btnson txt screen crashes app
+
 Downloading a video as encrypted currently prompts for the password, is it possible to encrypt without asking for password? isnt that what a public key is for? Only ask for password if no global password is set
-Downloaded videos (encrypted or not) do not play. The player just shows 0.00/0.00 and black screen
-Right click menu for a downloaded file should not show "open on pc" or "download video to app" as it doesnt make sense. The "Download & Open (Ext app)" option should not have the "Download" and doesnt work as it tries to download. 
-Deleting local files work but the file list doesnt update. 
-The password is not currently changable, should be set in dashboard->settings
 
-DONE Normal tap on save button should not save->exit, just save 
-
-
+DONE Downloaded videos (encrypted or not) do not play. The player just shows 0.00/0.00 and black screen (Added support for local content URIs in MainViewModel)
+DONE Right click menu for a downloaded file should not show "open on pc" or "download video to app" as it doesnt make sense. The "Download & Open (Ext app)" option should not have the "Download" and doesnt work as it tries to download. 
+DONE Deleting local files work but the file list doesnt update. 
+DONE The password is not currently changable, should be set in dashboard->settings
 DONE Add a panel similar to bookmarks to manage cached files, where they can be uncached
+
  - Menu added but when clearing all or individual cahced files/folders the list does not update. 
  - The menu only lists cached folders, should include files
 DONE Investigate if there is a way to have the hub be notified whenever a cached file is changed on PC so that the android app can update its cached version, this is a nice to have, we definitely dont want to do periodic polling
@@ -54,62 +56,83 @@ DONE - Use this feature to notify user with a popup if the file was changed remo
        -- Ensure auto save feature doesnt overwrite remote changes, add star icon to indicate autosave isnt saving in this state
 	   
 	   
-Remove the button left of + that opens list of downloaded files. we now have the root virtual folders for that. 
-
+	   
+DONE Remove the button left of + that opens list of downloaded files. we now have the root virtual folders for that. 
+	   
+	   
 Video:
-Still Cant use the back button in upper right, probably because the overlay areas are blocking it, make the overlay areas less wide on the outer area
+	   
+	   
+DONE Still Cant use the back button in upper right, probably because the overlay areas are blocking it, make the overlay areas less wide on the outer area
+DONE Long press on a folder should give option to "AI CLI Here" which will switch to ai screen, open a new cli session with --workspace that folder.
+	   
+	   
  - I think you changed the overlay area to be less wide but it is still covering the edges of the screen. There should be non overlayed space on the edges as well as in the middle
-The embedded video player we are using is still being a bit annoying with showing/hiding the player buttons. This didnt used to happen, it just kinda got slightly unstable in its activation. - fixing this requires user to check for regressions
+	   
+	   
+DONE The embedded video player we are using is still being a bit annoying with showing/hiding the player buttons. This didnt used to happen, it just kinda got slightly unstable in its activation. - fixing this requires user to check for regressions
  - When i tap the screen and the player buttons are not visible then they will turn visible for a second and then unexpected disappear again, as if i tapped twice. Same happens when they are visible and i tap to hide them, then they hide for 1sec then reappear. I have to tap 3 times to actually toggle their visibility
-
+	   
 More Text editing fancy features, think like a lite code editor like notepad++ or VS code. be creative. MORE options in burger menu with lots of options
-Search/replace menu with higlighting findings and next/prev found
-Toggle word wrap
-Save as copy
-Have multiple files open at once (Swiping side by side between them, have a button opening dropdown with them, option to close all with a dialog for each unsaved file whether to save
-Bold/italic/strikethrough options on right clicking selected text
-Link insertion in burger menu
-Advanced bar below the header with the following options (use icons not text)
-	Duplicate line
-	Delete line
-	Move line up/down
-	Copy line
-	Paste
+	   
+DONE Search/replace menu with higlighting findings and next/prev found
+	   
+DONE Toggle word wrap
+	   
+DONE Save as copy
+	   
+DONE Have multiple files open at once (Swiping side by side between them, have a button opening dropdown with them, option to close all with a dialog for each unsaved file whether to save
+	   
+DONE Bold/italic/strikethrough options on right clicking selected text
+	   
+DONE Link insertion in burger menu
 
-Highlight matching brackets/parentheses
-Pinch to zoom (font size change), allow zooming out very far
+	   
+DONE Highlight matching brackets/parentheses
+	   
+DONE Pinch to zoom (font size change), allow zooming out very far
+	   
 Version history / undo across sessions
-
-
+	   
+	   
+	   
 ### Browser control screen
-
+	   
 DONE Change button text from  "↺📱" and "↺🌐" to "▶↺📱" and "▶↺🌐"
+	   
 DONE Make the ▶↺🌐 button respect the New tab toggle
+	   
 DONE Move the button to the right of the URL bar to open current remote tab on phone to the advanced buttons panel and change icon to "🌐→📱"
-DONE Add clear icon to the right of URL bar. 
-
-
+	   
+DONE Add clear icon to the right of URL bar.   
+	   
+	   
+	   
 DONE chrome extension does not seem to work on startup need to disable/reenable for it to connect properly it seems
-
+	   
+	   
 ### Notification panel
-Make the buttons have 2 pixels margin between them and use a dark blue background istead of the current blue
-When changing quick actions the notification does not instantly update
-Hide the "Omni - COnnected" title, just show buttons.
-
-
+	   
+DONE Make the buttons have 2 pixels margin between them and use a dark blue background istead of the current blue
+	   
+DONE When changing quick actions the notification does not instantly update
+	   
+DONE Hide the "Omni - COnnected" title, just show buttons.
+	   
 ### Android Home screen widgets
 NOT-WORKING Add support for android launcher widgets, when you add a widget you can choose a quick action (same as the list from notifications)
-
 ### Settings screen (accessed by button on dashboard, not bottom panel)
 
+### AI screen
+DONE button to reload AI the history of the session
+DONE auto scroll down when new messages come in.
 
-
+DONE Clear button does not work. It should do nothing if there is no session active, otherwise it should send /clear remotely and also clear the local chat. 
 ### Alarm screen
-NOT WORKING When alarm pops, force open the omnihub app to open. Do we not have permission from android to open an app automatically? im pressure sure other alarm apps do. 
+DONE When alarm pops, force open the omnihub app to open. Do we not have permission from android to open an app automatically? im pressure sure other alarm apps do. (Added explicit startActivity and permissions)
 Dismissing alarm from notification does not seem to work, at least while its snoozing
 Dismissing alarm from alarm screen does not deactivate a non repeating alarm like expected.
-
 ### Smart home integration
 DONE Read SmartFeature.txt (implemented ExternalCommandController in Hub)
-
 ## Web
+    
