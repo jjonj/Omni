@@ -91,7 +91,7 @@ class AiTester:
             exit_code = 1
             
         if not self.response_received:
-            logger.error("FAIL: Did not receive ReceiveAiResponse broadcast (is ai_listener.py running?)")
+            logger.error("FAIL: Did not receive ReceiveAiResponse broadcast (is the Hub AI service running?)")
             exit_code = 1
         
         if self.failure_detected:
@@ -104,8 +104,14 @@ class AiTester:
             logger.error("TEST FAILED.")
 
         self.hub.stop()
-        sys.exit(exit_code)
+        return exit_code
+
+def run_test(message=None):
+    tester = AiTester()
+    if message:
+        # Override sys.argv[1] behavior for programmatic call
+        sys.argv = [sys.argv[0], message]
+    return asyncio.run(tester.run_test())
 
 if __name__ == "__main__":
-    tester = AiTester()
-    asyncio.run(tester.run_test())
+    sys.exit(run_test())

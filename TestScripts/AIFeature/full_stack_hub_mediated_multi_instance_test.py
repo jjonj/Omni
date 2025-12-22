@@ -77,7 +77,6 @@ async def run_hub_multi_test(num_instances=2):
 
     # 0. Cleanup
     cleanup_all_gemini_windows()
-    kill_process_by_name("ai_listener.py")
 
     # 1. Check Hub
     if not is_port_in_use(HUB_PORT):
@@ -114,15 +113,10 @@ async def run_hub_multi_test(num_instances=2):
         pids = get_gemini_pids()
         print(f"General search found: {pids}")
 
-    # 4. Launch a single Listener
-    print("\nLaunching a single AI Listener...")
-    subprocess.Popen(
-        [sys.executable, os.path.join(ROOT_DIR, "launch_ai_listener.py")],
-        cwd=ROOT_DIR
-    )
-    
-    print("Waiting 10s for Listener to initialize and authenticate...")
-    await asyncio.sleep(10)
+    # 4. Hub AI Service handles discovery
+    print("\nHub AI Service will handle discovery automatically.")
+    print("Waiting 5s for Hub to discover new sessions...")
+    await asyncio.sleep(5)
 
     # 5. Run Integration Test
     print("\nRunning SignalR Multi-Response Test...")

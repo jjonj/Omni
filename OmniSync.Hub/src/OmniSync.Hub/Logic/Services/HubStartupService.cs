@@ -24,13 +24,11 @@ namespace OmniSync.Hub.Logic.Services
         {
             bool autoStart = _configuration.GetValue<bool>("AiSettings:AutoStartComponents", true);
             
-            if (autoStart)
-            {
-                _logger.LogInformation("HubStartupService: Starting AI components...");
-                // Gemini CLI now auto-launches on demand via ai_listener.py
-                LaunchComponent("launch_ai_listener.py");
-            }
-            else
+                if (autoStart)
+                {
+                    _logger.LogInformation("HubStartupService: AI auto-start is enabled. Components will launch on-demand.");
+                    // ai_listener.py is deprecated. AiCliService handles sessions directly.
+                }            else
             {
                 _logger.LogInformation("HubStartupService: AI auto-start is disabled in configuration.");
             }

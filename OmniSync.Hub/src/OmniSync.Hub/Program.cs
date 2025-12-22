@@ -87,8 +87,9 @@ builder.Services.AddSingleton<HubEventSender>(provider =>
     var shutdownService = provider.GetRequiredService<ShutdownService>();
     var commandDispatcher = provider.GetRequiredService<CommandDispatcher>();
     var fileService = provider.GetRequiredService<FileService>(); // Get FileService
+    var aiCliService = provider.GetRequiredService<AiCliService>(); // Get AiCliService
 
-    return new HubEventSender(hubContext, processService, inputService, shutdownService, commandDispatcher, fileService);
+    return new HubEventSender(hubContext, processService, inputService, shutdownService, commandDispatcher, fileService, aiCliService);
 });
 builder.Services.AddSingleton<HubMonitorService>(); // Register the new monitoring service
 builder.Services.AddHostedService<TrayIconManager>();

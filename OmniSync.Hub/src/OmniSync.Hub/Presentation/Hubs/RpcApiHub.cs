@@ -50,14 +50,6 @@ namespace OmniSync.Hub.Presentation.Hubs
             _hubMonitorService = hubMonitorService;
             _aiCliService = aiCliService;
             _logger = logger;
-
-            _aiCliService.ResponseReceived += OnAiCliResponseReceived;
-        }
-
-        private void OnAiCliResponseReceived(object? sender, GeminiResponseEventArgs e)
-        {
-            // Broadcast responses from AiCliService to all SignalR clients
-            _ = Clients.All.SendAsync("ReceiveAiResponse", e.Text);
         }
 
         public override async Task OnConnectedAsync()
@@ -515,7 +507,11 @@ namespace OmniSync.Hub.Presentation.Hubs
                 await Clients.All.SendAsync("ReceiveAiMessage", Context.ConnectionId, message);
 
                 // 2. Direct Hub-to-CLI communication
-                await _aiCliService.SendPromptAsync(message);
+                if (!await _aiCliService.SendPromptAsync(message))
+                {
+                    await Clients.Caller.SendAsync("ReceiveAiResponse", "Error: Failed to communicate with AI service.");
+                    AnyCommandReceived?.Invoke(this, "AI Communication Failed");
+                }
             }
         }
 
@@ -557,23 +553,7 @@ namespace OmniSync.Hub.Presentation.Hubs
             if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
             {
                 AnyCommandReceived?.Invoke(this, "StartNewAiSession");
-                // Navigate up from bin/Debug/net9.0-windows to the project root
-                string rootPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", ".."));
-                string scriptPath = Path.Combine(rootPath, "launch_gemini_cli.py");
-
-                if (File.Exists(scriptPath))
-                {
-                    _logger.LogInformation($"RpcApiHub: Launching new AI session...");
-                    var startInfo = new System.Diagnostics.ProcessStartInfo
-                    {
-                        FileName = "python",
-                        Arguments = scriptPath,
-                        WorkingDirectory = rootPath,
-                        UseShellExecute = true,
-                        CreateNoWindow = false
-                    };
-                    System.Diagnostics.Process.Start(startInfo);
-                }
+                await _aiCliService.LaunchSessionAsync();
             }
         }
 
@@ -600,7 +580,7 @@ namespace OmniSync.Hub.Presentation.Hubs
                 await Clients.All.SendAsync("SwitchAiSession", pid);
 
                 // Switch in Hub
-                _aiCliService.SetTargetPid(pid);
+                await _aiCliService.SetTargetPidAsync(pid);
                 await _aiCliService.GetHistoryAsync(pid);
             }
         }

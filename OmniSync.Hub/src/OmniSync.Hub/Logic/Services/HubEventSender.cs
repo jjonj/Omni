@@ -16,9 +16,10 @@ namespace OmniSync.Hub.Logic.Services
         private readonly ShutdownService _shutdownService;
         private readonly CommandDispatcher _commandDispatcher;
         private readonly FileService _fileService; // Added FileService dependency
+        private readonly AiCliService _aiCliService; // Added AiCliService
         private readonly Dictionary<string, string> _clientCommandOutputSubscriptions = new Dictionary<string, string>(); // ClientId -> ConnectionId for command output
 
-        public HubEventSender(IHubContext<RpcApiHub> hubContext, ProcessService processService, InputService inputService, ShutdownService shutdownService, CommandDispatcher commandDispatcher, FileService fileService) // Added FileService
+        public HubEventSender(IHubContext<RpcApiHub> hubContext, ProcessService processService, InputService inputService, ShutdownService shutdownService, CommandDispatcher commandDispatcher, FileService fileService, AiCliService aiCliService) // Added AiCliService
         {
             _hubContext = hubContext;
             _processService = processService;
@@ -26,6 +27,7 @@ namespace OmniSync.Hub.Logic.Services
             _shutdownService = shutdownService;
             _commandDispatcher = commandDispatcher;
             _fileService = fileService; // Assign FileService
+            _aiCliService = aiCliService;
 
             _processService.CommandOutputReceived += OnCommandOutputReceived;
             _inputService.ModifierStateChanged += OnModifierStateChanged;
@@ -36,6 +38,30 @@ namespace OmniSync.Hub.Logic.Services
             _fileService.FileWritten += OnFileWritten;
             _fileService.BrowseFileWritten += OnBrowseFileWritten;
             _fileService.FileChanged += OnFileSystemChanged;
+            
+            // Subscribe to AI events
+            _aiCliService.ResponseReceived += OnAiCliResponseReceived;
+        }
+
+        private async void OnAiCliResponseReceived(object? sender, GeminiResponseEventArgs e)
+        {
+            if (e.IsHistory)
+            {
+                await _hubContext.Clients.All.SendAsync("ReceiveAiHistory", e.Text);
+            }
+            else 
+            {
+                 // Always send the text if present
+                 if (!string.IsNullOrEmpty(e.Text))
+                 {
+                     await _hubContext.Clients.All.SendAsync("ReceiveAiResponse", e.Text);
+                 }
+
+                 if (e.IsFinished)
+                 {
+                     await _hubContext.Clients.All.SendAsync("ReceiveAiStatus", (string?)null);
+                 }
+            }
         }
 
         private async void OnShutdownModeChanged(object? sender, ShutdownMode mode)

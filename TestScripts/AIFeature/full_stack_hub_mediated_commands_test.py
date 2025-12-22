@@ -95,21 +95,19 @@ def main():
     print("  - Hub is ONLINE.")
 
     # 2. Cleanup existing AI components
-    print("[2/5] Cleaning up stale AI components...")
-    kill_process_by_name("ai_listener.py")
+    print("[2/5] Cleaning up stale AI sessions (if any)...")
     kill_gemini_instances()
     time.sleep(2)
 
     # 3. Launch Gemini CLI (interactive)
     print("[3/5] Launching Gemini CLI...")
     run_script("launch_gemini_cli.py")
-    time.sleep(10)
+    time.sleep(5)
 
-    # 4. Launch AI Listener
-    print("[4/5] Launching AI Listener...")
-    run_script("launch_ai_listener.py")
-    print("  - Waiting 8s for Listener to discover pipe and authenticate...")
-    time.sleep(8)
+    # 4. Hub AI Service handles discovery
+    print("[4/5] Hub AI Service will handle discovery automatically.")
+    print("  - Waiting 5s for Hub to notice the new session...")
+    time.sleep(5)
 
     # 5. Run Integration Test
     print("[5/5] Running SignalR-only Integration Test...")
