@@ -32,9 +32,10 @@ namespace OmniSync.Hub.Presentation.Hubs
         private readonly ShutdownService _shutdownService;
         private readonly RegistryService _registryService;
         private readonly HubMonitorService _hubMonitorService;
+        private readonly AiCliService _aiCliService;
         private readonly ILogger<RpcApiHub> _logger; // Added for logging
 
-        public RpcApiHub(AuthService authService, FileService fileService, ClipboardService clipboardService, CommandDispatcher commandDispatcher, ProcessService processService, HubEventSender hubEventSender, InputService inputService, AudioService audioService, ShutdownService shutdownService, RegistryService registryService, HubMonitorService hubMonitorService, ILogger<RpcApiHub> logger)
+        public RpcApiHub(AuthService authService, FileService fileService, ClipboardService clipboardService, CommandDispatcher commandDispatcher, ProcessService processService, HubEventSender hubEventSender, InputService inputService, AudioService audioService, ShutdownService shutdownService, RegistryService registryService, HubMonitorService hubMonitorService, AiCliService aiCliService, ILogger<RpcApiHub> logger)
         {
             _authService = authService;
             _fileService = fileService;
@@ -47,7 +48,16 @@ namespace OmniSync.Hub.Presentation.Hubs
             _shutdownService = shutdownService;
             _registryService = registryService;
             _hubMonitorService = hubMonitorService;
+            _aiCliService = aiCliService;
             _logger = logger;
+
+            _aiCliService.ResponseReceived += OnAiCliResponseReceived;
+        }
+
+        private void OnAiCliResponseReceived(object? sender, GeminiResponseEventArgs e)
+        {
+            // Broadcast responses from AiCliService to all SignalR clients
+            _ = Clients.All.SendAsync("ReceiveAiResponse", e.Text);
         }
 
         public override async Task OnConnectedAsync()
@@ -500,8 +510,12 @@ namespace OmniSync.Hub.Presentation.Hubs
             {
                 string preview = message.Length > 20 ? message.Substring(0, 20) + "..." : message;
                 AnyCommandReceived?.Invoke(this, $"AI Message Sent: {preview}");
-                // Broadcast the user message so other clients (like a CLI listener) can see it
+                
+                // 1. Broadcast the user message so other clients can see it
                 await Clients.All.SendAsync("ReceiveAiMessage", Context.ConnectionId, message);
+
+                // 2. Direct Hub-to-CLI communication
+                await _aiCliService.SendPromptAsync(message);
             }
         }
 
@@ -538,7 +552,7 @@ namespace OmniSync.Hub.Presentation.Hubs
             }
         }
 
-                public async Task StartNewAiSession()
+        public async Task StartNewAiSession()
         {
             if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
             {
@@ -567,7 +581,12 @@ namespace OmniSync.Hub.Presentation.Hubs
         {
             if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
             {
+                // Request from legacy Python listeners
                 await Clients.All.SendAsync("RequestAiSessions");
+
+                // Discover directly in Hub
+                var pids = await _aiCliService.DiscoverSessionsAsync();
+                await Clients.All.SendAsync("ReceiveAiSessions", pids);
             }
         }
 
@@ -576,7 +595,13 @@ namespace OmniSync.Hub.Presentation.Hubs
             if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
             {
                 AnyCommandReceived?.Invoke(this, $"SwitchAiSession: {pid}");
+                
+                // Switch in legacy Python listeners
                 await Clients.All.SendAsync("SwitchAiSession", pid);
+
+                // Switch in Hub
+                _aiCliService.SetTargetPid(pid);
+                await _aiCliService.GetHistoryAsync(pid);
             }
         }
 

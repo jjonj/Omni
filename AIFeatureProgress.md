@@ -8,13 +8,12 @@ as that will kill yourself and prevent you from fufilling any tasks.
 
 ## Architectural Overview
 
-The AI system has transitioned from brittle UI automation to a robust **Programmatic Named Pipe Hook**.
+The AI system has transitioned from a separate Python listener to a **Direct C# Hub Integration**.
 
 1.  **Mobile Client (Android)**: Sends prompts via SignalR to the Hub.
-2.  **Omni Hub (C#)**: Broadcasts prompts to all authenticated listeners.
-3.  **AI Listener (Python)**: Discovers running Gemini instances, connects to their unique named pipes (\\.\pipe\gemini-cli-<pid>), and injects prompts.
-4.  **Gemini CLI (Node/React)**: A custom `remoteControl.ts` server listens for `RemotePrompt` events, submits them to the model, and emits `RemoteResponse` events upon completion.
-5.  **Response Relay**: The Python listener captures the response from the pipe and relays it back to the Hub.
+2.  **Omni Hub (C#)**: Directly manages named pipe connections to Gemini instances via `AiCliService`.
+3.  **Gemini CLI (Node/React)**: Listens for `RemotePrompt` events via named pipe and responds.
+4.  **Response Relay**: The Hub's `AiCliService` captures responses and broadcasts them via SignalR.
 
 ---
 
@@ -24,14 +23,14 @@ D:\SSDProjects\Tools\gemini-cli a custom/forked version/repo of gemini CLI with 
 
 ## Component Deep-Dive
 
-### 1. AI Gateway (`OmniSync.Cli`)
+### 1. AI Gateway (`OmniSync.Hub`)
 
-#### `ai_listener.py`
-Refactored to support the Named Pipe architecture and session management.
-- **PID Discovery**: Automatically finds all `node` processes running `bundle/gemini.js` or `dist/index.js`.
-- **Async I/O**: Uses `asyncio.to_thread` to handle synchronous pipe communication without blocking the SignalR loop.
-- **Auto-Launch**: Automatically invokes `launch_gemini_cli.py` if no active session is found when a message arrives.
-- **History Relay**: Handles the `getHistory` IPC command to fetch and relay conversation history from the CLI to the Hub.
+#### `AiCliService.cs` (C#)
+Replaces the legacy `ai_listener.py`.
+- **PID Discovery**: Uses WMI (`System.Management`) to find node processes running `bundle/gemini.js` or `dist/index.js`.
+- **Named Pipe IPC**: Maintains a dictionary of `GeminiSession` objects, each managing an asynchronous `NamedPipeClientStream`.
+- **Streaming Responses**: Implements an async read loop for each pipe to capture real-time responses.
+- **Multi-Session**: Supports discovering, switching between, and targeting specific Gemini instances by PID.
 
 #### `gemini-cli` Customizations
 - **`remoteControl.ts`**: Implements the IPC server. Supports `prompt` and `getHistory` commands.
@@ -43,8 +42,8 @@ Refactored to support the Named Pipe architecture and session management.
 ### 2. Testing & Validation (`TestScripts/AIFeature`)
 
 The test suite has been expanded to cover advanced scenarios:
-- `test_auto_multi_cli.py`: Automates launching multiple Gemini instances and verifies parallel communication with each via unique pipes.
-- `full_stack_hub_mediated_multi_instance_test.py`: Validates the Hub's ability to coordinate multiple sessions and relay history.
+- `test_hub_mediated_roundtrip.py`: Verified Hub-integrated listener flow.
+- `test_hub_mediated_multi_cli.py`: Validated multi-session discovery and targeted communication from the Hub.
 
 ---
 
@@ -53,12 +52,13 @@ The test suite has been expanded to cover advanced scenarios:
 | Feature | Status | Notes |
 | :--- | :--- | :--- |
 | **SignalR AI Relay** | Stable | Verified with automated tests. |
+| **C# Hub Integration** | Stable | **NEW**: AI Listener is now a built-in service in OmniSync.Hub. |
 | **Named Pipe IPC** | Stable | High performance, no focus-stealing issues. |
 | **Slash Command Injection**| Stable | Now fully programmatic via Named Pipe (no pyautogui). Feedback captured. |
-| **Multi-Session Support** | Stable | **ENHANCED**: Full lifecycle (Start, List, Switch) integrated into Android UI. |
+| **Multi-Session Support** | Stable | Full lifecycle (Start, List, Switch) integrated into Hub and Android UI. |
 | **History Synchronization** | Stable | Conversations are synced when switching sessions or starting new ones. |
 | **Process Cleanup Safety**| Stable | Cleanup scripts now protect ancestors and windows with "Omni" in title to avoid self-termination. |
-| **Android AI Chat** | Stable | **ENHANCED**: Multi-session UI, /clear command, and auto-sync history. |
+| **Android AI Chat** | Stable | Multi-session UI, /clear command, and auto-sync history. |
 
 ### Resolved: Multi-Session Management & History Synchronization
 1.  **Session Discovery**: AI Listener now scans for all active Gemini processes and reports their PIDs back to the Hub.

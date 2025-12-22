@@ -62,6 +62,7 @@ builder.Services.AddSingleton<CommandDispatcher>(provider => {
     return new CommandDispatcher(inputService, fileService, audioService, processService, shutdownService, appLifetime);
 });
 builder.Services.AddSingleton<ProcessService>();
+builder.Services.AddSingleton<AiCliService>();
 builder.Services.AddSingleton<InputService>(provider =>
 {
     var logger = provider.GetRequiredService<ILogger<InputService>>();
