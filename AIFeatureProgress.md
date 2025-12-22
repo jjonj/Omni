@@ -35,9 +35,11 @@ Replaces the legacy `ai_listener.py`.
 - **Named Pipe IPC**: Manages `GeminiSession` objects with asynchronous `NamedPipeClientStream`.
 - **Streaming Responses**: Async read loop captures real-time response chunks, turn markers, and history data.
 - **Auto-Launch**: Automatically triggers `launch_gemini_cli.py` if a prompt is sent but no active sessions are found.
+- **Workspace Support**: Added support for launching CLI instances at specific file system paths.
 
 #### `gemini-cli` Customizations
 - **`remoteControl.ts`**: Implements the IPC server. Supports `prompt` and `getHistory` commands.
+- **`config.ts`**: Added global `--workspace` (`-w`) argument to set the initial working directory and project root.
 - **`useGeminiStream.ts`**: Modified to emit `RemoteResponse` both after model turns and specifically when slash commands are handled.
 - **`AppContainer.tsx`**: Listens for `RequestRemoteHistory` and serializes the React history state for transport over the pipe.
 
@@ -58,21 +60,23 @@ The test suite has been fully migrated to use the native Hub integration:
 | Feature | Status | Notes |
 | :--- | :--- | :--- |
 | **SignalR AI Relay** | Stable | Verified with automated tests. |
-| **C# Hub Integration** | Stable | **REPLACED**: AI Listener is now a high-performance built-in service in OmniSync.Hub. |
+| **C# Hub Integration** | Stable | **REPLACED**: AI Listener is now a built-in service in OmniSync.Hub. |
 | **Named Pipe IPC** | Stable | High performance, no focus-stealing issues. |
 | **Slash Command Injection**| Stable | Now fully programmatic via Named Pipe. |
 | **Multi-Session Support** | Stable | Discovery, List, Switch, and History Sync integrated. |
 | **Auto-Launch** | Stable | Hub launches Gemini CLI on-demand if missing. |
+| **Workspace Management**| Stable | **NEW**: Gemini CLI now supports `--workspace` flag. |
+| **Android "CLI Here"** | Stable | **NEW**: Long-tap a folder in Android to launch a CLI at that path. |
 | **Process Cleanup Safety**| Stable | Cleanup scripts protect ancestors and "Omni" windows. |
 
-### Resolved: Native Hub Integration
-1.  **Built-in Listener**: Removed `ai_listener.py` dependency. All IPC logic is now in `AiCliService.cs`.
-2.  **Performance**: Parallel discovery ensures that stale or invalid node processes don't delay connection to valid ones.
-3.  **Filtering**: WMI query now filters out incompatible global gemini-cli processes.
-4.  **Error Handling**: SignalR clients are now notified if the Hub fails to communicate with the AI CLI.
+### Resolved: Workspace & Android Integration
+1.  **Workspace Flag**: Added `--workspace` argument to `gemini-cli` to explicitly set the working directory, overriding `process.cwd()`.
+2.  **Robust Launch**: Updated `launch_gemini_cli.py` to use a temporary batch file, ensuring reliable directory switching and quoting on Windows.
+3.  **Android Context Menu**: Added "CLI Here" to the folder long-tap menu in `FilesScreen.kt`.
+4.  **SignalR Plumbing**: Added `StartCliAtWorkspace` to `RpcApiHub.cs` and `SignalRClient.kt` to facilitate the end-to-end flow.
 
 ---
 
 ## Ultimate goal
 The ability to Create, List, Switch-Between, Close and Interact with multiple CLI windows on the PC from the Android app through the hub as the middleman.
-Full control has been established via the Hub-to-CLI IPC bridge.
+Full control and workspace targeting have been established.

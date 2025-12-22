@@ -557,6 +557,15 @@ namespace OmniSync.Hub.Presentation.Hubs
             }
         }
 
+        public async Task StartCliAtWorkspace(string path)
+        {
+            if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
+            {
+                AnyCommandReceived?.Invoke(this, $"StartCliAtWorkspace: {path}");
+                await _aiCliService.LaunchSessionAsync(path);
+            }
+        }
+
         public async Task GetAiSessions()
         {
             if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)

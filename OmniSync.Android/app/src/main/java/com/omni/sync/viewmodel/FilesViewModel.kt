@@ -557,6 +557,16 @@ class FilesViewModel(
         signalRClient.sendPayload("OPEN_ON_PC", mapOf("Path" to entry.path))
     }
 
+    fun openCliHere(entry: FileSystemEntry) {
+        if (!mainViewModel.isConnected.value) {
+            _errorMessage.value = "Not connected to OmniSync Hub. Please connect first."
+            return
+        }
+        if (!entry.isDirectory) return
+        mainViewModel.addLog("Opening CLI at: ${entry.path}", com.omni.sync.ui.screen.LogType.INFO)
+        signalRClient.startCliAtWorkspace(entry.path)
+    }
+
     fun openForEditing(entry: FileSystemEntry) {
         if (!mainViewModel.isConnected.value) {
             val cachedContent = textCachePrefs.getString("text_${entry.path}", null)

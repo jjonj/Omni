@@ -307,6 +307,12 @@ class SignalRClient(
         }
     }
 
+    fun startCliAtWorkspace(path: String) {
+        if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
+            hubConnection?.send("StartCliAtWorkspace", path)
+        }
+    }
+
     fun clearAiMessages() {
         if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
             hubConnection?.send("SendAiMessage", "/clear")

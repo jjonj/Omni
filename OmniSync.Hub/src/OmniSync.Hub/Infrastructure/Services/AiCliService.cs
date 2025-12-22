@@ -95,7 +95,7 @@ namespace OmniSync.Hub.Infrastructure.Services
             return connectedPids;
         }
 
-        public async Task<bool> LaunchSessionAsync()
+        public async Task<bool> LaunchSessionAsync(string? workspace = null)
         {
             try
             {
@@ -108,15 +108,23 @@ namespace OmniSync.Hub.Infrastructure.Services
                     return false;
                 }
 
-                _logger.LogInformation($"AiCliService: Launching new Gemini CLI session...");
+                _logger.LogInformation($"AiCliService: Launching new Gemini CLI session in workspace: {workspace ?? "default"}...");
+                
+                string arguments = $"\"{scriptPath}\"";
+                if (!string.IsNullOrEmpty(workspace))
+                {
+                    arguments += $" \"{workspace}\"";
+                }
+
                 var startInfo = new ProcessStartInfo
                 {
                     FileName = "python",
-                    Arguments = scriptPath,
+                    Arguments = arguments,
                     WorkingDirectory = rootPath,
                     UseShellExecute = true,
                     CreateNoWindow = false
                 };
+
                 Process.Start(startInfo);
 
                 // Wait for the process and its pipe

@@ -301,6 +301,9 @@ fun FilesScreen(
                                 filesViewModel.mainViewModel.navigateTo(com.omni.sync.viewmodel.AppScreen.AI_CHAT)
                                 filesViewModel.signalRClient.sendAiMessage("/dir add \"${entry.path}\"")
                             },
+                            onCliHere = { entry ->
+                                filesViewModel.openCliHere(entry)
+                            },
                             onDownloadVideo = { entry, isEncrypted ->
                                 if (isEncrypted) {
                                     if (filesViewModel.isGlobalPasswordSet()) {
@@ -521,6 +524,7 @@ fun FileSystemEntryItem(
     onDownloadAndOpen: (FileSystemEntry) -> Unit,
     onOpenFolder: (String) -> Unit = {},
     onOpenInAiChat: (FileSystemEntry) -> Unit = {},
+    onCliHere: (FileSystemEntry) -> Unit = {},
     onDownloadVideo: (FileSystemEntry, Boolean) -> Unit = { _, _ -> },
     onDeleteByPath: (String) -> Unit = {},
     onDeleteAllEncrypted: () -> Unit = {}
@@ -664,6 +668,13 @@ fun FileSystemEntryItem(
                     onClick = {
                         showMenu = false
                         onOpenInAiChat(entry)
+                    }
+                )
+                DropdownMenuItem(
+                    text = { Text("CLI Here") },
+                    onClick = {
+                        showMenu = false
+                        onCliHere(entry)
                     }
                 )
                 DropdownMenuItem(
