@@ -1,0 +1,7 @@
+Implement AI screen updates and fix connection crash
+
+- Added Esc, Up, Down, and 'Yolo' (Ctrl+Y) buttons to AI screen
+- Updated Send button to send Enter when message is empty
+- Centralized Windows virtual key codes in WindowsKeyCodes.kt
+- Fixed crash when hub is unreachable by adding error handlers to SignalR start() subscription
+- Updated SignalRClient to use centralized key codes

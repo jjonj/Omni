@@ -1,5 +1,9 @@
 package com.omni.sync.data.repository
 
+import com.omni.sync.utils.WindowsKeyCodes.VK_BACK
+import com.omni.sync.utils.WindowsKeyCodes.VK_CONTROL
+import com.omni.sync.utils.WindowsKeyCodes.VK_RETURN
+import com.omni.sync.utils.WindowsKeyCodes.VK_A
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -156,8 +160,14 @@ class SignalRClient(
             ?.doOnError { error ->
                 _connectionState.value = "Error: ${error.message}"
                 mainViewModel.setConnected(false)
+                mainViewModel.addLog("Connection failed: ${error.message}", com.omni.sync.ui.screen.LogType.ERROR)
             }
-            ?.subscribe()
+            ?.subscribe({
+                // Success handled by doOnComplete
+            }, { error ->
+                // Error handled by doOnError, but we must provide this to avoid OnErrorNotImplementedException
+                Log.e("SignalRClient", "Connection subscription error", error)
+            })
 
         registerHubHandlers()
     }
