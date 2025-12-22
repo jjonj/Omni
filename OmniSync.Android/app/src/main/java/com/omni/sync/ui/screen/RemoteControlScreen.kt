@@ -85,32 +85,27 @@ fun RemoteControlScreen(
         focusRequester.requestFocus()
     }
 
-    // Clean layout with proper divider
-    Column(modifier = modifier.fillMaxSize().statusBarsPadding()) {
+    // Layered layout: Trackpad fills the screen, ButtonPanel sits on top with shadow
+    Box(modifier = modifier.fillMaxSize()) {
         TrackpadArea(
             signalRClient = signalRClient,
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f, fill = true)
+            modifier = Modifier.fillMaxSize()
         )
         
-        // Clean 1dp divider
-        HorizontalDivider(
-            thickness = 1.dp,
-            color = MaterialTheme.colorScheme.outlineVariant
-        )
-        
-        // ButtonPanel with proper background
-        Box(
+        // ButtonPanel with elevation and shadow at the bottom
+        Surface(
             modifier = Modifier
+                .align(Alignment.BottomCenter)
                 .fillMaxWidth()
-                .background(MaterialTheme.colorScheme.surface)
-                .imePadding()
+                .imePadding(),
+            tonalElevation = 2.dp,
+            shadowElevation = 8.dp,
+            color = MaterialTheme.colorScheme.surface
         ) {
             ButtonPanel(
                 signalRClient = signalRClient,
                 mainViewModel = mainViewModel,
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
                 keyboardController = keyboardController,
                 isKeyboardVisible = isKeyboardVisible,
                 focusRequester = focusRequester
@@ -247,7 +242,7 @@ fun ButtonPanel(
     var isMutedState by remember { mutableStateOf(false) }
     var shutdownLabel by remember { mutableStateOf("None") }
     var shutdownIndex by remember { mutableStateOf(0) }
-    var textInput by remember { mutableStateOf("") }
+    var textInput by remember { mutableStateOf(" ") }
 
     LaunchedEffect(scheduledShutdownTime) {
         if (scheduledShutdownTime == null) {
@@ -301,18 +296,18 @@ fun ButtonPanel(
         value = textInput,
         onValueChange = { newText ->
             if (newText.length > textInput.length) {
-                signalRClient.sendText(newText.last().toString())
-                textInput = " " // Always keep a space to allow backspace
+                // Character added
+                val addedChars = newText.substring(textInput.length)
+                signalRClient.sendText(addedChars)
             } else if (newText.length < textInput.length) {
-                signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_BACK)
-                if (newText.isEmpty()) {
-                    textInput = " " // Restore the space
-                } else {
-                    textInput = newText
+                // Character removed (Backspace)
+                val removedCount = textInput.length - newText.length
+                repeat(removedCount) {
+                    signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_BACK)
                 }
-            } else {
-                textInput = newText
             }
+            // Always reset to a single space to keep the keyboard "happy" and backspace working
+            textInput = " "
         },
         modifier = Modifier
             .height(1.dp)
@@ -418,11 +413,25 @@ fun ButtonPanel(
 
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 if (!showMoreButtons) {
+                    ActionKeyButton(text = "Kbd", modifier = Modifier.weight(1f)) {
+                        if (isKeyboardVisible) keyboardController?.hide()
+                        else keyboardController?.show()
+                    }
+                    
+                    ActionKeyButton(text = "More", modifier = Modifier.weight(1f)) {
+                        showMoreButtons = true
+                    }
+                } else {
+                    // Second set of buttons
+                    ActionKeyButton(text = "Space", modifier = Modifier.weight(1f)) {
+                        signalRClient.sendText(" ")
+                    }
+
                     ActionKeyButton(text = "Paste", modifier = Modifier.weight(1f)) {
                         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                         clipboard.primaryClip?.getItemAt(0)?.text?.let { signalRClient.sendText(it.toString()) }
                     }
-                    
+
                     val isSleep = shutdownMode.contains("Sleep", ignoreCase = true)
                     ActionKeyButton(
                         icon = if (isSleep) Icons.Default.ModeNight else Icons.Default.PowerSettingsNew, 
@@ -437,22 +446,12 @@ fun ButtonPanel(
                         }
                     )
                     
-                    ActionKeyButton(text = "Kbd", modifier = Modifier.weight(1f)) {
-                        if (isKeyboardVisible) keyboardController?.hide()
-                        else keyboardController?.show()
-                    }
-
-                    ActionKeyButton(text = "More", modifier = Modifier.weight(1f)) {
-                        showMoreButtons = true
-                    }
-                } else {
-                    // Second set of buttons
                     ActionKeyButton(text = "Alt+Tab", modifier = Modifier.weight(1f)) {
                         signalRClient.sendKeyEvent("INPUT_KEY_DOWN", VK_MENU)
                         signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_TAB)
                         signalRClient.sendKeyEvent("INPUT_KEY_UP", VK_MENU)
                     }
-                    
+
                     // Arrow Keys
                     val VK_LEFT: UShort = 0x25u
                     val VK_UP: UShort = 0x26u
@@ -472,11 +471,6 @@ fun ButtonPanel(
                     }
                     ActionKeyButton(icon = Icons.AutoMirrored.Filled.ArrowForward, modifier = Modifier.weight(0.8f)) {
                         signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_RIGHT)
-                    }
-
-                    ActionKeyButton(text = "Kbd", modifier = Modifier.weight(1f)) {
-                        if (isKeyboardVisible) keyboardController?.hide()
-                        else keyboardController?.show()
                     }
 
                     ActionKeyButton(text = "Back", modifier = Modifier.weight(1f)) {

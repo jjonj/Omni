@@ -79,6 +79,7 @@ builder.Services.AddSingleton<ShutdownService>(provider =>
     return new ShutdownService(logger, processService, audioService, fileService);
 });
 builder.Services.AddSingleton<RegistryService>();
+builder.Services.AddSingleton<ScreenshotService>();
 builder.Services.AddSingleton<HubEventSender>(provider =>
 {
     var hubContext = provider.GetRequiredService<IHubContext<RpcApiHub>>();
@@ -94,6 +95,7 @@ builder.Services.AddSingleton<HubEventSender>(provider =>
 builder.Services.AddSingleton<HubMonitorService>(); // Register the new monitoring service
 builder.Services.AddHostedService<TrayIconManager>();
 builder.Services.AddHostedService<HubStartupService>(); // Auto-launch AI components
+builder.Services.AddHostedService<ScreenshotHostedService>();
 builder.Services.AddSingleton<KeyboardHook>(); // Register KeyboardHook
 
 builder.Services.AddCors(options =>

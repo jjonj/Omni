@@ -131,10 +131,23 @@ fun DashboardScreen(modifier: Modifier = Modifier, signalRClient: SignalRClient,
                             onClick = {
                                 mainViewModel.sendWakeOnLan("10FFE0379DAC", "10.0.0.255", 9)
                             },
-                            modifier = Modifier.weight(1f).padding(start = 4.dp),
+                            modifier = Modifier.weight(1f).padding(start = 4.dp, end = 4.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.tertiary)
                         ) {
                             Text("WOL")
+                        }
+
+                        Button(
+                            onClick = {
+                                mainViewModel.addLog("Capturing ADB logs...", LogType.INFO)
+                                // We use the full path to extractcrash.py which is in the project root/OmniSync.Android
+                                val scriptPath = "D:\\SSDProjects\\Omni\\OmniSync.Android\\extractcrash.py"
+                                signalRClient.executeCommand("python \"$scriptPath\"")
+                            },
+                            modifier = Modifier.weight(1f).padding(start = 4.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
+                        ) {
+                            Text("ADB Log")
                         }
                     }
                     

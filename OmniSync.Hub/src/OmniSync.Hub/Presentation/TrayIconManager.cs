@@ -165,8 +165,15 @@ namespace OmniSync.Hub.Presentation
             private void OnExit(object? sender, EventArgs e)
             {
                 _hubMonitorService.AddLogMessage("Exit clicked from tray icon.");
-                // Signal the main application to stop
+                _notifyIcon.Visible = false; // Hide immediately for better UX
                 _appLifetime.StopApplication();
+                
+                // Force exit after a short delay to ensure the process actually stops
+                // even if some services are hanging during cleanup.
+                Task.Run(async () => {
+                    await Task.Delay(1500);
+                    Environment.Exit(0);
+                });
             }
 
             protected override void Dispose(bool disposing)

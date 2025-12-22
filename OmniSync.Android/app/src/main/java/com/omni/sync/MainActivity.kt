@@ -91,7 +91,8 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-        WindowCompat.setDecorFitsSystemWindows(window, false)
+        val isLandscape = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+        WindowCompat.setDecorFitsSystemWindows(window, !isLandscape)
 
         omniSyncApplication = application as OmniSyncApplication
         mainViewModel = omniSyncApplication.mainViewModel
@@ -251,6 +252,12 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         handleIntent(intent)
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        val isLandscape = newConfig.orientation == Configuration.ORIENTATION_LANDSCAPE
+        WindowCompat.setDecorFitsSystemWindows(window, !isLandscape)
     }
 
     private fun handleIntent(intent: Intent?) {
