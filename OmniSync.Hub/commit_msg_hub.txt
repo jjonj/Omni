@@ -1,0 +1,5 @@
+Make Hub exit more forceful and responsive
+
+- Reduced delay before Environment.Exit(0) to 300ms
+- Immediate hide and dispose of Tray Icon on exit
+- Added forceful stop log message

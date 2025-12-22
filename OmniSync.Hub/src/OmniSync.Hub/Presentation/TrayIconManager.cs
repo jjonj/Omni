@@ -164,14 +164,18 @@ namespace OmniSync.Hub.Presentation
 
             private void OnExit(object? sender, EventArgs e)
             {
-                _hubMonitorService.AddLogMessage("Exit clicked from tray icon.");
+                _hubMonitorService.AddLogMessage("Exit clicked from tray icon. Forcefully stopping...");
                 _notifyIcon.Visible = false; // Hide immediately for better UX
+                _notifyIcon.Dispose();
+                
+                // Initiate standard shutdown
                 _appLifetime.StopApplication();
                 
                 // Force exit after a short delay to ensure the process actually stops
                 // even if some services are hanging during cleanup.
+                // 300ms is enough for most cleanup tasks to start.
                 Task.Run(async () => {
-                    await Task.Delay(1500);
+                    await Task.Delay(300);
                     Environment.Exit(0);
                 });
             }
