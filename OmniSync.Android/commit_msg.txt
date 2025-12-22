@@ -1,0 +1,6 @@
+Fix keyboard overlay, system bar visibility, and backspace buffer in RemoteControlScreen
+
+- Added adjustResize to AndroidManifest.xml
+- Corrected system bar visibility logic in MainActivity.kt
+- Increased backspace buffer to 2 spaces in RemoteControlScreen.kt
+- Improved Set 2 button layout and fixed Left Arrow icon

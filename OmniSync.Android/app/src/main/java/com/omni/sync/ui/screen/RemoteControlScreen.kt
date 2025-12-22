@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.KeyboardBackspace
 import androidx.compose.material.icons.automirrored.filled.KeyboardReturn
@@ -57,18 +58,19 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.launch
 
-// Common Windows Virtual Key Codes
-const val VK_SHIFT: UShort = 0x10u
-const val VK_CONTROL: UShort = 0x11u
-const val VK_MENU: UShort = 0x12u // Alt key
-const val VK_RETURN: UShort = 0x0Du // Enter key
-const val VK_BACK: UShort = 0x08u // Backspace key
-const val VK_TAB: UShort = 0x09u // Tab key
-const val VK_ESCAPE: UShort = 0x1Bu // Esc key
-const val VK_DELETE: UShort = 0x2Bu // Delete key
-const val VK_F4: UShort = 0x73u // F4 key
-const val VK_A: UShort = 0x41u // A key
-const val VK_W: UShort = 0x57u // W key
+import com.omni.sync.utils.WindowsKeyCodes.VK_A
+import com.omni.sync.utils.WindowsKeyCodes.VK_BACK
+import com.omni.sync.utils.WindowsKeyCodes.VK_CONTROL
+import com.omni.sync.utils.WindowsKeyCodes.VK_DELETE
+import com.omni.sync.utils.WindowsKeyCodes.VK_DOWN
+import com.omni.sync.utils.WindowsKeyCodes.VK_ESCAPE
+import com.omni.sync.utils.WindowsKeyCodes.VK_LEFT
+import com.omni.sync.utils.WindowsKeyCodes.VK_MENU
+import com.omni.sync.utils.WindowsKeyCodes.VK_RETURN
+import com.omni.sync.utils.WindowsKeyCodes.VK_RIGHT
+import com.omni.sync.utils.WindowsKeyCodes.VK_SHIFT
+import com.omni.sync.utils.WindowsKeyCodes.VK_TAB
+import com.omni.sync.utils.WindowsKeyCodes.VK_UP
 
 @OptIn(ExperimentalLayoutApi::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
@@ -306,8 +308,8 @@ fun ButtonPanel(
                     signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_BACK)
                 }
             }
-            // Always reset to a single space to keep the keyboard "happy" and backspace working
-            textInput = " "
+            // Always reset to two spaces to keep the keyboard "happy" and backspace working
+            textInput = "  "
         },
         modifier = Modifier
             .height(1.dp)
@@ -317,13 +319,13 @@ fun ButtonPanel(
         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
         keyboardActions = KeyboardActions(onSend = {
             signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_RETURN)
-            textInput = " "
+            textInput = "  "
         })
     )
 
-    // Ensure initial space
+    // Ensure initial spaces
     LaunchedEffect(Unit) {
-        if (textInput.isEmpty()) textInput = " "
+        if (textInput.length < 2) textInput = "  "
     }
 
         // Volume Slider
@@ -411,8 +413,8 @@ fun ButtonPanel(
             val context = LocalContext.current
             var showMoreButtons by remember { mutableStateOf(false) }
 
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                if (!showMoreButtons) {
+            if (!showMoreButtons) {
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     ActionKeyButton(text = "Kbd", modifier = Modifier.weight(1f)) {
                         if (isKeyboardVisible) keyboardController?.hide()
                         else keyboardController?.show()
@@ -421,60 +423,62 @@ fun ButtonPanel(
                     ActionKeyButton(text = "More", modifier = Modifier.weight(1f)) {
                         showMoreButtons = true
                     }
-                } else {
-                    // Second set of buttons
-                    ActionKeyButton(text = "Space", modifier = Modifier.weight(1f)) {
-                        signalRClient.sendText(" ")
-                    }
-
-                    ActionKeyButton(text = "Paste", modifier = Modifier.weight(1f)) {
-                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                        clipboard.primaryClip?.getItemAt(0)?.text?.let { signalRClient.sendText(it.toString()) }
-                    }
-
-                    val isSleep = shutdownMode.contains("Sleep", ignoreCase = true)
-                    ActionKeyButton(
-                        icon = if (isSleep) Icons.Default.ModeNight else Icons.Default.PowerSettingsNew, 
-                        text = shutdownLabel, 
-                        modifier = Modifier.weight(1f),
-                        onClick = {
-                            shutdownIndex = (shutdownIndex + 1) % shutdownTimes.size
-                            signalRClient.sendScheduleShutdown(shutdownTimes[shutdownIndex])
-                        },
-                        onLongClick = {
-                            signalRClient.toggleShutdownMode()
+                }
+            } else {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    // Set 2 - Row 1
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        ActionKeyButton(text = "Space", modifier = Modifier.weight(1f)) {
+                            signalRClient.sendText(" ")
                         }
-                    )
-                    
-                    ActionKeyButton(text = "Alt+Tab", modifier = Modifier.weight(1f)) {
-                        signalRClient.sendKeyEvent("INPUT_KEY_DOWN", VK_MENU)
-                        signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_TAB)
-                        signalRClient.sendKeyEvent("INPUT_KEY_UP", VK_MENU)
-                    }
 
-                    // Arrow Keys
-                    val VK_LEFT: UShort = 0x25u
-                    val VK_UP: UShort = 0x26u
-                    val VK_RIGHT: UShort = 0x27u
-                    val VK_DOWN: UShort = 0x28u
-
-                    ActionKeyButton(icon = Icons.AutoMirrored.Filled.KeyboardBackspace, modifier = Modifier.weight(0.8f)) {
-                        signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_LEFT)
-                    }
-                    Column(modifier = Modifier.weight(0.8f)) {
-                        ActionKeyButton(icon = Icons.Default.KeyboardArrowUp, modifier = Modifier.fillMaxWidth().height(20.dp)) {
-                            signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_UP)
+                        ActionKeyButton(text = "Paste", modifier = Modifier.weight(1f)) {
+                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                            clipboard.primaryClip?.getItemAt(0)?.text?.let { signalRClient.sendText(it.toString()) }
                         }
-                        ActionKeyButton(icon = Icons.Default.KeyboardArrowDown, modifier = Modifier.fillMaxWidth().height(20.dp)) {
-                            signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_DOWN)
+
+                        val isSleep = shutdownMode.contains("Sleep", ignoreCase = true)
+                        ActionKeyButton(
+                            icon = if (isSleep) Icons.Default.ModeNight else Icons.Default.PowerSettingsNew, 
+                            text = shutdownLabel, 
+                            modifier = Modifier.weight(1f),
+                            onClick = {
+                                shutdownIndex = (shutdownIndex + 1) % shutdownTimes.size
+                                signalRClient.sendScheduleShutdown(shutdownTimes[shutdownIndex])
+                            },
+                            onLongClick = {
+                                signalRClient.toggleShutdownMode()
+                            }
+                        )
+                        
+                        ActionKeyButton(text = "Alt+Tab", modifier = Modifier.weight(1f)) {
+                            signalRClient.sendKeyEvent("INPUT_KEY_DOWN", VK_MENU)
+                            signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_TAB)
+                            signalRClient.sendKeyEvent("INPUT_KEY_UP", VK_MENU)
                         }
                     }
-                    ActionKeyButton(icon = Icons.AutoMirrored.Filled.ArrowForward, modifier = Modifier.weight(0.8f)) {
-                        signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_RIGHT)
-                    }
 
-                    ActionKeyButton(text = "Back", modifier = Modifier.weight(1f)) {
-                        showMoreButtons = false
+                    // Set 2 - Row 2 (Arrows and Back)
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        // Arrow Keys
+                        ActionKeyButton(icon = Icons.AutoMirrored.Filled.ArrowBack, modifier = Modifier.weight(1f)) {
+                            signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_LEFT)
+                        }
+                        Column(modifier = Modifier.weight(1f)) {
+                            ActionKeyButton(icon = Icons.Default.KeyboardArrowUp, modifier = Modifier.fillMaxWidth().height(20.dp)) {
+                                signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_UP)
+                            }
+                            ActionKeyButton(icon = Icons.Default.KeyboardArrowDown, modifier = Modifier.fillMaxWidth().height(20.dp)) {
+                                signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_DOWN)
+                            }
+                        }
+                        ActionKeyButton(icon = Icons.AutoMirrored.Filled.ArrowForward, modifier = Modifier.weight(1f)) {
+                            signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_RIGHT)
+                        }
+
+                        ActionKeyButton(text = "Back", modifier = Modifier.weight(1f)) {
+                            showMoreButtons = false
+                        }
                     }
                 }
             }

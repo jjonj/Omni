@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -94,6 +95,8 @@ class MainActivity : ComponentActivity() {
 
         updateSystemBars(resources.configuration.orientation)
 
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+
         omniSyncApplication = application as OmniSyncApplication
         mainViewModel = omniSyncApplication.mainViewModel
         
@@ -155,6 +158,9 @@ class MainActivity : ComponentActivity() {
 
                         val pagerState = rememberPagerState(pageCount = { swipeableScreens.size })
 
+                        val configuration = LocalConfiguration.current
+                        val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+
                         LaunchedEffect(currentScreen) {
                             val index = swipeableScreens.indexOf(currentScreen)
                             if (index != -1 && pagerState.currentPage != index) {
@@ -172,6 +178,7 @@ class MainActivity : ComponentActivity() {
                         }
 
                         androidx.compose.material3.Scaffold(
+                            modifier = if (!isLandscape) Modifier.systemBarsPadding() else Modifier,
                             bottomBar = {
                                 val coroutineScope = androidx.compose.runtime.rememberCoroutineScope()
                                 OmniBottomNavigation(
@@ -257,8 +264,6 @@ class MainActivity : ComponentActivity() {
 
     private fun updateSystemBars(orientation: Int) {
         val isLandscape = orientation == Configuration.ORIENTATION_LANDSCAPE
-        WindowCompat.setDecorFitsSystemWindows(window, !isLandscape)
-        
         val controller = WindowCompat.getInsetsController(window, window.decorView)
         if (isLandscape) {
             controller.hide(androidx.core.view.WindowInsetsCompat.Type.systemBars())

@@ -23,6 +23,18 @@ import com.omni.sync.data.repository.SignalRClient
 import com.omni.sync.viewmodel.MainViewModel
 import androidx.compose.animation.core.*
 
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.KeyboardReturn
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
+import kotlinx.coroutines.launch
+import com.omni.sync.utils.WindowsKeyCodes.VK_CONTROL
+import com.omni.sync.utils.WindowsKeyCodes.VK_DOWN
+import com.omni.sync.utils.WindowsKeyCodes.VK_ESCAPE
+import com.omni.sync.utils.WindowsKeyCodes.VK_RETURN
+import com.omni.sync.utils.WindowsKeyCodes.VK_UP
+import com.omni.sync.utils.WindowsKeyCodes.VK_Y
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AiChatScreen(
@@ -37,6 +49,7 @@ fun AiChatScreen(
     
     val listState = rememberLazyListState()
     val isAiTyping = aiStatus != null
+    val coroutineScope = rememberCoroutineScope()
 
     // Auto-scroll to bottom
     LaunchedEffect(messages.size, isAiTyping) {
@@ -145,6 +158,9 @@ fun AiChatScreen(
                         if (inputText.isNotBlank()) {
                             signalRClient.sendAiMessage(inputText)
                             inputText = ""
+                        } else {
+                            // If empty, send Enter key to Hub
+                            signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_RETURN)
                         }
                     },
                     modifier = Modifier.background(MaterialTheme.colorScheme.primary, CircleShape),
@@ -155,32 +171,78 @@ fun AiChatScreen(
             }
 
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-            QuickActionPanel(signalRClient)
+            QuickActionPanel(signalRClient, coroutineScope)
         }
     }
 }
 
 @Composable
-fun QuickActionPanel(signalRClient: SignalRClient) {
-    Row(
+fun QuickActionPanel(signalRClient: SignalRClient, coroutineScope: kotlinx.coroutines.CoroutineScope) {
+    Column(
         modifier = Modifier
             .fillMaxWidth()
             .background(MaterialTheme.colorScheme.surface)
             .padding(8.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
+        verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        FilledTonalButton(
-            onClick = { signalRClient.clearAiMessages() },
-            modifier = Modifier.weight(1f).height(40.dp),
-            shape = RoundedCornerShape(8.dp),
-            contentPadding = PaddingValues(0.dp)
-        ) {
-            Icon(Icons.Default.Delete, null, modifier = Modifier.size(18.dp))
-            Spacer(Modifier.width(4.dp))
-            Text("Clear Chat", fontSize = 12.sp)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilledTonalButton(
+                onClick = { signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_ESCAPE) },
+                modifier = Modifier.weight(1f).height(40.dp),
+                shape = RoundedCornerShape(8.dp),
+                contentPadding = PaddingValues(0.dp)
+            ) {
+                Text("Esc", fontSize = 12.sp)
+            }
+
+            FilledTonalButton(
+                onClick = { signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_UP) },
+                modifier = Modifier.weight(1f).height(40.dp),
+                shape = RoundedCornerShape(8.dp),
+                contentPadding = PaddingValues(0.dp)
+            ) {
+                Icon(Icons.Default.KeyboardArrowUp, null, modifier = Modifier.size(18.dp))
+            }
+
+            FilledTonalButton(
+                onClick = { signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_DOWN) },
+                modifier = Modifier.weight(1f).height(40.dp),
+                shape = RoundedCornerShape(8.dp),
+                contentPadding = PaddingValues(0.dp)
+            ) {
+                Icon(Icons.Default.KeyboardArrowDown, null, modifier = Modifier.size(18.dp))
+            }
+
+            FilledTonalButton(
+                onClick = { 
+                    coroutineScope.launch {
+                        signalRClient.sendKeyEvent("INPUT_KEY_DOWN", VK_CONTROL)
+                        signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_Y)
+                        kotlinx.coroutines.delay(100)
+                        signalRClient.sendKeyEvent("INPUT_KEY_UP", VK_CONTROL)
+                    }
+                },
+                modifier = Modifier.weight(1f).height(40.dp),
+                shape = RoundedCornerShape(8.dp),
+                contentPadding = PaddingValues(0.dp)
+            ) {
+                Text("Yolo", fontSize = 12.sp)
+            }
         }
 
-        Box(modifier = Modifier.weight(2f))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilledTonalButton(
+                onClick = { signalRClient.clearAiMessages() },
+                modifier = Modifier.weight(1f).height(40.dp),
+                shape = RoundedCornerShape(8.dp),
+                contentPadding = PaddingValues(0.dp)
+            ) {
+                Icon(Icons.Default.Delete, null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(4.dp))
+                Text("Clear Chat", fontSize = 12.sp)
+            }
+            Spacer(modifier = Modifier.weight(3f))
+        }
     }
 }
 

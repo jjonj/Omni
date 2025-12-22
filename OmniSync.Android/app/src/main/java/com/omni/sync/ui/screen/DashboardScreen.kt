@@ -58,20 +58,17 @@ fun DashboardScreen(modifier: Modifier = Modifier, signalRClient: SignalRClient,
         }
     }
     
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("OmniSync Dashboard") },
-                actions = {
-                    IconButton(onClick = { mainViewModel.navigateTo(AppScreen.SETTINGS) }) {
-                        Icon(Icons.Default.Settings, contentDescription = "Settings")
-                    }
+    Column(modifier = modifier.fillMaxSize()) {
+        TopAppBar(
+            title = { Text("OmniSync Dashboard") },
+            actions = {
+                IconButton(onClick = { mainViewModel.navigateTo(AppScreen.SETTINGS) }) {
+                    Icon(Icons.Default.Settings, contentDescription = "Settings")
                 }
-            )
-        },
-        modifier = modifier
-    ) { padding ->
-        Column(modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp)) {
+            }
+        )
+        
+        Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
             // Connection Status Card
             HubConnectionCard(
                 connectionStatus = connectionStatus,
