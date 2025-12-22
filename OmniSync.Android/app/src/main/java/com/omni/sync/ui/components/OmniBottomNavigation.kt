@@ -64,12 +64,14 @@ fun OmniBottomNavigation(
     var showBurgerMenu by remember { mutableStateOf(false) }
     var totalDrag by remember { mutableStateOf(0f) }
     
+    val configuration = androidx.compose.ui.platform.LocalConfiguration.current
+    val isLandscape = configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+
     // We only want to show the Bottom Bar if we are on one of the main screens.    
-    // If we are in the Video Player, we usually want to hide it (optional).        
-    // Also hide when keyboard is up to save space.
+    // Also hide when keyboard is up to save space, and hide in landscape mode.
     val isKeyboardVisible = WindowInsets.isImeVisible
     val allVisibleScreens = navigationItems.map { it.screen } + burgerMenuItems.map { it.screen }
-    val showBottomBar = allVisibleScreens.any { it == currentScreen } && !isKeyboardVisible
+    val showBottomBar = allVisibleScreens.any { it == currentScreen } && !isKeyboardVisible && !isLandscape
 
     if (showBottomBar) {
         NavigationBar(

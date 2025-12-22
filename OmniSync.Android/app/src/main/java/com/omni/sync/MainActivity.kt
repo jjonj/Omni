@@ -39,6 +39,7 @@ import androidx.compose.ui.unit.dp
 import com.omni.sync.ui.components.OmniBottomNavigation
 
 import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import android.Manifest
 import android.content.pm.PackageManager
 import androidx.core.app.ActivityCompat
@@ -91,8 +92,7 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-        val isLandscape = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
-        WindowCompat.setDecorFitsSystemWindows(window, !isLandscape)
+        updateSystemBars(resources.configuration.orientation)
 
         omniSyncApplication = application as OmniSyncApplication
         mainViewModel = omniSyncApplication.mainViewModel
@@ -173,21 +173,17 @@ class MainActivity : ComponentActivity() {
 
                         androidx.compose.material3.Scaffold(
                             bottomBar = {
-                                val configuration = LocalConfiguration.current
-                                val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
-                                if (!isLandscape) {
-                                    val coroutineScope = androidx.compose.runtime.rememberCoroutineScope()
-                                    OmniBottomNavigation(
-                                        currentScreen = currentScreen,
-                                        onNavigate = { screen -> mainViewModel.navigateTo(screen) },
-                                        onSwipe = { delta ->
-                                            coroutineScope.launch {
-                                                val next = (pagerState.currentPage + delta).coerceIn(0, swipeableScreens.size - 1)
-                                                pagerState.animateScrollToPage(next)
-                                            }
+                                val coroutineScope = androidx.compose.runtime.rememberCoroutineScope()
+                                OmniBottomNavigation(
+                                    currentScreen = currentScreen,
+                                    onNavigate = { screen -> mainViewModel.navigateTo(screen) },
+                                    onSwipe = { delta ->
+                                        coroutineScope.launch {
+                                            val next = (pagerState.currentPage + delta).coerceIn(0, swipeableScreens.size - 1)
+                                            pagerState.animateScrollToPage(next)
                                         }
-                                    )
-                                }
+                                    }
+                                )
                             }
                         ) { innerPadding ->
                             Box(modifier = Modifier
@@ -256,8 +252,20 @@ class MainActivity : ComponentActivity() {
 
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
-        val isLandscape = newConfig.orientation == Configuration.ORIENTATION_LANDSCAPE
+        updateSystemBars(newConfig.orientation)
+    }
+
+    private fun updateSystemBars(orientation: Int) {
+        val isLandscape = orientation == Configuration.ORIENTATION_LANDSCAPE
         WindowCompat.setDecorFitsSystemWindows(window, !isLandscape)
+        
+        val controller = WindowCompat.getInsetsController(window, window.decorView)
+        if (isLandscape) {
+            controller.hide(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+            controller.systemBarsBehavior = androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        } else {
+            controller.show(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+        }
     }
 
     private fun handleIntent(intent: Intent?) {
