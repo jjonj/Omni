@@ -285,6 +285,34 @@ namespace OmniSync.Hub.Infrastructure.Services
             }
         }
 
+        public async Task<bool> StopSessionAsync(int pid = -1)
+        {
+            int target = pid == -1 ? _targetPid : pid;
+            if (_sessions.TryGetValue(target, out var session))
+            {
+                session.Dispose();
+                _sessions.TryRemove(target, out _);
+                
+                try
+                {
+                    var process = Process.GetProcessById(target);
+                    if (!process.HasExited)
+                    {
+                        process.Kill(true);
+                        _logger.LogInformation($"Killed AI process {target}");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning($"Could not kill process {target}: {ex.Message}");
+                }
+
+                if (_targetPid == target) _targetPid = -1;
+                return true;
+            }
+            return false;
+        }
+
         public void Dispose()
         {
             foreach (var session in _sessions.Values)

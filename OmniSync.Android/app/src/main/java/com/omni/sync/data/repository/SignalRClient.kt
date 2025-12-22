@@ -254,7 +254,11 @@ class SignalRClient(
         }, String::class.java)
 
         hubConnection?.on("ReceiveAiStatus", { status: String? ->
-            _aiStatus.value = status
+            if (status == "FINISHED" || status == null) {
+                _aiStatus.value = null
+            } else {
+                _aiStatus.value = status
+            }
         }, String::class.java)
 
         hubConnection?.on("ReceiveCortexActivity", { name: String, type: String ->
@@ -318,6 +322,7 @@ class SignalRClient(
             hubConnection?.send("SendAiMessage", "/clear")
         }
         _aiMessages.value = emptyList()
+        _aiStatus.value = null
     }
 
     fun stopConnection() {

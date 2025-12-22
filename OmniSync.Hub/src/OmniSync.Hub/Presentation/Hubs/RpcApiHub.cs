@@ -503,12 +503,24 @@ namespace OmniSync.Hub.Presentation.Hubs
                 string preview = message.Length > 20 ? message.Substring(0, 20) + "..." : message;
                 AnyCommandReceived?.Invoke(this, $"AI Message Sent: {preview}");
                 
+                // Special handling for /clear: Hard interrupt
+                if (message.Trim().Equals("/clear", StringComparison.OrdinalIgnoreCase))
+                {
+                    await _aiCliService.StopSessionAsync();
+                    await Clients.All.SendAsync("ReceiveAiHistory", "[]");
+                    await Clients.All.SendAsync("ReceiveAiStatus", null);
+                    return;
+                }
+
                 // 1. Broadcast the user message so other clients can see it
                 await Clients.All.SendAsync("ReceiveAiMessage", Context.ConnectionId, message);
 
                 // 2. Direct Hub-to-CLI communication
                 if (!await _aiCliService.SendPromptAsync(message))
                 {
+                    // If we failed to send (and auto-launch failed), don't error out if it was just /clear
+                    // but we already handled /clear above. 
+                    // For other messages, notify failure.
                     await Clients.Caller.SendAsync("ReceiveAiResponse", "Error: Failed to communicate with AI service.");
                     AnyCommandReceived?.Invoke(this, "AI Communication Failed");
                 }
@@ -553,6 +565,8 @@ namespace OmniSync.Hub.Presentation.Hubs
             if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
             {
                 AnyCommandReceived?.Invoke(this, "StartNewAiSession");
+                await Clients.All.SendAsync("ReceiveAiHistory", "[]");
+                await Clients.All.SendAsync("ReceiveAiStatus", null);
                 await _aiCliService.LaunchSessionAsync();
             }
         }
@@ -562,6 +576,8 @@ namespace OmniSync.Hub.Presentation.Hubs
             if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
             {
                 AnyCommandReceived?.Invoke(this, $"StartCliAtWorkspace: {path}");
+                await Clients.All.SendAsync("ReceiveAiHistory", "[]");
+                await Clients.All.SendAsync("ReceiveAiStatus", null);
                 await _aiCliService.LaunchSessionAsync(path);
             }
         }
