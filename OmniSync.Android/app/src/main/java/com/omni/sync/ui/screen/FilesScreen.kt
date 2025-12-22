@@ -118,11 +118,6 @@ fun FilesScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = { 
-                        filesViewModel.mainViewModel.navigateTo(com.omni.sync.viewmodel.AppScreen.DOWNLOADED_VIDEOS)
-                    }) {
-                        Icon(Icons.Default.VideoLibrary, contentDescription = "Downloaded Videos")
-                    }
                     if (currentPath.isNotEmpty()) {
                         IconButton(onClick = { showCreateFileDialog = true }) {
                             Icon(Icons.Default.Add, contentDescription = "Create File")
@@ -277,8 +272,7 @@ fun FilesScreen(
                                             filesViewModel.mainViewModel.playVideo(clickedEntry.path, playlist)
                                         }
                                         isImageFile(clickedEntry.name) || isPdfFile(clickedEntry.name) || isAudioFile(clickedEntry.name) -> {
-                                            filesViewModel.startFileDownload(clickedEntry)
-                                            Toast.makeText(context, "Downloading ${clickedEntry.name}...", Toast.LENGTH_SHORT).show()
+                                            filesViewModel.handleFileOpen(clickedEntry)
                                         }
                                         else -> {
                                             filesViewModel.openForEditing(clickedEntry)
@@ -291,8 +285,7 @@ fun FilesScreen(
                                 Toast.makeText(context, "Opening ${clickedEntry.name} on PC", Toast.LENGTH_SHORT).show()
                             },
                             onDownloadAndOpen = { clickedEntry ->
-                                filesViewModel.startFileDownload(clickedEntry)
-                                Toast.makeText(context, "Downloading ${clickedEntry.name}...", Toast.LENGTH_SHORT).show()
+                                filesViewModel.handleFileOpen(clickedEntry)
                             },
                             onOpenFolder = { path ->
                                 filesViewModel.loadDirectory(path)
@@ -390,9 +383,9 @@ fun FilesScreen(
                             }
                         }
                         Spacer(modifier = Modifier.height(4.dp))
-                        val cachedPaths = filesViewModel.getAllCachedPaths()
+                        val cachedPaths by filesViewModel.cachedPaths.collectAsState()
                         if (cachedPaths.isEmpty()) {
-                            Text("No directories cached", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(8.dp))
+                            Text("No items cached", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(8.dp))
                         }
                         LazyColumn(modifier = Modifier.heightIn(max = 200.dp)) {
                             items(cachedPaths) { path ->
@@ -621,6 +614,8 @@ fun FileSystemEntryItem(
                 )
             }
 
+            val isLocal = entry.path.contains("downloaded_videos")
+
             if (!entry.isDirectory) {
                 DropdownMenuItem(
                     text = { Text("Edit as Text") },
@@ -630,13 +625,13 @@ fun FileSystemEntryItem(
                     }
                 )
                 DropdownMenuItem(
-                    text = { Text("Download & Open (Ext App)") },
+                    text = { Text(if (isLocal) "Open (Ext App)" else "Download & Open (Ext App)") },
                     onClick = {
                         showMenu = false
                         onDownloadAndOpen(entry)
                     }
                 )
-                if (isVideoFile(entry.name)) {
+                if (isVideoFile(entry.name) && !isLocal) {
                     DropdownMenuItem(
                         text = { Text("Download Video to App") },
                         onClick = {
@@ -655,13 +650,15 @@ fun FileSystemEntryItem(
                     }
                 )
             }
-            DropdownMenuItem(
-                text = { Text("Open on PC") },
-                onClick = {
-                    showMenu = false
-                    onLongClick(entry)
-                }
-            )
+            if (!isLocal) {
+                DropdownMenuItem(
+                    text = { Text("Open on PC") },
+                    onClick = {
+                        showMenu = false
+                        onLongClick(entry)
+                    }
+                )
+            }
             if (entry.isDirectory) {
                 DropdownMenuItem(
                     text = { Text("Open folder in AI chat") },

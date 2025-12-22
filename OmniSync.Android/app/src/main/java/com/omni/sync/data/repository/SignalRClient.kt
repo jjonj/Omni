@@ -530,6 +530,13 @@ class SignalRClient(
         return null
     }
 
+    fun writeFileContent(path: String, content: String): Single<Boolean>? {
+        if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
+            return hubConnection?.invoke(Boolean::class.java, "WriteFileContent", path, content)
+        }
+        return null
+    }
+
     fun sendPayload(command: String, payload: Any?) {
         if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
             hubConnection?.send("SendPayload", command, payload)

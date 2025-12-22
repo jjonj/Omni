@@ -29,7 +29,8 @@ import androidx.compose.material.icons.filled.MoreVert
 @Composable
 fun SettingsScreen(
     mainViewModel: MainViewModel,
-    signalRClient: com.omni.sync.data.repository.SignalRClient
+    signalRClient: com.omni.sync.data.repository.SignalRClient,
+    filesViewModel: com.omni.sync.viewmodel.FilesViewModel
 ) {
     val context = mainViewModel.applicationContext
     val appConfig = mainViewModel.appConfig
@@ -172,6 +173,11 @@ fun SettingsScreen(
                             videoSkipInterval = it.toInt()
                             appConfig.videoSkipInterval = videoSkipInterval
                             mainViewModel.saveAppConfig()
+                            // Refresh service
+                            val intent = Intent(context, ForegroundService::class.java).apply {
+                                action = ForegroundService.ACTION_REFRESH_NOTIFICATION
+                            }
+                            context.startService(intent)
                         },
                         valueRange = 5f..60f,
                         steps = 11,
@@ -194,6 +200,11 @@ fun SettingsScreen(
                         videoPlaylistRandom = it
                         appConfig.videoPlaylistRandom = videoPlaylistRandom
                         mainViewModel.saveAppConfig()
+                        // Refresh service
+                        val intent = Intent(context, ForegroundService::class.java).apply {
+                            action = ForegroundService.ACTION_REFRESH_NOTIFICATION
+                        }
+                        context.startService(intent)
                     }
                 )
             }
@@ -215,10 +226,94 @@ fun SettingsScreen(
                         cortexNotificationsEnabled = it
                         appConfig.cortexNotificationsEnabled = cortexNotificationsEnabled
                         mainViewModel.saveAppConfig()
+                        // Refresh service
+                        val intent = Intent(context, ForegroundService::class.java).apply {
+                            action = ForegroundService.ACTION_REFRESH_NOTIFICATION
+                        }
+                        context.startService(intent)
                     }
                 )
             }
             
+            Spacer(modifier = Modifier.height(24.dp))
+            HorizontalDivider()
+            Spacer(modifier = Modifier.height(24.dp))
+
+            Text("Security", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+            Spacer(modifier = Modifier.height(8.dp))
+
+            val isPasswordSet = mainViewModel.appConfig.globalPasswordHash != null
+            var showPasswordDialog by remember { mutableStateOf(false) }
+            var oldPassword by remember { mutableStateOf("") }
+            var newPassword by remember { mutableStateOf("") }
+
+            if (isPasswordSet) {
+                Text("Global password is set", color = Color.Gray, fontSize = 14.sp)
+                Button(
+                    onClick = { showPasswordDialog = true },
+                    modifier = Modifier.padding(top = 8.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
+                ) {
+                    Text("Change Password")
+                }
+            } else {
+                Text("No global password set", color = Color.Gray, fontSize = 14.sp)
+                Button(
+                    onClick = { showPasswordDialog = true },
+                    modifier = Modifier.padding(top = 8.dp)
+                ) {
+                    Text("Set Global Password")
+                }
+            }
+
+            if (showPasswordDialog) {
+                AlertDialog(
+                    onDismissRequest = { showPasswordDialog = false; oldPassword = ""; newPassword = "" },
+                    title = { Text(if (isPasswordSet) "Change Password" else "Set Password") },
+                    text = {
+                        Column {
+                            if (isPasswordSet) {
+                                OutlinedTextField(
+                                    value = oldPassword,
+                                    onValueChange = { oldPassword = it },
+                                    label = { Text("Current Password") },
+                                    singleLine = true,
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                            }
+                            OutlinedTextField(
+                                value = newPassword,
+                                onValueChange = { newPassword = it },
+                                label = { Text("New Password") },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                    },
+                    confirmButton = {
+                        Button(onClick = {
+                            if (newPassword.isNotBlank()) {
+                                if (filesViewModel.setGlobalPassword(if (isPasswordSet) oldPassword else null, newPassword)) {
+                                    showPasswordDialog = false
+                                    oldPassword = ""
+                                    newPassword = ""
+                                } else {
+                                    // Error handled in setGlobalPassword (adds log)
+                                }
+                            }
+                        }) {
+                            Text("Save")
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showPasswordDialog = false; oldPassword = ""; newPassword = "" }) {
+                            Text("Cancel")
+                        }
+                    }
+                )
+            }
+
             Spacer(modifier = Modifier.height(24.dp))
             HorizontalDivider()
             Spacer(modifier = Modifier.height(24.dp))

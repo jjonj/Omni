@@ -328,7 +328,8 @@ class MainActivity : ComponentActivity() {
             )
             AppScreen.SETTINGS -> com.omni.sync.ui.screen.SettingsScreen(
                 mainViewModel = mainViewModel,
-                signalRClient = signalRClient
+                signalRClient = signalRClient,
+                filesViewModel = filesViewModel
             )
             AppScreen.AI_CHAT -> com.omni.sync.ui.screen.AiChatScreen(
                 signalRClient = signalRClient,

@@ -1,0 +1,16 @@
+Mega-update: Advanced Text Editor features, Reactive Caching, and UI fixes
+
+- Significantly enhanced TextEditorScreen:
+    - Added Search and Replace with highlighting
+    - Added Toggle Word Wrap and Pinch-to-zoom (Font size)
+    - Added Save as Copy feature
+    - Added Advanced Toolbar for line operations (duplicate, delete, move, copy/paste)
+    - Added Bracket highlighting and Link insertion
+    - Added Recent Files list for quick switching
+- Made Cached paths list reactive in FilesScreen
+- Fixed Video Player gesture stability and back button access
+- Improved Notification Panel: dark blue background, hidden title, better button spacing
+- Cleaned up right-click menus for local files in FilesScreen
+- Fixed file list not updating after local file deletion
+- Centralized Windows virtual key codes in WindowsKeyCodes.kt
+- Updated FilesViewModel with new state and copy/close methods

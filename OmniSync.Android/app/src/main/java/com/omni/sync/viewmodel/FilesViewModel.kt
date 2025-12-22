@@ -6,9 +6,9 @@ import com.omni.sync.data.model.FileSystemEntry
 import com.omni.sync.data.model.PendingEdit
 import com.omni.sync.data.model.DownloadedVideo
 import com.omni.sync.data.repository.SignalRClient
-import com.omni.sync.viewmodel.MainViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
@@ -89,6 +89,9 @@ class FilesViewModel(
     private val _editingFile = MutableStateFlow<FileSystemEntry?>(null)
     val editingFile: StateFlow<FileSystemEntry?> = _editingFile
 
+    private val _recentFiles = MutableStateFlow<List<FileSystemEntry>>(emptyList())
+    val recentFiles: StateFlow<List<FileSystemEntry>> = _recentFiles.asStateFlow()
+
     private val _editingContent = MutableStateFlow("")
     val editingContent: StateFlow<String> = _editingContent
 
@@ -110,6 +113,7 @@ class FilesViewModel(
         loadFolderBookmarks()
         loadDownloadedVideos()
         loadPendingEditPaths()
+        refreshCachedPaths()
         
         // Listen for connection changes to trigger sync
         viewModelScope.launch {
@@ -166,6 +170,7 @@ class FilesViewModel(
     private fun saveToCache(path: String, entries: List<FileSystemEntry>) {
         val json = gson.toJson(entries)
         cachePrefs.edit().putString("cache_$path", json).apply()
+        refreshCachedPaths()
     }
 
     private fun getFromCache(path: String): List<FileSystemEntry>? {
@@ -247,11 +252,14 @@ class FilesViewModel(
 
     fun uncachePath(path: String) {
         cachePrefs.edit().remove("cache_$path").apply()
+        textCachePrefs.edit().remove("text_$path").apply()
+        refreshCachedPaths()
     }
 
     fun clearAllCaches() {
         cachePrefs.edit().clear().apply()
         textCachePrefs.edit().clear().apply()
+        refreshCachedPaths()
     }
 
     fun toggleFolderBookmark(entry: FileSystemEntry) {
@@ -568,6 +576,12 @@ class FilesViewModel(
     }
 
     fun openForEditing(entry: FileSystemEntry) {
+        // Track recent files
+        val currentRecent = _recentFiles.value.toMutableList()
+        currentRecent.removeAll { it.path == entry.path }
+        currentRecent.add(0, entry)
+        _recentFiles.value = currentRecent.take(10)
+
         if (!mainViewModel.isConnected.value) {
             val cachedContent = textCachePrefs.getString("text_${entry.path}", null)
             if (cachedContent != null) {
@@ -617,6 +631,7 @@ class FilesViewModel(
                 
                 // Cache it
                 textCachePrefs.edit().putString("text_${entry.path}", content).apply()
+            refreshCachedPaths()
 
                 viewModelScope.launch(AndroidSchedulers.mainThread().asCoroutineDispatcher()) {
                     mainViewModel.navigateTo(AppScreen.EDITOR)
@@ -632,6 +647,32 @@ class FilesViewModel(
         if (_editingContent.value != newContent) {
             _editingContent.value = newContent
             _hasUnsavedChanges.value = true
+        }
+    }
+
+    fun saveEditingContentAsCopy(newFileName: String) {
+        val entry = _editingFile.value ?: return
+        val content = _editingContent.value
+        val parent = getParentPath(entry.path)
+        val newPath = if (parent.isEmpty()) newFileName else {
+            val separator = if (parent.contains("/")) "/" else "\\"
+            if (parent.endsWith(separator)) parent + newFileName else parent + separator + newFileName
+        }
+
+        _isSaving.value = true
+        viewModelScope.launch(Schedulers.io().asCoroutineDispatcher()) {
+            try {
+                signalRClient.writeFileContent(newPath, content)
+                    ?.subscribeOn(Schedulers.io())
+                    ?.blockingGet()
+                
+                mainViewModel.addLog("Saved copy: $newFileName", com.omni.sync.ui.screen.LogType.SUCCESS)
+                // We don't switch to the new file, just save it
+            } catch (e: Exception) {
+                _errorMessage.value = "Failed to save copy: ${e.message}"
+            } finally {
+                _isSaving.value = false
+            }
         }
     }
 
@@ -659,6 +700,7 @@ class FilesViewModel(
             
             // Also update text cache so if we reopen it offline, we see our changes
             textCachePrefs.edit().putString("text_${entry.path}", content).apply()
+            refreshCachedPaths()
             markSaved()
 
             mainViewModel.addLog("Saved locally (offline): ${entry.name}", com.omni.sync.ui.screen.LogType.INFO)
@@ -675,6 +717,7 @@ class FilesViewModel(
                 
                 // Update cache
                 textCachePrefs.edit().putString("text_${entry.path}", content).apply()
+            refreshCachedPaths()
                 markSaved()
 
                 viewModelScope.launch(AndroidSchedulers.mainThread().asCoroutineDispatcher()) {
@@ -770,6 +813,21 @@ class FilesViewModel(
     private val _recentlyChangedPaths = MutableStateFlow<Set<String>>(emptySet())
     val recentlyChangedPaths: StateFlow<Set<String>> = _recentlyChangedPaths
 
+    private val _cachedPaths = MutableStateFlow<List<String>>(emptyList())
+    val cachedPaths: StateFlow<List<String>> = _cachedPaths.asStateFlow()
+
+    private fun refreshCachedPaths() {
+        val dirCaches = cachePrefs.all.keys
+            .filter { it.startsWith("cache_") }
+            .map { it.removePrefix("cache_") }
+        
+        val fileCaches = textCachePrefs.all.keys
+            .filter { it.startsWith("text_") }
+            .map { it.removePrefix("text_") }
+        
+        _cachedPaths.value = (dirCaches + fileCaches).distinct().sorted()
+    }
+
     private fun onHubFileChanged(path: String) {
         try {
             // Check if currently editing this file
@@ -792,6 +850,7 @@ class FilesViewModel(
             // Invalidate directory cache for its parent so next browse reloads
             val parent = getParentPath(path)
             cachePrefs.edit().remove("cache_$parent").apply()
+            refreshCachedPaths()
             // If we are currently in that parent directory and connected, refresh listing
             if (mainViewModel.isConnected.value && _currentPath.value == parent) {
                 loadDirectory(parent)
@@ -851,6 +910,23 @@ class FilesViewModel(
         _downloadingSpeed.value = null
         _downloadErrorMessage.value = null
         _isDownloading.value = false
+    }
+
+    fun closeAllFiles() {
+        _editingFile.value = null
+        _editingContent.value = ""
+        _recentFiles.value = emptyList()
+        _hasUnsavedChanges.value = false
+    }
+
+    fun handleFileOpen(entry: FileSystemEntry) {
+        if (entry.path.contains("downloaded_videos")) {
+            // It's a local file, open it directly
+            openFile(File(entry.path))
+        } else {
+            // It's a remote file, download it first
+            startFileDownload(entry)
+        }
     }
 
     private fun openFile(file: File) {
@@ -1135,6 +1211,9 @@ class FilesViewModel(
             updatedList.remove(video)
             _downloadedVideos.value = updatedList
             saveDownloadedVideos()
+
+            // Refresh current directory to update the virtual list if we are in it
+            loadDirectory(_currentPath.value)
 
             mainViewModel.addLog("Deleted video: ${video.fileName}", com.omni.sync.ui.screen.LogType.INFO)
         } catch (e: Exception) {

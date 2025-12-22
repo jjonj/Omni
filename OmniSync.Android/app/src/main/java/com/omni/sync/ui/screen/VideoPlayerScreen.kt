@@ -175,9 +175,15 @@ fun VideoPlayerScreen(
                     var isDragging = false
                     var hasMoved = false
                     
-                    // Determine which zone was tapped - Reduced from 25% to 15% to avoid back button
-                    val leftZone = downX < containerSize.width * 0.15f
-                    val rightZone = downX > containerSize.width * 0.85f
+                    val x = down.position.x
+                    val y = down.position.y
+                    
+                    // Exclude top 10% from gestures to allow back button usage
+                    if (y < containerSize.height * 0.1f) return@awaitEachGesture
+
+                    // Determine which zone was tapped - Reduced from 15% to 10% to avoid back button
+                    val leftZone = x < containerSize.width * 0.1f
+                    val rightZone = x > containerSize.width * 0.9f
                     val centerZone = !leftZone && !rightZone
                     
                     do {
@@ -262,14 +268,13 @@ fun VideoPlayerScreen(
                             lastTapTimeRef.value = 0L
                         } else {
                             lastTapTimeRef.value = tapTime
-                            // Center zone single tap: toggle controls (with delay to detect double-tap)
-                            if (centerZone) {
-                                scope.launch {
-                                    delay(310) // Wait slightly longer than double-tap threshold
-                                    if (lastTapTimeRef.value == tapTime) { // Check if wasn't reset by double-tap
-                                        if (isControllerVisible) playerViewInstance?.hideController()
-                                        else playerViewInstance?.showController()
-                                    }
+                            // Single tap: toggle controls (with delay to detect double-tap)
+                            scope.launch {
+                                delay(310) // Wait slightly longer than double-tap threshold
+                                if (lastTapTimeRef.value == tapTime) { // Check if wasn't reset by double-tap
+                                    lastTapTimeRef.value = 0L
+                                    if (isControllerVisible) playerViewInstance?.hideController()
+                                    else playerViewInstance?.showController()
                                 }
                             }
                         }
