@@ -109,6 +109,24 @@ class FilesViewModel(
     private val pendingEditsPrefs = application.getSharedPreferences("pending_edits_prefs", Context.MODE_PRIVATE)
     private val gson = com.google.gson.Gson()
 
+    private val _recentlyChangedPaths = MutableStateFlow<Set<String>>(emptySet())
+    val recentlyChangedPaths: StateFlow<Set<String>> = _recentlyChangedPaths
+
+    private val _cachedPaths = MutableStateFlow<List<String>>(emptyList())
+    val cachedPaths: StateFlow<List<String>> = _cachedPaths.asStateFlow()
+
+    private fun refreshCachedPaths() {
+        val dirCaches = cachePrefs.all.keys
+            .filter { it.startsWith("cache_") }
+            .map { it.removePrefix("cache_") }
+        
+        val fileCaches = textCachePrefs.all.keys
+            .filter { it.startsWith("text_") }
+            .map { it.removePrefix("text_") }
+        
+        _cachedPaths.value = (dirCaches + fileCaches).distinct().sorted()
+    }
+
     init {
         loadFolderBookmarks()
         loadDownloadedVideos()
@@ -809,24 +827,6 @@ class FilesViewModel(
 
     private val _remoteChangeDetected = kotlinx.coroutines.flow.MutableSharedFlow<String>()
     val remoteChangeDetected: kotlinx.coroutines.flow.SharedFlow<String> = _remoteChangeDetected.asSharedFlow()
-
-    private val _recentlyChangedPaths = MutableStateFlow<Set<String>>(emptySet())
-    val recentlyChangedPaths: StateFlow<Set<String>> = _recentlyChangedPaths
-
-    private val _cachedPaths = MutableStateFlow<List<String>>(emptyList())
-    val cachedPaths: StateFlow<List<String>> = _cachedPaths.asStateFlow()
-
-    private fun refreshCachedPaths() {
-        val dirCaches = cachePrefs.all.keys
-            .filter { it.startsWith("cache_") }
-            .map { it.removePrefix("cache_") }
-        
-        val fileCaches = textCachePrefs.all.keys
-            .filter { it.startsWith("text_") }
-            .map { it.removePrefix("text_") }
-        
-        _cachedPaths.value = (dirCaches + fileCaches).distinct().sorted()
-    }
 
     private fun onHubFileChanged(path: String) {
         try {

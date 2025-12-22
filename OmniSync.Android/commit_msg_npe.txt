@@ -1,0 +1,4 @@
+Fix NullPointerException in FilesViewModel initialization
+
+- Moved _cachedPaths and _recentlyChangedPaths declarations before init block
+- Ensured refreshCachedPaths() is called after StateFlows are initialized
