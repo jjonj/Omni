@@ -71,7 +71,7 @@ The test suite has been fully migrated to use the native Hub integration:
 
 ### Resolved: Workspace & Android Integration
 1.  **Workspace Flag**: Added `--workspace` argument to `gemini-cli` to explicitly set the working directory, overriding `process.cwd()`.
-2.  **Robust Launch**: Updated `launch_gemini_cli.py` to use a temporary batch file, ensuring reliable directory switching and quoting on Windows.
+2.  **Robust Launch**: Updated `launch_gemini_cli.py` to use `os.system("start ...")` instead of `subprocess.Popen` to avoid recursive spawning issues while maintaining workspace support via the `/D` flag.
 3.  **Android Context Menu**: Added "CLI Here" to the folder long-tap menu in `FilesScreen.kt`.
 4.  **SignalR Plumbing**: Added `StartCliAtWorkspace` to `RpcApiHub.cs` and `SignalRClient.kt` to facilitate the end-to-end flow.
 

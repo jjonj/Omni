@@ -36,7 +36,7 @@ namespace OmniSync.Hub.Infrastructure.Services
             _logger = logger;
         }
 
-        public async Task<List<int>> DiscoverSessionsAsync(int connectionTimeoutMs = 1000)
+        public async Task<List<int>> DiscoverSessionsAsync(int connectionTimeoutMs = 3000)
         {
             var pids = new List<int>();
             try
@@ -53,9 +53,11 @@ namespace OmniSync.Hub.Infrastructure.Services
                         var pidObj = process["ProcessId"];
                         if (commandLine != null && pidObj != null)
                         {
+                            _logger.LogDebug($"Checking node process {pidObj}: {commandLine}");
                             if ((commandLine.Contains("bundle/gemini.js") || commandLine.Contains("dist/index.js") || (commandLine.Contains("gemini-cli") && commandLine.Contains("index.js")))
                                 && !commandLine.Contains("@google")) // Exclude standard global install which lacks named pipe
                             {
+                                _logger.LogInformation($"Found matching Gemini process: PID {pidObj}");
                                 pids.Add(Convert.ToInt32(pidObj));
                             }
                         }
@@ -99,31 +101,53 @@ namespace OmniSync.Hub.Infrastructure.Services
         {
             try
             {
+                // D:\SSDProjects\Omni\OmniSync.Hub\bin\Debug\net9.0-windows\OmniSync.Hub.exe
+                // Go up 6 levels to get to D:\SSDProjects\Omni
                 string rootPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", ".."));
-                string scriptPath = Path.Combine(rootPath, "launch_gemini_cli.py");
-
-                if (!File.Exists(scriptPath))
-                {
-                    _logger.LogError($"Launch script not found at {scriptPath}");
-                    return false;
-                }
-
-                _logger.LogInformation($"AiCliService: Launching new Gemini CLI session in workspace: {workspace ?? "default"}...");
                 
-                string arguments = $"\"{scriptPath}\"";
-                if (!string.IsNullOrEmpty(workspace))
+                // Gemini is at D:\SSDProjects\Tools\gemini-cli (sibling to Omni)
+                string geminiDir = Path.GetFullPath(Path.Combine(rootPath, "..", "Tools", "gemini-cli"));
+
+                if (string.IsNullOrWhiteSpace(workspace))
                 {
-                    arguments += $" \"{workspace}\"";
+                    // Default workspace is D:\SSDProjects (parent of Omni)
+                    workspace = Path.GetFullPath(Path.Combine(rootPath, ".."));
                 }
+                else
+                {
+                    workspace = Path.GetFullPath(workspace);
+                }
+
+                _logger.LogInformation($"AiCliService: Launching new Gemini CLI session.");
+                _logger.LogInformation($"  Gemini Dir: {geminiDir}");
+                _logger.LogInformation($"  Workspace: {workspace}");
+
+                // Construct the command exactly as the working python script does:
+                // cmd = f'title OMNI_GEMINI_INTERACTIVE && cd /d {gemini_dir} && node bundle/gemini.js --workspace {workspace}'
+                // Note: NO QUOTES around the workspace path in the final command string to avoid node path resolution issues.
+                string command = $"title OMNI_GEMINI_INTERACTIVE && cd /d \"{geminiDir}\" && node bundle/gemini.js --workspace {workspace}";
 
                 var startInfo = new ProcessStartInfo
                 {
-                    FileName = "python",
-                    Arguments = arguments,
-                    WorkingDirectory = rootPath,
-                    UseShellExecute = true,
-                    CreateNoWindow = false
+                    FileName = "cmd.exe",
+                    Arguments = $"/K \"{command}\"", // /K to keep window open
+                    UseShellExecute = true, // Needed for separate window
+                    CreateNoWindow = false,
+                    WindowStyle = ProcessWindowStyle.Normal
                 };
+
+                // Set environment variable for the new process
+                // Note: When UseShellExecute is true, we can't set EnvironmentVariables directly in .NET Core/5+ easily without native P/Invoke or using a wrapper cmd.
+                // However, we can inject it into the command string or use a temporary batch file?
+                // Or simply set it in the current process before launch? No, that affects this process.
+                // Actually, "start" command can execute a block with env vars if we are clever, or we can just set it in the command chain:
+                // "set GEMINI_DEBUG_LOG_FILE=... && title ... && ..."
+                
+                string debugLog = Path.Combine(rootPath, "gemini_cli_debug.log");
+                // Update command to include setting the env var
+                string finalCommand = $"set GEMINI_DEBUG_LOG_FILE={debugLog} && {command}";
+                
+                startInfo.Arguments = $"/K \"{finalCommand}\"";
 
                 Process.Start(startInfo);
 

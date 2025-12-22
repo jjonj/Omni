@@ -59,7 +59,7 @@ namespace OmniSync.Hub.Logic.Services
 
                  if (e.IsFinished)
                  {
-                     await _hubContext.Clients.All.SendAsync("ReceiveAiStatus", (string?)null);
+                     await _hubContext.Clients.All.SendAsync("ReceiveAiStatus", "FINISHED");
                  }
             }
         }
