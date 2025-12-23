@@ -108,10 +108,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun playVideo(remotePath: String, playlist: List<String> = emptyList()) {
-        if (remotePath.startsWith("content://")) {
-            _videoPlaylist.value = playlist
-            _currentVideoIndex.value = if (playlist.contains(remotePath)) playlist.indexOf(remotePath) else 0
-            _currentVideoUrl.value = remotePath
+        val isLocal = remotePath.startsWith("/") || remotePath.startsWith("file://") || remotePath.startsWith("content://")
+        
+        if (isLocal) {
+            val fixedPath = if (remotePath.startsWith("/")) "file://$remotePath" else remotePath
+            val fixedPlaylist = playlist.map { if (it.startsWith("/")) "file://$it" else it }
+            
+            _videoPlaylist.value = fixedPlaylist
+            _currentVideoIndex.value = if (fixedPlaylist.contains(fixedPath)) fixedPlaylist.indexOf(fixedPath) else 0
+            _currentVideoUrl.value = fixedPath
             navigateTo(AppScreen.VIDEOPLAYER)
             return
         }

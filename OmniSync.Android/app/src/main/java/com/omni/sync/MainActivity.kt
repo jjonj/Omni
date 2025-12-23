@@ -88,8 +88,16 @@ class MainActivity : ComponentActivity() {
         handleIntent(intent)
 
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
-            if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-                ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.POST_NOTIFICATIONS), 101)
+            val permissions = mutableListOf(Manifest.permission.POST_NOTIFICATIONS, Manifest.permission.READ_MEDIA_VIDEO)
+            val toRequest = permissions.filter { 
+                ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED 
+            }
+            if (toRequest.isNotEmpty()) {
+                ActivityCompat.requestPermissions(this, toRequest.toTypedArray(), 101)
+            }
+        } else {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
+                ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE), 102)
             }
         }
 

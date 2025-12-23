@@ -1417,14 +1417,12 @@ class FilesViewModel(
                     file
                 }
 
-                val uri = FileProvider.getUriForFile(
-                    getApplication(),
-                    getApplication<Application>().packageName + ".fileprovider",
-                    playableFile
-                )
+                // CHANGED: Use simple file:// URI instead of FileProvider for internal ExoPlayer usage
+                // This avoids permission complexities and overhead within the same app
+                val uri = "file://${playableFile.absolutePath}"
 
                 viewModelScope.launch(AndroidSchedulers.mainThread().asCoroutineDispatcher()) {
-                    mainViewModel.playVideo(uri.toString(), emptyList())
+                    mainViewModel.playVideo(uri, emptyList())
                 }
             } catch (e: Exception) {
                 _errorMessage.value = "Failed to play video: ${e.message}"

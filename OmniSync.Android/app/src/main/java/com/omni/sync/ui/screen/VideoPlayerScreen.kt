@@ -75,7 +75,11 @@ fun VideoPlayerScreen(
     // Use a ref for lastTapTime to avoid state update issues
     val lastTapTimeRef = remember { mutableStateOf(0L) }
     
-    var currentBrightness by remember { mutableStateOf(activity?.window?.attributes?.screenBrightness ?: -1f) }
+    // Initialize brightness, handling -1f (system default)
+    var currentBrightness by remember { 
+        val initial = activity?.window?.attributes?.screenBrightness ?: -1f
+        mutableStateOf(if (initial < 0) 0.5f else initial) 
+    }
     val initialBrightness = remember { activity?.window?.attributes?.screenBrightness ?: -1f }
 
     // Handle system back press
@@ -137,14 +141,31 @@ fun VideoPlayerScreen(
     }
 
     // Prepare the MediaSource when videoUrl or playlist changes
-    LaunchedEffect(playlist, initialIndex) {
+    LaunchedEffect(playlist, initialIndex, videoUrl) {
+        android.util.Log.d("VideoPlayer", "Preparing playback. URL: $videoUrl, Playlist size: ${playlist.size}, Index: $initialIndex")
+        
+        fun createMediaItem(url: String): MediaItem {
+            return if (url.startsWith("file://")) {
+                val path = url.substring(7)
+                val file = java.io.File(path)
+                android.util.Log.d("VideoPlayer", "Creating local MediaItem. Path: $path, Exists: ${file.exists()}")
+                MediaItem.fromUri(Uri.fromFile(file))
+            } else if (url.startsWith("content://")) {
+                MediaItem.fromUri(Uri.parse(url))
+            } else {
+                MediaItem.fromUri(Uri.parse(url))
+            }
+        }
+
         if (playlist.isNotEmpty()) {
-            val mediaItems = playlist.map { MediaItem.fromUri(Uri.parse(it)) }
+            val mediaItems = playlist.map { createMediaItem(it) }
             exoPlayer.setMediaItems(mediaItems)
-            exoPlayer.seekTo(initialIndex, 0L)
+            if (initialIndex >= 0 && initialIndex < mediaItems.size) {
+                exoPlayer.seekTo(initialIndex, 0L)
+            }
             exoPlayer.prepare()
         } else {
-            val mediaItem = MediaItem.fromUri(Uri.parse(videoUrl))
+            val mediaItem = createMediaItem(videoUrl)
             exoPlayer.setMediaItem(mediaItem)
             exoPlayer.prepare()
         }
@@ -164,142 +185,6 @@ fun VideoPlayerScreen(
             .fillMaxSize()
             .background(Color.Black)
             .onSizeChanged { containerSize = it }
-            // Unified gesture handler for vertical drag (brightness/volume) and double-tap (skip)
-            .pointerInput(containerSize) {
-                awaitEachGesture {
-                    val down = awaitFirstDown(requireUnconsumed = false)
-                    val downX = down.position.x
-                    val downY = down.position.y
-                    val downTime = System.currentTimeMillis()
-                    var totalDrag = 0f
-                    var isDragging = false
-                    var hasMoved = false
-                    
-                    val x = down.position.x
-                    val y = down.position.y
-                    
-                    // Exclude top 10% from gestures to allow back button usage
-                    if (y < containerSize.height * 0.1f) return@awaitEachGesture
-
-                    // Determine which zone was tapped - Reduced from 15% to 10% to avoid back button
-                    val leftZone = x < containerSize.width * 0.1f
-                    val rightZone = x > containerSize.width * 0.9f
-                    val centerZone = !leftZone && !rightZone
-                    
-                    do {
-                        val event = awaitPointerEvent()
-                        val change = event.changes.firstOrNull()
-                        
-                        if (change != null) {
-                            val currentY = change.position.y
-                            val dragAmount = currentY - change.previousPosition.y
-                            
-                            // Check if finger has moved significantly
-                            val totalMovement = kotlin.math.abs(currentY - downY)
-                            if (totalMovement > 5f) {
-                                hasMoved = true
-                            }
-                            
-                            if (kotlin.math.abs(dragAmount) > 0.1f) {
-                                isDragging = true
-                                totalDrag += dragAmount
-                                
-                                if (scale <= 1.05f) {
-                                    // Left zone: brightness control
-                                    if (leftZone) {
-                                        val delta = -totalDrag / containerSize.height.toFloat()
-                                        val newBrightness = (currentBrightness + delta).coerceIn(0.01f, 1f)
-                                        if (kotlin.math.abs(newBrightness - currentBrightness) > 0.01f) {
-                                            currentBrightness = newBrightness
-                                            val lp = activity?.window?.attributes
-                                            lp?.screenBrightness = newBrightness
-                                            activity?.window?.attributes = lp
-                                            totalDrag = 0f
-                                            scope.launch {
-                                                skipFeedbackText = "Brightness: ${(newBrightness * 100).toInt()}%"
-                                            }
-                                        }
-                                        change.consume()
-                                    }
-                                    // Right zone: volume control
-                                    else if (rightZone) {
-                                        val deltaVolume = (-totalDrag / containerSize.height.toFloat()) * maxVolume.toFloat()
-                                        val currentVol = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
-                                        val newVol = (currentVol + deltaVolume.toInt()).coerceIn(0, maxVolume)
-                                        if (newVol != currentVol) {
-                                            audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, newVol, 0)
-                                            totalDrag = 0f
-                                            scope.launch {
-                                                skipFeedbackText = "Volume: ${(newVol.toFloat() / maxVolume.toFloat() * 100).toInt()}%"
-                                            }
-                                        }
-                                        change.consume()
-                                    }
-                                }
-                            }
-                        }
-                    } while (event.changes.any { it.pressed })
-                    
-                    // Handle tap gestures after pointer release (only if didn't move much)
-                    if (!hasMoved) {
-                        val tapTime = System.currentTimeMillis()
-                        val lastTap = lastTapTimeRef.value
-                        val timeDiff = tapTime - lastTap
-                        val isDoubleTap = timeDiff < 300 && timeDiff > 0
-                        
-                        if (isDoubleTap) {
-                            // Left zone: skip back
-                            if (leftZone && scale <= 1.05f) {
-                                val newPos = exoPlayer.currentPosition - skipIntervalMs
-                                exoPlayer.seekTo(newPos.coerceAtLeast(0))
-                                skipFeedbackText = "Back ${skipIntervalMs / 1000}s"
-                            }
-                            // Right zone: skip forward
-                            else if (rightZone && scale <= 1.05f) {
-                                val newPos = exoPlayer.currentPosition + skipIntervalMs
-                                exoPlayer.seekTo(newPos.coerceAtMost(exoPlayer.duration))
-                                skipFeedbackText = "Forward ${skipIntervalMs / 1000}s"
-                            }
-                            // Center zone: reset zoom
-                            else if (centerZone && scale > 1.05f) {
-                                scale = 1f
-                                offset = Offset.Zero
-                            }
-                            lastTapTimeRef.value = 0L
-                        } else {
-                            lastTapTimeRef.value = tapTime
-                            // Single tap: toggle controls (with delay to detect double-tap)
-                            scope.launch {
-                                delay(310) // Wait slightly longer than double-tap threshold
-                                if (lastTapTimeRef.value == tapTime) { // Check if wasn't reset by double-tap
-                                    lastTapTimeRef.value = 0L
-                                    if (isControllerVisible) playerViewInstance?.hideController()
-                                    else playerViewInstance?.showController()
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            .pointerInput(Unit) {
-                detectTransformGestures { centroid, pan, zoom, _ ->
-                    if (zoom != 1f || scale > 1.05f) {
-                        scale = (scale * zoom).coerceIn(1f, 5f)
-                        if (scale > 1f) {
-                            val extraWidth = (scale - 1) * containerSize.width
-                            val extraHeight = (scale - 1) * containerSize.height
-                            val maxX = extraWidth / 2f
-                            val maxY = extraHeight / 2f
-                            offset = Offset(
-                                x = (offset.x + pan.x * scale).coerceIn(-maxX, maxX),
-                                y = (offset.y + pan.y * scale).coerceIn(-maxY, maxY)
-                            )
-                        } else {
-                            offset = Offset.Zero
-                        }
-                    }
-                }
-            }
     ) {
         AndroidView(
             modifier = Modifier
@@ -328,6 +213,80 @@ fun VideoPlayerScreen(
                 }
             }
         )
+
+        // GESTURE OVERLAY ROW (.xxx..xxx.) with vertical gaps (...xxxx...)
+        Row(modifier = Modifier.fillMaxSize()) {
+            // 0-10% (Gap)
+            Box(modifier = Modifier.weight(0.1f).fillMaxHeight())
+            
+            // 10-40% (Left Column)
+            Column(modifier = Modifier.weight(0.3f).fillMaxHeight()) {
+                Box(modifier = Modifier.weight(0.3f).fillMaxWidth()) // Top Gap (30%)
+                GestureZone(
+                    modifier = Modifier.weight(0.4f).fillMaxWidth(), // Active Zone (40%)
+                    isLeft = true,
+                    currentValue = currentBrightness,
+                    onValueChange = { currentBrightness = it },
+                    onBrightnessChange = { brightness ->
+                        val lp = activity?.window?.attributes
+                        lp?.screenBrightness = brightness
+                        activity?.window?.attributes = lp
+                    },
+                    onSkip = { delta ->
+                        val newPos = exoPlayer.currentPosition + (delta * 1000)
+                        exoPlayer.seekTo(newPos.coerceIn(0, exoPlayer.duration))
+                        skipFeedbackText = if (delta > 0) "Forward ${delta}s" else "Back ${-delta}s"
+                    },
+                    onToggleController = {
+                        if (isControllerVisible) playerViewInstance?.hideController()
+                        else playerViewInstance?.showController()
+                    },
+                    skipIntervalSec = (skipIntervalMs / 1000).toInt(),
+                    maxVolume = maxVolume,
+                    audioManager = audioManager,
+                    onFeedback = { skipFeedbackText = it },
+                    lastTapTimeRef = lastTapTimeRef,
+                    scope = scope,
+                    scale = scale
+                )
+                Box(modifier = Modifier.weight(0.3f).fillMaxWidth()) // Bottom Gap (30%)
+            }
+
+            // 40-60% (Middle Gap: Passes through to native player)
+            Box(modifier = Modifier.weight(0.2f).fillMaxHeight())
+
+            // 60-90% (Right Column)
+            Column(modifier = Modifier.weight(0.3f).fillMaxHeight()) {
+                Box(modifier = Modifier.weight(0.3f).fillMaxWidth()) // Top Gap (30%)
+                GestureZone(
+                    modifier = Modifier.weight(0.4f).fillMaxWidth(), // Active Zone (40%)
+                    isLeft = false,
+                    currentValue = 0f, 
+                    onValueChange = {},
+                    onBrightnessChange = {},
+                    onSkip = { delta ->
+                        val newPos = exoPlayer.currentPosition + (delta * 1000)
+                        exoPlayer.seekTo(newPos.coerceIn(0, exoPlayer.duration))
+                        skipFeedbackText = if (delta > 0) "Forward ${delta}s" else "Back ${-delta}s"
+                    },
+                    onToggleController = {
+                        if (isControllerVisible) playerViewInstance?.hideController()
+                        else playerViewInstance?.showController()
+                    },
+                    skipIntervalSec = (skipIntervalMs / 1000).toInt(),
+                    maxVolume = maxVolume,
+                    audioManager = audioManager,
+                    onFeedback = { skipFeedbackText = it },
+                    lastTapTimeRef = lastTapTimeRef,
+                    scope = scope,
+                    scale = scale
+                )
+                Box(modifier = Modifier.weight(0.3f).fillMaxWidth()) // Bottom Gap (30%)
+            }
+
+            // 90-100% (Gap)
+            Box(modifier = Modifier.weight(0.1f).fillMaxHeight())
+        }
 
         // Skip Feedback Overlay
         skipFeedbackText?.let { text ->
@@ -362,4 +321,102 @@ fun VideoPlayerScreen(
             }
         }
     }
+}
+
+@Composable
+fun GestureZone(
+    modifier: Modifier,
+    isLeft: Boolean,
+    currentValue: Float,
+    onValueChange: (Float) -> Unit,
+    onBrightnessChange: (Float) -> Unit,
+    onSkip: (Int) -> Unit,
+    onToggleController: () -> Unit,
+    skipIntervalSec: Int,
+    maxVolume: Int,
+    audioManager: AudioManager,
+    onFeedback: (String) -> Unit,
+    lastTapTimeRef: MutableState<Long>,
+    scope: kotlinx.coroutines.CoroutineScope,
+    scale: Float
+) {
+    // CRITICAL: Use rememberUpdatedState so pointerInput always has fresh values
+    val currentValState = rememberUpdatedState(currentValue)
+
+    Box(
+        modifier = modifier
+            .pointerInput(Unit) {
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = true)
+                    down.consume()
+                    
+                    var hasMoved = false
+                    var accumulatedDrag = 0f
+                    
+                    do {
+                        val event = awaitPointerEvent()
+                        event.changes.forEach { change ->
+                            if (change.pressed) {
+                                val dragAmount = change.position.y - change.previousPosition.y
+                                val movement = kotlin.math.abs(change.position.y - down.position.y)
+                                
+                                if (movement > 15f) {
+                                    hasMoved = true
+                                }
+                                
+                                if (hasMoved && scale <= 1.05f) {
+                                    accumulatedDrag += dragAmount
+                                    if (isLeft) {
+                                        // Brightness: Full range in 1/2 screen height
+                                        val delta = -accumulatedDrag / (size.height / 2f)
+                                        if (kotlin.math.abs(delta) >= 0.02f) {
+                                            val newVal = (currentValState.value + delta).coerceIn(0.01f, 1f)
+                                            onValueChange(newVal)
+                                            onBrightnessChange(newVal)
+                                            onFeedback("Brightness: ${(newVal * 100).toInt()}%")
+                                            accumulatedDrag = 0f
+                                        }
+                                    } else {
+                                        // Volume: Full range in 1/2 screen height
+                                        val deltaVolume = (-accumulatedDrag / (size.height / 2f)) * maxVolume.toFloat()
+                                        if (kotlin.math.abs(deltaVolume) >= 1f) {
+                                            val currentVol = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
+                                            val newVol = (currentVol + deltaVolume.toInt()).coerceIn(0, maxVolume)
+                                            if (newVol != currentVol) {
+                                                audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, newVol, 0)
+                                                onFeedback("Volume: ${(newVol.toFloat() / maxVolume.toFloat() * 100).toInt()}%")
+                                            }
+                                            accumulatedDrag = 0f
+                                        }
+                                    }
+                                    change.consume()
+                                }
+                            }
+                        }
+                    } while (event.changes.any { it.pressed })
+
+                    if (!hasMoved) {
+                        val tapTime = System.currentTimeMillis()
+                        val lastTap = lastTapTimeRef.value
+                        val timeDiff = tapTime - lastTap
+                        
+                        if (timeDiff < 300 && timeDiff > 0) {
+                            lastTapTimeRef.value = 0L
+                            if (scale <= 1.05f) {
+                                onSkip(if (isLeft) -skipIntervalSec else skipIntervalSec)
+                            }
+                        } else {
+                            lastTapTimeRef.value = tapTime
+                            scope.launch {
+                                delay(310)
+                                if (lastTapTimeRef.value == tapTime) {
+                                    lastTapTimeRef.value = 0L
+                                    onToggleController()
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+    )
 }
