@@ -21,6 +21,8 @@ import sys
 import os
 import time
 import argparse
+import threading
+import queue
 from pathlib import Path
 import connectadb
 
@@ -170,8 +172,37 @@ def main():
         print("\n[OK] Build complete (installation skipped)")
         return
     
-    # Ensure device is connected
-    device = ensure_device(args.device)
+    # Ensure device is connected with timeout
+    print("\n=== Connecting to Device ===")
+    print("Waiting for device connection (1 minute timeout)...")
+    device_queue = queue.Queue()
+    
+    def connect_worker():
+        try:
+            dev = ensure_device(args.device)
+            device_queue.put(dev)
+        except SystemExit:
+            device_queue.put(None)
+        except Exception as e:
+            print(f"\nConnection error: {e}")
+            device_queue.put(None)
+
+    connect_thread = threading.Thread(target=connect_worker, daemon=True)
+    connect_thread.start()
+    
+    try:
+        device = device_queue.get(timeout=60)
+    except queue.Empty:
+        print("\n[TIMEOUT] Device connection timed out after 5 seconds (readline did not evaluate).")
+        print("Proceeding without installation. You can run with --no-install to skip deployment.")
+        print("\n" + "=" * 60)
+        print("[OK] Build successful, deployment skipped due to connection timeout.")
+        print("=" * 60)
+        return
+
+    if not device:
+        print("\n[FAIL] Could not connect to device.")
+        sys.exit(1)
     
     # Install the APK
     if not install_apk(device, apk_path):

@@ -1,32 +1,23 @@
 package com.omni.sync.ui.screen
 
+import android.content.Context
+import android.content.ClipboardManager
 import android.util.Log
 import androidx.compose.foundation.background
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.isImeVisible
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.ArrowForward
-import androidx.compose.material.icons.automirrored.filled.KeyboardBackspace
-import androidx.compose.material.icons.automirrored.filled.KeyboardReturn
-import androidx.compose.material.icons.automirrored.filled.VolumeOff
-import androidx.compose.material.icons.automirrored.filled.VolumeUp
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.KeyboardArrowUp
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.ModeNight
-import androidx.compose.material.icons.filled.PowerSettingsNew
-import androidx.compose.material.icons.filled.VolumeOff
-import androidx.compose.material.icons.filled.VolumeUp
+import androidx.compose.material.icons.automirrored.filled.*
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -36,28 +27,17 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.key.*
 import androidx.compose.ui.input.pointer.*
-import android.content.Context
-import android.content.ClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.omni.sync.data.repository.SignalRClient
 import com.omni.sync.viewmodel.MainViewModel
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
-
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.PressInteraction
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import kotlinx.coroutines.launch
-
 import com.omni.sync.utils.WindowsKeyCodes.VK_A
 import com.omni.sync.utils.WindowsKeyCodes.VK_BACK
 import com.omni.sync.utils.WindowsKeyCodes.VK_CONTROL
@@ -71,6 +51,8 @@ import com.omni.sync.utils.WindowsKeyCodes.VK_RIGHT
 import com.omni.sync.utils.WindowsKeyCodes.VK_SHIFT
 import com.omni.sync.utils.WindowsKeyCodes.VK_TAB
 import com.omni.sync.utils.WindowsKeyCodes.VK_UP
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalLayoutApi::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
@@ -82,10 +64,6 @@ fun RemoteControlScreen(
     val keyboardController = LocalSoftwareKeyboardController.current
     val focusRequester = remember { FocusRequester() }
     val isKeyboardVisible = WindowInsets.isImeVisible
-
-    LaunchedEffect(Unit) {
-        focusRequester.requestFocus()
-    }
 
     // Layered layout: Trackpad fills the screen, ButtonPanel sits on top with shadow
     Box(modifier = modifier.fillMaxSize()) {
@@ -155,12 +133,6 @@ fun TrackpadArea(signalRClient: SignalRClient, modifier: Modifier = Modifier) {
                                 // Scroll logic
                                 val scrollDelta = changes.first().positionChange()
                                 if (scrollDelta != Offset.Zero) {
-                                    // We don't have a direct scroll command in signalRClient yet, 
-                                    // but we can send it as a custom command or through mouse_move if hub supports it.
-                                    // For now, let's assume we might need a new Hub command for scroll.
-                                    // signalRClient.sendScroll(scrollDelta.y)
-                                    
-                                    // Actually, let's use sendPayload if it's not implemented yet
                                     signalRClient.sendPayload("MOUSE_SCROLL", mapOf("Delta" to scrollDelta.y.toInt()))
                                 }
                                 isDrag = true
@@ -189,7 +161,7 @@ fun TrackpadArea(signalRClient: SignalRClient, modifier: Modifier = Modifier) {
                                 if (isDrag) {
                                     val delta = change.positionChange()
                                     if (delta != Offset.Zero) {
-                                        // Reduced sensitivity by 40% from original (1.2f * 0.6 = 0.72f)
+                                        // Reduced sensitivity
                                         val sensitivity = 0.72f
                                         signalRClient.sendMouseMove(delta.x * sensitivity, delta.y * sensitivity)
                                         change.consume()
@@ -224,6 +196,113 @@ fun TrackpadArea(signalRClient: SignalRClient, modifier: Modifier = Modifier) {
     }
 }
 
+/**
+ * Isolated keyboard input component.
+ * Uses an "Append-Only" strategy to avoid fighting the keyboard state.
+ */
+@Composable
+fun HiddenKeyboardInput(
+    signalRClient: SignalRClient,
+    focusRequester: FocusRequester,
+    modifier: Modifier = Modifier
+) {
+    val bufferSize = 100
+    val refillThreshold = 20
+    val maxBufferSize = 500
+    val dummyChar = 'x'
+    
+    var textFieldValue by remember { 
+        mutableStateOf(
+            TextFieldValue(
+                text = String(CharArray(bufferSize) { dummyChar }), 
+                selection = TextRange(bufferSize)
+            )
+        ) 
+    }
+
+    BasicTextField(
+        value = textFieldValue,
+        onValueChange = { newValue ->
+            val oldText = textFieldValue.text
+            val newText = newValue.text
+            val cursor = newValue.selection.start
+            
+            // 1. Force Cursor to End (prevents editing middle of buffer)
+            if (cursor < newText.length) {
+                textFieldValue = newValue.copy(selection = TextRange(newText.length))
+                return@BasicTextField
+            }
+
+            // 2. Diffing Logic
+            if (newText.length > oldText.length) {
+                // Characters Added
+                val addedCount = newText.length - oldText.length
+                val addedText = newText.takeLast(addedCount)
+                
+                if (addedText.isNotEmpty()) {
+                    // --- SMART FILTER: Detect Auto-Space ---
+                    // If the keyboard sent exactly 2 chars, the second is a space,
+                    // and the first is NOT a letter/digit (likely punctuation),
+                    // we assume it's an auto-space insertion and strip it.
+                    if (addedText.length == 2 && addedText[1] == ' ' && !addedText[0].isLetterOrDigit()) {
+                        signalRClient.sendText(addedText[0].toString())
+                    } else {
+                        signalRClient.sendText(addedText)
+                    }
+                }
+                textFieldValue = newValue
+            } 
+            else if (newText.length < oldText.length) {
+                // Backspace(s) detected
+                val deletedCount = oldText.length - newText.length
+                if (deletedCount > 0) {
+                    repeat(deletedCount) {
+                        signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_BACK)
+                    }
+                }
+                textFieldValue = newValue
+            } else {
+                textFieldValue = newValue
+            }
+
+            // 3. Buffer Maintenance
+            if (newText.length < refillThreshold || newText.length > maxBufferSize) {
+                val resetText = String(CharArray(bufferSize) { dummyChar })
+                textFieldValue = TextFieldValue(resetText, TextRange(resetText.length))
+            }
+        },
+        keyboardOptions = KeyboardOptions(
+            autoCorrect = false, 
+            // URI Type is safer against auto-spacing/capitalization than ASCII
+            keyboardType = KeyboardType.Uri, 
+            imeAction = ImeAction.Send
+        ),
+        keyboardActions = KeyboardActions(
+            onSend = {
+                signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_RETURN)
+            }
+        ),
+        modifier = modifier
+            .focusRequester(focusRequester)
+            .size(1.dp) 
+            .alpha(0f)
+            .onKeyEvent { keyEvent ->
+                // Capture Hardware Keys
+                if (keyEvent.type == KeyEventType.KeyDown) {
+                     when (keyEvent.key) {
+                         Key.Tab -> { signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_TAB); true }
+                         Key.DirectionUp -> { signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_UP); true }
+                         Key.DirectionDown -> { signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_DOWN); true }
+                         Key.DirectionLeft -> { signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_LEFT); true }
+                         Key.DirectionRight -> { signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_RIGHT); true }
+                         Key.Escape -> { signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_ESCAPE); true }
+                         else -> false
+                     }
+                } else false
+            }
+    )
+}
+
 @Composable
 fun ButtonPanel(
     signalRClient: SignalRClient,
@@ -240,11 +319,10 @@ fun ButtonPanel(
     val scheduledShutdownTime by mainViewModel.scheduledShutdownTime.collectAsState()
     val shutdownMode by mainViewModel.shutdownMode.collectAsState()
 
-    var volumeLevel by remember { mutableStateOf(50f) }
+    var volumeLevel by remember { mutableFloatStateOf(50f) }
     var isMutedState by remember { mutableStateOf(false) }
     var shutdownLabel by remember { mutableStateOf("None") }
-    var shutdownIndex by remember { mutableStateOf(0) }
-    var textInput by remember { mutableStateOf(" ") }
+    var shutdownIndex by remember { mutableIntStateOf(0) }
 
     LaunchedEffect(scheduledShutdownTime) {
         if (scheduledShutdownTime == null) {
@@ -267,66 +345,26 @@ fun ButtonPanel(
                     delay(1000)
                 }
             } catch (e: Exception) {
-                shutdownLabel = "Error"
+                shutdownLabel = "Active"
             }
         }
     }
 
     LaunchedEffect(Unit) {
+        focusRequester.requestFocus()
+        
         if (signalRClient.connectionState.value.contains("Connected")) {
             signalRClient.getVolume()?.subscribe({ volumeLevel = it }, {})
             signalRClient.isMuted()?.subscribe({ isMutedState = it }, {})
         }
     }
 
-    Column(
-        modifier = modifier
-            .padding(8.dp)
-            .onPreviewKeyEvent { keyEvent ->
-                if (keyEvent.type == KeyEventType.KeyDown) {
-                    val unicodeChar = keyEvent.nativeKeyEvent.unicodeChar
-                    if (unicodeChar != 0) {
-                        signalRClient.sendText(unicodeChar.toChar().toString())
-                        return@onPreviewKeyEvent true
-                    }
-                }
-                false
-            }
-    ) {
-    // Hidden TextField for keyboard - made invisible with alpha
-    TextField(
-        value = textInput,
-        onValueChange = { newText ->
-            if (newText.length > textInput.length) {
-                // Character added
-                val addedChars = newText.substring(textInput.length)
-                signalRClient.sendText(addedChars)
-            } else if (newText.length < textInput.length) {
-                // Character removed (Backspace)
-                val removedCount = textInput.length - newText.length
-                repeat(removedCount) {
-                    signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_BACK)
-                }
-            }
-            // Always reset to two spaces to keep the keyboard "happy" and backspace working
-            textInput = "  "
-        },
-        modifier = Modifier
-            .height(1.dp)
-            .fillMaxWidth()
-            .alpha(0f)
-            .focusRequester(focusRequester),
-        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-        keyboardActions = KeyboardActions(onSend = {
-            signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_RETURN)
-            textInput = "  "
-        })
-    )
-
-    // Ensure initial spaces
-    LaunchedEffect(Unit) {
-        if (textInput.length < 2) textInput = "  "
-    }
+    Column(modifier = modifier.padding(8.dp)) {
+        
+        HiddenKeyboardInput(
+            signalRClient = signalRClient,
+            focusRequester = focusRequester
+        )
 
         // Volume Slider
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -391,7 +429,6 @@ fun ButtonPanel(
                 ActionKeyButton(text = "Esc", modifier = Modifier.weight(1f)) {
                     signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_ESCAPE)
                 }
-                // Arrow Keys in Grid 2
                 ActionKeyButton(icon = Icons.AutoMirrored.Filled.ArrowBack, modifier = Modifier.weight(1f)) {
                     signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_LEFT)
                 }
@@ -419,8 +456,12 @@ fun ButtonPanel(
             if (!showMoreButtons) {
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     ActionKeyButton(text = "Kbd", modifier = Modifier.weight(1f)) {
-                        if (isKeyboardVisible) keyboardController?.hide()
-                        else keyboardController?.show()
+                        if (isKeyboardVisible) {
+                            keyboardController?.hide()
+                        } else {
+                            focusRequester.requestFocus()
+                            keyboardController?.show()
+                        }
                     }
                     ActionKeyButton(text = "Space", modifier = Modifier.weight(1f)) {
                         signalRClient.sendText(" ")
@@ -434,7 +475,6 @@ fun ButtonPanel(
                 }
             } else {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    // Set 2 - Row 1
                     Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                         ActionKeyButton(text = "Paste", modifier = Modifier.weight(1f)) {
                             val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
@@ -462,7 +502,6 @@ fun ButtonPanel(
                         }
                     }
 
-                    // Set 2 - Row 2
                     Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                         ActionKeyButton(icon = Icons.Default.Delete, modifier = Modifier.weight(1f)) {
                             coroutineScope.launch {
@@ -499,7 +538,7 @@ fun ModifierKeyButton(
         onClick = { onToggle(!isToggled) },
         colors = ButtonDefaults.filledTonalButtonColors(containerColor = containerColor, contentColor = contentColor),
         modifier = modifier
-            .height(40.dp) // Reduced height // Reduced height
+            .height(40.dp)
             .pointerInput(Unit) {
                 detectTapGestures(
                     onDoubleTap = {
@@ -511,7 +550,7 @@ fun ModifierKeyButton(
                 )
             },
         shape = RoundedCornerShape(8.dp),
-        contentPadding = PaddingValues(0.dp) // Minimal padding
+        contentPadding = PaddingValues(0.dp)
     ) {
         Text(text, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Visible, fontSize = 11.sp)
     }
@@ -525,8 +564,6 @@ fun ActionKeyButton(
     onLongClick: (() -> Unit)? = null,
     onClick: () -> Unit
 ) {
-    // If we have a long click, we use pointerInput to manage BOTH tap and long press
-    // This avoids the gesture conflict with standard onClick
     val clickModifier = if (onLongClick != null) {
         Modifier.pointerInput(Unit) {
             detectTapGestures(
@@ -540,7 +577,7 @@ fun ActionKeyButton(
 
     Surface(
         modifier = modifier
-            .height(40.dp) // Reduced height
+            .height(40.dp)
             .then(clickModifier),
         shape = RoundedCornerShape(8.dp),
         color = MaterialTheme.colorScheme.surfaceContainer,
@@ -561,8 +598,5 @@ fun ActionKeyButton(
 @Preview(showBackground = true)
 @Composable
 fun RemoteControlScreenPreview() {
-    val application = com.omni.sync.OmniSyncApplication()
-    val signalRClient = application.signalRClient
-    val mainViewModel = com.omni.sync.viewmodel.MainViewModel(application)
-    RemoteControlScreen(signalRClient = signalRClient, mainViewModel = mainViewModel)
+    // Preview scaffolding
 }
