@@ -1,138 +1,102 @@
 # Tasks
 
 
-When finishing a task make sure to prefix the line with "DONE" and also git commit between each one.
+When finishing a task make sure to prefix the line with "DONE" and also git commit between each one. Dont wait until the megasession is completed to make these updates.
 if told to do a megasession then fix/implement as many issues of the ones below as possible without user intervention. Make sure to git commit and mark as DONE between each one. Start with any tasks that can be validated with a script in D:\SSDProjects\Omni\TestScripts. If strictly necessary you may use AISpeak to ask the user for help/clarifications.
+
 ## General
-STILL-ISSUE The app is somehow in some kind of fullscreen all the time, hiding the top android bar that shows time and notification icons etc. I only want this in horizontal mode. 
+DONE STILL-ISSUE The app is somehow in some kind of fullscreen all the time, hiding the top android bar that shows time and notification icons etc. I only want this in horizontal mode. 
 ## For the hub
-Right click tray icon -> exit is slow, can we be more forceful?
+
 ### Hub window
 
-Clear log on startup
-
+DONE Clear log on startup
+DONE add clear log btn
 
 ## in OmniSync.Android
 ### General
-DONE Can we make settings/configurations persistent between reinstalls of the app? (implemented via ConfigManager in external storage)
-DONE The dashboard has two cog icons with settings in the upper right, merge them into one. 
+
 ### Dashboard
+
 ### Remote Control Screen
 Stream PC monitor, replacing background of the trackpad leaving the trackpad functioning still, options to toggle monitor, pinch to zoom, (advanced feature, do last)       
 DONE We are using a text field to trick android into letting us use the keyboard which works really well but has some minor issues:
- - DONE Android erase from right button works but only when the textfield has content. Could we maybe ensure the textfield always has a character to erase (ofc without sending that character to the pc)
-DONE Move the arrow buttons to button page1
-DONE Move the clear all (thrashcan) button to page2
+ - Android erase/backspace button that erases from right button works but only when the hidden textfield has content. Please explain to user using AISpeak how it sends erasures to the hub.
 
 
 ### Files & Video Screen
 
-Allow bookmarking files, not just folders 
+DONE Allow bookmarking files, not just folders 
 
-STILL ISSUE when clicking save txt file, it always popups remote changes detected which is true becayse we just sent an updated ver but should be suppressed when saving. 
+DONE STILL ISSUE when clicking save txt file, it always popups "remote changes detected, which is true becayse we just sent an updated ver but should be suppressed when saving. (Implemented 5sec suppression window)
 DONE long press menu for duplicate
+ - Duplicate failed: WriteFileContent Hubexception method does not exist
 
-Search in txt file next prev buttons not jumping around in file like expected
+DONE Search in txt file next prev buttons not jumping around in file like expected
 
-Line numbers dont work right when wrapping lines, it counts a wrapping line as a new one (Disabled word wrap for now when line numbers shown)
+DONE Line numbers dont work right when wrapping lines, it counts a wrapping line as a new one (Disabled word wrap for now when line numbers shown)
 
-when word wrap disabled then allow scrolling horizontally 
+DONE when word wrap disabled then allow scrolling horizontally 
 
 thrashcan btn and arrow up down btnson txt screen crashes app
 
 Downloading a video as encrypted currently prompts for the password, is it possible to encrypt without asking for password? isnt that what a public key is for? Only ask for password if no global password is set
 
-DONE Downloaded videos (encrypted or not) do not play. The player just shows 0.00/0.00 and black screen (Added support for local content URIs in MainViewModel)
-DONE Right click menu for a downloaded file should not show "open on pc" or "download video to app" as it doesnt make sense. The "Download & Open (Ext app)" option should not have the "Download" and doesnt work as it tries to download. 
-DONE Deleting local files work but the file list doesnt update. 
-DONE The password is not currently changable, should be set in dashboard->settings
-DONE Add a panel similar to bookmarks to manage cached files, where they can be uncached
+Downloaded videos (encrypted or not) do not play in the player. The player just shows 0.00/0.00 and black screen. However external app play CAN play unencrypted videos. 
+The button to open cached files should have a different icon
 
- - Menu added but when clearing all or individual cahced files/folders the list does not update. 
- - The menu only lists cached folders, should include files
-DONE Investigate if there is a way to have the hub be notified whenever a cached file is changed on PC so that the android app can update its cached version, this is a nice to have, we definitely dont want to do periodic polling
-DONE - Use this feature to notify user with a popup if the file was changed remotely while the file is open as text
-       -- Feature works but add buttons to discard local changes and reload
-       -- Ensure auto save feature doesnt overwrite remote changes, add star icon to indicate autosave isnt saving in this state
+
+Long press folder has both AI CLI Here and CLI Here, we only need one
+ - "AI CLI Here" does open an AI CLI window and switches to the AI screen but it does not open with the right workspace (the hub should call it with --workspace argument). I think it also attempts to send a message to the AI (/cli "D:\SSDProjects...) which is nonsensical
+ - "CLI Here" Does open an AI cli window at the right workspace, but it does not switch to the AI screen after doing so.
+ - There are significant delays when the former of these commands multiple times, my best guess is that there is some timeout waiting for the AI to respond to the nonsensical /cli command maybe. In fact i think the whole hub communication is freezing up
 	   
 	   
 	   
-DONE Remove the button left of + that opens list of downloaded files. we now have the root virtual folders for that. 
-	   
-	   
-Video:
-	   
-	   
-DONE Still Cant use the back button in upper right, probably because the overlay areas are blocking it, make the overlay areas less wide on the outer area
-DONE Long press on a folder should give option to "AI CLI Here" which will switch to ai screen, open a new cli session with --workspace that folder.
-	   
-	   
- - I think you changed the overlay area to be less wide but it is still covering the edges of the screen. There should be non overlayed space on the edges as well as in the middle
-	   
-	   
-DONE The embedded video player we are using is still being a bit annoying with showing/hiding the player buttons. This didnt used to happen, it just kinda got slightly unstable in its activation. - fixing this requires user to check for regressions
+The embedded video player we are using is still being a bit annoying with showing/hiding the player buttons. This didnt used to happen, it just kinda got slightly unstable in its activation. - fixing this requires user to check for regressions
  - When i tap the screen and the player buttons are not visible then they will turn visible for a second and then unexpected disappear again, as if i tapped twice. Same happens when they are visible and i tap to hide them, then they hide for 1sec then reappear. I have to tap 3 times to actually toggle their visibility
 	   
-More Text editing fancy features, think like a lite code editor like notepad++ or VS code. be creative. MORE options in burger menu with lots of options
+DONE More Text editing fancy features, think like a lite code editor like notepad++ or VS code. be creative. MORE options in burger menu with lots of options
 	   
-DONE Search/replace menu with higlighting findings and next/prev found
+DONE For Search/replace menu Add two up/down arrow buttons to jump to next/prev instance found.
+DONE Allow Having multiple files open at once (Swiping side by side between them, have a button opening dropdown with them, option to close all with a dialog for each unsaved file whether to save. Clicking back button does not close the file (though it still does warn about unsaved), add a dedicated close button next to save.
 	   
-DONE Toggle word wrap
-	   
-DONE Save as copy
-	   
-DONE Have multiple files open at once (Swiping side by side between them, have a button opening dropdown with them, option to close all with a dialog for each unsaved file whether to save
-	   
-DONE Bold/italic/strikethrough options on right clicking selected text
-	   
-DONE Link insertion in burger menu
+NOT-WORKING Bold/italic/strikethrough options on selected text (We need to somehow hook into androids selected text popup thing and add more options to it)
 
-	   
 DONE Highlight matching brackets/parentheses
+Not-working Pinch to zoom (font size change), allow zooming out very far
 	   
-DONE Pinch to zoom (font size change), allow zooming out very far
-	   
-Version history / undo across sessions
-	   
-	   
+DONE Add menu option to toggle render markdown like #, ##.., [title](url)
 	   
 ### Browser control screen
 	   
-DONE Change button text from  "↺📱" and "↺🌐" to "▶↺📱" and "▶↺🌐"
-	   
-DONE Make the ▶↺🌐 button respect the New tab toggle
-	   
-DONE Move the button to the right of the URL bar to open current remote tab on phone to the advanced buttons panel and change icon to "🌐→📱"
-	   
-DONE Add clear icon to the right of URL bar.   
-	   
-	   
-	   
-DONE chrome extension does not seem to work on startup need to disable/reenable for it to connect properly it seems
-	   
+DONE Add clear icon to the right of app URL bar.   
+
 	   
 ### Notification panel
 	   
-DONE Make the buttons have 2 pixels margin between them and use a dark blue background istead of the current blue
-	   
-DONE When changing quick actions the notification does not instantly update
-	   
-DONE Hide the "Omni - COnnected" title, just show buttons.
-	   
+DONE The notification buttons dont seem to change at all when changing the quick actions in the settings menu.
+DONE When clicking notification icon/background it currently expands, it should open app instead. 
+
 ### Android Home screen widgets
 NOT-WORKING Add support for android launcher widgets, when you add a widget you can choose a quick action (same as the list from notifications)
+
 ### Settings screen (accessed by button on dashboard, not bottom panel)
 
 ### AI screen
-DONE button to reload AI the history of the session
 DONE auto scroll down when new messages come in.
+Sessions dont get tracked properly, something is wrong. it shows 0 sessions active even after opening sessions (and eventually "Error failed to communcate with AI service.") with long tap or + buttons despite cli windows popping up and currently i cant send them messages. This worked before.
+Add a close session button next to + button to close the CLI instance remotely (and clear history locally)
+AI Screen should be more verbose about showing a status. e.g. "Starting CLI...", "AI Thinking" etc.
+ - Make system messages like errors a different color/message type than actual messages from the AI.
 
-DONE Clear button does not work. It should do nothing if there is no session active, otherwise it should send /clear remotely and also clear the local chat. 
+
 ### Alarm screen
-DONE When alarm pops, force open the omnihub app to open. Do we not have permission from android to open an app automatically? im pressure sure other alarm apps do. (Added explicit startActivity and permissions)
+When alarm pops, force open the omnihub app to open. Do we not have permission from android to open an app automatically? im pretty sure other alarm apps do. (Added explicit startActivity and permissions)
 Dismissing alarm from notification does not seem to work, at least while its snoozing
 Dismissing alarm from alarm screen does not deactivate a non repeating alarm like expected.
+
 ### Smart home integration
 DONE Read SmartFeature.txt (implemented ExternalCommandController in Hub)
+
 ## Web
-    
