@@ -9,6 +9,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Cached
@@ -18,6 +19,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.omni.sync.data.repository.SignalRClient
@@ -81,6 +83,13 @@ fun AiChatScreen(
                 actions = {
                     IconButton(onClick = { signalRClient.startNewAiSession() }) {
                         Icon(Icons.Default.Add, contentDescription = "New Session")
+                    }
+                    IconButton(onClick = { 
+                        // We need a close session method in SignalRClient
+                        signalRClient.sendAiMessage("/exit")
+                        signalRClient.clearAiMessages()
+                    }) {
+                        Icon(Icons.Default.Close, contentDescription = "Close Session")
                     }
                     Box {
                         IconButton(onClick = { 
@@ -311,33 +320,49 @@ fun Dot(alpha: Float) {
 fun ChatBubble(sender: String, content: String) {
     val isMe = sender == "Me"
     val isAi = sender == "AI"
+    val isSystem = sender == "System" || content.startsWith("Error:")
 
-    val alignment = if (isMe) Alignment.End else Alignment.Start
+    val alignment = when {
+        isSystem -> Alignment.CenterHorizontally
+        isMe -> Alignment.End
+        else -> Alignment.Start
+    }
+    
     val bgColor = when {
+        isSystem -> MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.7f)
         isMe -> MaterialTheme.colorScheme.primaryContainer
         isAi -> MaterialTheme.colorScheme.secondaryContainer
         else -> MaterialTheme.colorScheme.surfaceVariant
+    }
+
+    val textColor = when {
+        isSystem -> MaterialTheme.colorScheme.onErrorContainer
+        else -> MaterialTheme.colorScheme.onSurface
     }
 
     Column(
         modifier = Modifier.fillMaxWidth(),
         horizontalAlignment = alignment
     ) {
-        Text(
-            text = sender,
-            style = MaterialTheme.typography.labelSmall,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(horizontal = 4.dp)
-        )
+        if (!isSystem) {
+            Text(
+                text = sender,
+                style = MaterialTheme.typography.labelSmall,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(horizontal = 4.dp)
+            )
+        }
         Surface(
             color = bgColor,
             shape = RoundedCornerShape(12.dp),
-            modifier = Modifier.widthIn(max = 300.dp)
+            modifier = Modifier.widthIn(max = if (isSystem) 350.dp else 300.dp)
         ) {
             Text(
                 text = content,
                 modifier = Modifier.padding(8.dp),
-                style = MaterialTheme.typography.bodyMedium
+                style = MaterialTheme.typography.bodyMedium,
+                color = textColor,
+                textAlign = if (isSystem) TextAlign.Center else TextAlign.Start
             )
         }
     }

@@ -40,15 +40,15 @@ DONE when word wrap disabled then allow scrolling horizontally
 
 thrashcan btn and arrow up down btnson txt screen crashes app
 
-Downloading a video as encrypted currently prompts for the password, is it possible to encrypt without asking for password? isnt that what a public key is for? Only ask for password if no global password is set
+DONE Downloading a video as encrypted currently prompts for the password, is it possible to encrypt without asking for password? isnt that what a public key is for? Only ask for password if no global password is set
 
-Downloaded videos (encrypted or not) do not play in the player. The player just shows 0.00/0.00 and black screen. However external app play CAN play unencrypted videos. 
+DONE Downloaded videos (encrypted or not) do not play in the player. The player just shows 0.00/0.00 and black screen. However external app play CAN play unencrypted videos. (Fixed by bypass path encoding for content:// URIs)
 The button to open cached files should have a different icon
 
 
-Long press folder has both AI CLI Here and CLI Here, we only need one
- - "AI CLI Here" does open an AI CLI window and switches to the AI screen but it does not open with the right workspace (the hub should call it with --workspace argument). I think it also attempts to send a message to the AI (/cli "D:\SSDProjects...) which is nonsensical
- - "CLI Here" Does open an AI cli window at the right workspace, but it does not switch to the AI screen after doing so.
+DONE Long press folder has both AI CLI Here and CLI Here, we only need one
+DONE - "AI CLI Here" does open an AI CLI window and switches to the AI screen but it does not open with the right workspace (the hub should call it with --workspace argument). I think it also attempts to send a message to the AI (/cli "D:\SSDProjects...) which is nonsensical (Fixed: properly calls LaunchSessionAsync(path))
+DONE - "CLI Here" Does open an AI cli window at the right workspace, but it does not switch to the AI screen after doing so. (Fixed: Now navigates to AI Chat)
  - There are significant delays when the former of these commands multiple times, my best guess is that there is some timeout waiting for the AI to respond to the nonsensical /cli command maybe. In fact i think the whole hub communication is freezing up
 	   
 	   
@@ -85,10 +85,10 @@ NOT-WORKING Add support for android launcher widgets, when you add a widget you 
 
 ### AI screen
 DONE auto scroll down when new messages come in.
-Sessions dont get tracked properly, something is wrong. it shows 0 sessions active even after opening sessions (and eventually "Error failed to communcate with AI service.") with long tap or + buttons despite cli windows popping up and currently i cant send them messages. This worked before.
-Add a close session button next to + button to close the CLI instance remotely (and clear history locally)
-AI Screen should be more verbose about showing a status. e.g. "Starting CLI...", "AI Thinking" etc.
- - Make system messages like errors a different color/message type than actual messages from the AI.
+DONE Sessions dont get tracked properly, something is wrong. it shows 0 sessions active even after opening sessions (and eventually "Error failed to communcate with AI service.") with long tap or + buttons despite cli windows popping up and currently i cant send them messages. This worked before.
+DONE Add a close session button next to + button to close the CLI instance remotely (and clear history locally)
+DONE AI Screen should be more verbose about showing a status. e.g. "Starting CLI...", "AI Thinking" etc.
+DONE - Make system messages like errors a different color/message type than actual messages from the AI.
 
 
 ### Alarm screen

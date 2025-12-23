@@ -228,6 +228,7 @@ class AlarmService : Service(), android.content.SharedPreferences.OnSharedPrefer
         Log.i("AlarmService", "User Dismissed Alarm.")
         stopSound()
         timeoutJob?.cancel()
+        snoozeMessage = null
 
         // Cancel any pending snoozes for this alarm
         AlarmScheduler.cancelSnooze(this, currentAlarmId)

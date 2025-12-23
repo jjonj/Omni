@@ -30,6 +30,7 @@ import androidx.compose.ui.unit.dp
 import com.omni.sync.service.AlarmService
 import com.omni.sync.utils.AlarmScheduler
 import com.omni.sync.viewmodel.MainViewModel
+import com.omni.sync.data.repository.SignalRClient
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -59,6 +60,7 @@ data class GradualConfig(
 @Composable
 fun AlarmScreen(
     mainViewModel: MainViewModel,
+    signalRClient: SignalRClient,
     onBack: () -> Unit
 ) {
     val context = LocalContext.current

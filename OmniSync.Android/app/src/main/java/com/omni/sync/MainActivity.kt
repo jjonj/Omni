@@ -323,6 +323,7 @@ class MainActivity : ComponentActivity() {
             )
             AppScreen.EDITOR -> com.omni.sync.ui.screen.TextEditorScreen(
                 filesViewModel = filesViewModel,
+                signalRClient = signalRClient,
                 onBack = { mainViewModel.goBack() }
             )
             AppScreen.SETTINGS -> com.omni.sync.ui.screen.SettingsScreen(
@@ -340,6 +341,7 @@ class MainActivity : ComponentActivity() {
             )
             AppScreen.ALARM -> com.omni.sync.ui.screen.AlarmScreen(
                 mainViewModel = mainViewModel,
+                signalRClient = signalRClient,
                 onBack = { mainViewModel.goBack() }
             )
             else -> {} 

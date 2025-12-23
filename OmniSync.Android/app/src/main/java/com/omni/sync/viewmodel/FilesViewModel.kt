@@ -603,6 +603,7 @@ class FilesViewModel(
         if (!entry.isDirectory) return
         mainViewModel.addLog("Opening CLI at: ${entry.path}", com.omni.sync.ui.screen.LogType.INFO)
         signalRClient.startCliAtWorkspace(entry.path)
+        mainViewModel.navigateTo(AppScreen.AI_CHAT)
     }
 
     fun openForEditing(entry: FileSystemEntry) {
@@ -1253,6 +1254,18 @@ class FilesViewModel(
             _downloadErrorMessage.value = "Cannot download a directory."
             return
         }
+        
+        // If encrypted is requested but NO password provided AND NO global password hash exists, 
+        // we can't proceed without a password. 
+        // If global password hash EXISTS but password is NULL, it means we might need to prompt 
+        // unless it's already verified in this session.
+        if (isEncrypted && password == null && verifiedGlobalPassword == null) {
+             _downloadErrorMessage.value = "Encryption password required."
+             return
+        }
+
+        val finalPassword = password ?: verifiedGlobalPassword
+
         if (_isDownloading.value) {
             _errorMessage.value = "Another download is already in progress."
             return
@@ -1282,8 +1295,8 @@ class FilesViewModel(
                 val outputFile = File(videosDir, fileName)
                 
                 val fos = FileOutputStream(outputFile)
-                val cipher = if (isEncrypted && password != null) {
-                    val key = deriveKeyFromPassword(password)
+                val cipher = if (isEncrypted && finalPassword != null) {
+                    val key = deriveKeyFromPassword(finalPassword)
                     Cipher.getInstance("AES/CBC/PKCS5Padding").apply {
                         val iv = ByteArray(16)
                         SecureRandom().nextBytes(iv)

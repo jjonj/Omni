@@ -22,6 +22,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.omni.sync.viewmodel.FilesViewModel
+import com.omni.sync.data.repository.SignalRClient
 import com.omni.sync.data.model.FileSystemEntry
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.input.OffsetMapping
@@ -120,6 +121,7 @@ class EditorVisualTransformation(
 @Composable
 fun TextEditorScreen(
     filesViewModel: FilesViewModel,
+    signalRClient: SignalRClient,
     onBack: () -> Unit
 ) {
     val editingFile by filesViewModel.editingFile.collectAsState()
@@ -618,6 +620,39 @@ fun TextEditorScreen(
                         }
                     }, modifier = btnModifier) {
                         Icon(Icons.Default.ContentPaste, "Paste", modifier = iconModifier)
+                    }
+                    
+                    IconButton(onClick = {
+                        val text = textFieldValue.text
+                        val sel = textFieldValue.selection
+                        val selectedText = text.substring(sel.start, sel.end)
+                        val newText = text.replaceRange(sel.start, sel.end, "**$selectedText**")
+                        filesViewModel.updateEditingContent(newText)
+                        textFieldValue = textFieldValue.copy(text = newText, selection = TextRange(sel.start, sel.end + 4))
+                    }, modifier = btnModifier) {
+                        Icon(Icons.Default.FormatBold, "Bold", modifier = iconModifier)
+                    }
+                    
+                    IconButton(onClick = {
+                        val text = textFieldValue.text
+                        val sel = textFieldValue.selection
+                        val selectedText = text.substring(sel.start, sel.end)
+                        val newText = text.replaceRange(sel.start, sel.end, "_${selectedText}_")
+                        filesViewModel.updateEditingContent(newText)
+                        textFieldValue = textFieldValue.copy(text = newText, selection = TextRange(sel.start, sel.end + 2))
+                    }, modifier = btnModifier) {
+                        Icon(Icons.Default.FormatItalic, "Italic", modifier = iconModifier)
+                    }
+                    
+                    IconButton(onClick = {
+                        val text = textFieldValue.text
+                        val sel = textFieldValue.selection
+                        val selectedText = text.substring(sel.start, sel.end)
+                        val newText = text.replaceRange(sel.start, sel.end, "~~$selectedText~~")
+                        filesViewModel.updateEditingContent(newText)
+                        textFieldValue = textFieldValue.copy(text = newText, selection = TextRange(sel.start, sel.end + 4))
+                    }, modifier = btnModifier) {
+                        Icon(Icons.Default.FormatStrikethrough, "Strikethrough", modifier = iconModifier)
                     }
                 }
             }
