@@ -163,6 +163,21 @@ namespace OmniSync.Hub.Logic.Monitoring
             _ = _hubEventSender.BroadcastLogEntryAdded(logEntry);
         }
 
+        public void ClearLog()
+        {
+            if (System.Windows.Application.Current != null)
+            {
+                System.Windows.Application.Current.Dispatcher.BeginInvoke(() =>
+                {
+                    LogMessages.Clear();
+                });
+            }
+            else
+            {
+                LogMessages.Clear();
+            }
+        }
+
         private void SafeUpdateConnections(Action action)
         {
             if (System.Windows.Application.Current != null)

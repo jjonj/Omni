@@ -79,7 +79,10 @@
                     <!-- Log Output -->
                     <Border Grid.Row="0" Grid.Column="1" Margin="0,0,0,0">
                         <DockPanel>
-                            <TextBlock Text="Log Output" FontWeight="Bold" Margin="10" DockPanel.Dock="Top"/>
+                            <Grid DockPanel.Dock="Top">
+                                <TextBlock Text="Log Output" FontWeight="Bold" Margin="10" VerticalAlignment="Center"/>
+                                <Button Content="Clear Log" Click="ClearLogButton_Click" HorizontalAlignment="Right" Margin="5" Padding="5,2"/>
+                            </Grid>
                             <TextBox x:Name="LogTextBox" IsReadOnly="True" VerticalScrollBarVisibility="Auto" 
                                      TextWrapping="Wrap" Margin="5" />
                         </DockPanel>

@@ -133,6 +133,12 @@ namespace OmniSync.Hub.Presentation
             });
         }
 
+        private void ClearLogButton_Click(object sender, RoutedEventArgs e)
+        {
+            _hubMonitorService.ClearLog();
+            LogTextBox.Clear();
+        }
+
         // We can keep OnPropertyChanged for future use if MainWindow itself needs to raise property changes
         protected void OnPropertyChanged([CallerMemberName] string? propertyName = null)
         {

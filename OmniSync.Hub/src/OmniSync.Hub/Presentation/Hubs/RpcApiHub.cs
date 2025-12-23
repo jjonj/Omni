@@ -438,6 +438,27 @@ namespace OmniSync.Hub.Presentation.Hubs
             }
         }
 
+        public void WriteFileContent(string filePath, string content)
+        {
+            if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
+            {
+                AnyCommandReceived?.Invoke(this, $"WriteFileContent: {filePath}");
+                try
+                {
+                    _fileService.WriteBrowseFile(filePath, content);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, $"Error writing file content for '{filePath}'");
+                    throw new HubException($"Error writing file: {ex.Message}", ex);
+                }
+            }
+            else
+            {
+                throw new UnauthorizedAccessException("Client is not authenticated.");
+            }
+        }
+
         public async Task SendBrowserCommand(string command, string url, bool newTab)
         {
             if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
