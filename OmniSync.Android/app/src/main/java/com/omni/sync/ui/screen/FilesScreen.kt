@@ -54,7 +54,7 @@ fun FilesScreen(
 ) {
     val currentPath by filesViewModel.currentPath.collectAsState()
     val fileSystemEntries by filesViewModel.fileSystemEntries.collectAsState()
-    val folderBookmarks by filesViewModel.folderBookmarks.collectAsState()
+    val bookmarks by filesViewModel.bookmarks.collectAsState()
     val isLoading by filesViewModel.isLoading.collectAsState()
     val searchQuery by filesViewModel.searchQuery.collectAsState()
     val errorMessage by filesViewModel.errorMessage.collectAsState()
@@ -135,7 +135,7 @@ fun FilesScreen(
         },
         bottomBar = {
             // --- Compact Bookmarks Area (Bottom, always visible) ---
-            if (folderBookmarks.isNotEmpty()) {
+            if (bookmarks.isNotEmpty()) {
                 Surface(tonalElevation = 2.dp) {
                     Column {
                         HorizontalDivider()
@@ -160,12 +160,24 @@ fun FilesScreen(
                                 contentPadding = PaddingValues(horizontal = 4.dp),
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                items(folderBookmarks) { bookmark ->
+                                items(bookmarks) { bookmark ->
                                     InputChip(
                                         selected = currentPath == bookmark.path,
-                                        onClick = { filesViewModel.loadDirectory(bookmark.path) },
+                                        onClick = { 
+                                            if (bookmark.isDirectory) {
+                                                filesViewModel.loadDirectory(bookmark.path)
+                                            } else {
+                                                filesViewModel.openForEditing(bookmark)
+                                            }
+                                        },
                                         label = { Text(bookmark.name, maxLines = 1) },
-                                        leadingIcon = { Icon(Icons.Default.Folder, null, modifier = Modifier.size(16.dp)) }
+                                        leadingIcon = { 
+                                            Icon(
+                                                if (bookmark.isDirectory) Icons.Default.Folder else Icons.Default.InsertDriveFile, 
+                                                null, 
+                                                modifier = Modifier.size(16.dp)
+                                            ) 
+                                        }
                                     )
                                 }
                             }
@@ -247,11 +259,11 @@ fun FilesScreen(
                         FileSystemEntryItem(
                             entry = entry,
                             isSearching = searchQuery.isNotEmpty(),
-                            isBookmarked = filesViewModel.isFolderBookmarked(entry.path),
+                            isBookmarked = filesViewModel.isBookmarked(entry.path),
                             hasPendingEdit = hasPendingEdit,
                             isRecentlyChanged = isRecentlyChanged,
                             formatFileSize = { filesViewModel.formatFileSize(it) },
-                            onBookmarkToggle = { filesViewModel.toggleFolderBookmark(it) },
+                            onBookmarkToggle = { filesViewModel.toggleBookmark(it) },
                             onClick = { clickedEntry ->
                                 if (clickedEntry.isDirectory) {
                                     if (clickedEntry.path == "VIRTUAL_ENCRYPTED") {
@@ -336,7 +348,7 @@ fun FilesScreen(
             }
 
             // --- Bookmarks Management List (Toggleable) - Moved to bottom ---
-            if (showBookmarksList && folderBookmarks.isNotEmpty()) {
+            if (showBookmarksList && bookmarks.isNotEmpty()) {
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -351,24 +363,29 @@ fun FilesScreen(
                             }
                         }
                         Spacer(modifier = Modifier.height(4.dp))
-                        folderBookmarks.forEach { bookmark ->
+                        bookmarks.forEach { bookmark ->
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .padding(vertical = 2.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Icon(Icons.Default.Folder, null, modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.primary)
+                                Icon(
+                                    if (bookmark.isDirectory) Icons.Default.Folder else Icons.Default.InsertDriveFile, 
+                                    null, 
+                                    modifier = Modifier.size(16.dp), 
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
                                 Spacer(Modifier.width(8.dp))
                                 Text(bookmark.name, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                 
-                                IconButton(onClick = { filesViewModel.moveFolderBookmarkUp(bookmark) }, modifier = Modifier.size(24.dp)) {
+                                IconButton(onClick = { filesViewModel.moveBookmarkUp(bookmark) }, modifier = Modifier.size(24.dp)) {
                                     Icon(Icons.Default.KeyboardArrowUp, null)
                                 }
-                                IconButton(onClick = { filesViewModel.moveFolderBookmarkDown(bookmark) }, modifier = Modifier.size(24.dp)) {
+                                IconButton(onClick = { filesViewModel.moveBookmarkDown(bookmark) }, modifier = Modifier.size(24.dp)) {
                                     Icon(Icons.Default.KeyboardArrowDown, null)
                                 }
-                                IconButton(onClick = { filesViewModel.removeFolderBookmark(bookmark) }, modifier = Modifier.size(24.dp)) {
+                                IconButton(onClick = { filesViewModel.removeBookmark(bookmark) }, modifier = Modifier.size(24.dp)) {
                                     Icon(Icons.Default.Delete, null, tint = MaterialTheme.colorScheme.error)
                                 }
                             }
@@ -583,14 +600,12 @@ fun FileSystemEntryItem(
                 }
             }
             
-            if (entry.isDirectory) {
-                IconButton(onClick = { onBookmarkToggle(entry) }) {
-                    Icon(
-                        imageVector = if (isBookmarked) Icons.Default.Star else Icons.Default.StarBorder,
-                        contentDescription = "Bookmark",
-                        tint = if (isBookmarked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
-                    )
-                }
+            IconButton(onClick = { onBookmarkToggle(entry) }) {
+                Icon(
+                    imageVector = if (isBookmarked) Icons.Default.Star else Icons.Default.StarBorder,
+                    contentDescription = "Bookmark",
+                    tint = if (isBookmarked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
+                )
             }
 
             val lmText = run {
@@ -702,14 +717,14 @@ fun FileSystemEntryItem(
                         onCliHere(entry)
                     }
                 )
-                DropdownMenuItem(
-                    text = { Text(if (isBookmarked) "Remove Bookmark" else "Add Bookmark") },
-                    onClick = {
-                        showMenu = false
-                        onBookmarkToggle(entry)
-                    }
-                )
             }
+            DropdownMenuItem(
+                text = { Text(if (isBookmarked) "Remove Bookmark" else "Add Bookmark") },
+                onClick = {
+                    showMenu = false
+                    onBookmarkToggle(entry)
+                }
+            )
         }
         
         if (showDownloadDialog) {

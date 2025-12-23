@@ -38,6 +38,9 @@ import com.omni.sync.utils.isAudioFile
 import com.omni.sync.utils.isImageFile
 import com.omni.sync.utils.isPdfFile
 import com.omni.sync.utils.isVideoFile
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
 
 class EditorVisualTransformation(
     private val colorScheme: ColorScheme, 
@@ -113,7 +116,7 @@ class EditorVisualTransformation(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun TextEditorScreen(
     filesViewModel: FilesViewModel,
@@ -121,6 +124,8 @@ fun TextEditorScreen(
 ) {
     val editingFile by filesViewModel.editingFile.collectAsState()
     val editingContent by filesViewModel.editingContent.collectAsState()
+    val openFiles by filesViewModel.openFiles.collectAsState()
+    val openFileContents by filesViewModel.openFileContents.collectAsState()
     val isSaving by filesViewModel.isSaving.collectAsState()
     val hasUnsavedChanges by filesViewModel.hasUnsavedChanges.collectAsState()
     val autoSaveEnabled by filesViewModel.autoSaveEnabled.collectAsState()
@@ -142,7 +147,10 @@ fun TextEditorScreen(
     var showSaveCopyDialog by remember { mutableStateOf(false) }
     var copyFileName by remember { mutableStateOf("") }
     var showRecentFiles by remember { mutableStateOf(false) }
+    var showOpenFiles by remember { mutableStateOf(false) }
     var showCloseAllDialog by remember { mutableStateOf(false) }
+    var showGoToLineDialog by remember { mutableStateOf(false) }
+    var goToLineInput by remember { mutableStateOf("") }
     
     // Editor features state
     var wordWrap by remember { mutableStateOf(true) }
@@ -150,16 +158,45 @@ fun TextEditorScreen(
     var searchQuery by remember { mutableStateOf("") }
     var replaceQuery by remember { mutableStateOf("") }
     var fontSize by remember { mutableFloatStateOf(14f) }
+    var forceMarkdown by remember { mutableStateOf(false) }
     
     val verticalScrollState = rememberScrollState()
     val horizontalScrollState = rememberScrollState()
     val colorScheme = MaterialTheme.colorScheme
-    val isMarkdown = editingFile?.name?.endsWith(".md") == true
+    val isMarkdown = (editingFile?.name?.endsWith(".md") == true) || forceMarkdown
     val visualTransformation = remember(colorScheme, isMarkdown, searchQuery) { 
         EditorVisualTransformation(colorScheme, isMarkdown, searchQuery) 
     }
     val context = androidx.compose.ui.platform.LocalContext.current
     val coroutineScope = rememberCoroutineScope()
+    val density = androidx.compose.ui.platform.LocalDensity.current
+
+    // --- Swiping between files ---
+    val pagerState = androidx.compose.foundation.pager.rememberPagerState(pageCount = { openFiles.size })
+    
+    // Sync pager with editingFile
+    LaunchedEffect(editingFile) {
+        val index = openFiles.indexOfFirst { it.path == editingFile?.path }
+        if (index != -1 && pagerState.currentPage != index) {
+            pagerState.scrollToPage(index)
+        }
+    }
+    
+    // Sync editingFile with pager
+    LaunchedEffect(pagerState.currentPage) {
+        if (openFiles.isNotEmpty() && pagerState.currentPage < openFiles.size) {
+            filesViewModel.switchToFile(openFiles[pagerState.currentPage])
+        }
+    }
+
+    fun scrollToSelection(index: Int) {
+        val text = textFieldValue.text
+        val lineIndex = text.substring(0, index).count { it == '\n' }
+        val lineHeightPx = with(density) { (fontSize * 1.4f).sp.toPx() }
+        coroutineScope.launch {
+            verticalScrollState.animateScrollTo((lineIndex * lineHeightPx).toInt())
+        }
+    }
 
     LaunchedEffect(Unit) {
         filesViewModel.remoteChangeDetected.collect { fileName: String ->
@@ -168,15 +205,7 @@ fun TextEditorScreen(
     }
 
     val exitHandler = {
-        if (hasUnsavedChanges) {
-            if (autoSaveEnabled) {
-                filesViewModel.saveEditingContent()
-            } else {
-                showUnsavedDialog = true
-            }
-        } else {
-            onBack()
-        }
+        onBack() // Back button doesn't close files anymore, just goes back to explorer
     }
 
     androidx.activity.compose.BackHandler(enabled = true) {
@@ -186,12 +215,21 @@ fun TextEditorScreen(
     // --- Helper Functions for Line Operations ---
     fun getSelectedLinesRange(): Pair<Int, Int> {
         val text = textFieldValue.text
-        val selection = textFieldValue.selection
         if (text.isEmpty()) return Pair(0, 0)
-        var start = text.lastIndexOf('\n', selection.start.coerceAtMost(text.length - 1).coerceAtLeast(0))
+        
+        val selection = textFieldValue.selection
+        val startPos = selection.start.coerceIn(0, text.length)
+        val endPos = selection.end.coerceIn(0, text.length)
+        
+        val actualStart = startPos.coerceAtMost(endPos)
+        val actualEnd = endPos.coerceAtLeast(startPos)
+
+        var start = text.lastIndexOf('\n', (actualStart - 1).coerceAtLeast(0))
         start = if (start == -1) 0 else start + 1
-        var end = text.indexOf('\n', selection.end.coerceAtMost(text.length - 1).coerceAtLeast(0))
+        
+        var end = text.indexOf('\n', actualEnd)
         end = if (end == -1) text.length else end
+        
         return Pair(start, end)
     }
 
@@ -221,12 +259,36 @@ fun TextEditorScreen(
                         Box {
                             val fileName = editingFile?.name ?: "No file"
                             val displayName = if (hasUnsavedChanges) "$fileName *" else fileName
-                            Text(
-                                text = displayName, 
-                                maxLines = 1, 
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.clickable { showRecentFiles = true }
-                            )
+                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable { showOpenFiles = true }) {
+                                Text(
+                                    text = displayName, 
+                                    maxLines = 1, 
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Icon(Icons.Default.ArrowDropDown, null)
+                            }
+                            DropdownMenu(expanded = showOpenFiles, onDismissRequest = { showOpenFiles = false }) {
+                                openFiles.forEach { file ->
+                                    DropdownMenuItem(
+                                        text = { Text(file.name) },
+                                        onClick = {
+                                            filesViewModel.switchToFile(file)
+                                            showOpenFiles = false
+                                        },
+                                        trailingIcon = {
+                                            IconButton(onClick = { filesViewModel.closeFile(file) }) {
+                                                Icon(Icons.Default.Close, "Close")
+                                            }
+                                        }
+                                    )
+                                }
+                                HorizontalDivider()
+                                DropdownMenuItem(
+                                    text = { Text("Recent Files...") },
+                                    onClick = { showRecentFiles = true; showOpenFiles = false }
+                                )
+                            }
+                            
                             DropdownMenu(expanded = showRecentFiles, onDismissRequest = { showRecentFiles = false }) {
                                 if (recentFiles.isEmpty()) {
                                     DropdownMenuItem(text = { Text("No recent files") }, onClick = { showRecentFiles = false }, enabled = false)
@@ -261,7 +323,7 @@ fun TextEditorScreen(
                                 strokeWidth = 2.dp
                             )
                         } else {
-                            Box {
+                            Row {
                                 IconButton(onClick = { filesViewModel.saveEditingContent() }) {
                                     Box(contentAlignment = Alignment.Center) {
                                         Icon(Icons.Default.Save, contentDescription = "Save")
@@ -270,6 +332,9 @@ fun TextEditorScreen(
                                                 modifier = Modifier.align(Alignment.BottomEnd).offset(x = 4.dp, y = 4.dp))
                                         }
                                     }
+                                }
+                                IconButton(onClick = { editingFile?.let { filesViewModel.closeFile(it) } }) {
+                                    Icon(Icons.Default.Close, contentDescription = "Close File")
                                 }
                             }
                         }
@@ -299,9 +364,22 @@ fun TextEditorScreen(
                                     leadingIcon = { Icon(Icons.Default.ContentCopy, null) }
                                 )
                                 DropdownMenuItem(
+                                    text = { Text("Go to Line") },
+                                    onClick = {
+                                        showGoToLineDialog = true
+                                        showMenu = false
+                                    },
+                                    leadingIcon = { Icon(Icons.Default.TransitEnterexit, null) }
+                                )
+                                DropdownMenuItem(
                                     text = { Text(if (wordWrap) "Disable Word Wrap" else "Enable Word Wrap") },
                                     onClick = { wordWrap = !wordWrap; showMenu = false },
                                     leadingIcon = { Icon(if (wordWrap) Icons.Default.WrapText else Icons.Default.FormatAlignLeft, null) }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(if (forceMarkdown) "Disable Markdown" else "Enable Markdown") },
+                                    onClick = { forceMarkdown = !forceMarkdown; showMenu = false },
+                                    leadingIcon = { Icon(Icons.Default.MenuBook, null) }
                                 )
                                 HorizontalDivider()
                                 DropdownMenuItem(
@@ -322,6 +400,49 @@ fun TextEditorScreen(
                                         showMenu = false 
                                     }
                                 )
+                                HorizontalDivider()
+                                DropdownMenuItem(
+                                    text = { Text("Uppercase Selection") },
+                                    onClick = {
+                                        val text = textFieldValue.text
+                                        val sel = textFieldValue.selection
+                                        val newText = text.replaceRange(sel.start, sel.end, text.substring(sel.start, sel.end).uppercase())
+                                        filesViewModel.updateEditingContent(newText)
+                                        showMenu = false
+                                    },
+                                    leadingIcon = { Icon(Icons.Default.KeyboardArrowUp, null) }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Lowercase Selection") },
+                                    onClick = {
+                                        val text = textFieldValue.text
+                                        val sel = textFieldValue.selection
+                                        val newText = text.replaceRange(sel.start, sel.end, text.substring(sel.start, sel.end).lowercase())
+                                        filesViewModel.updateEditingContent(newText)
+                                        showMenu = false
+                                    },
+                                    leadingIcon = { Icon(Icons.Default.KeyboardArrowDown, null) }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Trim Selection") },
+                                    onClick = {
+                                        val text = textFieldValue.text
+                                        val sel = textFieldValue.selection
+                                        val newText = text.replaceRange(sel.start, sel.end, text.substring(sel.start, sel.end).trim())
+                                        filesViewModel.updateEditingContent(newText)
+                                        showMenu = false
+                                    },
+                                    leadingIcon = { Icon(Icons.Default.ContentCut, null) }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Sort Lines (Selection)") },
+                                    onClick = {
+                                        modifyLines { lines -> lines.sorted() }
+                                        showMenu = false
+                                    },
+                                    leadingIcon = { Icon(Icons.Default.SortByAlpha, null) }
+                                )
+                                HorizontalDivider()
                                 DropdownMenuItem(
                                     text = { Text("Close All") },
                                     onClick = {
@@ -362,6 +483,37 @@ fun TextEditorScreen(
                                         }
                                     }
                                 )
+                                
+                                IconButton(onClick = {
+                                    if (searchQuery.isNotEmpty()) {
+                                        val text = textFieldValue.text
+                                        val currentEnd = textFieldValue.selection.end
+                                        var index = text.indexOf(searchQuery, currentEnd, ignoreCase = true)
+                                        if (index == -1) index = text.indexOf(searchQuery, 0, ignoreCase = true)
+                                        if (index != -1) {
+                                            textFieldValue = textFieldValue.copy(selection = TextRange(index, index + searchQuery.length))
+                                            scrollToSelection(index)
+                                        }
+                                    }
+                                }) {
+                                    Icon(Icons.Default.KeyboardArrowDown, "Next")
+                                }
+                                
+                                IconButton(onClick = {
+                                    if (searchQuery.isNotEmpty()) {
+                                        val text = textFieldValue.text
+                                        val currentStart = textFieldValue.selection.start
+                                        var index = text.lastIndexOf(searchQuery, currentStart - 1, ignoreCase = true)
+                                        if (index == -1) index = text.lastIndexOf(searchQuery, text.length, ignoreCase = true)
+                                        if (index != -1) {
+                                            textFieldValue = textFieldValue.copy(selection = TextRange(index, index + searchQuery.length))
+                                            scrollToSelection(index)
+                                        }
+                                    }
+                                }) {
+                                    Icon(Icons.Default.KeyboardArrowUp, "Previous")
+                                }
+
                                 IconButton(onClick = { showSearch = false }) {
                                     Icon(Icons.Default.Close, null)
                                 }
@@ -413,12 +565,12 @@ fun TextEditorScreen(
                         val text = textFieldValue.text
                         val range = getSelectedLinesRange()
                         if (range.first > 0) {
-                            val lineStartBefore = text.lastIndexOf('\n', range.first - 2) + 1
+                            val lineStartBefore = (text.lastIndexOf('\n', (range.first - 2).coerceAtLeast(0))).let { if (it == -1) 0 else it + 1 }
                             val above = text.substring(lineStartBefore, range.first)
                             val selected = text.substring(range.first, range.second)
                             val before = text.substring(0, lineStartBefore)
                             val after = text.substring(range.second)
-                            val newText = before + selected + "\n" + above.trimEnd('\n') + after
+                            val newText = before + selected + (if (selected.endsWith("\n")) "" else "\n") + above.trimEnd('\n') + "\n" + after.trimStart('\n')
                             filesViewModel.updateEditingContent(newText)
                             textFieldValue = textFieldValue.copy(
                                 text = newText,
@@ -431,20 +583,20 @@ fun TextEditorScreen(
                     IconButton(onClick = {
                         val text = textFieldValue.text
                         val range = getSelectedLinesRange()
-                        val nextLineEnd = text.indexOf('\n', range.second + 1)
-                        val endOfNext = if (nextLineEnd == -1) text.length else nextLineEnd
-                        
                         if (range.second < text.length) {
-                            val below = text.substring(range.second + 1, endOfNext)
+                            val nextLineEnd = text.indexOf('\n', (range.second + 1).coerceAtMost(text.length))
+                            val endOfNext = if (nextLineEnd == -1) text.length else nextLineEnd
+                            
+                            val below = text.substring((range.second + 1).coerceAtMost(text.length), endOfNext)
                             val selected = text.substring(range.first, range.second)
                             val before = text.substring(0, range.first)
                             val after = text.substring(endOfNext)
-                            val newText = before + below + "\n" + selected + after
+                            val newText = before + below + "\n" + selected.trimEnd('\n') + after
                             filesViewModel.updateEditingContent(newText)
                             val newStart = range.first + below.length + 1
                             textFieldValue = textFieldValue.copy(
                                 text = newText,
-                                selection = TextRange(newStart, newStart + (range.second - range.first))
+                                selection = TextRange(newStart, (newStart + (range.second - range.first)).coerceAtMost(newText.length))
                             )
                         }
                     }, modifier = btnModifier) {
@@ -471,69 +623,128 @@ fun TextEditorScreen(
             }
         }
     ) { paddingValues ->
-        Row(
-            modifier = Modifier
-                .padding(paddingValues)
-                .fillMaxSize()
-                .imePadding()
-                .pointerInput(Unit) {
-                    detectTransformGestures { _, _, zoom, _ ->
-                        fontSize = (fontSize * zoom).coerceIn(8f, 40f)
-                    }
-                }
-        ) {
-            // Line numbers column
-            val lines = editingContent.split("\n")
-            val lineCount = lines.size
-            val lineNumbers = (1..lineCount).joinToString("\n")
+        androidx.compose.foundation.pager.HorizontalPager(
+            state = pagerState,
+            modifier = Modifier.padding(paddingValues).fillMaxSize(),
+            userScrollEnabled = true
+        ) { page ->
+            val fileAtPage = openFiles[page]
+            val contentAtPage = openFileContents[fileAtPage.path] ?: ""
             
-            Text(
-                text = lineNumbers,
+            // Note: Each page has its own scroll state and text field value for now
+            // To make it fully robust, we'd need to store scroll state and TextFieldValue per-file in ViewModel
+            
+            Row(
                 modifier = Modifier
-                    .fillMaxHeight()
-                    .width(40.dp)
-                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
-                    .padding(vertical = 16.dp, horizontal = 4.dp)
-                    .verticalScroll(verticalScrollState),
-                style = TextStyle(
-                    fontFamily = FontFamily.Monospace,
-                    fontSize = fontSize.sp,
-                    color = MaterialTheme.colorScheme.secondary,
-                    textAlign = TextAlign.End
-                ),
-                lineHeight = (fontSize * 1.4).sp
-            )
-
-            Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
-                TextField(
-                    value = textFieldValue,
-                    onValueChange = { 
-                        textFieldValue = it
-                        if (it.text != editingContent) {
-                            filesViewModel.updateEditingContent(it.text)
+                    .fillMaxSize()
+                    .imePadding()
+                    .pointerInput(Unit) {
+                        detectTransformGestures { _, _, zoom, _ ->
+                            fontSize = (fontSize * zoom).coerceIn(8f, 40f)
                         }
-                    },
+                    }
+            ) {
+                // Line numbers column
+                val lines = contentAtPage.split("\n")
+                val lineCount = lines.size
+                val lineNumbers = (1..lineCount).joinToString("\n")
+                
+                Text(
+                    text = lineNumbers,
                     modifier = Modifier
-                        .fillMaxSize()
-                        .then(if (wordWrap) Modifier else Modifier.horizontalScroll(horizontalScrollState))
+                        .fillMaxHeight()
+                        .width(40.dp)
+                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
+                        .padding(vertical = 16.dp, horizontal = 4.dp)
                         .verticalScroll(verticalScrollState),
-                    textStyle = TextStyle(
+                    style = TextStyle(
                         fontFamily = FontFamily.Monospace,
                         fontSize = fontSize.sp,
-                        lineHeight = (fontSize * 1.4).sp,
-                        color = MaterialTheme.colorScheme.onSurface
+                        color = MaterialTheme.colorScheme.secondary,
+                        textAlign = TextAlign.End
                     ),
-                    visualTransformation = visualTransformation,
-                    colors = TextFieldDefaults.colors(
-                        focusedContainerColor = Color.Transparent,
-                        unfocusedContainerColor = Color.Transparent,
-                        disabledContainerColor = Color.Transparent,
-                        focusedIndicatorColor = Color.Transparent,
-                        unfocusedIndicatorColor = Color.Transparent,
-                    )
+                    lineHeight = (fontSize * 1.4).sp
                 )
+
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .padding(vertical = 16.dp)
+                        .verticalScroll(verticalScrollState)
+                        .then(if (wordWrap) Modifier else Modifier.horizontalScroll(horizontalScrollState))
+                ) {
+                    val currentTFV = if (editingFile?.path == fileAtPage.path) textFieldValue else TextFieldValue(contentAtPage)
+                    BasicTextField(
+                        value = currentTFV,
+                        onValueChange = { newValue -> 
+                            if (editingFile?.path == fileAtPage.path) {
+                                textFieldValue = newValue
+                                if (newValue.text != editingContent) {
+                                    filesViewModel.updateEditingContent(newValue.text)
+                                }
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        textStyle = TextStyle(
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = fontSize.sp,
+                            lineHeight = (fontSize * 1.4).sp,
+                            color = MaterialTheme.colorScheme.onSurface
+                        ),
+                        visualTransformation = visualTransformation,
+                        cursorBrush = androidx.compose.ui.graphics.SolidColor(MaterialTheme.colorScheme.primary)
+                    )
+                }
             }
         }
+    }
+
+    if (showGoToLineDialog) {
+        AlertDialog(
+            onDismissRequest = { showGoToLineDialog = false; goToLineInput = "" },
+            title = { Text("Go to Line") },
+            text = {
+                OutlinedTextField(
+                    value = goToLineInput,
+                    onValueChange = { input -> 
+                        if (input.all { it.isDigit() }) {
+                            goToLineInput = input
+                        }
+                    },
+                    label = { Text("Line Number") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                )
+            },
+            confirmButton = {
+                Button(onClick = {
+                    val lineNum = goToLineInput.toIntOrNull() ?: 0
+                    if (lineNum > 0) {
+                        val text = textFieldValue.text
+                        val lines = text.split("\n")
+                        if (lineNum <= lines.size) {
+                            var charIndex = 0
+                            for (i in 0 until (lineNum - 1)) {
+                                charIndex += lines[i].length + 1
+                            }
+                            textFieldValue = textFieldValue.copy(selection = TextRange(charIndex, charIndex))
+                            scrollToSelection(charIndex)
+                        }
+                    }
+                    showGoToLineDialog = false
+                    goToLineInput = ""
+                }) {
+                    Text("Go")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showGoToLineDialog = false; goToLineInput = "" }) {
+                    Text("Cancel")
+                }
+            }
+        )
     }
 
     if (showSaveCopyDialog) {

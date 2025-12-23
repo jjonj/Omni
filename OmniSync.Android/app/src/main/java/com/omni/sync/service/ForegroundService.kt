@@ -149,9 +149,10 @@ class ForegroundService : Service() {
     }
 
     private fun getSavedActions(): List<NotificationAction> {
-        val prefs = getSharedPreferences("omni_settings", Context.MODE_PRIVATE)
-        val json = prefs.getString("notification_actions", null)
-        if (json == null) {
+        val configManager = com.omni.sync.data.config.ConfigManager(this)
+        val config = configManager.loadConfig()
+        
+        if (config.notificationActions.isEmpty()) {
             // Default actions
             return listOf(
                 NotificationAction("1", "Shutdown", "B:\\GDrive\\Tools\\05 Automation\\shutdown.bat"),
@@ -160,8 +161,7 @@ class ForegroundService : Service() {
                 NotificationAction("4", "WOL", "", isWol = true, macAddress = "10FFE0379DAC")
             )
         }
-        val type = object : TypeToken<List<NotificationAction>>() {}.type
-        return Gson().fromJson(json, type)
+        return config.notificationActions
     }
 
     private fun createNotification(): Notification {
@@ -171,6 +171,9 @@ class ForegroundService : Service() {
         val actions = getSavedActions()
         
         val customLayout = RemoteViews(packageName, R.layout.notification_layout)
+        
+        // Handle click on background to open app
+        customLayout.setOnClickPendingIntent(R.id.notification_root, pendingIntent)
         
         if (statusMessage != null) {
             customLayout.setViewVisibility(R.id.notification_status, android.view.View.VISIBLE)

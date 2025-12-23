@@ -89,6 +89,12 @@ class FilesViewModel(
     private val _editingFile = MutableStateFlow<FileSystemEntry?>(null)
     val editingFile: StateFlow<FileSystemEntry?> = _editingFile
 
+    private val _openFiles = MutableStateFlow<List<FileSystemEntry>>(emptyList())
+    val openFiles: StateFlow<List<FileSystemEntry>> = _openFiles
+
+    private val _openFileContents = MutableStateFlow<Map<String, String>>(emptyMap())
+    val openFileContents: StateFlow<Map<String, String>> = _openFileContents
+
     private val _recentFiles = MutableStateFlow<List<FileSystemEntry>>(emptyList())
     val recentFiles: StateFlow<List<FileSystemEntry>> = _recentFiles.asStateFlow()
 
@@ -99,13 +105,13 @@ class FilesViewModel(
     val isSaving: StateFlow<Boolean> = _isSaving
 
     private var verifiedGlobalPassword: String? = null
-    private var suppressNextRemoteChange: String? = null
+    private val suppressedPaths = mutableMapOf<String, Long>()
     // -------------------------
 
     // --- Bookmarks State ---
-    private val _folderBookmarks = MutableStateFlow<List<FileSystemEntry>>(emptyList())
-    val folderBookmarks: StateFlow<List<FileSystemEntry>> = _folderBookmarks
-    
+    private val _bookmarks = MutableStateFlow<List<FileSystemEntry>>(emptyList())
+    val bookmarks: StateFlow<List<FileSystemEntry>> = _bookmarks
+
     private val prefs = application.getSharedPreferences("files_prefs", Context.MODE_PRIVATE)
     private val cachePrefs = application.getSharedPreferences("files_cache_prefs", Context.MODE_PRIVATE)
     private val textCachePrefs = application.getSharedPreferences("text_cache_prefs", Context.MODE_PRIVATE)
@@ -131,7 +137,7 @@ class FilesViewModel(
     }
 
     init {
-        loadFolderBookmarks()
+        loadBookmarks()
         loadDownloadedVideos()
         loadPendingEditPaths()
         refreshCachedPaths()
@@ -165,26 +171,30 @@ class FilesViewModel(
         }
     }
 
-    private fun loadFolderBookmarks() {
+    private fun loadBookmarks() {
         val json = prefs.getString("folder_bookmarks", null)
         if (json != null) {
             val type = object : com.google.gson.reflect.TypeToken<List<FileSystemEntry>>() {}.type
-            _folderBookmarks.value = gson.fromJson(json, type)
+            _bookmarks.value = gson.fromJson(json, type)
         }
     }
 
-    private fun saveFolderBookmarks() {
-        val json = gson.toJson(_folderBookmarks.value)
+    private fun saveBookmarks() {
+        val json = gson.toJson(_bookmarks.value)
         prefs.edit().putString("folder_bookmarks", json).apply()
     }
 
     private fun isPathInsideAnyBookmark(path: String): Boolean {
         if (path.isEmpty()) return true // Always cache root/drives for navigation
         val normalizedPath = path.replace("\\", "/").lowercase()
-        return _folderBookmarks.value.any { bookmark ->
+        return _bookmarks.value.any { bookmark ->
             val bookmarkPath = bookmark.path.replace("\\", "/").lowercase()
-            normalizedPath == bookmarkPath || 
-            normalizedPath.startsWith(if (bookmarkPath.endsWith("/")) bookmarkPath else "$bookmarkPath/")
+            if (bookmark.isDirectory) {
+                normalizedPath == bookmarkPath || 
+                normalizedPath.startsWith(if (bookmarkPath.endsWith("/")) bookmarkPath else "$bookmarkPath/")
+            } else {
+                normalizedPath == bookmarkPath
+            }
         }
     }
 
@@ -283,10 +293,9 @@ class FilesViewModel(
         refreshCachedPaths()
     }
 
-    fun toggleFolderBookmark(entry: FileSystemEntry) {
-        if (!entry.isDirectory) return
-        
-        val current = _folderBookmarks.value.toMutableList()
+    fun toggleBookmark(entry: FileSystemEntry) {
+        // Allow bookmarking files or folders
+        val current = _bookmarks.value.toMutableList()
         val existing = current.find { it.path == entry.path }
         
         if (existing != null) {
@@ -295,40 +304,40 @@ class FilesViewModel(
             current.add(0, entry)
         }
         
-        _folderBookmarks.value = current
-        saveFolderBookmarks()
+        _bookmarks.value = current
+        saveBookmarks()
     }
 
-    fun isFolderBookmarked(path: String): Boolean {
-        return _folderBookmarks.value.any { it.path == path }
+    fun isBookmarked(path: String): Boolean {
+        return _bookmarks.value.any { it.path == path }
     }
 
-    fun removeFolderBookmark(entry: FileSystemEntry) {
-        val current = _folderBookmarks.value.toMutableList()
+    fun removeBookmark(entry: FileSystemEntry) {
+        val current = _bookmarks.value.toMutableList()
         current.removeAll { it.path == entry.path }
-        _folderBookmarks.value = current
-        saveFolderBookmarks()
+        _bookmarks.value = current
+        saveBookmarks()
     }
 
-    fun moveFolderBookmarkUp(entry: FileSystemEntry) {
-        val current = _folderBookmarks.value.toMutableList()
+    fun moveBookmarkUp(entry: FileSystemEntry) {
+        val current = _bookmarks.value.toMutableList()
         val index = current.indexOfFirst { it.path == entry.path }
         if (index > 0) {
             val item = current.removeAt(index)
             current.add(index - 1, item)
-            _folderBookmarks.value = current
-            saveFolderBookmarks()
+            _bookmarks.value = current
+            saveBookmarks()
         }
     }
 
-    fun moveFolderBookmarkDown(entry: FileSystemEntry) {
-        val current = _folderBookmarks.value.toMutableList()
+    fun moveBookmarkDown(entry: FileSystemEntry) {
+        val current = _bookmarks.value.toMutableList()
         val index = current.indexOfFirst { it.path == entry.path }
         if (index != -1 && index < current.size - 1) {
             val item = current.removeAt(index)
             current.add(index + 1, item)
-            _folderBookmarks.value = current
-            saveFolderBookmarks()
+            _bookmarks.value = current
+            saveBookmarks()
         }
     }
 
@@ -646,9 +655,27 @@ class FilesViewModel(
                 }
 
                 val content = contentBuilder.toString()
+                
+                // Manage multiple open files
+                val currentOpen = _openFiles.value.toMutableList()
+                if (currentOpen.none { it.path == entry.path }) {
+                    currentOpen.add(entry)
+                    _openFiles.value = currentOpen
+                }
+                
+                val currentContents = _openFileContents.value.toMutableMap()
+                currentContents[entry.path] = content
+                _openFileContents.value = currentContents
+
                 _editingFile.value = entry
                 _editingContent.value = content
                 _isLoading.value = false
+                
+                // Update recent files
+                val recent = _recentFiles.value.toMutableList()
+                recent.removeAll { it.path == entry.path }
+                recent.add(0, entry)
+                _recentFiles.value = recent.take(10)
                 
                 // Cache it
                 textCachePrefs.edit().putString("text_${entry.path}", content).apply()
@@ -668,7 +695,52 @@ class FilesViewModel(
         if (_editingContent.value != newContent) {
             _editingContent.value = newContent
             _hasUnsavedChanges.value = true
+            
+            // Update multi-file state
+            _editingFile.value?.let { entry ->
+                val currentContents = _openFileContents.value.toMutableMap()
+                currentContents[entry.path] = newContent
+                _openFileContents.value = currentContents
+            }
         }
+    }
+
+    fun switchToFile(entry: FileSystemEntry) {
+        if (_editingFile.value?.path == entry.path) return
+        
+        val content = _openFileContents.value[entry.path] ?: ""
+        _editingFile.value = entry
+        _editingContent.value = content
+        // Note: we don't clear hasUnsavedChanges here because it's global for the "session" 
+        // but ideally it should be per-file. For now, keep it simple as requested.
+    }
+
+    fun closeFile(entry: FileSystemEntry) {
+        val currentOpen = _openFiles.value.toMutableList()
+        currentOpen.removeAll { it.path == entry.path }
+        _openFiles.value = currentOpen
+        
+        val currentContents = _openFileContents.value.toMutableMap()
+        currentContents.remove(entry.path)
+        _openFileContents.value = currentContents
+        
+        if (_editingFile.value?.path == entry.path) {
+            if (currentOpen.isNotEmpty()) {
+                switchToFile(currentOpen.last())
+            } else {
+                _editingFile.value = null
+                _editingContent.value = ""
+                _hasUnsavedChanges.value = false
+            }
+        }
+    }
+
+    fun closeAllFiles() {
+        _openFiles.value = emptyList()
+        _openFileContents.value = emptyMap()
+        _editingFile.value = null
+        _editingContent.value = ""
+        _hasUnsavedChanges.value = false
     }
 
     fun saveEditingContentAsCopy(newFileName: String) {
@@ -729,7 +801,7 @@ class FilesViewModel(
         }
 
         _isSaving.value = true
-        suppressNextRemoteChange = entry.path
+        suppressedPaths[entry.path] = System.currentTimeMillis() + 5000 // Suppress for 5 seconds
         viewModelScope.launch(Schedulers.io().asCoroutineDispatcher()) {
             try {
                 signalRClient.sendPayload("SAVE_FILE", mapOf(
@@ -745,6 +817,7 @@ class FilesViewModel(
                 viewModelScope.launch(AndroidSchedulers.mainThread().asCoroutineDispatcher()) {
                     mainViewModel.addLog("File saved: ${entry.name}", com.omni.sync.ui.screen.LogType.SUCCESS)
                     _isSaving.value = false
+                    markSaved()
                 }
             } catch (e: Exception) {
                 _isSaving.value = false
@@ -833,17 +906,21 @@ class FilesViewModel(
     val remoteChangeDetected: kotlinx.coroutines.flow.SharedFlow<String> = _remoteChangeDetected.asSharedFlow()
 
     private fun onHubFileChanged(path: String) {
-        if (suppressNextRemoteChange == path) {
-            suppressNextRemoteChange = null
-            // Still invalidate cache and refresh listing, but don't show popup
-            textCachePrefs.edit().remove("text_$path").apply()
-            val parent = getParentPath(path)
-            cachePrefs.edit().remove("cache_$parent").apply()
-            refreshCachedPaths()
-            if (mainViewModel.isConnected.value && _currentPath.value == parent) {
-                loadDirectory(parent)
+        val suppressionExpiry = suppressedPaths[path]
+        if (suppressionExpiry != null) {
+            if (System.currentTimeMillis() < suppressionExpiry) {
+                // Still invalidated cache but don't show popup
+                textCachePrefs.edit().remove("text_$path").apply()
+                val parent = getParentPath(path)
+                cachePrefs.edit().remove("cache_$parent").apply()
+                refreshCachedPaths()
+                if (mainViewModel.isConnected.value && _currentPath.value == parent) {
+                    loadDirectory(parent)
+                }
+                return
+            } else {
+                suppressedPaths.remove(path)
             }
-            return
         }
 
         try {
@@ -990,13 +1067,6 @@ class FilesViewModel(
         _downloadingSpeed.value = null
         _downloadErrorMessage.value = null
         _isDownloading.value = false
-    }
-
-    fun closeAllFiles() {
-        _editingFile.value = null
-        _editingContent.value = ""
-        _recentFiles.value = emptyList()
-        _hasUnsavedChanges.value = false
     }
 
     fun handleFileOpen(entry: FileSystemEntry) {

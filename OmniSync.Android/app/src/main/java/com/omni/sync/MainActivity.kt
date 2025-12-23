@@ -93,9 +93,8 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-        updateSystemBars(resources.configuration.orientation)
-
         WindowCompat.setDecorFitsSystemWindows(window, false)
+        updateSystemBars(resources.configuration.orientation)
 
         omniSyncApplication = application as OmniSyncApplication
         mainViewModel = omniSyncApplication.mainViewModel
