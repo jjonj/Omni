@@ -53,6 +53,9 @@ class AlarmService : Service(), android.content.SharedPreferences.OnSharedPrefer
         private val _isRinging = MutableStateFlow(false)
         val isRinging: StateFlow<Boolean> = _isRinging
 
+        private val _isSnoozing = MutableStateFlow(false)
+        val isSnoozing: StateFlow<Boolean> = _isSnoozing
+
         fun stopAlarm(context: Context) {
             val intent = Intent(context, AlarmService::class.java).apply {
                 action = ACTION_DISMISS
@@ -117,6 +120,7 @@ class AlarmService : Service(), android.content.SharedPreferences.OnSharedPrefer
         repeatDaily = intent?.getBooleanExtra("REPEAT_DAILY", false) ?: false
 
         _isRinging.value = true
+        _isSnoozing.value = false
         
         // Force open activity
         val alarmActivityIntent = Intent(this, MainActivity::class.java).apply {
@@ -186,9 +190,11 @@ class AlarmService : Service(), android.content.SharedPreferences.OnSharedPrefer
     private fun handleAutoSnooze() {
         Log.i("AlarmService", "Auto-snooze triggered.")
         stopSound()
+        _isRinging.value = false
 
         if (currentRepetition < maxRepetitions) {
             // Schedule Snooze
+            _isSnoozing.value = true
             val nextVolume = (currentVolume + volumeIncrement).coerceAtMost(100)
             val nextRepetition = currentRepetition + 1
             
@@ -214,6 +220,7 @@ class AlarmService : Service(), android.content.SharedPreferences.OnSharedPrefer
             )
         } else {
             // Max repetitions reached. 
+            _isSnoozing.value = false
             // If repeatDaily is true, the next day is already scheduled by AlarmScheduler when it first fired (or should be).
             // If repeatDaily is false, we should disable the alarm.
             if (!repeatDaily) {
@@ -227,6 +234,8 @@ class AlarmService : Service(), android.content.SharedPreferences.OnSharedPrefer
     private fun handleDismiss() {
         Log.i("AlarmService", "User Dismissed Alarm.")
         stopSound()
+        _isRinging.value = false
+        _isSnoozing.value = false
         timeoutJob?.cancel()
         snoozeMessage = null
 

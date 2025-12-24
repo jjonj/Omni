@@ -217,15 +217,16 @@ fun AlarmScreen(
                 hideOptionsWhenDisabled = true
             )
 
-            // Dismiss Button when ringing
+            // Dismiss Button when ringing or snoozing
             val isRinging by AlarmService.isRinging.collectAsState()
-            if (isRinging) {
+            val isSnoozing by AlarmService.isSnoozing.collectAsState()
+            if (isRinging || isSnoozing) {
                 Button(
                     onClick = { AlarmService.stopAlarm(context) },
                     modifier = Modifier.fillMaxWidth().height(64.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
                 ) {
-                    Text("DISMISS ALARM", style = MaterialTheme.typography.headlineSmall)
+                    Text(if (isRinging) "DISMISS ALARM" else "CANCEL SNOOZE", style = MaterialTheme.typography.headlineSmall)
                 }
             }
             
@@ -276,7 +277,8 @@ fun AlarmScreen(
                     hour = hour12, 
                     minute = minute, 
                     isAM = isAM, 
-                    quickToggleMode = 0
+                    quickToggleMode = 0,
+                    enabled = true // Auto-enable on time change
                 )
                 
                 if (alarmNum == 1) { alarm1 = updated; updateSchedule(1, updated) }
@@ -373,7 +375,13 @@ fun AlarmCard(
                                 if (h24 == 0) 12 else if (h24 > 12) h24 - 12 else h24
                             }
                             val isAM = if (newMode == 0) alarm.isAM else cal.get(Calendar.AM_PM) == Calendar.AM
-                            onAlarmChange(alarm.copy(quickToggleMode = newMode, hour = hour12, minute = if (newMode == 0) alarm.minute else cal.get(Calendar.MINUTE), isAM = isAM))
+                            onAlarmChange(alarm.copy(
+                                quickToggleMode = newMode, 
+                                hour = hour12, 
+                                minute = if (newMode == 0) alarm.minute else cal.get(Calendar.MINUTE), 
+                                isAM = isAM,
+                                enabled = true // Auto-enable on quick toggle
+                            ))
                         },
                         modifier = Modifier.fillMaxWidth()
                     ) {

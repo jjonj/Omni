@@ -19,82 +19,84 @@ DONE add clear log btn
 ### Dashboard
 
 ### Remote Control Screen
+
 Stream PC monitor, replacing background of the trackpad leaving the trackpad functioning still, options to toggle monitor, pinch to zoom, (advanced feature, do last)       
-DONE We are using a text field to trick android into letting us use the keyboard which works really well but has some minor issues:
- - Android erase/backspace button that erases from right button works but only when the hidden textfield has content. Please explain to user using AISpeak how it sends erasures to the hub.
 
 
 ### Files & Video Screen
 
-DONE Allow bookmarking files, not just folders 
+Files screen upper right should have a home button to go to root.
+Files screen upper right should have a boomark current folder button
+"remote changes detected" popup should allow override
 
-DONE STILL ISSUE when clicking save txt file, it always popups "remote changes detected, which is true becayse we just sent an updated ver but should be suppressed when saving. (Implemented 5sec suppression window)
-DONE long press menu for duplicate
- - Duplicate failed: WriteFileContent Hubexception method does not exist
+I bookmarked a file and it initially worked but later when i tried to use the bookmark, its just infinitely loading. If i find i t in the file list and open that way it opens fine. Investigate.
 
-DONE Search in txt file next prev buttons not jumping around in file like expected
+Long press option to delete file (with confirmation)
 
-DONE Line numbers dont work right when wrapping lines, it counts a wrapping line as a new one (Disabled word wrap for now when line numbers shown)
+Line numbers dont work right when wrapping lines, it counts a wrapping line as a new one (Disabled word wrap for now when line numbers shown)
+Search in txt file next prev/buttons jumping but not jumping to the right place always in file, especially after the last entry it seems to jump to more non existant entries as if it cant overflow the jump offset, maybe has to do with issue above. Also add different color highlighting 
 
-DONE when word wrap disabled then allow scrolling horizontally 
+Downloading a video as encrypted currently prompts for the password, is it possible to encrypt without asking for password? isnt that what a public key is for? Only ask for password if no global password is set. Refactor to use public/private key, but how does that work with the password changing? 
 
-thrashcan btn and arrow up down btnson txt screen crashes app
+Unecnrypted video files play fine but Encrypted videos cannot play. How does playing encrypted videos usually work? decrypt into memory?
 
-DONE Downloading a video as encrypted currently prompts for the password, is it possible to encrypt without asking for password? isnt that what a public key is for? Only ask for password if no global password is set
-
-DONE Downloaded videos (encrypted or not) do not play in the player. The player just shows 0.00/0.00 and black screen. However external app play CAN play unencrypted videos. (Fixed by bypass path encoding for content:// URIs)
-The button to open cached files should have a different icon
+The button to open cached files list should have a different icon
 
 
-DONE Long press folder has both AI CLI Here and CLI Here, we only need one
-DONE - "AI CLI Here" does open an AI CLI window and switches to the AI screen but it does not open with the right workspace (the hub should call it with --workspace argument). I think it also attempts to send a message to the AI (/cli "D:\SSDProjects...) which is nonsensical (Fixed: properly calls LaunchSessionAsync(path))
-DONE - "CLI Here" Does open an AI cli window at the right workspace, but it does not switch to the AI screen after doing so. (Fixed: Now navigates to AI Chat)
- - There are significant delays when the former of these commands multiple times, my best guess is that there is some timeout waiting for the AI to respond to the nonsensical /cli command maybe. In fact i think the whole hub communication is freezing up
+Support for displaying image files, needs wide support which includes webm gif etc. Should have slideshow option with random setting and time option. 
+
+Long press folder has both "AI CLI Here" and "CLI Here", only keep "CLI Here" as that works better.
 	   
+
 	   
-	   
-The embedded video player we are using is still being a bit annoying with showing/hiding the player buttons. This didnt used to happen, it just kinda got slightly unstable in its activation. - fixing this requires user to check for regressions
- - When i tap the screen and the player buttons are not visible then they will turn visible for a second and then unexpected disappear again, as if i tapped twice. Same happens when they are visible and i tap to hide them, then they hide for 1sec then reappear. I have to tap 3 times to actually toggle their visibility
 	   
 DONE More Text editing fancy features, think like a lite code editor like notepad++ or VS code. be creative. MORE options in burger menu with lots of options
 	   
-DONE For Search/replace menu Add two up/down arrow buttons to jump to next/prev instance found.
-DONE Allow Having multiple files open at once (Swiping side by side between them, have a button opening dropdown with them, option to close all with a dialog for each unsaved file whether to save. Clicking back button does not close the file (though it still does warn about unsaved), add a dedicated close button next to save.
+When closing the last open file, go back to last folder. 
+Allow swiping sideways to switch between when multiple open files are present
 	   
 NOT-WORKING Bold/italic/strikethrough options on selected text (We need to somehow hook into androids selected text popup thing and add more options to it)
 
-DONE Highlight matching brackets/parentheses
+Not-working Highlight matching brackets/parentheses
 Not-working Pinch to zoom (font size change), allow zooming out very far
 	   
-DONE Add menu option to toggle render markdown like #, ##.., [title](url)
+Improve render markdown like #, ##.., [title](url), use .md rendering like e.g. obsidian
 	   
 ### Browser control screen
 	   
-DONE Add clear icon to the right of app URL bar.   
+	   
+Bookmark current tab no longer works
 
 	   
 ### Notification panel
 	   
-DONE The notification buttons dont seem to change at all when changing the quick actions in the settings menu.
-DONE When clicking notification icon/background it currently expands, it should open app instead. 
+When clicking notification icon/background it currently expands, it should open app instead. 
 
 ### Android Home screen widgets
+
 NOT-WORKING Add support for android launcher widgets, when you add a widget you can choose a quick action (same as the list from notifications)
 
 ### Settings screen (accessed by button on dashboard, not bottom panel)
 
 ### AI screen
-DONE auto scroll down when new messages come in.
-DONE Sessions dont get tracked properly, something is wrong. it shows 0 sessions active even after opening sessions (and eventually "Error failed to communcate with AI service.") with long tap or + buttons despite cli windows popping up and currently i cant send them messages. This worked before.
-DONE Add a close session button next to + button to close the CLI instance remotely (and clear history locally)
+
+DONE Sending messages to AI from android does not work, hub does not show a long message. (creating new sesion works and the ais messages get sent to android fine)
+DONE Closing sessions does not work, it clears locally but remotely the cli does not close.  the number for number of sesions does not change (probably fine given unexpectedly hub didnt close it)
+DONE Allow renaming sessions from their PID identifier
+DONE Instead of having vertical ... button for session list, use a centralized dropdown, the dropdown always displays the name of the current session but can be pressed to list and change the sessions
+DONE Better separation between incoming messages in the speech bubbles, sometimes they append eachother in the same line even though it was separate responses. It seems to separate better when reloading history.
+
+NOT-Working auto scroll down when new messages come in.
 DONE AI Screen should be more verbose about showing a status. e.g. "Starting CLI...", "AI Thinking" etc.
-DONE - Make system messages like errors a different color/message type than actual messages from the AI.
+DONE Make system messages like errors or "A new version of Gemini CLI is available!" a different color/message type than actual messages from the AI.
 
 
 ### Alarm screen
-When alarm pops, force open the omnihub app to open. Do we not have permission from android to open an app automatically? im pretty sure other alarm apps do. (Added explicit startActivity and permissions)
-Dismissing alarm from notification does not seem to work, at least while its snoozing
-Dismissing alarm from alarm screen does not deactivate a non repeating alarm like expected.
+DONE When alarm pops, force open the omnihub app to open. Do we not have permission from android to open an app automatically? im pretty sure other alarm apps do. (Added explicit startActivity and permissions)
+DONE Dismissing alarm from alarm screen does not deactivate a non repeating alarm like expected.
+DONE When an alarm is snoozing it should still show the dismiss button on the alarm screen
+DONE WHen changing the time of an alarm, it should automatically activate itself
+
 
 ### Smart home integration
 DONE Read SmartFeature.txt (implemented ExternalCommandController in Hub)
