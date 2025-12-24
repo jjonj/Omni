@@ -278,7 +278,12 @@ fun TextEditorScreen(
                                             showOpenFiles = false
                                         },
                                         trailingIcon = {
-                                            IconButton(onClick = { filesViewModel.closeFile(file) }) {
+                                            IconButton(onClick = { 
+                                                filesViewModel.closeFile(file)
+                                                if (filesViewModel.openFiles.value.isEmpty()) {
+                                                    onBack()
+                                                }
+                                            }) {
                                                 Icon(Icons.Default.Close, "Close")
                                             }
                                         }
@@ -335,7 +340,12 @@ fun TextEditorScreen(
                                         }
                                     }
                                 }
-                                IconButton(onClick = { editingFile?.let { filesViewModel.closeFile(it) } }) {
+                                IconButton(onClick = { 
+                                    editingFile?.let { filesViewModel.closeFile(it) } 
+                                    if (openFiles.isEmpty()) {
+                                        onBack()
+                                    }
+                                }) {
                                     Icon(Icons.Default.Close, contentDescription = "Close File")
                                 }
                             }
@@ -891,8 +901,16 @@ fun TextEditorScreen(
             title = { Text("Remote Change Detected") },
             text = { Text("The file '${showRemoteChangeDialog}' was modified on the Hub. Your local changes may conflict.") },
             confirmButton = {
-                Button(onClick = { showRemoteChangeDialog = null }) {
-                    Text("OK")
+                Row {
+                    TextButton(onClick = { 
+                        filesViewModel.saveEditingContent() // Override by saving local
+                        showRemoteChangeDialog = null 
+                    }) {
+                        Text("OVERRIDE", color = MaterialTheme.colorScheme.error)
+                    }
+                    Button(onClick = { showRemoteChangeDialog = null }) {
+                        Text("OK")
+                    }
                 }
             }
         )

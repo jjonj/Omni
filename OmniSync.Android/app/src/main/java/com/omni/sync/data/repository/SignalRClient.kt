@@ -97,6 +97,9 @@ class SignalRClient(
     private val _fileChangeEvents = MutableSharedFlow<Pair<String, Long>>(extraBufferCapacity = 64)
     val fileChangeEvents: SharedFlow<Pair<String, Long>> = _fileChangeEvents.asSharedFlow()
 
+    private val _availableDrivesReceived = MutableSharedFlow<List<String>>(extraBufferCapacity = 1)
+    val availableDrivesReceived: SharedFlow<List<String>> = _availableDrivesReceived.asSharedFlow()
+
     private val _aiMessages = MutableStateFlow<List<Pair<String, String>>>(emptyList())
     val aiMessages: StateFlow<List<Pair<String, String>>> = _aiMessages
 
@@ -222,6 +225,17 @@ class SignalRClient(
                 _cleanupPatterns.value = patterns
             } catch (e: Exception) {
                 Log.e("SignalRClient", "Error parsing cleanup patterns", e)
+            }
+        }, Any::class.java)
+
+        hubConnection?.on("ReceiveAvailableDrives", { drivesData: Any ->
+            try {
+                val jsonStr = gson.toJson(drivesData)
+                val type = object : TypeToken<List<String>>() {}.type
+                val drives: List<String> = gson.fromJson(jsonStr, type)
+                coroutineScope.launch { _availableDrivesReceived.emit(drives) }
+            } catch (e: Exception) {
+                Log.e("SignalRClient", "Error parsing drives", e)
             }
         }, Any::class.java)
 

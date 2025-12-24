@@ -169,6 +169,20 @@ class FilesViewModel(
                 }
             }
         }
+
+        // Listen for drive list
+        viewModelScope.launch {
+            signalRClient.availableDrivesReceived.collect { drives ->
+                val entries = drives.map { drive ->
+                    FileSystemEntry(drive, drive, true, 0, java.util.Date(0))
+                }
+                _fileSystemEntries.value = enrichWithPendingFiles("", entries)
+                _currentPath.value = ""
+                _isLoading.value = false
+                _errorMessage.value = null
+                saveToCache("", entries)
+            }
+        }
     }
 
     private fun loadBookmarks() {
@@ -312,6 +326,22 @@ class FilesViewModel(
         return _bookmarks.value.any { it.path == path }
     }
 
+    fun bookmarkCurrentDirectory() {
+        if (_currentPath.value.isEmpty() || _currentPath.value == "/") return
+        
+        val separator = if (_currentPath.value.contains("/")) "/" else "\\"
+        val name = _currentPath.value.substringAfterLast(separator).ifEmpty { _currentPath.value }
+        
+        val entry = FileSystemEntry(
+            name = name,
+            path = _currentPath.value,
+            isDirectory = true,
+            size = 0,
+            lastModified = java.util.Date()
+        )
+        toggleBookmark(entry)
+    }
+
     fun removeBookmark(entry: FileSystemEntry) {
         val current = _bookmarks.value.toMutableList()
         current.removeAll { it.path == entry.path }
@@ -342,8 +372,25 @@ class FilesViewModel(
     }
 
     fun loadDirectory(path: String) {
+        Log.d("FilesViewModel", "loadDirectory called for: $path")
         if (path == "" || path == "/") {
-            // Root
+            // Root - Request drives
+            if (mainViewModel.isConnected.value) {
+                _isLoading.value = true
+                Log.d("FilesViewModel", "Requesting available drives from Hub")
+                signalRClient.getAiSessions() // Refresh sessions just in case
+                signalRClient.sendCommand("GetAvailableDrives")
+            } else {
+                val cached = getFromCache("")
+                if (cached != null) {
+                    _fileSystemEntries.value = enrichWithPendingFiles("", cached)
+                    _currentPath.value = ""
+                } else {
+                    _errorMessage.value = "Not connected and root not cached."
+                }
+                _isLoading.value = false
+            }
+            return
         } else if (path == "VIRTUAL_DOWNLOADS") {
             val entries = _downloadedVideos.value.filter { !it.isEncrypted }.map { video ->
                 FileSystemEntry(video.fileName, video.localPath, false, video.fileSize, video.downloadDate)
@@ -367,16 +414,20 @@ class FilesViewModel(
         }
 
         if (!mainViewModel.isConnected.value) {
+            Log.d("FilesViewModel", "Not connected, checking cache for: $path")
             val cachedEntries = getFromCache(path)
             if (cachedEntries != null) {
+                Log.d("FilesViewModel", "Cache hit for: $path")
                 val enrichedEntries = enrichWithPendingFiles(path, cachedEntries)
                 _fileSystemEntries.value = enrichedEntries
                 _currentPath.value = path
                 _errorMessage.value = null
                 mainViewModel.addLog("Loaded directory from cache: ${if (path.isEmpty()) "(root)" else path}", com.omni.sync.ui.screen.LogType.INFO)
             } else {
+                Log.d("FilesViewModel", "Cache miss for: $path")
                 _errorMessage.value = "Not connected and directory not cached."
             }
+            _isLoading.value = false
             return
         }
 
@@ -391,6 +442,7 @@ class FilesViewModel(
             _isLoading.value = false
             _errorMessage.value = "Failed to initiate directory listing (not connected?)."
             mainViewModel.addLog("Failed to initiate directory listing", com.omni.sync.ui.screen.LogType.ERROR)
+            Log.e("FilesViewModel", "directoryObservable is null for path: $path")
             return
         }
 
@@ -400,6 +452,7 @@ class FilesViewModel(
             .timeout(15, java.util.concurrent.TimeUnit.SECONDS)
             .subscribe(
                 { entries ->
+                    Log.d("FilesViewModel", "Successfully loaded ${entries.size} entries for: $path")
                     mainViewModel.addLog("Loaded ${entries.size} entries", com.omni.sync.ui.screen.LogType.SUCCESS)
                     val enrichedEntries = enrichWithPendingFiles(path, entries)
                     _fileSystemEntries.value = enrichedEntries
@@ -1218,6 +1271,35 @@ class FilesViewModel(
         val video = _downloadedVideos.value.find { it.localPath == path }
         if (video != null) {
             deleteDownloadedVideo(video)
+        } else {
+            // Not a local video, try remote delete
+            deleteRemoteFile(path)
+        }
+    }
+
+    fun deleteRemoteFile(path: String) {
+        if (!mainViewModel.isConnected.value) {
+            _errorMessage.value = "Not connected to OmniSync Hub."
+            return
+        }
+
+        viewModelScope.launch(Schedulers.io().asCoroutineDispatcher()) {
+            try {
+                val success = signalRClient.deleteFile(path)
+                    ?.subscribeOn(Schedulers.io())
+                    ?.blockingGet() ?: false
+
+                if (success) {
+                    mainViewModel.addLog("Deleted remote file: $path", com.omni.sync.ui.screen.LogType.SUCCESS)
+                    viewModelScope.launch(AndroidSchedulers.mainThread().asCoroutineDispatcher()) {
+                        loadDirectory(_currentPath.value)
+                    }
+                } else {
+                    _errorMessage.value = "Failed to delete remote file."
+                }
+            } catch (e: Exception) {
+                _errorMessage.value = "Delete failed: ${e.message}"
+            }
         }
     }
 

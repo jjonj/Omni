@@ -147,6 +147,19 @@ class MainActivity : ComponentActivity() {
                             onBack = { mainViewModel.goBack() }
                         )
                     }
+                } else if (currentScreen == AppScreen.IMAGE_VIEWER) {
+                    val imageUrl by mainViewModel.currentImageUrl.collectAsState()
+                    val playlist by mainViewModel.imagePlaylist.collectAsState()
+                    val initialIndex by mainViewModel.currentImageIndex.collectAsState()
+                    
+                    if (imageUrl != null) {
+                        com.omni.sync.ui.screen.ImageViewerScreen(
+                            initialImageUrl = imageUrl!!,
+                            playlist = playlist,
+                            initialIndex = initialIndex,
+                            onBack = { mainViewModel.goBack() }
+                        )
+                    }
                 } else {
                     Surface(
                         modifier = Modifier.fillMaxSize(),
@@ -352,6 +365,19 @@ class MainActivity : ComponentActivity() {
                 signalRClient = signalRClient,
                 onBack = { mainViewModel.goBack() }
             )
+            AppScreen.IMAGE_VIEWER -> {
+                val imageUrl by mainViewModel.currentImageUrl.collectAsState()
+                val playlist by mainViewModel.imagePlaylist.collectAsState()
+                val initialIndex by mainViewModel.currentImageIndex.collectAsState()
+                if (imageUrl != null) {
+                    com.omni.sync.ui.screen.ImageViewerScreen(
+                        initialImageUrl = imageUrl!!,
+                        playlist = playlist,
+                        initialIndex = initialIndex,
+                        onBack = { mainViewModel.goBack() }
+                    )
+                }
+            }
             else -> {} 
         }
     }

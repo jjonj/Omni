@@ -23,6 +23,8 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.VideoLibrary
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -126,6 +128,17 @@ fun FilesScreen(
                         IconButton(onClick = { showCreateFileDialog = true }) {
                             Icon(Icons.Default.Add, contentDescription = "Create File")
                         }
+                    }
+                    if (currentPath.isNotEmpty() && currentPath != "/") {
+                        IconButton(onClick = { filesViewModel.bookmarkCurrentDirectory() }) {
+                            Icon(
+                                if (filesViewModel.isBookmarked(currentPath)) Icons.Default.Star else Icons.Default.StarBorder,
+                                contentDescription = "Bookmark Current Folder"
+                            )
+                        }
+                    }
+                    IconButton(onClick = { filesViewModel.loadDirectory("") }) {
+                        Icon(Icons.Default.Home, contentDescription = "Home")
                     }
                     IconButton(onClick = { filesViewModel.loadDirectory(currentPath) }) {
                         Icon(Icons.Default.Refresh, contentDescription = "Refresh")
@@ -287,7 +300,11 @@ fun FilesScreen(
                                             val playlist = fileSystemEntries.filter { isVideoFile(it.name) }.map { it.path }
                                             filesViewModel.mainViewModel.playVideo(clickedEntry.path, playlist)
                                         }
-                                        isImageFile(clickedEntry.name) || isPdfFile(clickedEntry.name) || isAudioFile(clickedEntry.name) -> {
+                                        isImageFile(clickedEntry.name) -> {
+                                            val playlist = fileSystemEntries.filter { isImageFile(it.name) }.map { it.path }
+                                            filesViewModel.mainViewModel.viewImages(clickedEntry.path, playlist)
+                                        }
+                                        isPdfFile(clickedEntry.name) || isAudioFile(clickedEntry.name) -> {
                                             filesViewModel.handleFileOpen(clickedEntry)
                                         }
                                         else -> {
@@ -309,10 +326,6 @@ fun FilesScreen(
                             onOpenInAiChat = { entry ->
                                 filesViewModel.mainViewModel.navigateTo(com.omni.sync.viewmodel.AppScreen.AI_CHAT)
                                 filesViewModel.signalRClient.sendAiMessage("/dir add \"${entry.path}\"")
-                            },
-                            onAiCliHere = { entry ->
-                                filesViewModel.mainViewModel.navigateTo(com.omni.sync.viewmodel.AppScreen.AI_CHAT)
-                                filesViewModel.signalRClient.sendAiMessage("/cli \"${entry.path}\"")
                             },
                             onDuplicate = { entry ->
                                 filesViewModel.duplicateFile(entry)
@@ -543,10 +556,9 @@ fun FileSystemEntryItem(
     onBookmarkToggle: (FileSystemEntry) -> Unit = {},
     onClick: (FileSystemEntry) -> Unit, 
     onLongClick: (FileSystemEntry) -> Unit,
-    onDownloadAndOpen: (FileSystemEntry) -> Unit,
+    onDownloadAndOpen: (FileSystemEntry) -> Unit = {},
     onOpenFolder: (String) -> Unit = {},
     onOpenInAiChat: (FileSystemEntry) -> Unit = {},
-    onAiCliHere: (FileSystemEntry) -> Unit = {},
     onDuplicate: (FileSystemEntry) -> Unit = {},
     onCliHere: (FileSystemEntry) -> Unit = {},
     onDownloadVideo: (FileSystemEntry, Boolean) -> Unit = { _, _ -> },
@@ -555,6 +567,7 @@ fun FileSystemEntryItem(
 ) {
     var showMenu by remember { mutableStateOf(false) }
     var showDownloadDialog by remember { mutableStateOf(false) }
+    var showDeleteConfirmation by remember { mutableStateOf(false) }
 
     val flashColor by androidx.compose.animation.animateColorAsState(
         targetValue = if (isRecentlyChanged) MaterialTheme.colorScheme.tertiaryContainer else Color.Transparent,
@@ -633,12 +646,13 @@ fun FileSystemEntryItem(
                         onDeleteAllEncrypted()
                     }
                 )
-            } else if (entry.path.contains("downloaded_videos")) {
+            } else if (entry.path != "VIRTUAL_DOWNLOADS" && entry.name != "..") {
+                val deleteLabel = if (entry.path.contains("downloaded_videos")) "Delete Local File" else "Delete"
                 DropdownMenuItem(
-                    text = { Text("Delete Local File") },
+                    text = { Text(deleteLabel) },
                     onClick = {
                         showMenu = false
-                        onDeleteByPath(entry.path)
+                        showDeleteConfirmation = true
                     }
                 )
             }
@@ -704,13 +718,6 @@ fun FileSystemEntryItem(
                     }
                 )
                 DropdownMenuItem(
-                    text = { Text("AI CLI Here") },
-                    onClick = {
-                        showMenu = false
-                        onAiCliHere(entry)
-                    }
-                )
-                DropdownMenuItem(
                     text = { Text("CLI Here") },
                     onClick = {
                         showMenu = false
@@ -761,6 +768,30 @@ fun FileSystemEntryItem(
                 },
                 dismissButton = {
                     TextButton(onClick = { showDownloadDialog = false }) {
+                        Text("Cancel")
+                    }
+                }
+            )
+        }
+
+        if (showDeleteConfirmation) {
+            AlertDialog(
+                onDismissRequest = { showDeleteConfirmation = false },
+                title = { Text("Confirm Delete") },
+                text = { Text("Are you sure you want to delete '${entry.name}'? This action cannot be undone.") },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            showDeleteConfirmation = false
+                            onDeleteByPath(entry.path)
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                    ) {
+                        Text("Delete")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showDeleteConfirmation = false }) {
                         Text("Cancel")
                     }
                 }

@@ -33,7 +33,8 @@ enum class AppScreen {
     SETTINGS,
     AI_CHAT,
     DOWNLOADED_VIDEOS,
-    ALARM
+    ALARM,
+    IMAGE_VIEWER
 }
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
@@ -83,6 +84,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     
     private val _currentVideoIndex = MutableStateFlow(0)
     val currentVideoIndex: StateFlow<Int> = _currentVideoIndex
+
+    // --- Image Viewer State ---
+    private val _currentImageUrl = MutableStateFlow<String?>(null)
+    val currentImageUrl: StateFlow<String?> = _currentImageUrl
+    
+    private val _imagePlaylist = MutableStateFlow<List<String>>(emptyList())
+    val imagePlaylist: StateFlow<List<String>> = _imagePlaylist
+    
+    private val _currentImageIndex = MutableStateFlow(0)
+    val currentImageIndex: StateFlow<Int> = _currentImageIndex
 
     // Back Navigation Logic
     private val backStack = mutableListOf<AppScreen>()
@@ -145,6 +156,33 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _currentVideoUrl.value = currentUrl
         
         navigateTo(AppScreen.VIDEOPLAYER)
+    }
+
+    fun viewImages(remotePath: String, playlist: List<String> = emptyList()) {
+        val prefs = applicationContext.getSharedPreferences("omni_settings", Context.MODE_PRIVATE)
+        val isRandom = prefs.getBoolean("image_slideshow_random", false)
+        
+        val baseUrl = getBaseUrl()
+        
+        var finalPlaylist = playlist
+        if (isRandom && finalPlaylist.isNotEmpty()) {
+            val otherImages = finalPlaylist.filter { it != remotePath }.shuffled()
+            finalPlaylist = listOf(remotePath) + otherImages
+        }
+
+        val playlistUrls = finalPlaylist.map { path ->
+            val encoded = java.net.URLEncoder.encode(path, "UTF-8")
+            "$baseUrl/api/stream?path=$encoded"
+        }
+        
+        val encodedPath = java.net.URLEncoder.encode(remotePath, "UTF-8")
+        val currentUrl = "$baseUrl/api/stream?path=$encodedPath"
+        
+        _imagePlaylist.value = playlistUrls
+        _currentImageIndex.value = if (playlistUrls.contains(currentUrl)) playlistUrls.indexOf(currentUrl) else 0
+        _currentImageUrl.value = currentUrl
+        
+        navigateTo(AppScreen.IMAGE_VIEWER)
     }
 
     fun openUrlOnPhone(url: String) {
