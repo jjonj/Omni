@@ -438,14 +438,14 @@ namespace OmniSync.Hub.Presentation.Hubs
             }
         }
 
-        public void WriteFileContent(string filePath, string content)
+        public bool WriteFileContent(string filePath, string content)
         {
             if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
             {
                 AnyCommandReceived?.Invoke(this, $"WriteFileContent: {filePath}");
                 try
                 {
-                    _fileService.WriteBrowseFile(filePath, content);
+                    return _fileService.WriteBrowseFile(filePath, content);
                 }
                 catch (Exception ex)
                 {
@@ -536,15 +536,20 @@ namespace OmniSync.Hub.Presentation.Hubs
                 // 1. Broadcast the user message so other clients can see it
                 await Clients.All.SendAsync("ReceiveAiMessage", Context.ConnectionId, message);
 
-                // 2. Direct Hub-to-CLI communication
-                if (!await _aiCliService.SendPromptAsync(message))
+                string connectionId = Context.ConnectionId;
+
+                // 2. Direct Hub-to-CLI communication (Backgrounded to prevent Hub blocking)
+                _ = Task.Run(async () =>
                 {
-                    // If we failed to send (and auto-launch failed), don't error out if it was just /clear
-                    // but we already handled /clear above. 
-                    // For other messages, notify failure.
-                    await Clients.Caller.SendAsync("ReceiveAiResponse", "Error: Failed to communicate with AI service.");
-                    AnyCommandReceived?.Invoke(this, "AI Communication Failed");
-                }
+                    if (!await _aiCliService.SendPromptAsync(message))
+                    {
+                        // If we failed to send (and auto-launch failed), don't error out if it was just /clear
+                        // but we already handled /clear above. 
+                        // For other messages, notify failure.
+                        await _hubEventSender.SendAiError(connectionId, "Error: Failed to communicate with AI service.");
+                        AnyCommandReceived?.Invoke(this, "AI Communication Failed");
+                    }
+                });
             }
         }
 

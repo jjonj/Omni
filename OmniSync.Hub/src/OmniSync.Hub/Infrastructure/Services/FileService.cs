@@ -82,18 +82,34 @@ namespace OmniSync.Hub.Infrastructure.Services
             return File.ReadAllText(fullPath);
         }
 
-        public void WriteFile(string filePath, string content)
+        public bool WriteFile(string filePath, string content)
         {
-            var fullPath = SanitizeAndGetNoteFullPath(filePath);
-            File.WriteAllText(fullPath, content);
-            FileWritten?.Invoke(this, filePath); // Invoke the event
+            try
+            {
+                var fullPath = SanitizeAndGetNoteFullPath(filePath);
+                File.WriteAllText(fullPath, content);
+                FileWritten?.Invoke(this, filePath); // Invoke the event
+                return true;
+            }
+            catch (Exception)
+            {
+                return false;
+            }
         }
 
-        public void WriteBrowseFile(string filePath, string content)
+        public bool WriteBrowseFile(string filePath, string content)
         {
-            var fullPath = SanitizeAndGetBrowseFullPath(filePath);
-            File.WriteAllText(fullPath, content);
-            BrowseFileWritten?.Invoke(this, filePath); // Invoke the event
+            try
+            {
+                var fullPath = SanitizeAndGetBrowseFullPath(filePath);
+                File.WriteAllText(fullPath, content);
+                BrowseFileWritten?.Invoke(this, filePath); // Invoke the event
+                return true;
+            }
+            catch (Exception)
+            {
+                return false;
+            }
         }
 
         public void AppendToFile(string filePath, string content)
