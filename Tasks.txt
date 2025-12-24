@@ -1,7 +1,7 @@
 # Tasks
 
 
-When finishing a task make sure to prefix the line with "DONE" and also git commit between each one. Dont wait until the megasession is completed to make these updates.
+When finishing a task make sure to prefix the line with "✅" and also git commit before moving on to the next task, . Dont wait until the megasession is completed to make these updates.
 if told to do a megasession then fix/implement as many issues of the ones below as possible without user intervention. Make sure to git commit and mark as DONE between each one. Start with any tasks that can be validated with a script in D:\SSDProjects\Omni\TestScripts. If strictly necessary you may use AISpeak to ask the user for help/clarifications.
 
 ## General
@@ -25,13 +25,13 @@ Stream PC monitor, replacing background of the trackpad leaving the trackpad fun
 
 ### Files & Video Screen
 
-Files screen upper right should have a home button to go to root.
-Files screen upper right should have a boomark current folder button
-"remote changes detected" popup should allow override
+DONE Files screen upper right should have a home button to go to root.
+DONE Files screen upper right should have a boomark current folder button
+DONE "remote changes detected" popup should allow override
 
 I bookmarked a file and it initially worked but later when i tried to use the bookmark, its just infinitely loading. If i find i t in the file list and open that way it opens fine. Investigate.
 
-Long press option to delete file (with confirmation)
+DONE Long press option to delete file (with confirmation)
 
 Line numbers dont work right when wrapping lines, it counts a wrapping line as a new one (Disabled word wrap for now when line numbers shown)
 Search in txt file next prev/buttons jumping but not jumping to the right place always in file, especially after the last entry it seems to jump to more non existant entries as if it cant overflow the jump offset, maybe has to do with issue above. Also add different color highlighting 
@@ -43,9 +43,9 @@ Unecnrypted video files play fine but Encrypted videos cannot play. How does pla
 The button to open cached files list should have a different icon
 
 
-Support for displaying image files, needs wide support which includes webm gif etc. Should have slideshow option with random setting and time option. 
+DONE Support for displaying image files, needs wide support which includes webm gif etc. Should have slideshow option with random setting and time option. 
 
-Long press folder has both "AI CLI Here" and "CLI Here", only keep "CLI Here" as that works better.
+DONE Long press folder has both "AI CLI Here" and "CLI Here", only keep "CLI Here" as that works better.
 	   
 
 	   
