@@ -30,6 +30,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardReturn
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.Edit
 import kotlinx.coroutines.launch
 import com.omni.sync.utils.WindowsKeyCodes.VK_CONTROL
 import com.omni.sync.utils.WindowsKeyCodes.VK_DOWN
@@ -49,58 +50,47 @@ fun AiChatScreen(
     val sessions by signalRClient.aiSessions.collectAsState()
     var inputText by remember { mutableStateOf("") }
     var showSessionMenu by remember { mutableStateOf(false) }
+    var selectedPid by remember { mutableIntStateOf(-1) }
+    var showRenameDialog by remember { mutableStateOf(false) }
+    var renameText by remember { mutableStateOf("") }
+    var pidToRename by remember { mutableIntStateOf(-1) }
     
     val listState = rememberLazyListState()
     val isAiTyping = aiStatus != null
     val coroutineScope = rememberCoroutineScope()
 
-    // Auto-scroll to bottom
-    LaunchedEffect(messages.size, isAiTyping) {
-        if (messages.isNotEmpty() || isAiTyping) {
-            kotlinx.coroutines.delay(100)
-            listState.animateScrollToItem(if (isAiTyping) messages.size else messages.size - 1)
+    // Sync selectedPid with available sessions
+    LaunchedEffect(sessions) {
+        if (selectedPid == -1 && sessions.isNotEmpty()) {
+            selectedPid = sessions.keys.first()
+        } else if (selectedPid != -1 && !sessions.containsKey(selectedPid)) {
+            selectedPid = if (sessions.isNotEmpty()) sessions.keys.first() else -1
         }
-    }
-
-    // Initial session discovery
-    LaunchedEffect(Unit) {
-        signalRClient.getAiSessions()
     }
 
     Scaffold(
         topBar = {
             CenterAlignedTopAppBar(
                 title = {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("OmniSync AI Chat", style = MaterialTheme.typography.titleMedium)
-                        if (aiStatus != null) {
-                            Text(aiStatus!!, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
-                        } else {
-                            Text("${sessions.size} sessions active", style = MaterialTheme.typography.labelSmall)
-                        }
-                    }
-                },
-                actions = {
-                    IconButton(onClick = { signalRClient.startNewAiSession() }) {
-                        Icon(Icons.Default.Add, contentDescription = "New Session")
-                    }
-                    IconButton(onClick = { 
-                        // We need a close session method in SignalRClient
-                        signalRClient.sendAiMessage("/exit")
-                        signalRClient.clearAiMessages()
-                    }) {
-                        Icon(Icons.Default.Close, contentDescription = "Close Session")
-                    }
-                    Box {
-                        IconButton(onClick = { 
+                    Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                        TextButton(onClick = { 
                             signalRClient.getAiSessions()
                             showSessionMenu = true 
                         }) {
-                            Icon(Icons.Default.MoreVert, contentDescription = "Sessions")
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                val currentName = sessions[selectedPid] ?: "Select Session"
+                                Text(currentName, style = MaterialTheme.typography.titleMedium)
+                                if (aiStatus != null) {
+                                    Text(aiStatus!!, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                                } else {
+                                    Text("${sessions.size} sessions active", style = MaterialTheme.typography.labelSmall)
+                                }
+                            }
                         }
                         DropdownMenu(
                             expanded = showSessionMenu,
-                            onDismissRequest = { showSessionMenu = false }
+                            onDismissRequest = { showSessionMenu = false },
+                            modifier = Modifier.widthIn(min = 200.dp)
                         ) {
                             if (sessions.isEmpty()) {
                                 DropdownMenuItem(
@@ -109,16 +99,40 @@ fun AiChatScreen(
                                     enabled = false
                                 )
                             }
-                            sessions.forEach { pid ->
+                            sessions.forEach { (pid, name) ->
                                 DropdownMenuItem(
-                                    text = { Text("Session PID: $pid") },
+                                    text = { 
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Text(name, modifier = Modifier.weight(1f))
+                                            IconButton(onClick = { 
+                                                pidToRename = pid
+                                                renameText = name
+                                                showRenameDialog = true
+                                                showSessionMenu = false
+                                            }) {
+                                                Icon(Icons.Default.Edit, contentDescription = "Rename", modifier = Modifier.size(18.dp))
+                                            }
+                                        }
+                                    },
                                     onClick = {
+                                        selectedPid = pid
                                         signalRClient.switchAiSession(pid)
                                         showSessionMenu = false
                                     }
                                 )
                             }
                         }
+                    }
+                },
+                actions = {
+                    IconButton(onClick = { signalRClient.startNewAiSession() }) {
+                        Icon(Icons.Default.Add, contentDescription = "New Session")
+                    }
+                    IconButton(onClick = { 
+                        signalRClient.stopAiSession(selectedPid)
+                        signalRClient.clearAiMessages()
+                    }) {
+                        Icon(Icons.Default.Close, contentDescription = "Close Session")
                     }
                 }
             )
@@ -182,6 +196,33 @@ fun AiChatScreen(
 
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             QuickActionPanel(signalRClient, coroutineScope)
+        }
+
+        if (showRenameDialog) {
+            AlertDialog(
+                onDismissRequest = { showRenameDialog = false },
+                title = { Text("Rename Session") },
+                text = {
+                    OutlinedTextField(
+                        value = renameText,
+                        onValueChange = { renameText = it },
+                        label = { Text("Session Name") }
+                    )
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        signalRClient.renameAiSession(pidToRename, renameText)
+                        showRenameDialog = false
+                    }) {
+                        Text("Rename")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showRenameDialog = false }) {
+                        Text("Cancel")
+                    }
+                }
+            )
         }
     }
 }

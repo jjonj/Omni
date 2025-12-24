@@ -38,7 +38,11 @@ class MultiInstanceTester:
         self.connection_started = True
 
     def on_ai_sessions(self, args):
-        pids = args[0]
+        sessions_data = args[0]
+        if isinstance(sessions_data, dict):
+            pids = [int(pid) for pid in sessions_data.keys()]
+        else:
+            pids = sessions_data
         logger.info(f"Received AI Sessions from Hub: {pids}")
         self.pids = pids
         self.sessions_received_event.set()
@@ -85,14 +89,22 @@ class MultiInstanceTester:
         self.hub.send("Authenticate", [API_KEY])
         await asyncio.sleep(1)
 
+        # Get initial sessions
+        self.pids = []
+        self.sessions_received_event.clear()
+        self.hub.send("GetAiSessions", [])
+        await asyncio.sleep(2) # Give it time to respond
+        initial_pids = set(self.pids)
+        logger.info(f"Initial sessions: {initial_pids}")
+
         # 2. Launch Instances via Hub
         logger.info(f"Requesting Hub to launch {self.num_instances} instances...")
         for i in range(self.num_instances):
             self.hub.send("StartCliAtWorkspace", [WORKSPACE])
             await asyncio.sleep(2)
         
-        logger.info("Waiting 10s for all instances to initialize...")
-        await asyncio.sleep(10)
+        logger.info("Waiting 15s for all instances to initialize...")
+        await asyncio.sleep(15)
 
         # 3. Get Sessions
         self.sessions_received_event.clear()
@@ -104,24 +116,28 @@ class MultiInstanceTester:
             self.hub.stop()
             return 1
 
-        if len(self.pids) < self.num_instances:
-            logger.warning(f"Only found {len(self.pids)} sessions, but requested {self.num_instances}.")
+        current_pids = set(self.pids)
+        new_pids = list(current_pids - initial_pids)
+        logger.info(f"New sessions found: {new_pids}")
+
+        if len(new_pids) < self.num_instances:
+            logger.warning(f"Only found {len(new_pids)} new sessions, but requested {self.num_instances}.")
+            # Fallback to test whatever new sessions we found, or all if none
+            if not new_pids and self.pids:
+                 new_pids = self.pids
 
         # 4. Test each session
-        for i, pid in enumerate(self.pids):
+        for i, pid in enumerate(new_pids):
             instance_id = i + 1
             logger.info(f"--- Testing Session {instance_id} (PID: {pid}) ---")
-            
-            # Switch to this session
-            self.hub.send("SwitchAiSession", [pid])
-            await asyncio.sleep(2) 
             
             # Send targeted prompt
             prompt = f"Multi-instance test. You are Instance {instance_id}. Repeat: 'I am Instance {instance_id}'"
             logger.info(f"Sending prompt to PID {pid}: {prompt}")
             
             self.response_received_event.clear()
-            self.hub.send("SendAiMessage", [prompt])
+            # Pass PID as second argument
+            self.hub.send("SendAiMessage", [prompt, pid])
             
             try:
                 await asyncio.wait_for(self.response_received_event.wait(), timeout=60)
@@ -130,7 +146,7 @@ class MultiInstanceTester:
                 logger.error(f"Timed out waiting for response from Instance {instance_id}")
 
         self.hub.stop()
-        return 0 if len(self.captured_responses) >= len(self.pids) else 1
+        return 0 if len(self.captured_responses) >= len(new_pids) else 1
 
 def is_port_in_use(port):
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:

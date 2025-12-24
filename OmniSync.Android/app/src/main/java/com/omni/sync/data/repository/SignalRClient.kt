@@ -103,8 +103,10 @@ class SignalRClient(
     private val _aiStatus = MutableStateFlow<String?>(null)
     val aiStatus: StateFlow<String?> = _aiStatus
 
-    private val _aiSessions = MutableStateFlow<List<Int>>(emptyList())
-    val aiSessions: StateFlow<List<Int>> = _aiSessions
+    private val _aiSessions = MutableStateFlow<Map<Int, String>>(emptyMap())
+    val aiSessions: StateFlow<Map<Int, String>> = _aiSessions
+
+    private var isNextResponseNewBubble = true
 
     companion object {
         const val SHARED_PREFS_NAME = "OmniSyncPrefs"
@@ -250,16 +252,21 @@ class SignalRClient(
         hubConnection?.on("ReceiveAiResponse", { response: String ->
             if (response == "[TURN_FINISHED]") {
                 _aiStatus.value = null
+                isNextResponseNewBubble = true
                 return@on
             }
 
+            val isSystem = response.startsWith("Error:") || response.contains("A new version of Gemini CLI is available")
+            val sender = if (isSystem) "System" else "AI"
+
             val currentMessages = _aiMessages.value.toMutableList()
-            if (currentMessages.isNotEmpty() && currentMessages.last().first == "AI") {
+            if (!isNextResponseNewBubble && !isSystem && currentMessages.isNotEmpty() && currentMessages.last().first == "AI") {
                 val lastMsg = currentMessages.last()
                 currentMessages[currentMessages.size - 1] = Pair("AI", lastMsg.second + response)
                 _aiMessages.value = currentMessages
             } else {
-                _aiMessages.value = _aiMessages.value + Pair("AI", response)
+                _aiMessages.value = _aiMessages.value + Pair(sender, response)
+                if (!isSystem) isNextResponseNewBubble = false
             }
         }, String::class.java)
 
@@ -275,12 +282,12 @@ class SignalRClient(
             mainViewModel.onCortexActivityChanged(name, type)
         }, String::class.java, String::class.java)
 
-        hubConnection?.on("ReceiveAiSessions", { pids: Any ->
+        hubConnection?.on("ReceiveAiSessions", { sessionsData: Any ->
             try {
-                val jsonStr = gson.toJson(pids)
-                val type = object : TypeToken<List<Int>>() {}.type
-                val pidsList: List<Int> = gson.fromJson(jsonStr, type)
-                _aiSessions.value = pidsList
+                val jsonStr = gson.toJson(sessionsData)
+                val type = object : TypeToken<Map<Int, String>>() {}.type
+                val sessionsMap: Map<Int, String> = gson.fromJson(jsonStr, type)
+                _aiSessions.value = sessionsMap
             } catch (e: Exception) {
                 Log.e("SignalRClient", "Error parsing AI sessions", e)
             }
@@ -299,7 +306,10 @@ class SignalRClient(
 
     fun sendAiMessage(message: String) {
         if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
-            hubConnection?.send("SendAiMessage", message)
+            if (!message.startsWith("/")) {
+                _aiStatus.value = "AI Thinking..."
+            }
+            hubConnection?.send("SendAiMessage", message, null)
         }
     }
 
@@ -317,13 +327,28 @@ class SignalRClient(
 
     fun switchAiSession(pid: Int) {
         if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
+            _aiStatus.value = "Switching session..."
             hubConnection?.send("SwitchAiSession", pid)
         }
     }
 
     fun startNewAiSession() {
         if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
+            _aiStatus.value = "Starting new session..."
             hubConnection?.send("StartNewAiSession")
+        }
+    }
+
+    fun stopAiSession(pid: Int) {
+        if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
+            _aiStatus.value = "Closing session..."
+            hubConnection?.send("StopAiSession", pid)
+        }
+    }
+
+    fun renameAiSession(pid: Int, name: String) {
+        if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
+            hubConnection?.send("RenameAiSession", pid, name)
         }
     }
 
@@ -334,8 +359,8 @@ class SignalRClient(
     }
 
     fun clearAiMessages() {
-        if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED && aiSessions.value.isNotEmpty()) {
-            hubConnection?.send("SendAiMessage", "/clear")
+        if (hubConnection != null && hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED && aiSessions.value.isNotEmpty()) {
+            hubConnection?.send("SendAiMessage", "/clear", null)
         }
         _aiMessages.value = emptyList()
         _aiStatus.value = null
@@ -539,6 +564,13 @@ class SignalRClient(
     fun writeFileContent(path: String, content: String): Single<Boolean>? {
         if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
             return hubConnection?.invoke(Boolean::class.java, "WriteFileContent", path, content)
+        }
+        return null
+    }
+
+    fun deleteFile(path: String): Single<Boolean>? {
+        if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
+            return hubConnection?.invoke(Boolean::class.java, "DeleteFile", path)
         }
         return null
     }

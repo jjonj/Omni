@@ -459,6 +459,27 @@ namespace OmniSync.Hub.Presentation.Hubs
             }
         }
 
+        public bool DeleteFile(string filePath)
+        {
+            if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
+            {
+                AnyCommandReceived?.Invoke(this, $"DeleteFile: {filePath}");
+                try
+                {
+                    return _fileService.DeleteEntry(filePath);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, $"Error deleting file '{filePath}'");
+                    throw new HubException($"Error deleting file: {ex.Message}", ex);
+                }
+            }
+            else
+            {
+                throw new UnauthorizedAccessException("Client is not authenticated.");
+            }
+        }
+
         public async Task SendBrowserCommand(string command, string url, bool newTab)
         {
             if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
@@ -517,17 +538,17 @@ namespace OmniSync.Hub.Presentation.Hubs
             }
         }
 
-        public async Task SendAiMessage(string message)
+        public async Task SendAiMessage(string message, int? sessionId = null)
         {
             if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
             {
-                string preview = message.Length > 20 ? message.Substring(0, 20) + "..." : message;
-                AnyCommandReceived?.Invoke(this, $"AI Message Sent: {preview}");
+                string preview = message.Length > 100 ? message.Substring(0, 100) + "..." : message;
+                AnyCommandReceived?.Invoke(this, $"AI Message Sent: {preview} (Session: {sessionId})");
                 
                 // Special handling for /clear: Hard interrupt
                 if (message.Trim().Equals("/clear", StringComparison.OrdinalIgnoreCase))
                 {
-                    await _aiCliService.StopSessionAsync();
+                    await _aiCliService.StopSessionAsync(sessionId ?? -1);
                     await Clients.All.SendAsync("ReceiveAiHistory", "[]");
                     await Clients.All.SendAsync("ReceiveAiStatus", null);
                     return;
@@ -541,7 +562,8 @@ namespace OmniSync.Hub.Presentation.Hubs
                 // 2. Direct Hub-to-CLI communication (Backgrounded to prevent Hub blocking)
                 _ = Task.Run(async () =>
                 {
-                    if (!await _aiCliService.SendPromptAsync(message))
+                    int targetPid = sessionId ?? -1;
+                    if (!await _aiCliService.SendPromptAsync(message, targetPid))
                     {
                         // If we failed to send (and auto-launch failed), don't error out if it was just /clear
                         // but we already handled /clear above. 
@@ -586,25 +608,48 @@ namespace OmniSync.Hub.Presentation.Hubs
             }
         }
 
-        public async Task StartNewAiSession()
+        public async Task<int?> StartNewAiSession()
         {
             if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
             {
                 AnyCommandReceived?.Invoke(this, "StartNewAiSession");
                 await Clients.All.SendAsync("ReceiveAiHistory", "[]");
                 await Clients.All.SendAsync("ReceiveAiStatus", null);
-                await _aiCliService.LaunchSessionAsync();
+                return await _aiCliService.LaunchSessionAsync();
             }
+            return null;
         }
 
-        public async Task StartCliAtWorkspace(string path)
+        public async Task<int?> StartCliAtWorkspace(string path)
         {
             if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
             {
                 AnyCommandReceived?.Invoke(this, $"StartCliAtWorkspace: {path}");
                 await Clients.All.SendAsync("ReceiveAiHistory", "[]");
                 await Clients.All.SendAsync("ReceiveAiStatus", null);
-                await _aiCliService.LaunchSessionAsync(path);
+                return await _aiCliService.LaunchSessionAsync(path);
+            }
+            return null;
+        }
+
+        public async Task StopAiSession(int pid)
+        {
+            if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
+            {
+                AnyCommandReceived?.Invoke(this, $"StopAiSession: {pid}");
+                await _aiCliService.StopSessionAsync(pid);
+                
+                await GetAiSessions();
+            }
+        }
+
+        public async Task RenameAiSession(int pid, string name)
+        {
+            if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
+            {
+                AnyCommandReceived?.Invoke(this, $"RenameAiSession: {pid} -> {name}");
+                await _aiCliService.SetSessionNameAsync(pid, name);
+                await GetAiSessions();
             }
         }
 
@@ -612,12 +657,13 @@ namespace OmniSync.Hub.Presentation.Hubs
         {
             if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
             {
-                // Request from legacy Python listeners
+                // Request from legacy Python listeners (optional, but keep for compatibility)
                 await Clients.All.SendAsync("RequestAiSessions");
 
                 // Discover directly in Hub
-                var pids = await _aiCliService.DiscoverSessionsAsync();
-                await Clients.All.SendAsync("ReceiveAiSessions", pids);
+                await _aiCliService.DiscoverSessionsAsync();
+                var sessions = _aiCliService.GetSessionsWithNames();
+                await Clients.All.SendAsync("ReceiveAiSessions", sessions);
             }
         }
 

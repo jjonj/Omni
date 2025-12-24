@@ -26,6 +26,7 @@ namespace OmniSync.Hub.Infrastructure.Services
     {
         private readonly ILogger<AiCliService> _logger;
         private readonly ConcurrentDictionary<int, GeminiSession> _sessions = new();
+        private readonly ConcurrentDictionary<int, string> _sessionNames = new();
         private int _targetPid = -1;
         private readonly SemaphoreSlim _sessionLock = new(1, 1);
 
@@ -34,6 +35,30 @@ namespace OmniSync.Hub.Infrastructure.Services
         public AiCliService(ILogger<AiCliService> logger)
         {
             _logger = logger;
+        }
+
+        public async Task SetSessionNameAsync(int pid, string name)
+        {
+            _sessionNames[pid] = name;
+            _logger.LogInformation($"Renamed session PID {pid} to '{name}'");
+        }
+
+        public string GetSessionName(int pid)
+        {
+            return _sessionNames.TryGetValue(pid, out var name) ? name : $"Session {pid}";
+        }
+
+        public IDictionary<int, string> GetSessionsWithNames()
+        {
+            var result = new Dictionary<int, string>();
+            foreach (var pid in _sessions.Keys)
+            {
+                if (_sessions.TryGetValue(pid, out var session) && session.IsConnected)
+                {
+                    result[pid] = GetSessionName(pid);
+                }
+            }
+            return result;
         }
 
         public async Task<List<int>> DiscoverSessionsAsync(int connectionTimeoutMs = 3000)
@@ -74,33 +99,59 @@ namespace OmniSync.Hub.Infrastructure.Services
             {
                 if (!pids.Contains(pid))
                 {
-                    if (_sessions.TryRemove(pid, out var session))
+                    // WMI might have missed it, double check with Process API
+                    bool isDead = true;
+                    try
                     {
-                        session.Dispose();
+                        var proc = Process.GetProcessById(pid);
+                        if (!proc.HasExited)
+                        {
+                            isDead = false;
+                            // Re-add to pids so we attempt to reconnect if needed
+                            if (!pids.Contains(pid)) pids.Add(pid);
+                        }
+                    }
+                    catch { /* Process not found or access denied, assume dead */ }
+
+                    if (isDead)
+                    {
+                        if (_sessions.TryRemove(pid, out var session))
+                        {
+                            session.Dispose();
+                            _logger.LogInformation($"Removed stale session PID {pid}");
+                        }
                     }
                 }
             }
 
             // Ensure we have sessions for all PIDs found - Parallelized discovery
-            var ensureTasks = pids.Where(p => !_sessions.ContainsKey(p))
+            var ensureTasks = pids.Where(p => !_sessions.ContainsKey(p) || !_sessions[p].IsConnected)
                                   .Select(p => EnsureSessionAsync(p, connectionTimeoutMs));
             
             await Task.WhenAll(ensureTasks);
 
             var connectedPids = _sessions.Where(s => s.Value.IsConnected).Select(s => s.Key).ToList();
 
-            if (_targetPid == -1 && connectedPids.Count > 0)
+            // If _targetPid is invalid or not connected, pick a new one
+            if (_targetPid == -1 || !_sessions.ContainsKey(_targetPid) || !_sessions[_targetPid].IsConnected)
             {
-                _targetPid = connectedPids[0];
+                if (connectedPids.Count > 0)
+                {
+                    _targetPid = connectedPids[0];
+                    _logger.LogInformation($"Set default target PID to {_targetPid}");
+                }
             }
 
             return connectedPids;
         }
 
-        public async Task<bool> LaunchSessionAsync(string? workspace = null)
+        public async Task<int?> LaunchSessionAsync(string? workspace = null)
         {
             try
             {
+                // Capture existing sessions before launch
+                var initialSessions = await DiscoverSessionsAsync(1000);
+
                 // D:\SSDProjects\Omni\OmniSync.Hub\bin\Debug\net9.0-windows\OmniSync.Hub.exe
                 // Go up 6 levels to get to D:\SSDProjects\Omni
                 string rootPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", ".."));
@@ -125,7 +176,8 @@ namespace OmniSync.Hub.Infrastructure.Services
                 // Construct the command exactly as the working python script does:
                 // cmd = f'title OMNI_GEMINI_INTERACTIVE && cd /d {gemini_dir} && node bundle/gemini.js --workspace {workspace}'
                 // Note: NO QUOTES around the workspace path in the final command string to avoid node path resolution issues.
-                string command = $"title OMNI_GEMINI_INTERACTIVE && cd /d \"{geminiDir}\" && node bundle/gemini.js --workspace {workspace}";
+                // Added --yolo to auto-accept tool usage since this is headless/remote controlled.
+                string command = $"title OMNI_GEMINI_INTERACTIVE && cd /d \"{geminiDir}\" && node bundle/gemini.js --workspace {workspace} --yolo";
 
                 var startInfo = new ProcessStartInfo
                 {
@@ -156,20 +208,24 @@ namespace OmniSync.Hub.Infrastructure.Services
                 {
                     await Task.Delay(1000);
                     // Use longer timeout for the session we just launched
-                    var connected = await DiscoverSessionsAsync(5000); 
-                    if (connected.Count > 0) 
+                    var currentSessions = await DiscoverSessionsAsync(5000); 
+                    
+                    // Find new PID
+                    var newPid = currentSessions.Except(initialSessions).FirstOrDefault();
+                    
+                    if (newPid != 0) // Except returns 0 if default? No, Int32 default is 0. Valid PIDs are > 0.
                     {
-                        _logger.LogInformation($"AiCliService: Successfully connected to new session.");
-                        return true;
+                        _logger.LogInformation($"AiCliService: Successfully connected to new session PID {newPid}.");
+                        return newPid;
                     }
                 }
 
-                return false;
+                return null;
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error launching Gemini CLI session");
-                return false;
+                return null;
             }
         }
 
@@ -232,43 +288,73 @@ namespace OmniSync.Hub.Infrastructure.Services
 
         public async Task<bool> SendPromptAsync(string text, int pid = -1)
         {
-            int target = pid == -1 ? _targetPid : pid;
+            _logger.LogInformation($"AiCliService: SendPromptAsync called. PID: {pid}, _targetPid: {_targetPid}");
+            int target = pid;
 
-            // If target is invalid, try to discover existing
+            // If no specific PID requested, use target
+            if (target == -1) target = _targetPid;
+
+            // If target is invalid (or we just defaulted to -1), try to discover existing
             if (target == -1 || !_sessions.TryGetValue(target, out var targetSession) || !targetSession.IsConnected)
             {
+                _logger.LogInformation($"Target session {target} invalid or disconnected. Refreshing discovery...");
+                // Attempt discovery to refresh list
                 var connected = await DiscoverSessionsAsync(2000);
-                if (connected.Count > 0)
+                _logger.LogInformation($"Discovery found {connected.Count} sessions: {string.Join(", ", connected)}");
+                
+                // If user asked for specific PID, check if it appeared
+                if (pid != -1)
                 {
-                    target = connected[0];
-                    if (_targetPid == -1) _targetPid = target;
+                     if (connected.Contains(pid)) target = pid;
+                     else 
+                     {
+                         _logger.LogWarning($"Requested PID {pid} not found after discovery.");
+                         return false; // Requested PID not found
+                     }
                 }
                 else
                 {
-                    // AUTO-LAUNCH if none connected
-                    _logger.LogInformation("No active AI sessions. Auto-launching Gemini CLI...");
-                    if (await LaunchSessionAsync())
+                    // No specific PID requested, pick one
+                    if (connected.Count > 0)
                     {
-                        // Discovery happened inside LaunchSessionAsync, so check _sessions again
-                        var connectedAfterLaunch = _sessions.Keys.Where(k => _sessions[k].IsConnected).ToList();
-                        if (connectedAfterLaunch.Count > 0)
+                        target = connected[0];
+                        if (_targetPid == -1) 
                         {
-                            target = connectedAfterLaunch[0];
-                            if (_targetPid == -1) _targetPid = target;
+                            _targetPid = target;
+                            _logger.LogInformation($"Auto-selected target PID: {_targetPid}");
                         }
-                        else return false;
                     }
-                    else return false;
+                    else
+                    {
+                        // AUTO-LAUNCH if none connected
+                        _logger.LogInformation("No active AI sessions. Auto-launching Gemini CLI...");
+                        var newPid = await LaunchSessionAsync();
+                        if (newPid.HasValue)
+                        {
+                            target = newPid.Value;
+                            if (_targetPid == -1) _targetPid = target;
+                            _logger.LogInformation($"Auto-launched new session PID: {target}");
+                        }
+                        else 
+                        {
+                            _logger.LogError("Failed to auto-launch AI session.");
+                            return false;
+                        }
+                    }
                 }
             }
 
+            _logger.LogInformation($"Sending prompt to PID {target}...");
             await _sessionLock.WaitAsync();
             try
             {
                 if (_sessions.TryGetValue(target, out var session))
                 {
-                    return await session.SendPromptAsync(text);
+                    bool result = await session.SendPromptAsync(text);
+                    _logger.LogInformation($"SendPromptAsync result: {result}");
+                    return result;
                 }
+                _logger.LogWarning($"Session {target} disappeared from dictionary.");
                 return false;
             }
             finally
@@ -292,6 +378,7 @@ namespace OmniSync.Hub.Infrastructure.Services
             {
                 session.Dispose();
                 _sessions.TryRemove(target, out _);
+                _sessionNames.TryRemove(target, out _);
                 
                 try
                 {
