@@ -52,8 +52,8 @@ DONE Long press folder has both "AI CLI Here" and "CLI Here", only keep "CLI Her
 	   
 DONE More Text editing fancy features, think like a lite code editor like notepad++ or VS code. be creative. MORE options in burger menu with lots of options
 	   
-When closing the last open file, go back to last folder. 
-Allow swiping sideways to switch between when multiple open files are present
+DONE When closing the last open file, go back to last folder. 
+DONE Allow swiping sideways to switch between when multiple open files are present
 	   
 NOT-WORKING Bold/italic/strikethrough options on selected text (We need to somehow hook into androids selected text popup thing and add more options to it)
 

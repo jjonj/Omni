@@ -191,6 +191,12 @@ fun TextEditorScreen(
         }
     }
 
+    LaunchedEffect(openFiles.size) {
+        if (openFiles.isEmpty()) {
+            onBack()
+        }
+    }
+
     fun scrollToSelection(index: Int) {
         val text = textFieldValue.text
         val lineIndex = text.substring(0, index).count { it == '\n' }
