@@ -554,52 +554,72 @@ fun TextEditorScreen(
                     val btnModifier = Modifier.padding(horizontal = 4.dp)
                     
                     IconButton(onClick = {
-                        modifyLines { lines -> lines.flatMap { listOf(it, it) } }
+                        try {
+                            modifyLines { lines -> lines.flatMap { listOf(it, it) } }
+                        } catch (e: Exception) {
+                            e.printStackTrace()
+                        }
                     }, modifier = btnModifier) {
                         Icon(Icons.Default.LibraryAdd, "Duplicate Line", modifier = iconModifier)
                     }
                     IconButton(onClick = {
-                        modifyLines { emptyList() }
+                        try {
+                            modifyLines { emptyList() }
+                        } catch (e: Exception) {
+                            e.printStackTrace()
+                        }
                     }, modifier = btnModifier) {
                         Icon(Icons.Default.Delete, "Delete Line", modifier = iconModifier)
                     }
                     IconButton(onClick = {
-                        val text = textFieldValue.text
-                        val range = getSelectedLinesRange()
-                        if (range.first > 0) {
-                            val lineStartBefore = (text.lastIndexOf('\n', (range.first - 2).coerceAtLeast(0))).let { if (it == -1) 0 else it + 1 }
-                            val above = text.substring(lineStartBefore, range.first)
-                            val selected = text.substring(range.first, range.second)
-                            val before = text.substring(0, lineStartBefore)
-                            val after = text.substring(range.second)
-                            val newText = before + selected + (if (selected.endsWith("\n")) "" else "\n") + above.trimEnd('\n') + "\n" + after.trimStart('\n')
-                            filesViewModel.updateEditingContent(newText)
-                            textFieldValue = textFieldValue.copy(
-                                text = newText,
-                                selection = TextRange(lineStartBefore, lineStartBefore + (range.second - range.first))
-                            )
+                        try {
+                            val text = textFieldValue.text
+                            val range = getSelectedLinesRange()
+                            if (range.first > 0) {
+                                val lineStartBefore = (text.lastIndexOf('\n', (range.first - 2).coerceAtLeast(0))).let { if (it == -1) 0 else it + 1 }
+                                if (lineStartBefore >= 0 && lineStartBefore <= range.first && range.second <= text.length) {
+                                    val above = text.substring(lineStartBefore, range.first)
+                                    val selected = text.substring(range.first, range.second)
+                                    val before = text.substring(0, lineStartBefore)
+                                    val after = text.substring(range.second)
+                                    val newText = before + selected + (if (selected.endsWith("\n")) "" else "\n") + above.trimEnd('\n') + "\n" + after.trimStart('\n')
+                                    filesViewModel.updateEditingContent(newText)
+                                    textFieldValue = textFieldValue.copy(
+                                        text = newText,
+                                        selection = TextRange(lineStartBefore, lineStartBefore + (range.second - range.first))
+                                    )
+                                }
+                            }
+                        } catch (e: Exception) {
+                            e.printStackTrace()
                         }
                     }, modifier = btnModifier) {
                         Icon(Icons.Default.ArrowUpward, "Move Up", modifier = iconModifier)
                     }
                     IconButton(onClick = {
-                        val text = textFieldValue.text
-                        val range = getSelectedLinesRange()
-                        if (range.second < text.length) {
-                            val nextLineEnd = text.indexOf('\n', (range.second + 1).coerceAtMost(text.length))
-                            val endOfNext = if (nextLineEnd == -1) text.length else nextLineEnd
-                            
-                            val below = text.substring((range.second + 1).coerceAtMost(text.length), endOfNext)
-                            val selected = text.substring(range.first, range.second)
-                            val before = text.substring(0, range.first)
-                            val after = text.substring(endOfNext)
-                            val newText = before + below + "\n" + selected.trimEnd('\n') + after
-                            filesViewModel.updateEditingContent(newText)
-                            val newStart = range.first + below.length + 1
-                            textFieldValue = textFieldValue.copy(
-                                text = newText,
-                                selection = TextRange(newStart, (newStart + (range.second - range.first)).coerceAtMost(newText.length))
-                            )
+                        try {
+                            val text = textFieldValue.text
+                            val range = getSelectedLinesRange()
+                            if (range.second < text.length) {
+                                val nextLineEnd = text.indexOf('\n', (range.second + 1).coerceAtMost(text.length))
+                                val endOfNext = if (nextLineEnd == -1) text.length else nextLineEnd
+                                
+                                if (range.second + 1 <= text.length && endOfNext <= text.length) {
+                                    val below = text.substring((range.second + 1).coerceAtMost(text.length), endOfNext)
+                                    val selected = text.substring(range.first, range.second)
+                                    val before = text.substring(0, range.first)
+                                    val after = text.substring(endOfNext)
+                                    val newText = before + below + "\n" + selected.trimEnd('\n') + after
+                                    filesViewModel.updateEditingContent(newText)
+                                    val newStart = range.first + below.length + 1
+                                    textFieldValue = textFieldValue.copy(
+                                        text = newText,
+                                        selection = TextRange(newStart, (newStart + (range.second - range.first)).coerceAtMost(newText.length))
+                                    )
+                                }
+                            }
+                        } catch (e: Exception) {
+                            e.printStackTrace()
                         }
                     }, modifier = btnModifier) {
                         Icon(Icons.Default.ArrowDownward, "Move Down", modifier = iconModifier)
