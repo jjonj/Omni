@@ -46,7 +46,8 @@ import androidx.compose.ui.text.input.KeyboardType
 class EditorVisualTransformation(
     private val colorScheme: ColorScheme, 
     private val isMarkdown: Boolean,
-    private val searchQuery: String = ""
+    private val searchQuery: String = "",
+    private val currentSelection: TextRange = TextRange.Zero
 ) : VisualTransformation {
     override fun filter(text: AnnotatedString): TransformedText {
         return TransformedText(
@@ -105,8 +106,12 @@ class EditorVisualTransformation(
                 while (startIndex < text.length) {
                     val index = text.indexOf(searchQuery, startIndex, ignoreCase = true)
                     if (index == -1) break
+                    
+                    val isCurrentMatch = index == currentSelection.start && (index + searchQuery.length) == currentSelection.end
+                    val highlightColor = if (isCurrentMatch) Color.Cyan else Color.Yellow.copy(alpha = 0.5f)
+                    
                     addStyle(
-                        SpanStyle(background = Color.Yellow.copy(alpha = 0.5f), color = Color.Black),
+                        SpanStyle(background = highlightColor, color = Color.Black),
                         index,
                         index + searchQuery.length
                     )
@@ -161,13 +166,14 @@ fun TextEditorScreen(
     var replaceQuery by remember { mutableStateOf("") }
     var fontSize by remember { mutableFloatStateOf(14f) }
     var forceMarkdown by remember { mutableStateOf(false) }
+    var currentTextLayoutResult by remember { mutableStateOf<androidx.compose.ui.text.TextLayoutResult?>(null) }
     
     val verticalScrollState = rememberScrollState()
     val horizontalScrollState = rememberScrollState()
     val colorScheme = MaterialTheme.colorScheme
     val isMarkdown = (editingFile?.name?.endsWith(".md") == true) || forceMarkdown
-    val visualTransformation = remember(colorScheme, isMarkdown, searchQuery) { 
-        EditorVisualTransformation(colorScheme, isMarkdown, searchQuery) 
+    val visualTransformation = remember(colorScheme, isMarkdown, searchQuery, textFieldValue.selection) { 
+        EditorVisualTransformation(colorScheme, isMarkdown, searchQuery, textFieldValue.selection) 
     }
     val context = androidx.compose.ui.platform.LocalContext.current
     val coroutineScope = rememberCoroutineScope()
@@ -206,11 +212,11 @@ fun TextEditorScreen(
     }
 
     fun scrollToSelection(index: Int) {
-        val text = textFieldValue.text
-        val lineIndex = text.substring(0, index).count { it == '\n' }
-        val lineHeightPx = with(density) { (fontSize * 1.4f).sp.toPx() }
+        val layout = currentTextLayoutResult ?: return
+        val visualLine = layout.getLineForOffset(index)
+        val lineTop = layout.getLineTop(visualLine)
         coroutineScope.launch {
-            verticalScrollState.animateScrollTo((lineIndex * lineHeightPx).toInt())
+            verticalScrollState.animateScrollTo(lineTop.toInt())
         }
     }
 
@@ -802,7 +808,12 @@ fun TextEditorScreen(
                                 }
                             }
                         },
-                        onTextLayout = { textLayoutResult = it },
+                        onTextLayout = { 
+                            textLayoutResult = it
+                            if (editingFile?.path == fileAtPage.path) {
+                                currentTextLayoutResult = it
+                            }
+                        },
                         modifier = Modifier.fillMaxWidth(),
                         textStyle = TextStyle(
                             fontFamily = FontFamily.Monospace,
