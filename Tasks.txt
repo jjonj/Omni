@@ -6,7 +6,7 @@ if told to do a megasession then fix/implement as many issues of the ones below 
 
 ## General
 
-Make the black background a dark red globally in app a slightly reddish black when disconnected from hub so we can see it anywhere 
+✅ Make the black background a dark red globally in app a slightly reddish black when disconnected from hub so we can see it anywhere 
 
 ## For the hub
 

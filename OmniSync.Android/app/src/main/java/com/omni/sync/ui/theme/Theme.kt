@@ -40,6 +40,7 @@ private val LightColorScheme = lightColorScheme(
 @Composable
 fun OmniSyncTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
+    isConnected: Boolean = true,
     // Dynamic color is available on Android 12+
     dynamicColor: Boolean = true,
     content: @Composable () -> Unit
@@ -52,12 +53,19 @@ fun OmniSyncTheme(
 
         darkTheme -> DarkColorScheme
         else -> LightColorScheme
+    }.let { base ->
+        if (darkTheme) {
+            base.copy(
+                background = if (isConnected) DarkRed else ReddishBlack,
+                surface = if (isConnected) DarkRed else ReddishBlack
+            )
+        } else base
     }
     val view = LocalView.current
     if (!view.isInEditMode) {
         SideEffect {
             val window = (view.context as Activity).window
-            window.statusBarColor = colorScheme.primary.toArgb()
+            window.statusBarColor = colorScheme.background.toArgb()
             WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = !darkTheme
         }
     }

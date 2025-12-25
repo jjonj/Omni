@@ -118,7 +118,8 @@ class MainActivity : ComponentActivity() {
         }
 
         setContent {
-            OmniSyncTheme {
+            val isConnected by mainViewModel.isConnected.collectAsState()
+            OmniSyncTheme(isConnected = isConnected) {
                 val currentScreen by mainViewModel.currentScreen.collectAsState()
                 val canGoBack by mainViewModel.canGoBack.collectAsState()
                 val signalRClient = omniSyncApplication.signalRClient
