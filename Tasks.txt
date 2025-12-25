@@ -21,7 +21,7 @@ if told to do a megasession then fix/implement as many issues of the ones below 
 
 ### Remote Control Screen
 
-When keyboard is up, the navigation bar is hidden. Please remove that effect and simply have the keyboard organically hide the visible navigation bar as it will always be in front. The hiding/unhiding looks ugly.
+✅ When keyboard is up, the navigation bar is hidden. Please remove that effect and simply have the keyboard organically hide the visible navigation bar as it will always be in front. The hiding/unhiding looks ugly.
 
 Stream PC monitor, replacing background of the trackpad leaving the trackpad functioning still, options to toggle monitor, pinch to zoom, (advanced feature, do last)       
 

@@ -68,10 +68,9 @@ fun OmniBottomNavigation(
     val isLandscape = configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
 
     // We only want to show the Bottom Bar if we are on one of the main screens.    
-    // Also hide when keyboard is up to save space, and hide in landscape mode.
-    val isKeyboardVisible = WindowInsets.isImeVisible
+    // Also hide in landscape mode.
     val allVisibleScreens = navigationItems.map { it.screen } + burgerMenuItems.map { it.screen }
-    val showBottomBar = allVisibleScreens.any { it == currentScreen } && !isKeyboardVisible && !isLandscape
+    val showBottomBar = allVisibleScreens.any { it == currentScreen } && !isLandscape
 
     if (showBottomBar) {
         NavigationBar(
