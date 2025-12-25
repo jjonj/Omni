@@ -546,16 +546,6 @@ namespace OmniSync.Hub.Presentation.Hubs
                 _logger.LogInformation($"[RpcApiHub] SendAiMessage: {preview} (Session: {sessionId})");
                 AnyCommandReceived?.Invoke(this, $"AI Message Sent: {preview} (Session: {sessionId})");
                 
-                // Special handling for /clear: Hard interrupt
-                if (message.Trim().Equals("/clear", StringComparison.OrdinalIgnoreCase))
-                {
-                    _logger.LogInformation("[RpcApiHub] Handling /clear command");
-                    await _aiCliService.StopSessionAsync(sessionId ?? -1);
-                    await Clients.All.SendAsync("ReceiveAiHistory", "[]");
-                    await Clients.All.SendAsync("ReceiveAiStatus", null);
-                    return;
-                }
-
                 // 1. Broadcast the user message so other clients can see it
                 await Clients.All.SendAsync("ReceiveAiMessage", Context.ConnectionId, message);
 
@@ -623,17 +613,43 @@ namespace OmniSync.Hub.Presentation.Hubs
         {
             if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
             {
-                _logger.LogInformation("[RpcApiHub] StartNewAiSession requested");
-                AnyCommandReceived?.Invoke(this, "StartNewAiSession");
-                await Clients.All.SendAsync("ReceiveAiHistory", "[]");
-                await Clients.All.SendAsync("ReceiveAiStatus", "Starting session...");
-                var result = await _aiCliService.LaunchSessionAsync();
-                _logger.LogInformation($"[RpcApiHub] StartNewAiSession result: {result}");
-                if (result.HasValue)
+                try
                 {
-                    await Clients.All.SendAsync("ReceiveNewAiSessionPid", result.Value);
+                    _logger.LogInformation("[RpcApiHub] StartNewAiSession requested. Broadcasting status...");
+                    AnyCommandReceived?.Invoke(this, "StartNewAiSession requested");
+                    await Clients.All.SendAsync("ReceiveAiHistory", "[]");
+                    await Clients.All.SendAsync("ReceiveAiStatus", "Starting session...");
+                    
+                    _logger.LogInformation("[RpcApiHub] Calling AiCliService.LaunchSessionAsync...");
+                    
+                    var result = await _aiCliService.LaunchSessionAsync(null, (status) => 
+                    {
+                        AnyCommandReceived?.Invoke(this, $"AI Launch: {status}");
+                    });
+                    
+                    _logger.LogInformation($"[RpcApiHub] StartNewAiSession result: {result}");
+
+                    if (result.HasValue)
+                    {
+                        AnyCommandReceived?.Invoke(this, $"AI Launch Success: PID {result.Value}");
+                        await Clients.All.SendAsync("ReceiveNewAiSessionPid", result.Value);
+                        // Clear the status on client side
+                        await Clients.All.SendAsync("ReceiveAiStatus", "FINISHED");
+                    }
+                    else
+                    {
+                        AnyCommandReceived?.Invoke(this, "AI Launch Failed");
+                        await Clients.All.SendAsync("ReceiveAiStatus", "Failed to start session");
+                    }
+                    return result;
                 }
-                return result;
+                catch (Exception ex)
+                {
+                     _logger.LogError(ex, "[RpcApiHub] Error in StartNewAiSession");
+                     AnyCommandReceived?.Invoke(this, $"AI Launch Error: {ex.Message}");
+                     await Clients.All.SendAsync("ReceiveAiStatus", "Error starting session");
+                     return null;
+                }
             }
             return null;
         }

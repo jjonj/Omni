@@ -195,12 +195,14 @@ namespace OmniSync.Hub.Infrastructure.Services
             return connectedPids;
         }
 
-        public async Task<int?> LaunchSessionAsync(string? workspace = null)
+        public async Task<int?> LaunchSessionAsync(string? workspace = null, Action<string>? onProgress = null)
         {
             _logger.LogInformation($"[AiCliService] LaunchSessionAsync starting (workspace: {workspace ?? "default"})");
+            onProgress?.Invoke("Initializing launch sequence...");
             try
             {
                 // Capture existing sessions before launch
+                onProgress?.Invoke("Scanning for existing sessions...");
                 var initialSessions = await DiscoverSessionsAsync(500); 
 
                 string rootPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", ".."));
@@ -216,6 +218,7 @@ namespace OmniSync.Hub.Infrastructure.Services
                 }
 
                 _logger.LogInformation($"[AiCliService] Launching process: cd /d {geminiDir} && node bundle/gemini.js --workspace {workspace}");
+                onProgress?.Invoke($"Launching process in {workspace}...");
 
                 string command = $"title OMNI_GEMINI_INTERACTIVE && cd /d \"{geminiDir}\" && node bundle/gemini.js --workspace {workspace} --yolo";
                 string debugLog = Path.Combine(rootPath, "gemini_cli_debug.log");
@@ -232,11 +235,12 @@ namespace OmniSync.Hub.Infrastructure.Services
 
                 Process.Start(startInfo);
                 _logger.LogInformation("[AiCliService] Process started. Waiting for it to establish named pipe...");
+                onProgress?.Invoke("Process started. Waiting for connection...");
 
                 // Wait for the process and its pipe
                 for (int i = 0; i < 20; i++) 
                 {
-                    _logger.LogDebug($"[AiCliService] Launch check iteration {i+1}/20");
+                    _logger.LogInformation($"[AiCliService] Launch check iteration {i+1}/20...");
                     await Task.Delay(1000);
                     
                     // Force a WMI refresh by resetting cache
@@ -246,17 +250,28 @@ namespace OmniSync.Hub.Infrastructure.Services
                     var newPid = currentSessions.Except(initialSessions).FirstOrDefault();
                     if (newPid != 0)
                     {
-                        _logger.LogInformation($"[AiCliService] Successfully connected to new session PID {newPid} after {i+1} seconds.");
+                        string msg = $"Successfully connected to new session PID {newPid} after {i+1} seconds.";
+                        _logger.LogInformation($"[AiCliService] {msg}");
+                        onProgress?.Invoke(msg);
                         return newPid;
+                    }
+                    else
+                    {
+                        string msg = $"Waiting for new PID... (Iter {i+1}/20)";
+                        _logger.LogInformation($"[AiCliService] {msg}");
+                        onProgress?.Invoke(msg);
                     }
                 }
 
-                _logger.LogWarning("[AiCliService] Failed to find new Gemini session after 20 seconds.");
+                string errorMsg = "Failed to find new Gemini session after 20 seconds.";
+                _logger.LogWarning($"[AiCliService] {errorMsg}");
+                onProgress?.Invoke(errorMsg);
                 return null;
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "[AiCliService] Error launching Gemini CLI session");
+                onProgress?.Invoke($"Error launching session: {ex.Message}");
                 return null;
             }
         }

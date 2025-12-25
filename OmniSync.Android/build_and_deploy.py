@@ -174,7 +174,7 @@ def main():
     
     # Ensure device is connected with timeout
     print("\n=== Connecting to Device ===")
-    print("Waiting for device connection (1 minute timeout)...")
+    print("Waiting for device connection (3 minute timeout)...")
     device_queue = queue.Queue()
     
     def connect_worker():
@@ -191,7 +191,7 @@ def main():
     connect_thread.start()
     
     try:
-        device = device_queue.get(timeout=60)
+        device = device_queue.get(timeout=180)
     except queue.Empty:
         print("\n[TIMEOUT] Device connection timed out after 5 seconds (readline did not evaluate).")
         print("Proceeding without installation. You can run with --no-install to skip deployment.")

@@ -58,6 +58,14 @@ fun AiChatScreen(
     val listState = rememberLazyListState()
     val isAiTyping = aiStatus != null
     val coroutineScope = rememberCoroutineScope()
+    val isStartingSession by signalRClient.isStartingSessionFlow.collectAsState()
+
+    LaunchedEffect(Unit) {
+        signalRClient.getAiSessions()
+        signalRClient.lastCreatedSessionPid.collect { pid ->
+            selectedPid = pid
+        }
+    }
 
     // Sync selectedPid with available sessions
     LaunchedEffect(sessions) {
@@ -89,7 +97,7 @@ fun AiChatScreen(
                             showSessionMenu = true 
                         }) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                val currentName = sessions[selectedPid] ?: "Select Session"
+                                val currentName = if (isStartingSession) "Creating Session..." else (sessions[selectedPid] ?: "Select Session")
                                 Text(currentName, style = MaterialTheme.typography.titleMedium)
                                 if (aiStatus != null) {
                                     Text(aiStatus!!, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
@@ -140,8 +148,9 @@ fun AiChatScreen(
                         Icon(Icons.Default.Add, contentDescription = "New Session")
                     }
                     IconButton(onClick = { 
-                        signalRClient.stopAiSession(selectedPid)
-                        signalRClient.clearAiMessages()
+                        val pidToStop = selectedPid
+                        signalRClient.stopAiSession(pidToStop)
+                        signalRClient.clearAiMessages(if (pidToStop != -1) pidToStop else null)
                     }) {
                         Icon(Icons.Default.Close, contentDescription = "Close Session")
                     }
@@ -191,7 +200,7 @@ fun AiChatScreen(
                 IconButton(
                     onClick = {
                         if (inputText.isNotBlank()) {
-                            signalRClient.sendAiMessage(inputText)
+                            signalRClient.sendAiMessage(inputText, if (selectedPid != -1) selectedPid else null)
                             inputText = ""
                         } else {
                             // If empty, send Enter key to Hub
@@ -294,7 +303,7 @@ fun QuickActionPanel(signalRClient: SignalRClient, coroutineScope: kotlinx.corou
 
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             FilledTonalButton(
-                onClick = { signalRClient.clearAiMessages() },
+                onClick = { signalRClient.clearAiMessages(if (selectedPid != -1) selectedPid else null) },
                 modifier = Modifier.weight(1f).height(40.dp),
                 shape = RoundedCornerShape(8.dp),
                 contentPadding = PaddingValues(0.dp)

@@ -109,6 +109,12 @@ class SignalRClient(
     private val _aiSessions = MutableStateFlow<Map<Int, String>>(emptyMap())
     val aiSessions: StateFlow<Map<Int, String>> = _aiSessions
 
+    val lastCreatedSessionPid = MutableSharedFlow<Int>()
+
+    private var _isStartingSession = false
+    private val messageQueue = mutableListOf<String>()
+    val isStartingSessionFlow = MutableStateFlow(false)
+
     private var isNextResponseNewBubble = true
 
     companion object {
@@ -120,6 +126,7 @@ class SignalRClient(
         _connectionState.value = "Connected"
         mainViewModel.setConnected(true)
         authenticateClient()
+        getAiSessions()
         val sharedPrefs = context.getSharedPreferences(SHARED_PREFS_NAME, Context.MODE_PRIVATE)
         sharedPrefs.edit().putString(KEY_LAST_CONNECTED_HUB_URL, hubUrl).apply()    
         mainViewModel.addLog("Connected to hub: $hubUrl", com.omni.sync.ui.screen.LogType.SUCCESS)
@@ -292,6 +299,21 @@ class SignalRClient(
             }
         }, String::class.java)
 
+        hubConnection?.on("ReceiveNewAiSessionPid", { pid: Int ->
+            getAiSessions()
+            _isStartingSession = false
+            isStartingSessionFlow.value = false
+            _aiStatus.value = null // Clear any "Starting..." status
+            
+            coroutineScope.launch { lastCreatedSessionPid.emit(pid) }
+
+            // Flush queue
+            messageQueue.forEach { msg ->
+                sendAiMessage(msg, pid)
+            }
+            messageQueue.clear()
+        }, Int::class.java)
+
         hubConnection?.on("ReceiveCortexActivity", { name: String, type: String ->
             mainViewModel.onCortexActivityChanged(name, type)
         }, String::class.java, String::class.java)
@@ -318,12 +340,17 @@ class SignalRClient(
         }, String::class.java)
     }
 
-    fun sendAiMessage(message: String) {
+    fun sendAiMessage(message: String, pid: Int? = null) {
+        if (_isStartingSession) {
+            messageQueue.add(message)
+            return
+        }
+
         if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
             if (!message.startsWith("/")) {
                 _aiStatus.value = "AI Thinking..."
             }
-            hubConnection?.send("SendAiMessage", message, null)
+            hubConnection?.send("SendAiMessage", message, pid)
         }
     }
 
@@ -349,6 +376,9 @@ class SignalRClient(
     fun startNewAiSession() {
         if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
             _aiStatus.value = "Starting new session..."
+            _isStartingSession = true
+            isStartingSessionFlow.value = true
+            messageQueue.clear()
             hubConnection?.send("StartNewAiSession")
         }
     }
@@ -372,9 +402,11 @@ class SignalRClient(
         }
     }
 
-    fun clearAiMessages() {
+    fun clearAiMessages(pid: Int? = null) {
+        if (_aiMessages.value.isEmpty()) return
+
         if (hubConnection != null && hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED && aiSessions.value.isNotEmpty()) {
-            hubConnection?.send("SendAiMessage", "/clear", null)
+            hubConnection?.send("SendAiMessage", "/clear", pid)
         }
         _aiMessages.value = emptyList()
         _aiStatus.value = null
