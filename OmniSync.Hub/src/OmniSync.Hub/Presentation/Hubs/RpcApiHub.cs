@@ -543,11 +543,13 @@ namespace OmniSync.Hub.Presentation.Hubs
             if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
             {
                 string preview = message.Length > 100 ? message.Substring(0, 100) + "..." : message;
+                _logger.LogInformation($"[RpcApiHub] SendAiMessage: {preview} (Session: {sessionId})");
                 AnyCommandReceived?.Invoke(this, $"AI Message Sent: {preview} (Session: {sessionId})");
                 
                 // Special handling for /clear: Hard interrupt
                 if (message.Trim().Equals("/clear", StringComparison.OrdinalIgnoreCase))
                 {
+                    _logger.LogInformation("[RpcApiHub] Handling /clear command");
                     await _aiCliService.StopSessionAsync(sessionId ?? -1);
                     await Clients.All.SendAsync("ReceiveAiHistory", "[]");
                     await Clients.All.SendAsync("ReceiveAiStatus", null);
@@ -562,14 +564,20 @@ namespace OmniSync.Hub.Presentation.Hubs
                 // 2. Direct Hub-to-CLI communication (Backgrounded to prevent Hub blocking)
                 _ = Task.Run(async () =>
                 {
-                    int targetPid = sessionId ?? -1;
-                    if (!await _aiCliService.SendPromptAsync(message, targetPid))
+                    try
                     {
-                        // If we failed to send (and auto-launch failed), don't error out if it was just /clear
-                        // but we already handled /clear above. 
-                        // For other messages, notify failure.
-                        await _hubEventSender.SendAiError(connectionId, "Error: Failed to communicate with AI service.");
-                        AnyCommandReceived?.Invoke(this, "AI Communication Failed");
+                        int targetPid = sessionId ?? -1;
+                        _logger.LogInformation($"[RpcApiHub] Background task sending prompt to AI (PID: {targetPid})");
+                        if (!await _aiCliService.SendPromptAsync(message, targetPid))
+                        {
+                            _logger.LogWarning($"[RpcApiHub] AI Communication Failed for connection {connectionId}");
+                            await _hubEventSender.SendAiError(connectionId, "Error: Failed to communicate with AI service.");
+                            AnyCommandReceived?.Invoke(this, "AI Communication Failed");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, $"[RpcApiHub] Error in background AI prompt task");
                     }
                 });
             }
@@ -579,6 +587,7 @@ namespace OmniSync.Hub.Presentation.Hubs
         {
             if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
             {
+                _logger.LogDebug("[RpcApiHub] SendAiResponse received");
                 AnyCommandReceived?.Invoke(this, "AI Response Received");
                 await Clients.All.SendAsync("ReceiveAiResponse", response);
             }
@@ -588,6 +597,7 @@ namespace OmniSync.Hub.Presentation.Hubs
         {
             if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
             {
+                _logger.LogDebug($"[RpcApiHub] SendAiStatus: {status}");
                 await Clients.All.SendAsync("ReceiveAiStatus", status);
             }
         }
@@ -596,6 +606,7 @@ namespace OmniSync.Hub.Presentation.Hubs
         {
             if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
             {
+                _logger.LogInformation($"[RpcApiHub] SendAiHubCommand: {command}");
                 AnyCommandReceived?.Invoke(this, $"AI HUB COMMAND: {command}");
                 try
                 {
@@ -612,10 +623,13 @@ namespace OmniSync.Hub.Presentation.Hubs
         {
             if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
             {
+                _logger.LogInformation("[RpcApiHub] StartNewAiSession requested");
                 AnyCommandReceived?.Invoke(this, "StartNewAiSession");
                 await Clients.All.SendAsync("ReceiveAiHistory", "[]");
-                await Clients.All.SendAsync("ReceiveAiStatus", null);
-                return await _aiCliService.LaunchSessionAsync();
+                await Clients.All.SendAsync("ReceiveAiStatus", "Starting session...");
+                var result = await _aiCliService.LaunchSessionAsync();
+                _logger.LogInformation($"[RpcApiHub] StartNewAiSession result: {result}");
+                return result;
             }
             return null;
         }
@@ -624,10 +638,13 @@ namespace OmniSync.Hub.Presentation.Hubs
         {
             if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
             {
+                _logger.LogInformation($"[RpcApiHub] StartCliAtWorkspace requested: {path}");
                 AnyCommandReceived?.Invoke(this, $"StartCliAtWorkspace: {path}");
                 await Clients.All.SendAsync("ReceiveAiHistory", "[]");
-                await Clients.All.SendAsync("ReceiveAiStatus", null);
-                return await _aiCliService.LaunchSessionAsync(path);
+                await Clients.All.SendAsync("ReceiveAiStatus", "Starting session...");
+                var result = await _aiCliService.LaunchSessionAsync(path);
+                _logger.LogInformation($"[RpcApiHub] StartCliAtWorkspace result: {result}");
+                return result;
             }
             return null;
         }
@@ -636,6 +653,7 @@ namespace OmniSync.Hub.Presentation.Hubs
         {
             if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
             {
+                _logger.LogInformation($"[RpcApiHub] StopAiSession: {pid}");
                 AnyCommandReceived?.Invoke(this, $"StopAiSession: {pid}");
                 await _aiCliService.StopSessionAsync(pid);
                 
@@ -647,6 +665,7 @@ namespace OmniSync.Hub.Presentation.Hubs
         {
             if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
             {
+                _logger.LogInformation($"[RpcApiHub] RenameAiSession: {pid} -> {name}");
                 AnyCommandReceived?.Invoke(this, $"RenameAiSession: {pid} -> {name}");
                 await _aiCliService.SetSessionNameAsync(pid, name);
                 await GetAiSessions();
@@ -657,12 +676,14 @@ namespace OmniSync.Hub.Presentation.Hubs
         {
             if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
             {
+                _logger.LogInformation("[RpcApiHub] GetAiSessions requested");
                 // Request from legacy Python listeners (optional, but keep for compatibility)
                 await Clients.All.SendAsync("RequestAiSessions");
 
                 // Discover directly in Hub
                 await _aiCliService.DiscoverSessionsAsync();
                 var sessions = _aiCliService.GetSessionsWithNames();
+                _logger.LogInformation($"[RpcApiHub] Returning {sessions.Count} sessions");
                 await Clients.All.SendAsync("ReceiveAiSessions", sessions);
             }
         }
@@ -671,6 +692,7 @@ namespace OmniSync.Hub.Presentation.Hubs
         {
             if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
             {
+                _logger.LogInformation($"[RpcApiHub] SwitchAiSession: {pid}");
                 AnyCommandReceived?.Invoke(this, $"SwitchAiSession: {pid}");
                 
                 // Switch in legacy Python listeners

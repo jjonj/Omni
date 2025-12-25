@@ -104,6 +104,11 @@ namespace OmniSync.Hub.Logic.Services
             await _hubContext.Clients.All.SendAsync("ConnectionRemoved", connectionId);
         }
 
+        public async Task SendAiError(string connectionId, string errorMessage)
+        {
+            await _hubContext.Clients.Client(connectionId).SendAsync("ReceiveAiResponse", errorMessage);
+        }
+
         // Method to be called by RpcApiHub when a client connects and wants command output
         public void SubscribeForCommandOutput(string clientId, string connectionId)
         {

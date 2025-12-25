@@ -311,6 +311,29 @@ namespace OmniSync.Hub.Infrastructure.Services
             }
         }
 
+        public bool DeleteEntry(string path)
+        {
+            try
+            {
+                string targetPath = string.IsNullOrEmpty(_browseRootPath) ? path : SanitizeAndGetBrowseFullPath(path);
+                if (File.Exists(targetPath))
+                {
+                    File.Delete(targetPath);
+                    return true;
+                }
+                if (Directory.Exists(targetPath))
+                {
+                    Directory.Delete(targetPath, true);
+                    return true;
+                }
+                return false;
+            }
+            catch (Exception)
+            {
+                return false;
+            }
+        }
+
         // Sanitizes paths for the specific note root (Obsidian directory)
         private string SanitizeAndGetNoteFullPath(string filePath)
         {
