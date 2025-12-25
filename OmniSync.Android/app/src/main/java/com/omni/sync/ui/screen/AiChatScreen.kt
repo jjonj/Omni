@@ -68,6 +68,17 @@ fun AiChatScreen(
         }
     }
 
+    // Auto-scroll to bottom
+    LaunchedEffect(messages, isAiTyping) {
+        if (messages.isNotEmpty() || isAiTyping) {
+            kotlinx.coroutines.delay(100)
+            val lastIndex = if (isAiTyping) messages.size else messages.size - 1
+            if (lastIndex >= 0) {
+                listState.animateScrollToItem(lastIndex)
+            }
+        }
+    }
+
     Scaffold(
         topBar = {
             CenterAlignedTopAppBar(

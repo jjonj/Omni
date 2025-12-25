@@ -41,7 +41,7 @@ def cleanup_gemini_windows():
         hwnd = window._hWnd
         
         # Check if it's a Gemini CLI window (case insensitive)
-        if "gemini" in title.lower() and "cli" in title.lower():
+        if "gemini" in title.lower() and not "omni" in title.lower():
             classname = win32gui.GetClassName(hwnd)
             
             # Exclude Explorer

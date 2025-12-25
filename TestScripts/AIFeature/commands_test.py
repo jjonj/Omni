@@ -36,22 +36,31 @@ class CommandsTester:
 
     def on_ai_response(self, args):
         response = args[0]
-        logger.info("--- AI RESPONSE RECEIVED ---")
+        logger.info(f"--- AI RESPONSE RECEIVED: {response} ---")
         if self.loop:
             self.loop.call_soon_threadsafe(self.responses.put_nowait, response)
 
     def on_ai_status(self, args):
         status = args[0]
+        logger.info(f"--- AI STATUS RECEIVED: {status} ---")
         if status == "FINISHED":
             if self.loop:
                 self.loop.call_soon_threadsafe(self.responses.put_nowait, "[FINISHED]")
 
     async def wait_for_response(self, timeout=60):
+        received_text = False
         try:
             while True:
                 res = await asyncio.wait_for(self.responses.get(), timeout=timeout)
                 if res == "[FINISHED]":
-                    return True
+                    if received_text:
+                        return True
+                    else:
+                        logger.warning("Received [FINISHED] but no text response was received!")
+                        return False # Should be True if we accept empty responses, but for this test we expect text.
+                
+                received_text = True
+                
         except asyncio.TimeoutError:
             return False
 

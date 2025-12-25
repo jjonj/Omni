@@ -669,6 +669,17 @@ class FilesViewModel(
         if (!mainViewModel.isConnected.value) {
             val cachedContent = textCachePrefs.getString("text_${entry.path}", null)
             if (cachedContent != null) {
+                // Manage multiple open files even when offline
+                val currentOpen = _openFiles.value.toMutableList()
+                if (currentOpen.none { it.path == entry.path }) {
+                    currentOpen.add(entry)
+                    _openFiles.value = currentOpen
+                }
+                
+                val currentContents = _openFileContents.value.toMutableMap()
+                currentContents[entry.path] = cachedContent
+                _openFileContents.value = currentContents
+
                 _editingFile.value = entry
                 _editingContent.value = cachedContent
                 mainViewModel.navigateTo(AppScreen.EDITOR)

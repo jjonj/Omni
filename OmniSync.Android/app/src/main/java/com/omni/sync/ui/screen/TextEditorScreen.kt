@@ -905,18 +905,36 @@ fun TextEditorScreen(
         AlertDialog(
             onDismissRequest = { showRemoteChangeDialog = null },
             title = { Text("Remote Change Detected") },
-            text = { Text("The file '${showRemoteChangeDialog}' was modified on the Hub. Your local changes may conflict.") },
+            text = { Text("The file '${showRemoteChangeDialog}' was modified on the Hub. Would you like to force your local changes to the Hub or reload the remote version?") },
             confirmButton = {
-                Row {
-                    TextButton(onClick = { 
-                        filesViewModel.saveEditingContent() // Override by saving local
-                        showRemoteChangeDialog = null 
-                    }) {
-                        Text("OVERRIDE", color = MaterialTheme.colorScheme.error)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    TextButton(
+                        onClick = { 
+                            // Reload logic: close and reopen or just fetch
+                            editingFile?.let { filesViewModel.openForEditing(it) }
+                            showRemoteChangeDialog = null 
+                        }
+                    ) {
+                        Text("RELOAD FROM HUB")
                     }
-                    Button(onClick = { showRemoteChangeDialog = null }) {
-                        Text("OK")
+                    Button(
+                        onClick = { 
+                            filesViewModel.saveEditingContent() // Override remote with local
+                            showRemoteChangeDialog = null 
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                    ) {
+                        Text("FORCE SAVE LOCAL")
                     }
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showRemoteChangeDialog = null }) {
+                    Text("IGNORE")
                 }
             }
         )
