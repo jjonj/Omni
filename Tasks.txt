@@ -2,16 +2,17 @@
 
 
 When finishing a task make sure to prefix the line with "✅" and also git commit before moving on to the next task, . Dont wait until the megasession is completed to make these updates.
-if told to do a megasession then fix/implement as many issues of the ones below as possible without user intervention. Make sure to git commit and mark as DONE between each one. Start with any tasks that can be validated with a script in D:\SSDProjects\Omni\TestScripts. If strictly necessary you may use AISpeak to ask the user for help/clarifications.
+if told to do a megasession then fix/implement as many issues of the ones below as possible without user intervention. Make sure to git commit and mark as ✅ between each one. Start with any tasks that can be validated with a script in D:\SSDProjects\Omni\TestScripts. If strictly necessary you may use AISpeak to ask the user for help/clarifications.
 
 ## General
-DONE STILL-ISSUE The app is somehow in some kind of fullscreen all the time, hiding the top android bar that shows time and notification icons etc. I only want this in horizontal mode. 
+
+Make the black background a dark red globally in app a slightly reddish black when disconnected from hub so we can see it anywhere 
+
 ## For the hub
 
 ### Hub window
 
-DONE Clear log on startup
-DONE add clear log btn
+✅ Clear log on startup
 
 ## in OmniSync.Android
 ### General
@@ -20,20 +21,23 @@ DONE add clear log btn
 
 ### Remote Control Screen
 
+When keyboard is up, the navigation bar is hidden. Please remove that effect and simply have the keyboard organically hide the visible navigation bar as it will always be in front. The hiding/unhiding looks ugly.
+
 Stream PC monitor, replacing background of the trackpad leaving the trackpad functioning still, options to toggle monitor, pinch to zoom, (advanced feature, do last)       
+
 
 
 ### Files & Video Screen
 
-DONE Files screen upper right should have a home button to go to root.
-DONE Files screen upper right should have a boomark current folder button
-DONE "remote changes detected" popup should allow override
+Pressing home btn upper right just loads and it doesn't go to root
+Going to root with the back button repeatedly also loads infinitely, i think it was bc i was disconnected but should not prevent going to root, 
 
-I bookmarked a file and it initially worked but later when i tried to use the bookmark, its just infinitely loading. If i find i t in the file list and open that way it opens fine. Investigate.
+autosave mode should save not just on exit but after 1 second of inactivity
 
-DONE Long press option to delete file (with confirmation)
+I bookmarked a file and it initially worked but later when i tried to use the bookmark, its just infinitely loading. If i find i t in the file list and open that way it opens fine. Investigate. similar to home btn issue
 
-Line numbers dont work right when wrapping lines, it counts a wrapping line as a new one (Disabled word wrap for now when line numbers shown)
+Line numbers dont work right when wrapping lines, it counts a wrapping line as a new one (Disabled word wrap for now when line numbers shown). it has the right number of lines but it doesn't skip rows  to place the line numbers when wrqpping. 
+
 Search in txt file next prev/buttons jumping but not jumping to the right place always in file, especially after the last entry it seems to jump to more non existant entries as if it cant overflow the jump offset, maybe has to do with issue above. Also add different color highlighting 
 
 Downloading a video as encrypted currently prompts for the password, is it possible to encrypt without asking for password? isnt that what a public key is for? Only ask for password if no global password is set. Refactor to use public/private key, but how does that work with the password changing? 
@@ -42,22 +46,26 @@ Unecnrypted video files play fine but Encrypted videos cannot play. How does pla
 
 The button to open cached files list should have a different icon
 
+Attempt to open a cached text file and it doesn't open. the activity log shows opened cached file but nothing happens 
 
-DONE Support for displaying image files, needs wide support which includes webm gif etc. Should have slideshow option with random setting and time option. 
 
-DONE Long press folder has both "AI CLI Here" and "CLI Here", only keep "CLI Here" as that works better.
-	   
+✅ Support for displaying image files, needs wide support which includes webm gif etc. Should have slideshow option with random setting and time option. 
 
+
+On the image dispaly screen there is a back button and a sideshow button neither are clickable as the image displayer is absorbing clicks. 
+slidesgow settings should be changeable from a menu accessible from the image viewer 
+
+using the delete line button in text file doesn't delete empty lines 
 	   
-	   
-DONE More Text editing fancy features, think like a lite code editor like notepad++ or VS code. be creative. MORE options in burger menu with lots of options
-	   
-DONE When closing the last open file, go back to last folder. 
-DONE Allow swiping sideways to switch between when multiple open files are present
+✅ More Text editing fancy features, think like a lite code editor like notepad++ or VS code. be creative. MORE options in burger menu with lots of options
+
+something is causing the text editor screen to jump ip a lot annoyingly, esp ehen adding or deleting lines
+	   
+Allow swiping sideways to switch between when multiple open files are present
 	   
 NOT-WORKING Bold/italic/strikethrough options on selected text (We need to somehow hook into androids selected text popup thing and add more options to it)
 
-Not-working Highlight matching brackets/parentheses
+Not-working Highlight matching brackets/parentheses when cursor is next to them
 Not-working Pinch to zoom (font size change), allow zooming out very far
 	   
 Improve render markdown like #, ##.., [title](url), use .md rendering like e.g. obsidian
@@ -80,25 +88,17 @@ NOT-WORKING Add support for android launcher widgets, when you add a widget you 
 
 ### AI screen
 
-DONE Sending messages to AI from android does not work, hub does not show a long message. (creating new sesion works and the ais messages get sent to android fine)
-DONE Closing sessions does not work, it clears locally but remotely the cli does not close.  the number for number of sesions does not change (probably fine given unexpectedly hub didnt close it)
-DONE Allow renaming sessions from their PID identifier
-DONE Instead of having vertical ... button for session list, use a centralized dropdown, the dropdown always displays the name of the current session but can be pressed to list and change the sessions
-DONE Better separation between incoming messages in the speech bubbles, sometimes they append eachother in the same line even though it was separate responses. It seems to separate better when reloading history.
+✅ Sending messages to AI from android does not work, hub does not show a long message. (creating new sesion works and the ais messages get sent to android fine)
+✅ Closing sessions does not work, it clears locally but remotely the cli does not close.  the number for number of sesions does not change (probably fine given unexpectedly hub didnt close it)
+✅ Allow renaming sessions from their PID identifier
+✅ Instead of having vertical ... button for session list, use a centralized dropdown, the dropdown always displays the name of the current session but can be pressed to list and change the sessions
+✅ Better separation between incoming messages in the speech bubbles, sometimes they append eachother in the same line even though it was separate responses. It seems to separate better when reloading history.
 
-NOT-Working auto scroll down when new messages come in.
-DONE AI Screen should be more verbose about showing a status. e.g. "Starting CLI...", "AI Thinking" etc.
-DONE Make system messages like errors or "A new version of Gemini CLI is available!" a different color/message type than actual messages from the AI.
+✅ auto scroll down when new messages come in.
+✅ AI Screen should be more verbose about showing a status. e.g. "Starting CLI...", "AI Thinking" etc.
+✅ Make system messages like errors or "A new version of Gemini CLI is available!" a different color/message type than actual messages from the AI.
 
 
 ### Alarm screen
-DONE When alarm pops, force open the omnihub app to open. Do we not have permission from android to open an app automatically? im pretty sure other alarm apps do. (Added explicit startActivity and permissions)
-DONE Dismissing alarm from alarm screen does not deactivate a non repeating alarm like expected.
-DONE When an alarm is snoozing it should still show the dismiss button on the alarm screen
-DONE WHen changing the time of an alarm, it should automatically activate itself
-
-
-### Smart home integration
-DONE Read SmartFeature.txt (implemented ExternalCommandController in Hub)
-
-## Web
+NOT-WORKING When alarm pops, force open the omnihub app to open. Do we not have permission from android to open an app automatically? im pretty sure other alarm apps do. (Added explicit startActivity and permissions)
+Dismissing alarm from alarm screen popup with dismiss button seems to deactivate the active alarm but the UI doesnt update, i have to exit alarm screen and come back to see the toggle btn actually off. 

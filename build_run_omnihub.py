@@ -74,6 +74,37 @@ def kill_hub_process():
         # For non-Windows, assume 'pkill' or similar if available, or just warn.
         print("Warning: Process killing not implemented for non-Windows platforms.")
 
+def on_rmtree_error(func, path, exc_info):
+    """
+    Error handler for shutil.rmtree.
+    If the error is due to a read-only file, it tries to change the permissions and retry.
+    """
+    import stat
+    if not os.access(path, os.W_OK):
+        os.chmod(path, stat.S_IWUSR)
+        func(path)
+    else:
+        raise
+
+def delete_with_retry(path, max_retries=5, delay=1):
+    """
+    Deletes a directory with retries.
+    """
+    if not os.path.exists(path):
+        return
+
+    for i in range(max_retries):
+        try:
+            shutil.rmtree(path, onerror=on_rmtree_error)
+            print(f"Successfully deleted {path}")
+            return
+        except Exception as e:
+            if i < max_retries - 1:
+                print(f"Error deleting {path}: {e}. Retrying in {delay}s... ({i+1}/{max_retries})")
+                time.sleep(delay)
+            else:
+                print(f"Failed to delete {path} after {max_retries} attempts.")
+
 def main():
     print(f"HUB_DIR is {HUB_DIR}")
     hub_log_path = os.path.join(os.environ.get("GEMINI_TEMP_DIR", ""), "hub_output.log")
@@ -86,25 +117,20 @@ def main():
             try:
                 os.remove(log_file)
             except OSError as e:
-                print(f"Error deleting {log_file}: {e}. Please ensure no other process is using it.")
-                # Attempt to proceed, but user might need to intervene
-                time.sleep(1)
+                print(f"Warning: Error deleting {log_file}: {e}.")
+                # Attempt to proceed
 
     kill_hub_process()
-    time.sleep(2) # Give the OS a moment to release file handles
+    time.sleep(3) # Give the OS more time to release file handles
 
     # Clean previous build artifacts
     for folder in ["bin", "obj"]:
         path_to_delete = os.path.join(HUB_DIR, folder)
-        if os.path.exists(path_to_delete):
-            print(f"Deleting {path_to_delete}")
-            shutil.rmtree(path_to_delete)
+        delete_with_retry(path_to_delete)
     
     # Delete .vs folder if it exists
     vs_folder = os.path.join(SCRIPT_DIR, ".vs")
-    if os.path.exists(vs_folder):
-        print(f"Deleting {vs_folder}")
-        shutil.rmtree(vs_folder)
+    delete_with_retry(vs_folder)
 
 
     hub_log_file = None # Initialize to None outside try block

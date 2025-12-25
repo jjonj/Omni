@@ -29,8 +29,10 @@ class MultiInstanceTester:
         self.loop = None
         self.num_instances = num_instances
         self.pids = []
+        self.new_pids = []
         self.sessions_received_event = asyncio.Event()
         self.response_received_event = asyncio.Event()
+        self.new_pid_received_event = asyncio.Event()
         self.captured_responses = []
 
     def on_open(self):
@@ -59,6 +61,14 @@ class MultiInstanceTester:
             if self.loop:
                 self.loop.call_soon_threadsafe(self.response_received_event.set)
 
+    def on_new_session_pid(self, args):
+        pid = args[0]
+        logger.info(f"Received new session PID from Hub: {pid}")
+        self.new_pids.append(pid)
+        if len(self.new_pids) >= self.num_instances:
+            if self.loop:
+                self.loop.call_soon_threadsafe(self.new_pid_received_event.set)
+
     async def run_test(self):
         # 0. Cleanup BEFORE anything else
         cleanup_all_gemini_windows()
@@ -73,6 +83,7 @@ class MultiInstanceTester:
         self.hub.on("ReceiveAiSessions", self.on_ai_sessions)
         self.hub.on("ReceiveAiResponse", self.on_ai_response)
         self.hub.on("ReceiveAiStatus", self.on_ai_status)
+        self.hub.on("ReceiveNewAiSessionPid", self.on_new_session_pid)
         self.hub.on_error(lambda data: logger.error(f"SignalR Error: {data}"))
 
         self.hub.start()
@@ -89,45 +100,28 @@ class MultiInstanceTester:
         self.hub.send("Authenticate", [API_KEY])
         await asyncio.sleep(1)
 
-        # Get initial sessions
-        self.pids = []
-        self.sessions_received_event.clear()
-        self.hub.send("GetAiSessions", [])
-        await asyncio.sleep(2) # Give it time to respond
-        initial_pids = set(self.pids)
-        logger.info(f"Initial sessions: {initial_pids}")
-
         # 2. Launch Instances via Hub
         logger.info(f"Requesting Hub to launch {self.num_instances} instances...")
+        self.new_pids = []
+        self.new_pid_received_event.clear()
+        
         for i in range(self.num_instances):
             self.hub.send("StartCliAtWorkspace", [WORKSPACE])
-            await asyncio.sleep(2)
+            await asyncio.sleep(1)
         
-        logger.info("Waiting 15s for all instances to initialize...")
-        await asyncio.sleep(15)
-
-        # 3. Get Sessions
-        self.sessions_received_event.clear()
-        self.hub.send("GetAiSessions", [])
+        logger.info(f"Waiting for {self.num_instances} new PIDs from Hub...")
         try:
-            await asyncio.wait_for(self.sessions_received_event.wait(), timeout=15)
+            await asyncio.wait_for(self.new_pid_received_event.wait(), timeout=45)
         except asyncio.TimeoutError:
-            logger.error("Timed out waiting for session list from Hub.")
+            logger.warning(f"Timed out waiting for all {self.num_instances} PIDs. Found {len(self.new_pids)} so far.")
+
+        if not self.new_pids:
+            logger.error("No new session PIDs received!")
             self.hub.stop()
             return 1
 
-        current_pids = set(self.pids)
-        new_pids = list(current_pids - initial_pids)
-        logger.info(f"New sessions found: {new_pids}")
-
-        if len(new_pids) < self.num_instances:
-            logger.warning(f"Only found {len(new_pids)} new sessions, but requested {self.num_instances}.")
-            # Fallback to test whatever new sessions we found, or all if none
-            if not new_pids and self.pids:
-                 new_pids = self.pids
-
-        # 4. Test each session
-        for i, pid in enumerate(new_pids):
+        # 3. Test each session
+        for i, pid in enumerate(self.new_pids):
             instance_id = i + 1
             logger.info(f"--- Testing Session {instance_id} (PID: {pid}) ---")
             
@@ -146,7 +140,7 @@ class MultiInstanceTester:
                 logger.error(f"Timed out waiting for response from Instance {instance_id}")
 
         self.hub.stop()
-        return 0 if len(self.captured_responses) >= len(new_pids) else 1
+        return 0 if len(self.captured_responses) >= len(self.new_pids) else 1
 
 def is_port_in_use(port):
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:

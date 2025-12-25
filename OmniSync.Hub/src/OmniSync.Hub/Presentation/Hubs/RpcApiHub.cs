@@ -629,6 +629,10 @@ namespace OmniSync.Hub.Presentation.Hubs
                 await Clients.All.SendAsync("ReceiveAiStatus", "Starting session...");
                 var result = await _aiCliService.LaunchSessionAsync();
                 _logger.LogInformation($"[RpcApiHub] StartNewAiSession result: {result}");
+                if (result.HasValue)
+                {
+                    await Clients.All.SendAsync("ReceiveNewAiSessionPid", result.Value);
+                }
                 return result;
             }
             return null;
@@ -644,6 +648,10 @@ namespace OmniSync.Hub.Presentation.Hubs
                 await Clients.All.SendAsync("ReceiveAiStatus", "Starting session...");
                 var result = await _aiCliService.LaunchSessionAsync(path);
                 _logger.LogInformation($"[RpcApiHub] StartCliAtWorkspace result: {result}");
+                if (result.HasValue)
+                {
+                    await Clients.All.SendAsync("ReceiveNewAiSessionPid", result.Value);
+                }
                 return result;
             }
             return null;
