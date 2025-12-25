@@ -21,6 +21,7 @@ import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material.icons.filled.Home
@@ -62,6 +63,7 @@ fun FilesScreen(
     val errorMessage by filesViewModel.errorMessage.collectAsState()
     val pendingEditPaths by filesViewModel.pendingEditPaths.collectAsState()
     val recentlyChangedPaths by filesViewModel.recentlyChangedPaths.collectAsState()
+    val cachedPaths by filesViewModel.cachedPaths.collectAsState()
 
     var showBookmarksList by remember { mutableStateOf(false) }
     var showCachesList by remember { mutableStateOf(false) }
@@ -166,7 +168,7 @@ fun FilesScreen(
                                 showCachesList = !showCachesList
                                 if (showCachesList) showBookmarksList = false
                             }) {
-                                Icon(if (showCachesList) Icons.Default.Close else Icons.Default.Refresh, contentDescription = "Manage Caches")
+                                Icon(if (showCachesList) Icons.Default.Close else Icons.Default.Storage, contentDescription = "Manage Caches")
                             }
                             LazyRow(
                                 modifier = Modifier.weight(1f).padding(vertical = 4.dp),
@@ -425,7 +427,6 @@ fun FilesScreen(
                             }
                         }
                         Spacer(modifier = Modifier.height(4.dp))
-                        val cachedPaths by filesViewModel.cachedPaths.collectAsState()
                         if (cachedPaths.isEmpty()) {
                             Text("No items cached", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(8.dp))
                         }
@@ -437,7 +438,7 @@ fun FilesScreen(
                                         .padding(vertical = 2.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Icon(Icons.Default.Refresh, null, modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.secondary)
+                                    Icon(Icons.Default.Storage, null, modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.secondary)
                                     Spacer(Modifier.width(8.dp))
                                     Text(path, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                     

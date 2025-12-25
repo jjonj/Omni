@@ -667,8 +667,10 @@ class FilesViewModel(
         _recentFiles.value = currentRecent.take(10)
 
         if (!mainViewModel.isConnected.value) {
+            Log.d("FilesViewModel", "Offline: attempting to open from cache: ${entry.path}")
             val cachedContent = textCachePrefs.getString("text_${entry.path}", null)
             if (cachedContent != null) {
+                Log.d("FilesViewModel", "Cache hit for text: ${entry.path}, content length: ${cachedContent.length}")
                 // Manage multiple open files even when offline
                 val currentOpen = _openFiles.value.toMutableList()
                 if (currentOpen.none { it.path == entry.path }) {
@@ -682,9 +684,13 @@ class FilesViewModel(
 
                 _editingFile.value = entry
                 _editingContent.value = cachedContent
-                mainViewModel.navigateTo(AppScreen.EDITOR)
+                
+                viewModelScope.launch(AndroidSchedulers.mainThread().asCoroutineDispatcher()) {
+                    mainViewModel.navigateTo(AppScreen.EDITOR)
+                }
                 mainViewModel.addLog("Opened file from cache: ${entry.name}", com.omni.sync.ui.screen.LogType.INFO)
             } else {
+                Log.w("FilesViewModel", "Cache miss for text: ${entry.path}")
                 _errorMessage.value = "Not connected and file not cached."
             }
             return
