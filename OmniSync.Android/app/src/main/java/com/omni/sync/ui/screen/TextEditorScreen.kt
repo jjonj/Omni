@@ -176,6 +176,14 @@ fun TextEditorScreen(
     // --- Swiping between files ---
     val pagerState = androidx.compose.foundation.pager.rememberPagerState(pageCount = { openFiles.size })
     
+    // Debounced Autosave
+    LaunchedEffect(editingContent) {
+        if (autoSaveEnabled && hasUnsavedChanges) {
+            delay(1000)
+            filesViewModel.saveEditingContent()
+        }
+    }
+    
     // Sync pager with editingFile
     LaunchedEffect(editingFile) {
         val index = openFiles.indexOfFirst { it.path == editingFile?.path }

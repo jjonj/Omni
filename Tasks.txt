@@ -32,7 +32,7 @@ Stream PC monitor, replacing background of the trackpad leaving the trackpad fun
 ✅ Pressing home btn upper right just loads and it doesn't go to root
 ✅ Going to root with the back button repeatedly also loads infinitely, i think it was bc i was disconnected but should not prevent going to root, 
 
-autosave mode should save not just on exit but after 1 second of inactivity
+✅ autosave mode should save not just on exit but after 1 second of inactivity
 
 I bookmarked a file and it initially worked but later when i tried to use the bookmark, its just infinitely loading. If i find i t in the file list and open that way it opens fine. Investigate. similar to home btn issue
 
