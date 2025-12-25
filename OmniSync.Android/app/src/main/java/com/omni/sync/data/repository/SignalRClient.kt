@@ -238,9 +238,9 @@ class SignalRClient(
         hubConnection?.on("ReceiveAvailableDrives", { drivesData: Any ->
             try {
                 val jsonStr = gson.toJson(drivesData)
-                val type = object : TypeToken<List<String>>() {}.type
-                val drives: List<String> = gson.fromJson(jsonStr, type)
-                coroutineScope.launch { _availableDrivesReceived.emit(drives) }
+                val type = object : TypeToken<List<FileSystemEntry>>() {}.type
+                val drives: List<FileSystemEntry> = gson.fromJson(jsonStr, type)
+                coroutineScope.launch { _availableDrivesReceived.emit(drives.map { it.path }) }
             } catch (e: Exception) {
                 Log.e("SignalRClient", "Error parsing drives", e)
             }
