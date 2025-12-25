@@ -52,8 +52,8 @@ Unecnrypted video files play fine but Encrypted videos cannot play. How does pla
 ✅ Support for displaying image files, needs wide support which includes webm gif etc. Should have slideshow option with random setting and time option. 
 
 
-On the image dispaly screen there is a back button and a sideshow button neither are clickable as the image displayer is absorbing clicks. 
-slidesgow settings should be changeable from a menu accessible from the image viewer 
+✅ On the image dispaly screen there is a back button and a sideshow button neither are clickable as the image displayer is absorbing clicks. 
+✅ slidesgow settings should be changeable from a menu accessible from the image viewer 
 
 ✅ using the delete line button in text file doesn't delete empty lines 
 	   

@@ -40,6 +40,7 @@ fun ImageViewerScreen(
     var isSlideshowActive by remember { mutableStateOf(false) }
     var slideshowInterval by remember { mutableLongStateOf(5000L) }
     var showControls by remember { mutableStateOf(true) }
+    var showSlideshowMenu by remember { mutableStateOf(false) }
     var zoom by remember { mutableFloatStateOf(1f) }
     var offset by remember { mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
 
@@ -68,20 +69,26 @@ fun ImageViewerScreen(
     Box(modifier = Modifier
         .fillMaxSize()
         .background(Color.Black)
-        .pointerInput(Unit) {
-            detectTransformGestures { _, pan, gestureZoom, _ ->
-                zoom = (zoom * gestureZoom).coerceIn(1f, 5f)
-                if (zoom > 1f) {
-                    offset += pan
-                } else {
-                    offset = androidx.compose.ui.geometry.Offset.Zero
-                }
-            }
-        }
     ) {
         HorizontalPager(
             state = pagerState,
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .fillMaxSize()
+                .pointerInput(Unit) {
+                    detectTransformGestures { _, pan, gestureZoom, _ ->
+                        zoom = (zoom * gestureZoom).coerceIn(1f, 5f)
+                        if (zoom > 1f) {
+                            offset += pan
+                        } else {
+                            offset = androidx.compose.ui.geometry.Offset.Zero
+                        }
+                    }
+                }
+                .pointerInput(Unit) {
+                    detectTapGestures(
+                        onTap = { showControls = !showControls }
+                    )
+                },
             userScrollEnabled = zoom == 1f // Disable paging when zoomed in
         ) { page ->
             val url = if (playlist.isNotEmpty()) playlist[page] else initialImageUrl
@@ -125,26 +132,42 @@ fun ImageViewerScreen(
                             tint = if (isSlideshowActive) Color.Green else Color.White
                         )
                     }
-                    if (isSlideshowActive) {
-                        TextButton(onClick = { 
-                            slideshowInterval = if (slideshowInterval >= 10000L) 2000L else slideshowInterval + 2000L
-                        }) {
-                            Text("${slideshowInterval / 1000}s", color = Color.White)
+                    
+                    Box {
+                        IconButton(onClick = { showSlideshowMenu = true }) {
+                            Icon(Icons.Default.Settings, "Slideshow Settings", tint = Color.White)
+                        }
+                        DropdownMenu(
+                            expanded = showSlideshowMenu,
+                            onDismissRequest = { showSlideshowMenu = false }
+                        ) {
+                            Text("Interval: ${slideshowInterval / 1000}s", modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp), style = MaterialTheme.typography.labelMedium)
+                            Slider(
+                                value = slideshowInterval.toFloat(),
+                                onValueChange = { slideshowInterval = it.toLong() },
+                                valueRange = 1000f..15000f,
+                                steps = 14,
+                                modifier = Modifier.width(150.dp).padding(horizontal = 16.dp)
+                            )
+                            HorizontalDivider()
+                            val isRandom = run {
+                                val prefs = context.getSharedPreferences("omni_settings", android.content.Context.MODE_PRIVATE)
+                                prefs.getBoolean("image_slideshow_random", false)
+                            }
+                            DropdownMenuItem(
+                                text = { Text(if (isRandom) "Shuffle: ON" else "Shuffle: OFF") },
+                                onClick = {
+                                    val prefs = context.getSharedPreferences("omni_settings", android.content.Context.MODE_PRIVATE)
+                                    prefs.edit().putBoolean("image_slideshow_random", !isRandom).apply()
+                                    // Note: Randomness change might require reloading playlist, but we keep it simple for now
+                                },
+                                leadingIcon = { Icon(Icons.Default.Shuffle, null) }
+                            )
                         }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Black.copy(alpha = 0.5f))
             )
         }
-
-        // Background click to toggle controls
-        Box(modifier = Modifier
-            .fillMaxSize()
-            .pointerInput(Unit) {
-                detectTapGestures(
-                    onTap = { showControls = !showControls }
-                )
-            }
-        )
     }
 }
