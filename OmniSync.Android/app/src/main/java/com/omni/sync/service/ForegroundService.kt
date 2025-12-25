@@ -214,8 +214,6 @@ class ForegroundService : Service() {
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setCustomContentView(customLayout)
-            .setCustomBigContentView(customLayout)
-            .setStyle(NotificationCompat.DecoratedCustomViewStyle())
 
         return builder.build()
     }

@@ -78,7 +78,7 @@ Bookmark current tab no longer works
 	   
 ### Notification panel
 	   
-When clicking notification icon/background it currently expands, it should open app instead. 
+✅ When clicking notification icon/background it currently expands, it should open app instead. 
 
 ### Android Home screen widgets
 
