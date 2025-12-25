@@ -46,6 +46,7 @@ import androidx.compose.ui.text.input.KeyboardType
 class EditorVisualTransformation(
     private val colorScheme: ColorScheme, 
     private val isMarkdown: Boolean,
+    private val fontSize: Float,
     private val searchQuery: String = "",
     private val currentSelection: TextRange = TextRange.Zero
 ) : VisualTransformation {
@@ -58,41 +59,72 @@ class EditorVisualTransformation(
 
     private fun highlightContent(text: String): AnnotatedString {
         return buildAnnotatedString {
+            append(text)
+            
             if (isMarkdown) {
-                val lines = text.split("\n")
-                lines.forEachIndexed { index, line ->
-                    when {
-                        line.startsWith("#") -> {
-                            withStyle(SpanStyle(color = colorScheme.primary, fontWeight = FontWeight.Bold)) {
-                                append(line)
-                            }
-                        }
-                        line.startsWith(">") -> {
-                            withStyle(SpanStyle(color = colorScheme.tertiary, fontStyle = FontStyle.Italic)) {
-                                append(line)
-                            }
-                        }
-                        line.contains("`") -> {
-                            val parts = line.split("`")
-                            parts.forEachIndexed { pIndex, part ->
-                                if (pIndex % 2 == 1) {
-                                    withStyle(SpanStyle(background = colorScheme.surfaceVariant, color = colorScheme.onSurfaceVariant, fontFamily = FontFamily.Monospace)) {
-                                        append(part)
-                                    }
-                                } else {
-                                    append(part)
-                                }
-                            }
-                        }
-                        else -> append(line)
+                // Headers (#, ##, ###, ...)
+                val headerRegex = Regex("^(#+)(.*)$", RegexOption.MULTILINE)
+                headerRegex.findAll(text).forEach { result ->
+                    val level = result.groupValues[1].length
+                    val color = when (level) {
+                        1 -> colorScheme.primary
+                        2 -> colorScheme.secondary
+                        3 -> colorScheme.tertiary
+                        else -> colorScheme.outline
                     }
-                    if (index < lines.size - 1) append("\n")
+                    addStyle(
+                        SpanStyle(color = color, fontWeight = FontWeight.Bold, fontSize = if (level == 1) (fontSize * 1.2).sp else fontSize.sp),
+                        result.range.first,
+                        result.range.last + 1
+                    )
+                }
+
+                // Bold (**bold** or __bold__)
+                val boldRegex = Regex("(\\*\\*|__)(.*?)\\1")
+                boldRegex.findAll(text).forEach { result ->
+                    addStyle(SpanStyle(fontWeight = FontWeight.Bold), result.range.first, result.range.last + 1)
+                }
+
+                // Italic (*italic* or _italic_)
+                val italicRegex = Regex("(\\*|_)(.*?)\\1")
+                italicRegex.findAll(text).forEach { result ->
+                    addStyle(SpanStyle(fontStyle = FontStyle.Italic), result.range.first, result.range.last + 1)
+                }
+
+                // Strikethrough (~~strike~~)
+                val strikeRegex = Regex("~~(.*?)~~")
+                strikeRegex.findAll(text).forEach { result ->
+                    addStyle(SpanStyle(textDecoration = androidx.compose.ui.text.style.TextDecoration.LineThrough), result.range.first, result.range.last + 1)
+                }
+
+                // Links ([title](url))
+                val linkRegex = Regex("\\[(.*?)\\]\\((.*?)\\)")
+                linkRegex.findAll(text).forEach { result ->
+                    addStyle(SpanStyle(color = Color(0xFF64B5F6), textDecoration = androidx.compose.ui.text.style.TextDecoration.Underline), result.range.first, result.range.last + 1)
+                }
+
+                // Lists (-, *, 1.)
+                val listRegex = Regex("^(\\s*[-*+]|\\s*\\d+\\.)\\s", RegexOption.MULTILINE)
+                listRegex.findAll(text).forEach { result ->
+                    addStyle(SpanStyle(color = colorScheme.tertiary, fontWeight = FontWeight.Bold), result.range.first, result.range.last + 1)
+                }
+
+                // Blockquotes (>)
+                val quoteRegex = Regex("^>.*$", RegexOption.MULTILINE)
+                quoteRegex.findAll(text).forEach { result ->
+                    addStyle(SpanStyle(color = colorScheme.outline, fontStyle = FontStyle.Italic), result.range.first, result.range.last + 1)
+                }
+
+                // Inline Code (`)
+                val codeRegex = Regex("`(.*?)`")
+                codeRegex.findAll(text).forEach { result ->
+                    addStyle(SpanStyle(background = colorScheme.surfaceVariant, fontFamily = FontFamily.Monospace), result.range.first, result.range.last + 1)
                 }
             } else {
-                append(text)
+                // Non-markdown: just append was already done
             }
 
-            // Bracket Highlighting
+            // Bracket Highlighting (always, even if not markdown)
             val brackets = setOf('(', ')', '[', ']', '{', '}')
             text.forEachIndexed { index, char ->
                 if (char in brackets) {
@@ -172,8 +204,8 @@ fun TextEditorScreen(
     val horizontalScrollState = rememberScrollState()
     val colorScheme = MaterialTheme.colorScheme
     val isMarkdown = (editingFile?.name?.endsWith(".md") == true) || forceMarkdown
-    val visualTransformation = remember(colorScheme, isMarkdown, searchQuery, textFieldValue.selection) { 
-        EditorVisualTransformation(colorScheme, isMarkdown, searchQuery, textFieldValue.selection) 
+    val visualTransformation = remember(colorScheme, isMarkdown, fontSize, searchQuery, textFieldValue.selection) { 
+        EditorVisualTransformation(colorScheme, isMarkdown, fontSize, searchQuery, textFieldValue.selection) 
     }
     val context = androidx.compose.ui.platform.LocalContext.current
     val coroutineScope = rememberCoroutineScope()

@@ -71,7 +71,7 @@ NOT-WORKING Bold/italic/strikethrough options on selected text (We need to someh
 Not-working Highlight matching brackets/parentheses when cursor is next to them
 Not-working Pinch to zoom (font size change), allow zooming out very far
 	   
-Improve render markdown like #, ##.., [title](url), use .md rendering like e.g. obsidian
+✅ Improve render markdown like #, ##.., [title](url), use .md rendering like e.g. obsidian
 	   
 ### Browser control screen
 	   
