@@ -36,7 +36,10 @@ Stream PC monitor, replacing background of the trackpad leaving the trackpad fun
 
 I bookmarked a file and it initially worked but later when i tried to use the bookmark, its just infinitely loading. If i find i t in the file list and open that way it opens fine. Investigate. similar to home btn issue
 
-Line numbers dont work right when wrapping lines, it counts a wrapping line as a new one (Disabled word wrap for now when line numbers shown). it has the right number of lines but it doesn't skip rows  to place the line numbers when wrqpping. 
+✅ Line numbers dont work right when wrapping lines, it counts a wrapping line as a new one (Disabled word wrap for now when line numbers shown). it has the right number of lines but it doesn't skip rows to place the line numbers when wrqpping. 
+
+
+ 
 
 Search in txt file next prev/buttons jumping but not jumping to the right place always in file, especially after the last entry it seems to jump to more non existant entries as if it cant overflow the jump offset, maybe has to do with issue above. Also add different color highlighting 
 

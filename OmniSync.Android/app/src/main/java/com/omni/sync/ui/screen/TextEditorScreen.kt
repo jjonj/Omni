@@ -729,6 +729,7 @@ fun TextEditorScreen(
         ) { page ->
             val fileAtPage = openFiles[page]
             val contentAtPage = openFileContents[fileAtPage.path] ?: ""
+            var textLayoutResult by remember { mutableStateOf<androidx.compose.ui.text.TextLayoutResult?>(null) }
             
             // Note: Each page has its own scroll state and text field value for now
             // To make it fully robust, we'd need to store scroll state and TextFieldValue per-file in ViewModel
@@ -744,9 +745,25 @@ fun TextEditorScreen(
                     }
             ) {
                 // Line numbers column
-                val lines = contentAtPage.split("\n")
-                val lineCount = lines.size
-                val lineNumbers = (1..lineCount).joinToString("\n")
+                val lineNumbers = remember(textLayoutResult, contentAtPage) {
+                    if (textLayoutResult == null) {
+                        (1..(contentAtPage.count { it == '\n' } + 1)).joinToString("\n")
+                    } else {
+                        val layout = textLayoutResult!!
+                        val text = contentAtPage
+                        val sb = StringBuilder()
+                        var logicalLine = 1
+                        for (i in 0 until layout.lineCount) {
+                            val lineStart = layout.getLineStart(i)
+                            val isNewLogicalLine = i == 0 || (lineStart > 0 && text[lineStart - 1] == '\n')
+                            if (isNewLogicalLine) {
+                                sb.append(logicalLine++)
+                            }
+                            sb.append("\n")
+                        }
+                        sb.toString().trimEnd('\n')
+                    }
+                }
                 
                 Text(
                     text = lineNumbers,
@@ -762,7 +779,8 @@ fun TextEditorScreen(
                         color = MaterialTheme.colorScheme.secondary,
                         textAlign = TextAlign.End
                     ),
-                    lineHeight = (fontSize * 1.4).sp
+                    lineHeight = (fontSize * 1.4).sp,
+                    softWrap = false
                 )
 
                 Box(
@@ -784,6 +802,7 @@ fun TextEditorScreen(
                                 }
                             }
                         },
+                        onTextLayout = { textLayoutResult = it },
                         modifier = Modifier.fillMaxWidth(),
                         textStyle = TextStyle(
                             fontFamily = FontFamily.Monospace,
