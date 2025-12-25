@@ -43,9 +43,9 @@ I bookmarked a file and it initially worked but later when i tried to use the bo
 
 ✅ Search in txt file next prev/buttons jumping but not jumping to the right place always in file, especially after the last entry it seems to jump to more non existant entries as if it cant overflow the jump offset, maybe has to do with issue above. Also add different color highlighting 
 
-Downloading a video as encrypted currently prompts for the password, is it possible to encrypt without asking for password? isnt that what a public key is for? Only ask for password if no global password is set. Refactor to use public/private key, but how does that work with the password changing? 
+✅ Downloading a video as encrypted currently prompts for the password, is it possible to encrypt without asking for password? isnt that what a public key is for? Only ask for password if no global password is set. Refactor to use public/private key, but how does that work with the password changing? 
 
-Unecnrypted video files play fine but Encrypted videos cannot play. How does playing encrypted videos usually work? decrypt into memory?
+✅ Unecnrypted video files play fine but Encrypted videos cannot play. How does playing encrypted videos usually work? decrypt into memory?
 
 ✅ The button to open cached files list should have a different icon
 

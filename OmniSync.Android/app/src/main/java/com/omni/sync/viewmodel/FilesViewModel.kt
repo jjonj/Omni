@@ -30,6 +30,7 @@ import android.net.Uri
 import android.webkit.MimeTypeMap
 import java.security.SecureRandom
 import javax.crypto.Cipher
+import javax.crypto.SecretKey
 import javax.crypto.spec.SecretKeySpec
 import javax.crypto.spec.IvParameterSpec
 import java.security.MessageDigest
@@ -123,6 +124,8 @@ class FilesViewModel(
 
     private val _cachedPaths = MutableStateFlow<List<String>>(emptyList())
     val cachedPaths: StateFlow<List<String>> = _cachedPaths.asStateFlow()
+
+    private val encryptionManager = com.omni.sync.utils.EncryptionManager(application)
 
     private fun refreshCachedPaths() {
         val dirCaches = cachePrefs.all.keys
@@ -1223,6 +1226,17 @@ class FilesViewModel(
                 mainViewModel.addLog("Incorrect old password", com.omni.sync.ui.screen.LogType.ERROR)
                 return false
             }
+            
+            // Re-encrypt keys if they exist
+            if (encryptionManager.hasKeys() && oldPassword != null) {
+                val privateKey = encryptionManager.getPrivateKey(oldPassword)
+                if (privateKey != null) {
+                    encryptionManager.encryptAndStorePrivateKey(privateKey, newPassword)
+                }
+            }
+        } else {
+            // New password, generate keys
+            encryptionManager.generateKeys(newPassword)
         }
 
         mainViewModel.appConfig.globalPasswordHash = hashPassword(newPassword)
@@ -1354,16 +1368,14 @@ class FilesViewModel(
             return
         }
         
-        // If encrypted is requested but NO password provided AND NO global password hash exists, 
-        // we can't proceed without a password. 
-        // If global password hash EXISTS but password is NULL, it means we might need to prompt 
-        // unless it's already verified in this session.
-        if (isEncrypted && password == null && verifiedGlobalPassword == null) {
-             _downloadErrorMessage.value = "Encryption password required."
+        // Use either provided password, session password, OR RSA Public Key (no password needed!)
+        val finalPassword = password ?: verifiedGlobalPassword
+        val publicKey = if (isEncrypted) encryptionManager.getPublicKey() else null
+
+        if (isEncrypted && finalPassword == null && publicKey == null) {
+             _downloadErrorMessage.value = "Encryption key or password required."
              return
         }
-
-        val finalPassword = password ?: verifiedGlobalPassword
 
         if (_isDownloading.value) {
             _errorMessage.value = "Another download is already in progress."
@@ -1378,7 +1390,7 @@ class FilesViewModel(
 
         viewModelScope.launch(Schedulers.io().asCoroutineDispatcher()) {
             try {
-                val videoId = UUID.randomUUID().toString()
+                val videoId = java.util.UUID.randomUUID().toString()
                 val videosDir = File(mainViewModel.applicationContext.filesDir, "downloaded_videos")
                 if (!videosDir.exists()) {
                     videosDir.mkdirs()
@@ -1394,15 +1406,37 @@ class FilesViewModel(
                 val outputFile = File(videosDir, fileName)
                 
                 val fos = FileOutputStream(outputFile)
-                val cipher = if (isEncrypted && finalPassword != null) {
-                    val key = deriveKeyFromPassword(finalPassword)
-                    Cipher.getInstance("AES/CBC/PKCS5Padding").apply {
-                        val iv = ByteArray(16)
-                        SecureRandom().nextBytes(iv)
-                        init(Cipher.ENCRYPT_MODE, SecretKeySpec(key, "AES"), IvParameterSpec(iv))
-                        fos.write(iv) // Write IV at the beginning of file
+                
+                var cipher: Cipher? = null
+                
+                if (isEncrypted) {
+                    Log.d("FilesViewModel", "Initializing RSA-AES encryption for ${entry.name}")
+                    val aesKey = encryptionManager.generateRandomAesKey()
+                    val iv = ByteArray(16).apply { SecureRandom().nextBytes(this) }
+                    
+                    // 1. Encrypt AES Key with RSA Public Key (if available) or Password
+                    val encryptedAesKey = if (publicKey != null) {
+                        encryptionManager.encryptAesKeyWithRsa(aesKey, publicKey)
+                    } else {
+                        // Fallback to password-based encryption for the AES key itself
+                        val passwordKey = deriveKeyFromPassword(finalPassword!!, iv) // Use IV as salt for simplicity here
+                        val aesCipher = Cipher.getInstance("AES/ECB/PKCS5Padding")
+                        aesCipher.init(Cipher.ENCRYPT_MODE, passwordKey as java.security.Key)
+                        aesCipher.doFinal(aesKey.encoded)
                     }
-                } else null
+                    
+                    // 2. Write Metadata: [Key Type (1 byte)] [Encrypted Key Size (4 bytes)] [Encrypted Key] [IV (16 bytes)]
+                    fos.write(if (publicKey != null) 1 else 2) // 1=RSA, 2=Password
+                    val keySizeBuf = java.nio.ByteBuffer.allocate(4).putInt(encryptedAesKey.size).array()
+                    fos.write(keySizeBuf)
+                    fos.write(encryptedAesKey)
+                    fos.write(iv)
+                    
+                    // 3. Initialize File Cipher (AES-CBC)
+                    cipher = Cipher.getInstance("AES/CBC/PKCS5Padding")
+                    cipher.init(Cipher.ENCRYPT_MODE, aesKey, IvParameterSpec(iv))
+                    Log.d("FilesViewModel", "Metadata written. Key size: ${encryptedAesKey.size}")
+                }
 
                 try {
                     while (currentOffset < totalSize) {
@@ -1420,7 +1454,9 @@ class FilesViewModel(
                                     cipher.update(bytes)
                                 } else bytes
                                 
-                                fos.write(processedBytes)
+                                if (processedBytes != null) {
+                                    fos.write(processedBytes)
+                                }
                                 downloadedBytes += bytes.size
                                 currentOffset += bytes.size
 
@@ -1437,7 +1473,10 @@ class FilesViewModel(
                     
                     if (cipher != null) {
                         val finalBytes = cipher.doFinal()
-                        fos.write(finalBytes)
+                        if (finalBytes != null) {
+                            fos.write(finalBytes)
+                        }
+                        Log.d("FilesViewModel", "Encryption finished for ${entry.name}")
                     }
                 } finally {
                     fos.close()
@@ -1530,22 +1569,51 @@ class FilesViewModel(
         }
     }
 
-    private fun deriveKeyFromPassword(password: String): ByteArray {
+    private fun deriveKeyFromPassword(password: String, salt: ByteArray? = null): SecretKey {
         val digest = MessageDigest.getInstance("SHA-256")
-        return digest.digest(password.toByteArray(Charsets.UTF_8))
+        if (salt != null) {
+            digest.update(salt)
+        }
+        val keyBytes = digest.digest(password.toByteArray(Charsets.UTF_8))
+        return SecretKeySpec(keyBytes, "AES")
     }
 
     private fun decryptVideo(encryptedFile: File, decryptedFile: File, password: String) {
-        val key = deriveKeyFromPassword(password)
+        Log.d("FilesViewModel", "Starting decryption of ${encryptedFile.name}")
         val fis = FileInputStream(encryptedFile)
         val fos = FileOutputStream(decryptedFile)
 
         try {
+            // 1. Read Metadata
+            val keyType = fis.read() // 1=RSA, 2=Password
+            if (keyType == -1) throw Exception("Empty encrypted file")
+            
+            val keySizeBuf = ByteArray(4)
+            if (fis.read(keySizeBuf) < 4) throw Exception("Failed to read key size")
+            val keySize = java.nio.ByteBuffer.wrap(keySizeBuf).int
+            
+            val encryptedAesKey = ByteArray(keySize)
+            if (fis.read(encryptedAesKey) < keySize) throw Exception("Failed to read encrypted key")
+            
             val iv = ByteArray(16)
-            fis.read(iv)
+            if (fis.read(iv) < 16) throw Exception("Failed to read IV")
+            Log.d("FilesViewModel", "Metadata read. KeyType=$keyType, KeySize=$keySize")
 
+            // 2. Decrypt AES Key
+            val aesKey = if (keyType == 1) {
+                val privateKey = encryptionManager.getPrivateKey(password) ?: throw Exception("Invalid password or private key missing")
+                encryptionManager.decryptAesKeyWithRsa(encryptedAesKey, privateKey)
+            } else {
+                val passwordKey = deriveKeyFromPassword(password, iv)
+                val aesCipher = Cipher.getInstance("AES/ECB/PKCS5Padding")
+                aesCipher.init(Cipher.DECRYPT_MODE, passwordKey as java.security.Key)
+                val aesKeyBytes = aesCipher.doFinal(encryptedAesKey)
+                SecretKeySpec(aesKeyBytes, "AES")
+            }
+
+            // 3. Decrypt File Data
             val cipher = Cipher.getInstance("AES/CBC/PKCS5Padding")
-            cipher.init(Cipher.DECRYPT_MODE, SecretKeySpec(key, "AES"), IvParameterSpec(iv))
+            cipher.init(Cipher.DECRYPT_MODE, aesKey, IvParameterSpec(iv))
 
             val buffer = ByteArray(8192)
             var bytesRead: Int
@@ -1560,6 +1628,10 @@ class FilesViewModel(
             if (finalBytes != null) {
                 fos.write(finalBytes)
             }
+            Log.d("FilesViewModel", "Decryption successful for ${encryptedFile.name}")
+        } catch (e: Exception) {
+            Log.e("FilesViewModel", "Decryption failed: ${e.message}", e)
+            throw e
         } finally {
             fis.close()
             fos.close()
