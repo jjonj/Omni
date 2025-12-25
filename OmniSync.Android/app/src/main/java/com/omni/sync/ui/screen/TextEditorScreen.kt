@@ -580,7 +580,27 @@ fun TextEditorScreen(
                     }
                     IconButton(onClick = {
                         try {
-                            modifyLines { emptyList() }
+                            val text = textFieldValue.text
+                            val range = getSelectedLinesRange()
+                            var deleteStart = range.first
+                            var deleteEnd = range.second
+                            
+                            // Expand to include newline
+                            if (deleteEnd < text.length && text[deleteEnd] == '\n') {
+                                deleteEnd++
+                            } else if (deleteStart > 0 && text[deleteStart - 1] == '\n') {
+                                deleteStart--
+                            }
+                            
+                            val before = text.substring(0, deleteStart)
+                            val after = text.substring(deleteEnd)
+                            val newText = before + after
+                            
+                            filesViewModel.updateEditingContent(newText)
+                            textFieldValue = textFieldValue.copy(
+                                text = newText,
+                                selection = TextRange(deleteStart, deleteStart)
+                            )
                         } catch (e: Exception) {
                             e.printStackTrace()
                         }

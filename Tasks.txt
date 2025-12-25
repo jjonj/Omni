@@ -55,7 +55,7 @@ Attempt to open a cached text file and it doesn't open. the activity log shows o
 On the image dispaly screen there is a back button and a sideshow button neither are clickable as the image displayer is absorbing clicks. 
 slidesgow settings should be changeable from a menu accessible from the image viewer 
 
-using the delete line button in text file doesn't delete empty lines 
+✅ using the delete line button in text file doesn't delete empty lines 
 	   
 ✅ More Text editing fancy features, think like a lite code editor like notepad++ or VS code. be creative. MORE options in burger menu with lots of options
 
