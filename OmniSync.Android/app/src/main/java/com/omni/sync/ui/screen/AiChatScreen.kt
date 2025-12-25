@@ -215,7 +215,7 @@ fun AiChatScreen(
             }
 
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-            QuickActionPanel(signalRClient, coroutineScope)
+            QuickActionPanel(signalRClient, coroutineScope, selectedPid)
         }
 
         if (showRenameDialog) {
@@ -248,7 +248,7 @@ fun AiChatScreen(
 }
 
 @Composable
-fun QuickActionPanel(signalRClient: SignalRClient, coroutineScope: kotlinx.coroutines.CoroutineScope) {
+fun QuickActionPanel(signalRClient: SignalRClient, coroutineScope: kotlinx.coroutines.CoroutineScope, selectedPid: Int) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
