@@ -251,6 +251,7 @@ class AlarmService : Service(), android.content.SharedPreferences.OnSharedPrefer
     }
     
     private fun disableAlarmState() {
+        Log.d("AlarmService", "disabling alarm state for ID: $currentAlarmId")
         // Update SharedPreferences
         val prefs = getSharedPreferences("alarm_prefs", Context.MODE_PRIVATE)
         val key = if (currentAlarmId == 1) "alarm1" else "alarm2"
@@ -260,6 +261,7 @@ class AlarmService : Service(), android.content.SharedPreferences.OnSharedPrefer
             val data = gson.fromJson(json, com.omni.sync.ui.screen.AlarmData::class.java)
             data.enabled = false
             prefs.edit().putString(key, gson.toJson(data)).apply()
+            Log.d("AlarmService", "Updated prefs for $key: enabled=false")
         }
 
         // Send broadcast to UI to turn off the switch
@@ -322,6 +324,7 @@ class AlarmService : Service(), android.content.SharedPreferences.OnSharedPrefer
 
     override fun onDestroy() {
         _isRinging.value = false
+        _isSnoozing.value = false
         timeoutJob?.cancel()
         stopSound()
         

@@ -101,4 +101,4 @@ NOT-WORKING Add support for android launcher widgets, when you add a widget you 
 
 ### Alarm screen
 NOT-WORKING When alarm pops, force open the omnihub app to open. Do we not have permission from android to open an app automatically? im pretty sure other alarm apps do. (Added explicit startActivity and permissions)
-Dismissing alarm from alarm screen popup with dismiss button seems to deactivate the active alarm but the UI doesnt update, i have to exit alarm screen and come back to see the toggle btn actually off. 
+✅ Dismissing alarm from alarm screen popup with dismiss button seems to deactivate the active alarm but the UI doesnt update, i have to exit alarm screen and come back to see the toggle btn actually off. 

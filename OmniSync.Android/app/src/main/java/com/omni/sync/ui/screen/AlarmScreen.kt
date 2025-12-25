@@ -96,24 +96,23 @@ fun AlarmScreen(
     val scope = rememberCoroutineScope()
     var previewJob by remember { mutableStateOf<Job?>(null) }
 
-    // Listen for Alarm Disable Broadcasts
+    // Listen for Changes in SharedPreferences
     DisposableEffect(Unit) {
-        val receiver = object : BroadcastReceiver() {
-            override fun onReceive(context: Context?, intent: Intent?) {
-                if (intent?.action == AlarmService.ACTION_ALARM_DISABLED) {
-                    val id = intent.getIntExtra("ALARM_ID", 0)
-                    if (id == 1) alarm1 = alarm1.copy(enabled = false)
-                    if (id == 2) alarm2 = alarm2.copy(enabled = false)
-                }
+        val listener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { sharedPrefs, key ->
+            if (key == "alarm1" || key == "alarm2" || key == "config") {
+                val json1 = sharedPrefs.getString("alarm1", null)
+                val json2 = sharedPrefs.getString("alarm2", null)
+                val jsonC = sharedPrefs.getString("config", null)
+                
+                if (json1 != null) alarm1 = gson.fromJson(json1, AlarmData::class.java)
+                if (json2 != null) alarm2 = gson.fromJson(json2, AlarmData::class.java)
+                if (jsonC != null) config = gson.fromJson(jsonC, GradualConfig::class.java)
             }
         }
-        val filter = IntentFilter(AlarmService.ACTION_ALARM_DISABLED)
-        // Register receiver (LocalBroadcastManager is deprecated, using global with package protection if needed, or just context)
-        // For simplicity in this scope:
-        context.registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
+        prefs.registerOnSharedPreferenceChangeListener(listener)
         
         onDispose {
-            context.unregisterReceiver(receiver)
+            prefs.unregisterOnSharedPreferenceChangeListener(listener)
             previewJob?.cancel()
             if (mediaPlayer.isPlaying) mediaPlayer.stop()
             mediaPlayer.release()
