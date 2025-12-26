@@ -55,11 +55,10 @@ fun OmniSyncTheme(
         darkTheme -> DarkColorScheme
         else -> LightColorScheme
     }.let { base ->
-        if (darkTheme) {
-            val bg = if (isConnected) ReddishBlack else DarkRed
+        if (darkTheme && !isConnected) {
             base.copy(
-                background = bg,
-                surface = bg
+                background = DarkRed,
+                surface = DarkRed
             )
         } else base
     }

@@ -39,7 +39,7 @@ enum class AppScreen {
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
     val applicationContext: Context = application.applicationContext
-    private val configManager = com.omni.sync.data.config.ConfigManager(applicationContext)
+    val configManager = com.omni.sync.data.config.ConfigManager(applicationContext)
     val appConfig = configManager.loadConfig()
     
     private val _isConnected = MutableStateFlow(false)

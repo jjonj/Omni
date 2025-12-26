@@ -214,13 +214,17 @@ class MainActivity : ComponentActivity() {
                                 )
                             }
                         ) { innerPadding ->
+                            // Use a special modifier for RemoteControl to allow it to be truly full-screen
+                            // while others stay safely padded.
+                            val isRemote = currentScreen == AppScreen.REMOTECONTROL
+                            
                             Box(modifier = Modifier
                                 .fillMaxSize()
-                                .padding(innerPadding)
+                                .then(if (isRemote) Modifier else Modifier.padding(innerPadding))
                             ) {
                                 if (currentScreen == AppScreen.EDITOR || currentScreen == AppScreen.SETTINGS || 
                                     currentScreen == AppScreen.DOWNLOADED_VIDEOS) {
-                                    MainScreenContent(currentScreen, signalRClient, browserViewModel, filesViewModel, mainViewModel)
+                                    MainScreenContent(currentScreen, signalRClient, browserViewModel, filesViewModel, mainViewModel, innerPadding)
                                 } else {
                                     // Custom touch slop to make paging less sensitive to diagonal swipes
                                     val viewConfig = androidx.compose.ui.platform.LocalViewConfiguration.current
@@ -237,7 +241,11 @@ class MainActivity : ComponentActivity() {
                                             modifier = Modifier.fillMaxSize(),
                                             userScrollEnabled = true 
                                         ) { page ->
-                                            MainScreenContent(swipeableScreens[page], signalRClient, browserViewModel, filesViewModel, mainViewModel)
+                                            val screenAtPage = swipeableScreens[page]
+                                            val pageModifier = if (screenAtPage == AppScreen.REMOTECONTROL) Modifier else Modifier.padding(innerPadding)
+                                            Box(modifier = pageModifier) {
+                                                MainScreenContent(screenAtPage, signalRClient, browserViewModel, filesViewModel, mainViewModel, innerPadding)
+                                            }
                                         }
                                     }
                                 }
@@ -321,7 +329,8 @@ class MainActivity : ComponentActivity() {
         signalRClient: com.omni.sync.data.repository.SignalRClient,
         browserViewModel: BrowserViewModel,
         filesViewModel: FilesViewModel,
-        mainViewModel: MainViewModel
+        mainViewModel: MainViewModel,
+        paddingValues: PaddingValues = PaddingValues(0.dp)
     ) {
         when (currentScreen) {
             AppScreen.DASHBOARD -> DashboardScreen(
@@ -330,7 +339,8 @@ class MainActivity : ComponentActivity() {
             )
             AppScreen.REMOTECONTROL -> RemoteControlScreen(
                 signalRClient = signalRClient, 
-                mainViewModel = mainViewModel
+                mainViewModel = mainViewModel,
+                paddingValues = paddingValues
             )
             AppScreen.BROWSER -> BrowserControlScreen(
                 signalRClient = signalRClient,

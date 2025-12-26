@@ -59,7 +59,8 @@ import kotlinx.coroutines.launch
 fun RemoteControlScreen(
     modifier: Modifier = Modifier,
     signalRClient: SignalRClient,
-    mainViewModel: MainViewModel
+    mainViewModel: MainViewModel,
+    paddingValues: PaddingValues = PaddingValues(0.dp)
 ) {
     val keyboardController = LocalSoftwareKeyboardController.current
     val focusRequester = remember { FocusRequester() }
@@ -73,13 +74,22 @@ fun RemoteControlScreen(
         )
         
         // ButtonPanel with elevation and shadow at the bottom
-        val navBarHeight = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+        // We use a dynamic padding calculation to ensure the panel sits flush with the 
+        // bottom navigation bar when at rest, and follows the keyboard top smoothly
+        // once the keyboard height exceeds the rest position.
+        val imeHeight = WindowInsets.ime.asPaddingValues().calculateBottomPadding()
+        val bottomBarHeight = paddingValues.calculateBottomPadding()
+        
+        // Landing position relative to screen bottom (Total height of bars)
+        val restHeight = bottomBarHeight
+	val keyboardOverlapOffset = 15.dp
+        val floatHeight = imeHeight - keyboardOverlapOffset
+        
         Surface(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
-                .imePadding()
-                .then(if (isKeyboardVisible) Modifier.offset(y = navBarHeight) else Modifier),
+                .padding(bottom = maxOf(floatHeight, restHeight)),
             tonalElevation = 2.dp,
             shadowElevation = 8.dp,
             color = MaterialTheme.colorScheme.surface
