@@ -600,6 +600,18 @@ class SignalRClient(
         return null
     }
 
+    fun getAvailableDrives(): Single<List<FileSystemEntry>>? {
+        if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
+            return hubConnection?.invoke(List::class.java, "GetAvailableDrives")
+                ?.map { rawList ->
+                    val jsonElement = gson.toJsonTree(rawList)
+                    val listType = object : TypeToken<List<FileSystemEntry>>() {}.type
+                    gson.fromJson(jsonElement, listType)
+                } as? Single<List<FileSystemEntry>>
+        }
+        return null
+    }
+
     fun isMuted(): Single<Boolean>? {
         if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
             return hubConnection?.invoke(Boolean::class.java, "IsMuted")

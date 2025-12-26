@@ -342,14 +342,14 @@ namespace OmniSync.Hub.Presentation.Hubs
             }
         }
 
-        public async Task GetAvailableDrives()
+        public async Task<IEnumerable<FileSystemEntry>> GetAvailableDrives()
         {
             try
             {
                 if (!Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) || !(bool)isAuthenticated)
                 {
                     await Clients.Caller.SendAsync("ReceiveError", "Unauthorized: Please authenticate first.");
-                    return;
+                    return new List<FileSystemEntry>();
                 }
 
                 AnyCommandReceived?.Invoke(this, "GetAvailableDrives");
@@ -358,11 +358,14 @@ namespace OmniSync.Hub.Presentation.Hubs
                 
                 // Python script expects "ReceiveAvailableDrives" event
                 await Clients.Caller.SendAsync("ReceiveAvailableDrives", drives);
+
+                return drives;
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"Error getting drives: {ex.Message}");
                 await Clients.Caller.SendAsync("ReceiveError", $"Error: {ex.Message}");
+                return new List<FileSystemEntry>();
             }
         }
 

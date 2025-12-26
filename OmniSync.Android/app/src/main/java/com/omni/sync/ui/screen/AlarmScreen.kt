@@ -174,6 +174,20 @@ fun AlarmScreen(
         }
     }
     
+    val isRinging by AlarmService.isRinging.collectAsState()
+    val isSnoozing by AlarmService.isSnoozing.collectAsState()
+
+    // Refresh alarms from prefs when ringing/snoozing state changes to false
+    // This ensures the UI updates even if the SharedPreferences listener missed an update
+    LaunchedEffect(isRinging, isSnoozing) {
+        if (!isRinging && !isSnoozing) {
+            val json1 = prefs.getString("alarm1", null)
+            val json2 = prefs.getString("alarm2", null)
+            if (json1 != null) alarm1 = gson.fromJson(json1, AlarmData::class.java)
+            if (json2 != null) alarm2 = gson.fromJson(json2, AlarmData::class.java)
+        }
+    }
+    
     Scaffold(
         topBar = {
             TopAppBar(
@@ -248,6 +262,41 @@ fun AlarmScreen(
                     AdjustableSettingRow("Auto-Snooze: ${config.snoozeDuration}m", config.snoozeDuration, { config = config.copy(snoozeDuration = it); saveAlarms() }, 1, 60)
                     AdjustableSettingRow("Volume Increase: +${config.volumeIncrement}%", config.volumeIncrement, { config = config.copy(volumeIncrement = it); saveAlarms() }, 1, 20)
                     AdjustableSettingRow("Max Repetitions: ${config.maxRepetitions}", config.maxRepetitions, { config = config.copy(maxRepetitions = it); saveAlarms() }, 1, 20)
+                }
+            }
+
+            // --- Permissions Check ---
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+                if (!android.provider.Settings.canDrawOverlays(context)) {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text(
+                                "Permission Required",
+                                style = MaterialTheme.typography.titleMedium,
+                                color = MaterialTheme.colorScheme.onErrorContainer
+                            )
+                            Text(
+                                "To force open the alarm screen when it triggers, please grant 'Display over other apps' permission.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onErrorContainer
+                            )
+                            Button(
+                                onClick = {
+                                    val intent = Intent(
+                                        android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                                        Uri.parse("package:${context.packageName}")
+                                    )
+                                    context.startActivity(intent)
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text("Grant Permission")
+                            }
+                        }
+                    }
                 }
             }
         }

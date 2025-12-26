@@ -34,7 +34,7 @@ Stream PC monitor, replacing background of the trackpad leaving the trackpad fun
 
 ✅ autosave mode should save not just on exit but after 1 second of inactivity
 
-I bookmarked a file and it initially worked but later when i tried to use the bookmark, its just infinitely loading. If i find i t in the file list and open that way it opens fine. Investigate. similar to home btn issue
+✅ I bookmarked a file and it initially worked but later when i tried to use the bookmark, its just infinitely loading. If i find i t in the file list and open that way it opens fine. Investigate. similar to home btn issue
 
 ✅ Line numbers dont work right when wrapping lines, it counts a wrapping line as a new one (Disabled word wrap for now when line numbers shown). it has the right number of lines but it doesn't skip rows to place the line numbers when wrqpping. 
 
@@ -62,9 +62,9 @@ I bookmarked a file and it initially worked but later when i tried to use the bo
 	   
 ✅ More Text editing fancy features, think like a lite code editor like notepad++ or VS code. be creative. MORE options in burger menu with lots of options
 
-something is causing the text editor screen to jump ip a lot annoyingly, esp ehen adding or deleting lines
+✅ something is causing the text editor screen to jump ip a lot annoyingly, esp ehen adding or deleting lines
 	   
-Allow swiping sideways to switch between when multiple open files are present
+✅ Allow swiping sideways to switch between when multiple open files are present
 	   
 NOT-WORKING Bold/italic/strikethrough options on selected text (We need to somehow hook into androids selected text popup thing and add more options to it)
 
@@ -76,7 +76,7 @@ Not-working Pinch to zoom (font size change), allow zooming out very far
 ### Browser control screen
 	   
 	   
-Bookmark current tab no longer works
+✅ Bookmark current tab no longer works
 
 	   
 ### Notification panel
@@ -103,5 +103,5 @@ NOT-WORKING Add support for android launcher widgets, when you add a widget you 
 
 
 ### Alarm screen
-NOT-WORKING When alarm pops, force open the omnihub app to open. Do we not have permission from android to open an app automatically? im pretty sure other alarm apps do. (Added explicit startActivity and permissions)
+✅ When alarm pops, force open the omnihub app to open. Do we not have permission from android to open an app automatically? im pretty sure other alarm apps do. (Added explicit startActivity and permissions)
 ✅ Dismissing alarm from alarm screen popup with dismiss button seems to deactivate the active alarm but the UI doesnt update, i have to exit alarm screen and come back to see the toggle btn actually off. 

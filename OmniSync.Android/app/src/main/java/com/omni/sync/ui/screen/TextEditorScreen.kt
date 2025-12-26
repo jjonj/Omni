@@ -466,6 +466,94 @@ fun TextEditorScreen(
                                 )
                                 HorizontalDivider()
                                 DropdownMenuItem(
+                                    text = { Text("Word/Char Count") },
+                                    onClick = {
+                                        val text = textFieldValue.text
+                                        val words = text.split(Regex("\\s+")).filter { it.isNotBlank() }.size
+                                        val chars = text.length
+                                        android.widget.Toast.makeText(context, "Words: $words, Chars: $chars", android.widget.Toast.LENGTH_LONG).show()
+                                        showMenu = false
+                                    },
+                                    leadingIcon = { Icon(Icons.Default.Numbers, null) }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Insert Current Date/Time") },
+                                    onClick = {
+                                        val now = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())
+                                        val text = textFieldValue.text
+                                        val sel = textFieldValue.selection
+                                        filesViewModel.updateEditingContent(text.replaceRange(sel.start, sel.end, now))
+                                        showMenu = false
+                                    },
+                                    leadingIcon = { Icon(Icons.Default.Event, null) }
+                                )
+                                HorizontalDivider()
+                                DropdownMenuItem(
+                                    text = { Text("Base64 Encode Selection") },
+                                    onClick = {
+                                        val text = textFieldValue.text
+                                        val sel = textFieldValue.selection
+                                        val selected = text.substring(sel.start, sel.end)
+                                        if (selected.isNotEmpty()) {
+                                            val encoded = android.util.Base64.encodeToString(selected.toByteArray(), android.util.Base64.NO_WRAP)
+                                            filesViewModel.updateEditingContent(text.replaceRange(sel.start, sel.end, encoded))
+                                        }
+                                        showMenu = false
+                                    },
+                                    leadingIcon = { Icon(Icons.Default.EnhancedEncryption, null) }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Base64 Decode Selection") },
+                                    onClick = {
+                                        val text = textFieldValue.text
+                                        val sel = textFieldValue.selection
+                                        val selected = text.substring(sel.start, sel.end)
+                                        if (selected.isNotEmpty()) {
+                                            try {
+                                                val decoded = String(android.util.Base64.decode(selected, android.util.Base64.DEFAULT))
+                                                filesViewModel.updateEditingContent(text.replaceRange(sel.start, sel.end, decoded))
+                                            } catch (e: Exception) {
+                                                android.widget.Toast.makeText(context, "Invalid Base64", android.widget.Toast.LENGTH_SHORT).show()
+                                            }
+                                        }
+                                        showMenu = false
+                                    },
+                                    leadingIcon = { Icon(Icons.Default.NoEncryption, null) }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("URL Encode Selection") },
+                                    onClick = {
+                                        val text = textFieldValue.text
+                                        val sel = textFieldValue.selection
+                                        val selected = text.substring(sel.start, sel.end)
+                                        if (selected.isNotEmpty()) {
+                                            val encoded = java.net.URLEncoder.encode(selected, "UTF-8")
+                                            filesViewModel.updateEditingContent(text.replaceRange(sel.start, sel.end, encoded))
+                                        }
+                                        showMenu = false
+                                    },
+                                    leadingIcon = { Icon(Icons.Default.Link, null) }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("URL Decode Selection") },
+                                    onClick = {
+                                        val text = textFieldValue.text
+                                        val sel = textFieldValue.selection
+                                        val selected = text.substring(sel.start, sel.end)
+                                        if (selected.isNotEmpty()) {
+                                            try {
+                                                val decoded = java.net.URLDecoder.decode(selected, "UTF-8")
+                                                filesViewModel.updateEditingContent(text.replaceRange(sel.start, sel.end, decoded))
+                                            } catch (e: Exception) {
+                                                android.widget.Toast.makeText(context, "Invalid URL encoding", android.widget.Toast.LENGTH_SHORT).show()
+                                            }
+                                        }
+                                        showMenu = false
+                                    },
+                                    leadingIcon = { Icon(Icons.Default.LinkOff, null) }
+                                )
+                                HorizontalDivider()
+                                DropdownMenuItem(
                                     text = { Text("Uppercase Selection") },
                                     onClick = {
                                         val text = textFieldValue.text
@@ -776,9 +864,11 @@ fun TextEditorScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .imePadding()
+                    .verticalScroll(verticalScrollState)
+                    .then(if (wordWrap) Modifier else Modifier.horizontalScroll(horizontalScrollState))
                     .pointerInput(Unit) {
                         detectTransformGestures { _, _, zoom, _ ->
-                            fontSize = (fontSize * zoom).coerceIn(8f, 40f)
+                            fontSize = (fontSize * zoom).coerceIn(2f, 100f)
                         }
                     }
             ) {
@@ -807,10 +897,9 @@ fun TextEditorScreen(
                     text = lineNumbers,
                     modifier = Modifier
                         .fillMaxHeight()
-                        .width(40.dp)
+                        .width(44.dp)
                         .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
-                        .padding(vertical = 16.dp, horizontal = 4.dp)
-                        .verticalScroll(verticalScrollState),
+                        .padding(vertical = 16.dp, horizontal = 4.dp),
                     style = TextStyle(
                         fontFamily = FontFamily.Monospace,
                         fontSize = fontSize.sp,
@@ -826,8 +915,6 @@ fun TextEditorScreen(
                         .weight(1f)
                         .fillMaxHeight()
                         .padding(vertical = 16.dp)
-                        .verticalScroll(verticalScrollState)
-                        .then(if (wordWrap) Modifier else Modifier.horizontalScroll(horizontalScrollState))
                 ) {
                     val currentTFV = if (editingFile?.path == fileAtPage.path) textFieldValue else TextFieldValue(contentAtPage)
                     BasicTextField(

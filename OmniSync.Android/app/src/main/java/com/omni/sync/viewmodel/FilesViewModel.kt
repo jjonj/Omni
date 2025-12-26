@@ -382,7 +382,23 @@ class FilesViewModel(
                 _isLoading.value = true
                 Log.d("FilesViewModel", "Requesting available drives from Hub")
                 signalRClient.getAiSessions() // Refresh sessions just in case
-                signalRClient.sendCommand("GetAvailableDrives")
+                
+                signalRClient.getAvailableDrives()
+                    ?.subscribeOn(Schedulers.io())
+                    ?.observeOn(AndroidSchedulers.mainThread())
+                    ?.subscribe(
+                        { entries ->
+                            _fileSystemEntries.value = enrichWithPendingFiles("", entries)
+                            _currentPath.value = ""
+                            _isLoading.value = false
+                            _errorMessage.value = null
+                            saveToCache("", entries)
+                        },
+                        { error ->
+                            _errorMessage.value = "Error loading drives: ${error.message}"
+                            _isLoading.value = false
+                        }
+                    )
             } else {
                 val cached = getFromCache("")
                 if (cached != null) {
@@ -719,10 +735,13 @@ class FilesViewModel(
                         ?.subscribeOn(Schedulers.io())
                         ?.blockingGet() as? ByteArray
 
-                    if (chunk != null) {
+                    if (chunk != null && chunk.isNotEmpty()) {
                         contentBuilder.append(String(chunk, Charsets.UTF_8))
                         downloadedBytes += chunk.size
                         currentOffset += chunk.size
+                    } else if (chunk != null && chunk.isEmpty()) {
+                        // End of file reached earlier than expected (e.g. stale bookmark size)
+                        break
                     } else {
                         throw Exception("Failed to get file chunk during editing.")
                     }
