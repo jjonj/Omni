@@ -115,6 +115,18 @@ class EditorVisualTransformation(
                     addStyle(SpanStyle(color = colorScheme.outline, fontStyle = FontStyle.Italic), result.range.first, result.range.last + 1)
                 }
 
+                // Code Blocks (```)
+                val codeBlockRegex = Regex("```[\\s\\S]*?```")
+                codeBlockRegex.findAll(text).forEach { result ->
+                    addStyle(SpanStyle(background = colorScheme.surfaceVariant.copy(alpha = 0.5f), fontFamily = FontFamily.Monospace), result.range.first, result.range.last + 1)
+                }
+
+                // Horizontal Rule (---)
+                val hrRegex = Regex("^---$", RegexOption.MULTILINE)
+                hrRegex.findAll(text).forEach { result ->
+                    addStyle(SpanStyle(color = colorScheme.outline, fontWeight = FontWeight.Bold), result.range.first, result.range.last + 1)
+                }
+
                 // Inline Code (`)
                 val codeRegex = Regex("`(.*?)`")
                 codeRegex.findAll(text).forEach { result ->

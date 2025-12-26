@@ -81,9 +81,10 @@ class WidgetConfigActivity : ComponentActivity() {
     }
 
     private fun getSavedActions(): List<NotificationAction> {
-        val prefs = getSharedPreferences("omni_settings", Context.MODE_PRIVATE)
-        val json = prefs.getString("notification_actions", null)
-        if (json == null) {
+        val configManager = com.omni.sync.data.config.ConfigManager(this)
+        val config = configManager.loadConfig()
+        
+        if (config.notificationActions.isEmpty()) {
             return listOf(
                 NotificationAction("1", "Shutdown", "B:\\GDrive\\Tools\\05 Automation\\shutdown.bat"),
                 NotificationAction("2", "Sleep", "B:\\GDrive\\Tools\\05 Automation\\sleep.bat"),
@@ -91,8 +92,7 @@ class WidgetConfigActivity : ComponentActivity() {
                 NotificationAction("4", "WOL", "", isWol = true, macAddress = "10FFE0379DAC")
             )
         }
-        val type = object : TypeToken<List<NotificationAction>>() {}.type
-        return Gson().fromJson(json, type)
+        return config.notificationActions
     }
 
     private fun saveWidgetAction(widgetId: Int, action: NotificationAction) {
