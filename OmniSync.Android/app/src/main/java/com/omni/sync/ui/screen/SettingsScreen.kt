@@ -59,35 +59,8 @@ fun SettingsScreen(
     var pathInput by remember { mutableStateOf("") }
     var pendingAction by remember { mutableStateOf<NotificationAction?>(null) }
 
-    val browserPrefs = remember { context.getSharedPreferences("browser_prefs", Context.MODE_PRIVATE) }
-    val bookmarksJson = browserPrefs.getString("bookmarks", null)
-    val bookmarks: List<com.omni.sync.viewmodel.Bookmark> = if (bookmarksJson != null) {
-        val type = object : TypeToken<List<com.omni.sync.viewmodel.Bookmark>>() {}.type
-        gson.fromJson(bookmarksJson, type)
-    } else emptyList()
-
-    val predefinedActions = listOf(
-        NotificationAction("pre-1", "Shutdown PC", "B:\\GDrive\\Tools\\05 Automation\\shutdown.bat"),
-        NotificationAction("pre-2", "Sleep PC", "B:\\GDrive\\Tools\\05 Automation\\sleep.bat"),
-        NotificationAction("pre-3", "Toggle TV", "B:\\GDrive\\Tools\\05 Automation\\TVActive3\\tv_toggle.bat"),
-        NotificationAction("pre-4", "WOL PC", "", isWol = true, macAddress = "10FFE0379DAC"),
-        NotificationAction("pre-nav-dash", "Go to Dashboard", "NAV:DASHBOARD"),
-        NotificationAction("pre-nav-remote", "Go to Remote", "NAV:REMOTECONTROL"),
-        NotificationAction("pre-nav-browser", "Go to Browser", "NAV:BROWSER"),
-        NotificationAction("pre-nav-files", "Go to Files", "NAV:FILES"),
-        NotificationAction("pre-nav-ai", "Go to AI Chat", "NAV:AI_CHAT"),
-        NotificationAction("pre-nav-alarm", "Go to Alarm", "NAV:ALARM"),
-        NotificationAction("pre-nav-file", "Open Folder...", "NAV_FILE:PROMPT"),
-        NotificationAction("pre-alarm-830", "Alarm 8h 30m", "ALARM:510"),
-        NotificationAction("pre-alarm-845", "Alarm 8h 45m", "ALARM:525"),
-        NotificationAction("pre-alarm-900", "Alarm 9h", "ALARM:540"),
-        NotificationAction("pre-br-back", "Browser Back", "BROWSER:Back"),
-        NotificationAction("pre-br-refresh", "Browser Refresh", "BROWSER:Refresh"),
-        NotificationAction("pre-br-forward", "Browser Forward", "BROWSER:Forward"),
-        NotificationAction("pre-br-close", "Browser Close Tab", "BROWSER:CloseTab"),
-        NotificationAction("pre-br-play", "Browser Play/Pause", "BROWSER:MediaPlayPause"),
-        NotificationAction("pre-br-phone", "Open Tab on Phone", "BROWSER:OpenCurrentTabOnPhone")
-    )
+    val predefinedActions = remember { mainViewModel.configManager.getPredefinedActions() }
+    val bookmarkActions = remember { mainViewModel.configManager.getBookmarks() }
 
     fun saveActions(actions: List<NotificationAction>) {
         notificationActions = actions
@@ -348,16 +321,16 @@ fun SettingsScreen(
                             )
                         }
                         
-                        if (bookmarks.isNotEmpty()) {
+                        if (bookmarkActions.isNotEmpty()) {
                             HorizontalDivider()
                             Text("Bookmarks", modifier = Modifier.padding(8.dp), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
-                            bookmarks.take(10).forEach { bookmark ->
+                            bookmarkActions.take(10).forEach { action ->
                                 DropdownMenuItem(
-                                    text = { Text(bookmark.name) },
+                                    text = { Text(action.label) },
                                     onClick = {
                                         val newActions = notificationActions.toMutableList()
                                         val id = java.util.UUID.randomUUID().toString()
-                                        newActions.add(NotificationAction(id, bookmark.name, "BOOKMARK:${bookmark.url}"))
+                                        newActions.add(action.copy(id = id))
                                         saveActions(newActions)
                                         showAddMenu = false
                                     }

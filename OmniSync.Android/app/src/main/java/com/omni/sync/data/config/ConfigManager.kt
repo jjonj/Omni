@@ -46,6 +46,48 @@ class ConfigManager(private val context: Context) {
         }
     }
 
+    fun getPredefinedActions(): List<NotificationAction> {
+        return listOf(
+            NotificationAction("pre-1", "Shutdown PC", "B:\\GDrive\\Tools\\05 Automation\\shutdown.bat"),
+            NotificationAction("pre-2", "Sleep PC", "B:\\GDrive\\Tools\\05 Automation\\sleep.bat"),
+            NotificationAction("pre-3", "Toggle TV", "B:\\GDrive\\Tools\\05 Automation\\TVActive3\\tv_toggle.bat"),
+            NotificationAction("pre-4", "WOL PC", "", isWol = true, macAddress = "10FFE0379DAC"),
+            NotificationAction("pre-nav-dash", "Go to Dashboard", "NAV:DASHBOARD"),
+            NotificationAction("pre-nav-remote", "Go to Remote", "NAV:REMOTECONTROL"),
+            NotificationAction("pre-nav-browser", "Go to Browser", "NAV:BROWSER"),
+            NotificationAction("pre-nav-files", "Go to Files", "NAV:FILES"),
+            NotificationAction("pre-nav-ai", "Go to AI Chat", "NAV:AI_CHAT"),
+            NotificationAction("pre-nav-alarm", "Go to Alarm", "NAV:ALARM"),
+            NotificationAction("pre-br-back", "Browser Back", "BROWSER:Back"),
+            NotificationAction("pre-br-refresh", "Browser Refresh", "BROWSER:Refresh"),
+            NotificationAction("pre-br-forward", "Browser Forward", "BROWSER:Forward"),
+            NotificationAction("pre-br-close", "Browser Close Tab", "BROWSER:CloseTab"),
+            NotificationAction("pre-br-play", "Browser Play/Pause", "BROWSER:MediaPlayPause"),
+            NotificationAction("pre-br-phone", "Open Tab on Phone", "BROWSER:OpenCurrentTabOnPhone")
+        )
+    }
+
+    fun getBookmarks(): List<NotificationAction> {
+        val browserPrefs = context.getSharedPreferences("browser_prefs", Context.MODE_PRIVATE)
+        val bookmarksJson = browserPrefs.getString("bookmarks", null)
+        if (bookmarksJson != null) {
+            try {
+                val type = object : com.google.gson.reflect.TypeToken<List<com.omni.sync.viewmodel.Bookmark>>() {}.type
+                val rawBookmarks: List<com.omni.sync.viewmodel.Bookmark> = gson.fromJson(bookmarksJson, type)
+                return rawBookmarks.map { bookmark ->
+                    NotificationAction(
+                        id = "bookmark-${bookmark.url.hashCode()}",
+                        label = bookmark.name,
+                        command = "BOOKMARK:${bookmark.url}"
+                    )
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("ConfigManager", "Error parsing bookmarks", e)
+            }
+        }
+        return emptyList()
+    }
+
     private fun migrateFromPrefs(config: AppConfig) {
         val settingsPrefs = context.getSharedPreferences("omni_settings", Context.MODE_PRIVATE)
         val filesPrefs = context.getSharedPreferences("files_prefs", Context.MODE_PRIVATE)

@@ -876,8 +876,6 @@ fun TextEditorScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .imePadding()
-                    .verticalScroll(verticalScrollState)
-                    .then(if (wordWrap) Modifier else Modifier.horizontalScroll(horizontalScrollState))
                     .pointerInput(Unit) {
                         detectTransformGestures { _, _, zoom, _ ->
                             fontSize = (fontSize * zoom).coerceIn(2f, 100f)
@@ -885,17 +883,17 @@ fun TextEditorScreen(
                     }
             ) {
                 // Line numbers column
-                val lineNumbers = remember(textLayoutResult, contentAtPage) {
+                val lineNumbers = remember(textLayoutResult, textFieldValue.text) {
                     if (textLayoutResult == null) {
-                        (1..(contentAtPage.count { it == '\n' } + 1)).joinToString("\n")
+                        (1..(textFieldValue.text.count { it == '\n' } + 1)).joinToString("\n")
                     } else {
                         val layout = textLayoutResult!!
-                        val text = contentAtPage
+                        val text = textFieldValue.text
                         val sb = StringBuilder()
                         var logicalLine = 1
                         for (i in 0 until layout.lineCount) {
                             val lineStart = layout.getLineStart(i)
-                            val isNewLogicalLine = i == 0 || (lineStart > 0 && text[lineStart - 1] == '\n')
+                            val isNewLogicalLine = i == 0 || (lineStart > 0 && lineStart <= text.length && text[lineStart - 1] == '\n')
                             if (isNewLogicalLine) {
                                 sb.append(logicalLine++)
                             }
@@ -911,7 +909,8 @@ fun TextEditorScreen(
                         .fillMaxHeight()
                         .width(44.dp)
                         .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
-                        .padding(vertical = 16.dp, horizontal = 4.dp),
+                        .padding(vertical = 16.dp, horizontal = 4.dp)
+                        .verticalScroll(verticalScrollState),
                     style = TextStyle(
                         fontFamily = FontFamily.Monospace,
                         fontSize = fontSize.sp,
@@ -945,7 +944,7 @@ fun TextEditorScreen(
                                 currentTextLayoutResult = it
                             }
                         },
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.fillMaxWidth().verticalScroll(verticalScrollState),
                         textStyle = TextStyle(
                             fontFamily = FontFamily.Monospace,
                             fontSize = fontSize.sp,

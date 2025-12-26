@@ -54,10 +54,15 @@ fun OmniSyncTheme(
         darkTheme -> DarkColorScheme
         else -> LightColorScheme
     }.let { base ->
+        // Always apply our custom backgrounds in dark mode to indicate connection status
         if (darkTheme) {
+            val bg = if (isConnected) ReddishBlack else DarkRed
             base.copy(
-                background = if (isConnected) DarkRed else ReddishBlack,
-                surface = if (isConnected) DarkRed else ReddishBlack
+                background = bg,
+                surface = bg,
+                surfaceVariant = bg,
+                onBackground = Color.White,
+                onSurface = Color.White
             )
         } else base
     }

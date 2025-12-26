@@ -46,7 +46,11 @@ class WidgetConfigActivity : ComponentActivity() {
             return
         }
 
-        val actions = getSavedActions()
+        val configManager = com.omni.sync.data.config.ConfigManager(this)
+        val config = configManager.loadConfig()
+        val customActions = config.notificationActions
+        val predefinedActions = configManager.getPredefinedActions()
+        val bookmarkActions = configManager.getBookmarks()
 
         setContent {
             OmniSyncTheme {
@@ -62,16 +66,38 @@ class WidgetConfigActivity : ComponentActivity() {
                         )
                         
                         LazyColumn {
-                            items(actions) { action ->
-                                ListItem(
-                                    headlineContent = { Text(text = action.label) },
-                                    supportingContent = { Text(text = if (action.isWol) "WOL" else action.command.takeLast(20)) },
-                                    modifier = Modifier.clickable {
+                            if (customActions.isNotEmpty()) {
+                                item {
+                                    Text("Custom Actions", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(vertical = 8.dp))
+                                }
+                                items(customActions) { action ->
+                                    ActionItem(action) {
                                         saveWidgetAction(appWidgetId, action)
                                         finishWithSuccess()
                                     }
-                                )
-                                HorizontalDivider()
+                                }
+                            }
+
+                            item {
+                                Text("Predefined Actions", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(vertical = 8.dp))
+                            }
+                            items(predefinedActions) { action ->
+                                ActionItem(action) {
+                                    saveWidgetAction(appWidgetId, action)
+                                    finishWithSuccess()
+                                }
+                            }
+
+                            if (bookmarkActions.isNotEmpty()) {
+                                item {
+                                    Text("Bookmarks", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(vertical = 8.dp))
+                                }
+                                items(bookmarkActions) { action ->
+                                    ActionItem(action) {
+                                        saveWidgetAction(appWidgetId, action)
+                                        finishWithSuccess()
+                                    }
+                                }
                             }
                         }
                     }
@@ -80,19 +106,14 @@ class WidgetConfigActivity : ComponentActivity() {
         }
     }
 
-    private fun getSavedActions(): List<NotificationAction> {
-        val configManager = com.omni.sync.data.config.ConfigManager(this)
-        val config = configManager.loadConfig()
-        
-        if (config.notificationActions.isEmpty()) {
-            return listOf(
-                NotificationAction("1", "Shutdown", "B:\\GDrive\\Tools\\05 Automation\\shutdown.bat"),
-                NotificationAction("2", "Sleep", "B:\\GDrive\\Tools\\05 Automation\\sleep.bat"),
-                NotificationAction("3", "TV", "B:\\GDrive\\Tools\\05 Automation\\TVActive3\\tv_toggle.bat"),
-                NotificationAction("4", "WOL", "", isWol = true, macAddress = "10FFE0379DAC")
-            )
-        }
-        return config.notificationActions
+    @Composable
+    private fun ActionItem(action: NotificationAction, onClick: () -> Unit) {
+        ListItem(
+            headlineContent = { Text(text = action.label) },
+            supportingContent = { Text(text = if (action.isWol) "WOL" else action.command.takeLast(30)) },
+            modifier = Modifier.clickable { onClick() }
+        )
+        HorizontalDivider()
     }
 
     private fun saveWidgetAction(widgetId: Int, action: NotificationAction) {

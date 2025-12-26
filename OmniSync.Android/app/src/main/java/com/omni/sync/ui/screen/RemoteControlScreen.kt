@@ -77,7 +77,7 @@ fun RemoteControlScreen(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
-                .imePadding(),
+                .windowInsetsPadding(WindowInsets.ime.exclude(WindowInsets.navigationBars)),
             tonalElevation = 2.dp,
             shadowElevation = 8.dp,
             color = MaterialTheme.colorScheme.surface
