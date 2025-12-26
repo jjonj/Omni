@@ -29,6 +29,7 @@ class OmniWidgetProvider : AppWidgetProvider() {
 
     override fun onReceive(context: Context, intent: Intent) {
         super.onReceive(context, intent)
+        // Keep for manual updates if needed, though we primarily use getForegroundService now
         if (intent.action == "com.omni.sync.WIDGET_CLICK") {
             val actionId = intent.getStringExtra(ForegroundService.EXTRA_ACTION_ID)
             if (actionId != null) {
@@ -45,19 +46,42 @@ class OmniWidgetProvider : AppWidgetProvider() {
         fun updateAppWidget(context: Context, appWidgetManager: AppWidgetManager, appWidgetId: Int) {
             val prefs = context.getSharedPreferences("widget_prefs", Context.MODE_PRIVATE)
             val json = prefs.getString("widget_$appWidgetId", null)
-            val action = if (json != null) Gson().fromJson(json, NotificationAction::class.java) else null
+            val action = if (json != null) {
+                try {
+                    Gson().fromJson(json, NotificationAction::class.java)
+                } catch (e: Exception) {
+                    null
+                }
+            } else null
 
             val views = RemoteViews(context.packageName, R.layout.widget_layout)
             views.setTextViewText(R.id.widget_text, action?.label ?: "Omni")
 
             if (action != null) {
-                // Send broadcast to self
-                val intent = Intent(context, OmniWidgetProvider::class.java).apply {
-                    this.action = "com.omni.sync.WIDGET_CLICK"
+                // Direct call to ForegroundService for better reliability
+                val serviceIntent = Intent(context, ForegroundService::class.java).apply {
+                    this.action = ForegroundService.ACTION_TRIGGER_NOTIFICATION_ACTION
                     putExtra(ForegroundService.EXTRA_ACTION_ID, action.id)
+                    // Use data to make intent unique for system even with same extras/action
+                    data = android.net.Uri.parse("omni://widget/$appWidgetId")
                 }
-                // Need unique request code per widget to avoid intent collision
-                val pendingIntent = PendingIntent.getBroadcast(context, appWidgetId, intent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+                
+                val pendingIntent = PendingIntent.getForegroundService(
+                    context, 
+                    appWidgetId, 
+                    serviceIntent, 
+                    PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+                )
+                views.setOnClickPendingIntent(R.id.widget_container, pendingIntent)
+            } else {
+                // Open app if no action configured
+                val mainIntent = Intent(context, com.omni.sync.MainActivity::class.java)
+                val pendingIntent = PendingIntent.getActivity(
+                    context, 
+                    appWidgetId, 
+                    mainIntent, 
+                    PendingIntent.FLAG_IMMUTABLE
+                )
                 views.setOnClickPendingIntent(R.id.widget_container, pendingIntent)
             }
 

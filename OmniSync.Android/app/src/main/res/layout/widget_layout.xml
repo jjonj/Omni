@@ -8,12 +8,22 @@
     android:orientation="vertical"
     android:padding="4dp">
 
+    <ImageView
+        android:id="@+id/widget_icon"
+        android:layout_width="24dp"
+        android:layout_height="24dp"
+        android:src="@drawable/ic_notification"
+        android:layout_marginBottom="2dp"
+        android:contentDescription="Action Icon" />
+
     <TextView
         android:id="@+id/widget_text"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:text="Omni"
         android:textColor="#FFFFFF"
-        android:textSize="12sp"
-        android:textStyle="bold" />
+        android:textSize="10sp"
+        android:textStyle="bold"
+        android:maxLines="1"
+        android:ellipsize="end" />
 </LinearLayout>

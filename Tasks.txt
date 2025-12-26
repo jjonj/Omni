@@ -1,8 +1,14 @@
 # Tasks
 
+This document contains a number of subtasks.
 
-When finishing a task make sure to prefix the line with "✅" and also git commit before moving on to the next task, . Dont wait until the megasession is completed to make these updates.
-if told to do a megasession then fix/implement as many issues of the ones below as possible without user intervention. Make sure to git commit and mark as ✅ between each one. Start with any tasks that can be validated with a script in D:\SSDProjects\Omni\TestScripts. If strictly necessary you may use AISpeak to ask the user for help/clarifications.
+When finishing a subtask and BEFORE moving on the to the next subtask in here, ALWAYS do the following:
+Prefix the line in tasks.txt with "✅" 
+git commit
+
+Only work on subtasks if told to do so or if told to do a Megasession.
+If told to do a megasession then fix/implement as many issues of the ones below as possible without user intervention. 
+If necessary you may use AISpeak to ask the user for help/clarifications.
 
 ## General
 
@@ -85,7 +91,7 @@ Stream PC monitor, replacing background of the trackpad leaving the trackpad fun
 
 ### Android Home screen widgets
 
-NOT-WORKING Add support for android launcher widgets, when you add a widget you can choose a quick action (same as the list from notifications)
+✅ Add support for android launcher widgets, when you add a widget you can choose a quick action (same as the list from notifications)
 
 ### Settings screen (accessed by button on dashboard, not bottom panel)
 
