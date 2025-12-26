@@ -11,6 +11,7 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
@@ -54,15 +55,11 @@ fun OmniSyncTheme(
         darkTheme -> DarkColorScheme
         else -> LightColorScheme
     }.let { base ->
-        // Always apply our custom backgrounds in dark mode to indicate connection status
         if (darkTheme) {
             val bg = if (isConnected) ReddishBlack else DarkRed
             base.copy(
                 background = bg,
-                surface = bg,
-                surfaceVariant = bg,
-                onBackground = Color.White,
-                onSurface = Color.White
+                surface = bg
             )
         } else base
     }

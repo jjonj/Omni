@@ -73,11 +73,13 @@ fun RemoteControlScreen(
         )
         
         // ButtonPanel with elevation and shadow at the bottom
+        val navBarHeight = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
         Surface(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
-                .windowInsetsPadding(WindowInsets.ime.exclude(WindowInsets.navigationBars)),
+                .imePadding()
+                .then(if (isKeyboardVisible) Modifier.offset(y = navBarHeight) else Modifier),
             tonalElevation = 2.dp,
             shadowElevation = 8.dp,
             color = MaterialTheme.colorScheme.surface
