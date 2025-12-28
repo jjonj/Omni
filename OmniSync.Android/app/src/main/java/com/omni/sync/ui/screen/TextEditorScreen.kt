@@ -42,6 +42,15 @@ import com.omni.sync.utils.isVideoFile
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.platform.LocalTextToolbar
+import androidx.compose.ui.platform.TextToolbar
+import androidx.compose.ui.platform.TextToolbarStatus
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupProperties
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.IntOffset
+import kotlin.math.roundToInt
 
 class EditorVisualTransformation(
     private val colorScheme: ColorScheme, 
@@ -166,6 +175,103 @@ class EditorVisualTransformation(
     }
 }
 
+class CustomTextToolbar(
+    val onBold: () -> Unit,
+    val onItalic: () -> Unit
+) : TextToolbar {
+    var currentRect by mutableStateOf<Rect?>(null)
+    var onCopy by mutableStateOf<(() -> Unit)?>(null)
+    var onPaste by mutableStateOf<(() -> Unit)?>(null)
+    var onCut by mutableStateOf<(() -> Unit)?>(null)
+    var onSelectAll by mutableStateOf<(() -> Unit)?>(null)
+    var visible by mutableStateOf(false)
+
+    override val status: TextToolbarStatus get() = if (visible) TextToolbarStatus.Shown else TextToolbarStatus.Hidden
+
+    override fun showMenu(
+        rect: Rect,
+        onCopy: (() -> Unit)?,
+        onPaste: (() -> Unit)?,
+        onCut: (() -> Unit)?,
+        onSelectAll: (() -> Unit)?
+    ) {
+        this.currentRect = rect
+        this.onCopy = onCopy
+        this.onPaste = onPaste
+        this.onCut = onCut
+        this.onSelectAll = onSelectAll
+        this.visible = true
+    }
+
+    override fun hide() {
+        visible = false
+    }
+}
+
+@Composable
+fun CustomTextSelectionMenu(toolbar: CustomTextToolbar) {
+    if (toolbar.visible && toolbar.currentRect != null) {
+        val density = LocalDensity.current
+        val rect = toolbar.currentRect!!
+        
+        // Calculate position (centered above selection)
+        // Note: Coordinates are relative to the root view
+        val offsetX = rect.left
+        val offsetY = rect.top - 120 // Shift up
+        
+        Popup(
+            alignment = Alignment.TopStart,
+            offset = IntOffset(offsetX.roundToInt(), offsetY.roundToInt()),
+            onDismissRequest = { toolbar.hide() },
+            properties = PopupProperties(focusable = true)
+        ) {
+            Surface(
+                shape = RoundedCornerShape(8.dp),
+                shadowElevation = 4.dp,
+                color = MaterialTheme.colorScheme.surface,
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .height(IntrinsicSize.Min)
+                        .padding(horizontal = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    toolbar.onCut?.let {
+                        IconButton(onClick = { it(); toolbar.hide() }) {
+                            Icon(Icons.Default.ContentCut, "Cut", modifier = Modifier.size(20.dp))
+                        }
+                    }
+                    toolbar.onCopy?.let {
+                        IconButton(onClick = { it(); toolbar.hide() }) {
+                            Icon(Icons.Default.ContentCopy, "Copy", modifier = Modifier.size(20.dp))
+                        }
+                    }
+                    toolbar.onPaste?.let {
+                        IconButton(onClick = { it(); toolbar.hide() }) {
+                            Icon(Icons.Default.ContentPaste, "Paste", modifier = Modifier.size(20.dp))
+                        }
+                    }
+                    toolbar.onSelectAll?.let {
+                        IconButton(onClick = { it(); toolbar.hide() }) {
+                            Icon(Icons.Default.SelectAll, "Select All", modifier = Modifier.size(20.dp))
+                        }
+                    }
+                    
+                    VerticalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                    
+                    IconButton(onClick = { toolbar.onBold.invoke(); toolbar.hide() }) {
+                        Icon(Icons.Default.FormatBold, "Bold", modifier = Modifier.size(20.dp))
+                    }
+                    IconButton(onClick = { toolbar.onItalic.invoke(); toolbar.hide() }) {
+                        Icon(Icons.Default.FormatItalic, "Italic", modifier = Modifier.size(20.dp))
+                    }
+                }
+            }
+        }
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun TextEditorScreen(
@@ -222,6 +328,31 @@ fun TextEditorScreen(
     val context = androidx.compose.ui.platform.LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     val density = androidx.compose.ui.platform.LocalDensity.current
+
+    val customTextToolbar = remember {
+        CustomTextToolbar(
+            onBold = {
+                val text = textFieldValue.text
+                val sel = textFieldValue.selection
+                if (sel.start != sel.end) {
+                    val selectedText = text.substring(sel.start, sel.end)
+                    val newText = text.replaceRange(sel.start, sel.end, "**$selectedText**")
+                    filesViewModel.updateEditingContent(newText)
+                    textFieldValue = textFieldValue.copy(text = newText, selection = TextRange(sel.start, sel.end + 4))
+                }
+            },
+            onItalic = {
+                val text = textFieldValue.text
+                val sel = textFieldValue.selection
+                if (sel.start != sel.end) {
+                    val selectedText = text.substring(sel.start, sel.end)
+                    val newText = text.replaceRange(sel.start, sel.end, "_${selectedText}_")
+                    filesViewModel.updateEditingContent(newText)
+                    textFieldValue = textFieldValue.copy(text = newText, selection = TextRange(sel.start, sel.end + 2))
+                }
+            }
+        )
+    }
 
     // --- Swiping between files ---
     val pagerState = androidx.compose.foundation.pager.rememberPagerState(pageCount = { openFiles.size })
@@ -317,8 +448,14 @@ fun TextEditorScreen(
         )
     }
 
-    Scaffold(
-        topBar = {
+    CompositionLocalProvider(
+        LocalTextToolbar provides customTextToolbar
+    ) {
+        // Render the custom menu if visible (Popup handles its own placement)
+        CustomTextSelectionMenu(customTextToolbar)
+
+        Scaffold(
+            topBar = {
             Column {
                 TopAppBar(
                     title = { 
@@ -957,9 +1094,8 @@ fun TextEditorScreen(
                 }
             }
         }
-    }
 
-    if (showGoToLineDialog) {
+        if (showGoToLineDialog) {
         AlertDialog(
             onDismissRequest = { showGoToLineDialog = false; goToLineInput = "" },
             title = { Text("Go to Line") },
@@ -1127,4 +1263,6 @@ fun TextEditorScreen(
             }
         )
     }
+}
+}
 }

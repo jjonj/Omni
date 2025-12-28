@@ -17,4 +17,5 @@ object WindowsKeyCodes {
     const val VK_RIGHT: UShort = 0x27u
     const val VK_DOWN: UShort = 0x28u
     const val VK_Y: UShort = 0x59u
+    const val VK_SPACE: UShort = 0x20u
 }

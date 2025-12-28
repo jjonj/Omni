@@ -59,6 +59,7 @@ fun AiChatScreen(
     val isAiTyping = aiStatus != null
     val coroutineScope = rememberCoroutineScope()
     val isStartingSession by signalRClient.isStartingSessionFlow.collectAsState()
+    val isConnected by mainViewModel.isConnected.collectAsState()
 
     LaunchedEffect(Unit) {
         signalRClient.getAiSessions()
@@ -93,16 +94,20 @@ fun AiChatScreen(
                 title = {
                     Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
                         TextButton(onClick = { 
-                            signalRClient.getAiSessions()
-                            showSessionMenu = true 
-                        }) {
+                            if (isConnected) {
+                                signalRClient.getAiSessions()
+                                showSessionMenu = true 
+                            }
+                        }, enabled = isConnected) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                val currentName = if (isStartingSession) "Creating Session..." else (sessions[selectedPid] ?: "Select Session")
+                                val currentName = if (!isConnected) "Disconnected" else if (isStartingSession) "Creating Session..." else (sessions[selectedPid] ?: "Select Session")
                                 Text(currentName, style = MaterialTheme.typography.titleMedium)
-                                if (aiStatus != null) {
-                                    Text(aiStatus!!, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
-                                } else {
-                                    Text("${sessions.size} sessions active", style = MaterialTheme.typography.labelSmall)
+                                if (isConnected) {
+                                    if (aiStatus != null) {
+                                        Text(aiStatus!!, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                                    } else {
+                                        Text("${sessions.size} sessions active", style = MaterialTheme.typography.labelSmall)
+                                    }
                                 }
                             }
                         }
@@ -144,14 +149,14 @@ fun AiChatScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = { signalRClient.startNewAiSession() }) {
+                    IconButton(onClick = { signalRClient.startNewAiSession() }, enabled = isConnected) {
                         Icon(Icons.Default.Add, contentDescription = "New Session")
                     }
                     IconButton(onClick = { 
                         val pidToStop = selectedPid
                         signalRClient.stopAiSession(pidToStop)
                         signalRClient.clearAiMessages(if (pidToStop != -1) pidToStop else null)
-                    }) {
+                    }, enabled = isConnected) {
                         Icon(Icons.Default.Close, contentDescription = "Close Session")
                     }
                 }
@@ -164,6 +169,21 @@ fun AiChatScreen(
                 .fillMaxSize()
                 .imePadding()
         ) {
+            if (!isConnected) {
+                Surface(
+                    color = MaterialTheme.colorScheme.errorContainer,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        "Disconnected from Hub",
+                        color = MaterialTheme.colorScheme.onErrorContainer,
+                        modifier = Modifier.padding(8.dp),
+                        textAlign = TextAlign.Center,
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                }
+            }
+
             LazyColumn(
                 state = listState,
                 modifier = Modifier
@@ -193,8 +213,9 @@ fun AiChatScreen(
                     value = inputText,
                     onValueChange = { inputText = it },
                     modifier = Modifier.weight(1f),
-                    placeholder = { Text("Ask AI something...") },
-                    maxLines = 3
+                    placeholder = { Text(if (isConnected) "Ask AI something..." else "Connecting...") },
+                    maxLines = 3,
+                    enabled = isConnected
                 )
                 Spacer(Modifier.width(8.dp))
                 IconButton(
@@ -207,7 +228,11 @@ fun AiChatScreen(
                             signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_RETURN)
                         }
                     },
-                    modifier = Modifier.background(MaterialTheme.colorScheme.primary, CircleShape),
+                    modifier = Modifier.background(
+                        if (isConnected) MaterialTheme.colorScheme.primary else Color.Gray, 
+                        CircleShape
+                    ),
+                    enabled = isConnected,
                     colors = IconButtonDefaults.iconButtonColors(contentColor = MaterialTheme.colorScheme.onPrimary)
                 ) {
                     Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Send")
@@ -215,7 +240,7 @@ fun AiChatScreen(
             }
 
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-            QuickActionPanel(signalRClient, coroutineScope, selectedPid)
+            QuickActionPanel(signalRClient, coroutineScope, selectedPid, isConnected)
         }
 
         if (showRenameDialog) {
@@ -248,7 +273,12 @@ fun AiChatScreen(
 }
 
 @Composable
-fun QuickActionPanel(signalRClient: SignalRClient, coroutineScope: kotlinx.coroutines.CoroutineScope, selectedPid: Int) {
+fun QuickActionPanel(
+    signalRClient: SignalRClient, 
+    coroutineScope: kotlinx.coroutines.CoroutineScope, 
+    selectedPid: Int,
+    isConnected: Boolean
+) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -261,7 +291,8 @@ fun QuickActionPanel(signalRClient: SignalRClient, coroutineScope: kotlinx.corou
                 onClick = { signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_ESCAPE) },
                 modifier = Modifier.weight(1f).height(40.dp),
                 shape = RoundedCornerShape(8.dp),
-                contentPadding = PaddingValues(0.dp)
+                contentPadding = PaddingValues(0.dp),
+                enabled = isConnected
             ) {
                 Text("Esc", fontSize = 12.sp)
             }
@@ -270,7 +301,8 @@ fun QuickActionPanel(signalRClient: SignalRClient, coroutineScope: kotlinx.corou
                 onClick = { signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_UP) },
                 modifier = Modifier.weight(1f).height(40.dp),
                 shape = RoundedCornerShape(8.dp),
-                contentPadding = PaddingValues(0.dp)
+                contentPadding = PaddingValues(0.dp),
+                enabled = isConnected
             ) {
                 Icon(Icons.Default.KeyboardArrowUp, null, modifier = Modifier.size(18.dp))
             }
@@ -279,7 +311,8 @@ fun QuickActionPanel(signalRClient: SignalRClient, coroutineScope: kotlinx.corou
                 onClick = { signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_DOWN) },
                 modifier = Modifier.weight(1f).height(40.dp),
                 shape = RoundedCornerShape(8.dp),
-                contentPadding = PaddingValues(0.dp)
+                contentPadding = PaddingValues(0.dp),
+                enabled = isConnected
             ) {
                 Icon(Icons.Default.KeyboardArrowDown, null, modifier = Modifier.size(18.dp))
             }
@@ -295,7 +328,8 @@ fun QuickActionPanel(signalRClient: SignalRClient, coroutineScope: kotlinx.corou
                 },
                 modifier = Modifier.weight(1f).height(40.dp),
                 shape = RoundedCornerShape(8.dp),
-                contentPadding = PaddingValues(0.dp)
+                contentPadding = PaddingValues(0.dp),
+                enabled = isConnected
             ) {
                 Text("Yolo", fontSize = 12.sp)
             }
@@ -306,7 +340,8 @@ fun QuickActionPanel(signalRClient: SignalRClient, coroutineScope: kotlinx.corou
                 onClick = { signalRClient.clearAiMessages(if (selectedPid != -1) selectedPid else null) },
                 modifier = Modifier.weight(1f).height(40.dp),
                 shape = RoundedCornerShape(8.dp),
-                contentPadding = PaddingValues(0.dp)
+                contentPadding = PaddingValues(0.dp),
+                enabled = isConnected
             ) {
                 Icon(Icons.Default.Delete, null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(4.dp))
@@ -317,7 +352,8 @@ fun QuickActionPanel(signalRClient: SignalRClient, coroutineScope: kotlinx.corou
                 onClick = { signalRClient.requestAiHistory() },
                 modifier = Modifier.weight(1f).height(40.dp),
                 shape = RoundedCornerShape(8.dp),
-                contentPadding = PaddingValues(0.dp)
+                contentPadding = PaddingValues(0.dp),
+                enabled = isConnected
             ) {
                 Icon(imageVector = Icons.Default.Cached, contentDescription = "Reload History", modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(4.dp))

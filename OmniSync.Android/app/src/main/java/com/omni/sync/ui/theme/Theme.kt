@@ -55,10 +55,14 @@ fun OmniSyncTheme(
         darkTheme -> DarkColorScheme
         else -> LightColorScheme
     }.let { base ->
-        if (darkTheme && !isConnected) {
+        if (!isConnected) {
             base.copy(
-                background = DarkRed,
-                surface = DarkRed
+                background = DisconnectedBackground,
+                surface = DisconnectedBackground,
+                surfaceVariant = DisconnectedBackground,
+                onBackground = Color.White,
+                onSurface = Color.White,
+                onSurfaceVariant = Color(0xFFE6E1E5) // Slightly off-white for variant
             )
         } else base
     }

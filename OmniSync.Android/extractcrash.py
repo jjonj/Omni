@@ -136,11 +136,19 @@ def capture_crash(device):
         if crash_report:
             f.writelines(crash_report)
             print(f"Fatal crash captured and saved to: {filename}")
+            print("--- CRASH LOG START ---")
+            print("".join(crash_report))
+            print("--- CRASH LOG END ---")
         else:
             f.write("No fatal crash detected in the timeframe.\n")
             f.write("-" * 20 + "\n")
             f.writelines(lines) # Write all errors captured just in case
             print(f"No crash detected. Full error log saved to: {filename}")
+            print("--- RECENT LOGS (Last 20 lines) ---")
+            print("".join(lines[-20:]))
+            print("--- END ---")
+    
+    sys.stdout.flush()
 
 
 def main():

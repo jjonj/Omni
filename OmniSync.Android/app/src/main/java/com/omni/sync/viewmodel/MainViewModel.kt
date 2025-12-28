@@ -316,6 +316,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun appendCommandOutput(output: String) {
         // Append with newline
         _commandOutput.value += "\n$output"
+        // Also add to dashboard logs so it's visible
+        addLog(output, LogType.INFO)
     }
 
     fun clearCommandOutput() {
