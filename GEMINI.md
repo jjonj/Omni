@@ -3,7 +3,7 @@ You are on windows 11
 Always read design.txt first
 
 Use these scripts instead of manual commands:
-run_omnihub.py (this will kill existing instance, rebuild and then run)
+build_run_omnihub.py (this will kill existing instance, rebuild and then run)
 OmniSync.Android/build_and_deploy.py (read for arguments)
 
 Whenever changing hub non-ui code, write a script inside TestScripts modeled on the existing tests to validate your functionality

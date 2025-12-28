@@ -70,6 +70,7 @@ import androidx.compose.ui.zIndex
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.foundation.gestures.scrollBy
 import kotlin.math.roundToInt
+import com.omni.sync.ui.components.ActionKeyButton
 import com.omni.sync.utils.WindowsKeyCodes.VK_BACK
 import com.omni.sync.utils.WindowsKeyCodes.VK_ESCAPE
 import com.omni.sync.utils.WindowsKeyCodes.VK_RETURN
