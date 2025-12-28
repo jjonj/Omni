@@ -26,11 +26,11 @@ namespace OmniSync.Hub.Presentation.Controllers
             
             if (key != _apiKey) 
             {
-                _monitor.AddLogMessage($"External Command UNAUTHORIZED: '{cmd}' from IP: {ip}");
+                _monitor.AddLogMessage($"External Command UNAUTHORIZED: '{cmd}' (Payload: {payload}) from IP: {ip}");
                 return Unauthorized();
             }
             
-            _monitor.AddLogMessage($"External Command Received: '{cmd}' from IP: {ip}");
+            _monitor.AddLogMessage($"External Command Received: '{cmd}' (Payload: {payload}) from IP: {ip}");
             
             try 
             {
