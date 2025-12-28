@@ -715,12 +715,13 @@ fun TextEditorScreen(
     }
 
     // Manual scroll-to-cursor logic for typing
-    LaunchedEffect(textFieldValue.text, textFieldValue.selection) {
+    LaunchedEffect(editingContent, textFieldValue.selection.end) {
         val layout = currentTextLayoutResult ?: return@LaunchedEffect
         
         // Only trigger scroll if text actually changed (typing)
-        if (textFieldValue.text != lastText) {
-            lastText = textFieldValue.text
+        // We compare editingContent with lastText to be sure it's a content change
+        if (editingContent != lastText) {
+            lastText = editingContent
             
             val cursorOffset = textFieldValue.selection.end
             val cursorLine = layout.getLineForOffset(cursorOffset)
@@ -728,8 +729,6 @@ fun TextEditorScreen(
             val lineBottom = layout.getLineBottom(cursorLine)
             
             val scrollPos = verticalScrollState.value
-            // Better estimated viewport height (accounting for keyboard if visible)
-            // Scaffold inner padding helps, but let's use a safe visible range.
             val vHeight = if (viewportHeight > 0) viewportHeight else with(density) { 200.dp.toPx() } 
             val lineHeight = with(density) { (fontSize * 1.4f).sp.toPx() }
             val buffer = lineHeight * 2 // 2 lines buffer
@@ -741,7 +740,9 @@ fun TextEditorScreen(
             }
         } else {
             // Just selection change (cursor placement) - do NOT scroll automatically
-            lastText = textFieldValue.text
+            // But we MUST update lastText to editingContent even if they are same 
+            // to stay in sync for next actual text change.
+            lastText = editingContent
         }
     }
 
@@ -1376,14 +1377,22 @@ fun TextEditorScreen(
                         val scrollOffset = verticalScrollState.value
                         val firstVisibleLine = layout.getLineForVerticalPosition(scrollOffset.toFloat()) + 1
                         
-                        val lastVisibleLine = if (viewportHeight > 0) {
+                        // Without accounting for keyboard (full viewport)
+                        // LocalConfiguration gives us the total height roughly
+                        val config = LocalConfiguration.current
+                        val totalHeightPx = with(density) { config.screenHeightDp.dp.toPx() }
+                        val lastVisibleLineNoKbd = layout.getLineForVerticalPosition(scrollOffset.toFloat() + totalHeightPx) + 1
+
+                        // With accounting for keyboard (current viewportHeight which has imePadding)
+                        val lastVisibleLineWithKbd = if (viewportHeight > 0) {
                             layout.getLineForVerticalPosition(scrollOffset.toFloat() + viewportHeight) + 1
                         } else 0
 
                         Column(modifier = Modifier.padding(8.dp)) {
                             Text("Cursor Line: $cursorLine", style = MaterialTheme.typography.labelSmall)
-                            Text("Visible Lines: $firstVisibleLine - $lastVisibleLine", style = MaterialTheme.typography.labelSmall)
-                            Text("Viewport Height: ${viewportHeight.toInt()}", style = MaterialTheme.typography.labelSmall)
+                            Text("Visible (No Kbd): $firstVisibleLine - $lastVisibleLineNoKbd", style = MaterialTheme.typography.labelSmall)
+                            Text("Visible (With Kbd): $firstVisibleLine - $lastVisibleLineWithKbd", style = MaterialTheme.typography.labelSmall)
+                            Text("Current Viewport Height: ${viewportHeight.toInt()}", style = MaterialTheme.typography.labelSmall)
                         }
                     } else {
                         Text("No layout data", modifier = Modifier.padding(8.dp))

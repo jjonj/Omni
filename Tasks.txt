@@ -34,7 +34,7 @@ If necessary you may use AISpeak to ask the user for help/clarifications.
 ### Remote Control Screen
 
 
-Replace the "kbd" text wit
+✅ Replace the "kbd" text wit
 
 
 Stream PC monitor, replacing background of the trackpad leaving the trackpad functioning still, options to toggle monitor, pinch to zoom, (advanced feature, do last)       
