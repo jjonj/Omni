@@ -60,8 +60,9 @@ builder.Services.AddSingleton<CommandDispatcher>(provider => {
     var audioService = provider.GetRequiredService<AudioService>();
     var processService = provider.GetRequiredService<ProcessService>();
     var shutdownService = provider.GetRequiredService<ShutdownService>();
+    var settingsService = provider.GetRequiredService<HubSettingsService>();
     var appLifetime = provider.GetRequiredService<IHostApplicationLifetime>();
-    return new CommandDispatcher(inputService, fileService, audioService, processService, shutdownService, appLifetime);
+    return new CommandDispatcher(inputService, fileService, audioService, processService, shutdownService, settingsService, appLifetime);
 });
 builder.Services.AddSingleton<ProcessService>();
 builder.Services.AddSingleton<AiCliService>();
@@ -72,6 +73,7 @@ builder.Services.AddSingleton<InputService>(provider =>
     return new InputService(logger, keyboardHook);
 });
 builder.Services.AddSingleton<AudioService>();
+builder.Services.AddSingleton<HubSettingsService>();
 builder.Services.AddSingleton<ShutdownService>(provider =>
 {
     var logger = provider.GetRequiredService<ILogger<ShutdownService>>();

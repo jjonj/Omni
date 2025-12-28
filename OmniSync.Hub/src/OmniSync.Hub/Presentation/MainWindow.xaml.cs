@@ -5,6 +5,7 @@ using System.Runtime.CompilerServices;
 using System.Windows.Threading; // For Dispatcher
 using OmniSync.Hub.Logic.Monitoring; // For HubMonitorService
 using System; // For Environment.NewLine
+using System.Linq;
 using OmniSync.Hub.Infrastructure.Services; // Add this using directive
 using OmniSync.Hub.Logic.Services;
 using Microsoft.Win32; // Added for Registry access
@@ -19,6 +20,7 @@ namespace OmniSync.Hub.Presentation
         private readonly InputService _inputService; // Add InputService
         private readonly ShutdownService _shutdownService;
         private readonly RegistryService _registryService;
+        private readonly HubSettingsService _settingsService;
         private const string AppName = "OmniSync Hub";
 
         private int _shutdownIndex = 0;
@@ -28,19 +30,23 @@ namespace OmniSync.Hub.Presentation
         private readonly DispatcherTimer _longPressTimer;
         private bool _isLongPress = false;
 
-        public MainWindow(HubMonitorService hubMonitorService, InputService inputService, ShutdownService shutdownService, RegistryService registryService) // Add ShutdownService
+        public MainWindow(HubMonitorService hubMonitorService, InputService inputService, ShutdownService shutdownService, RegistryService registryService, HubSettingsService settingsService) // Add ShutdownService
         {
             InitializeComponent();
             _hubMonitorService = hubMonitorService;
             _inputService = inputService; // Assign InputService
             _shutdownService = shutdownService;
             _registryService = registryService;
+            _settingsService = settingsService;
             this.DataContext = _hubMonitorService; // Set DataContext to the HubMonitorService
 
             // Subscribe to HubMonitorService events
             _hubMonitorService.LogEntryAdded += HubMonitorService_LogEntryAdded;
             _shutdownService.ShutdownScheduled += ShutdownService_ShutdownScheduled;
             _shutdownService.ModeChanged += (s, mode) => UpdateShutdownButtonLabel(_shutdownService.GetScheduledTime());
+
+            // Initial load for ExeMappings
+            RefreshMappingsGrid();
 
             // Initialize UI elements with current data from HubMonitorService
             // ConnectionsListBox is bound directly to ActiveConnections in XAML and ObservableCollection handles updates
@@ -190,6 +196,37 @@ namespace OmniSync.Hub.Presentation
             _shutdownIndex = (_shutdownIndex + 1) % _shutdownTimes.Length;
             int minutes = _shutdownTimes[_shutdownIndex];
             _shutdownService.ScheduleShutdown(minutes);
+        }
+
+        private void AddMappingButton_Click(object sender, RoutedEventArgs e)
+        {
+            var key = NewMappingKeyTextBox.Text?.Trim();
+            var path = NewMappingPathTextBox.Text?.Trim();
+
+            if (string.IsNullOrEmpty(key) || string.IsNullOrEmpty(path))
+            {
+                MessageBox.Show("Please enter both a key and a full path.", "Missing Data", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            _settingsService.AddMapping(key, path);
+            NewMappingKeyTextBox.Clear();
+            NewMappingPathTextBox.Clear();
+            RefreshMappingsGrid();
+        }
+
+        private void DeleteMappingButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is FrameworkElement element && element.DataContext is System.Collections.Generic.KeyValuePair<string, string> mapping)
+            {
+                _settingsService.RemoveMapping(mapping.Key);
+                RefreshMappingsGrid();
+            }
+        }
+
+        private void RefreshMappingsGrid()
+        {
+            ExeMappingsGrid.ItemsSource = _settingsService.Settings.ExeMappings.ToList();
         }
     }
 }

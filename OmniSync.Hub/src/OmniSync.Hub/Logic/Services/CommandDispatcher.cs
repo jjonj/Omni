@@ -14,18 +14,20 @@ namespace OmniSync.Hub.Logic.Services
         private readonly AudioService _audioService; // Inject AudioService
         private readonly ProcessService _processService; // Inject ProcessService
         private readonly ShutdownService _shutdownService;
+        private readonly HubSettingsService _settingsService;
         private readonly IHostApplicationLifetime _appLifetime;
         private readonly Dictionary<string, Action<JsonElement>> _commandMap;
 
         public event EventHandler<string>? AddCleanupPatternRequested;
 
-        public CommandDispatcher(InputService inputService, FileService fileService, AudioService audioService, ProcessService processService, ShutdownService shutdownService, IHostApplicationLifetime appLifetime) // Add AudioService and ProcessService to constructor
+        public CommandDispatcher(InputService inputService, FileService fileService, AudioService audioService, ProcessService processService, ShutdownService shutdownService, HubSettingsService settingsService, IHostApplicationLifetime appLifetime) // Add AudioService and ProcessService to constructor
         {
             _inputService = inputService;
             _fileService = fileService;
             _audioService = audioService; // Assign AudioService
             _processService = processService; // Assign ProcessService
             _shutdownService = shutdownService;
+            _settingsService = settingsService;
             _appLifetime = appLifetime;
             _commandMap = new Dictionary<string, Action<JsonElement>>
             {
@@ -45,12 +47,24 @@ namespace OmniSync.Hub.Logic.Services
                 { "APPEND_NOTE", payload => _fileService.AppendToFile(payload.GetProperty("filename").GetString(), payload.GetProperty("content").GetString()) },
                 { "SAVE_FILE", payload => _fileService.WriteBrowseFile(payload.GetProperty("Path").GetString(), payload.GetProperty("Content").GetString()) },
                 { "OPEN_ON_PC", payload => {
-                    var path = payload.GetProperty("Path").GetString();
+                    string? path = null;
+                    if (payload.TryGetProperty("Exe", out var exeProp)) {
+                        var exeKey = exeProp.GetString();
+                        if (!string.IsNullOrEmpty(exeKey)) {
+                            path = _settingsService.GetPath(exeKey);
+                            if (string.IsNullOrEmpty(path)) {
+                                Console.WriteLine($"Warning: No path mapping found for Exe key: {exeKey}");
+                            }
+                        }
+                    } else if (payload.TryGetProperty("Path", out var pathProp)) {
+                        path = pathProp.GetString();
+                    }
+
                     if (!string.IsNullOrEmpty(path)) {
                         try {
                             System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(path) { UseShellExecute = true });
                         } catch (Exception ex) {
-                            Console.WriteLine($"Error opening file on PC: {ex.Message}");
+                            Console.WriteLine($"Error opening on PC: {ex.Message}");
                         }
                     }
                 }},
