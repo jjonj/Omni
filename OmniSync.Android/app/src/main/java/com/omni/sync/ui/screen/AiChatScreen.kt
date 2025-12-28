@@ -340,23 +340,12 @@ fun QuickActionPanel(
 
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             ActionKeyButton(
-                text = if (isZoomed) "Unzoom" else "Zoom 5x",
+                text = if (isZoomed) "Unzoom" else "Zoom 1.5x",
                 modifier = Modifier.weight(1f),
                 onClick = { 
-                    coroutineScope.launch {
-                        signalRClient.sendKeyEvent("INPUT_KEY_DOWN", VK_CONTROL)
-                        if (!isZoomed) {
-                            repeat(20) { 
-                                signalRClient.sendPayload("MOUSE_SCROLL", mapOf("Delta" to 120))
-                                delay(10)
-                            }
-                        } else {
-                            repeat(20) { 
-                                signalRClient.sendPayload("MOUSE_SCROLL", mapOf("Delta" to -120))
-                                delay(10)
-                            }
-                        }
-                        signalRClient.sendKeyEvent("INPUT_KEY_UP", VK_CONTROL)
+                    if (selectedPid != -1) {
+                        val newLevel = if (!isZoomed) 1.5 else 1.0
+                        signalRClient.setAiZoom(selectedPid, newLevel)
                         isZoomed = !isZoomed
                     }
                 }

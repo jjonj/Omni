@@ -402,6 +402,12 @@ class SignalRClient(
         }
     }
 
+    fun setAiZoom(pid: Int, level: Double) {
+        if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
+            hubConnection?.send("SetAiZoom", pid, level)
+        }
+    }
+
     fun startCliAtWorkspace(path: String) {
         if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
             hubConnection?.send("StartCliAtWorkspace", path)

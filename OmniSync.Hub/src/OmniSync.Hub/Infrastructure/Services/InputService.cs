@@ -315,6 +315,29 @@ namespace OmniSync.Hub.Infrastructure.Services
             SendKeyPress(volumeKeyCode);
         }
 
+        public void SetZoom(bool zoomIn)
+        {
+            const ushort VK_CONTROL = 0x11;
+            const int WHEEL_DELTA = 120;
+            int delta = zoomIn ? WHEEL_DELTA : -WHEEL_DELTA;
+
+            _logger.LogInformation($"[InputService] Performing Zoom {(zoomIn ? "In" : "Out")} (delta: {delta})");
+
+            KeyDown(VK_CONTROL);
+            // Small delay to ensure CTRL is registered
+            Thread.Sleep(50);
+            
+            // Perform 5 "notches" of zoom for a noticeable effect
+            for (int i = 0; i < 5; i++)
+            {
+                MouseScroll(delta);
+                Thread.Sleep(10);
+            }
+            
+            Thread.Sleep(50);
+            KeyUp(VK_CONTROL);
+        }
+
         private void SendInputWithLogging(INPUT[] inputs)
         {
             uint successfulEvents = SendInput((uint)inputs.Length, inputs, INPUT.Size);

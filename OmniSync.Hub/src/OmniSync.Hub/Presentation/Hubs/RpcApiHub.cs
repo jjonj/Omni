@@ -731,6 +731,18 @@ namespace OmniSync.Hub.Presentation.Hubs
             }
         }
 
+        public async Task SetAiZoom(int pid, double level)
+        {
+            if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
+            {
+                _logger.LogInformation($"[RpcApiHub] SetAiZoom: {pid} -> {level}");
+                AnyCommandReceived?.Invoke(this, $"SetAiZoom: {level}");
+                
+                // Emulate hardware zoom (Ctrl + Scroll)
+                _inputService.SetZoom(level > 1.0);
+            }
+        }
+
         public async Task ReceiveAiSessions(List<int> pids)
         {
             if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
