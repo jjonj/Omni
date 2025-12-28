@@ -29,11 +29,22 @@ def list_devices():
 
 
 def connect():
+    # Try connecting to default IP first
+    default_target = f"{PHONE_IP}:5555"
+    print(f"Attempting to connect to {default_target}...")
+    run(["adb", "connect", default_target], check=False)
+
     devices = list_devices()
     if devices:
+        # If we connected to the default target, return it
+        if default_target in devices:
+            print(f"Connected: {default_target}")
+            return default_target
+        # Otherwise return the first available device
         print(f"Already connected: {devices[0]}")
         return devices[0]
 
+    print(f"Could not connect to {default_target}. Falling back to manual pairing.")
     pairing_port = input("Pairing port: ").strip()
     pairing_code = input("Pairing code: ").strip()
     connect_port = input("Connect port: ").strip()  # Prompt for connect port
