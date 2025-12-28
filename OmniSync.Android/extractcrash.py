@@ -69,9 +69,9 @@ def capture_crash(device):
     print("Monitoring for crashes...")
 
     # We use -v threadtime to get PIDs and timestamps. 
-    # We use *:E to capture ALL errors, ensuring we don't miss part of the stack trace.
+    # We filter by package name to only get relevant logs.
     proc = subprocess.Popen(
-        ["adb", "-s", device, "logcat", "-v", "threadtime", "*:E"],
+        ["adb", "-s", device, "logcat", "-v", "threadtime", "--package", PACKAGE],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,

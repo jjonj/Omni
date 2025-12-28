@@ -56,10 +56,17 @@ class AlarmService : Service(), android.content.SharedPreferences.OnSharedPrefer
         private val _isSnoozing = MutableStateFlow(false)
         val isSnoozing: StateFlow<Boolean> = _isSnoozing
 
-        fun stopAlarm(context: Context, alarmId: Int = 0) {
+        var lastTriggeredAlarmId: Int = 0
+        var lastTriggeredAlarmRepeating: Boolean = false
+
+        fun stopAlarm(context: Context, alarmId: Int = 0, repeatDaily: Boolean? = null) {
             val intent = Intent(context, AlarmService::class.java).apply {
                 action = ACTION_DISMISS
-                putExtra("ALARM_ID", alarmId)
+                // If alarmId is provided, use it, otherwise fallback to last triggered
+                val finalId = if (alarmId != 0) alarmId else lastTriggeredAlarmId
+                val finalRepeating = repeatDaily ?: lastTriggeredAlarmRepeating
+                putExtra("ALARM_ID", finalId)
+                putExtra("REPEAT_DAILY", finalRepeating)
             }
             context.startService(intent)
         }
@@ -103,11 +110,20 @@ class AlarmService : Service(), android.content.SharedPreferences.OnSharedPrefer
         if (intentAlarmId != 0) {
             currentAlarmId = intentAlarmId
         }
+        
+        // Extract Repeat Daily early so handleDismiss knows about it
+        if (intent != null && intent.hasExtra("REPEAT_DAILY")) {
+            repeatDaily = intent.getBooleanExtra("REPEAT_DAILY", false)
+        }
 
         if (intent?.action == ACTION_DISMISS) {
             handleDismiss()
             return START_NOT_STICKY
         }
+
+        // Store for global dismissal (e.g. from notification or overlay)
+        lastTriggeredAlarmId = currentAlarmId
+        lastTriggeredAlarmRepeating = repeatDaily
 
         // Extract Alarm Data (for starting)
         currentSoundId = intent?.getStringExtra("SOUND_ID") ?: "gentle"
@@ -294,6 +310,7 @@ class AlarmService : Service(), android.content.SharedPreferences.OnSharedPrefer
         val dismissIntent = Intent(this, AlarmService::class.java).apply { 
             action = ACTION_DISMISS 
             putExtra("ALARM_ID", currentAlarmId)
+            putExtra("REPEAT_DAILY", repeatDaily)
         }
         val pendingDismiss = PendingIntent.getService(this, currentAlarmId, dismissIntent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
 

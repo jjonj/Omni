@@ -17,8 +17,7 @@ If necessary you may use AISpeak to ask the user for help/clarifications.
 
 ## General
 
-✅ Improve the color change for background on connected/disconnected, it seems to turn more red when connected and black when disconnected, should be opposite. Also it should apply more broadly not just navigation bar.
-
+✅ ✅ The disconnected red color background is too strong, make it darker
 
 
 ## For the hub
@@ -30,8 +29,7 @@ If necessary you may use AISpeak to ask the user for help/clarifications.
 
 ### Dashboard
 
-
-✅ adb log button doesnt do anything other than add a log message 
+✅ Adb log button should filter by com.omni.sync
 
 ### Remote Control Screen
 
@@ -43,137 +41,27 @@ Stream PC monitor, replacing background of the trackpad leaving the trackpad fun
 
 ### Files & Video Screen
 
-When typing in text editor the vertical scroll will jump when the cursor is on screen but not when it's not on screen which is opposite of west would happen, it also only jumps when using swiftkey swype to insert words so something weird is definitely going on. Make sure the auto scrolling also scrolls if cursor behind keyboard 
+✅ The jump/scroll to cursor when typng out of view is not working right, on the text editor screen, add a temporary panel that twice displays the currently visible line numbers, once accounting for keyboard and once not accounting for android keyboard as well as the current cursor line number, for debugging purposes and then only scroll/jump when typing and the cursor is outside the visible line numbers
+
+✅ On folder view, Recent changes made the bottom bar with bookmarks hover too far above the navigation bar. fix that
 
 
 it also auto sceolls when placing the cursor but it should not as by definition the cursor place location is in view 
 
 ✅ In text editor we want to hook into the select popup to add options like itallic *x* and bold **x**, see here 
 In Android, that popup is called the **Selection Action Mode**.
+Above works but
+✅ 1. the menu is right on top of the selected text, it needs to be below or above (depending on where there is space). 
+✅ 2. When attempting to dismiss the menu by  tapping elsewhere it disappears only for 1 frame and then reappears, probably because the previous text is still selected (should also be deselected)
 
-There are two ways to approach this depending on what you want to achieve:
-1.  **Internal:** Adding options that only appear when text is selected **inside your app**.
-2.  **System-wide:** Making your app appear as an option when text is selected **in any app** (like how Google Translate or Map searches work).
 
----
+### Browser control screen 
 
-### 1. Adding options inside your own app (TextView/EditText)
-If you are using standard Android XML views, you use the `setCustomSelectionActionModeCallback` method.
 
-#### Step 1: Create a menu resource
-Create a file in `res/menu/custom_selection_menu.xml`:
-```xml
-<menu xmlns:android="http://schemas.android.com/apk/res/android">
-    <item
-        android:id="@+id/menu_summarize"
-        android:title="Summarize"
-        android:showAsAction="ifRoom" />
-</menu>
-```
-
-#### Step 2: Implement the Callback in your Activity/Fragment
-```kotlin
-val textView = findViewById<TextView>(R.id.myTextView)
-
-textView.customSelectionActionModeCallback = object : ActionMode.Callback {
-    override fun onCreateActionMode(mode: ActionMode?, menu: Menu?): Boolean {
-        // Inflate your custom menu into the selection menu
-        mode?.menuInflater?.inflate(R.menu.custom_selection_menu, menu)
-        return true
-    }
-
-    override fun onPrepareActionMode(mode: ActionMode?, menu: Menu?): Boolean {
-        return false // Return false if nothing is changed
-    }
-
-    override fun onActionItemClicked(mode: ActionMode?, item: MenuItem?): Boolean {
-        return when (item?.itemId) {
-            R.id.menu_summarize -> {
-                // Get the selected text
-                val min = textView.selectionStart
-                val max = textView.selectionEnd
-                val selectedText = textView.text.substring(min, max)
-                
-                // Do something with the text
-                Toast.makeText(applicationContext, "Summarizing: $selectedText", Toast.LENGTH_SHORT).show()
-                
-                mode?.finish() // Close the menu
-                true
-            }
-            else -> false
-        }
-    }
-
-    override fun onDestroyActionMode(mode: ActionMode?) {}
-}
-```
-
----
-
-### 2. Adding options in Jetpack Compose
-If you are using Jetpack Compose, you need to override the `TextToolbar`.
-
-```kotlin
-val clipboardManager = LocalClipboardManager.current
-val textToolbar = LocalTextToolbar.current
-
-CompositionLocalProvider(
-    LocalTextToolbar provides CustomTextToolbar(textToolbar) { 
-        // Logic for your custom button
-    }
-) {
-    SelectionContainer {
-        Text("Select me to see custom options")
-    }
-}
-```
-*(Note: Implementing a custom `TextToolbar` in Compose is slightly more boilerplate-heavy as you have to wrap the existing system toolbar and add your items to the list of `ActionCallback`.)*
-
----
-
-### 3. Adding your app to the "System" Menu (Everywhere)
-If you want your app to show up when a user selects text in **Chrome, WhatsApp, or any other app**, you use an **Intent Filter** in your `AndroidManifest.xml`.
-
-Android provides a specific action for this called `PROCESS_TEXT`.
-
-#### Step 1: Update AndroidManifest.xml
-```xml
-<activity android:name=".ProcessTextActivity" android:label="My App Option">
-    <intent-filter>
-        <action android:name="android.intent.action.PROCESS_TEXT" />
-        <category android:name="android.intent.category.DEFAULT" />
-        <data android:mimeType="text/plain" />
-    </intent-filter>
-</activity>
-```
-
-#### Step 2: Handle the text in that Activity
-When the user clicks your app name in that menu, your activity will open (often as a small dialog or transparent window).
-```kotlin
-override fun onCreate(savedInstanceState: Bundle?) {
-    super.onCreate(savedInstanceState)
-
-    val selectedText = intent.getCharSequenceExtra(Intent.EXTRA_PROCESS_TEXT)
-    val isReadOnly = intent.getBooleanExtra(Intent.EXTRA_PROCESS_TEXT_READONLY, false)
-
-    // Process the text...
-
-    // If you want to replace the text (only works in EditTexts):
-    val resultIntent = Intent()
-    resultIntent.putExtra(Intent.EXTRA_PROCESS_TEXT, "Replacement Text")
-    setResult(RESULT_OK, resultIntent)
-    finish()
-}
-```
-
-### Summary
-*   **`setCustomSelectionActionModeCallback`**: Use this to add "In-App" features (like "Apply Bold" or "Send to Internal Database").
-*   **`PROCESS_TEXT` Intent**: Use this to make your app a tool for the entire OS (like a "Dictionary" or "Translator" app).
-
-✅ ### Browser control screen 
-
-Add mini trackpad in bottom right (copy remote control ) 
-Add button panel similar to remote control screen with buttons kbd, arrows, space, esc, backspace, enter 
+✅ Input controls area takes up too much space vertically, make it 30% smaller. 
+✅ Advanced actions  panel can be compressed with less padding/spacing and very slightly thinner buttons, make it like the button panel
+✅ Merge the browser buttons below the url bar into the button panel
+✅ Make the boomark current tap a small icon to the right of url button like the current paste and go button
 
 ### Notification panel
 	   
@@ -184,15 +72,12 @@ Use better widget icons somehow, either let user choose or be smart
 
 ### Settings screen (accessed by button on dashboard, not bottom panel)
 
-✅ ### AI screen
+### AI screen
 
-make it clear that we are disconnected, disable buttons, but make sure reconnect reenables
+✅ make it clear that we are disconnected, disable buttons, but make sure reconnect reenables
 
 
-Add button to set/toggle text zoom level to 5x (currently text zoom can be set with ctrol scrollwheel so investigate how that works) 
+✅ Add button to set/toggle text zoom level to 5x (currently text zoom can be set with ctrol scrollwheel so investigate how that works) 
 
 ### Alarm screen
-
-
-✅ Dismissing alarm from notification doesn't work. 
-✅ The dismiss alarm popup on alarm screen should stop sound
+✅ Dismissing alarm from notification doesnt disable the alarm and it pops again after snoozze duration. unlike the other dismiss button on alarm screen which works fine.  Why arent these two calling the same function?

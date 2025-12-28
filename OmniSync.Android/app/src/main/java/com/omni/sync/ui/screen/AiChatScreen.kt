@@ -32,6 +32,7 @@ import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Edit
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 import com.omni.sync.utils.WindowsKeyCodes.VK_CONTROL
 import com.omni.sync.utils.WindowsKeyCodes.VK_DOWN
 import com.omni.sync.utils.WindowsKeyCodes.VK_ESCAPE
@@ -279,6 +280,8 @@ fun QuickActionPanel(
     selectedPid: Int,
     isConnected: Boolean
 ) {
+    var isZoomed by remember { mutableStateOf(false) }
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -337,6 +340,33 @@ fun QuickActionPanel(
 
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             FilledTonalButton(
+                onClick = { 
+                    coroutineScope.launch {
+                        signalRClient.sendKeyEvent("INPUT_KEY_DOWN", VK_CONTROL)
+                        if (!isZoomed) {
+                            repeat(20) { 
+                                signalRClient.sendPayload("MOUSE_SCROLL", mapOf("Delta" to 120))
+                                delay(10)
+                            }
+                        } else {
+                            repeat(20) { 
+                                signalRClient.sendPayload("MOUSE_SCROLL", mapOf("Delta" to -120))
+                                delay(10)
+                            }
+                        }
+                        signalRClient.sendKeyEvent("INPUT_KEY_UP", VK_CONTROL)
+                        isZoomed = !isZoomed
+                    }
+                },
+                modifier = Modifier.weight(1f).height(40.dp),
+                shape = RoundedCornerShape(8.dp),
+                contentPadding = PaddingValues(0.dp),
+                enabled = isConnected
+            ) {
+                Text(if (isZoomed) "Unzoom" else "Zoom 5x", fontSize = 12.sp)
+            }
+
+            FilledTonalButton(
                 onClick = { signalRClient.clearAiMessages(if (selectedPid != -1) selectedPid else null) },
                 modifier = Modifier.weight(1f).height(40.dp),
                 shape = RoundedCornerShape(8.dp),
@@ -345,7 +375,7 @@ fun QuickActionPanel(
             ) {
                 Icon(Icons.Default.Delete, null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(4.dp))
-                Text("Clear Chat", fontSize = 12.sp)
+                Text("Clear", fontSize = 12.sp)
             }
             
             FilledTonalButton(
@@ -357,9 +387,8 @@ fun QuickActionPanel(
             ) {
                 Icon(imageVector = Icons.Default.Cached, contentDescription = "Reload History", modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(4.dp))
-                Text("Reload History", fontSize = 12.sp)
+                Text("History", fontSize = 12.sp)
             }
-            Spacer(modifier = Modifier.weight(1f))
         }
     }
 }

@@ -136,63 +136,30 @@ fun BrowserControlScreen(
                 )
             )
 
+            IconButton(onClick = { viewModel.bookmarkCurrentTab() }) {
+                Icon(Icons.Default.Star, "Bookmark", tint = MaterialTheme.colorScheme.secondary)
+            }
+
             IconButton(onClick = { viewModel.loadUrlFromClipboard(context) }) {
                 Icon(Icons.Default.ContentPasteGo, "Paste & Go", tint = MaterialTheme.colorScheme.primary)
             }
         }
 
-        Spacer(modifier = Modifier.height(12.dp))
-
-        // --- 2. Navigation Controls ---
         Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.End
         ) {
-            Row {
-                IconButton(onClick = { viewModel.sendCommand("Back") }) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back")
-                }
-                IconButton(onClick = { viewModel.sendCommand("Refresh") }) {
-                    Icon(Icons.Default.Refresh, "Refresh")
-                }
-                IconButton(onClick = { viewModel.sendCommand("Forward") }) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowForward, "Forward")
-                }
-                IconButton(onClick = { viewModel.sendCommand("CloseTab") }) {
-                    Icon(Icons.Default.Close, "Close Tab", tint = MaterialTheme.colorScheme.error)
-                }
-                IconButton(onClick = { viewModel.sendSpacebar() }) {
-                    Icon(Icons.Default.SpaceBar, "Spacebar")
-                }
-                IconButton(onClick = { viewModel.toggleMedia() }) {
-                    Icon(Icons.Default.PlayArrow, "Play/Pause Media", tint = MaterialTheme.colorScheme.primary)
-                }
-            }
-
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("New Tab", style = MaterialTheme.typography.bodySmall)
-                Switch(
-                    checked = openInNewTab,
-                    onCheckedChange = { viewModel.toggleNewTab(it) },
-                    modifier = Modifier.graphicsLayer(scaleX = 0.8f, scaleY = 0.8f)
-                )
-            }
-        }
-        
-        Button(
-            onClick = { viewModel.bookmarkCurrentTab() },
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(8.dp)
-        ) {
-            Icon(Icons.Default.Star, null, modifier = Modifier.size(18.dp))
-            Spacer(Modifier.width(8.dp))
-            Text("Bookmark Current Tab")
+            Text("New Tab", style = MaterialTheme.typography.bodySmall)
+            Switch(
+                checked = openInNewTab,
+                onCheckedChange = { viewModel.toggleNewTab(it) },
+                modifier = Modifier.graphicsLayer(scaleX = 0.7f, scaleY = 0.7f)
+            )
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
         HorizontalDivider()
-        Spacer(modifier = Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(4.dp))
 
         // --- 4. Bookmarks List ---
         Text(
@@ -221,95 +188,47 @@ fun BrowserControlScreen(
         
         // --- 5. Advanced Actions ---
         HorizontalDivider()
-        Spacer(modifier = Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(4.dp))
         Text(
             text = "Advanced Actions",
-            style = MaterialTheme.typography.titleMedium,
+            style = MaterialTheme.typography.titleSmall,
             color = MaterialTheme.colorScheme.secondary
         )
-        Spacer(modifier = Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(4.dp))
         
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             // 1. Open Current Tab on Phone
-            OutlinedButton(
-                onClick = { viewModel.openCurrentTabOnPhone() },
-                modifier = Modifier.weight(1f),
-                shape = RoundedCornerShape(8.dp),
-                contentPadding = PaddingValues(horizontal = 8.dp)
-            ) {
-                Text("🌐→📱", fontSize = 16.sp)
-            }
-            
+            ActionKeyButton(text = "🌐→📱", modifier = Modifier.weight(1f)) { viewModel.openCurrentTabOnPhone() }
             // 2. Latest YT to Phone
-            OutlinedButton(
-                onClick = { viewModel.sendLatestYouTubeToPhone() },
-                modifier = Modifier.weight(1f),
-                shape = RoundedCornerShape(8.dp),
-                contentPadding = PaddingValues(horizontal = 8.dp)
-            ) {
-                Text("▶↺📱", fontSize = 16.sp)
-            }
-
+            ActionKeyButton(text = "▶↺📱", modifier = Modifier.weight(1f)) { viewModel.sendLatestYouTubeToPhone() }
             // 3. Latest YT on PC
-            OutlinedButton(
-                onClick = { viewModel.openLatestYouTubeOnPC() },
-                modifier = Modifier.weight(1f),
-                shape = RoundedCornerShape(8.dp),
-                contentPadding = PaddingValues(horizontal = 8.dp)
-            ) {
-                Text("▶↺🌐", fontSize = 16.sp)
-            }
+            ActionKeyButton(text = "▶↺🌐", modifier = Modifier.weight(1f)) { viewModel.openLatestYouTubeOnPC() }
         }
 
-        Spacer(modifier = Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(4.dp))
 
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             // 1. Clean Tabs
-            OutlinedButton(
-                onClick = { viewModel.sendCommand("CleanTabs") },
-                shape = RoundedCornerShape(8.dp),
-                contentPadding = PaddingValues(horizontal = 12.dp)
-            ) {
-                Icon(Icons.Default.CleaningServices, null, modifier = Modifier.size(20.dp))
-            }
+            ActionKeyButton(icon = Icons.Default.CleaningServices, modifier = Modifier.weight(0.5f)) { viewModel.sendCommand("CleanTabs") }
             
             // 2. Tab List
-            OutlinedButton(
-                onClick = { 
-                    showTabList = !showTabList
-                    if (showTabList) viewModel.requestTabList()
-                },
-                modifier = Modifier.weight(1f),
-                shape = RoundedCornerShape(8.dp)
-            ) {
-                Icon(Icons.AutoMirrored.Filled.List, null, modifier = Modifier.size(18.dp))
-                Spacer(Modifier.width(8.dp))
-                Text("Tab List")
+            ActionKeyButton(text = "Tab List", icon = Icons.AutoMirrored.Filled.List, modifier = Modifier.weight(1f)) { 
+                showTabList = !showTabList
+                if (showTabList) viewModel.requestTabList()
             }
 
             // 3. Add current tab to cleanup
-            OutlinedButton(
-                onClick = { viewModel.addCurrentTabToCleanup() },
-                shape = RoundedCornerShape(8.dp)
-            ) {
-                Icon(Icons.Default.Add, "Add current to cleanup")
-            }
+            ActionKeyButton(icon = Icons.Default.Add, modifier = Modifier.weight(0.5f)) { viewModel.addCurrentTabToCleanup() }
             
             // 4. Show patterns
-            OutlinedButton(
-                onClick = { showCleanupPatterns = !showCleanupPatterns },
-                shape = RoundedCornerShape(8.dp)
-            ) {
-                Icon(
-                    if (showCleanupPatterns) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                    "Show patterns"
-                )
+            ActionKeyButton(icon = if (showCleanupPatterns) Icons.Default.ExpandLess else Icons.Default.ExpandMore, modifier = Modifier.weight(0.5f)) {
+                showCleanupPatterns = !showCleanupPatterns
             }
         }
         
@@ -452,88 +371,74 @@ fun BrowserControlScreen(
                 }
             }
         }
-        Spacer(modifier = Modifier.height(8.dp))
-        BrowserInputControls(signalRClient)
+        Spacer(modifier = Modifier.height(4.dp))
+        BrowserInputControls(signalRClient, viewModel)
     }
 }
 
 @Composable
-fun BrowserInputControls(signalRClient: SignalRClient?) {
+fun BrowserInputControls(signalRClient: SignalRClient?, viewModel: BrowserViewModel) {
     if (signalRClient == null) return
     val focusRequester = remember { FocusRequester() }
     val keyboardController = LocalSoftwareKeyboardController.current
 
-    Column(modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
+    Column(modifier = Modifier.fillMaxWidth().padding(top = 4.dp)) {
         HorizontalDivider()
-        Text(
-            text = "Input Controls",
-            style = MaterialTheme.typography.titleMedium,
-            color = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.padding(vertical = 8.dp)
-        )
-
+        
         // Hidden input for keyboard
         BrowserHiddenKeyboard(signalRClient, focusRequester)
 
         Row(
             modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            // Buttons Column
+            // Left Side: Buttons Column
             Column(
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.weight(1.3f),
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                // Row 1: Kbd, Esc, Backspace
+                // Row 1: Back, Refresh, Forward, Close
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                     ActionKeyButton(text = "Kbd", modifier = Modifier.weight(1f)) {
-                         focusRequester.requestFocus()
-                         keyboardController?.show()
-                     }
-                     ActionKeyButton(text = "Esc", modifier = Modifier.weight(1f)) {
-                         signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_ESCAPE)
-                     }
-                     ActionKeyButton(icon = Icons.AutoMirrored.Filled.KeyboardBackspace, modifier = Modifier.weight(1f)) {
-                         signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_BACK)
-                     }
+                    ActionKeyButton(icon = Icons.AutoMirrored.Filled.ArrowBack, modifier = Modifier.weight(1f)) { viewModel.sendCommand("Back") }
+                    ActionKeyButton(icon = Icons.Default.Refresh, modifier = Modifier.weight(1f)) { viewModel.sendCommand("Refresh") }
+                    ActionKeyButton(icon = Icons.AutoMirrored.Filled.ArrowForward, modifier = Modifier.weight(1f)) { viewModel.sendCommand("Forward") }
+                    ActionKeyButton(icon = Icons.Default.Close, modifier = Modifier.weight(1f)) { viewModel.sendCommand("CloseTab") }
                 }
                 
-                // Row 2: Space, Enter
+                // Row 2: Space, Play/Pause, Kbd
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                     ActionKeyButton(text = "Space", modifier = Modifier.weight(1.5f)) {
-                         signalRClient.sendText(" ")
-                     }
-                     ActionKeyButton(icon = Icons.AutoMirrored.Filled.KeyboardReturn, modifier = Modifier.weight(1f)) {
-                         signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_RETURN)
-                     }
+                    ActionKeyButton(icon = Icons.Default.SpaceBar, modifier = Modifier.weight(1f)) { viewModel.sendSpacebar() }
+                    ActionKeyButton(icon = Icons.Default.PlayArrow, modifier = Modifier.weight(1f)) { viewModel.toggleMedia() }
+                    ActionKeyButton(icon = Icons.Default.Keyboard, modifier = Modifier.weight(1f)) {
+                        focusRequester.requestFocus()
+                        keyboardController?.show()
+                    }
                 }
 
-                // Row 3: Arrows
+                // Row 3: Esc, Backspace, Enter
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                     ActionKeyButton(icon = Icons.AutoMirrored.Filled.ArrowBack, modifier = Modifier.weight(1f)) {
-                         signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_LEFT)
-                     }
-                     Column(modifier = Modifier.weight(1f)) {
-                        ActionKeyButton(icon = Icons.Default.KeyboardArrowUp, modifier = Modifier.fillMaxWidth().height(20.dp)) {
-                            signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_UP)
-                        }
-                        ActionKeyButton(icon = Icons.Default.KeyboardArrowDown, modifier = Modifier.fillMaxWidth().height(20.dp)) {
-                            signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_DOWN)
-                        }
-                     }
-                     ActionKeyButton(icon = Icons.AutoMirrored.Filled.ArrowForward, modifier = Modifier.weight(1f)) {
-                         signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_RIGHT)
-                     }
+                    ActionKeyButton(text = "Esc", modifier = Modifier.weight(1f)) { signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_ESCAPE) }
+                    ActionKeyButton(icon = Icons.AutoMirrored.Filled.KeyboardBackspace, modifier = Modifier.weight(1f)) { signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_BACK) }
+                    ActionKeyButton(icon = Icons.AutoMirrored.Filled.KeyboardReturn, modifier = Modifier.weight(1f)) { signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_RETURN) }
+                }
+
+                // Row 4: Arrows
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    ActionKeyButton(icon = Icons.AutoMirrored.Filled.ArrowBack, modifier = Modifier.weight(1f)) { signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_LEFT) }
+                    Column(modifier = Modifier.weight(1f)) {
+                        ActionKeyButton(icon = Icons.Default.KeyboardArrowUp, modifier = Modifier.fillMaxWidth().height(18.dp)) { signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_UP) }
+                        ActionKeyButton(icon = Icons.Default.KeyboardArrowDown, modifier = Modifier.fillMaxWidth().height(18.dp)) { signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_DOWN) }
+                    }
+                    ActionKeyButton(icon = Icons.AutoMirrored.Filled.ArrowForward, modifier = Modifier.weight(1f)) { signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_RIGHT) }
                 }
             }
 
-            // Mini Trackpad
+            // Right Side: Mini Trackpad
             MiniTrackpad(
                 signalRClient = signalRClient,
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxHeight()
-                    .aspectRatio(1f)
             )
         }
     }

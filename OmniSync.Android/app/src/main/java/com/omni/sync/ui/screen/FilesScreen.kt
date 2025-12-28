@@ -151,7 +151,9 @@ fun FilesScreen(
         bottomBar = {
             // --- Compact Bookmarks Area (Bottom, always visible) ---
             if (bookmarks.isNotEmpty()) {
-                Surface(tonalElevation = 2.dp) {
+                Surface(
+                    tonalElevation = 2.dp
+                ) {
                     Column {
                         HorizontalDivider()
                         Row(

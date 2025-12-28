@@ -12,4 +12,4 @@ val Pink40 = Color(0xFF7D5260)
 
 val DarkRed = Color(0xFF1A0000)
 val ReddishBlack = Color(0xFF0D0505)
-val DisconnectedBackground = Color(0xFF2B0B0B) // More visible dark red
+val DisconnectedBackground = Color(0xFF1A0505) // Darker red-black

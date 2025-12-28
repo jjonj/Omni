@@ -43,12 +43,14 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.platform.LocalTextToolbar
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.TextToolbar
 import androidx.compose.ui.platform.TextToolbarStatus
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.unit.IntOffset
 import kotlin.math.roundToInt
 
@@ -177,7 +179,8 @@ class EditorVisualTransformation(
 
 class CustomTextToolbar(
     val onBold: () -> Unit,
-    val onItalic: () -> Unit
+    val onItalic: () -> Unit,
+    val onHide: () -> Unit = {}
 ) : TextToolbar {
     var currentRect by mutableStateOf<Rect?>(null)
     var onCopy by mutableStateOf<(() -> Unit)?>(null)
@@ -204,7 +207,10 @@ class CustomTextToolbar(
     }
 
     override fun hide() {
-        visible = false
+        if (visible) {
+            visible = false
+            onHide()
+        }
     }
 }
 
@@ -213,11 +219,13 @@ fun CustomTextSelectionMenu(toolbar: CustomTextToolbar) {
     if (toolbar.visible && toolbar.currentRect != null) {
         val density = LocalDensity.current
         val rect = toolbar.currentRect!!
+        val screenHeight = LocalConfiguration.current.screenHeightDp.dp
         
-        // Calculate position (centered above selection)
-        // Note: Coordinates are relative to the root view
+        // Calculate position
+        // If there's space above (more than 150px), show above, otherwise below.
+        val showBelow = rect.top < 200
         val offsetX = rect.left
-        val offsetY = rect.top - 120 // Shift up
+        val offsetY = if (showBelow) rect.bottom + 20 else rect.top - 150 
         
         Popup(
             alignment = Alignment.TopStart,
@@ -227,7 +235,7 @@ fun CustomTextSelectionMenu(toolbar: CustomTextToolbar) {
         ) {
             Surface(
                 shape = RoundedCornerShape(8.dp),
-                shadowElevation = 4.dp,
+                shadowElevation = 8.dp,
                 color = MaterialTheme.colorScheme.surface,
                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
             ) {
@@ -308,6 +316,8 @@ fun TextEditorScreen(
     var showCloseAllDialog by remember { mutableStateOf(false) }
     var showGoToLineDialog by remember { mutableStateOf(false) }
     var goToLineInput by remember { mutableStateOf("") }
+    var showDebugPanel by remember { mutableStateOf(false) }
+    var viewportHeight by remember { mutableFloatStateOf(0f) }
     
     // Editor features state
     var wordWrap by remember { mutableStateOf(true) }
@@ -317,6 +327,7 @@ fun TextEditorScreen(
     var fontSize by remember { mutableFloatStateOf(14f) }
     var forceMarkdown by remember { mutableStateOf(false) }
     var currentTextLayoutResult by remember { mutableStateOf<androidx.compose.ui.text.TextLayoutResult?>(null) }
+    var lastText by remember { mutableStateOf(textFieldValue.text) }
     
     val verticalScrollState = rememberScrollState()
     val horizontalScrollState = rememberScrollState()
@@ -349,6 +360,11 @@ fun TextEditorScreen(
                     val newText = text.replaceRange(sel.start, sel.end, "_${selectedText}_")
                     filesViewModel.updateEditingContent(newText)
                     textFieldValue = textFieldValue.copy(text = newText, selection = TextRange(sel.start, sel.end + 2))
+                }
+            },
+            onHide = {
+                if (textFieldValue.selection.start != textFieldValue.selection.end) {
+                    textFieldValue = textFieldValue.copy(selection = TextRange(textFieldValue.selection.end))
                 }
             }
         )
@@ -392,6 +408,34 @@ fun TextEditorScreen(
         val lineTop = layout.getLineTop(visualLine)
         coroutineScope.launch {
             verticalScrollState.animateScrollTo(lineTop.toInt())
+        }
+    }
+
+    // Manual scroll-to-cursor logic for typing
+    LaunchedEffect(textFieldValue.text, textFieldValue.selection) {
+        val layout = currentTextLayoutResult ?: return@LaunchedEffect
+        
+        // Only trigger scroll if text actually changed (typing)
+        if (textFieldValue.text != lastText) {
+            lastText = textFieldValue.text
+            
+            val cursorOffset = textFieldValue.selection.end
+            val cursorLine = layout.getLineForOffset(cursorOffset)
+            val lineTop = layout.getLineTop(cursorLine)
+            val lineBottom = layout.getLineBottom(cursorLine)
+            
+            val scrollPos = verticalScrollState.value
+            // Use actual viewportHeight if available, fallback to estimate
+            val vHeight = if (viewportHeight > 0) viewportHeight else with(density) { 200.dp.toPx() } 
+            
+            if (lineTop < scrollPos) {
+                verticalScrollState.animateScrollTo(lineTop.toInt())
+            } else if (lineBottom > (scrollPos + vHeight)) {
+                verticalScrollState.animateScrollTo((lineBottom - vHeight).toInt())
+            }
+        } else {
+            // Just selection change (cursor placement) - do NOT scroll automatically
+            lastText = textFieldValue.text
         }
     }
 
@@ -612,6 +656,14 @@ fun TextEditorScreen(
                                         filesViewModel.setAutoSaveEnabled(!autoSaveEnabled)
                                         showMenu = false 
                                     }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(if (showDebugPanel) "Hide Debug Panel" else "Show Debug Panel") },
+                                    onClick = { 
+                                        showDebugPanel = !showDebugPanel
+                                        showMenu = false 
+                                    },
+                                    leadingIcon = { Icon(Icons.Default.BugReport, null) }
                                 )
                                 HorizontalDivider()
                                 DropdownMenuItem(
@@ -997,11 +1049,42 @@ fun TextEditorScreen(
             }
         }
     ) { paddingValues ->
-        androidx.compose.foundation.pager.HorizontalPager(
-            state = pagerState,
-            modifier = Modifier.padding(paddingValues).fillMaxSize(),
-            userScrollEnabled = true
-        ) { page ->
+        // Render the custom menu if visible (Popup handles its own placement)
+        CustomTextSelectionMenu(customTextToolbar)
+
+        Column(modifier = Modifier.padding(paddingValues).fillMaxSize()) {
+            if (showDebugPanel) {
+                Surface(
+                    color = MaterialTheme.colorScheme.secondaryContainer,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    val layout = currentTextLayoutResult
+                    if (layout != null) {
+                        val cursorLine = layout.getLineForOffset(textFieldValue.selection.end) + 1
+                        
+                        val scrollOffset = verticalScrollState.value
+                        val firstVisibleLine = layout.getLineForVerticalPosition(scrollOffset.toFloat()) + 1
+                        
+                        val lastVisibleLine = if (viewportHeight > 0) {
+                            layout.getLineForVerticalPosition(scrollOffset.toFloat() + viewportHeight) + 1
+                        } else 0
+
+                        Column(modifier = Modifier.padding(8.dp)) {
+                            Text("Cursor Line: $cursorLine", style = MaterialTheme.typography.labelSmall)
+                            Text("Visible Lines: $firstVisibleLine - $lastVisibleLine", style = MaterialTheme.typography.labelSmall)
+                            Text("Viewport Height: ${viewportHeight.toInt()}", style = MaterialTheme.typography.labelSmall)
+                        }
+                    } else {
+                        Text("No layout data", modifier = Modifier.padding(8.dp))
+                    }
+                }
+            }
+
+            androidx.compose.foundation.pager.HorizontalPager(
+                state = pagerState,
+                modifier = Modifier.weight(1f).fillMaxWidth(),
+                userScrollEnabled = true
+            ) { page ->
             val fileAtPage = openFiles[page]
             val contentAtPage = openFileContents[fileAtPage.path] ?: ""
             var textLayoutResult by remember { mutableStateOf<androidx.compose.ui.text.TextLayoutResult?>(null) }
@@ -1009,88 +1092,95 @@ fun TextEditorScreen(
             // Note: Each page has its own scroll state and text field value for now
             // To make it fully robust, we'd need to store scroll state and TextFieldValue per-file in ViewModel
             
-            Row(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .imePadding()
-                    .pointerInput(Unit) {
-                        detectTransformGestures { _, _, zoom, _ ->
-                            fontSize = (fontSize * zoom).coerceIn(2f, 100f)
-                        }
-                    }
-            ) {
-                // Line numbers column
-                val lineNumbers = remember(textLayoutResult, textFieldValue.text) {
-                    if (textLayoutResult == null) {
-                        (1..(textFieldValue.text.count { it == '\n' } + 1)).joinToString("\n")
-                    } else {
-                        val layout = textLayoutResult!!
-                        val text = textFieldValue.text
-                        val sb = StringBuilder()
-                        var logicalLine = 1
-                        for (i in 0 until layout.lineCount) {
-                            val lineStart = layout.getLineStart(i)
-                            val isNewLogicalLine = i == 0 || (lineStart > 0 && lineStart <= text.length && text[lineStart - 1] == '\n')
-                            if (isNewLogicalLine) {
-                                sb.append(logicalLine++)
-                            }
-                            sb.append("\n")
-                        }
-                        sb.toString().trimEnd('\n')
-                    }
+            Box(modifier = Modifier
+                .fillMaxSize()
+                .imePadding()
+                .onGloballyPositioned { coordinates ->
+                    viewportHeight = coordinates.size.height.toFloat()
                 }
-                
-                Text(
-                    text = lineNumbers,
+                .verticalScroll(verticalScrollState)
+            ) {
+                Row(
                     modifier = Modifier
-                        .fillMaxHeight()
-                        .width(44.dp)
-                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
-                        .padding(vertical = 16.dp, horizontal = 4.dp)
-                        .verticalScroll(verticalScrollState),
-                    style = TextStyle(
-                        fontFamily = FontFamily.Monospace,
-                        fontSize = fontSize.sp,
-                        color = MaterialTheme.colorScheme.secondary,
-                        textAlign = TextAlign.End
-                    ),
-                    lineHeight = (fontSize * 1.4).sp,
-                    softWrap = false
-                )
-
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxHeight()
-                        .padding(vertical = 16.dp)
+                        .fillMaxSize()
+                        .pointerInput(Unit) {
+                            detectTransformGestures { _, _, zoom, _ ->
+                                fontSize = (fontSize * zoom).coerceIn(2f, 100f)
+                            }
+                        }
                 ) {
-                    val currentTFV = if (editingFile?.path == fileAtPage.path) textFieldValue else TextFieldValue(contentAtPage)
-                    BasicTextField(
-                        value = currentTFV,
-                        onValueChange = { newValue -> 
-                            if (editingFile?.path == fileAtPage.path) {
-                                textFieldValue = newValue
-                                if (newValue.text != editingContent) {
-                                    filesViewModel.updateEditingContent(newValue.text)
+                    // Line numbers column
+                    val lineNumbers = remember(textLayoutResult, textFieldValue.text) {
+                        if (textLayoutResult == null) {
+                            (1..(textFieldValue.text.count { it == '\n' } + 1)).joinToString("\n")
+                        } else {
+                            val layout = textLayoutResult!!
+                            val text = textFieldValue.text
+                            val sb = StringBuilder()
+                            var logicalLine = 1
+                            for (i in 0 until layout.lineCount) {
+                                val lineStart = layout.getLineStart(i)
+                                val isNewLogicalLine = i == 0 || (lineStart > 0 && lineStart <= text.length && text[lineStart - 1] == '\n')
+                                if (isNewLogicalLine) {
+                                    sb.append(logicalLine++)
                                 }
+                                sb.append("\n")
                             }
-                        },
-                        onTextLayout = { 
-                            textLayoutResult = it
-                            if (editingFile?.path == fileAtPage.path) {
-                                currentTextLayoutResult = it
-                            }
-                        },
-                        modifier = Modifier.fillMaxWidth().verticalScroll(verticalScrollState),
-                        textStyle = TextStyle(
+                            sb.toString().trimEnd('\n')
+                        }
+                    }
+                    
+                    Text(
+                        text = lineNumbers,
+                        modifier = Modifier
+                            .fillMaxHeight()
+                            .width(44.dp)
+                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
+                            .padding(vertical = 16.dp, horizontal = 4.dp),
+                        style = TextStyle(
                             fontFamily = FontFamily.Monospace,
                             fontSize = fontSize.sp,
-                            lineHeight = (fontSize * 1.4).sp,
-                            color = MaterialTheme.colorScheme.onSurface
+                            color = MaterialTheme.colorScheme.secondary,
+                            textAlign = TextAlign.End
                         ),
-                        visualTransformation = visualTransformation,
-                        cursorBrush = androidx.compose.ui.graphics.SolidColor(MaterialTheme.colorScheme.primary)
+                        lineHeight = (fontSize * 1.4).sp,
+                        softWrap = false
                     )
+
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                            .padding(vertical = 16.dp)
+                    ) {
+                        val currentTFV = if (editingFile?.path == fileAtPage.path) textFieldValue else TextFieldValue(contentAtPage)
+                        BasicTextField(
+                            value = currentTFV,
+                            onValueChange = { newValue -> 
+                                if (editingFile?.path == fileAtPage.path) {
+                                    textFieldValue = newValue
+                                    if (newValue.text != editingContent) {
+                                        filesViewModel.updateEditingContent(newValue.text)
+                                    }
+                                }
+                            },
+                            onTextLayout = { 
+                                textLayoutResult = it
+                                if (editingFile?.path == fileAtPage.path) {
+                                    currentTextLayoutResult = it
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            textStyle = TextStyle(
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = fontSize.sp,
+                                lineHeight = (fontSize * 1.4).sp,
+                                color = MaterialTheme.colorScheme.onSurface
+                            ),
+                            visualTransformation = visualTransformation,
+                            cursorBrush = androidx.compose.ui.graphics.SolidColor(MaterialTheme.colorScheme.primary)
+                        )
+                    }
                 }
             }
         }
@@ -1263,6 +1353,7 @@ fun TextEditorScreen(
             }
         )
     }
+}
 }
 }
 }

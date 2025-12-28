@@ -128,6 +128,14 @@ fun AlarmScreen(
         }
     }
 
+    // Helper to find which alarm is likely ringing/snoozing
+    val activeAlarmId = when {
+        alarm1.enabled -> 1
+        alarm2.enabled -> 2
+        else -> 0
+    }
+    val isActiveAlarmRepeating = if (activeAlarmId == 1) alarm1.repeatDaily else if (activeAlarmId == 2) alarm2.repeatDaily else false
+
     val availableAlarmSounds = listOf(
         "angel" to "Angel",
         "chime" to "Chime",
@@ -235,7 +243,11 @@ fun AlarmScreen(
             val isSnoozing by AlarmService.isSnoozing.collectAsState()
             if (isRinging || isSnoozing) {
                 Button(
-                    onClick = { AlarmService.stopAlarm(context) },
+                    onClick = { 
+                        // Try to find the actual ringing alarm from service if possible, 
+                        // or fallback to the one enabled in UI
+                        AlarmService.stopAlarm(context, activeAlarmId, isActiveAlarmRepeating) 
+                    },
                     modifier = Modifier.fillMaxWidth().height(64.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
                 ) {
