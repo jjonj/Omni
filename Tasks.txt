@@ -87,17 +87,11 @@ Use better widget icons somehow, either let user choose or be smart
 ## Chrome plugin
 
 
-When disconnecting from hub it gives these errors. Disconnecting shouldnt result in errors, warnings at most or just handle it gracefully.
 
-[2025-12-28T13:40:36.132Z] Error: Connection disconnected with error 'Error: WebSocket closed with status code: 1006 (no reason given).'. OR  2025-12-28T09:50:04.056Z] Error: Failed to complete negotiation with the server: TypeError: Failed to fetch
-[2025-12-28T09:50:04.056Z] Error: Failed to start the connection: Error: Failed to complete negotiation with the server: TypeError: Failed to fetch
-[2025-12-28T09:50:09.029Z] Error: Failed to complete negotiation with the server: TypeError: Failed to fetch
-[2025-12-28T09:50:09.029Z] Error: Failed to start the connection: Error: Failed to complete negotiation with the server: TypeError: Failed to fetch
-[2025-12-28T09:50:09.307Z] Error: Failed to complete negotiation with the server: TypeError: Failed to fetch
-[2025-12-28T09:50:09.307Z] Error: Failed to start the connection: Error: Failed to complete negotiation with the server: TypeError: Failed to fetch
-[2025-12-28T09:50:16.066Z] Error: Failed to complete negotiation with the server: TypeError: Failed to fetch
-[2025-12-28T09:50:16.066Z] Error: Failed to start the connection: Error: Failed to complete negotiation with the server: TypeError: Failed to fetch
-[2025-12-28T09:50:21.332Z] Error: Failed to complete negotiation with the server: TypeError: Failed to fetch
-[2025-12-28T09:50:21.332Z] Error: Failed to start the connection: Error: Failed to complete negotiation with the server: TypeError: Failed to fetch
-[2025-12-28T09:50:28.112Z] Error: Failed to complete negotiation with the server: TypeError: Failed to fetch
-[2025-12-28T09:50:28.112Z] Error: Failed to start the connection: Error: Failed to complete negotiation with the server: TypeError: Failed to fetch
+
+
+
+
+
+✅ When disconnecting from hub it gives these errors. Disconnecting shouldnt result in errors, warnings at most or just handle it gracefully.
+

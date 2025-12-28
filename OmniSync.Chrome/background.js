@@ -18,24 +18,57 @@ chrome.storage.local.get(['customCleanupPatterns'], (result) => {
 
 let connection = new signalR.HubConnectionBuilder()
     .withUrl(HUB_URL)
-    .withAutomaticReconnect()
-    .configureLogging(signalR.LogLevel.Information)
+    .withAutomaticReconnect({
+        nextRetryDelayInMilliseconds: retryContext => {
+            if (retryContext.elapsedMilliseconds > 60000) return null; // Stop retrying after 1 minute of failure
+            return Math.min(2000 + retryContext.previousRetryCount * 2000, 10000);
+        }
+    })
+    .configureLogging(signalR.LogLevel.Warning)
     .build();
 
+let isReconnectingManual = false;
+
 async function start() {
+    if (connection.state === signalR.HubConnectionState.Connected) return;
+    
     try {
         await connection.start();
         console.log("SignalR Connected.");
+        isReconnectingManual = false;
         // Authenticate
         await connection.invoke("Authenticate", API_KEY);
     } catch (err) {
-        console.log(err);
-        setTimeout(start, 5000);
+        // Only log if it's not a common fetch failure during disconnect/reconnect
+        if (!err.toString().includes("Failed to fetch") && !err.toString().includes("TypeError")) {
+            console.warn("SignalR connection attempt failed:", err);
+        }
+        
+        if (!isReconnectingManual) {
+            isReconnectingManual = true;
+            setTimeout(start, 5000);
+        }
     }
 }
 
-connection.onclose(async () => {
+connection.onclose(async (error) => {
+    if (error) {
+        // Silent closure for common codes
+        const errorStr = error.toString();
+        if (!errorStr.includes("1006") && !errorStr.includes("WebSocket closed")) {
+            console.warn("SignalR connection closed with error:", error);
+        }
+    }
     await start();
+});
+
+connection.onreconnecting((error) => {
+    console.log("SignalR Reconnecting...");
+});
+
+connection.onreconnected((connectionId) => {
+    console.log("SignalR Reconnected.");
+    connection.invoke("Authenticate", API_KEY);
 });
 
 // Helper function to check if URL matches a pattern (supports * wildcard)
