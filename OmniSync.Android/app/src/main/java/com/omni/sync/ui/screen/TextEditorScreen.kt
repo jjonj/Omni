@@ -57,95 +57,342 @@ import androidx.compose.ui.unit.IntOffset
 import kotlin.math.roundToInt
 
 class EditorVisualTransformation(
+
     private val colorScheme: ColorScheme, 
+
     private val isMarkdown: Boolean,
+
     private val fontSize: Float,
+
     private val searchQuery: String = "",
+
     private val currentSelection: TextRange = TextRange.Zero
+
 ) : VisualTransformation {
+
     override fun filter(text: AnnotatedString): TransformedText {
+
+        val highlighted = highlightContent(text.text)
+
         return TransformedText(
-            highlightContent(text.text),
+
+            highlighted,
+
             OffsetMapping.Identity
+
         )
+
     }
 
+
+
     private fun highlightContent(text: String): AnnotatedString {
+
         return buildAnnotatedString {
+
             append(text)
+
             
+
             if (isMarkdown) {
+
+                // Find current cursor line
+
+                val cursorLineStart = if (currentSelection.start <= text.length) {
+
+                    text.lastIndexOf('\n', currentSelection.start - 1).let { if (it == -1) 0 else it + 1 }
+
+                } else 0
+
+                val cursorLineEnd = text.indexOf('\n', cursorLineStart).let { if (it == -1) text.length else it }
+
+
+
                 // Headers (#, ##, ###, ...)
-                val headerRegex = Regex("^(#+)(.*)$", RegexOption.MULTILINE)
+
+                val headerRegex = Regex("^(#+)(\\s*)", RegexOption.MULTILINE)
+
                 headerRegex.findAll(text).forEach { result ->
-                    val level = result.groupValues[1].length
-                    val color = when (level) {
-                        1 -> colorScheme.primary
-                        2 -> colorScheme.secondary
-                        3 -> colorScheme.tertiary
-                        else -> colorScheme.outline
+
+                    val start = result.range.first
+
+                    val end = result.range.last + 1
+
+                    
+
+                    if (start < cursorLineStart || start > cursorLineEnd) {
+
+                        // Hide markers if not on cursor line
+
+                        addStyle(SpanStyle(fontSize = 0.sp, color = Color.Transparent), start, end)
+
+                    } else {
+
+                        // Highlight markers on cursor line
+
+                        val level = result.groupValues[1].length
+
+                        val color = when (level) {
+
+                            1 -> colorScheme.primary
+
+                            2 -> colorScheme.secondary
+
+                            3 -> colorScheme.tertiary
+
+                            else -> colorScheme.outline
+
+                        }
+
+                        addStyle(SpanStyle(color = color, fontWeight = FontWeight.Bold), start, end)
+
                     }
-                    addStyle(
-                        SpanStyle(color = color, fontWeight = FontWeight.Bold, fontSize = if (level == 1) (fontSize * 1.2).sp else fontSize.sp),
-                        result.range.first,
-                        result.range.last + 1
-                    )
+
                 }
+
+
 
                 // Bold (**bold** or __bold__)
+
                 val boldRegex = Regex("(\\*\\*|__)(.*?)\\1")
+
                 boldRegex.findAll(text).forEach { result ->
+
+                    val markerStart1 = result.range.first
+
+                    val markerEnd1 = result.range.first + 2
+
+                    val markerStart2 = result.range.last - 1
+
+                    val markerEnd2 = result.range.last + 1
+
+                    
+
                     addStyle(SpanStyle(fontWeight = FontWeight.Bold), result.range.first, result.range.last + 1)
+
+                    
+
+                    if (markerStart1 < cursorLineStart || markerStart1 > cursorLineEnd) {
+
+                        addStyle(SpanStyle(fontSize = 0.sp, color = Color.Transparent), markerStart1, markerEnd1)
+
+                        addStyle(SpanStyle(fontSize = 0.sp, color = Color.Transparent), markerStart2, markerEnd2)
+
+                    }
+
                 }
+
+
 
                 // Italic (*italic* or _italic_)
-                val italicRegex = Regex("(\\*|_)(.*?)\\1")
+
+                val italicRegex = Regex("(?<![\\*_])(\\*|_)(?![\\*_])(.*?)\\1(?![\\*_])")
+
                 italicRegex.findAll(text).forEach { result ->
+
+                    val markerStart = result.range.first
+
+                    val markerEnd = result.range.first + 1
+
+                    val markerStart2 = result.range.last
+
+                    val markerEnd2 = result.range.last + 1
+
+                    
+
                     addStyle(SpanStyle(fontStyle = FontStyle.Italic), result.range.first, result.range.last + 1)
+
+                    
+
+                    if (markerStart < cursorLineStart || markerStart > cursorLineEnd) {
+
+                        addStyle(SpanStyle(fontSize = 0.sp, color = Color.Transparent), markerStart, markerEnd)
+
+                        addStyle(SpanStyle(fontSize = 0.sp, color = Color.Transparent), markerStart2, markerEnd2)
+
+                    }
+
                 }
+
+
 
                 // Strikethrough (~~strike~~)
+
                 val strikeRegex = Regex("~~(.*?)~~")
+
                 strikeRegex.findAll(text).forEach { result ->
+
+                    val markerStart1 = result.range.first
+
+                    val markerEnd1 = result.range.first + 2
+
+                    val markerStart2 = result.range.last - 1
+
+                    val markerEnd2 = result.range.last + 1
+
+                    
+
                     addStyle(SpanStyle(textDecoration = androidx.compose.ui.text.style.TextDecoration.LineThrough), result.range.first, result.range.last + 1)
+
+                    
+
+                    if (markerStart1 < cursorLineStart || markerStart1 > cursorLineEnd) {
+
+                        addStyle(SpanStyle(fontSize = 0.sp, color = Color.Transparent), markerStart1, markerEnd1)
+
+                        addStyle(SpanStyle(fontSize = 0.sp, color = Color.Transparent), markerStart2, markerEnd2)
+
+                    }
+
                 }
+
+                
+
+                // Header text size/color (separate from markers)
+
+                val headerContentRegex = Regex("^(#+)(\\s*)(.*)$", RegexOption.MULTILINE)
+
+                headerContentRegex.findAll(text).forEach { result ->
+
+                    val level = result.groupValues[1].length
+
+                    val color = when (level) {
+
+                        1 -> colorScheme.primary
+
+                        2 -> colorScheme.secondary
+
+                        3 -> colorScheme.tertiary
+
+                        else -> colorScheme.outline
+
+                    }
+
+                    val contentStart = result.groups[3]?.range?.first ?: return@forEach
+
+                    val contentEnd = result.groups[3]?.range?.last?.plus(1) ?: return@forEach
+
+                    
+
+                    addStyle(
+
+                        SpanStyle(color = color, fontWeight = FontWeight.Bold, fontSize = if (level == 1) (fontSize * 1.2).sp else fontSize.sp),
+
+                        contentStart,
+
+                        contentEnd
+
+                    )
+
+                }
+
+
 
                 // Links ([title](url))
+
                 val linkRegex = Regex("\\[(.*?)\\]\\((.*?)\\)")
+
                 linkRegex.findAll(text).forEach { result ->
+
                     addStyle(SpanStyle(color = Color(0xFF64B5F6), textDecoration = androidx.compose.ui.text.style.TextDecoration.Underline), result.range.first, result.range.last + 1)
+
+                    
+
+                    if (result.range.first < cursorLineStart || result.range.first > cursorLineEnd) {
+
+                        // Hide [ ] and (url)
+
+                        val titleStart = result.groups[1]?.range?.first ?: return@forEach
+
+                        val titleEnd = result.groups[1]?.range?.last?.plus(1) ?: return@forEach
+
+                        val urlStart = result.groups[2]?.range?.first ?: return@forEach
+
+                        val urlEnd = result.groups[2]?.range?.last?.plus(1) ?: return@forEach
+
+                        
+
+                        addStyle(SpanStyle(fontSize = 0.sp, color = Color.Transparent), result.range.first, titleStart)
+
+                        addStyle(SpanStyle(fontSize = 0.sp, color = Color.Transparent), titleEnd, result.range.last + 1)
+
+                    }
+
                 }
+
+
 
                 // Lists (-, *, 1.)
+
                 val listRegex = Regex("^(\\s*[-*+]|\\s*\\d+\\.)\\s", RegexOption.MULTILINE)
+
                 listRegex.findAll(text).forEach { result ->
+
                     addStyle(SpanStyle(color = colorScheme.tertiary, fontWeight = FontWeight.Bold), result.range.first, result.range.last + 1)
+
                 }
+
+
 
                 // Blockquotes (>)
+
                 val quoteRegex = Regex("^>.*$", RegexOption.MULTILINE)
+
                 quoteRegex.findAll(text).forEach { result ->
+
                     addStyle(SpanStyle(color = colorScheme.outline, fontStyle = FontStyle.Italic), result.range.first, result.range.last + 1)
+
                 }
+
+
 
                 // Code Blocks (```)
+
                 val codeBlockRegex = Regex("```[\\s\\S]*?```")
+
                 codeBlockRegex.findAll(text).forEach { result ->
+
                     addStyle(SpanStyle(background = colorScheme.surfaceVariant.copy(alpha = 0.5f), fontFamily = FontFamily.Monospace), result.range.first, result.range.last + 1)
+
                 }
+
+
 
                 // Horizontal Rule (---)
+
                 val hrRegex = Regex("^---$", RegexOption.MULTILINE)
+
                 hrRegex.findAll(text).forEach { result ->
+
                     addStyle(SpanStyle(color = colorScheme.outline, fontWeight = FontWeight.Bold), result.range.first, result.range.last + 1)
+
                 }
 
+
+
                 // Inline Code (`)
+
                 val codeRegex = Regex("`(.*?)`")
+
                 codeRegex.findAll(text).forEach { result ->
+
                     addStyle(SpanStyle(background = colorScheme.surfaceVariant, fontFamily = FontFamily.Monospace), result.range.first, result.range.last + 1)
+
+                    
+
+                    if (result.range.first < cursorLineStart || result.range.first > cursorLineEnd) {
+
+                        addStyle(SpanStyle(fontSize = 0.sp, color = Color.Transparent), result.range.first, result.range.first + 1)
+
+                        addStyle(SpanStyle(fontSize = 0.sp, color = Color.Transparent), result.range.last, result.range.last + 1)
+
+                    }
+
                 }
-            } else {
+
+            }
+
+ else {
                 // Non-markdown: just append was already done
             }
 
@@ -182,6 +429,7 @@ class EditorVisualTransformation(
 class CustomTextToolbar(
     val onBold: () -> Unit,
     val onItalic: () -> Unit,
+    val onEmoji: (String) -> Unit,
     val onHide: () -> Unit = {}
 ) : TextToolbar {
     var currentRect by mutableStateOf<Rect?>(null)
@@ -282,6 +530,45 @@ fun CustomTextSelectionMenu(toolbar: CustomTextToolbar) {
                     IconButton(onClick = { toolbar.onItalic.invoke(); toolbar.hide() }) {
                         Icon(Icons.Default.FormatItalic, "Italic", modifier = Modifier.size(20.dp))
                     }
+
+                    var showEmojiMenu by remember { mutableStateOf(false) }
+                    val commonEmojis = listOf(
+                        "✅", "❌", "⚠️", "ℹ️", "🚩", "🚧", "📋", "📌", "📎", "🔗", 
+                        "🔒", "🔓", "🔑", "🔧", "⚙️", "🛠️", "💻", "📱", "🌐", "📡", 
+                        "⬆️", "⬇️", "⬅️", "➡️", "↗️", "↘️", "🔄", "⏳", "⏰", "📅", 
+                        "🔴", "🟢", "🔵", "🟡", "⚪", "⚫", "⏹️", "⏺️", "▶️", "⏸️",
+                        "➕", "➖", "🔢", "🆔", "🆗", "🆙", "🆕", "🆓"
+                    )
+
+                    Box {
+                        IconButton(onClick = { showEmojiMenu = true }) {
+                            Icon(Icons.Default.EmojiEmotions, "Emojis", modifier = Modifier.size(20.dp))
+                        }
+                        DropdownMenu(
+                            expanded = showEmojiMenu,
+                            onDismissRequest = { showEmojiMenu = false },
+                            modifier = Modifier.heightIn(max = 300.dp)
+                        ) {
+                            val chunks = commonEmojis.chunked(4)
+                            chunks.forEach { chunk ->
+                                Row(modifier = Modifier.padding(horizontal = 8.dp)) {
+                                    chunk.forEach { emoji ->
+                                        Text(
+                                            text = emoji,
+                                            modifier = Modifier
+                                                .clickable { 
+                                                    toolbar.onEmoji(emoji)
+                                                    showEmojiMenu = false
+                                                    toolbar.hide()
+                                                }
+                                                .padding(8.dp),
+                                            fontSize = 20.sp
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -370,6 +657,14 @@ fun TextEditorScreen(
                     filesViewModel.updateEditingContent(newText)
                     textFieldValue = textFieldValue.copy(text = newText, selection = TextRange(sel.start, sel.end + 2))
                 }
+            },
+            onEmoji = { emoji ->
+                val text = textFieldValue.text
+                val sel = textFieldValue.selection
+                val newText = text.replaceRange(sel.start, sel.end, emoji)
+                filesViewModel.updateEditingContent(newText)
+                val newCursorPos = sel.start + emoji.length
+                textFieldValue = textFieldValue.copy(text = newText, selection = TextRange(newCursorPos, newCursorPos))
             },
             onHide = {
                 // Do nothing here to avoid killing the selection while dragging handles.

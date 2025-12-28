@@ -50,9 +50,9 @@ Stream PC monitor, replacing background of the trackpad leaving the trackpad fun
 
 it also auto sceolls when placing the cursor but it should not as by definition the cursor place location is in view 
 
-On the small menu when long pressing without selecting that has paste, select all bold and itallic, add a button for adding common emoji like ✅ etc, make it a looong dropdown 
+✅ On the small menu when long pressing without selecting that has paste, select all bold and itallic, add a button for adding common emoji like ✅ etc, make it a looong dropdown 
 
-Improve markdown rendering by hiding formatting, e.g. "###" and the * symbols in  **bold text** similar to how the obsidian app does it. Those symbols are only visible when the cursor is on the line that contain them. 
+✅ Improve markdown rendering by hiding formatting, e.g. "###" and the * symbols in  **bold text** similar to how the obsidian app does it. Those symbols are only visible when the cursor is on the line that contain them. 
 
 ### Browser control screen 
 
