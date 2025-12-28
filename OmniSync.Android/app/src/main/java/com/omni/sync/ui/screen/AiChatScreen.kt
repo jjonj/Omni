@@ -165,99 +165,106 @@ fun AiChatScreen(
             )
         }
     ) { padding ->
-        Column(
+        val imeHeight = WindowInsets.ime.asPaddingValues().calculateBottomPadding()
+        val bottomBarHeight = padding.calculateBottomPadding()
+        val keyboardOverlapOffset = 15.dp
+        val floatHeight = imeHeight - keyboardOverlapOffset
+        val currentBottomPadding = maxOf(floatHeight, bottomBarHeight)
+
+        Box(
             modifier = Modifier
-                .padding(padding)
+                .padding(top = padding.calculateTopPadding())
                 .fillMaxSize()
-                .imePadding()
         ) {
-            if (!isConnected) {
-                Surface(
-                    color = MaterialTheme.colorScheme.errorContainer,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text(
-                        "Disconnected from Hub",
-                        color = MaterialTheme.colorScheme.onErrorContainer,
-                        modifier = Modifier.padding(8.dp),
-                        textAlign = TextAlign.Center,
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                }
-            }
-
-            LazyColumn(
-                state = listState,
+            Column(
                 modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth()
-                    .padding(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+                    .fillMaxSize()
+                    .padding(bottom = currentBottomPadding + 88.dp) // Leave room for floating panel
             ) {
-                items(messages) { (sender, content) ->
-                    ChatBubble(sender, content)
+                if (!isConnected) {
+                    Surface(
+                        color = MaterialTheme.colorScheme.errorContainer,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            "Disconnected from Hub",
+                            color = MaterialTheme.colorScheme.onErrorContainer,
+                            modifier = Modifier.padding(8.dp),
+                            textAlign = TextAlign.Center,
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                    }
                 }
 
-                if (isAiThinking) {
-                    item {
-                        AiTypingIndicator()
+                LazyColumn(
+                    state = listState,
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                        .padding(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(messages) { (sender, content) ->
+                        ChatBubble(sender, content)
+                    }
+
+                    if (isAiThinking) {
+                        item {
+                            AiTypingIndicator()
+                        }
+                    }
+                }
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    OutlinedTextField(
+                        value = inputText,
+                        onValueChange = { inputText = it },
+                        modifier = Modifier.weight(1f),
+                        placeholder = { Text(if (isConnected) "Ask AI something..." else "Connecting...") },
+                        maxLines = 3,
+                        enabled = isConnected
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    IconButton(
+                        onClick = {
+                            if (inputText.isNotBlank()) {
+                                signalRClient.sendAiMessage(inputText, if (selectedPid != -1) selectedPid else null)
+                                inputText = ""
+                            } else {
+                                // If empty, send Enter key to Hub
+                                signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_RETURN)
+                            }
+                        },
+                        modifier = Modifier.background(
+                            if (isConnected) MaterialTheme.colorScheme.primary else Color.Gray, 
+                            CircleShape
+                        ),
+                        enabled = isConnected,
+                        colors = IconButtonDefaults.iconButtonColors(contentColor = MaterialTheme.colorScheme.onPrimary)
+                    ) {
+                        Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Send")
                     }
                 }
             }
 
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                OutlinedTextField(
-                    value = inputText,
-                    onValueChange = { inputText = it },
-                    modifier = Modifier.weight(1f),
-                    placeholder = { Text(if (isConnected) "Ask AI something..." else "Connecting...") },
-                    maxLines = 3,
-                    enabled = isConnected
-                )
-                Spacer(Modifier.width(8.dp))
-                IconButton(
-                    onClick = {
-                        if (inputText.isNotBlank()) {
-                            signalRClient.sendAiMessage(inputText, if (selectedPid != -1) selectedPid else null)
-                            inputText = ""
-                        } else {
-                            // If empty, send Enter key to Hub
-                            signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_RETURN)
-                        }
-                    },
-                    modifier = Modifier.background(
-                        if (isConnected) MaterialTheme.colorScheme.primary else Color.Gray, 
-                        CircleShape
-                    ),
-                    enabled = isConnected,
-                    colors = IconButtonDefaults.iconButtonColors(contentColor = MaterialTheme.colorScheme.onPrimary)
-                ) {
-                    Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Send")
-                }
-            }
-
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-            
-            // Dynamic padding calculation to follow keyboard, matching RemoteControlScreen pattern
-            val imeHeight = WindowInsets.ime.asPaddingValues().calculateBottomPadding()
-            val bottomBarHeight = 0.dp // In context of this screen's container
-            val keyboardOverlapOffset = 15.dp
-            val floatHeight = imeHeight - keyboardOverlapOffset
-            
             Surface(
                 modifier = Modifier
+                    .align(Alignment.BottomCenter)
                     .fillMaxWidth()
-                    .padding(bottom = maxOf(floatHeight, bottomBarHeight)),
+                    .padding(bottom = currentBottomPadding),
                 tonalElevation = 2.dp,
                 shadowElevation = 8.dp,
                 color = MaterialTheme.colorScheme.surface
             ) {
-                QuickActionPanel(signalRClient, coroutineScope, selectedPid, isConnected)
+                Column {
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    QuickActionPanel(signalRClient, coroutineScope, selectedPid, isConnected)
+                }
             }
         }
 
