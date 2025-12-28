@@ -428,13 +428,16 @@ fun TextEditorScreen(
             val lineBottom = layout.getLineBottom(cursorLine)
             
             val scrollPos = verticalScrollState.value
-            // Use actual viewportHeight if available, fallback to estimate
+            // Better estimated viewport height (accounting for keyboard if visible)
+            // Scaffold inner padding helps, but let's use a safe visible range.
             val vHeight = if (viewportHeight > 0) viewportHeight else with(density) { 200.dp.toPx() } 
+            val lineHeight = with(density) { (fontSize * 1.4f).sp.toPx() }
+            val buffer = lineHeight * 2 // 2 lines buffer
             
-            if (lineTop < scrollPos) {
-                verticalScrollState.animateScrollTo(lineTop.toInt())
-            } else if (lineBottom > (scrollPos + vHeight)) {
-                verticalScrollState.animateScrollTo((lineBottom - vHeight).toInt())
+            if (lineTop < (scrollPos + buffer)) {
+                verticalScrollState.animateScrollTo((lineTop - buffer).toInt().coerceAtLeast(0))
+            } else if (lineBottom > (scrollPos + vHeight - buffer)) {
+                verticalScrollState.animateScrollTo((lineBottom - vHeight + buffer).toInt())
             }
         } else {
             // Just selection change (cursor placement) - do NOT scroll automatically
