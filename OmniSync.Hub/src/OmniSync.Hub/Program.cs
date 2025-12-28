@@ -14,6 +14,8 @@ using System.IO; // Added for Path.Combine and Directory.GetCurrentDirectory()
 using Microsoft.Extensions.FileProviders; // Added for PhysicalFileProvider
 using Microsoft.AspNetCore.Hosting; // Added for ConfigureKestrel
 using Microsoft.AspNetCore.SignalR; // Added for IHubContext
+using System.Threading.Tasks; // For TaskScheduler events
+using System.Text; // For StringBuilder
 
 // Set the current directory to the location of the executable to ensure
 // consistent behavior for file paths (config, static files) regardless of startup method.
@@ -155,4 +157,16 @@ app.UseAuthorization(); // Even if empty, it's good practice if Authorization is
 app.MapControllers();
 app.MapHub<RpcApiHub>("/signalrhub");
 
-app.Run();
+// --- Global Exception Handling for Crashes ---
+CrashHandler.Initialize();
+
+try
+{
+
+    app.Run();
+}
+catch (Exception ex)
+{
+    CrashHandler.HandleCrash("MainLoopException", ex);
+    throw;
+}

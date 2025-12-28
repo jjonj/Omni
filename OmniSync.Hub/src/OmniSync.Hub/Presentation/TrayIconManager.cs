@@ -49,6 +49,13 @@ namespace OmniSync.Hub.Presentation
             var app = new WpfApp();
             app.ShutdownMode = System.Windows.ShutdownMode.OnExplicitShutdown; // Manage shutdown manually
 
+            // Handle unhandled exceptions on the WPF dispatcher thread
+            app.DispatcherUnhandledException += (sender, e) =>
+            {
+                CrashHandler.HandleCrash("WpfDispatcherException", e.Exception);
+                e.Handled = true; // Prevents default crash dialog, but HandleCrash calls Environment.Exit
+            };
+
             WinFormsApp.EnableVisualStyles(); // Enable visual styles for WinForms NotifyIcon
             WinFormsApp.SetCompatibleTextRenderingDefault(false); // For WinForms interop
 
