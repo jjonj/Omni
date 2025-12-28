@@ -218,12 +218,9 @@ class MainActivity : ComponentActivity() {
                             // while others stay safely padded.
                             val isRemote = currentScreen == AppScreen.REMOTECONTROL
                             
-                            Box(modifier = Modifier
-                                .fillMaxSize()
-                                .then(if (isRemote) Modifier else Modifier.padding(innerPadding))
-                            ) {
+                            Box(modifier = Modifier.fillMaxSize()) {
                                 if (currentScreen == AppScreen.EDITOR || currentScreen == AppScreen.SETTINGS || 
-                                    currentScreen == AppScreen.DOWNLOADED_VIDEOS) {
+                                    currentScreen == AppScreen.DOWNLOADED_VIDEOS || currentScreen == AppScreen.FILES) {
                                     MainScreenContent(currentScreen, signalRClient, browserViewModel, filesViewModel, mainViewModel, innerPadding)
                                 } else {
                                     // Custom touch slop to make paging less sensitive to diagonal swipes
@@ -242,7 +239,7 @@ class MainActivity : ComponentActivity() {
                                             userScrollEnabled = true 
                                         ) { page ->
                                             val screenAtPage = swipeableScreens[page]
-                                            val pageModifier = if (screenAtPage == AppScreen.REMOTECONTROL) Modifier else Modifier.padding(innerPadding)
+                                            val pageModifier = if (screenAtPage == AppScreen.REMOTECONTROL || screenAtPage == AppScreen.FILES) Modifier else Modifier.padding(innerPadding)
                                             Box(modifier = pageModifier) {
                                                 MainScreenContent(screenAtPage, signalRClient, browserViewModel, filesViewModel, mainViewModel, innerPadding)
                                             }
@@ -351,12 +348,14 @@ class MainActivity : ComponentActivity() {
                 mainViewModel = mainViewModel
             )
             AppScreen.FILES -> FilesScreen(
-                filesViewModel = filesViewModel
+                filesViewModel = filesViewModel,
+                parentPadding = paddingValues
             )
             AppScreen.EDITOR -> com.omni.sync.ui.screen.TextEditorScreen(
                 filesViewModel = filesViewModel,
                 signalRClient = signalRClient,
-                onBack = { mainViewModel.goBack() }
+                onBack = { mainViewModel.goBack() },
+                parentPadding = paddingValues
             )
             AppScreen.SETTINGS -> com.omni.sync.ui.screen.SettingsScreen(
                 mainViewModel = mainViewModel,

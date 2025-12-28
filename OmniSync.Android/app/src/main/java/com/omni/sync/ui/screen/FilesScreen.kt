@@ -53,7 +53,8 @@ import androidx.activity.compose.BackHandler
 @Composable
 fun FilesScreen(
     modifier: Modifier = Modifier,
-    filesViewModel: FilesViewModel = viewModel()
+    filesViewModel: FilesViewModel = viewModel(),
+    parentPadding: PaddingValues = PaddingValues(0.dp)
 ) {
     val currentPath by filesViewModel.currentPath.collectAsState()
     val fileSystemEntries by filesViewModel.fileSystemEntries.collectAsState()
@@ -203,7 +204,7 @@ fun FilesScreen(
                 }
             }
         },
-        modifier = modifier
+        modifier = modifier.padding(bottom = parentPadding.calculateBottomPadding())
     ) { innerPadding ->
         Column(
             modifier = Modifier

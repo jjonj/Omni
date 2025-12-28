@@ -13,6 +13,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -285,7 +287,8 @@ fun CustomTextSelectionMenu(toolbar: CustomTextToolbar) {
 fun TextEditorScreen(
     filesViewModel: FilesViewModel,
     signalRClient: SignalRClient,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    parentPadding: PaddingValues = PaddingValues(0.dp)
 ) {
     val editingFile by filesViewModel.editingFile.collectAsState()
     val editingContent by filesViewModel.editingContent.collectAsState()
@@ -499,6 +502,7 @@ fun TextEditorScreen(
         CustomTextSelectionMenu(customTextToolbar)
 
         Scaffold(
+            modifier = Modifier.padding(bottom = parentPadding.calculateBottomPadding()),
             topBar = {
             Column {
                 TopAppBar(
@@ -1098,16 +1102,17 @@ fun TextEditorScreen(
                 .onGloballyPositioned { coordinates ->
                     viewportHeight = coordinates.size.height.toFloat()
                 }
+                .pointerInput(Unit) {
+                    detectTransformGestures { _, _, zoom, _ ->
+                        if (zoom != 1f) {
+                            fontSize = (fontSize * zoom).coerceIn(2f, 100f)
+                        }
+                    }
+                }
                 .verticalScroll(verticalScrollState)
             ) {
                 Row(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .pointerInput(Unit) {
-                            detectTransformGestures { _, _, zoom, _ ->
-                                fontSize = (fontSize * zoom).coerceIn(2f, 100f)
-                            }
-                        }
+                    modifier = Modifier.fillMaxWidth()
                 ) {
                     // Line numbers column
                     val lineNumbers = remember(textLayoutResult, textFieldValue.text) {
@@ -1133,7 +1138,6 @@ fun TextEditorScreen(
                     Text(
                         text = lineNumbers,
                         modifier = Modifier
-                            .fillMaxHeight()
                             .width(44.dp)
                             .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
                             .padding(vertical = 16.dp, horizontal = 4.dp),
@@ -1150,7 +1154,6 @@ fun TextEditorScreen(
                     Box(
                         modifier = Modifier
                             .weight(1f)
-                            .fillMaxHeight()
                             .padding(vertical = 16.dp)
                     ) {
                         val currentTFV = if (editingFile?.path == fileAtPage.path) textFieldValue else TextFieldValue(contentAtPage)
