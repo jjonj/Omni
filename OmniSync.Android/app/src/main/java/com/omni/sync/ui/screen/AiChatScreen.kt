@@ -173,7 +173,6 @@ fun AiChatScreen(
 
         Box(
             modifier = Modifier
-                .padding(top = padding.calculateTopPadding())
                 .fillMaxSize()
         ) {
             Column(
