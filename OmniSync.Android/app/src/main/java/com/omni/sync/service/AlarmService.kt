@@ -56,9 +56,10 @@ class AlarmService : Service(), android.content.SharedPreferences.OnSharedPrefer
         private val _isSnoozing = MutableStateFlow(false)
         val isSnoozing: StateFlow<Boolean> = _isSnoozing
 
-        fun stopAlarm(context: Context) {
+        fun stopAlarm(context: Context, alarmId: Int = 0) {
             val intent = Intent(context, AlarmService::class.java).apply {
                 action = ACTION_DISMISS
+                putExtra("ALARM_ID", alarmId)
             }
             context.startService(intent)
         }
@@ -98,13 +99,17 @@ class AlarmService : Service(), android.content.SharedPreferences.OnSharedPrefer
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        val intentAlarmId = intent?.getIntExtra("ALARM_ID", 0) ?: 0
+        if (intentAlarmId != 0) {
+            currentAlarmId = intentAlarmId
+        }
+
         if (intent?.action == ACTION_DISMISS) {
             handleDismiss()
             return START_NOT_STICKY
         }
 
-        // Extract Alarm Data
-        currentAlarmId = intent?.getIntExtra("ALARM_ID", 0) ?: 0
+        // Extract Alarm Data (for starting)
         currentSoundId = intent?.getStringExtra("SOUND_ID") ?: "gentle"
         currentHour = intent?.getIntExtra("HOUR", 0) ?: 0
         currentMinute = intent?.getIntExtra("MINUTE", 0) ?: 0
@@ -151,10 +156,7 @@ class AlarmService : Service(), android.content.SharedPreferences.OnSharedPrefer
 
     private fun playAlarm(soundId: String, volume: Int) {
         try {
-            if (mediaPlayer?.isPlaying == true) {
-                mediaPlayer?.stop()
-                mediaPlayer?.release()
-            }
+            stopSound() // Ensure previous is stopped
 
             val resId = resources.getIdentifier(soundId, "raw", packageName)
             val uri = if (resId != 0) {
@@ -201,7 +203,7 @@ class AlarmService : Service(), android.content.SharedPreferences.OnSharedPrefer
             val triggerTime = System.currentTimeMillis() + (snoozeDurationMin * 60 * 1000L)
             snoozeMessage = "Snoozed until ${java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()).format(java.util.Date(triggerTime))}"
 
-            Log.i("AlarmService", "Scheduling snooze: Rep $nextRepetition, Vol $nextVolume in $snoozeDurationMin mins")
+            Log.i("AlarmService", "Scheduling snooze: Rep $nextRepetition, Vol $nextVolume in $snoozeDurationMin mins for alarm $currentAlarmId")
             
             AlarmScheduler.scheduleSnooze(
                 context = this,
@@ -232,7 +234,7 @@ class AlarmService : Service(), android.content.SharedPreferences.OnSharedPrefer
     }
 
     private fun handleDismiss() {
-        Log.i("AlarmService", "User Dismissed Alarm.")
+        Log.i("AlarmService", "User Dismissed Alarm $currentAlarmId.")
         stopSound()
         _isRinging.value = false
         _isSnoozing.value = false
@@ -240,10 +242,12 @@ class AlarmService : Service(), android.content.SharedPreferences.OnSharedPrefer
         snoozeMessage = null
 
         // Cancel any pending snoozes for this alarm
-        AlarmScheduler.cancelSnooze(this, currentAlarmId)
+        if (currentAlarmId != 0) {
+            AlarmScheduler.cancelSnooze(this, currentAlarmId)
+        }
 
         // If not repeating, update UI to disabled
-        if (!repeatDaily) {
+        if (!repeatDaily && currentAlarmId != 0) {
             disableAlarmState()
         }
 
@@ -273,10 +277,13 @@ class AlarmService : Service(), android.content.SharedPreferences.OnSharedPrefer
 
     private fun stopSound() {
         try {
-            if (mediaPlayer?.isPlaying == true) {
-                mediaPlayer?.stop()
+            mediaPlayer?.let {
+                if (it.isPlaying) {
+                    it.stop()
+                }
+                it.reset()
+                it.release()
             }
-            mediaPlayer?.release()
             mediaPlayer = null
         } catch (e: Exception) {
             Log.e("AlarmService", "Error stopping sound", e)
@@ -284,14 +291,17 @@ class AlarmService : Service(), android.content.SharedPreferences.OnSharedPrefer
     }
 
     private fun createNotification(): Notification {
-        val dismissIntent = Intent(this, AlarmService::class.java).apply { action = ACTION_DISMISS }
-        val pendingDismiss = PendingIntent.getService(this, 0, dismissIntent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+        val dismissIntent = Intent(this, AlarmService::class.java).apply { 
+            action = ACTION_DISMISS 
+            putExtra("ALARM_ID", currentAlarmId)
+        }
+        val pendingDismiss = PendingIntent.getService(this, currentAlarmId, dismissIntent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
 
         val fullScreenIntent = Intent(this, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
             putExtra("OPEN_SCREEN", "ALARM")
         }
-        val pendingFullScreen = PendingIntent.getActivity(this, 0, fullScreenIntent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+        val pendingFullScreen = PendingIntent.getActivity(this, currentAlarmId, fullScreenIntent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
 
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Alarm")

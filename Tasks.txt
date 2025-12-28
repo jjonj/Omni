@@ -194,5 +194,5 @@ Add button to set/toggle text zoom level to 5x (currently text zoom can be set w
 ### Alarm screen
 
 
-Dismissing alarm from notification doesn't work. 
-The dismiss alarm popup on alarm screen should 
+✅ Dismissing alarm from notification doesn't work. 
+✅ The dismiss alarm popup on alarm screen should stop sound
