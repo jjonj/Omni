@@ -57,6 +57,24 @@ class OmniWidgetProvider : AppWidgetProvider() {
             val views = RemoteViews(context.packageName, R.layout.widget_layout)
             views.setTextViewText(R.id.widget_text, action?.label ?: "Omni")
 
+            // Smart icon selection
+            val iconRes = when {
+                action == null -> R.drawable.ic_notification
+                action.isWol -> R.drawable.ic_shutdown
+                action.label.contains("Shutdown", ignoreCase = true) -> R.drawable.ic_shutdown
+                action.label.contains("Sleep", ignoreCase = true) -> R.drawable.ic_sleep
+                action.label.contains("Browser", ignoreCase = true) -> R.drawable.ic_browser
+                action.command.startsWith("NAV:BROWSER") -> R.drawable.ic_browser
+                action.command.startsWith("NAV:FILES") -> R.drawable.ic_files
+                action.command.startsWith("NAV:AI_CHAT") -> R.drawable.ic_ai
+                action.command.startsWith("NAV:ALARM") -> R.drawable.ic_alarm
+                action.command.startsWith("NAV:REMOTECONTROL") -> R.drawable.ic_remote
+                action.command.startsWith("NAV:DASHBOARD") -> R.drawable.ic_dashboard
+                action.command.startsWith("BOOKMARK:") -> R.drawable.ic_browser
+                else -> R.drawable.ic_notification
+            }
+            views.setImageViewResource(R.id.widget_icon, iconRes)
+
             if (action != null) {
                 // Direct call to ForegroundService for better reliability
                 val serviceIntent = Intent(context, ForegroundService::class.java).apply {

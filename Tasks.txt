@@ -66,7 +66,7 @@ it also auto sceolls when placing the cursor but it should not as by definition 
 	   
 ### Android Home screen launcher widgets
 
-Use better widget icons somehow, either let user choose or be smart 
+✅ Use better widget icons somehow, either let user choose or be smart 
 
 
 ### Settings screen (accessed by button on dashboard, not bottom panel)
