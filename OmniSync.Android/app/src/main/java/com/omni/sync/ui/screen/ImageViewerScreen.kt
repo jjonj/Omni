@@ -44,15 +44,28 @@ fun ImageViewerScreen(
     var zoom by remember { mutableFloatStateOf(1f) }
     var offset by remember { mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
 
+    val prefs = remember { context.getSharedPreferences("omni_settings", android.content.Context.MODE_PRIVATE) }
+    var isShuffleEnabled by remember { 
+        mutableStateOf(prefs.getBoolean("image_slideshow_random", false)) 
+    }
+
     // Slideshow logic
-    LaunchedEffect(isSlideshowActive, slideshowInterval) {
+    LaunchedEffect(isSlideshowActive, slideshowInterval, isShuffleEnabled) {
         if (isSlideshowActive) {
             while (true) {
                 delay(slideshowInterval)
-                if (pagerState.currentPage < pagerState.pageCount - 1) {
-                    pagerState.animateScrollToPage(pagerState.currentPage + 1)
+                if (isShuffleEnabled && playlist.size > 1) {
+                    var nextPage = pagerState.currentPage
+                    while (nextPage == pagerState.currentPage) {
+                        nextPage = (0 until playlist.size).random()
+                    }
+                    pagerState.animateScrollToPage(nextPage)
                 } else {
-                    pagerState.animateScrollToPage(0) // Loop back
+                    if (pagerState.currentPage < pagerState.pageCount - 1) {
+                        pagerState.animateScrollToPage(pagerState.currentPage + 1)
+                    } else {
+                        pagerState.animateScrollToPage(0) // Loop back
+                    }
                 }
             }
         }
@@ -150,16 +163,11 @@ fun ImageViewerScreen(
                                 modifier = Modifier.width(150.dp).padding(horizontal = 16.dp)
                             )
                             HorizontalDivider()
-                            val isRandom = run {
-                                val prefs = context.getSharedPreferences("omni_settings", android.content.Context.MODE_PRIVATE)
-                                prefs.getBoolean("image_slideshow_random", false)
-                            }
                             DropdownMenuItem(
-                                text = { Text(if (isRandom) "Shuffle: ON" else "Shuffle: OFF") },
+                                text = { Text(if (isShuffleEnabled) "Shuffle: ON" else "Shuffle: OFF") },
                                 onClick = {
-                                    val prefs = context.getSharedPreferences("omni_settings", android.content.Context.MODE_PRIVATE)
-                                    prefs.edit().putBoolean("image_slideshow_random", !isRandom).apply()
-                                    // Note: Randomness change might require reloading playlist, but we keep it simple for now
+                                    isShuffleEnabled = !isShuffleEnabled
+                                    prefs.edit().putBoolean("image_slideshow_random", isShuffleEnabled).apply()
                                 },
                                 leadingIcon = { Icon(Icons.Default.Shuffle, null) }
                             )
