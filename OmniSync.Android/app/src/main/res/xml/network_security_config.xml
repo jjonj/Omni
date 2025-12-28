@@ -3,6 +3,7 @@
     <!-- Allow cleartext traffic for local development -->
     <domain-config cleartextTrafficPermitted="true">
         <domain includeSubdomains="true">10.0.0.37</domain>
+        <domain includeSubdomains="true">85.80.233.70</domain>
         <domain includeSubdomains="true">localhost</domain>
         <domain includeSubdomains="true">127.0.0.1</domain>
         <domain includeSubdomains="true">192.168.0.0/16</domain>
@@ -10,5 +11,5 @@
     
     <!-- Optional: Allow all cleartext traffic for development (less secure but simpler) -->
     <!-- Uncomment the line below if you want to allow all HTTP traffic -->
-    <!-- <base-config cleartextTrafficPermitted="true" /> -->
+    <base-config cleartextTrafficPermitted="true" />
 </network-security-config>

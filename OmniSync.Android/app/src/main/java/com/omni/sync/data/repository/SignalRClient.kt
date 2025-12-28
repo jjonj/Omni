@@ -7,6 +7,8 @@ import com.omni.sync.utils.WindowsKeyCodes.VK_A
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.util.Log
 import com.microsoft.signalr.HubConnection
 import com.microsoft.signalr.HubConnectionBuilder
@@ -138,6 +140,13 @@ class SignalRClient(
         }
     }
 
+    private fun isWifiConnected(): Boolean {
+        val connectivityManager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        val network = connectivityManager.activeNetwork ?: return false
+        val capabilities = connectivityManager.getNetworkCapabilities(network) ?: return false
+        return capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)
+    }
+
     fun startConnection() {
         _connectionState.value = "Connecting..."
         mainViewModel.setErrorMessage(null)
@@ -145,14 +154,22 @@ class SignalRClient(
         val localUrl = mainViewModel.appConfig.hubUrl
         val remoteUrl = "http://${mainViewModel.appConfig.wanIp}:5000/signalrhub"
 
-        mainViewModel.addLog("Attempting local connection: $localUrl", com.omni.sync.ui.screen.LogType.INFO)
-        
-        buildAndStartConnection(localUrl) { localError ->
-            mainViewModel.addLog("Local connection failed, trying Remote: $remoteUrl", com.omni.sync.ui.screen.LogType.WARNING)
+        if (isWifiConnected()) {
+            mainViewModel.addLog("WiFi detected. Attempting local connection: $localUrl", com.omni.sync.ui.screen.LogType.INFO)
+            buildAndStartConnection(localUrl) { localError ->
+                mainViewModel.addLog("Local connection failed, trying Remote: $remoteUrl", com.omni.sync.ui.screen.LogType.WARNING)
+                buildAndStartConnection(remoteUrl) { remoteError ->
+                    _connectionState.value = "Disconnected (All attempts failed)"
+                    mainViewModel.setConnected(false)
+                    mainViewModel.addLog("All connection attempts failed.", com.omni.sync.ui.screen.LogType.ERROR)
+                }
+            }
+        } else {
+            mainViewModel.addLog("WiFi NOT detected. Skipping local, trying Remote: $remoteUrl", com.omni.sync.ui.screen.LogType.INFO)
             buildAndStartConnection(remoteUrl) { remoteError ->
-                _connectionState.value = "Disconnected (All attempts failed)"
+                _connectionState.value = "Disconnected (Remote failed, no WiFi)"
                 mainViewModel.setConnected(false)
-                mainViewModel.addLog("All connection attempts failed.", com.omni.sync.ui.screen.LogType.ERROR)
+                mainViewModel.addLog("Remote connection failed and WiFi is unavailable.", com.omni.sync.ui.screen.LogType.ERROR)
             }
         }
     }

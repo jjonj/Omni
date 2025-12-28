@@ -54,7 +54,8 @@ namespace OmniSync.Hub.Presentation.Hubs
 
         public override async Task OnConnectedAsync()
         {
-            _logger.LogInformation($"Client connected: {Context.ConnectionId}. Awaiting authentication.");
+            var ip = Context.GetHttpContext()?.Connection.RemoteIpAddress?.ToString();
+            _logger.LogInformation($"Client connected: {Context.ConnectionId} from IP: {ip}. Awaiting authentication.");
             ClientConnectedEvent?.Invoke(this, Context.ConnectionId);
             _hubEventSender.SubscribeForCommandOutput(Context.UserIdentifier ?? Context.ConnectionId, Context.ConnectionId);
             await base.OnConnectedAsync();
@@ -101,11 +102,12 @@ namespace OmniSync.Hub.Presentation.Hubs
 
         public bool Authenticate(string apiKey)
         {
+            var ip = Context.GetHttpContext()?.Connection.RemoteIpAddress?.ToString();
             var isAuthenticated = _authService.Validate(apiKey);
             if (isAuthenticated)
             {
                 Context.Items["IsAuthenticated"] = true;
-                _logger.LogInformation($"Client authenticated: {Context.ConnectionId}");
+                _logger.LogInformation($"Client authenticated: {Context.ConnectionId} from IP: {ip}");
                 
                 // Immediately send current states after successful authentication
                 _ = SendCurrentState();
@@ -113,7 +115,7 @@ namespace OmniSync.Hub.Presentation.Hubs
                 return true;
             }
 
-            _logger.LogWarning($"Client failed authentication: {Context.ConnectionId}");
+            _logger.LogWarning($"Client failed authentication: {Context.ConnectionId} from IP: {ip}");
             Context.Abort();
             return false;
         }
