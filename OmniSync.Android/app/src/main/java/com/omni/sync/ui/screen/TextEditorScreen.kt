@@ -219,21 +219,26 @@ class CustomTextToolbar(
 @Composable
 fun CustomTextSelectionMenu(toolbar: CustomTextToolbar) {
     if (toolbar.visible && toolbar.currentRect != null) {
-        val density = LocalDensity.current
         val rect = toolbar.currentRect!!
-        val screenHeight = LocalConfiguration.current.screenHeightDp.dp
         
         // Calculate position
-        // If there's space above (more than 150px), show above, otherwise below.
-        val showBelow = rect.top < 200
-        val offsetX = rect.left
-        val offsetY = if (showBelow) rect.bottom + 20 else rect.top - 150 
+        // The rect provided by BasicTextField is usually local to its bounds.
+        // If we render the Popup inside the same container as BasicTextField,
+        // the offset should match.
+        
+        val showBelow = rect.top < 150 // If too close to top, show below
+        val offsetX = rect.center.x - 150 // Try to center horizontally (approx width 300)
+        val offsetY = if (showBelow) rect.bottom + 10 else rect.top - 120 
         
         Popup(
             alignment = Alignment.TopStart,
-            offset = IntOffset(offsetX.roundToInt(), offsetY.roundToInt()),
+            offset = IntOffset(offsetX.roundToInt().coerceAtLeast(0), offsetY.roundToInt()),
             onDismissRequest = { toolbar.hide() },
-            properties = PopupProperties(focusable = true)
+            properties = PopupProperties(
+                focusable = false, 
+                dismissOnBackPress = true,
+                dismissOnClickOutside = true
+            )
         ) {
             Surface(
                 shape = RoundedCornerShape(8.dp),
@@ -243,7 +248,7 @@ fun CustomTextSelectionMenu(toolbar: CustomTextToolbar) {
             ) {
                 Row(
                     modifier = Modifier
-                        .height(IntrinsicSize.Min)
+                        .height(48.dp)
                         .padding(horizontal = 4.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -501,9 +506,6 @@ fun TextEditorScreen(
     CompositionLocalProvider(
         LocalTextToolbar provides customTextToolbar
     ) {
-        // Render the custom menu if visible (Popup handles its own placement)
-        CustomTextSelectionMenu(customTextToolbar)
-
         Scaffold(
             modifier = Modifier.padding(bottom = parentPadding.calculateBottomPadding()),
             topBar = {
@@ -1056,9 +1058,6 @@ fun TextEditorScreen(
             }
         }
     ) { paddingValues ->
-        // Render the custom menu if visible (Popup handles its own placement)
-        CustomTextSelectionMenu(customTextToolbar)
-
         Column(modifier = Modifier.padding(paddingValues).fillMaxSize()) {
             if (showDebugPanel) {
                 Surface(
@@ -1114,6 +1113,10 @@ fun TextEditorScreen(
                 }
                 .verticalScroll(verticalScrollState)
             ) {
+                // Render the custom menu if visible. 
+                // Being inside the Box makes coordinates local to the editor area.
+                CustomTextSelectionMenu(customTextToolbar)
+
                 Row(
                     modifier = Modifier.fillMaxWidth()
                 ) {
