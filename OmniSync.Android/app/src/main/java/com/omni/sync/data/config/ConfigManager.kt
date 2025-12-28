@@ -7,6 +7,7 @@ import java.io.File
 
 data class AppConfig(
     var hubUrl: String = "http://10.0.0.37:5000/signalrhub",
+    var wanIp: String = "85.80.233.70",
     var apiKey: String = "test_api_key",
     var videoSkipInterval: Int = 10,
     var videoPlaylistRandom: Boolean = false,
@@ -93,6 +94,7 @@ class ConfigManager(private val context: Context) {
         val filesPrefs = context.getSharedPreferences("files_prefs", Context.MODE_PRIVATE)
         
         if (settingsPrefs.contains("hub_url")) config.hubUrl = settingsPrefs.getString("hub_url", config.hubUrl)!!
+        if (settingsPrefs.contains("wan_ip")) config.wanIp = settingsPrefs.getString("wan_ip", config.wanIp)!!
         if (settingsPrefs.contains("api_key")) config.apiKey = settingsPrefs.getString("api_key", config.apiKey)!!
         config.videoSkipInterval = settingsPrefs.getInt("video_skip_interval", config.videoSkipInterval)
         config.videoPlaylistRandom = settingsPrefs.getBoolean("video_playlist_random", config.videoPlaylistRandom)

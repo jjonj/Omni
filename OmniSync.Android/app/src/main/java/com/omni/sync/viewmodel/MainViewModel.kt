@@ -336,9 +336,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun sendWakeOnLan(macAddress: String, broadcastIp: String = "10.0.0.255", port: Int = 9) {
+        val wanIp = appConfig.wanIp
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                addLog("Sending WOL to $macAddress...", LogType.INFO)
+                addLog("Sending WOL to $macAddress (Local & Remote)...", LogType.INFO)
                 val macBytes = getMacBytes(macAddress)
                 val bytes = ByteArray(6 + 16 * macBytes.size)
                 for (i in 0 until 6) {
@@ -348,12 +349,24 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     System.arraycopy(macBytes, 0, bytes, i, macBytes.size)
                 }
 
-                val address = InetAddress.getByName(broadcastIp)
-                val packet = DatagramPacket(bytes, bytes.size, address, port)
                 val socket = DatagramSocket()
-                socket.send(packet)
+                
+                // 1. Send Local Broadcast
+                val localAddress = InetAddress.getByName(broadcastIp)
+                val localPacket = DatagramPacket(bytes, bytes.size, localAddress, port)
+                socket.send(localPacket)
+                
+                // 2. Send Remote Unicast
+                try {
+                    val remoteAddress = InetAddress.getByName(wanIp)
+                    val remotePacket = DatagramPacket(bytes, bytes.size, remoteAddress, port)
+                    socket.send(remotePacket)
+                } catch (e: Exception) {
+                    addLog("Remote WOL Failed: ${e.message}", LogType.WARNING)
+                }
+
                 socket.close()
-                addLog("WOL packet sent!", LogType.SUCCESS)
+                addLog("WOL packet sent to Local & $wanIp!", LogType.SUCCESS)
             } catch (e: Exception) {
                 addLog("Failed to send WOL: ${e.message}", LogType.ERROR)
             }

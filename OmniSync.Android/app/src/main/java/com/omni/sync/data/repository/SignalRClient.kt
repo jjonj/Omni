@@ -142,7 +142,23 @@ class SignalRClient(
         _connectionState.value = "Connecting..."
         mainViewModel.setErrorMessage(null)
 
-        hubConnection = HubConnectionBuilder.create(hubUrl).build()
+        val localUrl = mainViewModel.appConfig.hubUrl
+        val remoteUrl = "http://${mainViewModel.appConfig.wanIp}:5000/signalrhub"
+
+        mainViewModel.addLog("Attempting local connection: $localUrl", com.omni.sync.ui.screen.LogType.INFO)
+        
+        buildAndStartConnection(localUrl) { localError ->
+            mainViewModel.addLog("Local connection failed, trying Remote: $remoteUrl", com.omni.sync.ui.screen.LogType.WARNING)
+            buildAndStartConnection(remoteUrl) { remoteError ->
+                _connectionState.value = "Disconnected (All attempts failed)"
+                mainViewModel.setConnected(false)
+                mainViewModel.addLog("All connection attempts failed.", com.omni.sync.ui.screen.LogType.ERROR)
+            }
+        }
+    }
+
+    private fun buildAndStartConnection(url: String, onFailure: (Throwable) -> Unit) {
+        hubConnection = HubConnectionBuilder.create(url).build()
 
         hubConnection?.onClosed { error ->
             _connectionState.value = "Disconnected: ${error?.message}"
@@ -154,34 +170,31 @@ class SignalRClient(
                 reconnectJob = coroutineScope.launch {
                     while (true) {
                         delay(10000)
-                        mainViewModel.addLog("Attempting to reconnect...", com.omni.sync.ui.screen.LogType.INFO)
-                        try {
-                            hubConnection?.start()?.blockingAwait()
-                            onConnected()
-                            break
-                        } catch (e: Exception) {
-                            mainViewModel.addLog("Reconnect attempt failed: ${e.message}", com.omni.sync.ui.screen.LogType.ERROR)
-                        }
+                        mainViewModel.addLog("Attempting to reconnect (Local First)...", com.omni.sync.ui.screen.LogType.INFO)
+                        // Just call startConnection again which does the local-then-remote logic
+                        startConnection()
+                        break 
                     }
                 }
             }
         }
 
+        registerHubHandlers()
+
         hubConnection?.start()
-            ?.doOnComplete { onConnected() }
+            ?.doOnComplete { 
+                onConnected() 
+                mainViewModel.addLog("Connected to: $url", com.omni.sync.ui.screen.LogType.SUCCESS)
+            }
             ?.doOnError { error ->
-                _connectionState.value = "Error: ${error.message}"
-                mainViewModel.setConnected(false)
-                mainViewModel.addLog("Connection failed: ${error.message}", com.omni.sync.ui.screen.LogType.ERROR)
+                onFailure(error)
             }
             ?.subscribe({
                 // Success handled by doOnComplete
             }, { error ->
-                // Error handled by doOnError, but we must provide this to avoid OnErrorNotImplementedException
-                Log.e("SignalRClient", "Connection subscription error", error)
+                // Error handled by doOnError
+                Log.e("SignalRClient", "Connection subscription error for $url", error)
             })
-
-        registerHubHandlers()
     }
 
     private fun registerHubHandlers() {

@@ -41,6 +41,7 @@ fun SettingsScreen(
     var cortexNotificationsEnabled by remember { mutableStateOf(appConfig.cortexNotificationsEnabled) }
     
     var hubUrl by remember { mutableStateOf(appConfig.hubUrl) }
+    var wanIp by remember { mutableStateOf(appConfig.wanIp) }
     var apiKey by remember { mutableStateOf(appConfig.apiKey) }
 
     val initialActions = appConfig.notificationActions.ifEmpty {
@@ -98,7 +99,16 @@ fun SettingsScreen(
             OutlinedTextField(
                 value = hubUrl,
                 onValueChange = { hubUrl = it },
-                label = { Text("Hub URL") },
+                label = { Text("Hub URL (Local)") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+
+            OutlinedTextField(
+                value = wanIp,
+                onValueChange = { wanIp = it },
+                label = { Text("WAN IP (Public)") },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth()
             )
@@ -116,6 +126,7 @@ fun SettingsScreen(
             Button(
                 onClick = {
                     appConfig.hubUrl = hubUrl
+                    appConfig.wanIp = wanIp
                     appConfig.apiKey = apiKey
                     mainViewModel.saveAppConfig()
                     signalRClient.manualReconnect()
