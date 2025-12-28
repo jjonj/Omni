@@ -237,7 +237,8 @@ fun CustomTextSelectionMenu(toolbar: CustomTextToolbar) {
             properties = PopupProperties(
                 focusable = false, 
                 dismissOnBackPress = true,
-                dismissOnClickOutside = true
+                dismissOnClickOutside = true,
+                excludeFromSystemGesture = true
             )
         ) {
             Surface(
@@ -371,9 +372,8 @@ fun TextEditorScreen(
                 }
             },
             onHide = {
-                if (textFieldValue.selection.start != textFieldValue.selection.end) {
-                    textFieldValue = textFieldValue.copy(selection = TextRange(textFieldValue.selection.end))
-                }
+                // Do nothing here to avoid killing the selection while dragging handles.
+                // The system calls hide() and showMenu() repeatedly during interaction.
             }
         )
     }
@@ -619,6 +619,16 @@ fun TextEditorScreen(
                                         showMenu = false
                                     },
                                     leadingIcon = { Icon(Icons.Default.Undo, null) }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Zoom In") },
+                                    onClick = { fontSize = (fontSize + 2f).coerceAtMost(100f); showMenu = false },
+                                    leadingIcon = { Icon(Icons.Default.ZoomIn, null) }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Zoom Out") },
+                                    onClick = { fontSize = (fontSize - 2f).coerceAtLeast(2f); showMenu = false },
+                                    leadingIcon = { Icon(Icons.Default.ZoomOut, null) }
                                 )
                                 DropdownMenuItem(
                                     text = { Text("Save as Copy") },
@@ -1103,13 +1113,6 @@ fun TextEditorScreen(
                 .imePadding()
                 .onGloballyPositioned { coordinates ->
                     viewportHeight = coordinates.size.height.toFloat()
-                }
-                .pointerInput(Unit) {
-                    detectTransformGestures { _, _, zoom, _ ->
-                        if (zoom != 1f) {
-                            fontSize = (fontSize * zoom).coerceIn(2f, 100f)
-                        }
-                    }
                 }
                 .verticalScroll(verticalScrollState)
             ) {
