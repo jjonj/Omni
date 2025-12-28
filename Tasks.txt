@@ -17,7 +17,7 @@ If necessary you may use AISpeak to ask the user for help/clarifications.
 
 ## General
 
-✅ ✅ The disconnected red color background is too strong, make it darker
+✅ The disconnected red color background is too strong, make it darker
 
 
 ## For the hub
@@ -34,6 +34,8 @@ If necessary you may use AISpeak to ask the user for help/clarifications.
 ### Remote Control Screen
 
 
+Replace the "kbd" text wit
+
 
 Stream PC monitor, replacing background of the trackpad leaving the trackpad functioning still, options to toggle monitor, pinch to zoom, (advanced feature, do last)       
 
@@ -48,20 +50,17 @@ Stream PC monitor, replacing background of the trackpad leaving the trackpad fun
 
 it also auto sceolls when placing the cursor but it should not as by definition the cursor place location is in view 
 
-✅ In text editor we want to hook into the select popup to add options like itallic *x* and bold **x**, see here 
-In Android, that popup is called the **Selection Action Mode**.
-Above works but
-✅ 1. the menu is right on top of the selected text, it needs to be below or above (depending on where there is space). 
-✅ 2. When attempting to dismiss the menu by  tapping elsewhere it disappears only for 1 frame and then reappears, probably because the previous text is still selected (should also be deselected)
+On the small menu when long pressing without selecting that has paste, select all bold and itallic, add a button for adding common emoji like ✅ etc, make it a looong dropdown 
 
+Improve markdown rendering by hiding formatting, e.g. "###" and the * symbols in  **bold text** similar to how the obsidian app does it. Those symbols are only visible when the cursor is on the line that contain them. 
 
 ### Browser control screen 
 
+✅ Remove the "Advanced actions" and "Bookmarks" subheaders, its obvious.
+✅ Custom patterns added to the browser cleaning do not persist across reinstalls of app like other settings do. Same goes for bookmarks it seems. 
+✅ The bookmarks can be reordered with arrow buttons, instead make that a draggable marker so i can drag to reorder.
+✅ The whole screen has some padding on the left and right and top and bottom edges wasting pixels, please reduce that padding to just 2 pixels or so. Other screens waste less space. 
 
-✅ Input controls area takes up too much space vertically, make it 30% smaller. 
-✅ Advanced actions  panel can be compressed with less padding/spacing and very slightly thinner buttons, make it like the button panel
-✅ Merge the browser buttons below the url bar into the button panel
-✅ Make the boomark current tap a small icon to the right of url button like the current paste and go button
 
 ### Notification panel
 	   
@@ -74,10 +73,31 @@ Use better widget icons somehow, either let user choose or be smart
 
 ### AI screen
 
-✅ make it clear that we are disconnected, disable buttons, but make sure reconnect reenables
+The zoom button is very buggy. Please have a look at the repo at D:\SSDProjects\Tools\gemini-cli and see if we can hook directly into zoom level with a surgical change over there. 
+The conversation bubbles dont separate very well. When new messages come in, they just get kinda appended to the last message. However if i go to the session list and reselect the same session, the history reloads and looks perfect, except for a dangling "AI: ..." even though the AI isnt thinking. It also becomes stuck on status "Switching sessions..." even though it already switched or didnt need to switch depending on your perspective. 
+When the android keyboard is up, there is too much empty space between the keyboard and the buttons. Remote screen previously had this issue but it got fixed, so reference how it handles keyboard up moving of stuff. 
+Make the button style the same as other button panels like e.g. on remote control screen
 
+Reload history doesnt work well
 
-✅ Add button to set/toggle text zoom level to 5x (currently text zoom can be set with ctrol scrollwheel so investigate how that works) 
 
 ### Alarm screen
-✅ Dismissing alarm from notification doesnt disable the alarm and it pops again after snoozze duration. unlike the other dismiss button on alarm screen which works fine.  Why arent these two calling the same function?
+
+
+## Chrome plugin
+
+
+When disconnecting from hub it gives these errors. Disconnecting shouldnt result in errors, warnings at most or just handle it gracefully.
+
+[2025-12-28T13:40:36.132Z] Error: Connection disconnected with error 'Error: WebSocket closed with status code: 1006 (no reason given).'. OR  2025-12-28T09:50:04.056Z] Error: Failed to complete negotiation with the server: TypeError: Failed to fetch
+[2025-12-28T09:50:04.056Z] Error: Failed to start the connection: Error: Failed to complete negotiation with the server: TypeError: Failed to fetch
+[2025-12-28T09:50:09.029Z] Error: Failed to complete negotiation with the server: TypeError: Failed to fetch
+[2025-12-28T09:50:09.029Z] Error: Failed to start the connection: Error: Failed to complete negotiation with the server: TypeError: Failed to fetch
+[2025-12-28T09:50:09.307Z] Error: Failed to complete negotiation with the server: TypeError: Failed to fetch
+[2025-12-28T09:50:09.307Z] Error: Failed to start the connection: Error: Failed to complete negotiation with the server: TypeError: Failed to fetch
+[2025-12-28T09:50:16.066Z] Error: Failed to complete negotiation with the server: TypeError: Failed to fetch
+[2025-12-28T09:50:16.066Z] Error: Failed to start the connection: Error: Failed to complete negotiation with the server: TypeError: Failed to fetch
+[2025-12-28T09:50:21.332Z] Error: Failed to complete negotiation with the server: TypeError: Failed to fetch
+[2025-12-28T09:50:21.332Z] Error: Failed to start the connection: Error: Failed to complete negotiation with the server: TypeError: Failed to fetch
+[2025-12-28T09:50:28.112Z] Error: Failed to complete negotiation with the server: TypeError: Failed to fetch
+[2025-12-28T09:50:28.112Z] Error: Failed to start the connection: Error: Failed to complete negotiation with the server: TypeError: Failed to fetch

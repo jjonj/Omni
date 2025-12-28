@@ -63,6 +63,13 @@ import androidx.compose.runtime.mutableLongStateOf
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.material.icons.filled.DragHandle
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.ui.zIndex
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.foundation.gestures.scrollBy
+import kotlin.math.roundToInt
 import com.omni.sync.utils.WindowsKeyCodes.VK_BACK
 import com.omni.sync.utils.WindowsKeyCodes.VK_ESCAPE
 import com.omni.sync.utils.WindowsKeyCodes.VK_RETURN
@@ -108,7 +115,7 @@ fun BrowserControlScreen(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .padding(16.dp)
+            .padding(2.dp)
     ) {
         // --- 1. Address Bar & Main Actions ---
         Row(
@@ -162,38 +169,87 @@ fun BrowserControlScreen(
         Spacer(modifier = Modifier.height(4.dp))
 
         // --- 4. Bookmarks List ---
-        Text(
-            text = "Bookmarks",
-            style = MaterialTheme.typography.titleMedium,
-            color = MaterialTheme.colorScheme.primary
-        )
         
+        val lazyListState = androidx.compose.foundation.lazy.rememberLazyListState()
+        var draggedItemIndex by remember { mutableStateOf<Int?>(null) }
+        var draggingOffset by remember { mutableStateOf(0f) }
+        val scope = rememberCoroutineScope()
+
         LazyColumn(
-            modifier = Modifier.weight(1f),
+            state = lazyListState,
+            modifier = Modifier
+                .weight(1f)
+                .pointerInput(bookmarks) {
+                    detectDragGesturesAfterLongPress(
+                        onDragStart = { offset ->
+                            lazyListState.layoutInfo.visibleItemsInfo
+                                .firstOrNull { item ->
+                                    offset.y.toInt() in item.offset..(item.offset + item.size)
+                                }
+                                ?.also { item ->
+                                    draggedItemIndex = item.index
+                                }
+                        },
+                        onDrag = { change, dragAmount ->
+                            change.consume()
+                            draggingOffset += dragAmount.y
+                            
+                            val currentDraggedIndex = draggedItemIndex ?: return@detectDragGesturesAfterLongPress
+                            val targetIndex = lazyListState.layoutInfo.visibleItemsInfo
+                                .firstOrNull { item ->
+                                    val itemCenter = item.offset + item.size / 2
+                                    val draggedCenter = lazyListState.layoutInfo.visibleItemsInfo
+                                        .find { it.index == currentDraggedIndex }
+                                        ?.let { it.offset + it.size / 2 + draggingOffset }
+                                        ?: return@firstOrNull false
+                                    
+                                    (dragAmount.y > 0 && draggedCenter > itemCenter && item.index > currentDraggedIndex) ||
+                                    (dragAmount.y < 0 && draggedCenter < itemCenter && item.index < currentDraggedIndex)
+                                }?.index
+
+                            if (targetIndex != null) {
+                                viewModel.moveBookmark(currentDraggedIndex, targetIndex)
+                                draggedItemIndex = targetIndex
+                                draggingOffset = 0f
+                            }
+                        },
+                        onDragEnd = {
+                            draggedItemIndex = null
+                            draggingOffset = 0f
+                        },
+                        onDragCancel = {
+                            draggedItemIndex = null
+                            draggingOffset = 0f
+                        }
+                    )
+                },
             contentPadding = PaddingValues(top = 8.dp)
         ) {
-            items(bookmarks) { bookmark ->
+            items(bookmarks.size) { index ->
+                val bookmark = bookmarks[index]
+                val isDragging = index == draggedItemIndex
+                
                 BookmarkItem(
+                    modifier = Modifier
+                        .graphicsLayer {
+                            translationY = if (isDragging) draggingOffset else 0f
+                            scaleX = if (isDragging) 1.05f else 1f
+                            scaleY = if (isDragging) 1.05f else 1f
+                            alpha = if (isDragging) 0.9f else 1f
+                        }
+                        .zIndex(if (isDragging) 1f else 0f),
                     bookmark = bookmark,
                     onClick = { 
                         viewModel.onUrlChanged(bookmark.url)
                         viewModel.navigate(bookmark.url) 
                     },
-                    onDelete = { viewModel.removeBookmark(bookmark) },
-                    onMoveUp = { viewModel.moveBookmarkUp(bookmark) },
-                    onMoveDown = { viewModel.moveBookmarkDown(bookmark) }
+                    onDelete = { viewModel.removeBookmark(bookmark) }
                 )
             }
         }
         
         // --- 5. Advanced Actions ---
         HorizontalDivider()
-        Spacer(modifier = Modifier.height(4.dp))
-        Text(
-            text = "Advanced Actions",
-            style = MaterialTheme.typography.titleSmall,
-            color = MaterialTheme.colorScheme.secondary
-        )
         Spacer(modifier = Modifier.height(4.dp))
         
         Row(
@@ -565,14 +621,13 @@ fun BrowserHiddenKeyboard(
 
 @Composable
 fun BookmarkItem(
+    modifier: Modifier = Modifier,
     bookmark: Bookmark, 
     onClick: () -> Unit, 
-    onDelete: () -> Unit,
-    onMoveUp: () -> Unit,
-    onMoveDown: () -> Unit
+    onDelete: () -> Unit
 ) {
     Card(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .padding(vertical = 4.dp)
             .clickable { onClick() },
@@ -585,6 +640,8 @@ fun BookmarkItem(
                 .fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            Icon(Icons.Default.DragHandle, "Drag to reorder", tint = Color.Gray.copy(alpha = 0.5f))
+            Spacer(modifier = Modifier.width(8.dp))
             Icon(Icons.Default.Bookmark, null, tint = MaterialTheme.colorScheme.secondary)
             Spacer(modifier = Modifier.width(12.dp))
             
@@ -602,13 +659,6 @@ fun BookmarkItem(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
-            }
-            
-            IconButton(onClick = onMoveUp, modifier = Modifier.size(24.dp)) {
-                Icon(Icons.Default.KeyboardArrowUp, "Move Up")
-            }
-            IconButton(onClick = onMoveDown, modifier = Modifier.size(24.dp)) {
-                Icon(Icons.Default.KeyboardArrowDown, "Move Down")
             }
             
             IconButton(onClick = onDelete, modifier = Modifier.size(24.dp)) {

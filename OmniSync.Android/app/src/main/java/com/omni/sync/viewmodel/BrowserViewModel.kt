@@ -32,15 +32,32 @@ class BrowserViewModel(
     private val _openInNewTab = MutableStateFlow(false)
     val openInNewTab: StateFlow<Boolean> = _openInNewTab
     
-    val customCleanupPatterns: StateFlow<List<String>> = signalRClient.cleanupPatterns
+    private val _customCleanupPatterns = MutableStateFlow<List<String>>(emptyList())
+    val customCleanupPatterns: StateFlow<List<String>> = _customCleanupPatterns
+
     val tabList: StateFlow<List<Map<String, Any>>> = signalRClient.tabListReceived
 
     init {
         loadBookmarks()
+        loadCleanupPatterns()
         // Load toggle preference
         _openInNewTab.value = prefs.getBoolean("open_in_new_tab", false)
         // Request cleanup patterns from Chrome extension
         requestCleanupPatterns()
+
+        // Listen for patterns from extension and merge with local
+        viewModelScope.launch {
+            signalRClient.cleanupPatterns.collect { extPatterns ->
+                if (extPatterns.isNotEmpty()) {
+                    val currentLocal = _customCleanupPatterns.value
+                    val merged = (currentLocal + extPatterns).distinct()
+                    if (merged != currentLocal) {
+                        _customCleanupPatterns.value = merged
+                        saveCleanupPatterns()
+                    }
+                }
+            }
+        }
 
         // Listen for tab info to add bookmarks automatically when requested
         viewModelScope.launch {
@@ -73,13 +90,24 @@ class BrowserViewModel(
 
     fun addCleanupPattern(pattern: String) {
         if (pattern.isNotBlank()) {
-            // Send to hub, which will forward to extension
-            signalRClient.sendPayload("AddCleanupPattern", pattern)
+            val currentList = _customCleanupPatterns.value.toMutableList()
+            if (!currentList.contains(pattern)) {
+                currentList.add(pattern)
+                _customCleanupPatterns.value = currentList
+                saveCleanupPatterns()
+                // Send to hub, which will forward to extension
+                signalRClient.sendPayload("AddCleanupPattern", pattern)
+            }
         }
     }
     
     fun removeCleanupPattern(pattern: String) {
-        signalRClient.sendBrowserCommand("RemoveCleanupPattern", pattern, false)
+        val currentList = _customCleanupPatterns.value.toMutableList()
+        if (currentList.remove(pattern)) {
+            _customCleanupPatterns.value = currentList
+            saveCleanupPatterns()
+            signalRClient.sendBrowserCommand("RemoveCleanupPattern", pattern, false)
+        }
     }
 
     fun onUrlChanged(newUrl: String) {
@@ -155,6 +183,17 @@ class BrowserViewModel(
         saveBookmarks()
     }
 
+    fun moveBookmark(fromIndex: Int, toIndex: Int) {
+        if (fromIndex == toIndex) return
+        val currentList = _bookmarks.value.toMutableList()
+        if (fromIndex !in currentList.indices || toIndex !in currentList.indices) return
+        
+        val item = currentList.removeAt(fromIndex)
+        currentList.add(toIndex, item)
+        _bookmarks.value = currentList
+        saveBookmarks()
+    }
+
     fun moveBookmarkUp(bookmark: Bookmark) {
         val currentList = _bookmarks.value.toMutableList()
         val index = currentList.indexOf(bookmark)
@@ -190,6 +229,11 @@ class BrowserViewModel(
     private fun getBookmarksFile(): java.io.File {
         val dir = getApplication<Application>().getExternalFilesDir(null)
         return java.io.File(dir, "bookmarks.json")
+    }
+
+    private fun getPatternsFile(): java.io.File {
+        val dir = getApplication<Application>().getExternalFilesDir(null)
+        return java.io.File(dir, "cleanup_patterns.json")
     }
 
     private fun loadBookmarks() {
@@ -234,6 +278,28 @@ class BrowserViewModel(
             file.writeText(json)
         } catch (e: Exception) {
             android.util.Log.e("BrowserViewModel", "Error saving bookmarks to file", e)
+        }
+    }
+
+    private fun loadCleanupPatterns() {
+        val file = getPatternsFile()
+        if (file.exists()) {
+            try {
+                val json = file.readText()
+                val type = object : TypeToken<List<String>>() {}.type
+                _customCleanupPatterns.value = gson.fromJson(json, type)
+            } catch (e: Exception) {
+                android.util.Log.e("BrowserViewModel", "Error reading patterns file", e)
+            }
+        }
+    }
+
+    private fun saveCleanupPatterns() {
+        try {
+            val json = gson.toJson(_customCleanupPatterns.value)
+            getPatternsFile().writeText(json)
+        } catch (e: Exception) {
+            android.util.Log.e("BrowserViewModel", "Error saving patterns file", e)
         }
     }
 }
