@@ -45,7 +45,7 @@ If necessary you may use AISpeak to ask the user for help/clarifications.
 
 ✅ The jump/scroll to cursor when typng out of view is not working right, on the text editor screen, add a temporary panel that twice displays the currently visible line numbers, once accounting for keyboard and once not accounting for android keyboard as well as the current cursor line number, for debugging purposes and then only scroll/jump when typing and the cursor is outside the visible line numbers
 
-✅ On folder view, Recent changes made the bottom bar with bookmarks hover too far above the navigation bar. fix that
+✅ ✅ On folder view, Recent changes made the bottom bar with bookmarks hover too far above the navigation bar. fix that
 
 
 ✅ it also auto sceolls when placing the cursor but it should not as by definition the cursor place location is in view 

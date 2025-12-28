@@ -204,11 +204,11 @@ fun FilesScreen(
                 }
             }
         },
-        modifier = modifier.padding(bottom = parentPadding.calculateBottomPadding())
+        modifier = modifier.fillMaxSize()
     ) { innerPadding ->
         Column(
             modifier = Modifier
-                .padding(innerPadding)
+                .padding(top = innerPadding.calculateTopPadding(), bottom = parentPadding.calculateBottomPadding())
                 .fillMaxSize()
         ) {
             // --- Search Bar ---

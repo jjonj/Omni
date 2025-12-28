@@ -803,7 +803,6 @@ fun TextEditorScreen(
         LocalTextToolbar provides customTextToolbar
     ) {
         Scaffold(
-            modifier = Modifier.padding(bottom = parentPadding.calculateBottomPadding()),
             topBar = {
             Column {
                 TopAppBar(
@@ -1364,7 +1363,7 @@ fun TextEditorScreen(
             }
         }
     ) { paddingValues ->
-        Column(modifier = Modifier.padding(paddingValues).fillMaxSize()) {
+        Column(modifier = Modifier.padding(top = paddingValues.calculateTopPadding(), bottom = parentPadding.calculateBottomPadding()).fillMaxSize()) {
             if (showDebugPanel) {
                 Surface(
                     color = MaterialTheme.colorScheme.secondaryContainer,
