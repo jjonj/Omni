@@ -701,6 +701,34 @@ namespace OmniSync.Hub.Presentation.Hubs
             }
         }
 
+        public async Task HandleExternalCommand(string command, string payload)
+        {
+            if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
+            {
+                _logger.LogInformation($"[RpcApiHub] HandleExternalCommand: {command} with payload: {payload}");
+                AnyCommandReceived?.Invoke(this, $"External: {command} ({payload})");
+
+                switch (command)
+                {
+                    case "OPEN_FILE_ON_ANDROID":
+                        if (Directory.Exists(payload))
+                        {
+                            await _hubEventSender.SendPayloadToAndroid("OPEN_FOLDER", new { Path = payload });
+                        }
+                        else
+                        {
+                            await _hubEventSender.SendPayloadToAndroid("OPEN_FILE", new { Path = payload });
+                        }
+                        break;
+                    case "CLI_HERE":
+                        _ = Task.Run(async () => {
+                             await _aiCliService.LaunchSessionAsync(payload);
+                        });
+                        break;
+                }
+            }
+        }
+
         public async Task GetAiSessions()
         {
             if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)

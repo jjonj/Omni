@@ -39,8 +39,15 @@
         <Style TargetType="TextBox">
             <Setter Property="Background" Value="#1E1E1E"/>
             <Setter Property="Foreground" Value="#D4D4D4"/>
-            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="BorderBrush" Value="#333337"/>
+            <Setter Property="Padding" Value="2"/>
             <Setter Property="FontFamily" Value="Consolas"/>
+            <Style.Triggers>
+                <Trigger Property="IsFocused" Value="True">
+                    <Setter Property="BorderBrush" Value="#007ACC"/>
+                </Trigger>
+            </Style.Triggers>
         </Style>
         <Style TargetType="Button">
             <Setter Property="Background" Value="#3E3E42"/>

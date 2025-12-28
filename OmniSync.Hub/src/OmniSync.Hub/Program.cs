@@ -14,12 +14,88 @@ using System.IO; // Added for Path.Combine and Directory.GetCurrentDirectory()
 using Microsoft.Extensions.FileProviders; // Added for PhysicalFileProvider
 using Microsoft.AspNetCore.Hosting; // Added for ConfigureKestrel
 using Microsoft.AspNetCore.SignalR; // Added for IHubContext
+using Microsoft.AspNetCore.SignalR.Client; // Added for HubConnectionBuilder extension methods
 using System.Threading.Tasks; // For TaskScheduler events
 using System.Text; // For StringBuilder
 
 // Set the current directory to the location of the executable to ensure
 // consistent behavior for file paths (config, static files) regardless of startup method.
 Directory.SetCurrentDirectory(AppContext.BaseDirectory);
+
+// --- Command Line Argument Handling ---
+if (args.Length > 0)
+{
+    var config = new ConfigurationBuilder()
+        .AddJsonFile(Path.Combine(AppContext.BaseDirectory, "appsettings.json"), optional: true)
+        .Build();
+    
+    string? apiKey = config["AuthApiKey"];
+    if (string.IsNullOrEmpty(apiKey))
+    {
+        // Try absolute path if relative fails
+        string altPath = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "appsettings.json");
+        if (File.Exists(altPath))
+        {
+            config = new ConfigurationBuilder().AddJsonFile(altPath).Build();
+            apiKey = config["AuthApiKey"];
+        }
+    }
+
+    if (args[0] == "--open-on-android" && args.Length > 1)
+    {
+        string filePath = args[1];
+        Console.WriteLine($"Sending command to Hub: Open on Android -> {filePath}");
+        await ForwardToHub(apiKey, "OpenOnAndroid", filePath);
+        return;
+    }
+    else if (args[0] == "--cli-here" && args.Length > 1)
+    {
+        string workspace = args[1];
+        Console.WriteLine($"Sending command to Hub: CLI Here -> {workspace}");
+        await ForwardToHub(apiKey, "CliHere", workspace);
+        return;
+    }
+}
+
+static async Task ForwardToHub(string? apiKey, string command, string payload)
+{
+    if (string.IsNullOrEmpty(apiKey))
+    {
+        Console.WriteLine("Error: AuthApiKey not found. Cannot forward command to Hub.");
+        return;
+    }
+
+    try
+    {
+        var hubConnection = new Microsoft.AspNetCore.SignalR.Client.HubConnectionBuilder()
+            .WithUrl("http://localhost:5000/signalrhub")
+            .Build();
+
+        await hubConnection.StartAsync();
+        bool authenticated = await hubConnection.InvokeAsync<bool>("Authenticate", apiKey);
+        
+        if (authenticated)
+        {
+            if (command == "OpenOnAndroid")
+            {
+                await hubConnection.InvokeAsync("HandleExternalCommand", "OPEN_FILE_ON_ANDROID", payload);
+            }
+            else if (command == "CliHere")
+            {
+                await hubConnection.InvokeAsync("HandleExternalCommand", "CLI_HERE", payload);
+            }
+        }
+        else
+        {
+            Console.WriteLine("Error: Authentication failed when forwarding to Hub.");
+        }
+        await hubConnection.StopAsync();
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"Error forwarding to Hub: {ex.Message}");
+    }
+}
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -118,6 +194,13 @@ builder.Services.AddSignalR();
 builder.Services.AddControllers();
 
 var app = builder.Build();
+
+// Register Context Menu at startup
+using (var scope = app.Services.CreateScope())
+{
+    var registryService = scope.ServiceProvider.GetRequiredService<RegistryService>();
+    registryService.RegisterContextMenu();
+}
 
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())

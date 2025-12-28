@@ -62,9 +62,28 @@ namespace OmniSync.Hub.Presentation
             WinFormsApp.SetCompatibleTextRenderingDefault(false); // For WinForms interop
 
             _applicationContext = new TrayApplicationContext(_appLifetime, app, _hubMonitorService, _inputService, _shutdownService, _registryService, _settingsService); // Pass hubMonitorService and inputService
+            
+            // Add message filter to route messages to WPF's ComponentDispatcher
+            WinFormsApp.AddMessageFilter(new WpfMessageFilter());
+
             Console.WriteLine("TrayIconManager: Starting WinForms message loop.");
             WinFormsApp.Run(_applicationContext); // Start the message pump with our custom context
             Console.WriteLine("TrayIconManager: WinForms message loop finished.");
+        }
+
+        private class WpfMessageFilter : IMessageFilter
+        {
+            public bool PreFilterMessage(ref Message m)
+            {
+                var msg = new System.Windows.Interop.MSG
+                {
+                    hwnd = m.HWnd,
+                    message = m.Msg,
+                    wParam = m.WParam,
+                    lParam = m.LParam
+                };
+                return System.Windows.Interop.ComponentDispatcher.RaiseThreadMessage(ref msg);
+            }
         }
 
         public Task StopAsync(CancellationToken cancellationToken)

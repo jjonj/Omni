@@ -8,6 +8,14 @@ using System.Threading.Tasks;
 
 namespace OmniSync.Hub.Logic.Services
 {
+    public class PayloadEnvelope
+    {
+        public string Target { get; set; } = string.Empty;
+        public string Command { get; set; } = string.Empty;
+        public object Payload { get; set; } = new object();
+        public long Timestamp { get; set; }
+    }
+
     public class HubEventSender
     {
         private readonly IHubContext<RpcApiHub> _hubContext;
@@ -102,6 +110,18 @@ namespace OmniSync.Hub.Logic.Services
         public async Task BroadcastConnectionRemoved(string connectionId)
         {
             await _hubContext.Clients.All.SendAsync("ConnectionRemoved", connectionId);
+        }
+
+        public async Task SendPayloadToAndroid(string command, object payload)
+        {
+            await BroadcastLogEntryAdded($"Broadcasting '{command}' to Android...");
+            await _hubContext.Clients.All.SendAsync("ReceivePayload", new PayloadEnvelope
+            {
+                Target = "Android",
+                Command = command,
+                Payload = payload,
+                Timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds()
+            });
         }
 
         public async Task SendAiError(string connectionId, string errorMessage)

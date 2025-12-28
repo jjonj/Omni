@@ -185,6 +185,26 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         navigateTo(AppScreen.IMAGE_VIEWER)
     }
 
+    fun handleOpenFile(remotePath: String) {
+        val extension = remotePath.substringAfterLast(".", "").lowercase()
+        when (extension) {
+            "mp4", "mkv", "avi", "mov", "webm" -> playVideo(remotePath)
+            "jpg", "jpeg", "png", "webp", "gif", "bmp" -> viewImages(remotePath)
+            else -> openEditor(remotePath)
+        }
+    }
+
+    fun handleOpenFolder(remotePath: String) {
+        _pendingNavigationPath.value = remotePath
+        navigateTo(AppScreen.FILES)
+    }
+
+    fun openEditor(remotePath: String) {
+        // Assume it's a text file
+        _pendingNavigationPath.value = remotePath
+        navigateTo(AppScreen.EDITOR)
+    }
+
     fun openUrlOnPhone(url: String) {
         try {
             val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))

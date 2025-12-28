@@ -52,6 +52,13 @@ data class ProcessInfo(
     @SerializedName("memoryUsage") val memoryUsage: Long = 0
 )
 
+data class ReceivePayload(
+    @SerializedName("Target") val target: String,
+    @SerializedName("Command") val command: String,
+    @SerializedName("Payload") val payload: JsonElement,
+    @SerializedName("Timestamp") val timestamp: Long
+)
+
 class SignalRClient(
     private val context: Context,
     private val mainViewModel: MainViewModel
@@ -374,6 +381,38 @@ class SignalRClient(
                 Log.e("SignalRClient", "Error parsing AI history", e)
             }
         }, String::class.java)
+
+        hubConnection?.on("ReceivePayload", { payloadData: Any ->
+            try {
+                val jsonStr = gson.toJson(payloadData)
+                Log.d("SignalRClient", "Raw ReceivePayload JSON: $jsonStr")
+                
+                val type = object : TypeToken<Map<String, Any>>() {}.type
+                val map: Map<String, Any> = gson.fromJson(jsonStr, type)
+                
+                val command = (map["Command"] ?: map["command"]) as? String
+                val target = (map["Target"] ?: map["target"]) as? String
+                val payloadObj = (map["Payload"] ?: map["payload"]) as? Map<String, Any>
+
+                mainViewModel.addLog("Received Payload: $command", com.omni.sync.ui.screen.LogType.INFO)
+                
+                if ((target == "Android" || target == "android") && command != null && payloadObj != null) {
+                    when (command) {
+                        "OPEN_FILE" -> {
+                            val path = (payloadObj["Path"] ?: payloadObj["path"]) as? String
+                            if (path != null) mainViewModel.handleOpenFile(path)
+                        }
+                        "OPEN_FOLDER" -> {
+                            val path = (payloadObj["Path"] ?: payloadObj["path"]) as? String
+                            if (path != null) mainViewModel.handleOpenFolder(path)
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("SignalRClient", "Error parsing ReceivePayload", e)
+                mainViewModel.addLog("Error parsing payload: ${e.message}", com.omni.sync.ui.screen.LogType.ERROR)
+            }
+        }, Any::class.java)
     }
 
     fun sendAiMessage(message: String, pid: Int? = null) {
