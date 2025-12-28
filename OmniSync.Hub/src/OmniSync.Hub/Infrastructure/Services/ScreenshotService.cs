@@ -34,5 +34,35 @@ namespace OmniSync.Hub.Infrastructure.Services
                 bitmap.Save(filePath, ImageFormat.Jpeg);
             }
         }
+
+        public byte[] CapturePrimaryScreenToMemory()
+        {
+            var primaryScreen = Screen.PrimaryScreen;
+            if (primaryScreen == null) return Array.Empty<byte>();
+
+            int width = primaryScreen.Bounds.Width;
+            int height = primaryScreen.Bounds.Height;
+            int top = primaryScreen.Bounds.Top;
+            int left = primaryScreen.Bounds.Left;
+
+            using (Bitmap bitmap = new Bitmap(width, height))
+            {
+                using (Graphics g = Graphics.FromImage(bitmap))
+                {
+                    g.CopyFromScreen(left, top, 0, 0, bitmap.Size);
+                }
+
+                using (MemoryStream ms = new MemoryStream())
+                {
+                    // Use a lower quality for streaming to reduce bandwidth
+                    var encoder = ImageCodecInfo.GetImageEncoders().First(c => c.FormatID == ImageFormat.Jpeg.Guid);
+                    var parameters = new EncoderParameters(1);
+                    parameters.Param[0] = new EncoderParameter(Encoder.Quality, 50L); // 50% quality
+
+                    bitmap.Save(ms, encoder, parameters);
+                    return ms.ToArray();
+                }
+            }
+        }
     }
 }

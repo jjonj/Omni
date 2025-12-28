@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.StaticFiles;
 using System.IO;
+using OmniSync.Hub.Infrastructure.Services;
 
 namespace OmniSync.Hub.Presentation.Controllers
 {
@@ -8,6 +9,13 @@ namespace OmniSync.Hub.Presentation.Controllers
     [ApiController]
     public class StreamController : ControllerBase
     {
+        private readonly ScreenshotService _screenshotService;
+
+        public StreamController(ScreenshotService screenshotService)
+        {
+            _screenshotService = screenshotService;
+        }
+
         [HttpGet("stream")]
         public IActionResult GetVideo([FromQuery] string path)
         {
@@ -27,6 +35,14 @@ namespace OmniSync.Hub.Presentation.Controllers
 
             // "enableRangeProcessing: true" allows ExoPlayer to seek (jump forward/backward)
             return PhysicalFile(path, contentType, enableRangeProcessing: true);
+        }
+
+        [HttpGet("screenshot")]
+        public IActionResult GetScreenshot()
+        {
+            var data = _screenshotService.CapturePrimaryScreenToMemory();
+            if (data == null || data.Length == 0) return NotFound();
+            return File(data, "image/jpeg");
         }
     }
 }

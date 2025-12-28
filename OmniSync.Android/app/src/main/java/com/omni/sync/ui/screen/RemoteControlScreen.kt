@@ -22,6 +22,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
@@ -52,6 +53,9 @@ import com.omni.sync.utils.WindowsKeyCodes.VK_SHIFT
 import com.omni.sync.utils.WindowsKeyCodes.VK_TAB
 import com.omni.sync.utils.WindowsKeyCodes.VK_UP
 import com.omni.sync.ui.components.ActionKeyButton
+import coil.compose.AsyncImage
+import coil.request.ImageRequest
+import androidx.compose.ui.layout.ContentScale
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -66,12 +70,23 @@ fun RemoteControlScreen(
     val keyboardController = LocalSoftwareKeyboardController.current
     val focusRequester = remember { FocusRequester() }
     val isKeyboardVisible = WindowInsets.isImeVisible
+    var isMonitorVisible by remember { mutableStateOf(false) }
+    var monitorScale by remember { mutableFloatStateOf(1f) }
+    var monitorOffset by remember { mutableStateOf(Offset.Zero) }
 
     // Layered layout: Trackpad fills the screen, ButtonPanel sits on top with shadow
     Box(modifier = modifier.fillMaxSize()) {
         TrackpadArea(
             signalRClient = signalRClient,
-            modifier = Modifier.fillMaxSize()
+            modifier = Modifier.fillMaxSize(),
+            mainViewModel = mainViewModel,
+            isMonitorVisible = isMonitorVisible,
+            scale = monitorScale,
+            offset = monitorOffset,
+            onTransform = { s, o ->
+                monitorScale = (monitorScale * s).coerceIn(1f, 5f)
+                monitorOffset += o
+            }
         )
         
         // ButtonPanel with elevation and shadow at the bottom
@@ -101,22 +116,55 @@ fun RemoteControlScreen(
                 modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
                 keyboardController = keyboardController,
                 isKeyboardVisible = isKeyboardVisible,
-                focusRequester = focusRequester
+                focusRequester = focusRequester,
+                isMonitorVisible = isMonitorVisible,
+                onToggleMonitor = { 
+                    isMonitorVisible = it
+                    if (!it) {
+                        monitorScale = 1f
+                        monitorOffset = Offset.Zero
+                    }
+                }
             )
         }
     }
 }
 
 @Composable
-fun TrackpadArea(signalRClient: SignalRClient, modifier: Modifier = Modifier) {
+fun TrackpadArea(
+    signalRClient: SignalRClient, 
+    mainViewModel: MainViewModel,
+    modifier: Modifier = Modifier,
+    isMonitorVisible: Boolean = false,
+    scale: Float = 1f,
+    offset: Offset = Offset.Zero,
+    onTransform: (Float, Offset) -> Unit = { _, _ -> }
+) {
     val coroutineScope = rememberCoroutineScope()
     var lastTapTime by remember { mutableLongStateOf(0L) }
     var isDraggingLeftClick by remember { mutableStateOf(false) }
+    var screenshotTick by remember { mutableIntStateOf(0) }
+
+    LaunchedEffect(isMonitorVisible) {
+        if (isMonitorVisible) {
+            while (true) {
+                delay(200) // Refresh every 200ms (5fps)
+                screenshotTick++
+            }
+        }
+    }
 
     Box(
         modifier = modifier
             .fillMaxWidth()
             .background(MaterialTheme.colorScheme.surfaceVariant)
+            .pointerInput(isMonitorVisible) {
+                if (isMonitorVisible) {
+                    detectTransformGestures { _, pan, zoom, _ ->
+                        onTransform(zoom, pan)
+                    }
+                }
+            }
             .pointerInput(signalRClient) {
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false)
@@ -142,8 +190,8 @@ fun TrackpadArea(signalRClient: SignalRClient, modifier: Modifier = Modifier) {
                             val changes = event.changes
                             val pressedCount = changes.count { it.pressed }
                             
-                            if (pressedCount >= 2) {
-                                // Scroll logic
+                            if (pressedCount >= 2 && !isMonitorVisible) {
+                                // Scroll logic (only if not in monitor zoom mode)
                                 val scrollDelta = changes.first().positionChange()
                                 if (scrollDelta != Offset.Zero) {
                                     signalRClient.sendPayload("MOUSE_SCROLL", mapOf("Delta" to scrollDelta.y.toInt()))
@@ -199,8 +247,30 @@ fun TrackpadArea(signalRClient: SignalRClient, modifier: Modifier = Modifier) {
                 }
             }
     ) {
+        if (isMonitorVisible) {
+            val baseUrl = mainViewModel.getBaseUrl()
+            val imageUrl = "$baseUrl/api/screenshot?t=$screenshotTick"
+            
+            AsyncImage(
+                model = ImageRequest.Builder(LocalContext.current)
+                    .data(imageUrl)
+                    .crossfade(true)
+                    .build(),
+                contentDescription = "PC Monitor",
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer(
+                        scaleX = scale,
+                        scaleY = scale,
+                        translationX = offset.x,
+                        translationY = offset.y
+                    ),
+                contentScale = ContentScale.Fit
+            )
+        }
+
         Text(
-            text = "Trackpad Active\n(Tap = Left Click | Hold 2s = Right Click)",
+            text = if (isMonitorVisible) "" else "Trackpad Active\n(Tap = Left Click | Hold 2s = Right Click)",
             modifier = Modifier.align(Alignment.Center),
             style = MaterialTheme.typography.bodyLarge,
             textAlign = androidx.compose.ui.text.style.TextAlign.Center,
@@ -323,7 +393,9 @@ fun ButtonPanel(
     modifier: Modifier = Modifier,
     keyboardController: androidx.compose.ui.platform.SoftwareKeyboardController?,
     isKeyboardVisible: Boolean,
-    focusRequester: FocusRequester
+    focusRequester: FocusRequester,
+    isMonitorVisible: Boolean,
+    onToggleMonitor: (Boolean) -> Unit
 ) {
     val coroutineScope = rememberCoroutineScope()
     val isShiftPressed by mainViewModel.isShiftPressed.collectAsState()
@@ -468,7 +540,7 @@ fun ButtonPanel(
 
             if (!showMoreButtons) {
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    ActionKeyButton(text = "Kbd", modifier = Modifier.weight(1f)) {
+                    ActionKeyButton(icon = Icons.Default.Keyboard, modifier = Modifier.weight(1f)) {
                         if (isKeyboardVisible) {
                             keyboardController?.hide()
                         } else {
@@ -482,6 +554,12 @@ fun ButtonPanel(
                     ActionKeyButton(icon = Icons.AutoMirrored.Filled.KeyboardReturn, modifier = Modifier.weight(1f)) {
                         signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_RETURN)
                     }
+                    ActionKeyButton(
+                        icon = Icons.Default.Tv, 
+                        text = if (isMonitorVisible) "Off" else "On",
+                        modifier = Modifier.weight(1f),
+                        onClick = { onToggleMonitor(!isMonitorVisible) }
+                    )
                     ActionKeyButton(text = "More", modifier = Modifier.weight(1f)) {
                         showMoreButtons = true
                     }
