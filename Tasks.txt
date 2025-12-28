@@ -74,11 +74,11 @@ Use better widget icons somehow, either let user choose or be smart
 ### AI screen
 
 The zoom button is very buggy. Please have a look at the repo at D:\SSDProjects\Tools\gemini-cli and see if we can hook directly into zoom level with a surgical change over there. 
-The conversation bubbles dont separate very well. When new messages come in, they just get kinda appended to the last message. However if i go to the session list and reselect the same session, the history reloads and looks perfect, except for a dangling "AI: ..." even though the AI isnt thinking. It also becomes stuck on status "Switching sessions..." even though it already switched or didnt need to switch depending on your perspective. 
-When the android keyboard is up, there is too much empty space between the keyboard and the buttons. Remote screen previously had this issue but it got fixed, so reference how it handles keyboard up moving of stuff. 
-Make the button style the same as other button panels like e.g. on remote control screen
+✅ The conversation bubbles dont separate very well. When new messages come in, they just get kinda appended to the last message. However if i go to the session list and reselect the same session, the history reloads and looks perfect, except for a dangling "AI: ..." even though the AI isnt thinking. It also becomes stuck on status "Switching sessions..." even though it already switched or didnt need to switch depending on your perspective. 
+✅ When the android keyboard is up, there is too much empty space between the keyboard and the buttons. Remote screen previously had this issue but it got fixed, so reference how it handles keyboard up moving of stuff. 
+✅ Make the button style the same as other button panels like e.g. on remote control screen
 
-Reload history doesnt work well
+✅ Reload history doesnt work well
 
 
 ### Alarm screen

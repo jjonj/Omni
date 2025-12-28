@@ -292,10 +292,14 @@ class SignalRClient(
         }, String::class.java)
 
         hubConnection?.on("ReceiveAiStatus", { status: String? ->
-            if (status == "FINISHED" || status == null) {
+            if (status == "FINISHED" || status == "DONE" || status == null || status.isBlank()) {
                 _aiStatus.value = null
+                isNextResponseNewBubble = true
             } else {
                 _aiStatus.value = status
+                if (status == "AI Thinking...") {
+                    isNextResponseNewBubble = true
+                }
             }
         }, String::class.java)
 
@@ -334,6 +338,8 @@ class SignalRClient(
                 val type = object : TypeToken<List<Map<String, String>>>() {}.type
                 val history: List<Map<String, String>> = gson.fromJson(historyJson, type)
                 _aiMessages.value = history.map { Pair(it["sender"] ?: "Unknown", it["text"] ?: "") }
+                _aiStatus.value = null // Clear "Switching..." or "Reloading..."
+                isNextResponseNewBubble = true
             } catch (e: Exception) {
                 Log.e("SignalRClient", "Error parsing AI history", e)
             }

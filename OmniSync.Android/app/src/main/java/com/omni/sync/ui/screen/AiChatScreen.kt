@@ -24,6 +24,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.omni.sync.data.repository.SignalRClient
 import com.omni.sync.viewmodel.MainViewModel
+import com.omni.sync.ui.components.ActionKeyButton
 import androidx.compose.animation.core.*
 
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -57,7 +58,7 @@ fun AiChatScreen(
     var pidToRename by remember { mutableIntStateOf(-1) }
     
     val listState = rememberLazyListState()
-    val isAiTyping = aiStatus != null
+    val isAiThinking = aiStatus?.contains("Thinking", ignoreCase = true) == true
     val coroutineScope = rememberCoroutineScope()
     val isStartingSession by signalRClient.isStartingSessionFlow.collectAsState()
     val isConnected by mainViewModel.isConnected.collectAsState()
@@ -79,10 +80,10 @@ fun AiChatScreen(
     }
 
     // Auto-scroll to bottom
-    LaunchedEffect(messages, isAiTyping) {
-        if (messages.isNotEmpty() || isAiTyping) {
+    LaunchedEffect(messages, isAiThinking) {
+        if (messages.isNotEmpty() || isAiThinking) {
             kotlinx.coroutines.delay(100)
-            val lastIndex = if (isAiTyping) messages.size else messages.size - 1
+            val lastIndex = if (isAiThinking) messages.size else messages.size - 1
             if (lastIndex >= 0) {
                 listState.animateScrollToItem(lastIndex)
             }
@@ -197,7 +198,7 @@ fun AiChatScreen(
                     ChatBubble(sender, content)
                 }
 
-                if (isAiTyping) {
+                if (isAiThinking) {
                     item {
                         AiTypingIndicator()
                     }
@@ -241,7 +242,23 @@ fun AiChatScreen(
             }
 
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-            QuickActionPanel(signalRClient, coroutineScope, selectedPid, isConnected)
+            
+            // Dynamic padding calculation to follow keyboard, matching RemoteControlScreen pattern
+            val imeHeight = WindowInsets.ime.asPaddingValues().calculateBottomPadding()
+            val bottomBarHeight = 0.dp // In context of this screen's container
+            val keyboardOverlapOffset = 15.dp
+            val floatHeight = imeHeight - keyboardOverlapOffset
+            
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = maxOf(floatHeight, bottomBarHeight)),
+                tonalElevation = 2.dp,
+                shadowElevation = 8.dp,
+                color = MaterialTheme.colorScheme.surface
+            ) {
+                QuickActionPanel(signalRClient, coroutineScope, selectedPid, isConnected)
+            }
         }
 
         if (showRenameDialog) {
@@ -285,42 +302,31 @@ fun QuickActionPanel(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .background(MaterialTheme.colorScheme.surface)
             .padding(8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            FilledTonalButton(
-                onClick = { signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_ESCAPE) },
-                modifier = Modifier.weight(1f).height(40.dp),
-                shape = RoundedCornerShape(8.dp),
-                contentPadding = PaddingValues(0.dp),
-                enabled = isConnected
-            ) {
-                Text("Esc", fontSize = 12.sp)
-            }
+            ActionKeyButton(
+                text = "Esc",
+                modifier = Modifier.weight(1f),
+                onClick = { signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_ESCAPE) }
+            )
 
-            FilledTonalButton(
-                onClick = { signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_UP) },
-                modifier = Modifier.weight(1f).height(40.dp),
-                shape = RoundedCornerShape(8.dp),
-                contentPadding = PaddingValues(0.dp),
-                enabled = isConnected
-            ) {
-                Icon(Icons.Default.KeyboardArrowUp, null, modifier = Modifier.size(18.dp))
-            }
+            ActionKeyButton(
+                icon = Icons.Default.KeyboardArrowUp,
+                modifier = Modifier.weight(1f),
+                onClick = { signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_UP) }
+            )
 
-            FilledTonalButton(
-                onClick = { signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_DOWN) },
-                modifier = Modifier.weight(1f).height(40.dp),
-                shape = RoundedCornerShape(8.dp),
-                contentPadding = PaddingValues(0.dp),
-                enabled = isConnected
-            ) {
-                Icon(Icons.Default.KeyboardArrowDown, null, modifier = Modifier.size(18.dp))
-            }
+            ActionKeyButton(
+                icon = Icons.Default.KeyboardArrowDown,
+                modifier = Modifier.weight(1f),
+                onClick = { signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_DOWN) }
+            )
 
-            FilledTonalButton(
+            ActionKeyButton(
+                text = "Yolo",
+                modifier = Modifier.weight(1f),
                 onClick = { 
                     coroutineScope.launch {
                         signalRClient.sendKeyEvent("INPUT_KEY_DOWN", VK_CONTROL)
@@ -328,18 +334,14 @@ fun QuickActionPanel(
                         kotlinx.coroutines.delay(100)
                         signalRClient.sendKeyEvent("INPUT_KEY_UP", VK_CONTROL)
                     }
-                },
-                modifier = Modifier.weight(1f).height(40.dp),
-                shape = RoundedCornerShape(8.dp),
-                contentPadding = PaddingValues(0.dp),
-                enabled = isConnected
-            ) {
-                Text("Yolo", fontSize = 12.sp)
-            }
+                }
+            )
         }
 
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            FilledTonalButton(
+            ActionKeyButton(
+                text = if (isZoomed) "Unzoom" else "Zoom 5x",
+                modifier = Modifier.weight(1f),
                 onClick = { 
                     coroutineScope.launch {
                         signalRClient.sendKeyEvent("INPUT_KEY_DOWN", VK_CONTROL)
@@ -357,38 +359,22 @@ fun QuickActionPanel(
                         signalRClient.sendKeyEvent("INPUT_KEY_UP", VK_CONTROL)
                         isZoomed = !isZoomed
                     }
-                },
-                modifier = Modifier.weight(1f).height(40.dp),
-                shape = RoundedCornerShape(8.dp),
-                contentPadding = PaddingValues(0.dp),
-                enabled = isConnected
-            ) {
-                Text(if (isZoomed) "Unzoom" else "Zoom 5x", fontSize = 12.sp)
-            }
+                }
+            )
 
-            FilledTonalButton(
-                onClick = { signalRClient.clearAiMessages(if (selectedPid != -1) selectedPid else null) },
-                modifier = Modifier.weight(1f).height(40.dp),
-                shape = RoundedCornerShape(8.dp),
-                contentPadding = PaddingValues(0.dp),
-                enabled = isConnected
-            ) {
-                Icon(Icons.Default.Delete, null, modifier = Modifier.size(18.dp))
-                Spacer(Modifier.width(4.dp))
-                Text("Clear", fontSize = 12.sp)
-            }
+            ActionKeyButton(
+                text = "Clear",
+                icon = Icons.Default.Delete,
+                modifier = Modifier.weight(1f),
+                onClick = { signalRClient.clearAiMessages(if (selectedPid != -1) selectedPid else null) }
+            )
             
-            FilledTonalButton(
-                onClick = { signalRClient.requestAiHistory() },
-                modifier = Modifier.weight(1f).height(40.dp),
-                shape = RoundedCornerShape(8.dp),
-                contentPadding = PaddingValues(0.dp),
-                enabled = isConnected
-            ) {
-                Icon(imageVector = Icons.Default.Cached, contentDescription = "Reload History", modifier = Modifier.size(18.dp))
-                Spacer(Modifier.width(4.dp))
-                Text("History", fontSize = 12.sp)
-            }
+            ActionKeyButton(
+                text = "History",
+                icon = Icons.Default.Cached,
+                modifier = Modifier.weight(1f),
+                onClick = { signalRClient.requestAiHistory() }
+            )
         }
     }
 }
