@@ -319,7 +319,9 @@ namespace OmniSync.Hub.Infrastructure.Services
         {
             const ushort VK_CONTROL = 0x11;
             const int WHEEL_DELTA = 120;
-            int delta = zoomIn ? WHEEL_DELTA : -WHEEL_DELTA;
+            // Inverted delta because MouseScroll negates it, and we want 
+            // positive delta to Windows for Zoom In (Ctrl + Scroll Up)
+            int delta = zoomIn ? -WHEEL_DELTA : WHEEL_DELTA;
 
             _logger.LogInformation($"[InputService] Performing Zoom {(zoomIn ? "In" : "Out")} (delta: {delta})");
 

@@ -7,7 +7,8 @@ const App = {
         tokens: [false, false, false, false], lastDate: null, schedule: [],
         library: [{name: "Lofi Girl", url: "https://www.youtube.com/watch?v=jfKfPfyJRdk"}],
         calTimed: [], // New: Store timed events
-        calAllDay: [] // New: Store all day events
+        calAllDay: [], // New: Store all day events
+        lastTemplateName: null // Track to preserve manual ordering
     },
     isPaused: false,
     lastActiveIdx: -1,
@@ -24,6 +25,7 @@ const App = {
             this.state.tokens = [false, false, false, false];
             this.state.lastDate = today;
             this.state.bootAdj = 0; 
+            this.state.lastTemplateName = null; // Force reset on new day
             // Clear calendar data on new day until fetch returns
             this.state.calTimed = [];
             this.state.calAllDay = [];
@@ -77,7 +79,8 @@ const App = {
 
     hardReset() { 
         if(confirm("Reset Schedule to Default?")) { 
-            this.state.bootAdj=0; 
+            this.state.bootAdj = 0; 
+            this.state.lastTemplateName = null;
             this.regenerate(); 
         } 
     },
@@ -131,7 +134,30 @@ const App = {
         else if (this.state.condition <= 50) templateName = 'fog';
         else if (this.state.condition <= 79) templateName = 'intermediate';
 
-        let s = JSON.parse(JSON.stringify(DAY_TEMPLATES[templateName]));
+        let s;
+        // If template same and we have schedule, preserve the base order
+        if (this.state.lastTemplateName === templateName && this.state.schedule && this.state.schedule.length > 0) {
+            // Filter out calendar blocks and injections to get back to base
+            s = this.state.schedule
+                .filter(b => b.type !== 'calendar' && !b.name.includes("CHAOS INJECTION"))
+                .map(b => ({
+                    name: b.name.replace(" (CONT)", ""),
+                    dur: b.dur,
+                    type: b.type
+                }));
+            
+            // Deduplicate if needed (in case of multiple (CONT) segments)
+            const seen = [];
+            s = s.filter(b => {
+                const key = b.name + b.type;
+                if (seen.includes(key)) return false;
+                seen.push(key);
+                return true;
+            });
+        } else {
+            s = JSON.parse(JSON.stringify(DAY_TEMPLATES[templateName]));
+            this.state.lastTemplateName = templateName;
+        }
 
         // 1. Apply Boot Adjustment
         if(this.state.bootAdj !== 0) {
@@ -143,7 +169,6 @@ const App = {
         }
 
         // 2. Merge Calendar Events
-        // We do this by calculating absolute times, inserting, and pushing.
         if (this.state.calTimed.length > 0) {
             s = this.mergeCalendarEvents(s);
         }

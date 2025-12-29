@@ -220,7 +220,7 @@ class MainActivity : ComponentActivity() {
                             
                             Box(modifier = Modifier.fillMaxSize()) {
                                 if (currentScreen == AppScreen.EDITOR || currentScreen == AppScreen.SETTINGS || 
-                                    currentScreen == AppScreen.DOWNLOADED_VIDEOS || currentScreen == AppScreen.FILES) {
+                                    currentScreen == AppScreen.DOWNLOADED_VIDEOS || currentScreen == AppScreen.FILES || currentScreen == AppScreen.AI_CHAT) {
                                     MainScreenContent(currentScreen, signalRClient, browserViewModel, filesViewModel, mainViewModel, innerPadding)
                                 } else {
                                     // Custom touch slop to make paging less sensitive to diagonal swipes
@@ -239,7 +239,7 @@ class MainActivity : ComponentActivity() {
                                             userScrollEnabled = true 
                                         ) { page ->
                                             val screenAtPage = swipeableScreens[page]
-                                            val pageModifier = if (screenAtPage == AppScreen.REMOTECONTROL || screenAtPage == AppScreen.FILES) Modifier else Modifier.padding(innerPadding)
+                                            val pageModifier = if (screenAtPage == AppScreen.REMOTECONTROL || screenAtPage == AppScreen.FILES || screenAtPage == AppScreen.AI_CHAT) Modifier else Modifier.padding(innerPadding)
                                             Box(modifier = pageModifier) {
                                                 MainScreenContent(screenAtPage, signalRClient, browserViewModel, filesViewModel, mainViewModel, innerPadding)
                                             }
@@ -364,7 +364,8 @@ class MainActivity : ComponentActivity() {
             )
             AppScreen.AI_CHAT -> com.omni.sync.ui.screen.AiChatScreen(
                 signalRClient = signalRClient,
-                mainViewModel = mainViewModel
+                mainViewModel = mainViewModel,
+                parentPadding = paddingValues
             )
             AppScreen.DOWNLOADED_VIDEOS -> com.omni.sync.ui.screen.DownloadedVideosScreen(
                 filesViewModel = filesViewModel,

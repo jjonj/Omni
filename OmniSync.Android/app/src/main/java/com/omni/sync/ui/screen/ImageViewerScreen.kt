@@ -33,6 +33,7 @@ fun ImageViewerScreen(
     initialIndex: Int = 0,
     onBack: () -> Unit
 ) {
+    androidx.activity.compose.BackHandler(onBack = onBack)
     val context = LocalContext.current
     val pagerState = rememberPagerState(initialPage = initialIndex, pageCount = { if (playlist.isNotEmpty()) playlist.size else 1 })
     val coroutineScope = rememberCoroutineScope()

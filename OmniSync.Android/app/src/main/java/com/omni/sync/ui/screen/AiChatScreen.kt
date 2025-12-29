@@ -45,7 +45,8 @@ import com.omni.sync.utils.WindowsKeyCodes.VK_Y
 @Composable
 fun AiChatScreen(
     signalRClient: SignalRClient,
-    mainViewModel: MainViewModel
+    mainViewModel: MainViewModel,
+    parentPadding: PaddingValues = PaddingValues(0.dp)
 ) {
     val messages by signalRClient.aiMessages.collectAsState()
     val aiStatus by signalRClient.aiStatus.collectAsState()
@@ -62,6 +63,11 @@ fun AiChatScreen(
     val coroutineScope = rememberCoroutineScope()
     val isStartingSession by signalRClient.isStartingSessionFlow.collectAsState()
     val isConnected by mainViewModel.isConnected.collectAsState()
+
+    // Filter messages to avoid empty/dangling bubbles
+    val filteredMessages = remember(messages) {
+        messages.filter { it.second.isNotBlank() }
+    }
 
     LaunchedEffect(Unit) {
         signalRClient.getAiSessions()
@@ -80,10 +86,10 @@ fun AiChatScreen(
     }
 
     // Auto-scroll to bottom
-    LaunchedEffect(messages, isAiThinking) {
-        if (messages.isNotEmpty() || isAiThinking) {
+    LaunchedEffect(filteredMessages, isAiThinking) {
+        if (filteredMessages.isNotEmpty() || isAiThinking) {
             kotlinx.coroutines.delay(100)
-            val lastIndex = if (isAiThinking) messages.size else messages.size - 1
+            val lastIndex = if (isAiThinking) filteredMessages.size else filteredMessages.size - 1
             if (lastIndex >= 0) {
                 listState.animateScrollToItem(lastIndex)
             }
@@ -166,9 +172,9 @@ fun AiChatScreen(
         }
     ) { padding ->
         val imeHeight = WindowInsets.ime.asPaddingValues().calculateBottomPadding()
-        val bottomBarHeight = padding.calculateBottomPadding()
+        val bottomBarHeight = parentPadding.calculateBottomPadding()
         val keyboardOverlapOffset = 15.dp
-        val floatHeight = imeHeight - keyboardOverlapOffset
+        val floatHeight = if (imeHeight > 0.dp) imeHeight - keyboardOverlapOffset else 0.dp
         val currentBottomPadding = maxOf(floatHeight, bottomBarHeight)
 
         Box(
@@ -200,10 +206,11 @@ fun AiChatScreen(
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxWidth()
-                        .padding(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                        .padding(horizontal = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    contentPadding = PaddingValues(top = 8.dp, bottom = 8.dp)
                 ) {
-                    items(messages) { (sender, content) ->
+                    items(filteredMessages) { (sender, content) ->
                         ChatBubble(sender, content)
                     }
 
