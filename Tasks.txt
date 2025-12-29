@@ -17,8 +17,6 @@ If necessary you may use AISpeak to ask the user for help/clarifications.
 
 ## General
 
-✅ The disconnected red color background is too strong, make it darker
-
 
 ## For the hub
 
@@ -29,12 +27,8 @@ If necessary you may use AISpeak to ask the user for help/clarifications.
 
 ### Dashboard
 
-✅ Adb log button should filter by com.omni.sync
-
 ### Remote Control Screen
 
-
-✅ Replace the "kbd" text wit
 
 
 ✅ Stream PC monitor, replacing background of the trackpad leaving the trackpad functioning still, options to toggle monitor, pinch to zoom, (advanced feature, do last)       
@@ -42,6 +36,8 @@ If necessary you may use AISpeak to ask the user for help/clarifications.
  
 
 ### Files & Video Screen
+
+✅ on image viewer screen the android back button seems to close app instead of going back to the containing folder 
 
 ✅ The jump/scroll to cursor when typng out of view is not working right, on the text editor screen, add a temporary panel that twice displays the currently visible line numbers, once accounting for keyboard and once not accounting for android keyboard as well as the current cursor line number, for debugging purposes and then only scroll/jump when typing and the cursor is outside the visible line numbers
 
@@ -73,7 +69,8 @@ If necessary you may use AISpeak to ask the user for help/clarifications.
 
 ### AI screen
 
-✅ The zoom button is very buggy. Please have a look at the repo at D:\SSDProjects\Tools\gemini-cli and see if we can hook directly into zoom level with a surgical change over there. 
+✅ zoom button zooms in the wrong direction 
+
 ✅ The conversation bubbles dont separate very well. When new messages come in, they just get kinda appended to the last message. However if i go to the session list and reselect the same session, the history reloads and looks perfect, except for a dangling "AI: ..." even though the AI isnt thinking. It also becomes stuck on status "Switching sessions..." even though it already switched or didnt need to switch depending on your perspective. 
 ✅ When the android keyboard is up, there is too much empty space between the keyboard and the buttons. Remote screen previously had this issue but it got fixed, so reference how it handles keyboard up moving of stuff. 
 ✅ Make the button style the same as other button panels like e.g. on remote control screen
@@ -81,8 +78,12 @@ If necessary you may use AISpeak to ask the user for help/clarifications.
 ✅ Reload history doesnt work well
 
 
+
 ### Alarm screen
 
+## Web
+
+✅ Reordering blocks, e.g. moving flex before gamedev is not persisted after reload. it should persist the entire day and only reset once per day. Wake up time does persist, do it same way?
 
 ## Chrome plugin
 
@@ -95,3 +96,8 @@ If necessary you may use AISpeak to ask the user for help/clarifications.
 
 ✅ When disconnecting from hub it gives these errors. Disconnecting shouldnt result in errors, warnings at most or just handle it gracefully.
 
+## Firefox plugin
+
+✅ See D:\SSDProjects\Omni\OmniSync.Firefox
+✅ Integrate that into omni, make it connect to hub but do nothing with that connection for now. 
+✅ It should NOT have the same features as the chrome plugin, its a separate thing. For now it should just have the mute functionality
