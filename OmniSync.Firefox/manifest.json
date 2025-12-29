@@ -24,6 +24,7 @@
     "default_title": "OmniSync Actions"
   },
   "icons": {
-    "48": "icons/icon.svg"
+    "48": "icons/omni.png",
+    "128": "icons/omni.png"
   }
 }
