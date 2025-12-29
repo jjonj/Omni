@@ -14,10 +14,10 @@ let connection = new signalR.HubConnectionBuilder()
 async function startSignalR() {
     try {
         await connection.start();
-        console.log("Firefox SignalR Connected.");
+        console.log("OmniSync Firefox SignalR Connected.");
         await connection.invoke("Authenticate", API_KEY);
     } catch (err) {
-        console.warn("Firefox SignalR connection failed:", err);
+        console.warn("OmniSync Firefox SignalR connection failed:", err);
         setTimeout(startSignalR, 5000);
     }
 }

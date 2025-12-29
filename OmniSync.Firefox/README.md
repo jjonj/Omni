@@ -5,7 +5,7 @@ This addon provides a collection of tools for website interaction, starting with
 ## How to Use the Mute Functionality
 
 1.  Navigate to a website you wish to mute.
-2.  Click the FireCroves icon in the Firefox toolbar. The icon will change to a muted speaker, and the site will be muted.
+2.  Click the OmniSync icon in the Firefox toolbar. The icon will change to a muted speaker, and the site will be muted.
 3.  Any time you visit a page on that domain, it will be automatically muted.
 4.  To unmute a site, navigate to it and click the toolbar icon again.
 
@@ -13,7 +13,7 @@ This addon provides a collection of tools for website interaction, starting with
 
 ## Installation Guide
 
-There are several ways to load and use FireCroves, depending on your needs.
+There are several ways to load and use OmniSync, depending on your needs.
 
 ### Method 1: Temporary Loading (for quick testing sessions)
 
@@ -23,14 +23,14 @@ This method is useful for quickly testing changes during active development, but
 2.  In the address bar, type `about:debugging` and press Enter.
 3.  In the left-hand menu, click on "**This Firefox**".
 4.  Under the "Temporary Extensions" section, click the "**Load Temporary Add-on...**" button.
-5.  In the file dialog that opens, navigate to the directory where you have these FireCroves files (the directory containing `manifest.json`, `background.js`, and `icons/`).
+5.  In the file dialog that opens, navigate to the directory where you have these OmniSync files (the directory containing `manifest.json`, `background.js`, and `icons/`).
 6.  Select the `manifest.json` file and click "Open".
 
 The addon will now be installed and will remain active until you close Firefox. You will see its icon appear in the toolbar.
 
 ### Method 2: Permanent Private Installation (for long-term personal use)
 
-This method allows you to install FireCroves permanently in a Firefox browser, preserving its data across restarts. **This requires Firefox Developer Edition or Firefox Nightly** and involves disabling a security feature.
+This method allows you to install OmniSync permanently in a Firefox browser, preserving its data across restarts. **This requires Firefox Developer Edition or Firefox Nightly** and involves disabling a security feature.
 
 **Prerequisites:**
 
@@ -50,19 +50,19 @@ This method allows you to install FireCroves permanently in a Firefox browser, p
     *   Navigate to the `FireFoxAddon` directory (where `manifest.json` is located).
     *   Use a zip tool to create an archive of all the addon's files and folders (`manifest.json`, `background.js`, `icons/`). For example, you can use a command like:
         ```powershell
-        Compress-Archive -Path manifest.json, background.js, icons -DestinationPath FireCroves.zip
+        Compress-Archive -Path manifest.json, background.js, icons -DestinationPath OmniSync.zip
         ```
-    *   Rename the resulting `.zip` file to `.xpi`. For example, `FireCroves.zip` becomes `FireCroves.xpi`.
+    *   Rename the resulting `.zip` file to `.xpi`. For example, `OmniSync.zip` becomes `OmniSync.xpi`.
 
 2.  **Install the .xpi:**
-    *   Drag and drop the `FireCroves.xpi` file directly into your Firefox Developer Edition window.
+    *   Drag and drop the `OmniSync.xpi` file directly into your Firefox Developer Edition window.
     *   Firefox will prompt you to install the addon. Confirm the installation.
 
 **Reinstallation/Updating:**
 
 If you make changes to the addon's code:
 1.  In Firefox Developer Edition, go to `about:addons`.
-2.  Find "FireCroves" and click "Remove" or "Disable".
+2.  Find "OmniSync" and click "Remove" or "Disable".
 3.  Repeat the "Installation Steps" above with your newly packaged `.xpi` file.
 
 ### Method 3: Active Development (using web-ext for live reloading)
@@ -85,4 +85,4 @@ This is the most efficient method if you are actively developing and making freq
     ```bash
     web-ext run
     ```
-    This will open a new Firefox instance with FireCroves loaded. Any changes you save to the addon's files will automatically reload the addon in this instance. Data will be persistent within this `web-ext` profile, but not in your main Firefox profile.
+    This will open a new Firefox instance with OmniSync loaded. Any changes you save to the addon's files will automatically reload the addon in this instance. Data will be persistent within this `web-ext` profile, but not in your main Firefox profile.

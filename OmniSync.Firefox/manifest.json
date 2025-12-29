@@ -1,8 +1,15 @@
 {
   "manifest_version": 2,
-  "name": "FireCroves",
+  "name": "OmniSync Firefox",
   "version": "1.0",
   "description": "A collection of tools for website interaction.",
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "omnisync-firefox@croves.me",
+      "strict_min_version": "109.0",
+      "data_collection_permissions": "none"
+    }
+  },
   "permissions": [
     "tabs",
     "storage"
@@ -14,7 +21,7 @@
     "default_icon": {
       "48": "icons/unmuted.svg"
     },
-    "default_title": "FireCroves Actions"
+    "default_title": "OmniSync Actions"
   },
   "icons": {
     "48": "icons/icon.svg"
