@@ -7,7 +7,23 @@
     "gecko": {
       "id": "omnisync-firefox@croves.me",
       "strict_min_version": "109.0",
-      "data_collection_permissions": "none"
+      "data_collection_permissions": {
+        "description": "This add-on does not collect any personal or technical data.",
+        "origins": [],
+        "uses_user_id": false,
+        "uses_device_id": false,
+        "uses_other_data": false,
+        "data_categories": {
+          "personal_data": {
+            "collected": false,
+            "shared": false
+          },
+          "technical_data": {
+            "collected": false,
+            "shared": false
+          }
+        }
+      }
     }
   },
   "permissions": [
