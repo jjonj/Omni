@@ -17,7 +17,7 @@ If necessary you may use AISpeak to ask the user for help/clarifications.
 
 ## General
 
-Auto reconnect gives up after a while which is fine, but it should retry when the app is reopened
+✅ Auto reconnect gives up after a while which is fine, but it should retry when the app is reopened
 
 ## For the hub
 
