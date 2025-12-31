@@ -92,7 +92,7 @@ If necessary you may use AISpeak to ask the user for help/clarifications.
 
 ## Chrome extension
 
-Seems unable to reconnect after getting disconnected, I have to uninstall reinstall the extension to work
+✅ Seems unable to reconnect after getting disconnected, I have to uninstall reinstall the extension to work
 
 
 

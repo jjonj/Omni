@@ -20,22 +20,19 @@ let connection = new signalR.HubConnectionBuilder()
     .withUrl(HUB_URL)
     .withAutomaticReconnect({
         nextRetryDelayInMilliseconds: retryContext => {
-            if (retryContext.elapsedMilliseconds > 60000) return null; // Stop retrying after 1 minute of failure
+            // Keep retrying forever, max 10s between attempts
             return Math.min(2000 + retryContext.previousRetryCount * 2000, 10000);
         }
     })
     .configureLogging(signalR.LogLevel.Warning)
     .build();
 
-let isReconnectingManual = false;
-
 async function start() {
-    if (connection.state === signalR.HubConnectionState.Connected) return;
+    if (connection.state !== signalR.HubConnectionState.Disconnected) return;
     
     try {
         await connection.start();
         console.log("SignalR Connected.");
-        isReconnectingManual = false;
         // Authenticate
         await connection.invoke("Authenticate", API_KEY);
     } catch (err) {
@@ -44,10 +41,7 @@ async function start() {
             console.warn("SignalR connection attempt failed:", err);
         }
         
-        if (!isReconnectingManual) {
-            isReconnectingManual = true;
-            setTimeout(start, 5000);
-        }
+        setTimeout(start, 10000);
     }
 }
 
@@ -59,7 +53,7 @@ connection.onclose(async (error) => {
             console.warn("SignalR connection closed with error:", error);
         }
     }
-    await start();
+    setTimeout(start, 5000);
 });
 
 connection.onreconnecting((error) => {
