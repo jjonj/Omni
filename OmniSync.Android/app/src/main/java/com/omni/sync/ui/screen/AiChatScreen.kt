@@ -173,7 +173,7 @@ fun AiChatScreen(
     ) { padding ->
         val imeHeight = WindowInsets.ime.asPaddingValues().calculateBottomPadding()
         val bottomBarHeight = parentPadding.calculateBottomPadding()
-        val keyboardOverlapOffset = 15.dp
+        val keyboardOverlapOffset = 25.dp
         val floatHeight = if (imeHeight > 0.dp) imeHeight - keyboardOverlapOffset else 0.dp
         val currentBottomPadding = maxOf(floatHeight, bottomBarHeight)
 
@@ -184,7 +184,7 @@ fun AiChatScreen(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(bottom = currentBottomPadding + 88.dp) // Leave room for floating panel
+                    .padding(bottom = currentBottomPadding + 115.dp) // Leave room for floating panel
             ) {
                 if (!isConnected) {
                     Surface(

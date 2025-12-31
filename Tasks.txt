@@ -77,8 +77,8 @@ Add settings to configure Cortex web, need to be able to adjust wake time (curre
 ✅ The conversation bubbles dont separate very well. When new messages come in, they just get kinda appended to the last message. However if i go to the session list and reselect the same session, the history reloads and looks perfect, except for a dangling "AI: ..." even though the AI isnt thinking. It also becomes stuck on status "Switching sessions..." even though it already switched or didnt need to switch depending on your perspective. 
 
 
-When the android keyboard is up, there is too much empty space between the keyboard and the buttons. Remote screen previously had this issue but it got fixed, so reference how it handles keyboard up moving of stuff. 
-The "Ask AI..." inputfieldispartially hidden behind the button panel
+✅ When the android keyboard is up, there is too much empty space between the keyboard and the buttons. Remote screen previously had this issue but it got fixed, so reference how it handles keyboard up moving of stuff. 
+✅ The "Ask AI..." inputfieldispartially hidden behind the button panel
 
 ✅ Reload history doesnt work well
 
