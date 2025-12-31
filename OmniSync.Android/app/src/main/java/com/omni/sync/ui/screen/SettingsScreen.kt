@@ -237,13 +237,35 @@ fun SettingsScreen(
             )
             Spacer(modifier = Modifier.height(8.dp))
 
-            OutlinedTextField(
-                value = cortexTemplatesJson,
-                onValueChange = { cortexTemplatesJson = it },
-                label = { Text("Block Definitions (JSON)") },
-                modifier = Modifier.fillMaxWidth().heightIn(min = 100.dp, max = 300.dp),
-                placeholder = { Text("{\"standard\": [...], ...}") }
-            )
+            var showTemplatesEditor by remember { mutableStateOf(false) }
+            
+            Button(
+                onClick = { showTemplatesEditor = true },
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
+            ) {
+                Text("Edit Block Definitions")
+            }
+            
+            if (cortexTemplatesJson.isNotBlank()) {
+                Text(
+                    "Custom definitions present", 
+                    style = MaterialTheme.typography.bodySmall, 
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(start = 4.dp, top = 4.dp)
+                )
+            }
+
+            if (showTemplatesEditor) {
+                CortexTemplatesEditor(
+                    initialJson = cortexTemplatesJson,
+                    onSave = { newJson ->
+                        cortexTemplatesJson = newJson
+                    },
+                    onDismiss = { showTemplatesEditor = false }
+                )
+            }
+
             Spacer(modifier = Modifier.height(8.dp))
 
             Button(
