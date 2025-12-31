@@ -68,7 +68,7 @@ If necessary you may use AISpeak to ask the user for help/clarifications.
 
 ### Settings screen (accessed by button on dashboard, not bottom panel)
 
-Add settings to configure Cortex web, need to be able to adjust wake time (currently hardcoded to reset to 7am adjustable for the day but not enough) and block definitions
+✅ Add settings to configure Cortex web, need to be able to adjust wake time (currently hardcoded to reset to 7am adjustable for the day but not enough) and block definitions
 
 ### AI screen
 

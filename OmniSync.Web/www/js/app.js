@@ -62,6 +62,26 @@ const App = {
         try {
             await this.hubConnection.start();
             console.log("SignalR Connected to Hub");
+
+            this.hubConnection.on("UpdateCortexWakeTime", (wakeTime) => {
+                console.log("Received Wake Time update:", wakeTime);
+                this.state.wake = wakeTime;
+                document.getElementById('wakeTime').value = wakeTime;
+                this.regenerate();
+                this.persist();
+            });
+
+            this.hubConnection.on("UpdateCortexTemplates", (templatesJson) => {
+                console.log("Received Templates update");
+                try {
+                    const newTemplates = JSON.parse(templatesJson);
+                    Object.assign(DAY_TEMPLATES, newTemplates);
+                    this.regenerate();
+                } catch (e) {
+                    console.error("Error parsing templates JSON:", e);
+                }
+            });
+
             await this.hubConnection.invoke("Authenticate", API_KEY);
         } catch (err) {
             console.error("SignalR Connection Error: ", err);

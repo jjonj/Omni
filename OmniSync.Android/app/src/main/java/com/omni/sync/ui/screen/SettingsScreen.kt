@@ -38,9 +38,11 @@ fun SettingsScreen(
     
     var videoSkipInterval by remember { mutableIntStateOf(appConfig.videoSkipInterval) }
     var videoPlaylistRandom by remember { mutableStateOf(appConfig.videoPlaylistRandom) }
-    var cortexNotificationsEnabled by remember { mutableStateOf(appConfig.cortexNotificationsEnabled) }
-    
-    var hubUrl by remember { mutableStateOf(appConfig.hubUrl) }
+                var cortexNotificationsEnabled by remember { mutableStateOf(appConfig.cortexNotificationsEnabled) }
+        var cortexWakeTime by remember { mutableStateOf(appConfig.cortexWakeTime) }
+        var cortexTemplatesJson by remember { mutableStateOf(appConfig.cortexTemplatesJson ?: "") }
+        
+        var hubUrl by remember { mutableStateOf(appConfig.hubUrl) }
     var wanIp by remember { mutableStateOf(appConfig.wanIp) }
     var apiKey by remember { mutableStateOf(appConfig.apiKey) }
 
@@ -219,6 +221,46 @@ fun SettingsScreen(
                 )
             }
             
+            Spacer(modifier = Modifier.height(24.dp))
+            HorizontalDivider()
+            Spacer(modifier = Modifier.height(24.dp))
+
+            Text("Cortex Web", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+            Spacer(modifier = Modifier.height(8.dp))
+
+            OutlinedTextField(
+                value = cortexWakeTime,
+                onValueChange = { cortexWakeTime = it },
+                label = { Text("Wake Time (HH:mm)") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+
+            OutlinedTextField(
+                value = cortexTemplatesJson,
+                onValueChange = { cortexTemplatesJson = it },
+                label = { Text("Block Definitions (JSON)") },
+                modifier = Modifier.fillMaxWidth().heightIn(min = 100.dp, max = 300.dp),
+                placeholder = { Text("{\"standard\": [...], ...}") }
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Button(
+                onClick = {
+                    appConfig.cortexWakeTime = cortexWakeTime
+                    appConfig.cortexTemplatesJson = if (cortexTemplatesJson.isBlank()) null else cortexTemplatesJson
+                    mainViewModel.saveAppConfig()
+                    signalRClient.sendCortexWakeTime(cortexWakeTime)
+                    if (cortexTemplatesJson.isNotBlank()) {
+                        signalRClient.sendCortexTemplates(cortexTemplatesJson)
+                    }
+                },
+                modifier = Modifier.align(Alignment.End)
+            ) {
+                Text("Sync to Cortex")
+            }
+
             Spacer(modifier = Modifier.height(24.dp))
             HorizontalDivider()
             Spacer(modifier = Modifier.height(24.dp))

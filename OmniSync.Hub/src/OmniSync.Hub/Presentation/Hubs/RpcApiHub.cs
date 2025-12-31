@@ -798,6 +798,24 @@ namespace OmniSync.Hub.Presentation.Hubs
             }
         }
 
+        public async Task SetCortexWakeTime(string wakeTime)
+        {
+            if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
+            {
+                AnyCommandReceived?.Invoke(this, $"Set Cortex Wake Time: {wakeTime}");
+                await Clients.All.SendAsync("UpdateCortexWakeTime", wakeTime);
+            }
+        }
+
+        public async Task SetCortexTemplates(string templatesJson)
+        {
+            if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
+            {
+                AnyCommandReceived?.Invoke(this, "Set Cortex Templates");
+                await Clients.All.SendAsync("UpdateCortexTemplates", templatesJson);
+            }
+        }
+
         private (string commandName, List<string> args) ParseCommand(string commandString)
         {
             var parts = new List<string>();

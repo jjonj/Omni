@@ -12,6 +12,8 @@ data class AppConfig(
     var videoSkipInterval: Int = 10,
     var videoPlaylistRandom: Boolean = false,
     var cortexNotificationsEnabled: Boolean = true,
+    var cortexWakeTime: String = "07:00",
+    var cortexTemplatesJson: String? = null,
     var globalPasswordHash: String? = null,
     var autosaveEnabled: Boolean = false,
     var notificationActions: List<NotificationAction> = emptyList()
@@ -99,6 +101,8 @@ class ConfigManager(private val context: Context) {
         config.videoSkipInterval = settingsPrefs.getInt("video_skip_interval", config.videoSkipInterval)
         config.videoPlaylistRandom = settingsPrefs.getBoolean("video_playlist_random", config.videoPlaylistRandom)
         config.cortexNotificationsEnabled = settingsPrefs.getBoolean("cortex_notifications_enabled", config.cortexNotificationsEnabled)
+        config.cortexWakeTime = settingsPrefs.getString("cortex_wake_time", config.cortexWakeTime)!!
+        config.cortexTemplatesJson = settingsPrefs.getString("cortex_templates_json", null)
         
         config.globalPasswordHash = filesPrefs.getString("global_password_hash", null)
         config.autosaveEnabled = filesPrefs.getBoolean("autosave_enabled", false)

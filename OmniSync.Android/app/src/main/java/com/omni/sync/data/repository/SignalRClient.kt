@@ -415,6 +415,24 @@ class SignalRClient(
         }, Any::class.java)
     }
 
+    fun sendTabToPhone(url: String) {
+        if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
+            hubConnection?.send("SendTabToPhone", url)
+        }
+    }
+
+    fun sendCortexWakeTime(wakeTime: String) {
+        if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
+            hubConnection?.send("SetCortexWakeTime", wakeTime)
+        }
+    }
+
+    fun sendCortexTemplates(templatesJson: String) {
+        if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
+            hubConnection?.send("SetCortexTemplates", templatesJson)
+        }
+    }
+
     fun sendAiMessage(message: String, pid: Int? = null) {
         if (_isStartingSession) {
             messageQueue.add(message)
