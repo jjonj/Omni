@@ -83,13 +83,13 @@ To control Omni Hub, Node-RED sends HTTP POST requests to your local API.
 
 You can trigger any of these by changing the `cmd=` parameter in the URL and the JSON Payload in the Change node.
 
-| Virtual Device (SmartNora) | Google Command | Omni Hub Command (`cmd=`) | JSON Payload Needed |
-| :--- | :--- | :--- | :--- |
-| **Switch** | "Turn on/off" | `SCHEDULE_SHUTDOWN` | `{"Minutes": 0}` (or 1 for off) |
-| **Light** (Brightness) | "Set volume to X%" | `SET_VOLUME` | `{"VolumePercentage": X}` |
-| **Switch** | "Turn on/off Mute" | `TOGGLE_MUTE` | `{}` |
-| **Scene** | "Activate Gaming" | `OPEN_ON_PC` | `{"Path": "C:\\Games\\Steam.exe"}` |
-| **Switch** | "Turn off Screen" | `INPUT_KEY_PRESS` | `{"KeyCode": 173}` (Mute/Vol keys) |
+| Virtual Device (SmartNora) | Google Command       | Omni Hub Command (`cmd=`) | JSON Payload Needed                  |
+| :------------------------- | :------------------- | :------------------------ | :----------------------------------- |
+| **Switch**                 | "Turn on/off"        | `SCHEDULE_SHUTDOWN`       | `{"Minutes": 0}` (or 1 for off)      |
+| **Light** (Brightness)     | "Set volume to X%"   | `SET_VOLUME`              | `{"VolumePercentage": X}`            |
+| **Switch**                 | "Turn on/off Mute"   | `TOGGLE_MUTE`             | `{}`                                 |
+| **Scene**                  | "Activate Gaming"    | `OPEN_ON_PC`              | `{"Exe": "Paint"}`   |
+| **Switch**                 | "Turn off Screen"    | `INPUT_KEY_PRESS`         | `{"KeyCode": 173}` (Mute/Vol keys)   |
 
 ---
 

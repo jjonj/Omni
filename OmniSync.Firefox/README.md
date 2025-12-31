@@ -1,4 +1,4 @@
-# Firefox Addon
+# OmniSync
 
 This addon provides a collection of tools for website interaction, starting with permanent website muting.
 
