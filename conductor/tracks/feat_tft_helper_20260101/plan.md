@@ -27,7 +27,7 @@
 - [x] Task: Add icon harvesting instructions/placeholders for Brock and other set 16 units d85100e
 - [ ] Task: Conductor - User Manual Verification 'Additional Tabs & Refinement' (Protocol in workflow.md)
 
-## Phase 6: Icon Fixes
+## Phase 6: Icon Fixes [checkpoint: bf593f3]
 - [x] Task: Retry downloading missing Unit icons using kebab-case URLs 07b757c
 - [x] Task: Retry downloading Trait icons using kebab-case URLs 07b757c
 - [x] Task: Update `set16.json` to reflect local paths for newly downloaded icons 07b757c
