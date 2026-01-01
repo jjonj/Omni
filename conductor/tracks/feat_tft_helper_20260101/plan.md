@@ -7,10 +7,10 @@
 - [x] Task: Update `OmniSync.Hub` to serve these JSON files via a new API endpoint or static file serving abee7e6
 - [ ] Task: Conductor - User Manual Verification 'Infrastructure & Data Setup' (Protocol in workflow.md)
 
-## Phase 2: Web UI Foundation
-- [ ] Task: Create `TFT.html` with basic Bootstrap/Material layout and top navigation tabs
-- [ ] Task: Implement Tab switching logic in `js/tft.js`
-- [ ] Task: Integrate `TFT.html` into the main application navigation (if applicable)
+## Phase 2: Web UI Foundation [checkpoint: 40334bb]
+- [x] Task: Create `TFT.html` with basic Bootstrap/Material layout and top navigation tabs ee69162
+- [x] Task: Implement Tab switching logic in `js/tft.js` ee69162
+- [x] Task: Integrate `TFT.html` into the main application navigation (if applicable) ee69162
 - [ ] Task: Conductor - User Manual Verification 'Web UI Foundation' (Protocol in workflow.md)
 
 ## Phase 3: Emblem Portal Implementation
