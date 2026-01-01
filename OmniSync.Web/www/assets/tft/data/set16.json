@@ -1014,8 +1014,7 @@
       "name": "Tibbers",
       "cost": 5,
       "traits": [
-        "Dark Child",
-        "Arcanist"
+        "Dark Child"
       ],
       "is_carry": false,
       "locked": false,

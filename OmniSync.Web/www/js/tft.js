@@ -258,6 +258,18 @@ function allowDrop(e) {
     }
 }
 
+document.addEventListener('dragleave', (e) => {
+    if (e.target.classList.contains('drop-zone') || e.target.classList.contains('pools-zone')) {
+        e.target.classList.remove('drag-over');
+    }
+});
+
+document.addEventListener('drop', (e) => {
+    if (e.target.classList.contains('drop-zone') || e.target.classList.contains('pools-zone')) {
+        e.target.classList.remove('drag-over');
+    }
+});
+
 function dropOnPools(e) {
     e.preventDefault();
     try {
@@ -333,7 +345,7 @@ function filterEmblems(query) {
     renderEmblemPool();
 }
 
-function runOptimization() {
+async function runOptimization() {
     if (!optimizer) return;
 
     const mustIncludeNames = selectedMustInclude.filter(i => i.type === 'unit').map(u => u.name);
@@ -344,36 +356,51 @@ function runOptimization() {
     const limit = parseInt(document.getElementById('results-limit').value);
     
     const resultsContainer = document.getElementById('results-container');
-    resultsContainer.innerHTML = '<div style="color: var(--text-dim); padding: 20px;">Calculating...</div>';
+    resultsContainer.innerHTML = '<div style="color: var(--text-dim); padding: 20px;">Initializing...</div>';
 
-    // Synchronous for now to satisfy tests, but using setTimeout to allow UI update
-    setTimeout(() => {
-        resultsContainer.innerHTML = '';
-        selectedLevels.forEach(level => {
-            const levelHeader = document.createElement('h2');
-            levelHeader.className = 'hub-status-label';
-            levelHeader.style.display = 'block';
-            levelHeader.style.margin = '20px 0 10px 0';
-            levelHeader.innerText = `Level ${level} Results`;
-            resultsContainer.appendChild(levelHeader);
+    const progressContainer = document.getElementById('optimizer-progress-container');
+    const progressBar = document.getElementById('progress-bar');
+    const progressPercent = document.getElementById('progress-percent');
+    const progressLabel = document.getElementById('progress-label');
 
-            const levelList = document.createElement('div');
-            levelList.className = 'results-list';
-            resultsContainer.appendChild(levelList);
+    progressContainer.style.display = 'block';
+    
+    for (const level of selectedLevels) {
+        progressLabel.innerText = `Level ${level}: Calculating...`;
+        
+        const levelHeader = document.createElement('h2');
+        levelHeader.className = 'hub-status-label';
+        levelHeader.style.display = 'block';
+        levelHeader.style.margin = '20px 0 10px 0';
+        levelHeader.innerText = `Level ${level} Results`;
+        resultsContainer.appendChild(levelHeader);
 
-            const pool = tftData.units.filter(u => {
-                if (disabledUnits.includes(u.name)) return false;
-                if (level <= 6 && u.cost > 3) return false;
-                if (u.name === "Kennen" && level < 6) return false;
-                if (u.name.includes("Kobuko") && level < 7) return false;
-                if (u.cost === 5 && level < 8) return false;
-                return true;
-            });
-            
-            const results = optimizer.findBestBoards(pool, level, emblems, mustIncludeNames, solverMode, mustIncludeTraits, limit);
-            renderResults(results, levelList, level);
+        const levelList = document.createElement('div');
+        levelList.className = 'results-list';
+        resultsContainer.appendChild(levelList);
+
+        const pool = tftData.units.filter(u => {
+            if (disabledUnits.includes(u.name)) return false;
+            if (level <= 6 && u.cost > 3) return false;
+            if (u.name === "Kennen" && level < 6) return false;
+            if (u.name.includes("Kobuko") && level < 7) return false;
+            if (u.cost === 5 && level < 8) return false;
+            return true;
         });
-    }, 50);
+        
+        const results = await optimizer.findBestBoards(pool, level, emblems, mustIncludeNames, solverMode, mustIncludeTraits, limit, (proc, tot) => {
+            const pct = Math.min(100, Math.floor((proc / tot) * 100));
+            progressBar.style.width = `${pct}%`;
+            progressPercent.innerText = `${pct}%`;
+        });
+        
+        renderResults(results, levelList, level);
+    }
+
+    progressContainer.style.display = 'none';
+    if (resultsContainer.firstChild && resultsContainer.firstChild.innerText === 'Initializing...') {
+        resultsContainer.removeChild(resultsContainer.firstChild);
+    }
 }
 
 function renderResults(results, container, level) {
@@ -531,11 +558,16 @@ function renderResults(results, container, level) {
     });
 }
 
-function runLogicTests() {
+async function runLogicTests() {
     const resultsDiv = document.getElementById('test-results');
     if (!resultsDiv) return;
-    resultsDiv.innerHTML = "Running tests...\n";
-    if (!tftData || !optimizer) return;
+    resultsDiv.innerHTML = "Starting test suite...\n";
+    
+    if (!tftData || !optimizer) {
+        resultsDiv.innerHTML += "FAIL: Data not loaded.";
+        return;
+    }
+
     const runner = new TFTTester(optimizer, tftData);
     const tests = [
         runner.testLevel4Optimal,
@@ -559,17 +591,30 @@ function runLogicTests() {
 
     resultsDiv.innerHTML = "";
     for (const test of tests) {
+        const statusEl = document.createElement('div');
+        statusEl.style.color = "#aaa";
+        statusEl.innerText = `[WAIT] Running ${test.name}...`;
+        resultsDiv.appendChild(statusEl);
+
+        await new Promise(resolve => setTimeout(resolve, 50));
+
+        const start = performance.now();
         try {
-            test.call(runner);
-            const div = document.createElement('div');
-            div.style.color = "#32d74b";
-            div.innerText = `[PASS] ${test.name}`;
-            resultsDiv.appendChild(div);
+            // Need to await findBestBoards inside tests if they call it
+            await test.call(runner);
+            const duration = (performance.now() - start).toFixed(1);
+            statusEl.style.color = "#32d74b";
+            statusEl.innerText = `[PASS] ${test.name} (${duration}ms)`;
         } catch (err) {
-            const div = document.createElement('div');
-            div.style.color = "#ff453a";
-            div.innerText = `[FAIL] ${test.name}: ${err.message}`;
-            resultsDiv.appendChild(div);
+            const duration = (performance.now() - start).toFixed(1);
+            statusEl.style.color = "#ff453a";
+            statusEl.innerText = `[FAIL] ${test.name} (${duration}ms)`;
+            const errEl = document.createElement('div');
+            errEl.style.color = "#666";
+            errEl.style.marginLeft = "20px";
+            errEl.style.marginBottom = "10px";
+            errEl.innerText = err.message;
+            resultsDiv.appendChild(errEl);
         }
     }
 }

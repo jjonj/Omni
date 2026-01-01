@@ -1,3 +1,4 @@
+
 class TFTOptimizer {
     constructor(units, traitsData) {
         this.UNITS = units;
@@ -80,7 +81,6 @@ class TFTOptimizer {
                 const reached = breakpoints.filter(b => b <= count);
                 if (reached.length > 0) {
                     activeTraits.add(trait);
-                    // Targon gives 0 points for breakpoints
                     if (trait !== "Targon") {
                         if (mode === 'bronze-for-life') {
                             score += 1 * this.BREAKPOINT_SCORE_MULTIPLIER;
@@ -167,7 +167,22 @@ class TFTOptimizer {
         }
     }
 
-    findBestBoards(pool, size, emblems, mustIncludeNames = [], mode = 'default', mustIncludeTraits = [], limit = 3, extraSlot = false) {
+    countTotalCombos(targetSlots, pool) {
+        const memo = new Map();
+        const count = (slots, pIdx) => {
+            if (slots === 0) return 1;
+            if (slots < 0 || pIdx >= pool.length) return 0;
+            const key = `${slots}-${pIdx}`;
+            if (memo.has(key)) return memo.get(key);
+            const uSlots = pool[pIdx].slots || 1;
+            const result = count(slots - uSlots, pIdx + 1) + count(slots, pIdx + 1);
+            memo.set(key, result);
+            return result;
+        };
+        return count(targetSlots, 0);
+    }
+
+    async findBestBoards(pool, size, emblems, mustIncludeNames = [], mode = 'default', mustIncludeTraits = [], limit = 3, onProgress = null) {
         const targetSlots = size;
         let fixedUnits = [];
         if (mustIncludeNames && mustIncludeNames.length > 0) {
@@ -184,18 +199,36 @@ class TFTOptimizer {
             if (size <= 6) return b.traits.length - a.traits.length;
             return b.cost - a.cost;
         });
-        candidates = candidates.slice(0, 45); 
         
+        const poolSize = size >= 9 ? 35 : 32; 
+        candidates = candidates.slice(0, poolSize);
         const fixedSlots = fixedUnits.reduce((acc, u) => acc + (u.slots || 1), 0);
         const neededSlots = targetSlots - fixedSlots;
         
+        const total = this.countTotalCombos(neededSlots, candidates);
+        let processed = 0;
         let results = [];
-        for (const combo of this.getCombos(neededSlots, candidates)) {
-            const currentBoard = [...combo, ...fixedUnits];
-            const { score, counts } = this.scoreBoard(currentBoard, emblems, targetSlots, mode, mustIncludeTraits);
-            if (score > -1000000) { 
-                results.push({ score, board: currentBoard, counts });
+        
+        const batchSize = 5000;
+        const generator = this.getCombos(neededSlots, candidates);
+        
+        let done = false;
+        while (!done) {
+            for (let i = 0; i < batchSize; i++) {
+                const { value: combo, done: comboDone } = generator.next();
+                if (comboDone) {
+                    done = true;
+                    break;
+                }
+                processed++;
+                const currentBoard = [...combo, ...fixedUnits];
+                const { score, counts } = this.scoreBoard(currentBoard, emblems, targetSlots, mode, mustIncludeTraits);
+                if (score > -1000000) { 
+                    results.push({ score, board: currentBoard, counts });
+                }
             }
+            if (onProgress) onProgress(processed, total);
+            await new Promise(resolve => setTimeout(resolve, 0));
         }
         results.sort((a, b) => b.score - a.score);
         return results.slice(0, limit);
