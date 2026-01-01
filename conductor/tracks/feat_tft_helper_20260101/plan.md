@@ -2,7 +2,7 @@
 
 ## Phase 1: Infrastructure & Data Setup
 - [x] Task: Create directory structure for TFT assets in `OmniSync.Web/www/assets/tft/` 10bf5ec
-- [ ] Task: Define JSON schema for TFT Set data (units, traits, items)
+- [x] Task: Define JSON schema for TFT Set data (units, traits, items) 0a262d9
 - [ ] Task: Create `set16.json` based on `TFT.py` data
 - [ ] Task: Update `OmniSync.Hub` to serve these JSON files via a new API endpoint or static file serving
 - [ ] Task: Conductor - User Manual Verification 'Infrastructure & Data Setup' (Protocol in workflow.md)
