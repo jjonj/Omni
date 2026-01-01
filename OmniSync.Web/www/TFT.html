@@ -111,20 +111,6 @@
             pointer-events: none;
         }
 
-        .pool-container {
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-            flex: 1;
-            overflow: hidden;
-        }
-
-        .pool-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
         .item-grid {
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(60px, 1fr));
@@ -133,8 +119,48 @@
             padding: 4px;
         }
 
+        .item-grid.small {
+            grid-template-columns: repeat(auto-fill, minmax(50px, 1fr));
+            gap: 6px;
+        }
+
+        .unit-cost-groups {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            flex: 1;
+            overflow-y: auto;
+        }
+
+        .cost-group {
+            display: flex;
+            gap: 12px;
+            align-items: flex-start;
+            padding-bottom: 8px;
+            border-bottom: 1px solid var(--border-light);
+        }
+
+        .cost-group:last-child {
+            border-bottom: none;
+        }
+
+        .cost-label {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            font-weight: 700;
+            flex-shrink: 0;
+            border: 2px solid;
+            color: white;
+            margin-top: 4px;
+        }
+
         .draggable-item {
-            width: 60px;
+            width: 50px;
             display: flex;
             flex-direction: column;
             align-items: center;
@@ -142,31 +168,13 @@
             transition: transform var(--transition-fast);
         }
 
-        .draggable-item:hover {
-            transform: scale(1.05);
+        .draggable-item .item-icon {
+            width: 40px;
+            height: 40px;
         }
 
-        .draggable-item:active {
-            cursor: grabbing;
-        }
-
-        .item-icon {
-            width: 48px;
-            height: 48px;
-            border-radius: 4px;
-            border: 2px solid var(--border);
-            background: #222;
-        }
-
-        .item-name {
-            font-size: 10px;
-            color: var(--text-dim);
-            text-align: center;
-            margin-top: 4px;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            width: 100%;
+        .draggable-item .item-name {
+            font-size: 8px;
         }
 
         .filter-btn {
@@ -304,21 +312,34 @@
                         </div>
 
                         <!-- Right Column: Pools -->
-                        <div class="pools-zone">
-                            <!-- Unit Pool -->
+                        <div class="pools-zone" ondrop="dropOnPools(event)" ondragover="allowDrop(event)">
+                            <!-- Unit Pool Grouped by Cost -->
                             <div class="pool-container">
                                 <div class="pool-header">
                                     <h2>Units</h2>
-                                    <div class="cost-filters">
-                                        <button class="filter-btn active" onclick="filterUnits('all')">All</button>
-                                        <button class="filter-btn cost-1" onclick="filterUnits(1)">1</button>
-                                        <button class="filter-btn cost-2" onclick="filterUnits(2)">2</button>
-                                        <button class="filter-btn cost-3" onclick="filterUnits(3)">3</button>
-                                        <button class="filter-btn cost-4" onclick="filterUnits(4)">4</button>
-                                        <button class="filter-btn cost-5" onclick="filterUnits(5)">5</button>
+                                </div>
+                                <div class="unit-cost-groups">
+                                    <div class="cost-group">
+                                        <div class="cost-label cost-1">1</div>
+                                        <div id="unit-pool-1" class="item-grid small"></div>
+                                    </div>
+                                    <div class="cost-group">
+                                        <div class="cost-label cost-2">2</div>
+                                        <div id="unit-pool-2" class="item-grid small"></div>
+                                    </div>
+                                    <div class="cost-group">
+                                        <div class="cost-label cost-3">3</div>
+                                        <div id="unit-pool-3" class="item-grid small"></div>
+                                    </div>
+                                    <div class="cost-group">
+                                        <div class="cost-label cost-4">4</div>
+                                        <div id="unit-pool-4" class="item-grid small"></div>
+                                    </div>
+                                    <div class="cost-group">
+                                        <div class="cost-label cost-5">5</div>
+                                        <div id="unit-pool-5" class="item-grid small"></div>
                                     </div>
                                 </div>
-                                <div id="unit-pool" class="item-grid"></div>
                             </div>
 
                             <!-- Emblem Pool -->

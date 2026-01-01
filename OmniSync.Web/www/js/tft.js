@@ -58,24 +58,25 @@ function updateUI() {
     document.getElementById('config-set-name').innerText = tftData.set_name;
     document.getElementById('config-json-display').innerText = JSON.stringify(tftData, null, 2);
 
-    renderUnitPool();
+    renderUnitPools();
     renderEmblemPool();
     renderSelectionZones();
 }
 
-function renderUnitPool() {
-    const pool = document.getElementById('unit-pool');
-    pool.innerHTML = '';
-    
-    const units = tftData.units.filter(u => {
-        if (unitFilter === 'all') return true;
-        return u.cost === parseInt(unitFilter);
-    }).sort((a, b) => a.cost - b.cost || a.name.localeCompare(b.name));
+function renderUnitPools() {
+    for (let cost = 1; cost <= 5; cost++) {
+        const pool = document.getElementById(`unit-pool-${cost}`);
+        if (!pool) continue;
+        pool.innerHTML = '';
+        
+        const units = tftData.units.filter(u => u.cost === cost)
+            .sort((a, b) => a.name.localeCompare(b.name));
 
-    units.forEach(u => {
-        const item = createDraggableItem(u.name, u.icon_url, 'unit', u.cost);
-        pool.appendChild(item);
-    });
+        units.forEach(u => {
+            const item = createDraggableItem(u.name, u.icon_url, 'unit', u.cost);
+            pool.appendChild(item);
+        });
+    }
 }
 
 function renderEmblemPool() {
@@ -94,15 +95,16 @@ function renderEmblemPool() {
     });
 }
 
-function createDraggableItem(name, iconUrl, type, cost, trait) {
+function createDraggableItem(name, iconUrl, type, cost, trait, isSelected = false) {
     const div = document.createElement('div');
     div.className = 'draggable-item';
-    div.draggable = true;
+    div.draggable = true; 
     div.dataset.name = name;
     div.dataset.type = type;
     if (cost) div.dataset.cost = cost;
     if (trait) div.dataset.trait = trait;
     div.dataset.icon = iconUrl;
+    div.dataset.selected = isSelected;
 
     const costColors = { 1: '#808080', 2: '#11b288', 3: '#207ac7', 4: '#c440da', 5: '#ffb93b' };
     const borderColor = cost ? (costColors[cost] || '#ccc') : '#0a84ff';
@@ -115,16 +117,35 @@ function createDraggableItem(name, iconUrl, type, cost, trait) {
 
     div.addEventListener('dragstart', (e) => {
         e.dataTransfer.setData('text/plain', JSON.stringify({
-            name, type, cost, trait, iconUrl
+            name, type, cost, trait, iconUrl, isSelected
         }));
     });
+
+    if (isSelected) {
+        div.title = "Click or drag out to remove";
+        div.style.cursor = 'pointer';
+        div.addEventListener('click', () => {
+            removeItem(name, type);
+        });
+    }
 
     return div;
 }
 
+function removeItem(name, type) {
+    if (type === 'unit') {
+        selectedMustInclude = null;
+    } else {
+        selectedEmblems = selectedEmblems.filter(e => e.name !== name);
+    }
+    renderSelectionZones();
+}
+
 function allowDrop(e) {
     e.preventDefault();
-    e.currentTarget.classList.add('drag-over');
+    if (e.currentTarget.classList.contains('drop-zone')) {
+        e.currentTarget.classList.add('drag-over');
+    }
 }
 
 // Global cleanup for drag-over
@@ -140,24 +161,38 @@ document.addEventListener('drop', (e) => {
     }
 });
 
+function dropOnPools(e) {
+    e.preventDefault();
+    try {
+        const data = JSON.parse(e.dataTransfer.getData('text/plain'));
+        if (data.isSelected) {
+            removeItem(data.name, data.type);
+        }
+    } catch(err) {}
+}
+
 function dropUnit(e) {
     e.preventDefault();
-    const data = JSON.parse(e.dataTransfer.getData('text/plain'));
-    if (data.type === 'unit') {
-        selectedMustInclude = data;
-        renderSelectionZones();
-    }
+    try {
+        const data = JSON.parse(e.dataTransfer.getData('text/plain'));
+        if (data.type === 'unit') {
+            selectedMustInclude = data;
+            renderSelectionZones();
+        }
+    } catch(err) {}
 }
 
 function dropEmblem(e) {
     e.preventDefault();
-    const data = JSON.parse(e.dataTransfer.getData('text/plain'));
-    if (data.type === 'emblem') {
-        if (!selectedEmblems.find(em => em.name === data.name)) {
-            selectedEmblems.push(data);
-            renderSelectionZones();
+    try {
+        const data = JSON.parse(e.dataTransfer.getData('text/plain'));
+        if (data.type === 'emblem') {
+            if (!selectedEmblems.find(em => em.name === data.name)) {
+                selectedEmblems.push(data);
+                renderSelectionZones();
+            }
         }
-    }
+    } catch(err) {}
 }
 
 function renderSelectionZones() {
@@ -167,8 +202,7 @@ function renderSelectionZones() {
     // Render Unit
     unitZone.innerHTML = '';
     if (selectedMustInclude) {
-        const item = createDraggableItem(selectedMustInclude.name, selectedMustInclude.iconUrl, 'unit', selectedMustInclude.cost);
-        item.draggable = false; // Disable dragging out for now, or implement removal
+        const item = createDraggableItem(selectedMustInclude.name, selectedMustInclude.iconUrl, 'unit', selectedMustInclude.cost, null, true);
         unitZone.appendChild(item);
     } else {
         unitZone.innerHTML = '<div class="placeholder-text">Drag Unit Here</div>';
@@ -178,8 +212,7 @@ function renderSelectionZones() {
     emblemZone.innerHTML = '';
     if (selectedEmblems.length > 0) {
         selectedEmblems.forEach(emb => {
-            const item = createDraggableItem(emb.name, emb.iconUrl, 'emblem', null, emb.trait);
-            item.draggable = false;
+            const item = createDraggableItem(emb.name, emb.iconUrl, 'emblem', null, emb.trait, true);
             emblemZone.appendChild(item);
         });
     } else {
@@ -195,14 +228,6 @@ function clearMustInclude() {
 function clearEmblems() {
     selectedEmblems = [];
     renderSelectionZones();
-}
-
-function filterUnits(cost) {
-    unitFilter = cost;
-    document.querySelectorAll('.filter-btn').forEach(btn => {
-        btn.classList.toggle('active', btn.innerText.toLowerCase() === cost.toString() || (cost === 'all' && btn.innerText.toLowerCase() === 'all'));
-    });
-    renderUnitPool();
 }
 
 function filterEmblems(query) {
