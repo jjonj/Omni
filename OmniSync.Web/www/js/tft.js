@@ -2,8 +2,12 @@ let tftData = null;
 let currentConfig = null;
 let optimizer = null;
 
+let selectedMustInclude = null;
+let selectedEmblems = [];
+let unitFilter = 'all';
+let emblemSearch = '';
+
 function switchTab(tabId) {
-    // Update tab buttons
     document.querySelectorAll('.tft-tab').forEach(tab => {
         tab.classList.remove('active');
         if (tab.innerText.toLowerCase().replace(/ /g, '-') === tabId || 
@@ -16,7 +20,6 @@ function switchTab(tabId) {
         }
     });
 
-    // Handle exact text matching for convenience
     const tabMap = {
         'Emblem Portal': 'emblem-portal',
         'World Runes': 'world-runes',
@@ -25,7 +28,6 @@ function switchTab(tabId) {
         'Configuration': 'config'
     };
 
-    // Update panels
     document.querySelectorAll('.tab-panel').forEach(panel => {
         panel.classList.remove('active');
     });
@@ -56,49 +58,163 @@ function updateUI() {
     document.getElementById('config-set-name').innerText = tftData.set_name;
     document.getElementById('config-json-display').innerText = JSON.stringify(tftData, null, 2);
 
-    // Update Must Include dropdown
-    const mustInclude = document.getElementById('must-include');
-    const currentValue = mustInclude.value;
-    mustInclude.innerHTML = '<option value="">None</option>';
-    
-    const sortedUnits = [...tftData.units].sort((a, b) => a.name.localeCompare(b.name));
-    sortedUnits.forEach(unit => {
-        const opt = document.createElement('option');
-        opt.value = unit.name;
-        opt.innerText = unit.name;
-        mustInclude.appendChild(opt);
-    });
-    mustInclude.value = currentValue;
+    renderUnitPool();
+    renderEmblemPool();
+    renderSelectionZones();
+}
 
-    // Update Emblems list
-    const emblemList = document.getElementById('emblem-list');
-    emblemList.innerHTML = '';
+function renderUnitPool() {
+    const pool = document.getElementById('unit-pool');
+    pool.innerHTML = '';
     
-    tftData.items.filter(item => item.is_emblem).forEach(emblem => {
-        const label = document.createElement('label');
-        label.className = 'hub-status-label';
-        label.style.display = 'flex';
-        label.style.align_items = 'center';
-        label.style.gap = '8px';
-        label.style.cursor = 'pointer';
-        label.style.textTransform = 'none';
-        
-        const cb = document.createElement('input');
-        cb.type = 'checkbox';
-        cb.className = 'emblem-cb';
-        cb.value = emblem.trait;
-        
-        label.appendChild(cb);
-        label.append(emblem.name);
-        emblemList.appendChild(label);
+    const units = tftData.units.filter(u => {
+        if (unitFilter === 'all') return true;
+        return u.cost === parseInt(unitFilter);
+    }).sort((a, b) => a.cost - b.cost || a.name.localeCompare(b.name));
+
+    units.forEach(u => {
+        const item = createDraggableItem(u.name, u.icon_url, 'unit', u.cost);
+        pool.appendChild(item);
     });
+}
+
+function renderEmblemPool() {
+    const pool = document.getElementById('emblem-pool');
+    pool.innerHTML = '';
+    
+    const emblems = tftData.items.filter(i => {
+        if (!i.is_emblem) return false;
+        if (!emblemSearch) return true;
+        return i.name.toLowerCase().includes(emblemSearch.toLowerCase());
+    }).sort((a, b) => a.name.localeCompare(b.name));
+
+    emblems.forEach(e => {
+        const item = createDraggableItem(e.name, e.icon_url, 'emblem', null, e.trait);
+        pool.appendChild(item);
+    });
+}
+
+function createDraggableItem(name, iconUrl, type, cost, trait) {
+    const div = document.createElement('div');
+    div.className = 'draggable-item';
+    div.draggable = true;
+    div.dataset.name = name;
+    div.dataset.type = type;
+    if (cost) div.dataset.cost = cost;
+    if (trait) div.dataset.trait = trait;
+    div.dataset.icon = iconUrl;
+
+    const costColors = { 1: '#808080', 2: '#11b288', 3: '#207ac7', 4: '#c440da', 5: '#ffb93b' };
+    const borderColor = cost ? (costColors[cost] || '#ccc') : '#0a84ff';
+
+    div.innerHTML = `
+        <img src="${iconUrl}" class="item-icon" style="border-color: ${borderColor}" 
+             onerror="this.src='data:image/svg+xml;base64,PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHdpZHRoPSc0OCcgaGVpZ2h0PSc0OCcgc3R5bGU9J2JhY2tncm91bmQ6IzIyMjsnPjx0ZXh0IHg9JzUwJScgeT0nNTAlJyBkb20tYmFzZWxpbmU9J21pZGRsZScgdGV4dC1hbmNob3I9J21pZGRsZScgZmlsbD0nI2ZmZicgZm9udC1zaXplPScxMic+PyA8L3RleHQ+PC9zdmc+'">
+        <div class="item-name">${name}</div>
+    `;
+
+    div.addEventListener('dragstart', (e) => {
+        e.dataTransfer.setData('text/plain', JSON.stringify({
+            name, type, cost, trait, iconUrl
+        }));
+    });
+
+    return div;
+}
+
+function allowDrop(e) {
+    e.preventDefault();
+    e.currentTarget.classList.add('drag-over');
+}
+
+// Global cleanup for drag-over
+document.addEventListener('dragleave', (e) => {
+    if (e.target.classList.contains('drop-zone')) {
+        e.target.classList.remove('drag-over');
+    }
+});
+
+document.addEventListener('drop', (e) => {
+    if (e.target.classList.contains('drop-zone')) {
+        e.target.classList.remove('drag-over');
+    }
+});
+
+function dropUnit(e) {
+    e.preventDefault();
+    const data = JSON.parse(e.dataTransfer.getData('text/plain'));
+    if (data.type === 'unit') {
+        selectedMustInclude = data;
+        renderSelectionZones();
+    }
+}
+
+function dropEmblem(e) {
+    e.preventDefault();
+    const data = JSON.parse(e.dataTransfer.getData('text/plain'));
+    if (data.type === 'emblem') {
+        if (!selectedEmblems.find(em => em.name === data.name)) {
+            selectedEmblems.push(data);
+            renderSelectionZones();
+        }
+    }
+}
+
+function renderSelectionZones() {
+    const unitZone = document.getElementById('must-include-zone');
+    const emblemZone = document.getElementById('emblem-drop-zone');
+
+    // Render Unit
+    unitZone.innerHTML = '';
+    if (selectedMustInclude) {
+        const item = createDraggableItem(selectedMustInclude.name, selectedMustInclude.iconUrl, 'unit', selectedMustInclude.cost);
+        item.draggable = false; // Disable dragging out for now, or implement removal
+        unitZone.appendChild(item);
+    } else {
+        unitZone.innerHTML = '<div class="placeholder-text">Drag Unit Here</div>';
+    }
+
+    // Render Emblems
+    emblemZone.innerHTML = '';
+    if (selectedEmblems.length > 0) {
+        selectedEmblems.forEach(emb => {
+            const item = createDraggableItem(emb.name, emb.iconUrl, 'emblem', null, emb.trait);
+            item.draggable = false;
+            emblemZone.appendChild(item);
+        });
+    } else {
+        emblemZone.innerHTML = '<div class="placeholder-text">Drag Emblems Here</div>';
+    }
+}
+
+function clearMustInclude() {
+    selectedMustInclude = null;
+    renderSelectionZones();
+}
+
+function clearEmblems() {
+    selectedEmblems = [];
+    renderSelectionZones();
+}
+
+function filterUnits(cost) {
+    unitFilter = cost;
+    document.querySelectorAll('.filter-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.innerText.toLowerCase() === cost.toString() || (cost === 'all' && btn.innerText.toLowerCase() === 'all'));
+    });
+    renderUnitPool();
+}
+
+function filterEmblems(query) {
+    emblemSearch = query;
+    renderEmblemPool();
 }
 
 function runOptimization() {
     if (!optimizer) return;
 
-    const mustInclude = document.getElementById('must-include').value;
-    const emblems = Array.from(document.querySelectorAll('.emblem-cb:checked')).map(cb => cb.value);
+    const mustIncludeName = selectedMustInclude ? selectedMustInclude.name : null;
+    const emblems = selectedEmblems.map(e => e.trait);
     
     const results6Div = document.getElementById('lvl6-list');
     const results8Div = document.getElementById('lvl8-list');
@@ -106,16 +222,12 @@ function runOptimization() {
     results6Div.innerHTML = '<div style="color: var(--text-dim);">Calculating...</div>';
     results8Div.innerHTML = '<div style="color: var(--text-dim);">Calculating...</div>';
 
-    // Use setTimeout to allow UI to render "Calculating..." before blocking thread
     setTimeout(() => {
-        // Level 6 Calculation
         const pool6 = tftData.units.filter(u => u.cost <= 3);
-        const results6 = optimizer.findBestBoards(pool6, 6, emblems, mustInclude);
+        const results6 = optimizer.findBestBoards(pool6, 6, emblems, mustIncludeName);
         renderResults(results6, results6Div);
 
-        // Level 8 Calculation
-        // Pool 8 uses all units
-        const results8 = optimizer.findBestBoards(tftData.units, 8, emblems, mustInclude);
+        const results8 = optimizer.findBestBoards(tftData.units, 8, emblems, mustIncludeName);
         renderResults(results8, results8Div);
     }, 50);
 }
@@ -124,41 +236,38 @@ function renderResults(results, container) {
     container.innerHTML = '';
     
     if (results.length === 0) {
-        container.innerHTML = '<div style="color: var(--text-dim);">No valid compositions found.</div>';
+        container.innerHTML = '<div style="color: var(--text-dim); font-size: 11px;">No valid compositions found.</div>';
         return;
     }
 
     results.forEach((res, index) => {
         const card = document.createElement('div');
         card.className = 'result-card';
+        card.style.marginBottom = '10px';
         
-        const header = document.createElement('div');
-        header.style.display = 'flex';
-        header.style.justifyContent = 'space-between';
-        header.style.marginBottom = '10px';
-        header.innerHTML = `<strong>Option ${index + 1}</strong> <span style="color: var(--accent);">Score: ${res.score}</span>`;
-        card.appendChild(header);
+        card.innerHTML = `
+            <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                <strong>Option ${index + 1}</strong>
+                <span style="color: var(--accent); font-weight: 600;">${res.score}</span>
+            </div>
+        `;
 
         const list = document.createElement('div');
         list.className = 'unit-list';
+        list.style.gap = '4px';
         
-        // Sort units by cost
         const sortedBoard = [...res.board].sort((a, b) => a.cost - b.cost);
         
         sortedBoard.forEach(u => {
             const item = document.createElement('div');
             item.className = 'unit-item';
             
-            // Try to use icon if available, otherwise placeholder color based on cost
             const costColors = { 1: '#808080', 2: '#11b288', 3: '#207ac7', 4: '#c440da', 5: '#ffb93b' };
             const borderColor = costColors[u.cost] || '#ccc';
             
-            // Use a placeholder image if icon not set, or a default path
-            // For now we assume a standard path structure: assets/tft/set16/champions/{name}.png
-            const iconPath = `assets/tft/${currentConfig.current_set}/champions/${u.name.replace(/ /g, '').replace(/'/g, '')}.png`;
-            
             item.innerHTML = `
-                <img src="${iconPath}" class="unit-icon" style="border-color: ${borderColor};" onerror="this.src='data:image/svg+xml;base64,PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHdpZHRoPSc0OCcgaGVpZ2h0PSc0OCcgc3R5bGU9J2JhY2tncm91bmQ6IzIyMjsnPjx0ZXh0IHg9JzUwJScgeT0nNTAlJyBkb20tYmFzZWxpbmU9J21pZGRsZScgdGV4dC1hbmNob3I9J21pZGRsZScgZmlsbD0nI2ZmZicgZm9udC1zaXplPScxMic+PyA8L3RleHQ+PC9zdmc+'">
+                <img src="${u.icon_url}" class="unit-icon" style="border-color: ${borderColor};" 
+                     onerror="this.src='data:image/svg+xml;base64,PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHdpZHRoPSczNicgaGVpZ2h0PSczNicgc3R5bGU9J2JhY2tncm91bmQ6IzIyMjsnPjx0ZXh0IHg9JzUwJScgeT0nNTAlJyBkb20tYmFzZWxpbmU9J21pZGRsZScgdGV4dC1hbmNob3I9J21pZGRsZScgZmlsbD0nI2ZmZicgZm9udC1zaXplPSc4Jz4/IDwvdGV4dD48L3N2Zz4='">
                 <div class="unit-name">${u.name}</div>
             `;
             list.appendChild(item);

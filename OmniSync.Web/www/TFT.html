@@ -56,61 +56,194 @@
         }
 
         .tab-panel.active {
-            display: block;
+            display: flex;
+            flex-direction: column;
         }
 
-        /* Optimizer Specific Styles */
-        .optimizer-grid {
+        /* Optimizer Layout Refinement */
+        .optimizer-layout {
             display: grid;
-            grid-template-columns: 350px 1fr;
-            gap: 24px;
+            grid-template-columns: 320px 1fr 320px;
+            gap: 20px;
             height: 100%;
         }
 
-        .optimizer-controls {
+        .selection-zone, .results-zone {
             display: flex;
             flex-direction: column;
-            gap: 20px;
+            gap: 16px;
+            overflow-y: auto;
+        }
+
+        .pools-zone {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            background: var(--bg-elevated);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 16px;
+            overflow: hidden;
+        }
+
+        .drop-zone {
+            min-height: 80px;
+            background: var(--bg);
+            border: 2px dashed var(--border);
+            border-radius: 8px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            padding: 8px;
+            align-items: center;
+            justify-content: center;
+            transition: all var(--transition-fast);
+        }
+
+        .drop-zone.drag-over {
+            border-color: var(--accent);
+            background: rgba(10, 132, 255, 0.05);
+        }
+
+        .placeholder-text {
+            color: var(--text-dimmer);
+            font-size: 12px;
+            pointer-events: none;
+        }
+
+        .pool-container {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        .pool-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .item-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(60px, 1fr));
+            gap: 10px;
+            overflow-y: auto;
+            padding: 4px;
+        }
+
+        .draggable-item {
+            width: 60px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            cursor: grab;
+            transition: transform var(--transition-fast);
+        }
+
+        .draggable-item:hover {
+            transform: scale(1.05);
+        }
+
+        .draggable-item:active {
+            cursor: grabbing;
+        }
+
+        .item-icon {
+            width: 48px;
+            height: 48px;
+            border-radius: 4px;
+            border: 2px solid var(--border);
+            background: #222;
+        }
+
+        .item-name {
+            font-size: 10px;
+            color: var(--text-dim);
+            text-align: center;
+            margin-top: 4px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            width: 100%;
+        }
+
+        .filter-btn {
+            background: var(--panel);
+            border: 1px solid var(--border);
+            color: var(--text-dim);
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            cursor: pointer;
+        }
+
+        .filter-btn.active {
+            background: var(--accent);
+            color: white;
+            border-color: var(--accent);
+        }
+
+        .cost-1 { border-color: #808080; }
+        .cost-2 { border-color: #11b288; }
+        .cost-3 { border-color: #207ac7; }
+        .cost-4 { border-color: #c440da; }
+        .cost-5 { border-color: #ffb93b; }
+
+        .search-input {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            color: var(--text-bright);
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            width: 120px;
+        }
+
+        .results-list {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
         }
 
         .result-card {
             background: var(--panel);
             border: 1px solid var(--border);
             border-radius: 8px;
-            padding: 16px;
-            margin-bottom: 16px;
-        }
-
-        .unit-icon {
-            width: 48px;
-            height: 48px;
-            border-radius: 4px;
-            border: 2px solid var(--border);
-            object-fit: cover;
+            padding: 12px;
+            font-size: 12px;
         }
 
         .unit-list {
             display: flex;
             flex-wrap: wrap;
-            gap: 12px;
-            margin-top: 12px;
+            gap: 8px;
+            margin-top: 8px;
         }
 
         .unit-item {
             display: flex;
             flex-direction: column;
             align-items: center;
-            width: 64px;
-            text-align: center;
+            width: 44px;
+        }
+
+        .unit-icon {
+            width: 36px;
+            height: 36px;
+            border-radius: 4px;
+            border: 1px solid var(--border);
         }
 
         .unit-name {
-            font-size: 10px;
-            margin-top: 4px;
+            font-size: 8px;
+            margin-top: 2px;
             color: var(--text-dim);
-            white-space: nowrap;
+            text-align: center;
             overflow: hidden;
             text-overflow: ellipsis;
+            white-space: nowrap;
             width: 100%;
         }
 
@@ -148,31 +281,64 @@
             <div class="tft-content">
                 <!-- Emblem Portal Panel -->
                 <div id="emblem-portal" class="tab-panel active">
-                    <div class="optimizer-grid">
-                        <div class="optimizer-controls">
+                    <div class="optimizer-layout">
+                        <!-- Left Column: Selection Zone -->
+                        <div class="selection-zone">
                             <div class="control-box">
                                 <h2>Must Include Unit</h2>
-                                <select id="must-include" class="modern-input" style="width: 100%; background: var(--panel); color: var(--text-bright); border: 1px solid var(--border); padding: 8px; border-radius: 6px;">
-                                    <option value="">None</option>
-                                </select>
-                            </div>
-                            <div class="control-box">
-                                <h2>Emblems</h2>
-                                <div id="emblem-list" style="display: flex; flex-direction: column; gap: 8px;">
-                                    <!-- Emblems will be populated here -->
+                                <div class="drop-zone" id="must-include-zone" ondrop="dropUnit(event)" ondragover="allowDrop(event)">
+                                    <div class="placeholder-text">Drag Unit Here</div>
                                 </div>
+                                <button class="btn danger" onclick="clearMustInclude()" style="width: 100%; margin-top: 8px;">Clear Unit</button>
                             </div>
-                            <button class="modern-btn primary" onclick="runOptimization()">Run Optimization</button>
+
+                            <div class="control-box" style="flex: 1; display: flex; flex-direction: column;">
+                                <h2>Selected Emblems</h2>
+                                <div class="drop-zone emblem-zone" id="emblem-drop-zone" ondrop="dropEmblem(event)" ondragover="allowDrop(event)">
+                                    <div class="placeholder-text">Drag Emblems Here</div>
+                                </div>
+                                <button class="btn danger" onclick="clearEmblems()" style="width: 100%; margin-top: 8px;">Clear Emblems</button>
+                            </div>
+
+                            <button class="modern-btn primary" onclick="runOptimization()" style="height: 50px; font-size: 14px;">RUN OPTIMIZATION</button>
                         </div>
-                        <div class="optimizer-results">
-                            <div id="results-6">
-                                <h2 class="hub-status-label" style="margin-bottom: 12px; display: block;">Level 6 Boards</h2>
-                                <div id="lvl6-list"></div>
+
+                        <!-- Right Column: Pools -->
+                        <div class="pools-zone">
+                            <!-- Unit Pool -->
+                            <div class="pool-container">
+                                <div class="pool-header">
+                                    <h2>Units</h2>
+                                    <div class="cost-filters">
+                                        <button class="filter-btn active" onclick="filterUnits('all')">All</button>
+                                        <button class="filter-btn cost-1" onclick="filterUnits(1)">1</button>
+                                        <button class="filter-btn cost-2" onclick="filterUnits(2)">2</button>
+                                        <button class="filter-btn cost-3" onclick="filterUnits(3)">3</button>
+                                        <button class="filter-btn cost-4" onclick="filterUnits(4)">4</button>
+                                        <button class="filter-btn cost-5" onclick="filterUnits(5)">5</button>
+                                    </div>
+                                </div>
+                                <div id="unit-pool" class="item-grid"></div>
                             </div>
-                            <div id="results-8" style="margin-top: 32px;">
-                                <h2 class="hub-status-label" style="margin-bottom: 12px; display: block;">Level 8 Boards</h2>
-                                <div id="lvl8-list"></div>
+
+                            <!-- Emblem Pool -->
+                            <div class="pool-container" style="height: 30%;">
+                                <div class="pool-header">
+                                    <h2>Emblems</h2>
+                                    <input type="text" placeholder="Search..." onkeyup="filterEmblems(this.value)" class="search-input">
+                                </div>
+                                <div id="emblem-pool" class="item-grid"></div>
                             </div>
+                        </div>
+                        
+                        <!-- Results Column (Floating or separate? Let's put it next to pools for now or below) -->
+                        <!-- Actually, 3 columns might be better: Selection | Pools | Results -->
+                        <div class="results-zone">
+                            <h2 class="hub-status-label" style="display: block; margin-bottom: 10px;">Level 6 Results</h2>
+                            <div id="lvl6-list" class="results-list"></div>
+                            
+                            <h2 class="hub-status-label" style="display: block; margin-top: 20px; margin-bottom: 10px;">Level 8 Results</h2>
+                            <div id="lvl8-list" class="results-list"></div>
                         </div>
                     </div>
                 </div>

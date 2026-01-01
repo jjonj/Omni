@@ -1,110 +1,1256 @@
 {
   "set_name": "set16",
   "units": [
-    {"name": "Anivia", "cost": 1, "traits": ["Freljord", "Invoker"], "is_carry": true, "locked": false},
-    {"name": "Blitzcrank", "cost": 1, "traits": ["Zaun", "Juggernaut"], "is_carry": false, "locked": false},
-    {"name": "Briar", "cost": 1, "traits": ["Noxus", "Slayer", "Juggernaut"], "is_carry": true, "locked": false},
-    {"name": "Caitlyn", "cost": 1, "traits": ["Piltover", "Longshot"], "is_carry": true, "locked": false},
-    {"name": "Illaoi", "cost": 1, "traits": ["Bilgewater", "Bruiser"], "is_carry": false, "locked": false},
-    {"name": "Jarvan IV", "cost": 1, "traits": ["Demacia", "Defender"], "is_carry": false, "locked": false},
-    {"name": "Jhin", "cost": 1, "traits": ["Ionia", "Gunslinger"], "is_carry": true, "locked": false},
-    {"name": "Kog'Maw", "cost": 1, "traits": ["Void", "Arcanist", "Longshot"], "is_carry": true, "locked": false},
-    {"name": "Lulu", "cost": 1, "traits": ["Yordle", "Arcanist"], "is_carry": true, "locked": false},
-    {"name": "Qiyana", "cost": 1, "traits": ["Ixtal", "Slayer"], "is_carry": true, "locked": false},
-    {"name": "Rumble", "cost": 1, "traits": ["Yordle", "Defender"], "is_carry": false, "locked": false},
-    {"name": "Shen", "cost": 1, "traits": ["Ionia", "Bruiser"], "is_carry": false, "locked": false},
-    {"name": "Sona", "cost": 1, "traits": ["Demacia", "Invoker"], "is_carry": true, "locked": false},
-    {"name": "Viego", "cost": 1, "traits": ["Shadow Isles", "Quickstriker"], "is_carry": true, "locked": false},
-    {"name": "Aphelios", "cost": 2, "traits": ["Targon"], "is_carry": true, "locked": false},
-    {"name": "Ashe", "cost": 2, "traits": ["Freljord", "Quickstriker"], "is_carry": true, "locked": false},
-    {"name": "Cho'Gath", "cost": 2, "traits": ["Void", "Juggernaut"], "is_carry": false, "locked": false},
-    {"name": "Ekko", "cost": 2, "traits": ["Zaun", "Disruptor"], "is_carry": true, "locked": false},
-    {"name": "Graves", "cost": 2, "traits": ["Bilgewater", "Gunslinger"], "is_carry": true, "locked": false},
-    {"name": "Neeko", "cost": 2, "traits": ["Ixtal", "Arcanist", "Defender"], "is_carry": false, "locked": false},
-    {"name": "Orianna", "cost": 2, "traits": ["Piltover", "Invoker"], "is_carry": false, "locked": true},
-    {"name": "Poppy", "cost": 2, "traits": ["Demacia", "Juggernaut", "Yordle"], "is_carry": false, "locked": false},
-    {"name": "Rek'Sai", "cost": 2, "traits": ["Void", "Vanquisher"], "is_carry": true, "locked": false},
-    {"name": "Sion", "cost": 2, "traits": ["Noxus", "Bruiser"], "is_carry": false, "locked": false},
-    {"name": "Teemo", "cost": 2, "traits": ["Yordle", "Longshot"], "is_carry": true, "locked": false},
-    {"name": "Tristana", "cost": 2, "traits": ["Yordle", "Gunslinger"], "is_carry": true, "locked": false},
-    {"name": "Tryndamere", "cost": 2, "traits": ["Freljord", "Slayer"], "is_carry": true, "locked": false},
-    {"name": "Twisted Fate", "cost": 2, "traits": ["Bilgewater", "Quickstriker"], "is_carry": true, "locked": false},
-    {"name": "Vi", "cost": 2, "traits": ["Zaun", "Defender", "Piltover"], "is_carry": false, "locked": false},
-    {"name": "Xin Zhao", "cost": 2, "traits": ["Demacia", "Ionia", "Warden"], "is_carry": false, "locked": false},
-    {"name": "Yasuo", "cost": 2, "traits": ["Ionia", "Slayer"], "is_carry": true, "locked": false},
-    {"name": "Yorick", "cost": 2, "traits": ["Shadow Isles", "Warden"], "is_carry": false, "locked": true},
-    {"name": "Ahri", "cost": 3, "traits": ["Ionia", "Arcanist"], "is_carry": true, "locked": false},
-    {"name": "Darius", "cost": 3, "traits": ["Noxus", "Defender"], "is_carry": false, "locked": true},
-    {"name": "Dr. Mundo", "cost": 3, "traits": ["Zaun", "Bruiser"], "is_carry": false, "locked": false},
-    {"name": "Draven", "cost": 3, "traits": ["Noxus", "Vanquisher"], "is_carry": true, "locked": false},
-    {"name": "Gangplank", "cost": 3, "traits": ["Bilgewater", "Slayer", "Vanquisher"], "is_carry": true, "locked": false},
-    {"name": "Gwen", "cost": 3, "traits": ["Shadow Isles", "Disruptor"], "is_carry": true, "locked": true},
-    {"name": "Jinx", "cost": 3, "traits": ["Zaun", "Gunslinger"], "is_carry": true, "locked": false},
-    {"name": "Kennen", "cost": 3, "traits": ["Ionia", "Defender", "Yordle"], "is_carry": false, "locked": false},
-    {"name": "Kobuko & Yuumi", "cost": 3, "traits": ["Bruiser", "Invoker", "Yordle"], "is_carry": false, "locked": false},
-    {"name": "LeBlanc", "cost": 3, "traits": ["Noxus", "Invoker"], "is_carry": false, "locked": true},
-    {"name": "Leona", "cost": 3, "traits": ["Targon"], "is_carry": false, "locked": false},
-    {"name": "Loris", "cost": 3, "traits": ["Piltover", "Warden"], "is_carry": false, "locked": false},
-    {"name": "Malzahar", "cost": 3, "traits": ["Void", "Disruptor"], "is_carry": true, "locked": false},
-    {"name": "Milio", "cost": 3, "traits": ["Ixtal", "Invoker"], "is_carry": true, "locked": false},
-    {"name": "Nautilus", "cost": 3, "traits": ["Bilgewater", "Juggernaut", "Warden"], "is_carry": false, "locked": false},
-    {"name": "Sejuani", "cost": 3, "traits": ["Freljord", "Defender"], "is_carry": false, "locked": false},
-    {"name": "Vayne", "cost": 3, "traits": ["Demacia", "Longshot"], "is_carry": true, "locked": false},
-    {"name": "Zoe", "cost": 3, "traits": ["Targon"], "is_carry": false, "locked": false},
-    {"name": "Ambessa", "cost": 4, "traits": ["Noxus", "Vanquisher"], "is_carry": true, "locked": false},
-    {"name": "Bel'Veth", "cost": 4, "traits": ["Void", "Slayer"], "is_carry": true, "locked": false},
-    {"name": "Braum", "cost": 4, "traits": ["Freljord", "Warden"], "is_carry": false, "locked": false},
-    {"name": "Diana", "cost": 4, "traits": ["Targon"], "is_carry": true, "locked": false},
-    {"name": "Fizz", "cost": 4, "traits": ["Bilgewater", "Yordle"], "is_carry": false, "locked": true},
-    {"name": "Garen", "cost": 4, "traits": ["Demacia", "Juggernaut"], "is_carry": false, "locked": false},
-    {"name": "Kai'Sa", "cost": 4, "traits": ["Longshot", "Void"], "is_carry": true, "locked": false},
-    {"name": "Kalista", "cost": 4, "traits": ["Shadow Isles", "Vanquisher"], "is_carry": true, "locked": true},
-    {"name": "Lissandra", "cost": 4, "traits": ["Freljord", "Invoker"], "is_carry": true, "locked": false},
-    {"name": "Lux", "cost": 4, "traits": ["Demacia", "Arcanist"], "is_carry": true, "locked": false},
-    {"name": "Miss Fortune", "cost": 4, "traits": ["Bilgewater", "Gunslinger"], "is_carry": true, "locked": false},
-    {"name": "Nasus", "cost": 4, "traits": ["Shurima", "Juggernaut"], "is_carry": false, "locked": true},
-    {"name": "Renekton", "cost": 4, "traits": ["Shurima", "Juggernaut"], "is_carry": false, "locked": true},
-    {"name": "Rift Herald", "cost": 4, "traits": ["Bruiser", "Void"], "is_carry": false, "locked": true},
-    {"name": "Seraphine", "cost": 4, "traits": ["Piltover", "Disruptor"], "is_carry": true, "locked": false},
-    {"name": "Singed", "cost": 4, "traits": ["Zaun", "Juggernaut"], "is_carry": false, "locked": true},
-    {"name": "Skarner", "cost": 4, "traits": ["Ixtal"], "is_carry": false, "locked": true},
-    {"name": "Swain", "cost": 4, "traits": ["Noxus", "Arcanist", "Juggernaut"], "is_carry": false, "locked": false},
-    {"name": "Taric", "cost": 4, "traits": ["Targon"], "is_carry": false, "locked": false},
-    {"name": "Veigar", "cost": 4, "traits": ["Yordle", "Arcanist"], "is_carry": true, "locked": true},
-    {"name": "Warwick", "cost": 4, "traits": ["Zaun", "Quickstriker"], "is_carry": true, "locked": true},
-    {"name": "Wukong", "cost": 4, "traits": ["Ionia", "Bruiser"], "is_carry": false, "locked": false},
-    {"name": "Yunara", "cost": 4, "traits": ["Ionia", "Quickstriker"], "is_carry": true, "locked": false},
-    {"name": "Aatrox", "cost": 5, "traits": ["World Ender", "Darkin", "Slayer"], "is_carry": false, "locked": true},
-    {"name": "Annie", "cost": 5, "traits": ["Dark Child", "Arcanist", "Arcanist"], "is_carry": true, "locked": false, "slots": 2},
-    {"name": "Azir", "cost": 5, "traits": ["Emperor", "Shurima"], "is_carry": true, "locked": false},
-    {"name": "Fiddlesticks", "cost": 5, "traits": ["Harvester", "Vanquisher"], "is_carry": false, "locked": false},
-    {"name": "Kindred", "cost": 5, "traits": ["Eternal", "Quickstriker"], "is_carry": true, "locked": false},
-    {"name": "Lucian & Senna", "cost": 5, "traits": ["Soulbound", "Gunslinger"], "is_carry": true, "locked": false},
-    {"name": "Mel", "cost": 5, "traits": ["Noxus", "Disruptor"], "is_carry": false, "locked": true},
-    {"name": "Ornn", "cost": 5, "traits": ["Blacksmith"], "is_carry": false, "locked": false},
-    {"name": "Ryze", "cost": 5, "traits": ["Rune Mage"], "is_carry": true, "locked": true},
-    {"name": "Sett", "cost": 5, "traits": ["The Boss", "Ionia"], "is_carry": false, "locked": true},
-    {"name": "Shyvana", "cost": 5, "traits": ["Dragonborn", "Juggernaut"], "is_carry": true, "locked": false},
-    {"name": "Sylas", "cost": 5, "traits": ["Chainbreaker", "Arcanist", "Defender"], "is_carry": true, "locked": true},
-    {"name": "Tahm Kench", "cost": 5, "traits": ["Glutton", "Bilgewater", "Bruiser"], "is_carry": false, "locked": true},
-    {"name": "Thresh", "cost": 5, "traits": ["Shadow Isles", "Warden"], "is_carry": false, "locked": true},
-    {"name": "Volibear", "cost": 5, "traits": ["Freljord", "Bruiser"], "is_carry": false, "locked": true},
-    {"name": "Xerath", "cost": 5, "traits": ["Ascendant", "Shurima"], "is_carry": true, "locked": true},
-    {"name": "Ziggs", "cost": 5, "traits": ["Yordle", "Zaun", "Longshot"], "is_carry": true, "locked": true},
-    {"name": "Zilean", "cost": 5, "traits": ["Chronokeeper", "Invoker"], "is_carry": true, "locked": false}
+    {
+      "name": "Anivia",
+      "cost": 1,
+      "traits": [
+        "Freljord",
+        "Invoker"
+      ],
+      "is_carry": true,
+      "locked": false,
+      "icon_url": "assets/tft/set16/champions/Anivia.png"
+    },
+    {
+      "name": "Blitzcrank",
+      "cost": 1,
+      "traits": [
+        "Zaun",
+        "Juggernaut"
+      ],
+      "is_carry": false,
+      "locked": false,
+      "icon_url": "assets/tft/set16/champions/Blitzcrank.png"
+    },
+    {
+      "name": "Briar",
+      "cost": 1,
+      "traits": [
+        "Noxus",
+        "Slayer",
+        "Juggernaut"
+      ],
+      "is_carry": true,
+      "locked": false,
+      "icon_url": "assets/tft/set16/champions/Briar.png"
+    },
+    {
+      "name": "Caitlyn",
+      "cost": 1,
+      "traits": [
+        "Piltover",
+        "Longshot"
+      ],
+      "is_carry": true,
+      "locked": false,
+      "icon_url": "assets/tft/set16/champions/Caitlyn.png"
+    },
+    {
+      "name": "Illaoi",
+      "cost": 1,
+      "traits": [
+        "Bilgewater",
+        "Bruiser"
+      ],
+      "is_carry": false,
+      "locked": false,
+      "icon_url": "assets/tft/set16/champions/Illaoi.png"
+    },
+    {
+      "name": "Jarvan IV",
+      "cost": 1,
+      "traits": [
+        "Demacia",
+        "Defender"
+      ],
+      "is_carry": false,
+      "locked": false,
+      "icon_url": "https://cdn.mobalytics.gg/assets/tft/images/champions/icons/set16/jarvaniv.png"
+    },
+    {
+      "name": "Jhin",
+      "cost": 1,
+      "traits": [
+        "Ionia",
+        "Gunslinger"
+      ],
+      "is_carry": true,
+      "locked": false,
+      "icon_url": "assets/tft/set16/champions/Jhin.png"
+    },
+    {
+      "name": "Kog'Maw",
+      "cost": 1,
+      "traits": [
+        "Void",
+        "Arcanist",
+        "Longshot"
+      ],
+      "is_carry": true,
+      "locked": false,
+      "icon_url": "assets/tft/set16/champions/KogMaw.png"
+    },
+    {
+      "name": "Lulu",
+      "cost": 1,
+      "traits": [
+        "Yordle",
+        "Arcanist"
+      ],
+      "is_carry": true,
+      "locked": false,
+      "icon_url": "assets/tft/set16/champions/Lulu.png"
+    },
+    {
+      "name": "Qiyana",
+      "cost": 1,
+      "traits": [
+        "Ixtal",
+        "Slayer"
+      ],
+      "is_carry": true,
+      "locked": false,
+      "icon_url": "assets/tft/set16/champions/Qiyana.png"
+    },
+    {
+      "name": "Rumble",
+      "cost": 1,
+      "traits": [
+        "Yordle",
+        "Defender"
+      ],
+      "is_carry": false,
+      "locked": false,
+      "icon_url": "assets/tft/set16/champions/Rumble.png"
+    },
+    {
+      "name": "Shen",
+      "cost": 1,
+      "traits": [
+        "Ionia",
+        "Bruiser"
+      ],
+      "is_carry": false,
+      "locked": false,
+      "icon_url": "assets/tft/set16/champions/Shen.png"
+    },
+    {
+      "name": "Sona",
+      "cost": 1,
+      "traits": [
+        "Demacia",
+        "Invoker"
+      ],
+      "is_carry": true,
+      "locked": false,
+      "icon_url": "assets/tft/set16/champions/Sona.png"
+    },
+    {
+      "name": "Viego",
+      "cost": 1,
+      "traits": [
+        "Shadow Isles",
+        "Quickstriker"
+      ],
+      "is_carry": true,
+      "locked": false,
+      "icon_url": "assets/tft/set16/champions/Viego.png"
+    },
+    {
+      "name": "Aphelios",
+      "cost": 2,
+      "traits": [
+        "Targon"
+      ],
+      "is_carry": true,
+      "locked": false,
+      "icon_url": "assets/tft/set16/champions/Aphelios.png"
+    },
+    {
+      "name": "Ashe",
+      "cost": 2,
+      "traits": [
+        "Freljord",
+        "Quickstriker"
+      ],
+      "is_carry": true,
+      "locked": false,
+      "icon_url": "assets/tft/set16/champions/Ashe.png"
+    },
+    {
+      "name": "Cho'Gath",
+      "cost": 2,
+      "traits": [
+        "Void",
+        "Juggernaut"
+      ],
+      "is_carry": false,
+      "locked": false,
+      "icon_url": "assets/tft/set16/champions/ChoGath.png"
+    },
+    {
+      "name": "Ekko",
+      "cost": 2,
+      "traits": [
+        "Zaun",
+        "Disruptor"
+      ],
+      "is_carry": true,
+      "locked": false,
+      "icon_url": "assets/tft/set16/champions/Ekko.png"
+    },
+    {
+      "name": "Graves",
+      "cost": 2,
+      "traits": [
+        "Bilgewater",
+        "Gunslinger"
+      ],
+      "is_carry": true,
+      "locked": false,
+      "icon_url": "assets/tft/set16/champions/Graves.png"
+    },
+    {
+      "name": "Neeko",
+      "cost": 2,
+      "traits": [
+        "Ixtal",
+        "Arcanist",
+        "Defender"
+      ],
+      "is_carry": false,
+      "locked": false,
+      "icon_url": "assets/tft/set16/champions/Neeko.png"
+    },
+    {
+      "name": "Orianna",
+      "cost": 2,
+      "traits": [
+        "Piltover",
+        "Invoker"
+      ],
+      "is_carry": false,
+      "locked": true,
+      "icon_url": "assets/tft/set16/champions/Orianna.png"
+    },
+    {
+      "name": "Poppy",
+      "cost": 2,
+      "traits": [
+        "Demacia",
+        "Juggernaut",
+        "Yordle"
+      ],
+      "is_carry": false,
+      "locked": false,
+      "icon_url": "assets/tft/set16/champions/Poppy.png"
+    },
+    {
+      "name": "Rek'Sai",
+      "cost": 2,
+      "traits": [
+        "Void",
+        "Vanquisher"
+      ],
+      "is_carry": true,
+      "locked": false,
+      "icon_url": "assets/tft/set16/champions/RekSai.png"
+    },
+    {
+      "name": "Sion",
+      "cost": 2,
+      "traits": [
+        "Noxus",
+        "Bruiser"
+      ],
+      "is_carry": false,
+      "locked": false,
+      "icon_url": "assets/tft/set16/champions/Sion.png"
+    },
+    {
+      "name": "Teemo",
+      "cost": 2,
+      "traits": [
+        "Yordle",
+        "Longshot"
+      ],
+      "is_carry": true,
+      "locked": false,
+      "icon_url": "assets/tft/set16/champions/Teemo.png"
+    },
+    {
+      "name": "Tristana",
+      "cost": 2,
+      "traits": [
+        "Yordle",
+        "Gunslinger"
+      ],
+      "is_carry": true,
+      "locked": false,
+      "icon_url": "assets/tft/set16/champions/Tristana.png"
+    },
+    {
+      "name": "Tryndamere",
+      "cost": 2,
+      "traits": [
+        "Freljord",
+        "Slayer"
+      ],
+      "is_carry": true,
+      "locked": false,
+      "icon_url": "assets/tft/set16/champions/Tryndamere.png"
+    },
+    {
+      "name": "Twisted Fate",
+      "cost": 2,
+      "traits": [
+        "Bilgewater",
+        "Quickstriker"
+      ],
+      "is_carry": true,
+      "locked": false,
+      "icon_url": "https://cdn.mobalytics.gg/assets/tft/images/champions/icons/set16/twistedfate.png"
+    },
+    {
+      "name": "Vi",
+      "cost": 2,
+      "traits": [
+        "Zaun",
+        "Defender",
+        "Piltover"
+      ],
+      "is_carry": false,
+      "locked": false,
+      "icon_url": "assets/tft/set16/champions/Vi.png"
+    },
+    {
+      "name": "Xin Zhao",
+      "cost": 2,
+      "traits": [
+        "Demacia",
+        "Ionia",
+        "Warden"
+      ],
+      "is_carry": false,
+      "locked": false,
+      "icon_url": "https://cdn.mobalytics.gg/assets/tft/images/champions/icons/set16/xinzhao.png"
+    },
+    {
+      "name": "Yasuo",
+      "cost": 2,
+      "traits": [
+        "Ionia",
+        "Slayer"
+      ],
+      "is_carry": true,
+      "locked": false,
+      "icon_url": "assets/tft/set16/champions/Yasuo.png"
+    },
+    {
+      "name": "Yorick",
+      "cost": 2,
+      "traits": [
+        "Shadow Isles",
+        "Warden"
+      ],
+      "is_carry": false,
+      "locked": true,
+      "icon_url": "assets/tft/set16/champions/Yorick.png"
+    },
+    {
+      "name": "Ahri",
+      "cost": 3,
+      "traits": [
+        "Ionia",
+        "Arcanist"
+      ],
+      "is_carry": true,
+      "locked": false,
+      "icon_url": "assets/tft/set16/champions/Ahri.png"
+    },
+    {
+      "name": "Darius",
+      "cost": 3,
+      "traits": [
+        "Noxus",
+        "Defender"
+      ],
+      "is_carry": false,
+      "locked": true,
+      "icon_url": "assets/tft/set16/champions/Darius.png"
+    },
+    {
+      "name": "Dr. Mundo",
+      "cost": 3,
+      "traits": [
+        "Zaun",
+        "Bruiser"
+      ],
+      "is_carry": false,
+      "locked": false,
+      "icon_url": "https://cdn.mobalytics.gg/assets/tft/images/champions/icons/set16/drmundo.png"
+    },
+    {
+      "name": "Draven",
+      "cost": 3,
+      "traits": [
+        "Noxus",
+        "Vanquisher"
+      ],
+      "is_carry": true,
+      "locked": false,
+      "icon_url": "assets/tft/set16/champions/Draven.png"
+    },
+    {
+      "name": "Gangplank",
+      "cost": 3,
+      "traits": [
+        "Bilgewater",
+        "Slayer",
+        "Vanquisher"
+      ],
+      "is_carry": true,
+      "locked": false,
+      "icon_url": "assets/tft/set16/champions/Gangplank.png"
+    },
+    {
+      "name": "Gwen",
+      "cost": 3,
+      "traits": [
+        "Shadow Isles",
+        "Disruptor"
+      ],
+      "is_carry": true,
+      "locked": true,
+      "icon_url": "assets/tft/set16/champions/Gwen.png"
+    },
+    {
+      "name": "Jinx",
+      "cost": 3,
+      "traits": [
+        "Zaun",
+        "Gunslinger"
+      ],
+      "is_carry": true,
+      "locked": false,
+      "icon_url": "assets/tft/set16/champions/Jinx.png"
+    },
+    {
+      "name": "Kennen",
+      "cost": 3,
+      "traits": [
+        "Ionia",
+        "Defender",
+        "Yordle"
+      ],
+      "is_carry": false,
+      "locked": false,
+      "icon_url": "assets/tft/set16/champions/Kennen.png"
+    },
+    {
+      "name": "Kobuko & Yuumi",
+      "cost": 3,
+      "traits": [
+        "Bruiser",
+        "Invoker",
+        "Yordle"
+      ],
+      "is_carry": false,
+      "locked": false,
+      "icon_url": "https://cdn.mobalytics.gg/assets/tft/images/champions/icons/set16/kobukoyuumi.png"
+    },
+    {
+      "name": "LeBlanc",
+      "cost": 3,
+      "traits": [
+        "Noxus",
+        "Invoker"
+      ],
+      "is_carry": false,
+      "locked": true,
+      "icon_url": "assets/tft/set16/champions/LeBlanc.png"
+    },
+    {
+      "name": "Leona",
+      "cost": 3,
+      "traits": [
+        "Targon"
+      ],
+      "is_carry": false,
+      "locked": false,
+      "icon_url": "assets/tft/set16/champions/Leona.png"
+    },
+    {
+      "name": "Loris",
+      "cost": 3,
+      "traits": [
+        "Piltover",
+        "Warden"
+      ],
+      "is_carry": false,
+      "locked": false,
+      "icon_url": "assets/tft/set16/champions/Loris.png"
+    },
+    {
+      "name": "Malzahar",
+      "cost": 3,
+      "traits": [
+        "Void",
+        "Disruptor"
+      ],
+      "is_carry": true,
+      "locked": false,
+      "icon_url": "assets/tft/set16/champions/Malzahar.png"
+    },
+    {
+      "name": "Milio",
+      "cost": 3,
+      "traits": [
+        "Ixtal",
+        "Invoker"
+      ],
+      "is_carry": true,
+      "locked": false,
+      "icon_url": "assets/tft/set16/champions/Milio.png"
+    },
+    {
+      "name": "Nautilus",
+      "cost": 3,
+      "traits": [
+        "Bilgewater",
+        "Juggernaut",
+        "Warden"
+      ],
+      "is_carry": false,
+      "locked": false,
+      "icon_url": "assets/tft/set16/champions/Nautilus.png"
+    },
+    {
+      "name": "Sejuani",
+      "cost": 3,
+      "traits": [
+        "Freljord",
+        "Defender"
+      ],
+      "is_carry": false,
+      "locked": false,
+      "icon_url": "assets/tft/set16/champions/Sejuani.png"
+    },
+    {
+      "name": "Vayne",
+      "cost": 3,
+      "traits": [
+        "Demacia",
+        "Longshot"
+      ],
+      "is_carry": true,
+      "locked": false,
+      "icon_url": "assets/tft/set16/champions/Vayne.png"
+    },
+    {
+      "name": "Zoe",
+      "cost": 3,
+      "traits": [
+        "Targon"
+      ],
+      "is_carry": false,
+      "locked": false,
+      "icon_url": "assets/tft/set16/champions/Zoe.png"
+    },
+    {
+      "name": "Ambessa",
+      "cost": 4,
+      "traits": [
+        "Noxus",
+        "Vanquisher"
+      ],
+      "is_carry": true,
+      "locked": false,
+      "icon_url": "assets/tft/set16/champions/Ambessa.png"
+    },
+    {
+      "name": "Bel'Veth",
+      "cost": 4,
+      "traits": [
+        "Void",
+        "Slayer"
+      ],
+      "is_carry": true,
+      "locked": false,
+      "icon_url": "assets/tft/set16/champions/BelVeth.png"
+    },
+    {
+      "name": "Braum",
+      "cost": 4,
+      "traits": [
+        "Freljord",
+        "Warden"
+      ],
+      "is_carry": false,
+      "locked": false,
+      "icon_url": "assets/tft/set16/champions/Braum.png"
+    },
+    {
+      "name": "Diana",
+      "cost": 4,
+      "traits": [
+        "Targon"
+      ],
+      "is_carry": true,
+      "locked": false,
+      "icon_url": "assets/tft/set16/champions/Diana.png"
+    },
+    {
+      "name": "Fizz",
+      "cost": 4,
+      "traits": [
+        "Bilgewater",
+        "Yordle"
+      ],
+      "is_carry": false,
+      "locked": true,
+      "icon_url": "assets/tft/set16/champions/Fizz.png"
+    },
+    {
+      "name": "Garen",
+      "cost": 4,
+      "traits": [
+        "Demacia",
+        "Juggernaut"
+      ],
+      "is_carry": false,
+      "locked": false,
+      "icon_url": "assets/tft/set16/champions/Garen.png"
+    },
+    {
+      "name": "Kai'Sa",
+      "cost": 4,
+      "traits": [
+        "Longshot",
+        "Void"
+      ],
+      "is_carry": true,
+      "locked": false,
+      "icon_url": "assets/tft/set16/champions/KaiSa.png"
+    },
+    {
+      "name": "Kalista",
+      "cost": 4,
+      "traits": [
+        "Shadow Isles",
+        "Vanquisher"
+      ],
+      "is_carry": true,
+      "locked": true,
+      "icon_url": "assets/tft/set16/champions/Kalista.png"
+    },
+    {
+      "name": "Lissandra",
+      "cost": 4,
+      "traits": [
+        "Freljord",
+        "Invoker"
+      ],
+      "is_carry": true,
+      "locked": false,
+      "icon_url": "assets/tft/set16/champions/Lissandra.png"
+    },
+    {
+      "name": "Lux",
+      "cost": 4,
+      "traits": [
+        "Demacia",
+        "Arcanist"
+      ],
+      "is_carry": true,
+      "locked": false,
+      "icon_url": "assets/tft/set16/champions/Lux.png"
+    },
+    {
+      "name": "Miss Fortune",
+      "cost": 4,
+      "traits": [
+        "Bilgewater",
+        "Gunslinger"
+      ],
+      "is_carry": true,
+      "locked": false,
+      "icon_url": "https://cdn.mobalytics.gg/assets/tft/images/champions/icons/set16/missfortune.png"
+    },
+    {
+      "name": "Nasus",
+      "cost": 4,
+      "traits": [
+        "Shurima",
+        "Juggernaut"
+      ],
+      "is_carry": false,
+      "locked": true,
+      "icon_url": "assets/tft/set16/champions/Nasus.png"
+    },
+    {
+      "name": "Renekton",
+      "cost": 4,
+      "traits": [
+        "Shurima",
+        "Juggernaut"
+      ],
+      "is_carry": false,
+      "locked": true,
+      "icon_url": "assets/tft/set16/champions/Renekton.png"
+    },
+    {
+      "name": "Rift Herald",
+      "cost": 4,
+      "traits": [
+        "Bruiser",
+        "Void"
+      ],
+      "is_carry": false,
+      "locked": true,
+      "icon_url": "https://cdn.mobalytics.gg/assets/tft/images/champions/icons/set16/riftherald.png"
+    },
+    {
+      "name": "Seraphine",
+      "cost": 4,
+      "traits": [
+        "Piltover",
+        "Disruptor"
+      ],
+      "is_carry": true,
+      "locked": false,
+      "icon_url": "assets/tft/set16/champions/Seraphine.png"
+    },
+    {
+      "name": "Singed",
+      "cost": 4,
+      "traits": [
+        "Zaun",
+        "Juggernaut"
+      ],
+      "is_carry": false,
+      "locked": true,
+      "icon_url": "assets/tft/set16/champions/Singed.png"
+    },
+    {
+      "name": "Skarner",
+      "cost": 4,
+      "traits": [
+        "Ixtal"
+      ],
+      "is_carry": false,
+      "locked": true,
+      "icon_url": "assets/tft/set16/champions/Skarner.png"
+    },
+    {
+      "name": "Swain",
+      "cost": 4,
+      "traits": [
+        "Noxus",
+        "Arcanist",
+        "Juggernaut"
+      ],
+      "is_carry": false,
+      "locked": false,
+      "icon_url": "assets/tft/set16/champions/Swain.png"
+    },
+    {
+      "name": "Taric",
+      "cost": 4,
+      "traits": [
+        "Targon"
+      ],
+      "is_carry": false,
+      "locked": false,
+      "icon_url": "assets/tft/set16/champions/Taric.png"
+    },
+    {
+      "name": "Veigar",
+      "cost": 4,
+      "traits": [
+        "Yordle",
+        "Arcanist"
+      ],
+      "is_carry": true,
+      "locked": true,
+      "icon_url": "assets/tft/set16/champions/Veigar.png"
+    },
+    {
+      "name": "Warwick",
+      "cost": 4,
+      "traits": [
+        "Zaun",
+        "Quickstriker"
+      ],
+      "is_carry": true,
+      "locked": true,
+      "icon_url": "assets/tft/set16/champions/Warwick.png"
+    },
+    {
+      "name": "Wukong",
+      "cost": 4,
+      "traits": [
+        "Ionia",
+        "Bruiser"
+      ],
+      "is_carry": false,
+      "locked": false,
+      "icon_url": "assets/tft/set16/champions/Wukong.png"
+    },
+    {
+      "name": "Yunara",
+      "cost": 4,
+      "traits": [
+        "Ionia",
+        "Quickstriker"
+      ],
+      "is_carry": true,
+      "locked": false,
+      "icon_url": "assets/tft/set16/champions/Yunara.png"
+    },
+    {
+      "name": "Aatrox",
+      "cost": 5,
+      "traits": [
+        "World Ender",
+        "Darkin",
+        "Slayer"
+      ],
+      "is_carry": false,
+      "locked": true,
+      "icon_url": "assets/tft/set16/champions/Aatrox.png"
+    },
+    {
+      "name": "Annie",
+      "cost": 5,
+      "traits": [
+        "Dark Child",
+        "Arcanist",
+        "Arcanist"
+      ],
+      "is_carry": true,
+      "locked": false,
+      "slots": 2,
+      "icon_url": "assets/tft/set16/champions/Annie.png"
+    },
+    {
+      "name": "Azir",
+      "cost": 5,
+      "traits": [
+        "Emperor",
+        "Shurima"
+      ],
+      "is_carry": true,
+      "locked": false,
+      "icon_url": "assets/tft/set16/champions/Azir.png"
+    },
+    {
+      "name": "Fiddlesticks",
+      "cost": 5,
+      "traits": [
+        "Harvester",
+        "Vanquisher"
+      ],
+      "is_carry": false,
+      "locked": false,
+      "icon_url": "assets/tft/set16/champions/Fiddlesticks.png"
+    },
+    {
+      "name": "Kindred",
+      "cost": 5,
+      "traits": [
+        "Eternal",
+        "Quickstriker"
+      ],
+      "is_carry": true,
+      "locked": false,
+      "icon_url": "assets/tft/set16/champions/Kindred.png"
+    },
+    {
+      "name": "Lucian & Senna",
+      "cost": 5,
+      "traits": [
+        "Soulbound",
+        "Gunslinger"
+      ],
+      "is_carry": true,
+      "locked": false,
+      "icon_url": "https://cdn.mobalytics.gg/assets/tft/images/champions/icons/set16/luciansenna.png"
+    },
+    {
+      "name": "Mel",
+      "cost": 5,
+      "traits": [
+        "Noxus",
+        "Disruptor"
+      ],
+      "is_carry": false,
+      "locked": true,
+      "icon_url": "assets/tft/set16/champions/Mel.png"
+    },
+    {
+      "name": "Ornn",
+      "cost": 5,
+      "traits": [
+        "Blacksmith"
+      ],
+      "is_carry": false,
+      "locked": false,
+      "icon_url": "assets/tft/set16/champions/Ornn.png"
+    },
+    {
+      "name": "Ryze",
+      "cost": 5,
+      "traits": [
+        "Rune Mage"
+      ],
+      "is_carry": true,
+      "locked": true,
+      "icon_url": "assets/tft/set16/champions/Ryze.png"
+    },
+    {
+      "name": "Sett",
+      "cost": 5,
+      "traits": [
+        "The Boss",
+        "Ionia"
+      ],
+      "is_carry": false,
+      "locked": true,
+      "icon_url": "assets/tft/set16/champions/Sett.png"
+    },
+    {
+      "name": "Shyvana",
+      "cost": 5,
+      "traits": [
+        "Dragonborn",
+        "Juggernaut"
+      ],
+      "is_carry": true,
+      "locked": false,
+      "icon_url": "assets/tft/set16/champions/Shyvana.png"
+    },
+    {
+      "name": "Sylas",
+      "cost": 5,
+      "traits": [
+        "Chainbreaker",
+        "Arcanist",
+        "Defender"
+      ],
+      "is_carry": true,
+      "locked": true,
+      "icon_url": "assets/tft/set16/champions/Sylas.png"
+    },
+    {
+      "name": "Tahm Kench",
+      "cost": 5,
+      "traits": [
+        "Glutton",
+        "Bilgewater",
+        "Bruiser"
+      ],
+      "is_carry": false,
+      "locked": true,
+      "icon_url": "https://cdn.mobalytics.gg/assets/tft/images/champions/icons/set16/tahmkench.png"
+    },
+    {
+      "name": "Thresh",
+      "cost": 5,
+      "traits": [
+        "Shadow Isles",
+        "Warden"
+      ],
+      "is_carry": false,
+      "locked": true,
+      "icon_url": "assets/tft/set16/champions/Thresh.png"
+    },
+    {
+      "name": "Volibear",
+      "cost": 5,
+      "traits": [
+        "Freljord",
+        "Bruiser"
+      ],
+      "is_carry": false,
+      "locked": true,
+      "icon_url": "assets/tft/set16/champions/Volibear.png"
+    },
+    {
+      "name": "Xerath",
+      "cost": 5,
+      "traits": [
+        "Ascendant",
+        "Shurima"
+      ],
+      "is_carry": true,
+      "locked": true,
+      "icon_url": "assets/tft/set16/champions/Xerath.png"
+    },
+    {
+      "name": "Ziggs",
+      "cost": 5,
+      "traits": [
+        "Yordle",
+        "Zaun",
+        "Longshot"
+      ],
+      "is_carry": true,
+      "locked": true,
+      "icon_url": "assets/tft/set16/champions/Ziggs.png"
+    },
+    {
+      "name": "Zilean",
+      "cost": 5,
+      "traits": [
+        "Chronokeeper",
+        "Invoker"
+      ],
+      "is_carry": true,
+      "locked": false,
+      "icon_url": "assets/tft/set16/champions/Zilean.png"
+    }
   ],
   "traits": {
-    "Bilgewater": [3, 5, 7], "Demacia": [3, 5, 7], "Freljord": [3, 5, 7],
-    "Ionia": [3, 5, 7], "Noxus": [3, 5, 7, 10], "Piltover": [2, 4, 6],
-    "Void": [3, 6, 8, 10], "Yordle": [2, 4, 6, 8], "Zaun": [3, 5, 7],
-    "Arcanist": [2, 4, 6], "Bruiser": [2, 4, 6], "Defender": [2, 4, 6],
-    "Disruptor": [2, 4], "Gunslinger": [2, 4, 6], "Invoker": [2, 4, 6],
-    "Juggernaut": [2, 4, 6], "Longshot": [2, 3, 4, 5], "Quickstriker": [2, 3, 4, 5],
-    "Slayer": [2, 4, 6], "Vanquisher": [2, 3, 4, 5], "Warden": [2, 3, 4, 5]
+    "Bilgewater": [
+      3,
+      5,
+      7
+    ],
+    "Demacia": [
+      3,
+      5,
+      7
+    ],
+    "Freljord": [
+      3,
+      5,
+      7
+    ],
+    "Ionia": [
+      3,
+      5,
+      7
+    ],
+    "Noxus": [
+      3,
+      5,
+      7,
+      10
+    ],
+    "Piltover": [
+      2,
+      4,
+      6
+    ],
+    "Void": [
+      3,
+      6,
+      8,
+      10
+    ],
+    "Yordle": [
+      2,
+      4,
+      6,
+      8
+    ],
+    "Zaun": [
+      3,
+      5,
+      7
+    ],
+    "Arcanist": [
+      2,
+      4,
+      6
+    ],
+    "Bruiser": [
+      2,
+      4,
+      6
+    ],
+    "Defender": [
+      2,
+      4,
+      6
+    ],
+    "Disruptor": [
+      2,
+      4
+    ],
+    "Gunslinger": [
+      2,
+      4,
+      6
+    ],
+    "Invoker": [
+      2,
+      4,
+      6
+    ],
+    "Juggernaut": [
+      2,
+      4,
+      6
+    ],
+    "Longshot": [
+      2,
+      3,
+      4,
+      5
+    ],
+    "Quickstriker": [
+      2,
+      3,
+      4,
+      5
+    ],
+    "Slayer": [
+      2,
+      4,
+      6
+    ],
+    "Vanquisher": [
+      2,
+      3,
+      4,
+      5
+    ],
+    "Warden": [
+      2,
+      3,
+      4,
+      5
+    ]
   },
   "items": [
-    {"name": "Demacia Emblem", "is_emblem": true, "trait": "Demacia"},
-    {"name": "Freljord Emblem", "is_emblem": true, "trait": "Freljord"},
-    {"name": "Yordle Emblem", "is_emblem": true, "trait": "Yordle"}
+    {
+      "name": "Arcanist Emblem",
+      "is_emblem": true,
+      "trait": "Arcanist",
+      "icon_url": "https://game-assets.mobalytics.gg/tft/sets/16/traits/colored/arcanist.png"
+    },
+    {
+      "name": "Bilgewater Emblem",
+      "is_emblem": true,
+      "trait": "Bilgewater",
+      "icon_url": "https://game-assets.mobalytics.gg/tft/sets/16/traits/colored/bilgewater.png"
+    },
+    {
+      "name": "Bruiser Emblem",
+      "is_emblem": true,
+      "trait": "Bruiser",
+      "icon_url": "https://game-assets.mobalytics.gg/tft/sets/16/traits/colored/bruiser.png"
+    },
+    {
+      "name": "Defender Emblem",
+      "is_emblem": true,
+      "trait": "Defender",
+      "icon_url": "https://game-assets.mobalytics.gg/tft/sets/16/traits/colored/defender.png"
+    },
+    {
+      "name": "Demacia Emblem",
+      "is_emblem": true,
+      "trait": "Demacia",
+      "icon_url": "https://game-assets.mobalytics.gg/tft/sets/16/traits/colored/demacia.png"
+    },
+    {
+      "name": "Disruptor Emblem",
+      "is_emblem": true,
+      "trait": "Disruptor",
+      "icon_url": "https://game-assets.mobalytics.gg/tft/sets/16/traits/colored/disruptor.png"
+    },
+    {
+      "name": "Freljord Emblem",
+      "is_emblem": true,
+      "trait": "Freljord",
+      "icon_url": "https://game-assets.mobalytics.gg/tft/sets/16/traits/colored/freljord.png"
+    },
+    {
+      "name": "Gunslinger Emblem",
+      "is_emblem": true,
+      "trait": "Gunslinger",
+      "icon_url": "https://game-assets.mobalytics.gg/tft/sets/16/traits/colored/gunslinger.png"
+    },
+    {
+      "name": "Invoker Emblem",
+      "is_emblem": true,
+      "trait": "Invoker",
+      "icon_url": "https://game-assets.mobalytics.gg/tft/sets/16/traits/colored/invoker.png"
+    },
+    {
+      "name": "Ionia Emblem",
+      "is_emblem": true,
+      "trait": "Ionia",
+      "icon_url": "https://game-assets.mobalytics.gg/tft/sets/16/traits/colored/ionia.png"
+    },
+    {
+      "name": "Juggernaut Emblem",
+      "is_emblem": true,
+      "trait": "Juggernaut",
+      "icon_url": "https://game-assets.mobalytics.gg/tft/sets/16/traits/colored/juggernaut.png"
+    },
+    {
+      "name": "Longshot Emblem",
+      "is_emblem": true,
+      "trait": "Longshot",
+      "icon_url": "https://game-assets.mobalytics.gg/tft/sets/16/traits/colored/longshot.png"
+    },
+    {
+      "name": "Noxus Emblem",
+      "is_emblem": true,
+      "trait": "Noxus",
+      "icon_url": "https://game-assets.mobalytics.gg/tft/sets/16/traits/colored/noxus.png"
+    },
+    {
+      "name": "Piltover Emblem",
+      "is_emblem": true,
+      "trait": "Piltover",
+      "icon_url": "https://game-assets.mobalytics.gg/tft/sets/16/traits/colored/piltover.png"
+    },
+    {
+      "name": "Quickstriker Emblem",
+      "is_emblem": true,
+      "trait": "Quickstriker",
+      "icon_url": "https://game-assets.mobalytics.gg/tft/sets/16/traits/colored/quickstriker.png"
+    },
+    {
+      "name": "Slayer Emblem",
+      "is_emblem": true,
+      "trait": "Slayer",
+      "icon_url": "https://game-assets.mobalytics.gg/tft/sets/16/traits/colored/slayer.png"
+    },
+    {
+      "name": "Vanquisher Emblem",
+      "is_emblem": true,
+      "trait": "Vanquisher",
+      "icon_url": "https://game-assets.mobalytics.gg/tft/sets/16/traits/colored/vanquisher.png"
+    },
+    {
+      "name": "Void Emblem",
+      "is_emblem": true,
+      "trait": "Void",
+      "icon_url": "https://game-assets.mobalytics.gg/tft/sets/16/traits/colored/void.png"
+    },
+    {
+      "name": "Warden Emblem",
+      "is_emblem": true,
+      "trait": "Warden",
+      "icon_url": "https://game-assets.mobalytics.gg/tft/sets/16/traits/colored/warden.png"
+    },
+    {
+      "name": "Yordle Emblem",
+      "is_emblem": true,
+      "trait": "Yordle",
+      "icon_url": "https://game-assets.mobalytics.gg/tft/sets/16/traits/colored/yordle.png"
+    },
+    {
+      "name": "Zaun Emblem",
+      "is_emblem": true,
+      "trait": "Zaun",
+      "icon_url": "https://game-assets.mobalytics.gg/tft/sets/16/traits/colored/zaun.png"
+    }
   ]
 }
