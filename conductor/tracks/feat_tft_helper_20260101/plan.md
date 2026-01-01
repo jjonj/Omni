@@ -21,8 +21,14 @@
 - [ ] Task: Conductor - User Manual Verification 'Emblem Portal Implementation' (Protocol in workflow.md)
 
 ## Phase 4: Additional Tabs & Refinement
-- [ ] Task: Implement World Runes tab with iframe integration
-- [ ] Task: Create stubs for BronzeForLife and Director tabs
-- [ ] Task: Implement Configuration tab to display/reload JSON data
-- [ ] Task: Add icon harvesting instructions/placeholders for Brock and other set 16 units
+- [x] Task: Implement World Runes tab with iframe integration d85100e
+- [x] Task: Create stubs for BronzeForLife and Director tabs d85100e
+- [x] Task: Implement Configuration tab to display/reload JSON data d85100e
+- [x] Task: Add icon harvesting instructions/placeholders for Brock and other set 16 units d85100e
 - [ ] Task: Conductor - User Manual Verification 'Additional Tabs & Refinement' (Protocol in workflow.md)
+
+## Phase 6: Icon Fixes
+- [x] Task: Retry downloading missing Unit icons using kebab-case URLs 07b757c
+- [x] Task: Retry downloading Trait icons using kebab-case URLs 07b757c
+- [x] Task: Update `set16.json` to reflect local paths for newly downloaded icons 07b757c
+- [ ] Task: Conductor - User Manual Verification 'Icon Fixes' (Protocol in workflow.md)

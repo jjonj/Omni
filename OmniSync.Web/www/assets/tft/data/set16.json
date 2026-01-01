@@ -66,7 +66,7 @@
       ],
       "is_carry": false,
       "locked": false,
-      "icon_url": "https://cdn.mobalytics.gg/assets/tft/images/champions/icons/set16/jarvaniv.png"
+      "icon_url": "assets/tft/set16/champions/JarvanIV.png"
     },
     {
       "name": "Jhin",
@@ -310,7 +310,7 @@
       ],
       "is_carry": true,
       "locked": false,
-      "icon_url": "https://cdn.mobalytics.gg/assets/tft/images/champions/icons/set16/twistedfate.png"
+      "icon_url": "assets/tft/set16/champions/TwistedFate.png"
     },
     {
       "name": "Vi",
@@ -334,7 +334,7 @@
       ],
       "is_carry": false,
       "locked": false,
-      "icon_url": "https://cdn.mobalytics.gg/assets/tft/images/champions/icons/set16/xinzhao.png"
+      "icon_url": "assets/tft/set16/champions/XinZhao.png"
     },
     {
       "name": "Yasuo",
@@ -389,7 +389,7 @@
       ],
       "is_carry": false,
       "locked": false,
-      "icon_url": "https://cdn.mobalytics.gg/assets/tft/images/champions/icons/set16/drmundo.png"
+      "icon_url": "assets/tft/set16/champions/DrMundo.png"
     },
     {
       "name": "Draven",
@@ -458,7 +458,7 @@
       ],
       "is_carry": false,
       "locked": false,
-      "icon_url": "https://cdn.mobalytics.gg/assets/tft/images/champions/icons/set16/kobukoyuumi.png"
+      "icon_url": "assets/tft/set16/champions/KobukoAndYuumi.png"
     },
     {
       "name": "LeBlanc",
@@ -676,7 +676,7 @@
       ],
       "is_carry": true,
       "locked": false,
-      "icon_url": "https://cdn.mobalytics.gg/assets/tft/images/champions/icons/set16/missfortune.png"
+      "icon_url": "assets/tft/set16/champions/MissFortune.png"
     },
     {
       "name": "Nasus",
@@ -709,7 +709,7 @@
       ],
       "is_carry": false,
       "locked": true,
-      "icon_url": "https://cdn.mobalytics.gg/assets/tft/images/champions/icons/set16/riftherald.png"
+      "icon_url": "assets/tft/set16/champions/RiftHerald.png"
     },
     {
       "name": "Seraphine",
@@ -876,7 +876,7 @@
       ],
       "is_carry": true,
       "locked": false,
-      "icon_url": "https://cdn.mobalytics.gg/assets/tft/images/champions/icons/set16/luciansenna.png"
+      "icon_url": "assets/tft/set16/champions/LucianAndSenna.png"
     },
     {
       "name": "Mel",
@@ -953,7 +953,7 @@
       ],
       "is_carry": false,
       "locked": true,
-      "icon_url": "https://cdn.mobalytics.gg/assets/tft/images/champions/icons/set16/tahmkench.png"
+      "icon_url": "assets/tft/set16/champions/TahmKench.png"
     },
     {
       "name": "Thresh",
@@ -1130,127 +1130,127 @@
       "name": "Arcanist Emblem",
       "is_emblem": true,
       "trait": "Arcanist",
-      "icon_url": "https://game-assets.mobalytics.gg/tft/sets/16/traits/colored/arcanist.png"
+      "icon_url": "assets/tft/set16/traits/Arcanist.svg"
     },
     {
       "name": "Bilgewater Emblem",
       "is_emblem": true,
       "trait": "Bilgewater",
-      "icon_url": "https://game-assets.mobalytics.gg/tft/sets/16/traits/colored/bilgewater.png"
+      "icon_url": "assets/tft/set16/traits/Bilgewater.svg"
     },
     {
       "name": "Bruiser Emblem",
       "is_emblem": true,
       "trait": "Bruiser",
-      "icon_url": "https://game-assets.mobalytics.gg/tft/sets/16/traits/colored/bruiser.png"
+      "icon_url": "assets/tft/set16/traits/Bruiser.svg"
     },
     {
       "name": "Defender Emblem",
       "is_emblem": true,
       "trait": "Defender",
-      "icon_url": "https://game-assets.mobalytics.gg/tft/sets/16/traits/colored/defender.png"
+      "icon_url": "assets/tft/set16/traits/Defender.svg"
     },
     {
       "name": "Demacia Emblem",
       "is_emblem": true,
       "trait": "Demacia",
-      "icon_url": "https://game-assets.mobalytics.gg/tft/sets/16/traits/colored/demacia.png"
+      "icon_url": "assets/tft/set16/traits/Demacia.svg"
     },
     {
       "name": "Disruptor Emblem",
       "is_emblem": true,
       "trait": "Disruptor",
-      "icon_url": "https://game-assets.mobalytics.gg/tft/sets/16/traits/colored/disruptor.png"
+      "icon_url": "assets/tft/set16/traits/Disruptor.svg"
     },
     {
       "name": "Freljord Emblem",
       "is_emblem": true,
       "trait": "Freljord",
-      "icon_url": "https://game-assets.mobalytics.gg/tft/sets/16/traits/colored/freljord.png"
+      "icon_url": "assets/tft/set16/traits/Freljord.svg"
     },
     {
       "name": "Gunslinger Emblem",
       "is_emblem": true,
       "trait": "Gunslinger",
-      "icon_url": "https://game-assets.mobalytics.gg/tft/sets/16/traits/colored/gunslinger.png"
+      "icon_url": "assets/tft/set16/traits/Gunslinger.svg"
     },
     {
       "name": "Invoker Emblem",
       "is_emblem": true,
       "trait": "Invoker",
-      "icon_url": "https://game-assets.mobalytics.gg/tft/sets/16/traits/colored/invoker.png"
+      "icon_url": "assets/tft/set16/traits/Invoker.svg"
     },
     {
       "name": "Ionia Emblem",
       "is_emblem": true,
       "trait": "Ionia",
-      "icon_url": "https://game-assets.mobalytics.gg/tft/sets/16/traits/colored/ionia.png"
+      "icon_url": "assets/tft/set16/traits/Ionia.svg"
     },
     {
       "name": "Juggernaut Emblem",
       "is_emblem": true,
       "trait": "Juggernaut",
-      "icon_url": "https://game-assets.mobalytics.gg/tft/sets/16/traits/colored/juggernaut.png"
+      "icon_url": "assets/tft/set16/traits/Juggernaut.svg"
     },
     {
       "name": "Longshot Emblem",
       "is_emblem": true,
       "trait": "Longshot",
-      "icon_url": "https://game-assets.mobalytics.gg/tft/sets/16/traits/colored/longshot.png"
+      "icon_url": "assets/tft/set16/traits/Longshot.svg"
     },
     {
       "name": "Noxus Emblem",
       "is_emblem": true,
       "trait": "Noxus",
-      "icon_url": "https://game-assets.mobalytics.gg/tft/sets/16/traits/colored/noxus.png"
+      "icon_url": "assets/tft/set16/traits/Noxus.svg"
     },
     {
       "name": "Piltover Emblem",
       "is_emblem": true,
       "trait": "Piltover",
-      "icon_url": "https://game-assets.mobalytics.gg/tft/sets/16/traits/colored/piltover.png"
+      "icon_url": "assets/tft/set16/traits/Piltover.svg"
     },
     {
       "name": "Quickstriker Emblem",
       "is_emblem": true,
       "trait": "Quickstriker",
-      "icon_url": "https://game-assets.mobalytics.gg/tft/sets/16/traits/colored/quickstriker.png"
+      "icon_url": "assets/tft/set16/traits/Quickstriker.svg"
     },
     {
       "name": "Slayer Emblem",
       "is_emblem": true,
       "trait": "Slayer",
-      "icon_url": "https://game-assets.mobalytics.gg/tft/sets/16/traits/colored/slayer.png"
+      "icon_url": "assets/tft/set16/traits/Slayer.svg"
     },
     {
       "name": "Vanquisher Emblem",
       "is_emblem": true,
       "trait": "Vanquisher",
-      "icon_url": "https://game-assets.mobalytics.gg/tft/sets/16/traits/colored/vanquisher.png"
+      "icon_url": "assets/tft/set16/traits/Vanquisher.svg"
     },
     {
       "name": "Void Emblem",
       "is_emblem": true,
       "trait": "Void",
-      "icon_url": "https://game-assets.mobalytics.gg/tft/sets/16/traits/colored/void.png"
+      "icon_url": "assets/tft/set16/traits/Void.svg"
     },
     {
       "name": "Warden Emblem",
       "is_emblem": true,
       "trait": "Warden",
-      "icon_url": "https://game-assets.mobalytics.gg/tft/sets/16/traits/colored/warden.png"
+      "icon_url": "assets/tft/set16/traits/Warden.svg"
     },
     {
       "name": "Yordle Emblem",
       "is_emblem": true,
       "trait": "Yordle",
-      "icon_url": "https://game-assets.mobalytics.gg/tft/sets/16/traits/colored/yordle.png"
+      "icon_url": "assets/tft/set16/traits/Yordle.svg"
     },
     {
       "name": "Zaun Emblem",
       "is_emblem": true,
       "trait": "Zaun",
-      "icon_url": "https://game-assets.mobalytics.gg/tft/sets/16/traits/colored/zaun.png"
+      "icon_url": "assets/tft/set16/traits/Zaun.svg"
     }
   ]
 }
