@@ -1,0 +1,44 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "TFT Set Data",
+  "type": "object",
+  "properties": {
+    "set_name": { "type": "string" },
+    "units": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string" },
+          "cost": { "type": "integer" },
+          "traits": { "type": "array", "items": { "type": "string" } },
+          "is_carry": { "type": "boolean" },
+          "locked": { "type": "boolean" },
+          "slots": { "type": "integer", "default": 1 },
+          "icon": { "type": "string" }
+        },
+        "required": ["name", "cost", "traits", "is_carry", "locked"]
+      }
+    },
+    "traits": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "array",
+        "items": { "type": "integer" }
+      }
+    },
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string" },
+          "icon": { "type": "string" },
+          "is_emblem": { "type": "boolean" },
+          "trait": { "type": "string" }
+        }
+      }
+    }
+  },
+  "required": ["set_name", "units", "traits"]
+}
