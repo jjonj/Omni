@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OmniSync - TFT Helper</title>
+    <link rel="stylesheet" href="css/style.css">
+    <style>
+        .tft-container {
+            display: flex;
+            flex-direction: column;
+            height: calc(100vh - 56px);
+            overflow: hidden;
+            background: var(--bg);
+        }
+
+        .tft-tabs {
+            display: flex;
+            background: var(--bg-elevated);
+            border-bottom: 1px solid var(--border);
+            padding: 0 24px;
+            gap: 16px;
+        }
+
+        .tft-tab {
+            padding: 12px 20px;
+            color: var(--text-dim);
+            text-decoration: none;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            transition: all var(--transition-fast);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .tft-tab:hover {
+            color: var(--text-bright);
+        }
+
+        .tft-tab.active {
+            color: var(--accent);
+            border-bottom-color: var(--accent);
+        }
+
+        .tft-content {
+            flex: 1;
+            padding: 24px;
+            overflow-y: auto;
+        }
+
+        .tab-panel {
+            display: none;
+            height: 100%;
+        }
+
+        .tab-panel.active {
+            display: block;
+        }
+
+        /* Optimizer Specific Styles */
+        .optimizer-grid {
+            display: grid;
+            grid-template-columns: 350px 1fr;
+            gap: 24px;
+            height: 100%;
+        }
+
+        .optimizer-controls {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .result-card {
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 16px;
+        }
+
+        .unit-icon {
+            width: 48px;
+            height: 48px;
+            border-radius: 4px;
+            border: 2px solid var(--border);
+            object-fit: cover;
+        }
+
+        .unit-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            margin-top: 12px;
+        }
+
+        .unit-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            width: 64px;
+            text-align: center;
+        }
+
+        .unit-name {
+            font-size: 10px;
+            margin-top: 4px;
+            color: var(--text-dim);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            width: 100%;
+        }
+
+        /* Iframe Panel */
+        .iframe-container {
+            width: 100%;
+            height: 100%;
+            border: none;
+            background: white;
+            border-radius: 8px;
+        }
+    </style>
+</head>
+<body>
+    <div class="app-layout">
+        <!-- Navigation -->
+        <nav class="nav-menu">
+            <div class="nav-brand">OMNISYNC</div>
+            <a href="index.html" class="nav-item">Hub</a>
+            <a href="Scheduler.html" class="nav-item">Scheduler</a>
+            <a href="TFT.html" class="nav-item active">TFT</a>
+            <a href="Test.html" class="nav-item">Test</a>
+        </nav>
+
+        <div class="tft-container">
+            <!-- Secondary Navigation Tabs -->
+            <div class="tft-tabs">
+                <div class="tft-tab active" onclick="switchTab('emblem-portal')">Emblem Portal</div>
+                <div class="tft-tab" onclick="switchTab('world-runes')">World Runes</div>
+                <div class="tft-tab" onclick="switchTab('bronze-for-life')">BronzeForLife</div>
+                <div class="tft-tab" onclick="switchTab('director')">Director</div>
+                <div class="tft-tab" onclick="switchTab('config')">Configuration</div>
+            </div>
+
+            <div class="tft-content">
+                <!-- Emblem Portal Panel -->
+                <div id="emblem-portal" class="tab-panel active">
+                    <div class="optimizer-grid">
+                        <div class="optimizer-controls">
+                            <div class="control-box">
+                                <h2>Must Include Unit</h2>
+                                <select id="must-include" class="modern-input" style="width: 100%; background: var(--panel); color: var(--text-bright); border: 1px solid var(--border); padding: 8px; border-radius: 6px;">
+                                    <option value="">None</option>
+                                </select>
+                            </div>
+                            <div class="control-box">
+                                <h2>Emblems</h2>
+                                <div id="emblem-list" style="display: flex; flex-direction: column; gap: 8px;">
+                                    <!-- Emblems will be populated here -->
+                                </div>
+                            </div>
+                            <button class="modern-btn primary" onclick="runOptimization()">Run Optimization</button>
+                        </div>
+                        <div class="optimizer-results">
+                            <div id="results-6">
+                                <h2 class="hub-status-label" style="margin-bottom: 12px; display: block;">Level 6 Boards</h2>
+                                <div id="lvl6-list"></div>
+                            </div>
+                            <div id="results-8" style="margin-top: 32px;">
+                                <h2 class="hub-status-label" style="margin-bottom: 12px; display: block;">Level 8 Boards</h2>
+                                <div id="lvl8-list"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- World Runes Panel -->
+                <div id="world-runes" class="tab-panel">
+                    <iframe src="https://worldrunestft.vercel.app/" class="iframe-container"></iframe>
+                </div>
+
+                <!-- BronzeForLife Panel -->
+                <div id="bronze-for-life" class="tab-panel">
+                    <div class="hub-box">
+                        <h2>BronzeForLife Solver</h2>
+                        <p>Coming Soon...</p>
+                    </div>
+                </div>
+
+                <!-- Director Panel -->
+                <div id="director" class="tab-panel">
+                    <div class="hub-box">
+                        <h2>Director Mode</h2>
+                        <p>Coming Soon (Drag & Drop Interface)...</p>
+                    </div>
+                </div>
+
+                <!-- Configuration Panel -->
+                <div id="config" class="tab-panel">
+                    <div class="hub-box">
+                        <h2>TFT Configuration</h2>
+                        <div class="hub-status-item">
+                            <span class="hub-status-label">Current Set:</span>
+                            <span id="config-set-name" class="hub-status-value">Loading...</span>
+                        </div>
+                        <button class="modern-btn" onclick="loadTFTData()">Reload Data</button>
+                        <pre id="config-json-display" style="margin-top: 20px; background: var(--bg); padding: 12px; border-radius: 6px; font-size: 11px; max-height: 400px; overflow: auto;"></pre>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/signalr.min.js"></script>
+    <script src="js/config.js"></script>
+    <script src="js/tft.js"></script>
+</body>
+</html>
