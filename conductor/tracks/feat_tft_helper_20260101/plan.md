@@ -13,11 +13,11 @@
 - [x] Task: Integrate `TFT.html` into the main application navigation (if applicable) ee69162
 - [ ] Task: Conductor - User Manual Verification 'Web UI Foundation' (Protocol in workflow.md)
 
-## Phase 3: Emblem Portal Implementation
-- [ ] Task: Port `TFT.py` logic to JavaScript (`js/tft_optimizer.js`)
-- [ ] Task: Implement unit and emblem selection UI in the Emblem Portal tab
-- [ ] Task: Implement result display with unit icons and scores
-- [ ] Task: Write tests to verify JS optimizer matches `TFT.py` output for known inputs
+## Phase 3: Emblem Portal Implementation [checkpoint: 34d4ca6]
+- [x] Task: Port `TFT.py` logic to JavaScript (`js/tft_optimizer.js`) 6f1189f
+- [x] Task: Implement unit and emblem selection UI in the Emblem Portal tab 6f1189f
+- [x] Task: Implement result display with unit icons and scores 6f1189f
+- [x] Task: Write tests to verify JS optimizer matches `TFT.py` output for known inputs 6f1189f
 - [ ] Task: Conductor - User Manual Verification 'Emblem Portal Implementation' (Protocol in workflow.md)
 
 ## Phase 4: Additional Tabs & Refinement
