@@ -826,12 +826,11 @@
       "cost": 5,
       "traits": [
         "Dark Child",
-        "Arcanist",
         "Arcanist"
       ],
       "is_carry": true,
       "locked": false,
-      "slots": 2,
+      "slots": 1,
       "icon_url": "assets/tft/set16/champions/Annie.png"
     },
     {
@@ -1010,6 +1009,17 @@
       "is_carry": true,
       "locked": false,
       "icon_url": "assets/tft/set16/champions/Zilean.png"
+    },
+    {
+      "name": "Tibbers",
+      "cost": 5,
+      "traits": [
+        "Dark Child",
+        "Arcanist"
+      ],
+      "is_carry": false,
+      "locked": false,
+      "icon_url": "assets/tft/set16/champions/Tibbers.png"
     }
   ],
   "traits": {
@@ -1123,6 +1133,11 @@
       3,
       4,
       5
+    ],
+    "Targon": [
+      2,
+      3,
+      4
     ]
   },
   "items": [
