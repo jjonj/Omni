@@ -8,13 +8,14 @@ let unitFilter = 'all';
 let emblemSearch = '';
 let highlightedTrait = null;
 
-const DEFAULT_DISABLED_UNITS = [
+const FACTORY_DEFAULT_DISABLED = [
     "Yorick", "Gwen", "LeBlanc", "Fizz", "Kalista", 
     "Nasus", "Xerath", "Singed", "Veigar", "Warwick", 
     "Aatrox", "Sett", "Tahm Kench", "Thresh"
 ];
 
-let disabledUnits = [];
+let userDefaultDisabledUnits = []; // The list saved in Config
+let activeDisabledUnits = [];      // The current session list
 
 function switchTab(tabId) {
     document.querySelectorAll('.tft-tab').forEach(tab => {
@@ -51,15 +52,19 @@ async function loadTFTData() {
         const dataResp = await fetch(`assets/tft/data/${currentConfig.current_set}.json`);
         tftData = await dataResp.json();
         
-        const stored = localStorage.getItem('tft_disabled_units');
+        // 1. Load User Defaults from Storage
+        const stored = localStorage.getItem('tft_user_defaults_disabled');
         if (stored) {
-            disabledUnits = JSON.parse(stored);
+            userDefaultDisabledUnits = JSON.parse(stored);
         } else {
-            disabledUnits = [...DEFAULT_DISABLED_UNITS];
+            userDefaultDisabledUnits = [...FACTORY_DEFAULT_DISABLED];
         }
         
+        // 2. Initialize Active List as a copy
+        activeDisabledUnits = [...userDefaultDisabledUnits];
+        
         const configTextarea = document.getElementById('disabled-units-config');
-        if (configTextarea) configTextarea.value = disabledUnits.join(', ');
+        if (configTextarea) configTextarea.value = userDefaultDisabledUnits.join(', ');
 
         optimizer = new TFTOptimizer(tftData.units, tftData.traits);
         updateUI();
@@ -88,14 +93,19 @@ function renderUnitPools() {
         pool.innerHTML = '';
         
         const units = tftData.units.filter(u => u.cost === cost && u.name !== "Tibbers")
-            .sort((a, b) => a.name.localeCompare(b.name));
+            .sort((a, b) => {
+                const aDisabled = activeDisabledUnits.includes(a.name);
+                const bDisabled = activeDisabledUnits.includes(b.name);
+                if (aDisabled !== bDisabled) return aDisabled - bDisabled;
+                return a.name.localeCompare(b.name);
+            });
 
         units.forEach(u => {
             const item = createDraggableItem(u.name, u.icon_url, 'unit', u.cost);
             item.classList.add('unit-node');
             item.dataset.traits = JSON.stringify(u.traits);
 
-            if (disabledUnits.includes(u.name)) {
+            if (activeDisabledUnits.includes(u.name)) {
                 item.style.opacity = '0.3';
                 item.style.filter = 'grayscale(1)';
             }
@@ -103,7 +113,7 @@ function renderUnitPools() {
             item.addEventListener('contextmenu', (e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                toggleDisableUnit(u.name);
+                toggleActiveDisableUnit(u.name);
             });
 
             pool.appendChild(item);
@@ -112,37 +122,43 @@ function renderUnitPools() {
     applyTraitHighlight();
 }
 
-function toggleDisableUnit(name) {
-    if (disabledUnits.includes(name)) {
-        disabledUnits = disabledUnits.filter(n => n !== name);
+function toggleActiveDisableUnit(name) {
+    if (activeDisabledUnits.includes(name)) {
+        activeDisabledUnits = activeDisabledUnits.filter(n => n !== name);
     } else {
-        disabledUnits.push(name);
+        activeDisabledUnits.push(name);
     }
-    localStorage.setItem('tft_disabled_units', JSON.stringify(disabledUnits));
-    const textarea = document.getElementById('disabled-units-config');
-    if (textarea) textarea.value = disabledUnits.join(', ');
     renderUnitPools();
 }
 
 function saveDisabledConfig() {
     const val = document.getElementById('disabled-units-config').value;
-    disabledUnits = val.split(',').map(s => s.trim()).filter(s => s);
-    localStorage.setItem('tft_disabled_units', JSON.stringify(disabledUnits));
+    userDefaultDisabledUnits = val.split(',').map(s => s.trim()).filter(s => s);
+    localStorage.setItem('tft_user_defaults_disabled', JSON.stringify(userDefaultDisabledUnits));
+    
+    // Also update active list immediately
+    activeDisabledUnits = [...userDefaultDisabledUnits];
     renderUnitPools();
-    alert("Configuration Saved");
+    alert("Master Exclusion List Saved");
 }
 
 function resetDisabledToDefault() {
-    disabledUnits = [...DEFAULT_DISABLED_UNITS];
-    localStorage.setItem('tft_disabled_units', JSON.stringify(disabledUnits));
-    document.getElementById('disabled-units-config').value = disabledUnits.join(', ');
-    renderUnitPools();
+    if (confirm("Reset Master Exclusions to Factory Defaults?")) {
+        userDefaultDisabledUnits = [...FACTORY_DEFAULT_DISABLED];
+        localStorage.setItem('tft_user_defaults_disabled', JSON.stringify(userDefaultDisabledUnits));
+        document.getElementById('disabled-units-config').value = userDefaultDisabledUnits.join(', ');
+        activeDisabledUnits = [...userDefaultDisabledUnits];
+        renderUnitPools();
+    }
 }
 
 function renderEmblemPool() {
-    const pool = document.getElementById('emblem-pool');
-    if (!pool) return;
-    pool.innerHTML = '';
+    const originPool = document.getElementById('emblem-pool-origins');
+    const classPool = document.getElementById('emblem-pool-classes');
+    if (!originPool || !classPool) return;
+    
+    originPool.innerHTML = '';
+    classPool.innerHTML = '';
     
     const emblems = tftData.items.filter(i => {
         if (!i.is_emblem) return false;
@@ -159,7 +175,12 @@ function renderEmblemPool() {
             toggleTraitHighlight(e.trait);
         });
 
-        pool.appendChild(item);
+        const meta = (tftData.trait_metadata && tftData.trait_metadata[e.trait]) ? tftData.trait_metadata[e.trait] : null;
+        if (meta && meta.type === "origin") {
+            originPool.appendChild(item);
+        } else {
+            classPool.appendChild(item);
+        }
     });
 }
 
@@ -316,7 +337,7 @@ function renderSelectionZones() {
             mustZone.appendChild(el);
         });
     } else {
-        mustZone.innerHTML = '<div class="placeholder-text">Drag Units or Traits Here</div>';
+        mustZone.innerHTML = '<div class="placeholder-text">Units or Traits</div>';
     }
 
     emblemZone.innerHTML = '';
@@ -326,7 +347,7 @@ function renderSelectionZones() {
             emblemZone.appendChild(item);
         });
     } else {
-        emblemZone.innerHTML = '<div class="placeholder-text">Drag Emblems Here</div>';
+        emblemZone.innerHTML = '<div class="placeholder-text">Emblems</div>';
     }
 }
 
@@ -337,6 +358,47 @@ function clearMustInclude() {
 
 function clearEmblems() {
     selectedEmblems = [];
+    renderSelectionZones();
+}
+
+function resetAll() {
+    // 1. Reset Selection Arrays
+    selectedMustInclude = [];
+    selectedEmblems = [];
+    
+    // 2. Reset Solver Mode
+    const defRadio = document.querySelector('input[name="solver-mode"][value="default"]');
+    if (defRadio) defRadio.checked = true;
+    
+    // 3. Reset Levels
+    document.querySelectorAll('.lvl-cb').forEach(cb => {
+        cb.checked = (cb.value === "6" || cb.value === "8");
+    });
+    
+    // 4. Reset Results Slider
+    const slider = document.getElementById('results-limit');
+    if (slider) {
+        slider.value = 3;
+        const valDisplay = document.getElementById('results-limit-value');
+        if (valDisplay) valDisplay.innerText = "3";
+    }
+
+    // 5. Reset Exclude 5-Costs
+    const excludeFive = document.getElementById('exclude-five-costs');
+    if (excludeFive) excludeFive.checked = true;
+
+    // 6. RESET ACTIVE DISABLED TO SAVED DEFAULTS
+    activeDisabledUnits = [...userDefaultDisabledUnits];
+    renderUnitPools();
+    
+    // 7. Clear Results
+    const resultsContainer = document.getElementById('results-container');
+    if (resultsContainer) resultsContainer.innerHTML = '';
+    
+    // 8. Clear Highlights
+    clearTraitHighlight();
+    
+    // 9. Update UI
     renderSelectionZones();
 }
 
@@ -351,9 +413,10 @@ async function runOptimization() {
     const mustIncludeNames = selectedMustInclude.filter(i => i.type === 'unit').map(u => u.name);
     const mustIncludeTraits = selectedMustInclude.filter(i => i.type === 'emblem').map(t => t.trait);
     const emblems = selectedEmblems.map(e => e.trait);
-    const solverMode = document.querySelector('input[name="solver-mode"]:checked').value;
+    const solverMode = document.querySelector('input[name="solver-mode":checked]').value;
     const selectedLevels = Array.from(document.querySelectorAll('.lvl-cb:checked')).map(cb => parseInt(cb.value));
     const limit = parseInt(document.getElementById('results-limit').value);
+    const excludeFiveCosts = document.getElementById('exclude-five-costs').checked;
     
     const resultsContainer = document.getElementById('results-container');
     resultsContainer.innerHTML = '<div style="color: var(--text-dim); padding: 20px;">Initializing...</div>';
@@ -367,7 +430,6 @@ async function runOptimization() {
     
     for (const level of selectedLevels) {
         progressLabel.innerText = `Level ${level}: Calculating...`;
-        
         const levelHeader = document.createElement('h2');
         levelHeader.className = 'hub-status-label';
         levelHeader.style.display = 'block';
@@ -380,7 +442,8 @@ async function runOptimization() {
         resultsContainer.appendChild(levelList);
 
         const pool = tftData.units.filter(u => {
-            if (disabledUnits.includes(u.name)) return false;
+            if (activeDisabledUnits.includes(u.name)) return false;
+            if (excludeFiveCosts && u.cost === 5 && !mustIncludeNames.includes(u.name)) return false;
             if (level <= 6 && u.cost > 3) return false;
             if (u.name === "Kennen" && level < 6) return false;
             if (u.name.includes("Kobuko") && level < 7) return false;
@@ -428,7 +491,7 @@ function renderResults(results, container, level) {
 
         card.innerHTML = `
             <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
-                <strong>Option ${index + 1} (${unitCount} units, ${totalSlots} slots)</strong>
+                <strong>Option ${index + 1}</strong>
                 <span style="color: var(--accent); font-weight: 600;">${res.score}</span>
             </div>
         `;
@@ -479,7 +542,7 @@ function renderResults(results, container, level) {
                 const replacements = tftData.units.filter(alt => 
                     !boardNames.includes(alt.name) && 
                     alt.traits.includes(flexTrait) && 
-                    !disabledUnits.includes(alt.name) &&
+                    !activeDisabledUnits.includes(alt.name) &&
                     (level <= 6 ? alt.cost <= 3 : true) &&
                     !(alt.name === "Kennen" && level < 6) &&
                     !(alt.name.includes("Kobuko") && level < 7) &&
@@ -521,7 +584,7 @@ function renderResults(results, container, level) {
         const sortedTraits = Object.entries(res.counts).sort((a, b) => b[1] - a[1]);
 
         sortedTraits.forEach(([trait, count]) => {
-            const breakpoints = tftData.traits[trait];
+            const breakpoints = (tftData.traits && tftData.traits[trait]) ? tftData.traits[trait] : null;
             const isActive = breakpoints && breakpoints.some(b => b <= count);
             const isTargon = trait === 'Targon';
             const hasEmblem = emblemTraits.includes(trait);
@@ -535,18 +598,27 @@ function renderResults(results, container, level) {
             traitItem.style.fontSize = '11px';
             
             let textColor = 'var(--text-dim)';
-            if (hasEmblem) textColor = '#32d74b';
-            else if (isActive) textColor = 'var(--text-bright)';
+            let filter = isActive ? '' : 'opacity: 0.5; filter: grayscale(1);';
+
+            if (hasEmblem) {
+                if (isActive) {
+                    textColor = '#32d74b'; 
+                    filter = 'invert(48%) sepia(79%) saturate(2476%) hue-rotate(86deg) brightness(118%) contrast(119%)';
+                } else {
+                    textColor = '#ff9500'; 
+                    filter = 'invert(65%) sepia(91%) saturate(1831%) hue-rotate(3deg) brightness(103%) contrast(105%)';
+                }
+            } else if (isActive) {
+                textColor = 'var(--text-bright)';
+            }
 
             traitItem.style.color = textColor;
             if (isActive || hasEmblem) traitItem.style.fontWeight = '600';
 
             const iconUrl = `assets/tft/${currentConfig.current_set}/traits/${trait.replace(/ /g, '')}.svg`;
-            const greenFilter = 'invert(48%) sepia(79%) saturate(2476%) hue-rotate(86deg) brightness(118%) contrast(119%)';
-            const normalFilter = isActive ? '' : 'opacity: 0.5; filter: grayscale(1);';
 
             traitItem.innerHTML = `
-                <img src="${iconUrl}" style="width: 16px; height: 16px; ${hasEmblem ? 'filter: ' + greenFilter : normalFilter}" 
+                <img src="${iconUrl}" style="width: 16px; height: 16px; filter: ${filter}" 
                      title="${trait}" onerror="this.style.display='none'">
                 <span title="${trait}">${count}</span>
             `;
@@ -600,7 +672,6 @@ async function runLogicTests() {
 
         const start = performance.now();
         try {
-            // Need to await findBestBoards inside tests if they call it
             await test.call(runner);
             const duration = (performance.now() - start).toFixed(1);
             statusEl.style.color = "#32d74b";

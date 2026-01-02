@@ -1266,5 +1266,189 @@
       "trait": "Zaun",
       "icon_url": "assets/tft/set16/traits/Zaun.svg"
     }
-  ]
+  ],
+  "trait_metadata": {
+    "Bilgewater": {
+      "breakpoints": [
+        3,
+        5,
+        7
+      ],
+      "type": "origin"
+    },
+    "Demacia": {
+      "breakpoints": [
+        3,
+        5,
+        7
+      ],
+      "type": "origin"
+    },
+    "Freljord": {
+      "breakpoints": [
+        3,
+        5,
+        7
+      ],
+      "type": "origin"
+    },
+    "Ionia": {
+      "breakpoints": [
+        3,
+        5,
+        7
+      ],
+      "type": "origin"
+    },
+    "Noxus": {
+      "breakpoints": [
+        3,
+        5,
+        7,
+        10
+      ],
+      "type": "origin"
+    },
+    "Piltover": {
+      "breakpoints": [
+        2,
+        4,
+        6
+      ],
+      "type": "origin"
+    },
+    "Void": {
+      "breakpoints": [
+        3,
+        6,
+        8,
+        10
+      ],
+      "type": "origin"
+    },
+    "Yordle": {
+      "breakpoints": [
+        2,
+        4,
+        6,
+        8
+      ],
+      "type": "origin"
+    },
+    "Zaun": {
+      "breakpoints": [
+        3,
+        5,
+        7
+      ],
+      "type": "origin"
+    },
+    "Arcanist": {
+      "breakpoints": [
+        2,
+        4,
+        6
+      ],
+      "type": "class"
+    },
+    "Bruiser": {
+      "breakpoints": [
+        2,
+        4,
+        6
+      ],
+      "type": "class"
+    },
+    "Defender": {
+      "breakpoints": [
+        2,
+        4,
+        6
+      ],
+      "type": "class"
+    },
+    "Disruptor": {
+      "breakpoints": [
+        2,
+        4
+      ],
+      "type": "class"
+    },
+    "Gunslinger": {
+      "breakpoints": [
+        2,
+        4,
+        6
+      ],
+      "type": "class"
+    },
+    "Invoker": {
+      "breakpoints": [
+        2,
+        4,
+        6
+      ],
+      "type": "class"
+    },
+    "Juggernaut": {
+      "breakpoints": [
+        2,
+        4,
+        6
+      ],
+      "type": "class"
+    },
+    "Longshot": {
+      "breakpoints": [
+        2,
+        3,
+        4,
+        5
+      ],
+      "type": "class"
+    },
+    "Quickstriker": {
+      "breakpoints": [
+        2,
+        3,
+        4,
+        5
+      ],
+      "type": "class"
+    },
+    "Slayer": {
+      "breakpoints": [
+        2,
+        4,
+        6
+      ],
+      "type": "class"
+    },
+    "Vanquisher": {
+      "breakpoints": [
+        2,
+        3,
+        4,
+        5
+      ],
+      "type": "class"
+    },
+    "Warden": {
+      "breakpoints": [
+        2,
+        3,
+        4,
+        5
+      ],
+      "type": "class"
+    },
+    "Targon": {
+      "breakpoints": [
+        2,
+        3,
+        4
+      ],
+      "type": "origin"
+    }
+  }
 }
