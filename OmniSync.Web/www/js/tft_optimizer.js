@@ -1,8 +1,8 @@
-
 class TFTOptimizer {
     constructor(units, traitsData) {
         this.UNITS = units;
         this.TRAITS_DATA = traitsData;
+        this.isCancelled = false;
 
         // Constants
         this.BREAKPOINT_SCORE_MULTIPLIER = 1000;
@@ -34,7 +34,11 @@ class TFTOptimizer {
         this.CANDIDATE_POOL_SIZE = 40; 
     }
 
-    scoreBoard(board, emblems, targetSize, mode = 'default', mustIncludeTraits = []) {
+    cancel() {
+        this.isCancelled = true;
+    }
+
+    scoreBoard(board, emblems, targetSize, mode = 'default', mustIncludeTraits = {}, mustIncludeNames = []) {
         let counts = {};
         const names = board.map(u => u.name);
         
@@ -48,10 +52,10 @@ class TFTOptimizer {
             return { score: -this.INVALID_COMP_PENALTY, counts };
         }
 
-        // Hard Level Rules
-        if (targetSize < 6 && names.includes("Kennen")) return { score: -this.INVALID_COMP_PENALTY, counts };
-        if (targetSize < 7 && names.some(n => n.includes("Kobuko"))) return { score: -this.INVALID_COMP_PENALTY, counts };
-        if (targetSize < 8 && board.some(u => u.cost === 5)) return { score: -this.INVALID_COMP_PENALTY, counts };
+        // Hard Level Rules (Exempting Must-Include)
+        if (targetSize < 6 && names.includes("Kennen") && !mustIncludeNames.includes("Kennen")) return { score: -this.INVALID_COMP_PENALTY, counts };
+        if (targetSize < 7 && names.some(n => n.includes("Kobuko")) && !mustIncludeNames.some(n => n.includes("Kobuko"))) return { score: -this.INVALID_COMP_PENALTY, counts };
+        if (targetSize < 8 && board.some(u => u.cost === 5 && !mustIncludeNames.includes(u.name))) return { score: -this.INVALID_COMP_PENALTY, counts };
         
         for (const u of board) {
             for (const t of u.traits) {
@@ -77,7 +81,7 @@ class TFTOptimizer {
             }
             
             if (this.TRAITS_DATA[trait]) {
-                const breakpoints = this.TRAITS_DATA[trait];
+                const breakpoints = this.TRAITS_DATA[trait].breakpoints;
                 const reached = breakpoints.filter(b => b <= count);
                 if (reached.length > 0) {
                     activeTraits.add(trait);
@@ -94,8 +98,11 @@ class TFTOptimizer {
             }
         }
 
-        for (const targetTrait of mustIncludeTraits) {
-            if (!activeTraits.has(targetTrait)) score -= this.INVALID_COMP_PENALTY;
+        for (const targetTrait in mustIncludeTraits) {
+            const requiredValue = mustIncludeTraits[targetTrait];
+            if ((counts[targetTrait] || 0) < requiredValue) {
+                score -= this.INVALID_COMP_PENALTY;
+            }
         }
         
         const carries = board.filter(u => u.is_carry);
@@ -182,7 +189,8 @@ class TFTOptimizer {
         return count(targetSlots, 0);
     }
 
-    async findBestBoards(pool, size, emblems, mustIncludeNames = [], mode = 'default', mustIncludeTraits = [], limit = 3, onProgress = null) {
+    async findBestBoards(pool, size, emblems, mustIncludeNames = [], mode = 'default', mustIncludeTraits = {}, limit = 3, onProgress = null) {
+        this.isCancelled = false;
         const targetSlots = size;
         let fixedUnits = [];
         if (mustIncludeNames && mustIncludeNames.length > 0) {
@@ -200,8 +208,9 @@ class TFTOptimizer {
             return b.cost - a.cost;
         });
         
-        const poolSize = size >= 9 ? 35 : 32; 
+        const poolSize = size >= 9 ? 45 : 40; 
         candidates = candidates.slice(0, poolSize);
+        
         const fixedSlots = fixedUnits.reduce((acc, u) => acc + (u.slots || 1), 0);
         const neededSlots = targetSlots - fixedSlots;
         
@@ -214,6 +223,8 @@ class TFTOptimizer {
         
         let done = false;
         while (!done) {
+            if (this.isCancelled) return [];
+
             for (let i = 0; i < batchSize; i++) {
                 const { value: combo, done: comboDone } = generator.next();
                 if (comboDone) {
@@ -222,7 +233,7 @@ class TFTOptimizer {
                 }
                 processed++;
                 const currentBoard = [...combo, ...fixedUnits];
-                const { score, counts } = this.scoreBoard(currentBoard, emblems, targetSlots, mode, mustIncludeTraits);
+                const { score, counts } = this.scoreBoard(currentBoard, emblems, targetSlots, mode, mustIncludeTraits, mustIncludeNames);
                 if (score > -1000000) { 
                     results.push({ score, board: currentBoard, counts });
                 }
@@ -232,6 +243,52 @@ class TFTOptimizer {
         }
         results.sort((a, b) => b.score - a.score);
         return results.slice(0, limit);
+    }
+
+    improveTeam(currentBoard, pool, emblems, mode = 'default', mustIncludeTraits = {}, mustIncludeNames = [], limit = 3) {
+        const currentResult = this.scoreBoard(currentBoard, emblems, currentBoard.length, mode, mustIncludeTraits, mustIncludeNames);
+        let bestScore = currentResult.score;
+        let unitSuggestions = []; 
+
+        for (let i = 0; i < currentBoard.length; i++) {
+            const originalUnit = currentBoard[i];
+            if (mustIncludeNames.includes(originalUnit.name)) continue;
+            
+            let candidatesForThisSlot = [];
+
+            for (const candidate of pool) {
+                if (currentBoard.some(u => u.name === candidate.name)) continue;
+                
+                let testBoard = [...currentBoard];
+                testBoard[i] = candidate;
+                const { score, counts } = this.scoreBoard(testBoard, emblems, testBoard.length, mode, mustIncludeTraits, mustIncludeNames);
+                
+                if (score > bestScore) {
+                    candidatesForThisSlot.push({
+                        score,
+                        board: testBoard,
+                        counts,
+                        unit: candidate
+                    });
+                }
+            }
+
+            if (candidatesForThisSlot.length > 0) {
+                candidatesForThisSlot.sort((a, b) => b.score - a.score);
+                unitSuggestions.push({
+                    replacedUnit: originalUnit,
+                    candidates: candidatesForThisSlot.slice(0, 3),
+                    bestScore: candidatesForThisSlot[0].score
+                });
+            }
+        }
+
+        unitSuggestions.sort((a, b) => b.bestScore - a.bestScore);
+        
+        return {
+            currentCounts: currentResult.counts,
+            suggestions: unitSuggestions.slice(0, limit)
+        };
     }
 }
 

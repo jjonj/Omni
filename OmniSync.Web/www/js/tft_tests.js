@@ -8,7 +8,7 @@ class TFTTester {
         if (!condition) throw new Error(message);
     }
 
-    // EXISTING TESTS (AWAITING findBestBoards)
+    // --- TESTS ---
 
     async testLevel4Optimal() {
         const targetUnits = ["Caitlyn", "Kog'Maw", "Neeko", "Vi"];
@@ -20,8 +20,8 @@ class TFTTester {
         this.assert(results.length >= 1, `No results found for level 4`);
         const res = results[0];
         const activeTraitsCount = Object.keys(res.counts).filter(t => {
-            const breakpoints = this.data.traits[t];
-            return breakpoints && breakpoints.some(b => b <= res.counts[t]);
+            const traitInfo = this.data.trait_metadata[t];
+            return traitInfo && traitInfo.breakpoints.some(b => b <= res.counts[t]);
         }).length;
         
         this.assert(activeTraitsCount >= 4, `Top Level 4 comp only has ${activeTraitsCount} active traits (expected >= 4). Board: ${res.board.map(u=>u.name).join(',')}`);
@@ -55,12 +55,13 @@ class TFTTester {
     }
 
     async testBronzeForLifeLogic() {
-        const unit1 = this.data.units.find(u => u.name === "Nasus"); 
-        const unit2 = this.data.units.find(u => u.name === "Renekton"); 
-        const board = [unit1, unit2]; 
-        const scoreDefault = this.opt.scoreBoard(board, [], 2, 'default').score;
-        const scoreBronze = this.opt.scoreBoard(board, [], 2, 'bronze-for-life').score;
-        this.assert(scoreBronze < scoreDefault, "Bronze For Life should score lower for high-tier traits than default mode");
+        const unit1 = this.data.units.find(u => u.name === "Lux"); 
+        const unit2 = this.data.units.find(u => u.name === "Kog'Maw"); 
+        const carry = this.data.units.find(u => u.is_carry && u.cost >= 4);
+        const board = [unit1, unit2, carry]; 
+        const scoreDefault = this.opt.scoreBoard(board, [], 8, 'default').score;
+        const scoreBronze = this.opt.scoreBoard(board, [], 8, 'bronze-for-life').score;
+        this.assert(scoreBronze < scoreDefault, `Bronze For Life (${scoreBronze}) should score lower than Default (${scoreDefault}) for tier-2 traits`);
     }
 
     async testLevel10Constraints() {
@@ -83,11 +84,11 @@ class TFTTester {
     async testMustIncludeTraits() {
         const cait = this.data.units.find(u => u.name === "Caitlyn"); 
         const board = [cait];
-        const res1 = this.opt.scoreBoard(board, [], 1, 'default', ["Longshot"]);
-        this.assert(res1.score < -1000000, "Should be invalid if required trait is not active");
+        const res1 = this.opt.scoreBoard(board, [], 1, 'default', { "Longshot": 2 });
+        this.assert(res1.score < -1000000, "Should be invalid if required trait breakpoint is not met");
         const kog = this.data.units.find(u => u.name === "Kog'Maw");
-        const res2 = this.opt.scoreBoard([cait, kog], [], 2, 'default', ["Longshot"]);
-        this.assert(res2.score > -1000000, "Should be valid if required trait is active");
+        const res2 = this.opt.scoreBoard([cait, kog], [], 2, 'default', { "Longshot": 2 });
+        this.assert(res2.score > -1000000, "Should be valid if required trait breakpoint is met");
     }
 
     async testAnnieOneArcanistFix() {
@@ -164,5 +165,13 @@ class TFTTester {
         const highCarry = this.data.units.find(u => u.is_carry && u.cost >= 4);
         const res2 = this.opt.scoreBoard([lowCarry, highCarry], [], 8);
         this.assert(res2.score > -100000, "Level 8 with low+high carry should be valid (no penalty)");
+    }
+
+    async testMustIncludeBypassLevelRestriction() {
+        const azir = this.data.units.find(u => u.name === "Azir");
+        const res1 = this.opt.scoreBoard([azir], [], 6, 'default', {}, []);
+        this.assert(res1.score < -1000000, "5-cost should be invalid at level 6 normally");
+        const res2 = this.opt.scoreBoard([azir], [], 6, 'default', {}, ["Azir"]);
+        this.assert(res2.score > -1000000, "Must-include unit should bypass level restrictions");
     }
 }

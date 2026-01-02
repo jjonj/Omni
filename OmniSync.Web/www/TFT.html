@@ -416,19 +416,30 @@
                                         </div>
                                     </div>
                                 </div>
-                                <div style="border-top: 1px solid var(--border); padding-top: 8px;">
-                                    <label class="hub-status-label" style="text-transform: none; display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 11px;">
-                                        <input type="checkbox" id="exclude-five-costs" checked> Exclude 5-Costs
+                                <div style="border-top: 1px solid var(--border); padding-top: 8px; display: flex; gap: 12px; flex-wrap: wrap;">
+                                    <label class="hub-status-label" style="text-transform: none; display: flex; align-items: center; gap: 4px; cursor: pointer; font-size: 10px;">
+                                        <input type="checkbox" id="exclude-five-costs" checked> Excl 5
+                                    </label>
+                                    <label class="hub-status-label" style="text-transform: none; display: flex; align-items: center; gap: 4px; cursor: pointer; font-size: 10px;">
+                                        <input type="checkbox" id="improve-mode"> Improve
                                     </label>
                                 </div>
                             </div>
 
-                            <div class="control-box" style="flex: 1; display: flex; flex-direction: column; padding: 12px; min-height: 100px;">
+                            <div class="control-box" style="flex: 1; display: flex; flex-direction: column; padding: 12px; min-height: 80px;">
+                                <h2 style="font-size: 10px;">Current Team</h2>     
+                                <div class="drop-zone" id="current-team-zone" ondrop="dropToCurrentTeam(event)" ondragover="allowDrop(event)" style="flex: 1; min-height: 50px;">
+                                    <div class="placeholder-text">Drag Units Here</div>
+                                </div>
+                                <button class="btn danger" onclick="clearCurrentTeam()" style="width: 100%; margin-top: 4px; font-size: 10px; padding: 2px;">Clear</button>
+                            </div>
+
+                            <div class="control-box" style="flex: 1; display: flex; flex-direction: column; padding: 12px; min-height: 80px;">
                                 <h2 style="font-size: 10px;">Must Include Units & Traits</h2>
-                                <div class="drop-zone" id="must-include-zone" ondrop="dropToMustInclude(event)" ondragover="allowDrop(event)" style="flex: 1; min-height: 60px;">
+                                <div class="drop-zone" id="must-include-zone" ondrop="dropToMustInclude(event)" ondragover="allowDrop(event)" style="flex: 1; min-height: 50px;">
                                     <div class="placeholder-text">Units or Traits</div>
                                 </div>
-                                <button class="btn danger" onclick="clearMustInclude()" style="width: 100%; margin-top: 6px; font-size: 10px; padding: 4px;">Clear</button>
+                                <button class="btn danger" onclick="clearMustInclude()" style="width: 100%; margin-top: 4px; font-size: 10px; padding: 2px;">Clear</button>
                             </div>
 
                             <div class="control-box" style="flex: 1; display: flex; flex-direction: column; padding: 12px; min-height: 100px;">
@@ -439,7 +450,8 @@
                                 <button class="btn danger" onclick="clearEmblems()" style="width: 100%; margin-top: 6px; font-size: 10px; padding: 4px;">Clear</button>
                             </div>
 
-                            <button class="modern-btn primary" onclick="runOptimization()" style="height: 40px; font-size: 13px;">RUN OPTIMIZATION</button>
+                            <button id="run-btn" class="modern-btn primary" onclick="runOptimization()" style="height: 40px; font-size: 13px;">RUN OPTIMIZATION</button>
+                            <button id="cancel-btn" class="modern-btn danger" onclick="cancelOptimization()" style="height: 40px; font-size: 13px; display: none;">CANCEL OPTIMIZATION</button>
                             <button class="modern-btn" onclick="resetAll()" style="margin-top: 4px; font-size: 11px; padding: 6px;">RESET ALL</button>
                             
                             <!-- Progress Bar -->

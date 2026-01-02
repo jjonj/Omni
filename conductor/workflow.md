@@ -44,9 +44,10 @@ All tasks follow a strict lifecycle:
    - Add dated note explaining the change
    - Resume implementation
 
-8. **Commit Code Changes:**
-   - Stage all code changes related to the task.
-   - Propose a clear, concise commit message e.g, `feat(ui): Create basic HTML structure for calculator`.
+8. **Commit Code Changes (Grouped):**
+   - **Guideline:** Avoid frequent, small commits. Group related tasks or wait until a significant scope (e.g., the end of a phase) is completed before committing.
+   - Stage all code changes related to the grouped tasks.
+   - Propose a clear, concise commit message.
    - Perform the commit.
 
 9. **Attach Task Summary with Git Notes:**

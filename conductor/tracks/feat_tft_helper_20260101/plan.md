@@ -27,8 +27,8 @@
 - [x] Task: Add icon harvesting instructions/placeholders for Brock and other set 16 units d85100e
 - [ ] Task: Conductor - User Manual Verification 'Additional Tabs & Refinement' (Protocol in workflow.md)
 
-## Phase 6: Icon Fixes [checkpoint: bf593f3]
-- [x] Task: Retry downloading missing Unit icons using kebab-case URLs 07b757c
-- [x] Task: Retry downloading Trait icons using kebab-case URLs 07b757c
-- [x] Task: Update `set16.json` to reflect local paths for newly downloaded icons 07b757c
+## Phase 7: UI Refinement (Removal + Grouping)
+- [x] Task: Update `TFT.html` to include 5 subgrids for units by cost e3449bd
+- [x] Task: Update `js/tft.js` to render units grouped by cost and implement "drag out" or click-to-remove logic e3449bd
+- [ ] Task: Conductor - User Manual Verification 'UI Refinement' (Protocol in workflow.md)
 - [ ] Task: Conductor - User Manual Verification 'Icon Fixes' (Protocol in workflow.md)

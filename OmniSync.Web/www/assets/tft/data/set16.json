@@ -682,8 +682,7 @@
       "name": "Nasus",
       "cost": 4,
       "traits": [
-        "Shurima",
-        "Juggernaut"
+        "Shurima"
       ],
       "is_carry": false,
       "locked": true,
@@ -693,8 +692,7 @@
       "name": "Renekton",
       "cost": 4,
       "traits": [
-        "Shurima",
-        "Juggernaut"
+        "Shurima"
       ],
       "is_carry": false,
       "locked": true,
@@ -838,7 +836,8 @@
       "cost": 5,
       "traits": [
         "Emperor",
-        "Shurima"
+        "Shurima",
+        "Disruptor"
       ],
       "is_carry": true,
       "locked": false,
@@ -1021,124 +1020,6 @@
       "icon_url": "assets/tft/set16/champions/Tibbers.png"
     }
   ],
-  "traits": {
-    "Bilgewater": [
-      3,
-      5,
-      7
-    ],
-    "Demacia": [
-      3,
-      5,
-      7
-    ],
-    "Freljord": [
-      3,
-      5,
-      7
-    ],
-    "Ionia": [
-      3,
-      5,
-      7
-    ],
-    "Noxus": [
-      3,
-      5,
-      7,
-      10
-    ],
-    "Piltover": [
-      2,
-      4,
-      6
-    ],
-    "Void": [
-      3,
-      6,
-      8,
-      10
-    ],
-    "Yordle": [
-      2,
-      4,
-      6,
-      8
-    ],
-    "Zaun": [
-      3,
-      5,
-      7
-    ],
-    "Arcanist": [
-      2,
-      4,
-      6
-    ],
-    "Bruiser": [
-      2,
-      4,
-      6
-    ],
-    "Defender": [
-      2,
-      4,
-      6
-    ],
-    "Disruptor": [
-      2,
-      4
-    ],
-    "Gunslinger": [
-      2,
-      4,
-      6
-    ],
-    "Invoker": [
-      2,
-      4,
-      6
-    ],
-    "Juggernaut": [
-      2,
-      4,
-      6
-    ],
-    "Longshot": [
-      2,
-      3,
-      4,
-      5
-    ],
-    "Quickstriker": [
-      2,
-      3,
-      4,
-      5
-    ],
-    "Slayer": [
-      2,
-      4,
-      6
-    ],
-    "Vanquisher": [
-      2,
-      3,
-      4,
-      5
-    ],
-    "Warden": [
-      2,
-      3,
-      4,
-      5
-    ],
-    "Targon": [
-      2,
-      3,
-      4
-    ]
-  },
   "items": [
     {
       "name": "Arcanist Emblem",
@@ -1229,6 +1110,12 @@
       "is_emblem": true,
       "trait": "Quickstriker",
       "icon_url": "assets/tft/set16/traits/Quickstriker.svg"
+    },
+    {
+      "name": "Shurima Emblem",
+      "is_emblem": true,
+      "trait": "Shurima",
+      "icon_url": "assets/tft/set16/traits/Shurima.svg"
     },
     {
       "name": "Slayer Emblem",
@@ -1332,6 +1219,14 @@
         4,
         6,
         8
+      ],
+      "type": "origin"
+    },
+    "Shurima": {
+      "breakpoints": [
+        2,
+        3,
+        4
       ],
       "type": "origin"
     },
