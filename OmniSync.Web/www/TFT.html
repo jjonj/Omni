@@ -486,8 +486,9 @@
                         <!-- Right Column: Pools -->
                         <div class="pools-zone" ondrop="dropOnPools(event)" ondragover="allowDrop(event)">
                             <div class="pool-container">
-                                <div class="pool-header">
+                                <div class="pool-header" style="flex-direction: column; align-items: flex-start; gap: 8px;">
                                     <h2>Units</h2>
+                                    <div id="alpha-filter" class="alpha-filter-container"></div>
                                 </div>
                                 <div class="unit-cost-groups">
                                     <div class="cost-group">

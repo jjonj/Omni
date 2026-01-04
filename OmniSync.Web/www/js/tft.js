@@ -6,6 +6,8 @@ let selectedMustInclude = [];
 let selectedCurrentTeam = [];
 let selectedEmblems = [];
 let unitFilter = 'all';
+let unitAlphaFilter = null;
+let alphaFilterTimeout = null;
 let emblemSearch = '';
 let highlightedTrait = null;
 
@@ -104,8 +106,46 @@ function updateUI() {
     if (jsonDisplayEl) jsonDisplayEl.innerText = JSON.stringify(tftData, null, 2);
 
     renderUnitPools();
+    renderAlphaFilter();
     renderEmblemPool();
     renderSelectionZones();
+}
+
+function renderAlphaFilter() {
+    const container = document.getElementById('alpha-filter');
+    if (!container) return;
+    container.innerHTML = '';
+
+    const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
+    alphabet.forEach(letter => {
+        const btn = document.createElement('button');
+        btn.className = 'alpha-btn';
+        if (unitAlphaFilter === letter) btn.classList.add('active');
+        btn.innerText = letter;
+        btn.onclick = () => setAlphaFilter(letter);
+        container.appendChild(btn);
+    });
+}
+
+function setAlphaFilter(letter) {
+    if (alphaFilterTimeout) {
+        clearTimeout(alphaFilterTimeout);
+        alphaFilterTimeout = null;
+    }
+
+    if (unitAlphaFilter === letter) {
+        unitAlphaFilter = null;
+    } else {
+        unitAlphaFilter = letter;
+        alphaFilterTimeout = setTimeout(() => {
+            unitAlphaFilter = null;
+            renderAlphaFilter();
+            renderUnitPools();
+        }, 5000);
+    }
+
+    renderAlphaFilter();
+    renderUnitPools();
 }
 
 function renderUnitPools() {
@@ -114,7 +154,11 @@ function renderUnitPools() {
         if (!pool) continue;
         pool.innerHTML = '';
         
-        const units = tftData.units.filter(u => u.cost === cost && u.name !== "Tibbers")
+        const units = tftData.units.filter(u => {
+            if (u.cost !== cost || u.name === "Tibbers") return false;
+            if (unitAlphaFilter && !u.name.toUpperCase().startsWith(unitAlphaFilter)) return false;
+            return true;
+        })
             .sort((a, b) => {
                 const aDisabled = activeDisabledUnits.includes(a.name);
                 const bDisabled = activeDisabledUnits.includes(b.name);
@@ -497,8 +541,15 @@ function resetAll() {
     const excludeFive = document.getElementById('exclude-five-costs');
     if (excludeFive) excludeFive.checked = true;
     
+    unitAlphaFilter = null;
+    if (alphaFilterTimeout) {
+        clearTimeout(alphaFilterTimeout);
+        alphaFilterTimeout = null;
+    }
+
     activeDisabledUnits = [...userDefaultDisabledUnits];
     renderUnitPools();
+    renderAlphaFilter();
 
     const resultsContainer = document.getElementById('results-container');
     if (resultsContainer) resultsContainer.innerHTML = '';
