@@ -137,8 +137,9 @@ builder.Services.AddSingleton<CommandDispatcher>(provider => {
     var processService = provider.GetRequiredService<ProcessService>();
     var shutdownService = provider.GetRequiredService<ShutdownService>();
     var settingsService = provider.GetRequiredService<HubSettingsService>();
+    var pcgService = provider.GetRequiredService<PcgPersistentService>();
     var appLifetime = provider.GetRequiredService<IHostApplicationLifetime>();
-    return new CommandDispatcher(inputService, fileService, audioService, processService, shutdownService, settingsService, appLifetime);
+    return new CommandDispatcher(inputService, fileService, audioService, processService, shutdownService, settingsService, pcgService, appLifetime);
 });
 builder.Services.AddSingleton<ProcessService>();
 builder.Services.AddSingleton<AiCliService>();
@@ -160,6 +161,7 @@ builder.Services.AddSingleton<ShutdownService>(provider =>
 });
 builder.Services.AddSingleton<RegistryService>();
 builder.Services.AddSingleton<ScreenshotService>();
+builder.Services.AddSingleton<PcgPersistentService>();
 builder.Services.AddSingleton<HubEventSender>(provider =>
 {
     var hubContext = provider.GetRequiredService<IHubContext<RpcApiHub>>();

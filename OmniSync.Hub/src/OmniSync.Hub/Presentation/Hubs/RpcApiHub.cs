@@ -33,9 +33,10 @@ namespace OmniSync.Hub.Presentation.Hubs
         private readonly RegistryService _registryService;
         private readonly HubMonitorService _hubMonitorService;
         private readonly AiCliService _aiCliService;
+        private readonly PcgPersistentService _pcgService;
         private readonly ILogger<RpcApiHub> _logger; // Added for logging
 
-        public RpcApiHub(AuthService authService, FileService fileService, ClipboardService clipboardService, CommandDispatcher commandDispatcher, ProcessService processService, HubEventSender hubEventSender, InputService inputService, AudioService audioService, ShutdownService shutdownService, RegistryService registryService, HubMonitorService hubMonitorService, AiCliService aiCliService, ILogger<RpcApiHub> logger)
+        public RpcApiHub(AuthService authService, FileService fileService, ClipboardService clipboardService, CommandDispatcher commandDispatcher, ProcessService processService, HubEventSender hubEventSender, InputService inputService, AudioService audioService, ShutdownService shutdownService, RegistryService registryService, HubMonitorService hubMonitorService, AiCliService aiCliService, PcgPersistentService pcgService, ILogger<RpcApiHub> logger)
         {
             _authService = authService;
             _fileService = fileService;
@@ -49,6 +50,7 @@ namespace OmniSync.Hub.Presentation.Hubs
             _registryService = registryService;
             _hubMonitorService = hubMonitorService;
             _aiCliService = aiCliService;
+            _pcgService = pcgService;
             _logger = logger;
         }
 
@@ -814,6 +816,33 @@ namespace OmniSync.Hub.Presentation.Hubs
                 AnyCommandReceived?.Invoke(this, "Set Cortex Templates");
                 await Clients.All.SendAsync("UpdateCortexTemplates", templatesJson);
             }
+        }
+
+        public void PcgSaveState(string worldId, float x, float y, string data, bool isExclusion)
+        {
+            if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
+            {
+                AnyCommandReceived?.Invoke(this, $"PcgSaveState: {worldId} at ({x}, {y})");
+                _pcgService.SaveObjectState(worldId, x, y, data, isExclusion);
+            }
+        }
+
+        public PcgObjectState? PcgGetState(string worldId, float x, float y)
+        {
+            if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
+            {
+                return _pcgService.GetObjectState(worldId, x, y);
+            }
+            return null;
+        }
+
+        public List<PcgObjectState> PcgGetAllStatesForWorld(string worldId)
+        {
+            if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
+            {
+                return _pcgService.GetAllStatesForWorld(worldId);
+            }
+            return new List<PcgObjectState>();
         }
 
         private (string commandName, List<string> args) ParseCommand(string commandString)

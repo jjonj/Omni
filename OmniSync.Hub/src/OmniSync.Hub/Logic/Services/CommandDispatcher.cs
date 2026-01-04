@@ -15,12 +15,13 @@ namespace OmniSync.Hub.Logic.Services
         private readonly ProcessService _processService; // Inject ProcessService
         private readonly ShutdownService _shutdownService;
         private readonly HubSettingsService _settingsService;
+        private readonly PcgPersistentService _pcgService;
         private readonly IHostApplicationLifetime _appLifetime;
         private readonly Dictionary<string, Action<JsonElement>> _commandMap;
 
         public event EventHandler<string>? AddCleanupPatternRequested;
 
-        public CommandDispatcher(InputService inputService, FileService fileService, AudioService audioService, ProcessService processService, ShutdownService shutdownService, HubSettingsService settingsService, IHostApplicationLifetime appLifetime) // Add AudioService and ProcessService to constructor
+        public CommandDispatcher(InputService inputService, FileService fileService, AudioService audioService, ProcessService processService, ShutdownService shutdownService, HubSettingsService settingsService, PcgPersistentService pcgService, IHostApplicationLifetime appLifetime) // Add AudioService and ProcessService to constructor
         {
             _inputService = inputService;
             _fileService = fileService;
@@ -28,6 +29,7 @@ namespace OmniSync.Hub.Logic.Services
             _processService = processService; // Assign ProcessService
             _shutdownService = shutdownService;
             _settingsService = settingsService;
+            _pcgService = pcgService;
             _appLifetime = appLifetime;
             _commandMap = new Dictionary<string, Action<JsonElement>>
             {
@@ -41,6 +43,7 @@ namespace OmniSync.Hub.Logic.Services
                 { "INPUT_KEY_DOWN", payload => _inputService.KeyDown(payload.GetProperty("KeyCode").GetUInt16()) },
                 { "INPUT_KEY_UP", payload => _inputService.KeyUp(payload.GetProperty("KeyCode").GetUInt16()) },
                 { "INPUT_TEXT", payload => _inputService.SendText(payload.GetProperty("Text").GetString()) },
+                { "SEND_KEYS", payload => _inputService.SendKeys(payload.GetProperty("Keys").GetString()) },
                 { "VOLUME_CONTROL", payload => _inputService.SendVolumeKey(payload.GetProperty("KeyCode").GetUInt16()) },
                 { "SET_VOLUME", payload => _audioService.SetMasterVolume(payload.GetProperty("VolumePercentage").GetSingle()) },
                 { "TOGGLE_MUTE", payload => _audioService.ToggleMute() },
@@ -70,7 +73,14 @@ namespace OmniSync.Hub.Logic.Services
                 }},
                 { "SCHEDULE_SHUTDOWN", payload => _shutdownService.ScheduleShutdown(payload.GetProperty("Minutes").GetInt32()) },
                 { "ADDCLEANUPPATTERN", payload => AddCleanupPatternRequested?.Invoke(this, payload.GetString() ?? "") },
-                { "HUB_EXIT", payload => _appLifetime.StopApplication() }
+                { "HUB_EXIT", payload => _appLifetime.StopApplication() },
+                { "PCG_SAVE_STATE", payload => _pcgService.SaveObjectState(
+                    payload.GetProperty("WorldId").GetString() ?? "default",
+                    payload.GetProperty("X").GetSingle(),
+                    payload.GetProperty("Y").GetSingle(),
+                    payload.GetProperty("Data").GetString() ?? "",
+                    payload.TryGetProperty("IsExclusion", out var excl) && excl.GetBoolean()
+                ) }
             };
         }
             

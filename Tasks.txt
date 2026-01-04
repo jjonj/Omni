@@ -1,7 +1,7 @@
 
 temp notes for wartribes 
 
-need poc for persistent pcg changes, change 07  diff saved and compared by pcg node using 2d position hash, allow exclusion or modification. 
+✅ need poc for persistent pcg changes, change 07  diff saved and compared by pcg node using 2d position hash, allow exclusion or modification. 
 
 
 # Tasks
