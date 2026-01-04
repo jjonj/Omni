@@ -79,22 +79,46 @@ function setupSolverListeners() {
     const solverRadios = document.querySelectorAll('input[name="solver-mode"]');
     solverRadios.forEach(radio => {
         radio.addEventListener('change', (e) => {
-            if (e.target.value === 'world-runes' && e.target.checked) {
-                // Auto-select levels 5 and 6
-                document.querySelectorAll('.lvl-cb').forEach(cb => {
-                    cb.checked = (cb.value === "5" || cb.value === "6");
-                });
+            if (e.target.checked) {
+                if (e.target.value === 'world-runes') {
+                    // Auto-select levels 5 and 6
+                    document.querySelectorAll('.lvl-cb').forEach(cb => {
+                        cb.checked = (cb.value === "5" || cb.value === "6");
+                    });
 
-                // Highlight the emblem drop zone
-                const emblemZone = document.getElementById('emblem-drop-zone')?.closest('.control-box');
-                if (emblemZone) {
-                    emblemZone.classList.remove('pulse-highlight');
-                    void emblemZone.offsetWidth; // Force reflow
-                    emblemZone.classList.add('pulse-highlight');
+                    // Highlight the emblem drop zone
+                    const emblemZone = document.getElementById('emblem-drop-zone')?.closest('.control-box');
+                    if (emblemZone) {
+                        emblemZone.classList.remove('pulse-highlight');
+                        void emblemZone.offsetWidth; // Force reflow
+                        emblemZone.classList.add('pulse-highlight');
+                    }
+                } else if (e.target.value === 'ryze-unlock') {
+                    // Auto-select level 9
+                    document.querySelectorAll('.lvl-cb').forEach(cb => {
+                        cb.checked = (cb.value === "9");
+                    });
+
+                    // Add Ryze to must-include
+                    forceAddMustIncludeUnit("Ryze");
                 }
             }
         });
     });
+}
+
+function forceAddMustIncludeUnit(unitName) {
+    if (!tftData) return;
+    const unit = tftData.units.find(u => u.name === unitName);
+    if (unit && !selectedMustInclude.find(i => i.name === unitName)) {
+        selectedMustInclude.push({
+            name: unit.name,
+            iconUrl: unit.icon_url,
+            type: 'unit',
+            cost: unit.cost
+        });
+        renderSelectionZones();
+    }
 }
 
 function updateUI() {
@@ -1126,7 +1150,8 @@ async function runLogicTests() {
         runner.testForbiddenShurima, runner.testCarryRequirements, runner.testMustIncludeBypassLevelRestriction,
         runner.testNeekoNidaleeLogic, runner.testNeekoNidaleeOneWayLogic, runner.testNidaleeAutoIncludeBug,
         runner.testNidaleeRequiresNeeko, runner.testSuperHeuristicPoppyLevel6, runner.testSuperHeuristicKobukoLevel6,
-        runner.testWorldRunesLogic, runner.testRuneSolverLevel5, runner.testRuneSolverLevel5PiltoverDemacia
+        runner.testWorldRunesLogic, runner.testRuneSolverLevel5, runner.testRuneSolverLevel5PiltoverDemacia,
+        runner.testRyzeUnlockSolver
     ];
     for (const test of tests) {
         const statusEl = document.createElement('div');

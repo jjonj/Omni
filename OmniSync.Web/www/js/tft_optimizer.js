@@ -168,7 +168,7 @@ class TFTOptimizer {
         const activeOrigins = this.getActiveOrigins(counts);
         const activeOriginsCount = activeOrigins.length;
 
-        if (mode === 'world-runes') {
+        if (mode === 'world-runes' || mode === 'ryze-unlock') {
             if (activeOriginsCount < 4) {
                 if (board.length >= targetSize) {
                     score -= this.INVALID_COMP_PENALTY;
@@ -394,7 +394,7 @@ class TFTOptimizer {
     async findBestBoards(pool, size, emblems, mustIncludeNames = [], mode = 'default', mustIncludeTraits = {}, limit = 3, onProgress = null, heuristic = 'standard') {
         this.isCancelled = false;
         
-        if (mode === 'world-runes') {
+        if (mode === 'world-runes' || mode === 'ryze-unlock') {
             return this.runeSearch(pool, size, emblems, mustIncludeNames, mode, mustIncludeTraits, limit, onProgress);
         }
 

@@ -96,6 +96,47 @@ async function runTest() {
     }
 
     console.log("PASS: World Runes requirement met at Level 5 with Piltover/Demacia/Sona!");
+
+    console.log("\n--- Running Test: Ryze Unlock + Level 9 + Ryze Required ---");
+    const pool3 = set16Data.units.filter(u => u.cost <= 5);
+    const mustIncludeNames3 = ["Ryze"];
+    
+    const { results: results3 } = await optimizer.findBestBoards(
+        pool3, 
+        9, 
+        [], 
+        mustIncludeNames3, 
+        'ryze-unlock', 
+        {}, 
+        1, 
+        null, 
+        'super'
+    );
+    
+    if (results3.length === 0) {
+        console.error("FAIL: Ryze solver found no boards");
+        process.exit(1);
+    }
+    
+    const res3 = results3[0];
+    const activeOrigins3 = optimizer.getActiveOrigins(res3.counts);
+
+    console.log("Top Board:", res3.board.map(u => u.name).join(", "));
+    console.log("Active Origins:", activeOrigins3.join(', '));
+    console.log("Origin Count:", activeOrigins3.length);
+    console.log("Score:", res3.score);
+
+    if (activeOrigins3.length < 4) {
+        console.error(`FAIL: Ryze Unlock failed: Only ${activeOrigins3.length} origins active.`);
+        process.exit(1);
+    }
+
+    if (!res3.board.some(u => u.name === "Ryze")) {
+        console.error("FAIL: Ryze missing from board");
+        process.exit(1);
+    }
+
+    console.log("PASS: Ryze Unlock requirement met at Level 9!");
 }
 runTest().catch(err => {
     console.error(err);

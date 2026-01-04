@@ -312,6 +312,20 @@ class TFTTester {
         this.assert(res.board.every(u => u.cost <= 3), "Invalid unit cost found in Level 5 board");
     }
 
+    async testRyzeUnlockSolver() {
+        const pool = this.data.units.filter(u => u.cost <= 5);
+        const mustIncludeNames = ["Ryze"];
+        const { results } = await this.optimizer.findBestBoards(pool, 9, [], mustIncludeNames, 'ryze-unlock', {}, 1, null, 'super');
+        
+        this.assert(results.length > 0, "Ryze solver found no boards at Level 9");
+        
+        const res = results[0];
+        const activeOrigins = this.optimizer.getActiveOrigins(res.counts);
+
+        this.assert(activeOrigins.length >= 4, `Ryze Unlock failed: Only ${activeOrigins.length} origins active. Origins: ${activeOrigins.join(', ')}. Board: ${res.board.map(u => u.name).join(', ')}`);
+        this.assert(res.board.some(u => u.name === "Ryze"), "Ryze missing from board");
+    }
+
     async testNidaleeAutoIncludeBug() {
         // This test simulates the UI's rendering logic fix.
         const neekoUnit = this.data.units.find(u => u.name === "Neeko");
