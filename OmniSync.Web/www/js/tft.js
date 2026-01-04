@@ -833,6 +833,7 @@ function renderResults(results, container, level) {
         let bronzeInfo = "";
         if (solverMode === 'bronze-for-life') {
             const activeCount = Object.keys(res.counts).filter(t => {
+                if (t === 'Targon') return false; // Exclude Targon from active count in Bronze mode
                 const traitInfo = tftData.trait_metadata[t];
                 return traitInfo && traitInfo.breakpoints.some(b => b <= res.counts[t]);
             }).length;

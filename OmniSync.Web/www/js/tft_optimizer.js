@@ -131,11 +131,17 @@ class TFTOptimizer {
                 }
 
                 if (highest > 0 || (traitData.type === "origin" && !breakpoints)) {
-                    activeTraits.add(trait);
+                    // Bronze mode excludes Targon from counting as an active trait for scoring purposes
+                    const isBronzeExclusion = (mode === 'bronze-for-life' && trait === "Targon");
+                    
+                    if (!isBronzeExclusion) {
+                        activeTraits.add(trait);
+                    }
 
                     if (trait === "Targon") {
                         // Small fixed bonus at breakpoint 1, no scaling
-                        if (highest >= 1) {
+                        // Exclude from scoring in bronze mode
+                        if (highest >= 1 && mode !== 'bronze-for-life') {
                             score += 200; 
                         }
                     } else {
