@@ -1160,6 +1160,12 @@
       "icon_url": "assets/tft/set16/traits/Yordle.svg"
     },
     {
+      "name": "Ixtal Emblem",
+      "is_emblem": true,
+      "trait": "Ixtal",
+      "icon_url": "assets/tft/set16/traits/Ixtal.svg"
+    },
+    {
       "name": "Zaun Emblem",
       "is_emblem": true,
       "trait": "Zaun",

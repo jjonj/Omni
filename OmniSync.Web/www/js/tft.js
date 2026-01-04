@@ -8,6 +8,7 @@ let selectedEmblems = [];
 let unitFilter = 'all';
 let unitAlphaFilter = null;
 let alphaFilterTimeout = null;
+let unitSortMode = 'alpha'; // 'alpha' or 'smart'
 let emblemSearch = '';
 let highlightedTrait = null;
 
@@ -183,7 +184,23 @@ function setAlphaFilter(letter) {
     renderUnitPools();
 }
 
+function toggleUnitSortMode(isSmart) {
+    unitSortMode = isSmart ? 'smart' : 'alpha';
+    renderUnitPools();
+}
+
 function renderUnitPools() {
+    // Collect active traits from the larger of currentTeam or mustInclude
+    let referenceUnits = [];
+    if (selectedCurrentTeam.length >= selectedMustInclude.filter(i => i.type === 'unit').length) {
+        referenceUnits = selectedCurrentTeam.map(u => tftData.units.find(du => du.name === u.name)).filter(u => u);
+    } else {
+        referenceUnits = selectedMustInclude.filter(i => i.type === 'unit').map(u => tftData.units.find(du => du.name === u.name)).filter(u => u);
+    }
+
+    const referenceTraits = new Set();
+    referenceUnits.forEach(u => u.traits.forEach(t => referenceTraits.add(t)));
+
     for (let cost = 1; cost <= 5; cost++) {
         const pool = document.getElementById(`unit-pool-${cost}`);
         if (!pool) continue;
@@ -198,6 +215,13 @@ function renderUnitPools() {
                 const aDisabled = activeDisabledUnits.includes(a.name);
                 const bDisabled = activeDisabledUnits.includes(b.name);
                 if (aDisabled !== bDisabled) return aDisabled - bDisabled;
+
+                if (unitSortMode === 'smart' && referenceTraits.size > 0) {
+                    const aMatches = a.traits.filter(t => referenceTraits.has(t)).length;
+                    const bMatches = b.traits.filter(t => referenceTraits.has(t)).length;
+                    if (aMatches !== bMatches) return bMatches - aMatches;
+                }
+
                 return a.name.localeCompare(b.name);
             });
 
@@ -539,6 +563,10 @@ function renderSelectionZones() {
     } else {
         emblemZone.innerHTML = '<div class="placeholder-text">Emblems</div>';
     }
+
+    if (unitSortMode === 'smart') {
+        renderUnitPools();
+    }
 }
 
 function clearCurrentTeam() {
@@ -581,6 +609,10 @@ function resetAll() {
         clearTimeout(alphaFilterTimeout);
         alphaFilterTimeout = null;
     }
+
+    unitSortMode = 'alpha';
+    const sortToggle = document.getElementById('smart-sort-toggle');
+    if (sortToggle) sortToggle.checked = false;
 
     activeDisabledUnits = [...userDefaultDisabledUnits];
     renderUnitPools();

@@ -493,7 +493,12 @@
                         <div class="pools-zone" ondrop="dropOnPools(event)" ondragover="allowDrop(event)">
                             <div class="pool-container">
                                 <div class="pool-header" style="flex-direction: column; align-items: flex-start; gap: 8px;">
-                                    <h2>Units</h2>
+                                    <div style="display: flex; justify-content: space-between; width: 100%; align-items: center;">
+                                        <h2>Units</h2>
+                                        <label class="hub-status-label" style="text-transform: none; font-size: 9px; display: flex; align-items: center; gap: 4px; cursor: pointer; margin: 0;">
+                                            <input type="checkbox" id="smart-sort-toggle" onchange="toggleUnitSortMode(this.checked)" style="width: 12px; height: 12px;"> Smart Sort
+                                        </label>
+                                    </div>
                                     <div id="alpha-filter" class="alpha-filter-container"></div>
                                 </div>
                                 <div class="unit-cost-groups">
