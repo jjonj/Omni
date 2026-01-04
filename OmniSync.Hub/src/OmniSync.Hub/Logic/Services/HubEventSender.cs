@@ -55,19 +55,19 @@ namespace OmniSync.Hub.Logic.Services
         {
             if (e.IsHistory)
             {
-                await _hubContext.Clients.All.SendAsync("ReceiveAiHistory", e.Text);
+                await _hubContext.Clients.All.SendAsync("ReceiveAiHistory", e.Text, e.Pid);
             }
             else 
             {
                  // Always send the text if present
                  if (!string.IsNullOrEmpty(e.Text))
                  {
-                     await _hubContext.Clients.All.SendAsync("ReceiveAiResponse", e.Text);
+                     await _hubContext.Clients.All.SendAsync("ReceiveAiResponse", e.Text, e.Pid);
                  }
 
                  if (e.IsFinished)
                  {
-                     await _hubContext.Clients.All.SendAsync("ReceiveAiStatus", "FINISHED");
+                     await _hubContext.Clients.All.SendAsync("ReceiveAiStatus", "FINISHED", e.Pid);
                  }
             }
         }

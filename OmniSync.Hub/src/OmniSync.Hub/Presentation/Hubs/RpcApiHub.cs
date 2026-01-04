@@ -553,8 +553,10 @@ namespace OmniSync.Hub.Presentation.Hubs
                 _logger.LogInformation($"[RpcApiHub] SendAiMessage: {preview} (Session: {sessionId})");
                 AnyCommandReceived?.Invoke(this, $"AI Message Sent: {preview} (Session: {sessionId})");
                 
+                int targetPid = sessionId ?? -1;
+
                 // 1. Broadcast the user message so other clients can see it
-                await Clients.All.SendAsync("ReceiveAiMessage", Context.ConnectionId, message);
+                await Clients.All.SendAsync("ReceiveAiMessage", Context.ConnectionId, message, targetPid);
 
                 string connectionId = Context.ConnectionId;
 
@@ -563,7 +565,6 @@ namespace OmniSync.Hub.Presentation.Hubs
                 {
                     try
                     {
-                        int targetPid = sessionId ?? -1;
                         _logger.LogInformation($"[RpcApiHub] Background task sending prompt to AI (PID: {targetPid})");
                         if (!await _aiCliService.SendPromptAsync(message, targetPid))
                         {

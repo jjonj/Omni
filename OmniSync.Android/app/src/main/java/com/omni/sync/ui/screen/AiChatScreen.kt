@@ -53,7 +53,7 @@ fun AiChatScreen(
     val sessions by signalRClient.aiSessions.collectAsState()
     var inputText by remember { mutableStateOf("") }
     var showSessionMenu by remember { mutableStateOf(false) }
-    var selectedPid by remember { mutableIntStateOf(-1) }
+    val selectedPid by signalRClient.selectedPid.collectAsState()
     var showRenameDialog by remember { mutableStateOf(false) }
     var renameText by remember { mutableStateOf("") }
     var pidToRename by remember { mutableIntStateOf(-1) }
@@ -71,27 +71,20 @@ fun AiChatScreen(
 
     LaunchedEffect(Unit) {
         signalRClient.getAiSessions()
-        signalRClient.lastCreatedSessionPid.collect { pid ->
-            selectedPid = pid
-        }
     }
 
-    // Sync selectedPid with available sessions
-    LaunchedEffect(sessions) {
-        if (selectedPid == -1 && sessions.isNotEmpty()) {
-            selectedPid = sessions.keys.first()
-        } else if (selectedPid != -1 && !sessions.containsKey(selectedPid)) {
-            selectedPid = if (sessions.isNotEmpty()) sessions.keys.first() else -1
-        }
-    }
-
-    // Auto-scroll to bottom
+    // Auto-scroll to bottom (Index 0 in reverse layout)
     LaunchedEffect(filteredMessages, isAiThinking) {
-        if (filteredMessages.isNotEmpty() || isAiThinking) {
-            kotlinx.coroutines.delay(100)
-            val lastIndex = if (isAiThinking) filteredMessages.size else filteredMessages.size - 1
-            if (lastIndex >= 0) {
-                listState.animateScrollToItem(lastIndex)
+        if (filteredMessages.isNotEmpty()) {
+            val isReloading = aiStatus?.contains("Reloading", ignoreCase = true) == true || 
+                             aiStatus?.contains("Switching", ignoreCase = true) == true
+            
+            if (isReloading) {
+                // Jump instantly for history reloads/switches
+                listState.scrollToItem(0)
+            } else if (isAiThinking) {
+                // Animate for thinking indicator
+                listState.animateScrollToItem(0)
             }
         }
     }
@@ -147,7 +140,6 @@ fun AiChatScreen(
                                         }
                                     },
                                     onClick = {
-                                        selectedPid = pid
                                         signalRClient.switchAiSession(pid)
                                         showSessionMenu = false
                                     }
@@ -161,9 +153,10 @@ fun AiChatScreen(
                         Icon(Icons.Default.Add, contentDescription = "New Session")
                     }
                     IconButton(onClick = { 
-                        val pidToStop = selectedPid
-                        signalRClient.stopAiSession(pidToStop)
-                        signalRClient.clearAiMessages(if (pidToStop != -1) pidToStop else null)
+                        if (selectedPid != -1) {
+                            signalRClient.stopAiSession(selectedPid)
+                            signalRClient.clearAiMessages(selectedPid)
+                        }
                     }, enabled = isConnected) {
                         Icon(Icons.Default.Close, contentDescription = "Close Session")
                     }
@@ -203,6 +196,7 @@ fun AiChatScreen(
 
                 LazyColumn(
                     state = listState,
+                    reverseLayout = true,
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxWidth()
@@ -210,14 +204,14 @@ fun AiChatScreen(
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                     contentPadding = PaddingValues(top = 8.dp, bottom = 8.dp)
                 ) {
-                    items(filteredMessages) { (sender, content) ->
-                        ChatBubble(sender, content)
-                    }
-
                     if (isAiThinking) {
                         item {
                             AiTypingIndicator()
                         }
+                    }
+
+                    items(filteredMessages.reversed()) { (sender, content) ->
+                        ChatBubble(sender, content)
                     }
                 }
 
@@ -241,9 +235,15 @@ fun AiChatScreen(
                             if (inputText.isNotBlank()) {
                                 signalRClient.sendAiMessage(inputText, if (selectedPid != -1) selectedPid else null)
                                 inputText = ""
+                                coroutineScope.launch {
+                                    listState.animateScrollToItem(0)
+                                }
                             } else {
                                 // If empty, send Enter key to Hub
                                 signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_RETURN)
+                                coroutineScope.launch {
+                                    listState.animateScrollToItem(0)
+                                }
                             }
                         },
                         modifier = Modifier.background(
@@ -364,13 +364,12 @@ fun QuickActionPanel(
                 }
             )
 
-            ActionKeyButton(
-                text = "Clear",
-                icon = Icons.Default.Delete,
-                modifier = Modifier.weight(1f),
-                onClick = { signalRClient.clearAiMessages(if (selectedPid != -1) selectedPid else null) }
-            )
-            
+                        ActionKeyButton(
+                            text = "Clear",
+                            icon = Icons.Default.Delete,
+                            modifier = Modifier.weight(1f),
+                            onClick = { if (selectedPid != -1) signalRClient.clearAiMessages(selectedPid) } 
+                        )            
             ActionKeyButton(
                 text = "History",
                 icon = Icons.Default.Cached,

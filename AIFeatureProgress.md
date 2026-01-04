@@ -68,6 +68,7 @@ The test suite has been fully migrated to use the native Hub integration:
 | **Workspace Management**| Stable | **NEW**: Gemini CLI now supports `--workspace` flag. |
 | **Android "CLI Here"** | Stable | **NEW**: Long-tap a folder in Android to launch a CLI at that path. |
 | **Process Cleanup Safety**| Stable | Cleanup scripts protect ancestors and "Omni" windows. |
+| **AI Chat UI UX** | Stable | **IMPROVED**: Reverse layout for bottom anchoring, instant jump for history/switch. |
 
 ### Resolved: Workspace & Android Integration
 1.  **Workspace Flag**: Added `--workspace` argument to `gemini-cli` to explicitly set the working directory, overriding `process.cwd()`.
