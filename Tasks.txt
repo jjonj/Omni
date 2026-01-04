@@ -1,3 +1,9 @@
+
+temp notes for wartribes 
+
+need poc for persistent pcg changes, change 07  diff saved and compared by pcg node using 2d position hash, allow exclusion or modification. 
+
+
 # Tasks
 
 ## Intro
@@ -19,6 +25,11 @@ If necessary you may use AISpeak to ask the user for help/clarifications.
 
 ✅ Auto reconnect gives up after a while which is fine, but it should retry when the app is reopened
 
+✅ remote wake on lan when NOT on local network does not work, help user configure router with mac address binding or something 
+
+✅ The disconnected red color background is too strong, make it darker
+
+
 ## For the hub
 
 ### Hub window
@@ -28,15 +39,37 @@ If necessary you may use AISpeak to ask the user for help/clarifications.
 
 ### Dashboard
 
+✅ After using wake on lan, Start a reconnecting cycle after 1 minute
+
+✅ Adb log button should filter by com.omni.sync
+
 ### Remote Control Screen
 
+✅ add another button to go to a third button panel which takes up most of the screen. This screen has a grid containing all macros and macro buttons can be rearranged with long press drag 
 
+✅ add a macro manager screen accessible from third panel 
+  allow defining macros with an ahk like syntax, allow let input, custom delays, opening and focusing windows, starting cli ai in configured workspaces, opening windows explorer to specific folders, etc
+  macros to into a dropdown for easy activation and deletion 
+  macros can be used a quick action in  notification or widget 
+
+✅ Replace the "kbd" text with a keyboard icon
 
 ✅ Stream PC monitor, replacing background of the trackpad leaving the trackpad functioning still, options to toggle monitor, pinch to zoom, (advanced feature, do last)       
 
  
 
 ### Files & Video Screen
+
+✅ + button to add files does not work in offline mode, it should be able to create a file that's cached from birth and will sync when connected 
+
+✅ add logging in activity log for all cache related operations  
+
+✅ allow caching a whole folder recursively but with a max size per file, files above that size are replaced by empty myfile.mp4.fake files. when a folder is cached this way do not list every single subitem in the cached list that already exists, just the selected folder with bold foldername. ask user for clarification. add max file size to settings 
+
+✅ to settings screen add a way to exclude files and folders from automatic caching recursively, allowing patterns. e.g. "G:/*", "*porn*". This prevents automatic caching when visiting a folder and when using the above cache whole folder feature but does not prevent visiting those places manually when connected 
+
+✅ When we have files edited offline and we connect and see that last saved time don't match cached save time on windows and we save as conflicted.txt then first try to resolve with a simple merge strategy going line by line and comparing. leave some tags like [MERGED] when doing this and be careful not to delete anything, better keep both versions of lines 
+✅ if a certain ratio of lines mismatch then fall back to conflicted suffix
 
 ✅ on image viewer screen the android back button seems to close app instead of going back to the containing folder 
 
@@ -72,10 +105,11 @@ If necessary you may use AISpeak to ask the user for help/clarifications.
 
 ### AI screen
 
+✅ Write AIScreen.md that describes the entire AI screen in very high detail, including every button, what function it calls, how things are above and below eachother and various behaviors and reactions. 
+
 ✅ zoom button zooms in the wrong direction 
 
 ✅ The conversation bubbles dont separate very well. When new messages come in, they just get kinda appended to the last message. However if i go to the session list and reselect the same session, the history reloads and looks perfect, except for a dangling "AI: ..." even though the AI isnt thinking. It also becomes stuck on status "Switching sessions..." even though it already switched or didnt need to switch depending on your perspective. 
-
 
 ✅ When the android keyboard is up, there is too much empty space between the keyboard and the buttons. Remote screen previously had this issue but it got fixed, so reference how it handles keyboard up moving of stuff. 
 ✅ The "Ask AI..." inputfieldispartially hidden behind the button panel
@@ -92,12 +126,9 @@ If necessary you may use AISpeak to ask the user for help/clarifications.
 
 ## Chrome extension
 
+✅ For all the functions that the extension can do, add them to the right click menu of the extension inside chrome. So e.g. i can open the youtube history video in chrome, from the extension right click menu
+
 ✅ Seems unable to reconnect after getting disconnected, I have to uninstall reinstall the extension to work
-
-
-
-
-
 
 ✅ When disconnecting from hub it gives these errors. Disconnecting shouldnt result in errors, warnings at most or just handle it gracefully.
 

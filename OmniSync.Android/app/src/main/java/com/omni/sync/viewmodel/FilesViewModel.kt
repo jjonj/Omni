@@ -219,6 +219,7 @@ class FilesViewModel(
         val json = gson.toJson(entries)
         cachePrefs.edit().putString("cache_$path", json).apply()
         refreshCachedPaths()
+        mainViewModel.addLog("Cached ${entries.size} items for: ${if(path.isEmpty()) "(root)" else path}", com.omni.sync.ui.screen.LogType.INFO)
     }
 
     private fun getFromCache(path: String): List<FileSystemEntry>? {
@@ -302,12 +303,14 @@ class FilesViewModel(
         cachePrefs.edit().remove("cache_$path").apply()
         textCachePrefs.edit().remove("text_$path").apply()
         refreshCachedPaths()
+        mainViewModel.addLog("Uncached: $path", com.omni.sync.ui.screen.LogType.INFO)
     }
 
     fun clearAllCaches() {
         cachePrefs.edit().clear().apply()
         textCachePrefs.edit().clear().apply()
         refreshCachedPaths()
+        mainViewModel.addLog("Cleared all local caches", com.omni.sync.ui.screen.LogType.INFO)
     }
 
     fun toggleBookmark(entry: FileSystemEntry) {
@@ -494,7 +497,15 @@ class FilesViewModel(
     }
 
     private fun enrichWithPendingFiles(directoryPath: String, entries: List<FileSystemEntry>): List<FileSystemEntry> {
-        val newEntries = entries.toMutableList()
+        val newEntries = entries.map { entry ->
+            val maxFileSize = mainViewModel.appConfig.maxCacheFileSize
+            if (!entry.isDirectory && entry.size > maxFileSize) {
+                // If it's oversized, and we have a placeholder cached, show it as .fake
+                if (textCachePrefs.contains("text_${entry.path}")) {
+                    entry.copy(name = entry.name + ".fake")
+                } else entry
+            } else entry
+        }.toMutableList()
 
         if (directoryPath.isEmpty() || directoryPath == "/") {
             // Add virtual folders
@@ -772,7 +783,8 @@ class FilesViewModel(
                 
                 // Cache it
                 textCachePrefs.edit().putString("text_${entry.path}", content).apply()
-            refreshCachedPaths()
+                refreshCachedPaths()
+                mainViewModel.addLog("Cached file content: ${entry.name}", com.omni.sync.ui.screen.LogType.INFO)
 
                 viewModelScope.launch(AndroidSchedulers.mainThread().asCoroutineDispatcher()) {
                     mainViewModel.navigateTo(AppScreen.EDITOR)
@@ -904,11 +916,11 @@ class FilesViewModel(
                 
                 // Update cache
                 textCachePrefs.edit().putString("text_${entry.path}", content).apply()
-            refreshCachedPaths()
+                refreshCachedPaths()
                 markSaved()
 
                 viewModelScope.launch(AndroidSchedulers.mainThread().asCoroutineDispatcher()) {
-                    mainViewModel.addLog("File saved: ${entry.name}", com.omni.sync.ui.screen.LogType.SUCCESS)
+                    mainViewModel.addLog("File saved and cached: ${entry.name}", com.omni.sync.ui.screen.LogType.SUCCESS)
                     _isSaving.value = false
                     markSaved()
                 }
@@ -918,6 +930,8 @@ class FilesViewModel(
             }
         }
     }
+
+    private val conflictResolver = com.omni.sync.logic.ConflictResolver()
 
     private fun syncPendingChanges() {
         val allPending = pendingEditsPrefs.all
@@ -941,25 +955,40 @@ class FilesViewModel(
                     
                     val currentEntry = currentEntries?.find { it.path == pendingEdit.path }
 
-                    val savePath: String
+                    var savePath = pendingEdit.path
+                    var finalContent = pendingEdit.content
 
                     if (pendingEdit.isNewFile) {
-                        savePath = if (currentEntry != null) {
-                            pendingEdit.path + ".conflicted"
-                        } else {
-                            pendingEdit.path
+                        if (currentEntry != null) {
+                            savePath = pendingEdit.path + ".conflicted"
                         }
                     } else {
-                        savePath = if (currentEntry == null || currentEntry.lastModified.time != pendingEdit.originalLastModified) {
-                            pendingEdit.path + ".conflicted"
-                        } else {
-                            pendingEdit.path
+                        if (currentEntry == null || currentEntry.lastModified.time != pendingEdit.originalLastModified) {
+                            // CONFLICT: Try to merge
+                            if (currentEntry != null) {
+                                try {
+                                    val remoteContent = downloadFileContent(currentEntry)
+                                    val mergeResult = conflictResolver.merge(pendingEdit.content, remoteContent)
+                                    
+                                    if (mergeResult.conflictRatio > 0.5f) {
+                                        finalContent = pendingEdit.content
+                                        savePath = pendingEdit.path + ".conflicted"
+                                    } else {
+                                        finalContent = mergeResult.content
+                                        savePath = pendingEdit.path + ".merged"
+                                    }
+                                } catch (e: Exception) {
+                                    savePath = pendingEdit.path + ".conflicted"
+                                }
+                            } else {
+                                savePath = pendingEdit.path + ".restored"
+                            }
                         }
                     }
 
                     signalRClient.sendPayload("SAVE_FILE", mapOf(
                         "Path" to savePath,
-                        "Content" to pendingEdit.content
+                        "Content" to finalContent
                     ))
                     
                     viewModelScope.launch(AndroidSchedulers.mainThread().asCoroutineDispatcher()) {
@@ -1044,6 +1073,105 @@ class FilesViewModel(
             }
             // If this was pending, keep the pending mark until a successful sync clears it
         } catch (_: Exception) {}
+    }
+
+    fun cacheFolderRecursive(rootEntry: FileSystemEntry) {
+        if (!mainViewModel.isConnected.value) {
+            _errorMessage.value = "Must be connected to cache folders."
+            return
+        }
+        if (!rootEntry.isDirectory) return
+
+        viewModelScope.launch(Schedulers.io().asCoroutineDispatcher()) {
+            val queue = mutableListOf(rootEntry.path)
+            val visited = mutableSetOf<String>()
+            val maxFileSize = mainViewModel.appConfig.maxCacheFileSize
+            val exclusionPatterns = mainViewModel.appConfig.cacheExclusionPatterns
+
+            while (queue.isNotEmpty()) {
+                val currentPath = queue.removeAt(0)
+                if (visited.contains(currentPath)) continue
+                visited.add(currentPath)
+
+                if (shouldExclude(currentPath, exclusionPatterns)) {
+                    mainViewModel.addLog("Excluding from cache: $currentPath", com.omni.sync.ui.screen.LogType.INFO)
+                    continue
+                }
+
+                try {
+                    val entries = signalRClient.listDirectory(currentPath)
+                        ?.subscribeOn(Schedulers.io())
+                        ?.blockingGet() ?: emptyList()
+
+                    saveToCache(currentPath, entries)
+                    
+                    for (entry in entries) {
+                        if (entry.isDirectory) {
+                            if (entry.name != "..") {
+                                queue.add(entry.path)
+                            }
+                        } else {
+                            if (!shouldExclude(entry.path, exclusionPatterns)) {
+                                if (entry.size <= maxFileSize) {
+                                    // Cache full content
+                                    try {
+                                        val content = downloadFileContent(entry)
+                                        textCachePrefs.edit().putString("text_${entry.path}", content).apply()
+                                        mainViewModel.addLog("Cached: ${entry.name}", com.omni.sync.ui.screen.LogType.INFO)
+                                    } catch (e: Exception) {
+                                        Log.w("FilesViewModel", "Failed to cache file content: ${entry.path}")
+                                        mainViewModel.addLog("Failed to cache: ${entry.name}", com.omni.sync.ui.screen.LogType.WARNING)
+                                    }
+                                } else {
+                                    // Cache .fake placeholder
+                                    textCachePrefs.edit().putString("text_${entry.path}", "[FILE_TOO_LARGE] size: ${entry.size}").apply()
+                                    mainViewModel.addLog("Cached placeholder: ${entry.name}", com.omni.sync.ui.screen.LogType.INFO)
+                                    // Also mark the path as fake in some way or just use the extension in UI if needed
+                                    // For now, we'll just rename it in the listing if we were smart, 
+                                    // but let's just stick to the content indicator for now.
+                                }
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.e("FilesViewModel", "Error during recursive cache of $currentPath", e)
+                }
+            }
+            
+            viewModelScope.launch(AndroidSchedulers.mainThread().asCoroutineDispatcher()) {
+                mainViewModel.addLog("Recursive cache complete for ${rootEntry.name}", com.omni.sync.ui.screen.LogType.SUCCESS)
+                refreshCachedPaths()
+            }
+        }
+    }
+
+    private fun shouldExclude(path: String, patterns: List<String>): Boolean {
+        if (patterns.isEmpty()) return false
+        val normalizedPath = path.replace("\\", "/")
+        return patterns.any { pattern ->
+            val regex = pattern.replace("*", ".*").replace("?", ".")
+            normalizedPath.contains(Regex(regex, RegexOption.IGNORE_CASE))
+        }
+    }
+
+    private fun downloadFileContent(entry: FileSystemEntry): String {
+        val totalSize = entry.size
+        val contentBuilder = StringBuilder()
+        val chunkSize = 128 * 1024
+        var currentOffset = 0L
+        while (currentOffset < totalSize) {
+            val remainingBytes = totalSize - currentOffset
+            val currentChunkSize = minOf(chunkSize.toLong(), remainingBytes).toInt()
+            if (currentChunkSize == 0) break
+            val chunk = signalRClient.getFileChunk(entry.path, currentOffset, currentChunkSize)
+                ?.subscribeOn(Schedulers.io())
+                ?.blockingGet() as? ByteArray
+            if (chunk != null) {
+                contentBuilder.append(String(chunk, Charsets.UTF_8))
+                currentOffset += chunk.size
+            } else break
+        }
+        return contentBuilder.toString()
     }
 
     private fun getParentPath(path: String): String {
