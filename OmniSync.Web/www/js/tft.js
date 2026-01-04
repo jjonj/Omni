@@ -66,10 +66,33 @@ async function loadTFTData() {
         if (configTextarea) configTextarea.value = userDefaultDisabledUnits.join(', ');
 
         optimizer = new TFTOptimizer(tftData.units, tftData.trait_metadata);
+        setupSolverListeners();
         updateUI();
     } catch (err) {
         console.error("Failed to load TFT data:", err);
     }
+}
+
+function setupSolverListeners() {
+    const solverRadios = document.querySelectorAll('input[name="solver-mode"]');
+    solverRadios.forEach(radio => {
+        radio.addEventListener('change', (e) => {
+            if (e.target.value === 'world-runes' && e.target.checked) {
+                // Auto-select levels 5 and 6
+                document.querySelectorAll('.lvl-cb').forEach(cb => {
+                    cb.checked = (cb.value === "5" || cb.value === "6");
+                });
+
+                // Highlight the emblem drop zone
+                const emblemZone = document.getElementById('emblem-drop-zone')?.closest('.control-box');
+                if (emblemZone) {
+                    emblemZone.classList.remove('pulse-highlight');
+                    void emblemZone.offsetWidth; // Force reflow
+                    emblemZone.classList.add('pulse-highlight');
+                }
+            }
+        });
+    });
 }
 
 function updateUI() {
@@ -482,6 +505,9 @@ function resetAll() {
     
     const finalDisplay = document.getElementById('final-combinations-display');
     if (finalDisplay) finalDisplay.style.display = 'none';
+
+    const emblemZone = document.getElementById('emblem-drop-zone')?.closest('.control-box');
+    if (emblemZone) emblemZone.classList.remove('pulse-highlight');
 
     clearTraitHighlight();
     renderSelectionZones();

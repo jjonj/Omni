@@ -240,6 +240,16 @@ body {
     box-shadow: 0 0 0 1px rgba(10, 132, 255, 0.1);
 }
 
+@keyframes pulse-glow {
+    0% { border-color: var(--border); box-shadow: none; }
+    50% { border-color: var(--accent); box-shadow: 0 0 15px rgba(10, 132, 255, 0.4); }
+    100% { border-color: var(--border); box-shadow: none; }
+}
+
+.pulse-highlight {
+    animation: pulse-glow 1.5s ease-in-out 3;
+}
+
 /* Form Elements */
 .row {
     display: flex;
