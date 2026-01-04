@@ -360,6 +360,54 @@
             background: white;
             border-radius: 8px;
         }
+
+        /* Mobile Layout Adjustments */
+        @media (max-width: 1024px) {
+            .optimizer-layout {
+                grid-template-columns: 1fr;
+                grid-template-rows: auto;
+                height: auto;
+                display: flex;
+                flex-direction: column;
+            }
+
+            .tft-container {
+                height: auto;
+                min-height: calc(100vh - 56px);
+                overflow-y: auto;
+            }
+            
+            .tft-content {
+                overflow: visible;
+                height: auto;
+            }
+
+            .selection-zone, .results-zone {
+                overflow: visible;
+                height: auto;
+            }
+
+            .pools-zone {
+                height: 600px; /* Fixed height for scrolling pools internally */
+                order: 3; /* Move pools to bottom */
+            }
+
+            .results-zone {
+                order: 2;
+            }
+
+            .tft-tabs {
+                padding: 0 12px;
+                gap: 8px;
+                overflow-x: auto;
+            }
+
+            .tft-tab {
+                padding: 12px 12px;
+                font-size: 12px;
+                white-space: nowrap;
+            }
+        }
     </style>
 </head>
 <body>
@@ -452,7 +500,10 @@
                             <div class="control-box" style="flex: 1; display: flex; flex-direction: column; padding: 12px; min-height: 80px;">
                                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
                                     <h2 style="font-size: 10px; margin: 0; border: none; padding: 0;">Current Team</h2>
-                                    <button class="btn danger" onclick="clearCurrentTeam()" style="font-size: 8px; padding: 1px 4px; height: 16px;">Clear</button>
+                                    <div style="display: flex; gap: 4px;">
+                                        <button class="btn primary" onclick="handleSaveComp()" style="font-size: 8px; padding: 1px 4px; height: 16px;">Save</button>
+                                        <button class="btn danger" onclick="clearCurrentTeam()" style="font-size: 8px; padding: 1px 4px; height: 16px;">Clear</button>
+                                    </div>
                                 </div>
                                 <div class="drop-zone" id="current-team-zone" ondrop="dropToCurrentTeam(event)" ondragover="allowDrop(event)" style="flex: 1; min-height: 50px;">
                                     <div class="placeholder-text">Drag Units Here</div>
@@ -494,11 +545,11 @@
                             <div class="pool-container">
                                 <div class="pool-header" style="flex-direction: column; align-items: flex-start; gap: 8px;">
                                     <div style="display: flex; justify-content: space-between; width: 100%; align-items: center;">
-                                        <h2>Units</h2>
                                         <label class="hub-status-label" style="text-transform: none; font-size: 9px; display: flex; align-items: center; gap: 4px; cursor: pointer; margin: 0;">
                                             <input type="checkbox" id="smart-sort-toggle" onchange="toggleUnitSortMode(this.checked)" style="width: 12px; height: 12px;"> Smart Sort
                                         </label>
                                     </div>
+                                    <div id="saved-comps-container" class="saved-comps-container"></div>
                                     <div id="alpha-filter" class="alpha-filter-container"></div>
                                 </div>
                                 <div class="unit-cost-groups">
