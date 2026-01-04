@@ -221,6 +221,7 @@
       ],
       "is_carry": false,
       "locked": false,
+      "auto_include": "Nidalee",
       "icon_url": "assets/tft/set16/champions/Neeko.png"
     },
     {
@@ -396,7 +397,7 @@
       "cost": 3,
       "traits": [
         "Noxus",
-        "Vanquisher"
+        "Quickstriker"
       ],
       "is_carry": true,
       "locked": false,
@@ -1018,6 +1019,17 @@
       "is_carry": false,
       "locked": false,
       "icon_url": "assets/tft/set16/champions/Tibbers.png"
+    },
+    {
+      "name": "Nidalee",
+      "cost": 4,
+      "traits": [
+        "Ixtal"
+      ],
+      "is_carry": false,
+      "locked": false,
+      "requires": "Neeko",
+      "icon_url": "assets/tft/set16/champions/Nidalee.png"
     }
   ],
   "items": [
@@ -1337,6 +1349,14 @@
       ],
       "type": "class"
     },
+    "Shadow Isles": {
+      "breakpoints": [
+        2,
+        4
+      ],
+      "type": "origin",
+      "ignored": true
+    },
     "Targon": {
       "breakpoints": [
         2,
@@ -1344,6 +1364,13 @@
         4
       ],
       "type": "origin"
+    },
+    "Ixtal": {
+      "breakpoints": [
+        3
+      ],
+      "type": "origin",
+      "ignored": true
     }
   }
 }

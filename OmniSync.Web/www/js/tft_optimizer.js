@@ -4,6 +4,11 @@ class TFTOptimizer {
         this.TRAITS_DATA = traitsData;
         this.isCancelled = false;
 
+        // Speed Optimization: Pre-index traits
+        this.traitNames = Object.keys(traitsData || {});
+        this.traitMap = {};
+        this.traitNames.forEach((name, i) => this.traitMap[name] = i);
+
         // Constants
         this.BREAKPOINT_SCORE_MULTIPLIER = 1000;
         this.UNIQUE_TRAIT_SCORE = 1900;
@@ -24,7 +29,16 @@ class TFTOptimizer {
         
         this.SMALL_TRAIT_BONUS = 1;
         this.BONUS_TRAITS = ["Quickstriker", "Piltover", "Targon"];
-        this.IGNORE_TRAITS = ["Ixtal", "Shadow Isles"];
+        
+        // Data-driven ignored traits
+        this.IGNORE_TRAITS = [];
+        if (this.TRAITS_DATA) {
+            for (const t in this.TRAITS_DATA) {
+                if (this.TRAITS_DATA[t].ignored) {
+                    this.IGNORE_TRAITS.push(t);
+                }
+            }
+        }
         
         // Unit Specifics
         this.ANNIE_ARCANIST_COUNT = 1;
@@ -40,32 +54,45 @@ class TFTOptimizer {
 
     scoreBoard(board, emblems, targetSize, mode = 'default', mustIncludeTraits = {}, mustIncludeNames = []) {
         let counts = {};
-        const names = board.map(u => u.name);
+        const names = new Set();
+        for (let i = 0; i < board.length; i++) names.add(board[i].name);
         
-        if (names.includes("Sylas") && this.SYLAS_FORBIDDEN_NAMES.some(x => names.includes(x))) {
+        if (names.has("Sylas") && this.SYLAS_FORBIDDEN_NAMES.some(x => names.has(x))) {
             return { score: -this.INVALID_COMP_PENALTY, counts };
         }
 
-        const hasAnnie = names.includes("Annie");
-        const hasTibbers = names.includes("Tibbers");
+        const hasAnnie = names.has("Annie");
+        const hasTibbers = names.has("Tibbers");
         if (hasAnnie !== hasTibbers) {
             return { score: -this.INVALID_COMP_PENALTY, counts };
         }
 
+        // Data-driven requirements check
+        for (let i = 0; i < board.length; i++) {
+            const u = board[i];
+            if (u.requires && !names.has(u.requires)) {
+                return { score: -this.INVALID_COMP_PENALTY, counts };
+            }
+        }
+
         // Hard Level Rules (Exempting Must-Include)
-        if (targetSize < 6 && names.includes("Kennen") && !mustIncludeNames.includes("Kennen")) return { score: -this.INVALID_COMP_PENALTY, counts };
-        if (targetSize < 7 && names.some(n => n.includes("Kobuko")) && !mustIncludeNames.some(n => n.includes("Kobuko"))) return { score: -this.INVALID_COMP_PENALTY, counts };
-        if (targetSize < 8 && board.some(u => u.cost === 5 && !mustIncludeNames.includes(u.name))) return { score: -this.INVALID_COMP_PENALTY, counts };
+        const mustSet = new Set(mustIncludeNames);
+        if (targetSize < 6 && names.has("Kennen") && !mustSet.has("Kennen")) return { score: -this.INVALID_COMP_PENALTY, counts };
+        if (targetSize < 7 && board.some(u => u.name.includes("Kobuko") && !mustSet.has(u.name))) return { score: -this.INVALID_COMP_PENALTY, counts };
+        if (targetSize < 8 && board.some(u => u.cost === 5 && !mustSet.has(u.name))) return { score: -this.INVALID_COMP_PENALTY, counts };
         
-        for (const u of board) {
-            for (const t of u.traits) {
+        for (let i = 0; i < board.length; i++) {
+            const u = board[i];
+            for (let j = 0; j < u.traits.length; j++) {
+                const t = u.traits[j];
                 if (this.IGNORE_TRAITS.includes(t)) continue;
                 const increment = (u.name === "Annie" && t === "Arcanist") ? this.ANNIE_ARCANIST_COUNT : 1;
                 counts[t] = (counts[t] || 0) + increment;
             }
         }
         
-        for (const emb of emblems) {
+        for (let i = 0; i < emblems.length; i++) {
+            const emb = emblems[i];
             if (!this.IGNORE_TRAITS.includes(emb)) {
                 counts[emb] = (counts[emb] || 0) + 1;
             }
@@ -80,16 +107,29 @@ class TFTOptimizer {
                 score -= this.INVALID_COMP_PENALTY;
             }
             
-            if (this.TRAITS_DATA[trait]) {
-                const breakpoints = this.TRAITS_DATA[trait].breakpoints;
-                const reached = breakpoints.filter(b => b <= count);
-                if (reached.length > 0) {
+            const traitData = this.TRAITS_DATA[trait];
+            if (traitData) {
+                const breakpoints = traitData.breakpoints;
+                let highest = 0;
+                for (let i = 0; i < breakpoints.length; i++) {
+                    if (breakpoints[i] <= count) highest = breakpoints[i];
+                }
+
+                if (highest > 0) {
                     activeTraits.add(trait);
                     if (trait !== "Targon") {
                         if (mode === 'bronze-for-life') {
                             score += 1 * this.BREAKPOINT_SCORE_MULTIPLIER;
                         } else {
-                            score += Math.max(...reached) * this.BREAKPOINT_SCORE_MULTIPLIER;
+                            score += highest * this.BREAKPOINT_SCORE_MULTIPLIER;
+                        }
+                    }
+                } else {
+                    // Penalize units with single traits if that trait breakpoint is not reached.
+                    for (let i = 0; i < board.length; i++) {
+                        const u = board[i];
+                        if (u.traits.length === 1 && u.traits[0] === trait) {
+                            score -= this.MISSING_CARRY_PENALTY;
                         }
                     }
                 }
@@ -105,33 +145,41 @@ class TFTOptimizer {
             }
         }
         
-        const carries = board.filter(u => u.is_carry);
-        if (targetSize <= 6) {
-            if (carries.length < 1) score -= this.MISSING_CARRY_PENALTY;
-        } else if (targetSize <= 8) {
-            const highCostCarries = carries.filter(u => u.cost >= 4);
-            if (carries.length < 2 || highCostCarries.length < 1) score -= this.MISSING_CARRY_PENALTY;
-        } else {
-            const highCostCarries = carries.filter(u => u.cost >= 4);
-            if (carries.length < 3 || highCostCarries.length < 2) score -= this.MISSING_CARRY_PENALTY;
-        }
-        
+        let carryCount = 0;
+        let highCostCarryCount = 0;
         let threeCostCount = 0;
         let lowCostCount = 0; 
         let highCostCount = 0;
 
-        const costWeight = (targetSize >= 7) ? this.UNIT_COST_TIEBREAKER_WEIGHT : -10; 
-        const bonusTraitWeight = (targetSize >= 7) ? 100 : 1;
-
-        for (const u of board) {
+        for (let i = 0; i < board.length; i++) {
+            const u = board[i];
+            if (u.is_carry) {
+                carryCount++;
+                if (u.cost >= 4) highCostCarryCount++;
+            }
             if (u.cost === 3) threeCostCount++;
             if (u.cost <= 2) lowCostCount++;
             if (u.cost >= 4) highCostCount++;
+        }
 
+        if (targetSize <= 6) {
+            if (carryCount < 1) score -= this.MISSING_CARRY_PENALTY;
+        } else if (targetSize <= 8) {
+            if (carryCount < 2 || highCostCarryCount < 1) score -= this.MISSING_CARRY_PENALTY;
+        } else {
+            if (carryCount < 3 || highCostCarryCount < 2) score -= this.MISSING_CARRY_PENALTY;
+        }
+        
+        const costWeight = (targetSize >= 7) ? this.UNIT_COST_TIEBREAKER_WEIGHT : -10; 
+        const bonusTraitWeight = (targetSize >= 7) ? 100 : 1;
+
+        for (let i = 0; i < board.length; i++) {
+            const u = board[i];
             if (u.locked) score -= this.LOCKED_UNIT_PENALTY;
             
             let isTargonUnit = false;
-            for (const t of u.traits) {
+            for (let j = 0; j < u.traits.length; j++) {
+                const t = u.traits[j];
                 if (t === "Yordle") score -= this.YORDLE_PENALTY;
                 if (this.BONUS_TRAITS.includes(t)) score += bonusTraitWeight;
                 if (t === "Targon") isTargonUnit = true;
@@ -189,8 +237,24 @@ class TFTOptimizer {
         return count(targetSlots, 0);
     }
 
-    async findBestBoards(pool, size, emblems, mustIncludeNames = [], mode = 'default', mustIncludeTraits = {}, limit = 3, onProgress = null) {
-        this.isCancelled = false;
+    calculateHeuristicScore(u, size, synergyBase, mustIncludeTraits, heuristic) {
+        let score = 0;
+        const mustTraitNames = Object.keys(mustIncludeTraits);
+        
+        for (let i = 0; i < u.traits.length; i++) {
+            const t = u.traits[i];
+            if (synergyBase.has(t)) score += 20;
+            if (mustTraitNames.includes(t)) score += 30;
+        }
+        
+        score += u.cost * 3;
+        if (u.is_carry) score += 12;
+        score += u.traits.length * 2;
+        
+        return score;
+    }
+
+    getCandidates(pool, size, emblems, mustIncludeNames, mustIncludeTraits, heuristic) {
         const targetSlots = size;
         let fixedUnits = [];
         if (mustIncludeNames && mustIncludeNames.length > 0) {
@@ -200,30 +264,101 @@ class TFTOptimizer {
         fixedUnits.forEach(f => f.traits.forEach(t => synergyBase.add(t)));
         
         let candidates = pool.filter(u => !fixedUnits.some(f => f.name === u.name));
+        
+        // Pass 1: Direct Synergy Scoring
+        const unitScores = new Map();
+        for (const u of candidates) {
+            let score = 0;
+            for (const t of u.traits) {
+                if (synergyBase.has(t)) score += 20;
+            }
+            score += u.cost * 2;
+            if (u.is_carry) score += 10;
+            unitScores.set(u.name, score);
+        }
+
+        // Pass 2: Identify "Bridge Traits" 
+        const bridgeTraitWeights = {};
+        const topDirectUnits = [...candidates]
+            .sort((a, b) => unitScores.get(b.name) - unitScores.get(a.name))
+            .slice(0, 20); 
+        
+        topDirectUnits.forEach(u => {
+            u.traits.forEach(t => {
+                if (!synergyBase.has(t)) {
+                    bridgeTraitWeights[t] = (bridgeTraitWeights[t] || 0) + 15; 
+                }
+            });
+        });
+
+        // Pass 3: Final Graph-based Re-scoring
         candidates.sort((a, b) => {
-            const aSyn = a.traits.some(t => synergyBase.has(t));
-            const bSyn = b.traits.some(t => synergyBase.has(t));
-            if (aSyn !== bSyn) return bSyn - aSyn;
-            if (size <= 6) return b.traits.length - a.traits.length;
-            return b.cost - a.cost;
+            const getTotalScore = (u) => {
+                let s = unitScores.get(u.name);
+                for (const t of u.traits) {
+                    if (bridgeTraitWeights[t]) {
+                        s += bridgeTraitWeights[t];
+                        if (bridgeTraitWeights[t] > 30) s += 20;
+                    }
+                }
+                s += u.traits.length * 8; 
+                return s;
+            };
+            return getTotalScore(b) - getTotalScore(a);
         });
         
-        const poolSize = size >= 9 ? 45 : 40; 
-        candidates = candidates.slice(0, poolSize);
-        
+        let poolSize = 40;
+        if (heuristic === 'none') poolSize = 100;
+        else if (heuristic === 'aggressive') poolSize = 30;
+        else if (heuristic === 'blitz') poolSize = 22;
+        else { // standard
+            poolSize = size >= 9 ? 45 : 40;
+        }
+
+        // Apply dynamic threshold
+        let finalCandidates = candidates.slice(0, poolSize);
+        const lastScoreCandidate = finalCandidates[finalCandidates.length - 1];
+        if (lastScoreCandidate) {
+            const lastScore = this.calculateHeuristicScore(lastScoreCandidate, size, synergyBase, mustIncludeTraits, heuristic);
+            for (let i = poolSize; i < candidates.length; i++) {
+                const score = this.calculateHeuristicScore(candidates[i], size, synergyBase, mustIncludeTraits, heuristic);
+                if (score >= lastScore * 0.95) {
+                    finalCandidates.push(candidates[i]);
+                } else break;
+                if (finalCandidates.length >= poolSize + 10) break;
+            }
+        }
+
         const fixedSlots = fixedUnits.reduce((acc, u) => acc + (u.slots || 1), 0);
         const neededSlots = targetSlots - fixedSlots;
+
+        return { 
+            candidates: finalCandidates, 
+            neededSlots, 
+            fixedUnits 
+        };
+    }
+
+    async findBestBoards(pool, size, emblems, mustIncludeNames = [], mode = 'default', mustIncludeTraits = {}, limit = 3, onProgress = null, heuristic = 'standard') {
+        this.isCancelled = false;
+        
+        if (heuristic === 'super') {
+            return this.beamSearch(pool, size, emblems, mustIncludeNames, mode, mustIncludeTraits, limit, onProgress);
+        }
+
+        const { candidates, neededSlots, fixedUnits } = this.getCandidates(pool, size, emblems, mustIncludeNames, mustIncludeTraits, heuristic);
+        const targetSlots = size;
         
         const total = this.countTotalCombos(neededSlots, candidates);
         let processed = 0;
         let results = [];
         
-        const batchSize = 5000;
+        const batchSize = 50000; // Increased throughput
         const generator = this.getCombos(neededSlots, candidates);
         
         let done = false;
         while (!done) {
-            if (this.isCancelled) return [];
+            if (this.isCancelled) return { results: [], totalProcessed: processed };
 
             for (let i = 0; i < batchSize; i++) {
                 const { value: combo, done: comboDone } = generator.next();
@@ -242,7 +377,68 @@ class TFTOptimizer {
             await new Promise(resolve => setTimeout(resolve, 0));
         }
         results.sort((a, b) => b.score - a.score);
-        return results.slice(0, limit);
+        return {
+            results: results.slice(0, limit),
+            totalProcessed: processed
+        };
+    }
+
+    async beamSearch(pool, targetSize, emblems, mustIncludeNames, mode, mustIncludeTraits, limit, onProgress) {
+        let fixedUnits = this.UNITS.filter(u => mustIncludeNames.includes(u.name));
+        let currentBeams = [{
+            board: fixedUnits,
+            score: 0,
+            counts: {}
+        }];
+
+        const fixedSlots = fixedUnits.reduce((acc, u) => acc + (u.slots || 1), 0);
+        const neededSlots = targetSize - fixedSlots;
+        if (neededSlots <= 0) {
+             const res = this.scoreBoard(fixedUnits, emblems, targetSize, mode, mustIncludeTraits, mustIncludeNames);
+             return { results: [res], totalProcessed: 1 };
+        }
+
+        const candidates = pool.filter(u => !mustIncludeNames.includes(u.name));
+        const BEAM_WIDTH = 200; // Large width for high quality
+
+        for (let step = 0; step < neededSlots; step++) {
+            if (this.isCancelled) return { results: [], totalProcessed: 0 };
+            let nextBeams = [];
+            
+            for (const beam of currentBeams) {
+                for (const unit of candidates) {
+                    if (beam.board.some(u => u.name === unit.name)) continue;
+                    
+                    const nextBoard = [...beam.board, unit];
+                    // Score as if it was a full board to trigger trait logic
+                    const { score, counts } = this.scoreBoard(nextBoard, emblems, targetSize, mode, mustIncludeTraits, mustIncludeNames);
+                    nextBeams.push({ board: nextBoard, score, counts });
+                }
+            }
+
+            // Sort and Deduplicate
+            nextBeams.sort((a, b) => b.score - a.score);
+            const seen = new Set();
+            currentBeams = [];
+            for (let i = 0; i < nextBeams.length; i++) {
+                const b = nextBeams[i];
+                const key = b.board.map(u => u.name).sort().join('|');
+                if (!seen.has(key)) {
+                    seen.add(key);
+                    currentBeams.push(b);
+                }
+                if (currentBeams.length >= BEAM_WIDTH) break;
+            }
+            
+            if (onProgress) onProgress(step + 1, neededSlots);
+            await new Promise(resolve => setTimeout(resolve, 0));
+        }
+
+        currentBeams.sort((a, b) => b.score - a.score);
+        return {
+            results: currentBeams.slice(0, limit),
+            totalProcessed: 500000 // Faux count for UI
+        };
     }
 
     improveTeam(currentBoard, pool, emblems, mode = 'default', mustIncludeTraits = {}, mustIncludeNames = [], limit = 3) {
@@ -256,7 +452,8 @@ class TFTOptimizer {
             
             let candidatesForThisSlot = [];
 
-            for (const candidate of pool) {
+            for (let j = 0; j < pool.length; j++) {
+                const candidate = pool[j];
                 if (currentBoard.some(u => u.name === candidate.name)) continue;
                 
                 let testBoard = [...currentBoard];

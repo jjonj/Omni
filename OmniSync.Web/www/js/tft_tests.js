@@ -16,7 +16,7 @@ class TFTTester {
             u.cost <= 2 || targetUnits.includes(u.name)
         );
         
-        const results = await this.opt.findBestBoards(pool, 4, [], []);
+        const { results } = await this.opt.findBestBoards(pool, 4, [], []);
         this.assert(results.length >= 1, `No results found for level 4`);
         const res = results[0];
         const activeTraitsCount = Object.keys(res.counts).filter(t => {
@@ -38,7 +38,7 @@ class TFTTester {
 
     async testLevel4CostConstraint() {
         const pool = this.data.units.filter(u => u.cost <= 3).slice(0, 20);
-        const results = await this.opt.findBestBoards(pool, 4, [], []);
+        const { results } = await this.opt.findBestBoards(pool, 4, [], []);
         results.forEach(res => {
             const threeCostCount = res.board.filter(u => u.cost === 3).length;
             this.assert(threeCostCount <= 1, `Level 4 board has ${threeCostCount} 3-costs (limit 1)`);
@@ -47,7 +47,7 @@ class TFTTester {
 
     async testLevel5CostConstraint() {
         const pool = this.data.units.filter(u => u.cost <= 3).slice(0, 20);
-        const results = await this.opt.findBestBoards(pool, 5, [], []);
+        const { results } = await this.opt.findBestBoards(pool, 5, [], []);
         results.forEach(res => {
             const threeCostCount = res.board.filter(u => u.cost === 3).length;
             this.assert(threeCostCount <= 2, `Level 5 board has ${threeCostCount} 3-costs (limit 2)`);
@@ -112,7 +112,7 @@ class TFTTester {
 
     async testUnitReplacementPersistenceBug() {
         const pool = this.data.units.filter(u => u.cost <= 3);
-        const results = await this.opt.findBestBoards(pool, 4, [], []);
+        const { results } = await this.opt.findBestBoards(pool, 4, [], []);
         this.assert(results.length > 0, "findBestBoards returned no results");
         const board = results[0].board;
         const originalUnit = board[0];
@@ -167,11 +167,115 @@ class TFTTester {
         this.assert(res2.score > -100000, "Level 8 with low+high carry should be valid (no penalty)");
     }
 
-    async testMustIncludeBypassLevelRestriction() {
-        const azir = this.data.units.find(u => u.name === "Azir");
-        const res1 = this.opt.scoreBoard([azir], [], 6, 'default', {}, []);
-        this.assert(res1.score < -1000000, "5-cost should be invalid at level 6 normally");
-        const res2 = this.opt.scoreBoard([azir], [], 6, 'default', {}, ["Azir"]);
-        this.assert(res2.score > -1000000, "Must-include unit should bypass level restrictions");
+        async testMustIncludeBypassLevelRestriction() {
+
+            const azir = this.data.units.find(u => u.name === "Azir");
+
+            const res1 = this.opt.scoreBoard([azir], [], 6, 'default', {}, []);
+
+            this.assert(res1.score < -1000000, "5-cost should be invalid at level 6 normally");
+
+            const res2 = this.opt.scoreBoard([azir], [], 6, 'default', {}, ["Azir"]);
+
+            this.assert(res2.score > -1000000, "Must-include unit should bypass level restrictions");
+
+        }
+
+    
+
+    async testNeekoNidaleeLogic() {
+        const pool = this.data.units.filter(u => u.cost <= 3);
+        const mustIncludeNames = ["Neeko"];
+        const { results } = await this.optimizer.findBestBoards(pool, 4, [], mustIncludeNames);
+        
+        if (results.length === 0) throw new Error("No results found for level 4 Neeko");
+        
+        // This test now verifies that Nidalee is NOT included unless Ixtal breakpoint 3 is reachable.
+        // At level 4 with only Neeko, Ixtal count is 1. Breakpoint is 3.
+        for (const res of results) {
+            if (res.board.find(u => u.name === "Nidalee")) {
+                throw new Error("Nidalee included with Neeko at level 4 despite no Ixtal active");
+            }
+        }
+    }
+
+    async testNeekoNidaleeOneWayLogic() {
+        const pool = this.data.units.filter(u => u.cost <= 5);
+        const mustIncludeNames = ["Neeko"];
+        // At level 4, Nidalee is 4-cost now.
+        // We want to ensure Neeko doesn't force Nidalee via the optimizer (data-driven 'requires' is only for Nidalee->Neeko).
+        const { results } = await this.optimizer.findBestBoards(pool, 4, [], mustIncludeNames, 'default', {}, 1, null, 'none');
+        
+        const boardNames = results[0].board.map(u => u.name);
+        if (boardNames.includes("Nidalee")) {
+            throw new Error("Logic error: Neeko forced Nidalee into the board at level 4");
+        }
+    }
+
+    async testNidaleeRequiresNeeko() {
+        const pool = this.data.units.filter(u => u.name === "Nidalee"); // Pool with ONLY Nidalee
+        const { results } = await this.optimizer.findBestBoards(pool, 4, [], ["Nidalee"]);
+        
+        // Since Nidalee requires Neeko and Neeko is not in pool, results should be empty or scores should be extremely low
+        if (results.length > 0 && results[0].score > -1000000) {
+             throw new Error("Nidalee included without Neeko despite 'requires' constraint");
+        }
+    }
+
+    async testSuperHeuristicPoppyLevel6() {
+        const pool = this.data.units.filter(u => u.cost <= 3);
+        const mustIncludeNames = ["Poppy"];
+        const { results } = await this.optimizer.findBestBoards(pool, 6, [], mustIncludeNames, 'default', {}, 1, null, 'super');
+        
+        if (results.length === 0) throw new Error("Super heuristic found no boards");
+        
+        const bestScore = results[0].score;
+        if (bestScore < 13000) {
+            throw new Error(`Super heuristic only achieved score ${bestScore}, expected >= 13000. Board: ${results[0].board.map(u => u.name).join(', ')}`);
+        }
+    }
+
+    async testSuperHeuristicKobukoLevel6() {
+        const pool = this.data.units.filter(u => u.cost <= 3);
+        const mustIncludeNames = ["Kobuko & Yuumi"];
+        const { results } = await this.optimizer.findBestBoards(pool, 6, [], mustIncludeNames, 'default', {}, 1, null, 'super');
+        
+        if (results.length === 0) throw new Error("Super heuristic found no boards");
+        
+        const bestScore = results[0].score;
+        if (bestScore < 13000) {
+            throw new Error(`Super heuristic only achieved score ${bestScore}, expected >= 13000. Board: ${results[0].board.map(u => u.name).join(', ')}`);
+        }
+    }
+
+    async testNidaleeAutoIncludeBug() {
+        // This test simulates the UI's rendering logic fix.
+        const neekoUnit = this.data.units.find(u => u.name === "Neeko");
+        const mockBoard = [neekoUnit];
+        const results = [{ board: mockBoard, score: 100, counts: { "Ixtal": 1 } }];
+        
+        // Simulating the FIXED logic in renderResults (data-driven):
+        let displayBoard = [...results[0].board];
+        
+        displayBoard.forEach(u => {
+            if (u.auto_include && !displayBoard.find(du => du.name === u.auto_include)) {
+                const sharedTrait = u.traits[0];
+                const meta = this.data.trait_metadata[sharedTrait];
+                const hasTraitActive = results[0].counts[sharedTrait] && (meta?.breakpoints.some(b => b <= results[0].counts[sharedTrait]));
+                
+                if (hasTraitActive) {
+                    const extraUnit = this.data.units.find(du => du.name === u.auto_include);
+                    if (extraUnit) displayBoard.push(extraUnit);
+                }
+            }
+        });
+
+        if (displayBoard.some(u => u.name === "Nidalee")) {
+            if (results[0].counts["Ixtal"] < 3) {
+                throw new Error("BUG: Nidalee was automatically added to a Neeko board even though Ixtal breakpoint (3) was not reached");
+            }
+        }
     }
 }
+
+    

@@ -91,7 +91,7 @@ function renderUnitPools() {
         if (!pool) continue;
         pool.innerHTML = '';
         
-        const units = tftData.units.filter(u => u.cost === cost && u.name !== "Tibbers")
+        const units = tftData.units.filter(u => u.cost === cost && u.name !== "Tibbers" && u.name !== "Nidalee")
             .sort((a, b) => {
                 const aDisabled = activeDisabledUnits.includes(a.name);
                 const bDisabled = activeDisabledUnits.includes(b.name);
@@ -460,6 +460,8 @@ function resetAll() {
     selectedEmblems = [];
     const defRadio = document.querySelector('input[name="solver-mode"][value="default"]');
     if (defRadio) defRadio.checked = true;
+    const defHeuristic = document.querySelector('input[name="heuristic-mode"][value="standard"]');
+    if (defHeuristic) defHeuristic.checked = true;
     document.querySelectorAll('.lvl-cb').forEach(cb => {
         cb.checked = (cb.value === "6" || cb.value === "8");
     });
@@ -477,6 +479,10 @@ function resetAll() {
 
     const resultsContainer = document.getElementById('results-container');
     if (resultsContainer) resultsContainer.innerHTML = '';
+    
+    const finalDisplay = document.getElementById('final-combinations-display');
+    if (finalDisplay) finalDisplay.style.display = 'none';
+
     clearTraitHighlight();
     renderSelectionZones();
 }
@@ -490,6 +496,75 @@ function cancelOptimization() {
     if (optimizer) {
         optimizer.cancel();
     }
+    if (window.activeWorkers) {
+        window.activeWorkers.forEach(w => w.terminate());
+        window.activeWorkers = null;
+    }
+    document.getElementById('cancel-btn').style.display = 'none';
+    document.getElementById('run-btn').style.display = 'block';
+}
+
+function createOptimizerWorker() {
+    // Get the base path for scripts to ensure workers can find tft_optimizer.js
+    const scripts = document.getElementsByTagName('script');
+    let jsPath = 'js/';
+    for (let s of scripts) {
+        if (s.src.includes('js/tft.js')) {
+            const parts = s.src.split('js/tft.js');
+            if (parts.length > 0) {
+                // Keep the part before js/tft.js and add js/
+                jsPath = parts[0] + 'js/';
+            }
+            break;
+        }
+    }
+
+    const blob = new Blob([`
+        importScripts('${jsPath}tft_optimizer.js?v=${Date.now()}');
+        
+        let optimizer = null;
+
+        onmessage = async function(e) {
+            const { type, data } = e.data;
+            
+            if (type === 'init') {
+                optimizer = new TFTOptimizer(data.units, data.traitsData);
+                return;
+            }
+
+            if (type === 'findBestBoards') {
+                const { candidates, neededSlots, fixedUnits, size, emblems, mustIncludeNames, mode, mustIncludeTraits, limit, workerId, totalWorkers } = data;
+                
+                const targetSlots = size;
+                const generator = optimizer.getCombos(neededSlots, candidates);
+                let processed = 0;
+                let results = [];
+                let comboIdx = 0;
+
+                for (const combo of generator) {
+                    // Simple search space partitioning
+                    if (comboIdx % totalWorkers === workerId) {
+                        processed++;
+                        const currentBoard = [...combo, ...fixedUnits];
+                        const { score, counts } = optimizer.scoreBoard(currentBoard, emblems, targetSlots, mode, mustIncludeTraits, mustIncludeNames);
+                        if (score > -1000000) { 
+                            results.push({ score, board: currentBoard, counts });
+                        }
+                        
+                        if (processed % 1000 === 0) {
+                            postMessage({ type: 'progress', data: { processed, workerId } });
+                        }
+                    }
+                    comboIdx++;
+                }
+
+                results.sort((a, b) => b.score - a.score);
+                const finalResults = results.slice(0, limit);
+                postMessage({ type: 'result', data: { results: finalResults, processed, workerId } });
+            }
+        };
+    `], { type: 'application/javascript' });
+    return new Worker(URL.createObjectURL(blob));
 }
 
 async function runOptimization() {
@@ -517,6 +592,9 @@ async function runOptimization() {
     const emblems = selectedEmblems.map(e => e.trait);
     const solverModeEl = document.querySelector('input[name="solver-mode"]:checked');
     const solverMode = solverModeEl ? solverModeEl.value : 'default';
+    const heuristicModeEl = document.querySelector('input[name="heuristic-mode"]:checked');
+    const heuristicMode = heuristicModeEl ? heuristicModeEl.value : 'standard';
+
     const selectedLevels = Array.from(document.querySelectorAll('.lvl-cb:checked')).map(cb => parseInt(cb.value));
     const limit = parseInt(document.getElementById('results-limit').value);
     const excludeFiveCosts = document.getElementById('exclude-five-costs').checked;
@@ -524,14 +602,21 @@ async function runOptimization() {
     const resultsContainer = document.getElementById('results-container');
     resultsContainer.innerHTML = '<div style="color: var(--text-dim); padding: 20px;">Initializing...</div>';
 
-    const progressContainer = document.getElementById('optimizer-progress-container');
-    const progressBar = document.getElementById('progress-bar');
-    const progressPercent = document.getElementById('progress-percent');
-    const progressLabel = document.getElementById('progress-label');
+    const cancelProgressFill = document.getElementById('cancel-progress-fill');
+    const cancelText = document.getElementById('cancel-text');
+    const liveExploredEl = document.getElementById('live-explored-count');
+
+    const finalDisplay = document.getElementById('final-combinations-display');
+    if (finalDisplay) finalDisplay.style.display = 'none';
 
     runBtn.style.display = 'none';
     cancelBtn.style.display = 'block';
-    progressContainer.style.display = 'block';
+    
+    if (cancelProgressFill) cancelProgressFill.style.width = '0%';
+    if (cancelText) cancelText.innerText = 'CANCEL (0%)';
+    if (liveExploredEl) liveExploredEl.innerText = 'Explored: 0';
+    
+    let totalCombinationsExplored = 0;
     
     try {
         if (improveMode) {
@@ -552,12 +637,17 @@ async function runOptimization() {
                 return true;
             });
 
+            totalCombinationsExplored = currentBoardUnits.filter(u => !mustIncludeNames.includes(u.name)).length * pool.length;
+            if (cancelText) cancelText.innerText = 'IMPROVING...';
+            if (cancelProgressFill) cancelProgressFill.style.width = '100%';
+            if (liveExploredEl) liveExploredEl.innerText = `Explored: ${totalCombinationsExplored.toLocaleString()}`;
+
             const suggestionsResult = optimizer.improveTeam(currentBoardUnits, pool, emblems, solverMode, mustIncludeTraits, mustIncludeNames, limit);
             renderImproveResults(suggestionsResult.suggestions, levelList, suggestionsResult.currentCounts);
         } else {
             for (const level of selectedLevels) {
                 if (optimizer.isCancelled) break;
-                progressLabel.innerText = `Level ${level}: Calculating...`;
+                
                 const levelHeader = document.createElement('h2');
                 levelHeader.className = 'hub-status-label';
                 levelHeader.style.display = 'block';
@@ -567,6 +657,7 @@ async function runOptimization() {
 
                 const levelList = document.createElement('div');
                 levelList.className = 'results-list';
+                levelList.innerHTML = ''; 
                 resultsContainer.appendChild(levelList);
 
                 const pool = tftData.units.filter(u => {
@@ -580,18 +671,98 @@ async function runOptimization() {
                     return true;
                 });
                 
-                const results = await optimizer.findBestBoards(pool, level, emblems, mustIncludeNames, solverMode, mustIncludeTraits, limit, (proc, tot) => {
-                    const pct = Math.min(100, Math.floor((proc / tot) * 100));
-                    progressBar.style.width = `${pct}%`;
-                    progressPercent.innerText = `${pct}%`;
-                });
+                let results, totalProcessed;
+
+                if (heuristicMode !== 'super' && window.Worker) {
+                    const { candidates, neededSlots, fixedUnits } = optimizer.getCandidates(pool, level, emblems, mustIncludeNames, mustIncludeTraits, heuristicMode);
+                    const totalForThisLevel = optimizer.countTotalCombos(neededSlots, candidates);
+
+                    const numWorkers = navigator.hardwareConcurrency || 4;
+                    const workers = [];
+                    window.activeWorkers = workers;
+                    
+                    const workerResults = [];
+                    let finishedWorkers = 0;
+                    let workerProgress = new Array(numWorkers).fill(0);
+
+                    const p = new Promise((resolve) => {
+                        for (let i = 0; i < numWorkers; i++) {
+                            const w = createOptimizerWorker();
+                            workers.push(w);
+                            w.postMessage({ type: 'init', data: { units: tftData.units, traitsData: tftData.trait_metadata } });
+                            w.postMessage({ type: 'findBestBoards', data: { 
+                                candidates, neededSlots, fixedUnits,
+                                size: level, emblems, mustIncludeNames, 
+                                mode: solverMode, mustIncludeTraits, limit, 
+                                workerId: i, totalWorkers: numWorkers 
+                            } });
+                            
+                            w.onmessage = (e) => {
+                                if (e.data.type === 'progress') {
+                                    workerProgress[i] = e.data.data.processed;
+                                    const totalProc = workerProgress.reduce((a, b) => a + b, 0);
+                                    const pct = Math.min(99, Math.floor((totalProc / totalForThisLevel) * 100));
+                                    if (cancelProgressFill) cancelProgressFill.style.width = `${pct}%`;
+                                    if (cancelText) cancelText.innerText = `CANCEL LVL ${level} (${pct}%)`;
+                                    if (liveExploredEl) liveExploredEl.innerText = `Explored: ${(totalCombinationsExplored + totalProc).toLocaleString()}`;
+                                } else if (e.data.type === 'result') {
+                                    if (e.data.data && e.data.data.results) {
+                                        workerResults.push(...e.data.data.results);
+                                    }
+                                    workerProgress[i] = e.data.data.processed;
+                                    finishedWorkers++;
+                                    if (finishedWorkers === numWorkers) {
+                                        const totalProc = workerProgress.reduce((a, b) => a + b, 0);
+                                        if (cancelProgressFill) cancelProgressFill.style.width = `100%`;
+                                        if (cancelText) cancelText.innerText = `CANCEL LVL ${level} (100%)`;
+                                        workerResults.sort((a, b) => b.score - a.score);
+                                        resolve({ results: workerResults.slice(0, limit), totalProcessed: totalProc });
+                                    }
+                                }
+                            };
+                        }
+                    });
+                    
+                    const mtResult = await p;
+                    results = mtResult.results;
+                    totalProcessed = mtResult.totalProcessed;
+                    workers.forEach(w => w.terminate());
+                    window.activeWorkers = null;
+                } else {
+                    const res = await optimizer.findBestBoards(pool, level, emblems, mustIncludeNames, solverMode, mustIncludeTraits, limit, (proc, tot) => {
+                        const pct = Math.min(100, Math.floor((proc / tot) * 100));
+                        if (cancelProgressFill) cancelProgressFill.style.width = `${pct}%`;
+                        if (cancelText) cancelText.innerText = `CANCEL LVL ${level} (${pct}%)`;
+                        if (liveExploredEl) liveExploredEl.innerText = `Explored: ${(totalCombinationsExplored + proc).toLocaleString()}`;
+                    }, heuristicMode);
+                    results = res.results;
+                    totalProcessed = res.totalProcessed;
+                }
+                
+                totalCombinationsExplored += totalProcessed;
+                
+                const combinationsLabel = document.createElement('div');
+                combinationsLabel.style.fontSize = '0.8em';
+                combinationsLabel.style.color = '#888';
+                combinationsLabel.style.marginBottom = '10px';
+                combinationsLabel.innerText = `Explored ${totalProcessed.toLocaleString()} combinations`;
+                levelList.appendChild(combinationsLabel);
+
                 renderResults(results, levelList, level);
             }
         }
     } finally {
         runBtn.style.display = 'block';
         cancelBtn.style.display = 'none';
-        progressContainer.style.display = 'none';
+        
+        const finalDisplay = document.getElementById('final-combinations-display');
+        const finalText = document.getElementById('final-combinations-text');
+        
+        if (totalCombinationsExplored > 0 && finalDisplay && finalText) {
+            finalDisplay.style.display = 'block';
+            finalText.innerText = totalCombinationsExplored.toLocaleString();
+        }
+
         if (resultsContainer.firstChild && resultsContainer.firstChild.innerText === 'Initializing...') {
             resultsContainer.removeChild(resultsContainer.firstChild);
         }
@@ -599,7 +770,6 @@ async function runOptimization() {
 }
 
 function renderResults(results, container, level) {
-    container.innerHTML = '';
     if (results.length === 0) {
         container.innerHTML = '<div style="color: var(--text-dim); font-size: 11px;">No valid compositions found.</div>';
         return;
@@ -614,6 +784,20 @@ function renderResults(results, container, level) {
             const tibbers = tftData.units.find(u => u.name === "Tibbers");
             if (tibbers) displayBoard.push(tibbers);
         }
+        
+        // Data-driven auto-include (e.g. Neeko auto-includes Nidalee if Ixtal is active)
+        displayBoard.forEach(u => {
+            if (u.auto_include && !displayBoard.find(du => du.name === u.auto_include)) {
+                // Check if the trait shared by these two is actually active
+                const sharedTrait = u.traits[0]; // Heuristic: first trait is usually the origin
+                const hasTraitActive = res.counts[sharedTrait] && (tftData.trait_metadata[sharedTrait]?.breakpoints.some(b => b <= res.counts[sharedTrait]));
+                
+                if (hasTraitActive) {
+                    const extraUnit = tftData.units.find(du => du.name === u.auto_include);
+                    if (extraUnit) displayBoard.push(extraUnit);
+                }
+            }
+        });
         card.innerHTML = `<div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
                 <strong>Option ${index + 1}</strong>
                 <span style="color: var(--accent); font-weight: 600;">${res.score}</span>
@@ -811,7 +995,9 @@ async function runLogicTests() {
         runner.testSpecificLevelUnitRestrictions, runner.testMustIncludeTraits, runner.testAnnieOneArcanistFix,
         runner.testTargonSpecialLogic, runner.testUnitReplacementPersistenceBug, runner.testSylasForbiddenUnits,
         runner.testLevel8FiveCostLimit, runner.testLevel9Constraints, runner.testTraitIgnoreList,
-        runner.testForbiddenShurima, runner.testCarryRequirements, runner.testMustIncludeBypassLevelRestriction
+        runner.testForbiddenShurima, runner.testCarryRequirements, runner.testMustIncludeBypassLevelRestriction,
+        runner.testNeekoNidaleeLogic, runner.testNeekoNidaleeOneWayLogic, runner.testNidaleeAutoIncludeBug,
+        runner.testNidaleeRequiresNeeko, runner.testSuperHeuristicPoppyLevel6, runner.testSuperHeuristicKobukoLevel6
     ];
     for (const test of tests) {
         const statusEl = document.createElement('div');

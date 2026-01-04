@@ -4,6 +4,7 @@
 const HUB_PORT = 5000;
 const HUB_URL = `http://${window.location.hostname}:${HUB_PORT}/signalrhub`;
 const API_KEY = "test_api_key";
+const UI_VERSION = "1.0.2";
 
 /* =========================================
    USER CONFIGURATION ZONE
