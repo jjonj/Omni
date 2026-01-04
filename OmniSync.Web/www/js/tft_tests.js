@@ -248,6 +248,40 @@ class TFTTester {
         }
     }
 
+    async testWorldRunesLogic() {
+        const unit1 = this.data.units.find(u => u.name === "Anivia"); // Freljord (Origin)
+        const unit2 = this.data.units.find(u => u.name === "Blitzcrank"); // Zaun (Origin)
+        const unit3 = this.data.units.find(u => u.name === "Briar"); // Noxus (Origin)
+        const unit4 = this.data.units.find(u => u.name === "Caitlyn"); // Piltover (Origin)
+        const carry = this.data.units.find(u => u.is_carry && u.cost >= 4);
+        
+        // 4 origins active
+        const board4 = [unit1, unit2, unit3, unit4, carry];
+        // Need to mock enough units to reach breakpoints if necessary, 
+        // but here we just need to ensure they ARE active origins.
+        // In set16.json, most origins need 2 or 3.
+        
+        // Let's use units that share traits or just check the scoring logic directly
+        const res1 = this.opt.scoreBoard(board4, [], 8, 'world-runes');
+        
+        // For accurate testing, we need to know if they are actually "active" (breakpoint met)
+        // Anivia (Freljord 3), Blitz (Zaun 3), Briar (Noxus 3), Cait (Piltover 2)
+        // So we need more units.
+        
+        const freljordUnits = this.data.units.filter(u => u.traits.includes("Freljord")).slice(0, 3);
+        const zaunUnits = this.data.units.filter(u => u.traits.includes("Zaun")).slice(0, 3);
+        const noxusUnits = this.data.units.filter(u => u.traits.includes("Noxus")).slice(0, 3);
+        const piltoverUnits = this.data.units.filter(u => u.traits.includes("Piltover")).slice(0, 2);
+        
+        const bigBoard = [...freljordUnits, ...zaunUnits, ...noxusUnits, ...piltoverUnits];
+        const res2 = this.opt.scoreBoard(bigBoard, [], 11, 'world-runes');
+        this.assert(res2.score > 0, "Board with 4 active origins should be valid in world-runes mode");
+        
+        const smallBoard = [...freljordUnits, ...zaunUnits]; // Only 2 origins
+        const res3 = this.opt.scoreBoard(smallBoard, [], 6, 'world-runes');
+        this.assert(res3.score < -1000000, "Board with only 2 active origins should be invalid in world-runes mode");
+    }
+
     async testNidaleeAutoIncludeBug() {
         // This test simulates the UI's rendering logic fix.
         const neekoUnit = this.data.units.find(u => u.name === "Neeko");

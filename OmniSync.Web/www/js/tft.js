@@ -91,7 +91,7 @@ function renderUnitPools() {
         if (!pool) continue;
         pool.innerHTML = '';
         
-        const units = tftData.units.filter(u => u.cost === cost && u.name !== "Tibbers" && u.name !== "Nidalee")
+        const units = tftData.units.filter(u => u.cost === cost && u.name !== "Tibbers")
             .sort((a, b) => {
                 const aDisabled = activeDisabledUnits.includes(a.name);
                 const bDisabled = activeDisabledUnits.includes(b.name);
@@ -729,11 +729,13 @@ async function runOptimization() {
                     workers.forEach(w => w.terminate());
                     window.activeWorkers = null;
                 } else {
-                    const res = await optimizer.findBestBoards(pool, level, emblems, mustIncludeNames, solverMode, mustIncludeTraits, limit, (proc, tot) => {
+                    const res = await optimizer.findBestBoards(pool, level, emblems, mustIncludeNames, solverMode, mustIncludeTraits, limit, (proc, tot, procOverride) => {
                         const pct = Math.min(100, Math.floor((proc / tot) * 100));
                         if (cancelProgressFill) cancelProgressFill.style.width = `${pct}%`;
                         if (cancelText) cancelText.innerText = `CANCEL LVL ${level} (${pct}%)`;
-                        if (liveExploredEl) liveExploredEl.innerText = `Explored: ${(totalCombinationsExplored + proc).toLocaleString()}`;
+                        
+                        const currentCount = (procOverride !== undefined) ? procOverride : proc;
+                        if (liveExploredEl) liveExploredEl.innerText = `Explored: ${(totalCombinationsExplored + currentCount).toLocaleString()}`;
                     }, heuristicMode);
                     results = res.results;
                     totalProcessed = res.totalProcessed;
@@ -997,7 +999,8 @@ async function runLogicTests() {
         runner.testLevel8FiveCostLimit, runner.testLevel9Constraints, runner.testTraitIgnoreList,
         runner.testForbiddenShurima, runner.testCarryRequirements, runner.testMustIncludeBypassLevelRestriction,
         runner.testNeekoNidaleeLogic, runner.testNeekoNidaleeOneWayLogic, runner.testNidaleeAutoIncludeBug,
-        runner.testNidaleeRequiresNeeko, runner.testSuperHeuristicPoppyLevel6, runner.testSuperHeuristicKobukoLevel6
+        runner.testNidaleeRequiresNeeko, runner.testSuperHeuristicPoppyLevel6, runner.testSuperHeuristicKobukoLevel6,
+        runner.testWorldRunesLogic
     ];
     for (const test of tests) {
         const statusEl = document.createElement('div');

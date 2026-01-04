@@ -100,6 +100,7 @@ class TFTOptimizer {
         
         let score = 0;
         let activeTraits = new Set();
+        let activeOriginsCount = 0;
 
         for (const trait in counts) {
             const count = counts[trait];
@@ -115,8 +116,12 @@ class TFTOptimizer {
                     if (breakpoints[i] <= count) highest = breakpoints[i];
                 }
 
-                if (highest > 0) {
+                if (highest > 0 || (traitData.type === "origin" && !breakpoints)) {
                     activeTraits.add(trait);
+                    if (traitData.type === "origin") {
+                        activeOriginsCount++;
+                    }
+
                     if (trait !== "Targon") {
                         if (mode === 'bronze-for-life') {
                             score += 1 * this.BREAKPOINT_SCORE_MULTIPLIER;
@@ -136,6 +141,10 @@ class TFTOptimizer {
             } else if (count === 1) {
                 score += this.UNIQUE_TRAIT_SCORE;
             }
+        }
+
+        if (mode === 'world-runes' && activeOriginsCount < 4) {
+            score -= this.INVALID_COMP_PENALTY;
         }
 
         for (const targetTrait in mustIncludeTraits) {
@@ -400,9 +409,10 @@ class TFTOptimizer {
 
         const candidates = pool.filter(u => !mustIncludeNames.includes(u.name));
         const BEAM_WIDTH = 200; // Large width for high quality
+        let totalEvaluated = 0;
 
         for (let step = 0; step < neededSlots; step++) {
-            if (this.isCancelled) return { results: [], totalProcessed: 0 };
+            if (this.isCancelled) return { results: [], totalProcessed: totalEvaluated };
             let nextBeams = [];
             
             for (const beam of currentBeams) {
@@ -412,6 +422,7 @@ class TFTOptimizer {
                     const nextBoard = [...beam.board, unit];
                     // Score as if it was a full board to trigger trait logic
                     const { score, counts } = this.scoreBoard(nextBoard, emblems, targetSize, mode, mustIncludeTraits, mustIncludeNames);
+                    totalEvaluated++;
                     nextBeams.push({ board: nextBoard, score, counts });
                 }
             }
@@ -430,14 +441,14 @@ class TFTOptimizer {
                 if (currentBeams.length >= BEAM_WIDTH) break;
             }
             
-            if (onProgress) onProgress(step + 1, neededSlots);
+            if (onProgress) onProgress(step + 1, neededSlots, totalEvaluated);
             await new Promise(resolve => setTimeout(resolve, 0));
         }
 
         currentBeams.sort((a, b) => b.score - a.score);
         return {
             results: currentBeams.slice(0, limit),
-            totalProcessed: 500000 // Faux count for UI
+            totalProcessed: totalEvaluated
         };
     }
 
