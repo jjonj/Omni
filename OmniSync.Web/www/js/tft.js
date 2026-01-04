@@ -1000,7 +1000,7 @@ async function runLogicTests() {
         runner.testForbiddenShurima, runner.testCarryRequirements, runner.testMustIncludeBypassLevelRestriction,
         runner.testNeekoNidaleeLogic, runner.testNeekoNidaleeOneWayLogic, runner.testNidaleeAutoIncludeBug,
         runner.testNidaleeRequiresNeeko, runner.testSuperHeuristicPoppyLevel6, runner.testSuperHeuristicKobukoLevel6,
-        runner.testWorldRunesLogic
+        runner.testWorldRunesLogic, runner.testRuneSolverLevel5
     ];
     for (const test of tests) {
         const statusEl = document.createElement('div');

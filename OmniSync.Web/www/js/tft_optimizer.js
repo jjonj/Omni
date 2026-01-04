@@ -52,6 +52,18 @@ class TFTOptimizer {
         this.isCancelled = true;
     }
 
+    getActiveOrigins(counts) {
+        return Object.keys(counts).filter(t => {
+            const traitData = this.TRAITS_DATA[t];
+            if (!traitData || traitData.type !== 'origin') return false;
+            
+            const breakpoints = traitData.breakpoints;
+            // Targon is active at 1 unit, others check breakpoints
+            if (t === 'Targon') return counts[t] >= 1;
+            return breakpoints && breakpoints.some(b => b <= counts[t]);
+        });
+    }
+
     scoreBoard(board, emblems, targetSize, mode = 'default', mustIncludeTraits = {}, mustIncludeNames = []) {
         let counts = {};
         const names = new Set();
@@ -79,6 +91,9 @@ class TFTOptimizer {
         const mustSet = new Set(mustIncludeNames);
         if (targetSize < 6 && names.has("Kennen") && !mustSet.has("Kennen")) return { score: -this.INVALID_COMP_PENALTY, counts };
         if (targetSize < 7 && board.some(u => u.name.includes("Kobuko") && !mustSet.has(u.name))) return { score: -this.INVALID_COMP_PENALTY, counts };
+        
+        // Strict cost limits
+        if (targetSize < 7 && board.some(u => u.cost >= 4 && !mustSet.has(u.name))) return { score: -this.INVALID_COMP_PENALTY, counts };
         if (targetSize < 8 && board.some(u => u.cost === 5 && !mustSet.has(u.name))) return { score: -this.INVALID_COMP_PENALTY, counts };
         
         for (let i = 0; i < board.length; i++) {
@@ -100,7 +115,6 @@ class TFTOptimizer {
         
         let score = 0;
         let activeTraits = new Set();
-        let activeOriginsCount = 0;
 
         for (const trait in counts) {
             const count = counts[trait];
@@ -118,11 +132,13 @@ class TFTOptimizer {
 
                 if (highest > 0 || (traitData.type === "origin" && !breakpoints)) {
                     activeTraits.add(trait);
-                    if (traitData.type === "origin") {
-                        activeOriginsCount++;
-                    }
 
-                    if (trait !== "Targon") {
+                    if (trait === "Targon") {
+                        // Small fixed bonus at breakpoint 1, no scaling
+                        if (highest >= 1) {
+                            score += 200; 
+                        }
+                    } else {
                         if (mode === 'bronze-for-life') {
                             score += 1 * this.BREAKPOINT_SCORE_MULTIPLIER;
                         } else {
@@ -143,8 +159,20 @@ class TFTOptimizer {
             }
         }
 
-        if (mode === 'world-runes' && activeOriginsCount < 4) {
-            score -= this.INVALID_COMP_PENALTY;
+        const activeOrigins = this.getActiveOrigins(counts);
+        const activeOriginsCount = activeOrigins.length;
+
+        if (mode === 'world-runes') {
+            if (activeOriginsCount < 4) {
+                if (board.length >= targetSize) {
+                    score -= this.INVALID_COMP_PENALTY;
+                } else {
+                    // Extremely aggressive guidance for intermediate steps
+                    score += activeOriginsCount * 10000;
+                }
+            } else {
+                score += 100000; // Requirement met massive bonus
+            }
         }
 
         for (const targetTrait in mustIncludeTraits) {
@@ -263,7 +291,7 @@ class TFTOptimizer {
         return score;
     }
 
-    getCandidates(pool, size, emblems, mustIncludeNames, mustIncludeTraits, heuristic) {
+    getCandidates(pool, size, emblems, mustIncludeNames, mustIncludeTraits, heuristic, mode = 'default') {
         const targetSlots = size;
         let fixedUnits = [];
         if (mustIncludeNames && mustIncludeNames.length > 0) {
@@ -280,6 +308,14 @@ class TFTOptimizer {
             let score = 0;
             for (const t of u.traits) {
                 if (synergyBase.has(t)) score += 20;
+                
+                // Prioritize origins if in world-runes mode
+                if (mode === 'world-runes') {
+                    const traitData = this.TRAITS_DATA[t];
+                    if (traitData && traitData.type === 'origin') {
+                        score += 50; 
+                    }
+                }
             }
             score += u.cost * 2;
             if (u.is_carry) score += 10;
@@ -317,7 +353,8 @@ class TFTOptimizer {
         });
         
         let poolSize = 40;
-        if (heuristic === 'none') poolSize = 100;
+        if (mode === 'world-runes' || mode === 'ryze-unlock') poolSize = 100;
+        else if (heuristic === 'none') poolSize = 100;
         else if (heuristic === 'aggressive') poolSize = 30;
         else if (heuristic === 'blitz') poolSize = 22;
         else { // standard
@@ -351,11 +388,15 @@ class TFTOptimizer {
     async findBestBoards(pool, size, emblems, mustIncludeNames = [], mode = 'default', mustIncludeTraits = {}, limit = 3, onProgress = null, heuristic = 'standard') {
         this.isCancelled = false;
         
+        if (mode === 'world-runes') {
+            return this.runeSearch(pool, size, emblems, mustIncludeNames, mode, mustIncludeTraits, limit, onProgress);
+        }
+
         if (heuristic === 'super') {
             return this.beamSearch(pool, size, emblems, mustIncludeNames, mode, mustIncludeTraits, limit, onProgress);
         }
 
-        const { candidates, neededSlots, fixedUnits } = this.getCandidates(pool, size, emblems, mustIncludeNames, mustIncludeTraits, heuristic);
+        const { candidates, neededSlots, fixedUnits } = this.getCandidates(pool, size, emblems, mustIncludeNames, mustIncludeTraits, heuristic, mode);
         const targetSlots = size;
         
         const total = this.countTotalCombos(neededSlots, candidates);
@@ -386,9 +427,94 @@ class TFTOptimizer {
             await new Promise(resolve => setTimeout(resolve, 0));
         }
         results.sort((a, b) => b.score - a.score);
+        const finalResults = results.filter(r => r.score > -1000000).slice(0, limit);
         return {
-            results: results.slice(0, limit),
+            results: finalResults,
             totalProcessed: processed
+        };
+    }
+
+    async runeSearch(pool, targetSize, emblems, mustIncludeNames, mode, mustIncludeTraits, limit, onProgress) {
+        // Specialized beam search that prioritizes origin diversity
+        const { candidates, neededSlots, fixedUnits } = this.getCandidates(pool, targetSize, emblems, mustIncludeNames, mustIncludeTraits, 'super', mode);
+        
+        let currentBeams = [{
+            board: fixedUnits,
+            score: 0,
+            counts: {},
+            origins: new Set()
+        }];
+
+        if (neededSlots <= 0) {
+             const res = this.scoreBoard(fixedUnits, emblems, targetSize, mode, mustIncludeTraits, mustIncludeNames);
+             return { results: [res], totalProcessed: 1 };
+        }
+
+        const BEAM_WIDTH_PER_ORIGIN_COUNT = 100;
+        let totalEvaluated = 0;
+
+        for (let step = 0; step < neededSlots; step++) {
+            if (this.isCancelled) return { results: [], totalProcessed: totalEvaluated };
+            let nextBeamsByOriginCount = {}; // Map originCount -> array of beams
+            
+            for (const beam of currentBeams) {
+                for (const unit of candidates) {
+                    if (beam.board.some(u => u.name === unit.name)) continue;
+                    
+                    const nextBoard = [...beam.board, unit];
+                    const { score, counts } = this.scoreBoard(nextBoard, emblems, targetSize, mode, mustIncludeTraits, mustIncludeNames);
+                    totalEvaluated++;
+
+                    const activeOrigins = Object.keys(counts).filter(t => {
+                        const meta = this.TRAITS_DATA[t];
+                        if (!meta || meta.type !== 'origin') return false;
+                        const breakpoints = meta.breakpoints;
+                        
+                        // Origin is active if it has a breakpoint met OR it is Targon with 1 unit
+                        const hasBreakpoint = breakpoints && breakpoints.some(b => b <= counts[t]);
+                        const isTargonActive = (t === 'Targon' && counts[t] >= 1);
+                        
+                        return hasBreakpoint || isTargonActive;
+                    });
+                    
+                    const originCount = activeOrigins.length;
+                    if (!nextBeamsByOriginCount[originCount]) nextBeamsByOriginCount[originCount] = [];
+                    
+                    nextBeamsByOriginCount[originCount].push({ 
+                        board: nextBoard, 
+                        score, 
+                        counts,
+                        originCount
+                    });
+                }
+            }
+
+            // Keep top N for each origin count to maintain diversity
+            currentBeams = [];
+            for (const count in nextBeamsByOriginCount) {
+                const sorted = nextBeamsByOriginCount[count].sort((a, b) => b.score - a.score);
+                const seen = new Set();
+                let added = 0;
+                for (const b of sorted) {
+                    const key = b.board.map(u => u.name).sort().join('|');
+                    if (!seen.has(key)) {
+                        seen.add(key);
+                        currentBeams.push(b);
+                        added++;
+                    }
+                    if (added >= BEAM_WIDTH_PER_ORIGIN_COUNT) break;
+                }
+            }
+            
+            if (onProgress) onProgress(step + 1, neededSlots, totalEvaluated);
+            await new Promise(resolve => setTimeout(resolve, 0));
+        }
+
+        currentBeams.sort((a, b) => b.score - a.score);
+        const finalResults = currentBeams.filter(r => r.score > -1000000).slice(0, limit);
+        return {
+            results: finalResults,
+            totalProcessed: totalEvaluated
         };
     }
 
@@ -407,8 +533,8 @@ class TFTOptimizer {
              return { results: [res], totalProcessed: 1 };
         }
 
-        const candidates = pool.filter(u => !mustIncludeNames.includes(u.name));
-        const BEAM_WIDTH = 200; // Large width for high quality
+        const { candidates } = this.getCandidates(pool, targetSize, emblems, mustIncludeNames, mustIncludeTraits, 'super', mode);
+        const BEAM_WIDTH = (mode === 'world-runes' || mode === 'ryze-unlock') ? 2000 : 200; 
         let totalEvaluated = 0;
 
         for (let step = 0; step < neededSlots; step++) {
@@ -446,8 +572,9 @@ class TFTOptimizer {
         }
 
         currentBeams.sort((a, b) => b.score - a.score);
+        const finalResults = currentBeams.filter(r => r.score > -1000000).slice(0, limit);
         return {
-            results: currentBeams.slice(0, limit),
+            results: finalResults,
             totalProcessed: totalEvaluated
         };
     }

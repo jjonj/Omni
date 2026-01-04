@@ -282,6 +282,20 @@ class TFTTester {
         this.assert(res3.score < -1000000, "Board with only 2 active origins should be invalid in world-runes mode");
     }
 
+    async testRuneSolverLevel5() {
+        const pool = this.data.units.filter(u => u.cost <= 3);
+        const emblems = ["Yordle", "Void"];
+        const { results } = await this.opt.findBestBoards(pool, 5, emblems, [], 'world-runes', {}, 1, null, 'super');
+        
+        this.assert(results.length > 0, "Rune solver found no boards at Level 5");
+        
+        const res = results[0];
+        const activeOrigins = this.opt.getActiveOrigins(res.counts);
+
+        this.assert(activeOrigins.length >= 4, `World Runes failed: Only ${activeOrigins.length} origins active. Origins: ${activeOrigins.join(', ')}. Board: ${res.board.map(u => u.name).join(', ')}`);
+        this.assert(res.board.every(u => u.cost <= 3), "Invalid unit cost found in Level 5 board");
+    }
+
     async testNidaleeAutoIncludeBug() {
         // This test simulates the UI's rendering logic fix.
         const neekoUnit = this.data.units.find(u => u.name === "Neeko");
