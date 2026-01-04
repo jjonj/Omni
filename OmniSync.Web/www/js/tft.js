@@ -803,6 +803,9 @@ function renderResults(results, container, level) {
         return;
     }
     const emblemTraits = selectedEmblems.map(e => e.trait);
+    const solverModeEl = document.querySelector('input[name="solver-mode"]:checked');
+    const solverMode = solverModeEl ? solverModeEl.value : 'default';
+
     results.forEach((res, index) => {
         const card = document.createElement('div');
         card.className = 'result-card';
@@ -826,8 +829,18 @@ function renderResults(results, container, level) {
                 }
             }
         });
+
+        let bronzeInfo = "";
+        if (solverMode === 'bronze-for-life') {
+            const activeCount = Object.keys(res.counts).filter(t => {
+                const traitInfo = tftData.trait_metadata[t];
+                return traitInfo && traitInfo.breakpoints.some(b => b <= res.counts[t]);
+            }).length;
+            bronzeInfo = `<span style="font-size: 10px; color: var(--text-dim); margin-left: 8px;">(${activeCount} active)</span>`;
+        }
+
         card.innerHTML = `<div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
-                <strong>Option ${index + 1}</strong>
+                <strong>Option ${index + 1} ${bronzeInfo}</strong>
                 <span style="color: var(--accent); font-weight: 600;">${res.score}</span>
             </div>`;
         const list = document.createElement('div');
@@ -894,6 +907,7 @@ function renderResults(results, container, level) {
                     const isActive = breakpoints && breakpoints.some(b => b <= count);
                     const isTargon = trait === 'Targon';
                     const hasEmblem = emblemTraits.includes(trait);
+                    const isOrigin = traitInfo && traitInfo.type === 'origin';
                     
                     if (!breakpoints && !isTargon) return;
             const traitItem = document.createElement('div');
@@ -903,10 +917,24 @@ function renderResults(results, container, level) {
             traitItem.style.fontSize = '11px';
             let textColor = 'var(--text-dim)';
             let filter = isActive ? '' : 'opacity: 0.5; filter: grayscale(1);';
-            if (hasEmblem) {
-                if (isActive) { textColor = '#32d74b'; filter = 'invert(48%) sepia(79%) saturate(2476%) hue-rotate(86deg) brightness(118%) contrast(119%)'; }
-                else { textColor = '#ff9500'; filter = 'invert(65%) sepia(91%) saturate(1831%) hue-rotate(3deg) brightness(103%) contrast(105%)'; }
-            } else if (isActive) { textColor = 'var(--text-bright)'; }
+            
+            const greenFilter = 'invert(48%) sepia(79%) saturate(2476%) hue-rotate(86deg) brightness(118%) contrast(119%)';
+            const orangeFilter = 'invert(65%) sepia(91%) saturate(1831%) hue-rotate(3deg) brightness(103%) contrast(105%)';
+
+            if (solverMode === 'world-runes') {
+                if (isOrigin && isActive) {
+                    textColor = '#32d74b';
+                    filter = greenFilter;
+                } else if (isActive) {
+                    textColor = 'var(--text-bright)';
+                }
+            } else {
+                if (hasEmblem) {
+                    if (isActive) { textColor = '#32d74b'; filter = greenFilter; }
+                    else { textColor = '#ff9500'; filter = orangeFilter; }
+                } else if (isActive) { textColor = 'var(--text-bright)'; }
+            }
+
             traitItem.style.color = textColor;
             if (isActive || hasEmblem) traitItem.style.fontWeight = '600';
             const iconUrl = `assets/tft/${currentConfig.current_set}/traits/${trait.replace(/ /g, '')}.svg`;
@@ -924,6 +952,9 @@ function renderImproveResults(suggestions, container, currentCounts) {
         return;
     }
     const emblemTraits = selectedEmblems.map(e => e.trait);
+    const solverModeEl = document.querySelector('input[name="solver-mode"]:checked');
+    const solverMode = solverModeEl ? solverModeEl.value : 'default';
+
     suggestions.forEach((group, index) => {
         const card = document.createElement('div');
         card.className = 'result-card';
@@ -976,19 +1007,24 @@ function renderImproveResults(suggestions, container, currentCounts) {
                     const traitInfo = (tftData.trait_metadata && tftData.trait_metadata[trait]) ? tftData.trait_metadata[trait] : null;
                     const breakpoints = traitInfo ? traitInfo.breakpoints : null;
                     const isTargon = trait === 'Targon';
+                    const isOrigin = traitInfo && traitInfo.type === 'origin';
+                    const hasEmblem = emblemTraits.includes(trait);
                     
                     if (!breakpoints && !isTargon) return;
             const getTier = (c) => { if (!breakpoints) return 0; const reached = breakpoints.filter(b => b <= c); return reached.length > 0 ? Math.max(...reached) : 0; };
             const oldTier = getTier(prevCount);
             const newTier = getTier(count);
-            const isActive = newTier > 0 || isTargon;
+            const isActive = newTier > 0 || (isTargon && count >= 1);
+            
             const greenFilter = 'invert(48%) sepia(79%) saturate(2476%) hue-rotate(86deg) brightness(118%) contrast(119%)';
             const redFilter = 'invert(27%) sepia(91%) saturate(7484%) hue-rotate(351deg) brightness(101%) contrast(114%)';
-            const yellowFilter = 'invert(85%) sepia(61%) saturate(1000%) hue-rotate(3deg) brightness(105%) contrast(105%)';
+            const orangeFilter = 'invert(85%) sepia(61%) saturate(1000%) hue-rotate(3deg) brightness(105%) contrast(105%)';
+            
             let status = 'none'; 
             if (newTier > oldTier) status = 'added';
             else if (newTier < oldTier && count === 0) status = 'removed';
             else if (newTier !== oldTier || count !== prevCount) status = 'changed';
+            
             const traitItem = document.createElement('div');
             traitItem.style.display = 'flex';
             traitItem.style.alignItems = 'center';
@@ -996,10 +1032,22 @@ function renderImproveResults(suggestions, container, currentCounts) {
             traitItem.style.fontSize = '11px';
             let color = 'var(--text-dim)';
             let filter = 'opacity: 0.5; filter: grayscale(1);';
-            if (status === 'added') { color = '#32d74b'; filter = greenFilter; }
-            else if (status === 'removed') { color = '#ff453a'; filter = redFilter; }
-            else if (status === 'changed') { color = '#ffd700'; filter = yellowFilter; }
-            else if (isActive) { color = 'var(--text-bright)'; filter = ''; }
+            
+            if (solverMode === 'world-runes') {
+                if (isOrigin && isActive) {
+                    color = '#32d74b';
+                    filter = greenFilter;
+                } else if (isActive) {
+                    color = 'var(--text-bright)';
+                    filter = '';
+                }
+            } else {
+                if (status === 'added') { color = '#32d74b'; filter = greenFilter; }
+                else if (status === 'removed') { color = '#ff453a'; filter = redFilter; }
+                else if (status === 'changed') { color = '#ffd700'; filter = orangeFilter; }
+                else if (isActive) { color = 'var(--text-bright)'; filter = ''; }
+            }
+
             const iconUrl = `assets/tft/${currentConfig.current_set}/traits/${trait.replace(/ /g, '')}.svg`;
             traitItem.style.color = color;
             traitItem.style.fontWeight = status !== 'none' ? 'bold' : 'normal';
