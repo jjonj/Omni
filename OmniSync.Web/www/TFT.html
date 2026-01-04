@@ -372,14 +372,15 @@
             }
 
             .tft-container {
-                height: auto;
-                min-height: calc(100vh - 56px);
-                overflow-y: auto;
+                /* Keep fixed height to viewport but allow internal scroll if needed */
+                /* overflow-y: auto; handled by tft-content usually, but we want the whole page to scroll if content is stacked */
             }
             
             .tft-content {
-                overflow: visible;
-                height: auto;
+                /* Allow this container to scroll the stacked content */
+                overflow-y: auto;
+                /* height: auto;  <-- REMOVED THIS */
+                display: block; /* Ensure it behaves as a block for vertical stacking */
             }
 
             .selection-zone, .results-zone {
