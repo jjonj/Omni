@@ -11,12 +11,22 @@ namespace OmniSync.Hub.Presentation.Controllers
     {
         private readonly CommandDispatcher _dispatcher;
         private readonly HubMonitorService _monitor;
-        private readonly string _apiKey = "test_api_key"; // Match your appsettings.json
+        private readonly AuthService _authService;
 
-        public ExternalCommandController(CommandDispatcher dispatcher, HubMonitorService monitor)
+        public ExternalCommandController(CommandDispatcher dispatcher, HubMonitorService monitor, AuthService authService)
         {
             _dispatcher = dispatcher;
             _monitor = monitor;
+            _authService = authService;
+        }
+
+        [HttpGet("commands")]
+        public IActionResult GetCommands([FromQuery] string key)
+        {
+            if (!_authService.Validate(key)) return Unauthorized();
+
+            var commands = _dispatcher.GetRegisteredCommands();
+            return Ok(commands);
         }
 
         [HttpPost("command")]
@@ -24,7 +34,7 @@ namespace OmniSync.Hub.Presentation.Controllers
         {
             var ip = Request.HttpContext.Connection.RemoteIpAddress?.ToString();
             
-            if (key != _apiKey) 
+            if (!_authService.Validate(key)) 
             {
                 _monitor.AddLogMessage($"External Command UNAUTHORIZED: '{cmd}' (Payload: {payload}) from IP: {ip}");
                 return Unauthorized();
@@ -36,6 +46,7 @@ namespace OmniSync.Hub.Presentation.Controllers
             {
                 // This leverages your existing CommandDispatcher!
                 _dispatcher.Dispatch(cmd.ToUpper(), payload);
+                _monitor.OnExternalCommandReceived(cmd);
                 return Ok();
             }
             catch (System.Exception ex)

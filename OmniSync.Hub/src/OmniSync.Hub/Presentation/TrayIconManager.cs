@@ -156,21 +156,35 @@ namespace OmniSync.Hub.Presentation
                 _notifyIcon.ContextMenuStrip = contextMenu;
 
                 _notifyIcon.MouseClick += OnMouseClick; // Handle left-click to show/hide window
+
+                _hubMonitorService.ExternalCommandReceived += (s, cmd) => {
+                    _notifyIcon.ShowBalloonTip(3000, "External Command", $"Executed: {cmd}", ToolTipIcon.Info);
+                };
             }
 
             private void OnMouseClick(object? sender, MouseEventArgs e)
             {
-                if (e.Button == MouseButtons.Left)
+                if (e.Button == MouseButtons.Left && _mainWindow != null)
                 {
-                    if (_mainWindow.IsVisible)
+                    _mainWindow.Dispatcher.BeginInvoke(new Action(() =>
                     {
-                        _mainWindow.Hide();
-                    }
-                    else
-                    {
-                        _mainWindow.Show();
-                        _mainWindow.Activate(); // Bring to foreground
-                    }
+                        try
+                        {
+                            if (_mainWindow.IsVisible)
+                            {
+                                _mainWindow.Hide();
+                            }
+                            else
+                            {
+                                _mainWindow.Show();
+                                _mainWindow.Activate();
+                            }
+                        }
+                        catch (InvalidOperationException)
+                        {
+                            // Window might be closed despite our best efforts
+                        }
+                    }));
                 }
             }
 
@@ -181,15 +195,33 @@ namespace OmniSync.Hub.Presentation
 
             private void OnShowWindow(object? sender, EventArgs e)
             {
-                // System.Windows.Forms.MessageBox.Show("Show Window option clicked!"); // Debug
-                _mainWindow.Show();
-                _mainWindow.Activate();
+                if (_mainWindow != null)
+                {
+                    _mainWindow.Dispatcher.BeginInvoke(new Action(() =>
+                    {
+                        try
+                        {
+                            _mainWindow.Show();
+                            _mainWindow.Activate();
+                        }
+                        catch (InvalidOperationException) { }
+                    }));
+                }
             }
 
             private void OnHideWindow(object? sender, EventArgs e)
             {
-                // System.Windows.Forms.MessageBox.Show("Hide Window option clicked!"); // Debug
-                _mainWindow.Hide();
+                if (_mainWindow != null)
+                {
+                    _mainWindow.Dispatcher.BeginInvoke(new Action(() =>
+                    {
+                        try
+                        {
+                            _mainWindow.Hide();
+                        }
+                        catch (InvalidOperationException) { }
+                    }));
+                }
             }
 
             private void OnExit(object? sender, EventArgs e)
@@ -228,6 +260,7 @@ namespace OmniSync.Hub.Presentation
                         {
                             if (_mainWindow != null)
                             {
+                                _mainWindow.IsInternalClosing = true;
                                 _mainWindow.Close(); // Close the WPF window
                             }
                             _wpfApplication.Shutdown(); // Shut down the WPF Application

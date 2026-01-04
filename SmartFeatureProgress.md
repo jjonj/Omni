@@ -43,6 +43,6 @@ Example for setting volume:
 
 ## 4. Missing / Next Steps
 
-1.  **Phase 5 (Outbound Control)**: Implement a service in the Hub that can send HTTP requests to Node-RED. This would allow Android macros to trigger other smart home devices (lights, plugs) through the Hub -> Node-RED link.
-2.  **Discovery API**: Add an endpoint to the Hub that returns a list of available commands and their payload schemas to help the user configure Node-RED more easily.
-3.  **UI Feedback**: Show "External Command Received" notifications in the Hub's system tray or monitoring window when Node-RED triggers an action.
+1.  **Phase 5 (Outbound Control)**: **DONE** - `NodeRedService` implemented in Hub to send POST requests to Node-RED. `TRIGGER_NODERED` command added.
+2.  **Discovery API**: **DONE** - `GET /api/external/commands` endpoint added to `ExternalCommandController`.
+3.  **UI Feedback**: **DONE** - `TrayIconManager` now shows balloon notifications for external commands via `HubMonitorService` events.

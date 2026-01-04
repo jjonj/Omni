@@ -25,6 +25,7 @@ namespace OmniSync.Hub.Logic.Monitoring
         public event EventHandler<string>? CommandUpdateOccurred;
         public event EventHandler<string>? ConnectionAdded; // New event
         public event EventHandler<string>? ConnectionRemoved; // New event
+        public event EventHandler<string>? ExternalCommandReceived; // New event for tray notifications
 
         // Event handlers from RpcApiHub
         private EventHandler<string>? _anyCommandReceivedHandler;
@@ -161,6 +162,11 @@ namespace OmniSync.Hub.Logic.Monitoring
             
             // Broadcast to SignalR clients (e.g. Web Monitor)
             _ = _hubEventSender.BroadcastLogEntryAdded(logEntry);
+        }
+
+        public void OnExternalCommandReceived(string command)
+        {
+            ExternalCommandReceived?.Invoke(this, command);
         }
 
         public void ClearLog()

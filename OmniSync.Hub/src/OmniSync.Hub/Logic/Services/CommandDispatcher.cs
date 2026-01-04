@@ -16,12 +16,13 @@ namespace OmniSync.Hub.Logic.Services
         private readonly ShutdownService _shutdownService;
         private readonly HubSettingsService _settingsService;
         private readonly PcgPersistentService _pcgService;
+        private readonly NodeRedService _nodeRedService;
         private readonly IHostApplicationLifetime _appLifetime;
         private readonly Dictionary<string, Action<JsonElement>> _commandMap;
 
         public event EventHandler<string>? AddCleanupPatternRequested;
 
-        public CommandDispatcher(InputService inputService, FileService fileService, AudioService audioService, ProcessService processService, ShutdownService shutdownService, HubSettingsService settingsService, PcgPersistentService pcgService, IHostApplicationLifetime appLifetime) // Add AudioService and ProcessService to constructor
+        public CommandDispatcher(InputService inputService, FileService fileService, AudioService audioService, ProcessService processService, ShutdownService shutdownService, HubSettingsService settingsService, PcgPersistentService pcgService, NodeRedService nodeRedService, IHostApplicationLifetime appLifetime) // Add AudioService and ProcessService to constructor
         {
             _inputService = inputService;
             _fileService = fileService;
@@ -30,6 +31,7 @@ namespace OmniSync.Hub.Logic.Services
             _shutdownService = shutdownService;
             _settingsService = settingsService;
             _pcgService = pcgService;
+            _nodeRedService = nodeRedService;
             _appLifetime = appLifetime;
             _commandMap = new Dictionary<string, Action<JsonElement>>
             {
@@ -80,7 +82,17 @@ namespace OmniSync.Hub.Logic.Services
                     payload.GetProperty("Y").GetSingle(),
                     payload.GetProperty("Data").GetString() ?? "",
                     payload.TryGetProperty("IsExclusion", out var excl) && excl.GetBoolean()
-                ) }
+                ) },
+                { "TRIGGER_NODERED", payload => {
+                    var endpoint = payload.GetProperty("Endpoint").GetString();
+                    if (!string.IsNullOrEmpty(endpoint)) {
+                        object? data = null;
+                        if (payload.TryGetProperty("Data", out var dataProp)) {
+                            data = dataProp;
+                        }
+                        _ = _nodeRedService.TriggerFlowAsync(endpoint, data);
+                    }
+                }}
             };
         }
             
@@ -94,6 +106,11 @@ namespace OmniSync.Hub.Logic.Services
                         {
                             Console.WriteLine($"Unknown command: {command}");
                         }
+                    }
+
+                    public IEnumerable<string> GetRegisteredCommands()
+                    {
+                        return _commandMap.Keys;
                     }
                 }
             }
