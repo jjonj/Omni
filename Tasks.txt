@@ -48,9 +48,9 @@ If necessary you may use AISpeak to ask the user for help/clarifications.
 ✅ add another button to go to a third button panel which takes up most of the screen. This screen has a grid containing all macros and macro buttons can be rearranged with long press drag 
 
 ✅ add a macro manager screen accessible from third panel 
-  allow defining macros with an ahk like syntax, allow let input, custom delays, opening and focusing windows, starting cli ai in configured workspaces, opening windows explorer to specific folders, etc
-  macros to into a dropdown for easy activation and deletion 
-  macros can be used a quick action in  notification or widget 
+  ✅ allow defining macros with an ahk like syntax, allow let input, custom delays, opening and focusing windows, starting cli ai in configured workspaces, opening windows explorer to specific folders, etc
+  ✅ macros to into a dropdown for easy activation and deletion 
+  ✅ macros can be used a quick action in  notification or widget 
 
 ✅ Replace the "kbd" text with a keyboard icon
 

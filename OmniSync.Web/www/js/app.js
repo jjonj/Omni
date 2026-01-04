@@ -155,25 +155,52 @@ const App = {
         else if (this.state.condition <= 79) templateName = 'intermediate';
 
         let s;
-        // If template same and we have schedule, preserve the base order
-        if (this.state.lastTemplateName === templateName && this.state.schedule && this.state.schedule.length > 0) {
-            // Filter out calendar blocks and injections to get back to base
-            s = this.state.schedule
+        // If we already have a schedule for today, preserve the sequence of BASE blocks
+        // This ensures manual reordering persists even if we adjust condition slider
+        if (this.state.schedule && this.state.schedule.length > 0) {
+            // 1. Get current sequence of base blocks (excluding calendar and temporary injections)
+            const currentBaseSequence = this.state.schedule
                 .filter(b => b.type !== 'calendar' && !b.name.includes("CHAOS INJECTION"))
                 .map(b => ({
                     name: b.name.replace(" (CONT)", ""),
-                    dur: b.dur,
                     type: b.type
                 }));
             
-            // Deduplicate if needed (in case of multiple (CONT) segments)
-            const seen = [];
-            s = s.filter(b => {
-                const key = b.name + b.type;
-                if (seen.includes(key)) return false;
-                seen.push(key);
-                return true;
+            // Deduplicate to get the ordered list of unique base blocks
+            const orderedBaseNames = [];
+            currentBaseSequence.forEach(b => {
+                if (!orderedBaseNames.some(existing => existing.name === b.name && existing.type === b.type)) {
+                    orderedBaseNames.push(b);
+                }
             });
+
+            // 2. Get the new template blocks
+            const newTemplateBlocks = JSON.parse(JSON.stringify(DAY_TEMPLATES[templateName]));
+
+            // 3. Reconstruct schedule using the ORDER from orderedBaseNames but DATA from newTemplateBlocks
+            s = [];
+            orderedBaseNames.forEach(baseRef => {
+                // Find this block in the new template to get its (potentially new) duration
+                const templateMatch = newTemplateBlocks.find(tb => tb.name === baseRef.name && tb.type === baseRef.type);
+                if (templateMatch) {
+                    s.push(templateMatch);
+                } else {
+                    // If a block was manually moved but isn't in the new template, we might want to keep it?
+                    // For now, only keep what's in the template to avoid "ghost blocks" when switching modes.
+                    // Actually, let's keep it if it was manually reordered but maybe give it a default duration?
+                    // Better: just use what's in the template. If user reordered A, B, C and new template has A, C, D
+                    // the result should be A, C (in that order).
+                }
+            });
+
+            // 4. Add any NEW blocks from the template that weren't in our previous sequence
+            newTemplateBlocks.forEach(tb => {
+                if (!s.some(sb => sb.name === tb.name && sb.type === tb.type)) {
+                    s.push(tb);
+                }
+            });
+            
+            this.state.lastTemplateName = templateName;
         } else {
             s = JSON.parse(JSON.stringify(DAY_TEMPLATES[templateName]));
             this.state.lastTemplateName = templateName;

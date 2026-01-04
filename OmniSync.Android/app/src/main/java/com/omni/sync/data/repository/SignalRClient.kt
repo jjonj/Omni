@@ -314,6 +314,13 @@ class SignalRClient(
                 return@on
             }
 
+            if (response.isBlank()) return@on
+
+            // If we receive a real response, clear any "Switching..." status
+            if (_aiStatus.value?.contains("Switching") == true || _aiStatus.value?.contains("Reloading") == true) {
+                _aiStatus.value = null
+            }
+
             val isSystem = response.startsWith("Error:") || response.contains("A new version of Gemini CLI is available")
             val sender = if (isSystem) "System" else "AI"
 
