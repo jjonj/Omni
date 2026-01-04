@@ -450,27 +450,33 @@
                             </div>
 
                             <div class="control-box" style="flex: 1; display: flex; flex-direction: column; padding: 12px; min-height: 80px;">
-                                <h2 style="font-size: 10px;">Current Team</h2>     
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                                    <h2 style="font-size: 10px; margin: 0; border: none; padding: 0;">Current Team</h2>
+                                    <button class="btn danger" onclick="clearCurrentTeam()" style="font-size: 8px; padding: 1px 4px; height: 16px;">Clear</button>
+                                </div>
                                 <div class="drop-zone" id="current-team-zone" ondrop="dropToCurrentTeam(event)" ondragover="allowDrop(event)" style="flex: 1; min-height: 50px;">
                                     <div class="placeholder-text">Drag Units Here</div>
                                 </div>
-                                <button class="btn danger" onclick="clearCurrentTeam()" style="width: 100%; margin-top: 4px; font-size: 10px; padding: 2px;">Clear</button>
                             </div>
 
                             <div class="control-box" style="flex: 1; display: flex; flex-direction: column; padding: 12px; min-height: 80px;">
-                                <h2 style="font-size: 10px;">Must Include Units & Traits</h2>
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                                    <h2 style="font-size: 10px; margin: 0; border: none; padding: 0;">Must Include Units & Traits</h2>
+                                    <button class="btn danger" onclick="clearMustInclude()" style="font-size: 8px; padding: 1px 4px; height: 16px;">Clear</button>
+                                </div>
                                 <div class="drop-zone" id="must-include-zone" ondrop="dropToMustInclude(event)" ondragover="allowDrop(event)" style="flex: 1; min-height: 50px;">
                                     <div class="placeholder-text">Units or Traits</div>
                                 </div>
-                                <button class="btn danger" onclick="clearMustInclude()" style="width: 100%; margin-top: 4px; font-size: 10px; padding: 2px;">Clear</button>
                             </div>
 
                             <div class="control-box" style="flex: 1; display: flex; flex-direction: column; padding: 12px; min-height: 100px;">
-                                <h2 style="font-size: 10px;">Selected Emblems</h2>
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                                    <h2 style="font-size: 10px; margin: 0; border: none; padding: 0;">Selected Emblems</h2>
+                                    <button class="btn danger" onclick="clearEmblems()" style="font-size: 8px; padding: 1px 4px; height: 16px;">Clear</button>
+                                </div>
                                 <div class="drop-zone emblem-zone" id="emblem-drop-zone" ondrop="dropEmblem(event)" ondragover="allowDrop(event)" style="flex: 1; min-height: 60px;">
                                     <div class="placeholder-text">Emblems</div>
                                 </div>
-                                <button class="btn danger" onclick="clearEmblems()" style="width: 100%; margin-top: 6px; font-size: 10px; padding: 4px;">Clear</button>
                             </div>
 
                             <button id="run-btn" class="modern-btn primary" onclick="runOptimization()" style="height: 40px; font-size: 13px;">RUN OPTIMIZATION</button>
