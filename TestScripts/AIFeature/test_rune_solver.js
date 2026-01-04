@@ -54,7 +54,48 @@ async function runTest() {
         process.exit(1);
     }
 
-    console.log("PASS: World Runes requirement met at Level 5 with emblems!");
+    console.log("PASS: World Runes requirement met at Level 5 with Yordle/Void emblems!");
+
+    console.log("\n--- Running Test: Rune Solver Heuristic + Level 5 + Piltover & Demacia Emblems + Sona ---");
+    const emblems2 = ["Piltover", "Demacia"];
+    const mustIncludeNames2 = ["Sona"];
+    
+    const { results: results2 } = await optimizer.findBestBoards(
+        pool, 
+        5, 
+        emblems2, 
+        mustIncludeNames2, 
+        'world-runes', 
+        {}, 
+        1, 
+        null, 
+        'super'
+    );
+    
+    if (results2.length === 0) {
+        console.error("FAIL: Rune solver found no boards for Piltover/Demacia/Sona");
+        process.exit(1);
+    }
+    
+    const res2 = results2[0];
+    const activeOrigins2 = optimizer.getActiveOrigins(res2.counts);
+
+    console.log("Top Board:", res2.board.map(u => u.name).join(", "));
+    console.log("Active Origins:", activeOrigins2.join(', '));
+    console.log("Origin Count:", activeOrigins2.length);
+    console.log("Score:", res2.score);
+
+    if (activeOrigins2.length < 4) {
+        console.error(`FAIL: World Runes failed: Only ${activeOrigins2.length} origins active.`);
+        process.exit(1);
+    }
+
+    if (!res2.board.some(u => u.name === "Sona")) {
+        console.error("FAIL: Sona missing from board");
+        process.exit(1);
+    }
+
+    console.log("PASS: World Runes requirement met at Level 5 with Piltover/Demacia/Sona!");
 }
 runTest().catch(err => {
     console.error(err);
