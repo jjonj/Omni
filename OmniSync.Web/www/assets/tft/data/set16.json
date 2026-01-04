@@ -468,7 +468,7 @@
         "Noxus",
         "Invoker"
       ],
-      "is_carry": false,
+      "is_carry": true,
       "locked": true,
       "icon_url": "assets/tft/set16/champions/LeBlanc.png"
     },
@@ -555,7 +555,7 @@
       "traits": [
         "Targon"
       ],
-      "is_carry": false,
+      "is_carry": true,
       "locked": false,
       "icon_url": "assets/tft/set16/champions/Zoe.png"
     },
@@ -609,7 +609,7 @@
         "Bilgewater",
         "Yordle"
       ],
-      "is_carry": false,
+      "is_carry": true,
       "locked": true,
       "icon_url": "assets/tft/set16/champions/Fizz.png"
     },
@@ -851,7 +851,7 @@
         "Harvester",
         "Vanquisher"
       ],
-      "is_carry": false,
+      "is_carry": true,
       "locked": false,
       "icon_url": "assets/tft/set16/champions/Fiddlesticks.png"
     },
@@ -884,7 +884,7 @@
         "Noxus",
         "Disruptor"
       ],
-      "is_carry": false,
+      "is_carry": true,
       "locked": true,
       "icon_url": "assets/tft/set16/champions/Mel.png"
     },
@@ -915,7 +915,7 @@
         "The Boss",
         "Ionia"
       ],
-      "is_carry": false,
+      "is_carry": true,
       "locked": true,
       "icon_url": "assets/tft/set16/champions/Sett.png"
     },
@@ -972,7 +972,7 @@
         "Freljord",
         "Bruiser"
       ],
-      "is_carry": false,
+      "is_carry": true,
       "locked": true,
       "icon_url": "assets/tft/set16/champions/Volibear.png"
     },
@@ -1026,7 +1026,7 @@
       "traits": [
         "Ixtal"
       ],
-      "is_carry": false,
+      "is_carry": true,
       "locked": false,
       "requires": "Neeko",
       "icon_url": "assets/tft/set16/champions/Nidalee.png"
