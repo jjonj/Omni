@@ -141,7 +141,18 @@ function renderAlphaFilter() {
     container.innerHTML = '';
 
     const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
+    const availableLetters = new Set();
+    if (tftData && tftData.units) {
+        tftData.units.forEach(u => {
+            if (u.name && u.name.length > 0) {
+                availableLetters.add(u.name[0].toUpperCase());
+            }
+        });
+    }
+
     alphabet.forEach(letter => {
+        if (!availableLetters.has(letter)) return;
+
         const btn = document.createElement('button');
         btn.className = 'alpha-btn';
         if (unitAlphaFilter === letter) btn.classList.add('active');
@@ -997,7 +1008,7 @@ function renderResults(results, container, level) {
             const greenFilter = 'invert(48%) sepia(79%) saturate(2476%) hue-rotate(86deg) brightness(118%) contrast(119%)';
             const orangeFilter = 'invert(65%) sepia(91%) saturate(1831%) hue-rotate(3deg) brightness(103%) contrast(105%)';
 
-            if (solverMode === 'world-runes') {
+            if (solverMode === 'world-runes' || solverMode === 'ryze-unlock') {
                 if (isOrigin && isActive) {
                     textColor = '#32d74b';
                     filter = greenFilter;
@@ -1109,7 +1120,7 @@ function renderImproveResults(suggestions, container, currentCounts) {
             let color = 'var(--text-dim)';
             let filter = 'opacity: 0.5; filter: grayscale(1);';
             
-            if (solverMode === 'world-runes') {
+            if (solverMode === 'world-runes' || solverMode === 'ryze-unlock') {
                 if (isOrigin && isActive) {
                     color = '#32d74b';
                     filter = greenFilter;
