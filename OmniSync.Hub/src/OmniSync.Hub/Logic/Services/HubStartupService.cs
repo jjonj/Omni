@@ -13,27 +13,68 @@ namespace OmniSync.Hub.Logic.Services
     {
         private readonly ILogger<HubStartupService> _logger;
         private readonly IConfiguration _configuration;
+        private readonly IHostApplicationLifetime _appLifetime;
 
-        public HubStartupService(ILogger<HubStartupService> logger, IConfiguration configuration)
+        public HubStartupService(ILogger<HubStartupService> logger, IConfiguration configuration, IHostApplicationLifetime appLifetime)
         {
             _logger = logger;
             _configuration = configuration;
+            _appLifetime = appLifetime;
         }
 
         public Task StartAsync(CancellationToken cancellationToken)
         {
             bool autoStart = _configuration.GetValue<bool>("AiSettings:AutoStartComponents", true);
             
-                if (autoStart)
-                {
-                    _logger.LogInformation("HubStartupService: AI auto-start is enabled. Components will launch on-demand.");
-                    // ai_listener.py is deprecated. AiCliService handles sessions directly.
-                }            else
+            if (autoStart)
+            {
+                _logger.LogInformation("HubStartupService: AI auto-start is enabled. Registering startup tasks.");
+                _appLifetime.ApplicationStarted.Register(OnApplicationStarted);
+            }
+            else
             {
                 _logger.LogInformation("HubStartupService: AI auto-start is disabled in configuration.");
             }
 
             return Task.CompletedTask;
+        }
+
+        private void OnApplicationStarted()
+        {
+            // Only launch if the computer booted in the last 5 minutes (300,000 milliseconds)
+            // Environment.TickCount64 returns milliseconds since boot.
+            if (Environment.TickCount64 < 300000)
+            {
+                LaunchFirefox();
+            }
+            else
+            {
+                _logger.LogInformation($"HubStartupService: System has been up for {Environment.TickCount64 / 1000 / 60} minutes. Skipping Firefox auto-launch.");
+            }
+        }
+
+        private void LaunchFirefox()
+        {
+            try
+            {
+                string firefoxPath = @"C:\Program Files\Mozilla Firefox\firefox.exe";
+                string url = "http://localhost:3333/Scheduler.html";
+
+                _logger.LogInformation($"HubStartupService: Launching Firefox at {url}...");
+
+                var startInfo = new ProcessStartInfo
+                {
+                    FileName = firefoxPath,
+                    Arguments = url,
+                    UseShellExecute = true
+                };
+
+                Process.Start(startInfo);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "HubStartupService: Failed to launch Firefox.");
+            }
         }
 
         private void LaunchComponent(string scriptName)

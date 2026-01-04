@@ -8,6 +8,8 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -281,6 +283,84 @@ fun SettingsScreen(
                 modifier = Modifier.align(Alignment.End)
             ) {
                 Text("Sync to Cortex")
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+            HorizontalDivider()
+            Spacer(modifier = Modifier.height(24.dp))
+
+            Text("File Caching", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+            Spacer(modifier = Modifier.height(8.dp))
+
+            var maxCacheSizeMb by remember { mutableStateOf((appConfig.maxCacheFileSize / (1024 * 1024)).toString()) }
+            OutlinedTextField(
+                value = maxCacheSizeMb,
+                onValueChange = { 
+                    maxCacheSizeMb = it
+                    it.toLongOrNull()?.let { mb ->
+                        appConfig.maxCacheFileSize = mb * 1024 * 1024
+                        mainViewModel.saveAppConfig()
+                    }
+                },
+                label = { Text("Max Cache File Size (MB)") },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+            
+            Spacer(modifier = Modifier.height(8.dp))
+
+            var exclusionPatternsStr by remember { mutableStateOf(appConfig.cacheExclusionPatterns.joinToString("\n")) }
+            OutlinedTextField(
+                value = exclusionPatternsStr,
+                onValueChange = { 
+                    exclusionPatternsStr = it
+                    appConfig.cacheExclusionPatterns = it.lines().filter { line -> line.isNotBlank() }
+                    mainViewModel.saveAppConfig()
+                },
+                label = { Text("Cache Exclusion Patterns (one per line)") },
+                modifier = Modifier.fillMaxWidth().height(120.dp),
+                placeholder = { Text("e.g. G:/*\n*porn*") }
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            var wolMac by remember { mutableStateOf(appConfig.wakeOnLanMac) }
+            OutlinedTextField(
+                value = wolMac,
+                onValueChange = { 
+                    wolMac = it
+                    appConfig.wakeOnLanMac = it
+                    mainViewModel.saveAppConfig()
+                },
+                label = { Text("Wake-on-LAN MAC Address") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            var subnetIp by remember { mutableStateOf(appConfig.subnetBroadcastIp) }
+            OutlinedTextField(
+                value = subnetIp,
+                onValueChange = { 
+                    subnetIp = it
+                    appConfig.subnetBroadcastIp = it
+                    mainViewModel.saveAppConfig()
+                },
+                label = { Text("Subnet Broadcast IP (e.g. 192.168.1.255)") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Button(
+                onClick = { filesViewModel.clearAllCaches() },
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+            ) {
+                Text("Clear All Local Caches")
             }
 
             Spacer(modifier = Modifier.height(24.dp))

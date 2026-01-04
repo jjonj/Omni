@@ -22,6 +22,18 @@ namespace OmniSync.Hub.Infrastructure.Services
         public bool IsHistory { get; set; }
     }
 
+    public class AiSessionInfo
+    {
+        [System.Text.Json.Serialization.JsonPropertyName("pid")]
+        public int Pid { get; set; }
+        
+        [System.Text.Json.Serialization.JsonPropertyName("name")]
+        public string Name { get; set; } = string.Empty;
+        
+        [System.Text.Json.Serialization.JsonPropertyName("startTime")]
+        public DateTime StartTime { get; set; }
+    }
+
     public class AiCliService : IDisposable
     {
         private readonly ILogger<AiCliService> _logger;
@@ -47,6 +59,53 @@ namespace OmniSync.Hub.Infrastructure.Services
             return Task.CompletedTask;
         }
 
+        public void TryAutoRenameSession(int pid, string firstMessage)
+        {
+            int target = pid == -1 ? _targetPid : pid;
+            if (target == -1 || string.IsNullOrWhiteSpace(firstMessage)) return;
+            if (_sessionNames.ContainsKey(target)) return; // Already named
+
+            string name = GenerateName(firstMessage);
+            if (!string.IsNullOrWhiteSpace(name))
+            {
+                _sessionNames[target] = name;
+                _logger.LogInformation($"Auto-renamed session PID {target} to '{name}' based on first message.");
+            }
+        }
+
+        private string GenerateName(string message)
+        {
+            // Words to skip ONLY if they appear at the beginning of the sentence
+            var prefixWords = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            {
+                "please", "can", "you", "i", "want", "to", "could", "would", "should", "tell", "give", "show", 
+                "help", "with", "write", "create", "make", "find", "search", "check", "analyze", "suggest", 
+                "summarize", "explain", "how", "what", "why", "when", "where", "who", "is", "are", "am", 
+                "do", "does", "did", "for", "of", "in", "on", "at", "by", "this", "that", "will", "my", "your", 
+                "it", "its", "from", "now", "here", "there", "me", "a", "an", "the"
+            };
+
+            var words = message.Split(new[] { ' ', '\t', '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries);
+            
+            // Find the first word that isn't a prefix word
+            int startIndex = 0;
+            while (startIndex < words.Length && prefixWords.Contains(words[startIndex].Trim(new[] { '.', ',', '?', '!', '"', '\'', ':', ';' })))
+            {
+                startIndex++;
+            }
+
+            // If we skipped everything, just take the first few words
+            if (startIndex >= words.Length) startIndex = 0;
+
+            string baseName = string.Join(" ", words.Skip(startIndex).Take(3));
+            
+            if (baseName.Length > 12)
+            {
+                return baseName.Substring(0, 12).Trim() + "..";
+            }
+            return baseName;
+        }
+
         public string GetSessionName(int pid)
         {
             return _sessionNames.TryGetValue(pid, out var name) ? name : $"Session {pid}";
@@ -65,9 +124,23 @@ namespace OmniSync.Hub.Infrastructure.Services
             return result;
         }
 
-        public async Task<List<int>> DiscoverSessionsAsync(int connectionTimeoutMs = 1000)
+        public List<AiSessionInfo> GetActiveSessions()
         {
-            _logger.LogInformation($"[AiCliService] DiscoverSessionsAsync started (timeout: {connectionTimeoutMs}ms)");
+            return _sessions.Values
+                .Where(s => s.IsConnected)
+                .OrderBy(s => s.StartTime)
+                .Select(s => new AiSessionInfo
+                {
+                    Pid = s.Pid,
+                    Name = GetSessionName(s.Pid),
+                    StartTime = s.StartTime
+                })
+                .ToList();
+        }
+
+        public async Task<List<int>> DiscoverSessionsAsync(int connectionTimeoutMs = 1000, int startupTimeout = 5000)
+        {
+            _logger.LogInformation($"[AiCliService] DiscoverSessionsAsync started (timeout: {connectionTimeoutMs}ms, startup: {startupTimeout}ms)");
             var sw = Stopwatch.StartNew();
             var pids = new List<int>();
             var now = DateTime.Now;
@@ -203,7 +276,7 @@ namespace OmniSync.Hub.Infrastructure.Services
             {
                 // Capture existing sessions before launch
                 onProgress?.Invoke("Scanning for existing sessions...");
-                var initialSessions = await DiscoverSessionsAsync(500); 
+                var initialSessions = await DiscoverSessionsAsync(500, 1000); 
 
                 string rootPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", ".."));
                 string geminiDir = Path.GetFullPath(Path.Combine(rootPath, "..", "Tools", "gemini-cli"));
@@ -227,13 +300,13 @@ namespace OmniSync.Hub.Infrastructure.Services
                 var startInfo = new ProcessStartInfo
                 {
                     FileName = "cmd.exe",
-                    Arguments = $"/K \"{finalCommand}\"",
+                    Arguments = $"/C \"{finalCommand}\"",
                     UseShellExecute = true,
                     CreateNoWindow = false,
                     WindowStyle = ProcessWindowStyle.Normal
                 };
 
-                Process.Start(startInfo);
+                var shellProcess = Process.Start(startInfo);
                 _logger.LogInformation("[AiCliService] Process started. Waiting for it to establish named pipe...");
                 onProgress?.Invoke("Process started. Waiting for connection...");
 
@@ -245,7 +318,7 @@ namespace OmniSync.Hub.Infrastructure.Services
                     
                     // Force a WMI refresh by resetting cache
                     _lastWmiDiscovery = DateTime.MinValue;
-                    var currentSessions = await DiscoverSessionsAsync(1000); 
+                    var currentSessions = await DiscoverSessionsAsync(1000, 5000); 
                     
                     var newPid = currentSessions.Except(initialSessions).FirstOrDefault();
                     if (newPid != 0)
@@ -253,6 +326,12 @@ namespace OmniSync.Hub.Infrastructure.Services
                         string msg = $"Successfully connected to new session PID {newPid} after {i+1} seconds.";
                         _logger.LogInformation($"[AiCliService] {msg}");
                         onProgress?.Invoke(msg);
+
+                        if (_sessions.TryGetValue(newPid, out var session))
+                        {
+                            session.SetShellProcess(shellProcess);
+                        }
+
                         return newPid;
                     }
                     else
@@ -281,7 +360,19 @@ namespace OmniSync.Hub.Infrastructure.Services
             if (_sessions.TryGetValue(pid, out var existing) && existing.IsConnected) return;
 
             _logger.LogInformation($"[AiCliService] Ensuring session for PID {pid} (timeout: {timeoutMs}ms)");
-            var session = new GeminiSession(pid, _logger, (p, text, finished, history) =>
+            
+            DateTime startTime = DateTime.Now;
+            try
+            {
+                var proc = Process.GetProcessById(pid);
+                startTime = proc.StartTime;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug($"Could not get start time for process {pid}: {ex.Message}");
+            }
+
+            var session = new GeminiSession(pid, startTime, _logger, (p, text, finished, history) =>
             {
                 ResponseReceived?.Invoke(this, new GeminiResponseEventArgs
                 {
@@ -462,6 +553,7 @@ namespace OmniSync.Hub.Infrastructure.Services
     internal class GeminiSession : IDisposable
     {
         private readonly int _pid;
+        private readonly DateTime _startTime;
         private readonly ILogger _logger;
         private readonly Action<int, string, bool, bool> _onResponse;
         private NamedPipeClientStream? _pipeClient;
@@ -469,14 +561,23 @@ namespace OmniSync.Hub.Infrastructure.Services
         private CancellationTokenSource? _cts;
         private readonly StringBuilder _currentResponse = new();
         private readonly SemaphoreSlim _writeLock = new(1, 1);
+        private Process? _shellProcess;
 
         public bool IsConnected => _pipeClient?.IsConnected ?? false;
+        public int Pid => _pid;
+        public DateTime StartTime => _startTime;
 
-        public GeminiSession(int pid, ILogger logger, Action<int, string, bool, bool> onResponse)
+        public GeminiSession(int pid, DateTime startTime, ILogger logger, Action<int, string, bool, bool> onResponse)
         {
             _pid = pid;
+            _startTime = startTime;
             _logger = logger;
             _onResponse = onResponse;
+        }
+
+        public void SetShellProcess(Process? process)
+        {
+            _shellProcess = process;
         }
 
         public async Task<bool> ConnectAsync(int timeoutMs)
@@ -525,7 +626,10 @@ namespace OmniSync.Hub.Infrastructure.Services
                             await _writeLock.WaitAsync();
                             try
                             {
-                                var payload = JsonSerializer.Serialize(new { command, text });
+                                // Normalize path separators in prompt text to avoid double-escaping issues
+                                string normalizedText = text?.Replace("\\\\", "/") ?? string.Empty;
+                                var payload = JsonSerializer.Serialize(new { command, text = normalizedText });
+                                Console.WriteLine($"[GeminiPipe WRITE] PID {_pid}: {payload}");
                                 _logger.LogInformation($"[GeminiSession] Sending to PID {_pid}: {payload}");
                 await _writer.WriteLineAsync(payload);
                 await _writer.FlushAsync();
@@ -550,7 +654,7 @@ namespace OmniSync.Hub.Infrastructure.Services
             using var reader = new StreamReader(_pipeClient, Encoding.UTF8, false, 1024, leaveOpen: true);
             try
             {
-                while (!token.IsCancellationRequested && IsConnected)
+                while (!token.IsCancellationRequested)
                 {
                     var line = await reader.ReadLineAsync(token);
                     if (line == null) 
@@ -559,38 +663,54 @@ namespace OmniSync.Hub.Infrastructure.Services
                         break;
                     }
 
+                    Console.WriteLine($"[GeminiPipe RAW] PID {_pid}: {line}");
                     _logger.LogDebug($"[GeminiSession] Received from PID {_pid}: {line}");
                     try
                     {
                         var msg = JsonDocument.Parse(line);
-                        if (msg.RootElement.TryGetProperty("type", out var type) && type.GetString() == "response")
+                        if (msg.RootElement.TryGetProperty("type", out var type))
                         {
-                            var text = msg.RootElement.GetProperty("text").GetString();
-                            if (text == null) continue;
+                            var typeStr = type.GetString();
+                            var text = msg.RootElement.TryGetProperty("text", out var textProp) ? textProp.GetString() : null;
 
-                            if (text.Contains("[HISTORY_START]"))
+                            if (typeStr == "response")
                             {
-                                _logger.LogInformation($"[GeminiSession] Received history from PID {_pid}");
-                                int startIdx = text.IndexOf("[HISTORY_START]") + "[HISTORY_START]".Length;
-                                int endIdx = text.IndexOf("[HISTORY_END]", startIdx);
-                                if (endIdx != -1)
+                                if (text == null) continue;
+
+                                if (text.Contains("[HISTORY_START]"))
                                 {
-                                    var historyJson = text.Substring(startIdx, endIdx - startIdx);
-                                    _onResponse(_pid, historyJson, true, true);
+                                    _logger.LogInformation($"[GeminiSession] Received history from PID {_pid}");
+                                    int startIdx = text.IndexOf("[HISTORY_START]") + "[HISTORY_START]".Length;
+                                    int endIdx = text.IndexOf("[HISTORY_END]", startIdx);
+                                    if (endIdx != -1)
+                                    {
+                                        var historyJson = text.Substring(startIdx, endIdx - startIdx);
+                                        _onResponse(_pid, historyJson, true, true);
+                                    }
+                                }
+                                else if (text == "[TURN_FINISHED]")
+                                {
+                                    _logger.LogInformation($"[GeminiSession] Turn finished for PID {_pid}");
+                                    _onResponse(_pid, string.Empty, true, false);
+                                }
+                                else if (text == "[Command Handled]")
+                                {
+                                    _logger.LogDebug($"[GeminiSession] Command handled for PID {_pid}");
+                                }
+                                else
+                                {
+                                    _onResponse(_pid, text, false, false);
                                 }
                             }
-                            else if (text == "[TURN_FINISHED]")
+                            else if (typeStr == "codeDiff")
                             {
-                                _logger.LogInformation($"[GeminiSession] Turn finished for PID {_pid}");
-                                _onResponse(_pid, string.Empty, true, false);
+                                _logger.LogInformation($"[GeminiSession] Received codeDiff from PID {_pid}");
+                                _onResponse(_pid, text ?? string.Empty, false, false);
                             }
-                            else if (text == "[Command Handled]")
+                            else if (typeStr == "toolCall")
                             {
-                                _logger.LogDebug($"[GeminiSession] Command handled for PID {_pid}");
-                            }
-                            else
-                            {
-                                _onResponse(_pid, text, false, false);
+                                _logger.LogInformation($"[GeminiSession] Received toolCall from PID {_pid}");
+                                _onResponse(_pid, text ?? string.Empty, false, false);
                             }
                         }
                     }
@@ -618,6 +738,19 @@ namespace OmniSync.Hub.Infrastructure.Services
             _pipeClient?.Dispose();
             _cts?.Dispose();
             _writeLock.Dispose();
+
+            try
+            {
+                if (_shellProcess != null && !_shellProcess.HasExited)
+                {
+                    _shellProcess.Kill(true);
+                    _logger.LogInformation($"[GeminiSession] Killed shell process for PID {_pid}");
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning($"[GeminiSession] Could not kill shell process for PID {_pid}: {ex.Message}");
+            }
         }
     }
 }

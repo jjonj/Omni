@@ -36,22 +36,29 @@ class RoundtripTester:
         self.connection_started = True
 
     def on_ai_message(self, args):
-        sender_id, message = args
-        logger.info(f"HUB BROADCAST: Message from {sender_id}: {message}")
+        # Hub sends [senderId, message, pid]
+        if len(args) >= 3:
+            sender_id, message, pid = args[0], args[1], args[2]
+            logger.info(f"HUB BROADCAST: Message from {sender_id} to PID {pid}: {message}")
+        else:
+            logger.info(f"HUB BROADCAST: AI Message received (partial args: {args})")
         self.message_received = True
 
     def on_ai_response(self, args):
-        response = args[0]
-        # logger.info(f"HUB BROADCAST: AI Response received.")
-        if str(response).startswith("Error:") or "Error:" in str(response)[:20]:
-            logger.error(f"FAIL: AI Response indicated an error: {response}")
-            self.failure_detected = True
+        # Hub sends [response, pid]
+        if args:
+            response = args[0]
+            if str(response).startswith("Error:") or "Error:" in str(response)[:20]:
+                logger.error(f"FAIL: AI Response indicated an error: {response}")
+                self.failure_detected = True
 
     def on_ai_status(self, args):
-        status = args[0]
-        logger.info(f"AI Status: {status}")
-        if status == "FINISHED":
-            self.response_received = True
+        # Hub sends [status, pid]
+        if args:
+            status = args[0]
+            logger.info(f"AI Status: {status}")
+            if status == "FINISHED":
+                self.response_received = True
 
     def on_new_session_pid(self, args):
         pid = args[0]

@@ -6,7 +6,8 @@
     "tabs",
     "scripting",
     "storage",
-    "history"
+    "history",
+    "contextMenus"
   ],
   "background": {
     "service_worker": "background.js"

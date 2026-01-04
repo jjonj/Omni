@@ -19,10 +19,20 @@ namespace OmniSync.Hub.Infrastructure.Services
 
         public HubSettings Settings => _settings;
 
+        public event EventHandler? SettingsChanged;
+
         public HubSettingsService(ILogger<HubSettingsService> logger)
         {
             _logger = logger;
-            _settingsPath = Path.Combine(AppContext.BaseDirectory, "settings.json");
+            
+            // Use AppData for persistent storage across reinstalls
+            string appDataPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "OmniSync");
+            if (!Directory.Exists(appDataPath))
+            {
+                Directory.CreateDirectory(appDataPath);
+            }
+            _settingsPath = Path.Combine(appDataPath, "settings.json");
+            
             LoadSettings();
         }
 
@@ -56,6 +66,7 @@ namespace OmniSync.Hub.Infrastructure.Services
                 string json = JsonSerializer.Serialize(_settings, new JsonSerializerOptions { WriteIndented = true });
                 File.WriteAllText(_settingsPath, json);
                 _logger.LogInformation("Settings saved successfully.");
+                OnSettingsChanged();
             }
             catch (Exception ex)
             {
@@ -84,6 +95,11 @@ namespace OmniSync.Hub.Infrastructure.Services
                 return path;
             }
             return null;
+        }
+
+        protected virtual void OnSettingsChanged()
+        {
+            SettingsChanged?.Invoke(this, EventArgs.Empty);
         }
     }
 }

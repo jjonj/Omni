@@ -124,6 +124,8 @@ class SignalRClient(
     private val _aiSessions = MutableStateFlow<Map<Int, String>>(emptyMap())
     val aiSessions: StateFlow<Map<Int, String>> = _aiSessions
 
+    val anyAiActivityEvent = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+
     val lastCreatedSessionPid = MutableSharedFlow<Int>()
 
     private var _isStartingSession = false
@@ -321,6 +323,9 @@ class SignalRClient(
                     }
         
                     if (response.isBlank()) return@on
+
+                    // Notify any AI activity
+                    coroutineScope.launch { anyAiActivityEvent.emit(Unit) }
         
                     // If we receive a real response, clear any "Switching..." status
                     val currentStatus = _aiStatusMap.value[pid]
@@ -328,17 +333,30 @@ class SignalRClient(
                         updateSessionStatus(pid, null)
                     }
         
-                    val isSystem = response.startsWith("Error:") || response.contains("A new version of Gemini CLI is available")
-                    val sender = if (isSystem) "System" else "AI"
+                    val isError = response.startsWith("Error:")
+                    val isSystem = response.contains("A new version of Gemini CLI is available") || 
+                                   response.startsWith("System:") || 
+                                   response.startsWith("Info:") ||
+                                   response.startsWith("Replacement") ||
+                                   response.startsWith("Read") ||
+                                   response.startsWith("Tool Call") ||
+                                   response.startsWith("Thinking") ||
+                                   response.startsWith("Executing")
+                    
+                    val sender = when {
+                        isError -> "Error"
+                        isSystem -> "System"
+                        else -> "AI"
+                    }
         
                     updateSessionMessages(pid) { currentMessages ->
                         val mutable = currentMessages.toMutableList()
-                        if (!isNextResponseNewBubble && !isSystem && mutable.isNotEmpty() && mutable.last().first == "AI") {
+                        if (!isNextResponseNewBubble && !isError && !isSystem && mutable.isNotEmpty() && mutable.last().first == "AI") {
                             val lastMsg = mutable.last()
                             mutable[mutable.size - 1] = Pair("AI", lastMsg.second + response)
                             mutable
                         } else {
-                            if (!isSystem) isNextResponseNewBubble = false
+                            if (!isError && !isSystem) isNextResponseNewBubble = false
                             mutable + Pair(sender, response)
                         }
                     }
@@ -370,36 +388,88 @@ class SignalRClient(
                         sendAiMessage(msg, pid)
                     }
                     messageQueue.clear()
+
+                    // Clear the temporary -1 session messages
+                    _aiMessagesMap.value = _aiMessagesMap.value - (-1)
                 }, Int::class.java)
         
                 hubConnection?.on("ReceiveCortexActivity", { name: String, type: String ->
                     mainViewModel.onCortexActivityChanged(name, type)
                 }, String::class.java, String::class.java)
         
-                hubConnection?.on("ReceiveAiSessions", { sessionsData: Any ->
+                hubConnection?.on("ReceiveAiSessions", { sessionsData: List<Any> ->
                     try {
                         val jsonStr = gson.toJson(sessionsData)
-                        val type = object : TypeToken<Map<Int, String>>() {}.type
-                        val sessionsMap: Map<Int, String> = gson.fromJson(jsonStr, type)
+                        val type = object : TypeToken<List<Map<String, Any>>>() {}.type
+                        val sessionsList: List<Map<String, Any>> = gson.fromJson(jsonStr, type)
+                        
+                        // Maintain order from Hub (sorted by start time)
+                        val sessionsMap = LinkedHashMap<Int, String>()
+                        sessionsList.forEach { session ->
+                            val pidRaw = session["pid"] ?: session["Pid"]
+                            val pid = when (pidRaw) {
+                                is Double -> pidRaw.toInt()
+                                is Int -> pidRaw
+                                is Long -> pidRaw.toInt()
+                                is Float -> pidRaw.toInt()
+                                is String -> pidRaw.toIntOrNull() ?: 0
+                                else -> 0
+                            }
+                            val name = (session["name"] ?: session["Name"]) as? String ?: "Session $pid"
+                            Log.d("SignalRClient", "Parsed Session: PID=$pid, Name=$name")
+                            if (pid != 0) {
+                                sessionsMap[pid] = name
+                            }
+                        }
+
                         _aiSessions.value = sessionsMap
                         
+                        // Clean up statuses for sessions that no longer exist
+                        val currentStatusMap = _aiStatusMap.value
+                        val keysToRemove = currentStatusMap.keys.filter { it != -1 && !sessionsMap.containsKey(it) }
+                        if (keysToRemove.isNotEmpty()) {
+                            _aiStatusMap.value = currentStatusMap - keysToRemove.toSet()
+                        }
+
                         // If current selectedPid is not in sessions anymore, pick a new one
                         if (_selectedPid.value != -1 && !sessionsMap.containsKey(_selectedPid.value)) {
                             if (sessionsMap.isNotEmpty()) setSelectedPid(sessionsMap.keys.first())
                             else setSelectedPid(-1)
-                        } else if (_selectedPid.value == -1 && sessionsMap.isNotEmpty()) {
+                        } else if (_selectedPid.value == -1 && sessionsMap.isNotEmpty() && !_isStartingSession) {
                             setSelectedPid(sessionsMap.keys.first())
                         }
                     } catch (e: Exception) {
                         Log.e("SignalRClient", "Error parsing AI sessions", e)
                     }
-                }, Any::class.java)
+                }, List::class.java)
         
                 hubConnection?.on("ReceiveAiHistory", { historyJson: String, pid: Int ->
                     try {
                         val type = object : TypeToken<List<Map<String, String>>>() {}.type
                         val history: List<Map<String, String>> = gson.fromJson(historyJson, type)
-                        val mappedHistory = history.map { Pair(it["sender"] ?: "Unknown", it["text"] ?: "") }
+                        val mappedHistory = history.map { 
+                            val sender = it["sender"] ?: "Unknown"
+                            val text = it["text"] ?: ""
+                            
+                            // Map existing sender to our new categories if it's from AI/System
+                            val mappedSender = if (sender == "AI" || sender == "System" || sender == "Unknown") {
+                                when {
+                                    text.startsWith("Error:") -> "Error"
+                                    text.contains("A new version of Gemini CLI is available") || 
+                                    text.startsWith("System:") || 
+                                    text.startsWith("Info:") ||
+                                    text.startsWith("Replacement") ||
+                                    text.startsWith("Read") ||
+                                    text.startsWith("Tool Call") ||
+                                    text.startsWith("Thinking") ||
+                                    text.startsWith("Executing") -> "System"
+                                    else -> "AI"
+                                }
+                            } else {
+                                sender
+                            }
+                            Pair(mappedSender, text)
+                        }
                         
                         _aiMessagesMap.value = _aiMessagesMap.value + (pid to mappedHistory)
                         updateSessionStatus(pid, null)
@@ -463,12 +533,10 @@ class SignalRClient(
                 _aiStatus.value = _aiStatusMap.value[pid]
             }
         
-            fun setSelectedPid(pid: Int) {
-                _selectedPid.value = pid
-                updateActiveView()
-            }
-        
-            fun sendTabToPhone(url: String) {        if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
+                            fun setSelectedPid(pid: Int) {
+                                _selectedPid.value = pid
+                                updateActiveView()
+                            }            fun sendTabToPhone(url: String) {        if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
             hubConnection?.send("SendTabToPhone", url)
         }
     }
@@ -488,6 +556,8 @@ class SignalRClient(
         fun sendAiMessage(message: String, pid: Int? = null) {
             if (_isStartingSession) {
                 messageQueue.add(message)
+                // Immediate feedback for queued messages
+                updateSessionMessages(-1) { it + Pair("Me", message) }
                 return
             }
     
@@ -514,6 +584,10 @@ class SignalRClient(
     
         fun switchAiSession(pid: Int) {
             if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {       
+                _isStartingSession = false
+                isStartingSessionFlow.value = false
+                messageQueue.clear()
+
                 setSelectedPid(pid)
                 updateSessionStatus(pid, "Switching session...")
                 hubConnection?.send("SwitchAiSession", pid)
@@ -521,10 +595,15 @@ class SignalRClient(
         }
         fun startNewAiSession() {
             if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {       
-                updateSessionStatus(-1, "Starting new session...")
                 _isStartingSession = true
                 isStartingSessionFlow.value = true
                 messageQueue.clear()
+
+                // Ensure -1 session is clean and switch to it immediately
+                _aiMessagesMap.value = _aiMessagesMap.value + (-1 to emptyList())
+                setSelectedPid(-1)
+                updateSessionStatus(-1, "Starting new session...")
+
                 hubConnection?.send("StartNewAiSession")
             }
         }

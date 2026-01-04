@@ -4,6 +4,8 @@ using System.Threading;
 using System.Drawing; // For Point struct
 using System.Windows.Forms; // Required for Screen.PrimaryScreen.Bounds
 using Microsoft.Extensions.Logging; // Add for ILogger
+using System.Diagnostics; // For Process
+using System.Text; // For StringBuilder
 
 namespace OmniSync.Hub.Infrastructure.Services
 {
@@ -310,10 +312,83 @@ namespace OmniSync.Hub.Infrastructure.Services
             SendInputWithLogging(inputList.ToArray());
         }
 
+        public void SendKeys(string keys)
+        {
+            if (string.IsNullOrEmpty(keys)) return;
+            
+            _logger.LogInformation($"[InputService] Sending keys: {keys}");
+            
+            // SendKeys.SendWait needs to run on STA thread if possible, or just call it and hope for the best
+            // since we are in a console/background app but using WinForms libraries.
+            var thread = new Thread(() =>
+            {
+                try
+                {
+                    System.Windows.Forms.SendKeys.SendWait(keys);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error in SendKeys");
+                }
+            });
+            thread.SetApartmentState(ApartmentState.STA);
+            thread.Start();
+            thread.Join(2000); // Wait up to 2 seconds
+        }
+
         public void SendVolumeKey(ushort volumeKeyCode)
         {
             SendKeyPress(volumeKeyCode);
         }
+
+        public string GetActiveWindowTitle()
+        {
+            // P/Invoke to get the handle of the foreground window
+            IntPtr foregroundWindowHandle = GetForegroundWindow();
+
+            if (foregroundWindowHandle == IntPtr.Zero)
+            {
+                return "N/A";
+            }
+
+            // Get the process ID of the foreground window
+            uint processId;
+            GetWindowThreadProcessId(foregroundWindowHandle, out processId);
+
+            // Open the process
+            Process foregroundProcess = null;
+            try
+            {
+                foregroundProcess = Process.GetProcessById((int)processId);
+            }
+            catch (ArgumentException)
+            {
+                // Process might have exited
+                return "N/A";
+            }
+
+            // Get the window title
+            // Use a StringBuilder to get the window text
+            StringBuilder windowTitle = new StringBuilder(256);
+            if (GetWindowText(foregroundWindowHandle, windowTitle, windowTitle.Capacity) > 0)
+            {
+                return windowTitle.ToString();
+            }
+            return "N/A";
+        }
+
+        // P/Invoke for GetForegroundWindow
+        [DllImport("user32.dll")]
+        private static extern IntPtr GetForegroundWindow();
+
+        // P/Invoke for GetWindowThreadProcessId
+        [DllImport("user32.dll", SetLastError = true)]
+        private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
+
+        // P/Invoke for GetWindowText
+        [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+        private static extern int GetWindowText(IntPtr hWnd, StringBuilder lpString, int nMaxCount);
+
 
         public void SetZoom(bool zoomIn)
         {

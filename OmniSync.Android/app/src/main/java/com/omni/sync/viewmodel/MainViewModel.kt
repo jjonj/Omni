@@ -34,7 +34,8 @@ enum class AppScreen {
     AI_CHAT,
     DOWNLOADED_VIDEOS,
     ALARM,
-    IMAGE_VIEWER
+    IMAGE_VIEWER,
+    MACRO_MANAGER
 }
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
@@ -355,8 +356,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _dashboardLogs.value = emptyList()
     }
 
-    fun sendWakeOnLan(macAddress: String, broadcastIp: String = "10.0.0.255", port: Int = 9) {
+    fun sendWakeOnLan(macAddress: String, port: Int = 9) {
         val wanIp = appConfig.wanIp
+        val broadcastIp = appConfig.subnetBroadcastIp
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 addLog("Sending WOL to $macAddress (Local & Remote)...", LogType.INFO)
@@ -371,12 +373,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
                 val socket = DatagramSocket()
                 
-                // 1. Send Local Broadcast
-                val localAddress = InetAddress.getByName(broadcastIp)
-                val localPacket = DatagramPacket(bytes, bytes.size, localAddress, port)
-                socket.send(localPacket)
+                // 1. Send Local Broadcast (to the configured subnet)
+                try {
+                    val localAddress = InetAddress.getByName(broadcastIp)
+                    val localPacket = DatagramPacket(bytes, bytes.size, localAddress, port)
+                    socket.send(localPacket)
+                } catch (e: Exception) {
+                    addLog("Local WOL Failed: ${e.message}", LogType.WARNING)
+                }
                 
-                // 2. Send Remote Unicast
+                // 2. Send Remote Unicast (target WAN IP, router should forward to broadcast)
                 try {
                     val remoteAddress = InetAddress.getByName(wanIp)
                     val remotePacket = DatagramPacket(bytes, bytes.size, remoteAddress, port)
@@ -386,7 +392,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
 
                 socket.close()
-                addLog("WOL packet sent to Local & $wanIp!", LogType.SUCCESS)
+                addLog("WOL packets sent!", LogType.SUCCESS)
             } catch (e: Exception) {
                 addLog("Failed to send WOL: ${e.message}", LogType.ERROR)
             }

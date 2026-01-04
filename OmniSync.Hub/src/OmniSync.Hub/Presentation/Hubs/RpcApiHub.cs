@@ -565,17 +565,26 @@ namespace OmniSync.Hub.Presentation.Hubs
                 {
                     try
                     {
-                        _logger.LogInformation($"[RpcApiHub] Background task sending prompt to AI (PID: {targetPid})");
-                        if (!await _aiCliService.SendPromptAsync(message, targetPid))
+                        if (targetPid != -1)
                         {
-                            _logger.LogWarning($"[RpcApiHub] AI Communication Failed for connection {connectionId}");
-                            await _hubEventSender.SendAiError(connectionId, "Error: Failed to communicate with AI service.");
+                            _logger.LogInformation($"[RpcApiHub] Attempting auto-rename for PID {targetPid}...");
+                            _aiCliService.TryAutoRenameSession(targetPid, message);
+                            // Notify all clients of updated session names without rediscovery
+                            await _hubEventSender.BroadcastSessions();
+                        }
+
+                        _logger.LogInformation($"[RpcApiHub] Background task sending prompt to AI (PID: {targetPid})");
+                        bool success = await _aiCliService.SendPromptAsync(message, targetPid);
+                        if (!success)
+                        {
+                            _logger.LogWarning($"[RpcApiHub] AI Communication Failed for PID {targetPid}");
+                            await _hubEventSender.SendAiError(connectionId, "Error: Failed to communicate with AI service.", targetPid);
                             AnyCommandReceived?.Invoke(this, "AI Communication Failed");
                         }
                     }
                     catch (Exception ex)
                     {
-                        _logger.LogError(ex, $"[RpcApiHub] Error in background AI prompt task");
+                        _logger.LogError(ex, $"[RpcApiHub] Error in background AI prompt task for PID {targetPid}");
                     }
                 });
             }
@@ -675,6 +684,8 @@ namespace OmniSync.Hub.Presentation.Hubs
                 if (result.HasValue)
                 {
                     await Clients.All.SendAsync("ReceiveNewAiSessionPid", result.Value);
+                    // Clear the status on client side
+                    await Clients.All.SendAsync("ReceiveAiStatus", "FINISHED");
                 }
                 return result;
             }
@@ -742,9 +753,7 @@ namespace OmniSync.Hub.Presentation.Hubs
 
                 // Discover directly in Hub
                 await _aiCliService.DiscoverSessionsAsync();
-                var sessions = _aiCliService.GetSessionsWithNames();
-                _logger.LogInformation($"[RpcApiHub] Returning {sessions.Count} sessions");
-                await Clients.All.SendAsync("ReceiveAiSessions", sessions);
+                await _hubEventSender.BroadcastSessions();
             }
         }
 

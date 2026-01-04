@@ -9,224 +9,87 @@ using System.Linq;
 using OmniSync.Hub.Infrastructure.Services; // Add this using directive
 using OmniSync.Hub.Logic.Services;
 using Microsoft.Win32; // Added for Registry access
+using System.Collections.Generic; // For KeyValuePair
+using System.Windows.Controls; // For Button
+using System.Windows.Input; // Added for MouseButtonEventArgs
 
 namespace OmniSync.Hub.Presentation
 {
-    public partial class MainWindow : Window, INotifyPropertyChanged
+    public partial class MainWindow : Window
     {
-        public event PropertyChangedEventHandler? PropertyChanged; // Still implement for self if needed, but DataContext will notify
-
         private readonly HubMonitorService _hubMonitorService;
-        private readonly InputService _inputService; // Add InputService
-        private readonly ShutdownService _shutdownService;
         private readonly RegistryService _registryService;
         private readonly HubSettingsService _settingsService;
-        private const string AppName = "OmniSync Hub";
+        private readonly MainViewModel _viewModel;
 
-        private int _shutdownIndex = 0;
-        private readonly int[] _shutdownTimes = { 0, 15, 30, 60, 120, 300, 720 };
-        private readonly string[] _shutdownLabels = { "None", "15m", "30m", "1h", "2h", "5h", "12h" };
-        private readonly DispatcherTimer _uiUpdateTimer;
-        private readonly DispatcherTimer _longPressTimer;
-        private bool _isLongPress = false;
+        public bool IsInternalClosing { get; set; } = false;
 
-        public MainWindow(HubMonitorService hubMonitorService, InputService inputService, ShutdownService shutdownService, RegistryService registryService, HubSettingsService settingsService) // Add ShutdownService
+        public MainWindow(HubMonitorService hubMonitorService, InputService inputService, ShutdownService shutdownService, RegistryService registryService, HubSettingsService settingsService)
         {
             InitializeComponent();
+            
             _hubMonitorService = hubMonitorService;
-            _inputService = inputService; // Assign InputService
-            _shutdownService = shutdownService;
             _registryService = registryService;
             _settingsService = settingsService;
-            this.DataContext = _hubMonitorService; // Set DataContext to the HubMonitorService
 
-            // Subscribe to HubMonitorService events
-            _hubMonitorService.LogEntryAdded += HubMonitorService_LogEntryAdded;
-            _shutdownService.ShutdownScheduled += ShutdownService_ShutdownScheduled;
-            _shutdownService.ModeChanged += (s, mode) => UpdateShutdownButtonLabel(_shutdownService.GetScheduledTime());
+            _viewModel = new MainViewModel(hubMonitorService, inputService, shutdownService, registryService, settingsService);
+            DataContext = _viewModel;
 
-            // Initial load for ExeMappings
-            RefreshMappingsGrid();
+            // Hook up event handlers (now in ViewModel)
+            _hubMonitorService.LogEntryAdded += OnLogEntryAdded;
+            _settingsService.SettingsChanged += OnSettingsChanged;
+            inputService.ModifierStateChanged += OnModifierStateChanged;
+        }
 
-            // Initialize UI elements with current data from HubMonitorService
-            // ConnectionsListBox is bound directly to ActiveConnections in XAML and ObservableCollection handles updates
-            // LastCommandTextBlock.Text is bound to LastIncomingCommand
-            
-            // Initial load for LogTextBox
-            foreach (var logEntry in _hubMonitorService.LogMessages)
+        private void OnLogEntryAdded(object? s, string msg)
+        {
+            Dispatcher?.Invoke(() => _viewModel.LogMessages.Add(msg));
+        }
+
+        private void OnSettingsChanged(object? s, EventArgs e)
+        {
+            Dispatcher?.Invoke(() => _viewModel.RefreshMappingsGrid());
+        }
+
+        private void OnModifierStateChanged(object? s, ModifierStateEventArgs e)
+        {
+            Dispatcher?.Invoke(() => _viewModel.UpdateModifierState(e.Modifier, e.IsPressed));
+        }
+
+        protected override void OnClosing(CancelEventArgs e)
+        {
+            if (IsInternalClosing)
             {
-                LogTextBox.AppendText(logEntry + Environment.NewLine);
-            }
-
-            // Initial load for ShutdownButton
-            UpdateShutdownButtonLabel(_shutdownService.GetScheduledTime());
-
-            // Scroll to end of log on initial load
-            LogTextBox.ScrollToEnd();
-
-            // Initialize RunOnStartup checkbox state
-            RunOnStartupCheckBox.IsChecked = _registryService.IsRunOnStartupEnabled();
-            RunOnStartupCheckBox.Checked += RunOnStartupCheckBox_Checked;
-            RunOnStartupCheckBox.Unchecked += RunOnStartupCheckBox_Unchecked;
-
-            // Initialize and start UI update timer
-            _uiUpdateTimer = new DispatcherTimer
-            {
-                Interval = TimeSpan.FromSeconds(1)
-            };
-            _uiUpdateTimer.Tick += UiUpdateTimer_Tick;
-            _uiUpdateTimer.Start();
-
-            // Long press timer for button
-            _longPressTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(500) };
-            _longPressTimer.Tick += LongPressTimer_Tick;
-
-            ShutdownButton.PreviewMouseDown += ShutdownButton_MouseDown;
-            ShutdownButton.PreviewMouseUp += ShutdownButton_MouseUp;
-            ShutdownButton.MouseLeave += (s, e) => _longPressTimer.Stop();
-        }
-
-        private void ShutdownButton_MouseDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
-        {
-            _isLongPress = false;
-            _longPressTimer.Start();
-        }
-
-        private void ShutdownButton_MouseUp(object sender, System.Windows.Input.MouseButtonEventArgs e)
-        {
-            _longPressTimer.Stop();
-            if (_isLongPress)
-            {
-                e.Handled = true; // Prevent Click event
-            }
-        }
-
-        private void LongPressTimer_Tick(object? sender, EventArgs e)
-        {
-            _longPressTimer.Stop();
-            _isLongPress = true;
-            
-            // Toggle mode
-            var currentMode = _shutdownService.GetCurrentMode();
-            var newMode = currentMode == OmniSync.Hub.Logic.Services.ShutdownMode.Shutdown 
-                ? OmniSync.Hub.Logic.Services.ShutdownMode.Sleep 
-                : OmniSync.Hub.Logic.Services.ShutdownMode.Shutdown;
-            _shutdownService.SetMode(newMode);
-            _hubMonitorService.AddLogMessage($"Shutdown mode toggled to: {newMode} via local Hub button.");
-        }
-
-        private void UiUpdateTimer_Tick(object? sender, EventArgs e)
-        {
-            UpdateShutdownButtonLabel(_shutdownService.GetScheduledTime());
-        }
-
-        private void RunOnStartupCheckBox_Checked(object sender, RoutedEventArgs e)
-        {
-            _registryService.SetRunOnStartup(true);
-        }
-
-        private void RunOnStartupCheckBox_Unchecked(object sender, RoutedEventArgs e)
-        {
-            _registryService.SetRunOnStartup(false);
-        }
-
-        private void HubMonitorService_LogEntryAdded(object? sender, string message)
-        {
-            Dispatcher.BeginInvoke(() =>
-            {
-                LogTextBox.AppendText(message + Environment.NewLine);
-                LogTextBox.ScrollToEnd();
-            });
-        }
-
-        private void ClearLogButton_Click(object sender, RoutedEventArgs e)
-        {
-            _hubMonitorService.ClearLog();
-            LogTextBox.Clear();
-        }
-
-        // We can keep OnPropertyChanged for future use if MainWindow itself needs to raise property changes
-        protected void OnPropertyChanged([CallerMemberName] string? propertyName = null)
-        {
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
-        }
-
-        private void ShutdownService_ShutdownScheduled(object? sender, DateTime? scheduledTime)
-        {
-            UpdateShutdownButtonLabel(scheduledTime);
-        }
-
-        private void UpdateShutdownButtonLabel(DateTime? scheduledTime)
-        {
-            Dispatcher.BeginInvoke(() =>
-            {
-                string modeLabel = _shutdownService.GetCurrentMode() == OmniSync.Hub.Logic.Services.ShutdownMode.Shutdown ? "Shutdown" : "Sleep";
-
-                if (scheduledTime == null)
-                {
-                    ShutdownButton.Content = $"{modeLabel}: None";
-                    _shutdownIndex = 0;
-                }
-                else
-                {
-                    var remaining = scheduledTime.Value - DateTime.Now;
-                    if (remaining.TotalSeconds > 0)
-                    {
-                        if (remaining.TotalHours >= 1)
-                        {
-                            ShutdownButton.Content = $"{modeLabel}: {(int)remaining.TotalHours}h {remaining.Minutes}m {remaining.Seconds}s";
-                        }
-                        else
-                        {
-                            ShutdownButton.Content = $"{modeLabel}: {remaining.Minutes}m {remaining.Seconds}s";
-                        }
-                    }
-                    else
-                    {
-                        ShutdownButton.Content = $"{modeLabel}: Now";
-                    }
-                }
-            });
-        }
-
-        private void ShutdownButton_Click(object sender, RoutedEventArgs e)
-        {
-            if (_isLongPress) return;
-
-            _shutdownIndex = (_shutdownIndex + 1) % _shutdownTimes.Length;
-            int minutes = _shutdownTimes[_shutdownIndex];
-            _shutdownService.ScheduleShutdown(minutes);
-        }
-
-        private void AddMappingButton_Click(object sender, RoutedEventArgs e)
-        {
-            var key = NewMappingKeyTextBox.Text?.Trim();
-            var path = NewMappingPathTextBox.Text?.Trim();
-
-            if (string.IsNullOrEmpty(key) || string.IsNullOrEmpty(path))
-            {
-                MessageBox.Show("Please enter both a key and a full path.", "Missing Data", MessageBoxButton.OK, MessageBoxImage.Warning);
+                // Cleanup to prevent memory leaks and crashes on exit
+                _hubMonitorService.LogEntryAdded -= OnLogEntryAdded;
+                _settingsService.SettingsChanged -= OnSettingsChanged;
+                // Note: ModifierStateChanged is on a singleton service, but we should still cleanup
+                
+                base.OnClosing(e);
                 return;
             }
 
-            _settingsService.AddMapping(key, path);
-            NewMappingKeyTextBox.Clear();
-            NewMappingPathTextBox.Clear();
-            RefreshMappingsGrid();
+            // Prevent the window from actually closing. Instead, just hide it.
+            e.Cancel = true; 
+            this.Hide();
         }
 
+        // XAML Event Handlers (delegating to ViewModel)
+        private void ClearLogButton_Click(object sender, RoutedEventArgs e) => _viewModel.ClearLogCommand();
+        private void AddMappingButton_Click(object sender, RoutedEventArgs e) => _viewModel.AddMappingCommand();
         private void DeleteMappingButton_Click(object sender, RoutedEventArgs e)
         {
-            if (sender is FrameworkElement element && element.DataContext is System.Collections.Generic.KeyValuePair<string, string> mapping)
+            if (sender is FrameworkElement element && element.DataContext is KeyValuePair<string, string> mapping)
             {
-                _settingsService.RemoveMapping(mapping.Key);
-                RefreshMappingsGrid();
+                _viewModel.DeleteMappingCommand(mapping.Key);
             }
         }
+        private void RunOnStartupCheckBox_Checked(object sender, RoutedEventArgs e) => _viewModel.IsRunOnStartupEnabled = true;
+        private void RunOnStartupCheckBox_Unchecked(object sender, RoutedEventArgs e) => _viewModel.IsRunOnStartupEnabled = false;
 
-        private void RefreshMappingsGrid()
-        {
-            ExeMappingsGrid.ItemsSource = _settingsService.Settings.ExeMappings.ToList();
-        }
+        // Long press for shutdown button
+        private void ShutdownButton_MouseDown(object sender, MouseButtonEventArgs e) => _viewModel.StartLongPressTimer();
+        private void ShutdownButton_MouseUp(object sender, MouseButtonEventArgs e) => _viewModel.StopLongPressTimer();
+        private void ShutdownButton_Click(object sender, RoutedEventArgs e) => _viewModel.ScheduleShutdownCommand();
     }
 }

@@ -71,6 +71,7 @@ async function loadTFTData() {
         optimizer = new TFTOptimizer(tftData.units, tftData.trait_metadata);
         setupSolverListeners();
         updateUI();
+        renderSavedComps();
     } catch (err) {
         console.error("Failed to load TFT data:", err);
     }
@@ -1194,7 +1195,7 @@ async function runLogicTests() {
         runner.testNeekoNidaleeLogic, runner.testNeekoNidaleeOneWayLogic, runner.testNidaleeAutoIncludeBug,
         runner.testNidaleeRequiresNeeko, runner.testSuperHeuristicPoppyLevel6, runner.testSuperHeuristicKobukoLevel6,
         runner.testWorldRunesLogic, runner.testRuneSolverLevel5, runner.testRuneSolverLevel5PiltoverDemacia,
-        runner.testRyzeUnlockSolver
+        runner.testRyzeUnlockSolver, runner.testSaveLoadComps, runner.testFullLoadFlow
     ];
     for (const test of tests) {
         const statusEl = document.createElement('div');
@@ -1221,3 +1222,104 @@ async function runLogicTests() {
 }
 
 loadTFTData();
+
+// --- Composition Templates Storage ---
+
+function handleSaveComp() {
+    if (selectedCurrentTeam.length === 0) {
+        alert("Current team is empty!");
+        return;
+    }
+    
+    const selectedLevels = Array.from(document.querySelectorAll('.lvl-cb:checked')).map(cb => parseInt(cb.value));
+    saveComp(selectedCurrentTeam, selectedLevels);
+}
+
+function saveComp(units, levels) {
+    if (!units || units.length === 0) return;
+    
+    const comps = loadComps();
+    const newComp = {
+        id: Date.now(),
+        units: JSON.parse(JSON.stringify(units)), // Deep copy
+        levels: [...levels],
+        iconUrl: units[0].iconUrl || units[0].icon_url
+    };
+    
+    comps.push(newComp);
+    localStorage.setItem('tft_saved_comps', JSON.stringify(comps));
+    renderSavedComps();
+}
+
+function loadComps() {
+    const stored = localStorage.getItem('tft_saved_comps');
+    return stored ? JSON.parse(stored) : [];
+}
+
+function deleteComp(compId) {
+    let comps = loadComps();
+    comps = comps.filter(c => c.id !== compId);
+    localStorage.setItem('tft_saved_comps', JSON.stringify(comps));
+    renderSavedComps();
+}
+
+function renderSavedComps() {
+    const container = document.getElementById('saved-comps-container');
+    if (!container) return;
+    container.innerHTML = '';
+
+    const comps = loadComps();
+    if (comps.length === 0) {
+        container.innerHTML = '<div class="placeholder-text" style="width: 100%; text-align: center; line-height: 36px;">No Saved Comps</div>';
+        return;
+    }
+
+    comps.forEach(comp => {
+        const div = document.createElement('div');
+        div.className = 'comp-item';
+        div.title = "Click to load, X to delete";
+        
+        div.innerHTML = `
+            <img src="${comp.iconUrl}" class="comp-icon" onerror="this.src='data:image/svg+xml;base64,PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHdpZHRoPSc0OCcgaGVpZ2h0PSc0OCcgc3R5bGU9J2JhY2tncm91bmQ6IzIyMjsnPjx0ZXh0IHg9JzUwJScgeT0nNTAlJyBkb20tYmFzZWxpbmU9J21pZGRsZScgdGV4dC1hbmNob3I9J21pZGRsZScgZmlsbD0nI2ZmZicgZm9udC1zaXplPScxMic+PyA8L3RleHQ+PC9zdmc+'">
+            <button class="comp-delete-btn" onclick="event.stopPropagation(); deleteComp(${comp.id})">×</button>
+        `;
+        
+        div.onclick = () => loadComp(comp);
+        container.appendChild(div);
+    });
+}
+
+function loadComp(comp) {
+    if (!comp || !comp.units) return;
+
+    // Re-map units to ensure we have fresh data from tftData if available
+    const restoredUnits = comp.units.map(savedUnit => {
+        const freshUnit = tftData.units.find(u => u.name === savedUnit.name);
+        if (freshUnit) {
+            return {
+                name: freshUnit.name,
+                iconUrl: freshUnit.icon_url,
+                type: 'unit',
+                cost: freshUnit.cost
+            };
+        }
+        return savedUnit;
+    });
+
+    // 1. Replace Current Team
+    selectedCurrentTeam = [...restoredUnits];
+
+    // 2. Replace Must Include with a copy (units only)
+    // Preserve existing emblems in must include
+    const existingEmblems = selectedMustInclude.filter(i => i.type === 'emblem');
+    selectedMustInclude = [...restoredUnits, ...existingEmblems];
+
+    // 3. Restore Levels
+    document.querySelectorAll('.lvl-cb').forEach(cb => {
+        cb.checked = comp.levels.includes(parseInt(cb.value));
+    });
+
+    // 4. Update UI
+    renderSelectionZones();
+    renderUnitPools(); // Trigger smart sort if active
+}

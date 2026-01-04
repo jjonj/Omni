@@ -326,6 +326,71 @@ class TFTTester {
         this.assert(res.board.some(u => u.name === "Ryze"), "Ryze missing from board");
     }
 
+    async testSaveLoadComps() {
+        // Clear existing comps
+        localStorage.removeItem('tft_saved_comps');
+        
+        const mockUnits = [
+            { name: "Caitlyn", iconUrl: "url1", cost: 1 },
+            { name: "Vi", iconUrl: "url2", cost: 2 }
+        ];
+        const mockLevels = [5, 6];
+        
+        // This test assumes saveComp and loadComps are implemented globally or accessible
+        // Since we are in the "Red Phase", I will write the test assuming they exist.
+        if (typeof saveComp !== 'function') throw new Error("saveComp function is not defined");
+        
+        saveComp(mockUnits, mockLevels);
+        
+        const saved = JSON.parse(localStorage.getItem('tft_saved_comps'));
+        this.assert(saved && saved.length === 1, "Comp was not saved to localStorage");
+        this.assert(saved[0].units[0].name === "Caitlyn", "Saved unit name mismatch");
+        this.assert(saved[0].levels.includes(5), "Saved levels mismatch");
+        
+        const comps = loadComps();
+        this.assert(comps.length === 1, "loadComps failed to retrieve the comp");
+        
+        deleteComp(saved[0].id);
+        const remaining = loadComps();
+        this.assert(remaining.length === 0, "deleteComp failed to remove the comp");
+    }
+
+    async testFullLoadFlow() {
+        localStorage.removeItem('tft_saved_comps');
+        
+        // Setup state
+        const unit = { name: "Caitlyn", iconUrl: "url", cost: 1, type: 'unit' };
+        selectedCurrentTeam = [unit];
+        selectedMustInclude = [{ name: "Void", type: "emblem", trait: "Void" }];
+        
+        const levels = [5, 9];
+        document.querySelectorAll('.lvl-cb').forEach(cb => {
+            cb.checked = levels.includes(parseInt(cb.value));
+        });
+
+        // Save
+        handleSaveComp();
+        
+        // Mutate state
+        selectedCurrentTeam = [];
+        // Note: selectedMustInclude still has the emblem
+        
+        const comps = loadComps();
+        this.assert(comps.length === 1, "Comp not found in storage");
+        
+        // Load
+        loadComp(comps[0]);
+        
+        // Verify
+        this.assert(selectedCurrentTeam.length === 1, "Current Team not restored");
+        this.assert(selectedCurrentTeam[0].name === "Caitlyn", "Current Team unit mismatch");
+        this.assert(selectedMustInclude.some(i => i.name === "Caitlyn"), "Must Include not updated with unit");
+        this.assert(selectedMustInclude.some(i => i.name === "Void"), "Emblem should have been preserved");
+        
+        const checked = Array.from(document.querySelectorAll('.lvl-cb:checked')).map(cb => parseInt(cb.value));
+        this.assert(checked.includes(5) && checked.includes(9), "Levels not restored correctly");
+    }
+
     async testNidaleeAutoIncludeBug() {
         // This test simulates the UI's rendering logic fix.
         const neekoUnit = this.data.units.find(u => u.name === "Neeko");

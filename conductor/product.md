@@ -17,11 +17,12 @@ The primary user is the developer/creator themselves—a power user who demands:
 ## Core Features
 ### 1. Synchronization
 -   **Clipboard Sync:** Bi-directional text and image synchronization between Windows and Android.
--   **File Access:** Remote browsing and editing of Markdown notes (e.g., Obsidian vault) with offline caching and conflict resolution.
+-   **File Access:** Remote browsing and editing of Markdown notes (e.g., Obsidian vault) with offline caching, recursive folder synchronization, and intelligent line-by-line conflict resolution.
 
 ### 2. Remote Control
 -   **Input Injection:** Use the Android device as a trackpad and keyboard for the PC.
 -   **System Control:** Managing volume, media playback, and process execution from the phone.
+-   **Custom Macros:** A dedicated Macro system using AHK-like syntax to automate complex PC tasks from a customizable grid on the phone.
 
 ### 3. Automation & Monitoring
 -   **Macro Triggers:** Hardware button mapping (e.g., volume keys) on Android to trigger PC scripts.

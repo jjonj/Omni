@@ -64,6 +64,17 @@ fun AiChatScreen(
     val isStartingSession by signalRClient.isStartingSessionFlow.collectAsState()
     val isConnected by mainViewModel.isConnected.collectAsState()
 
+    // Animation for session button flash
+    val sessionButtonAnim = remember { Animatable(0f) }
+    
+    LaunchedEffect(Unit) {
+        signalRClient.anyAiActivityEvent.collect {
+            // Flash animation
+            sessionButtonAnim.animateTo(1f, animationSpec = tween(300))
+            sessionButtonAnim.animateTo(0f, animationSpec = tween(300))
+        }
+    }
+
     // Filter messages to avoid empty/dangling bubbles
     val filteredMessages = remember(messages) {
         messages.filter { it.second.isNotBlank() }
@@ -94,12 +105,20 @@ fun AiChatScreen(
             CenterAlignedTopAppBar(
                 title = {
                     Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                        TextButton(onClick = { 
-                            if (isConnected) {
-                                signalRClient.getAiSessions()
-                                showSessionMenu = true 
-                            }
-                        }, enabled = isConnected) {
+                        TextButton(
+                            onClick = { 
+                                if (isConnected) {
+                                    signalRClient.getAiSessions()
+                                    showSessionMenu = true 
+                                }
+                            }, 
+                            enabled = isConnected,
+                            colors = ButtonDefaults.textButtonColors(
+                                containerColor = if (sessionButtonAnim.value > 0f) 
+                                    MaterialTheme.colorScheme.primaryContainer.copy(alpha = sessionButtonAnim.value * 0.5f)
+                                    else Color.Transparent
+                            )
+                        ) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 val currentName = if (!isConnected) "Disconnected" else if (isStartingSession) "Creating Session..." else (sessions[selectedPid] ?: "Select Session")
                                 Text(currentName, style = MaterialTheme.typography.titleMedium)
@@ -173,6 +192,7 @@ fun AiChatScreen(
         Box(
             modifier = Modifier
                 .fillMaxSize()
+                .padding(top = padding.calculateTopPadding())
         ) {
             Column(
                 modifier = Modifier
@@ -433,23 +453,26 @@ fun Dot(alpha: Float) {
 fun ChatBubble(sender: String, content: String) {
     val isMe = sender == "Me"
     val isAi = sender == "AI"
-    val isSystem = sender == "System" || content.startsWith("Error:")
+    val isError = sender == "Error" || content.startsWith("Error:")
+    val isSystem = sender == "System" || (!isMe && !isAi && !isError)
 
     val alignment = when {
-        isSystem -> Alignment.CenterHorizontally
+        isError || isSystem -> Alignment.CenterHorizontally
         isMe -> Alignment.End
         else -> Alignment.Start
     }
     
     val bgColor = when {
-        isSystem -> MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.7f)
+        isError -> MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.8f)
+        isSystem -> Color(0xFFFFF176).copy(alpha = 0.7f) // Yellow for system
         isMe -> MaterialTheme.colorScheme.primaryContainer
         isAi -> MaterialTheme.colorScheme.secondaryContainer
         else -> MaterialTheme.colorScheme.surfaceVariant
     }
 
     val textColor = when {
-        isSystem -> MaterialTheme.colorScheme.onErrorContainer
+        isError -> MaterialTheme.colorScheme.onErrorContainer
+        isSystem -> Color(0xFF333333) // Dark text for yellow
         else -> MaterialTheme.colorScheme.onSurface
     }
 
@@ -457,7 +480,7 @@ fun ChatBubble(sender: String, content: String) {
         modifier = Modifier.fillMaxWidth(),
         horizontalAlignment = alignment
     ) {
-        if (!isSystem) {
+        if (!isSystem && !isError) {
             Text(
                 text = sender,
                 style = MaterialTheme.typography.labelSmall,
@@ -468,14 +491,14 @@ fun ChatBubble(sender: String, content: String) {
         Surface(
             color = bgColor,
             shape = RoundedCornerShape(12.dp),
-            modifier = Modifier.widthIn(max = if (isSystem) 350.dp else 300.dp)
+            modifier = Modifier.widthIn(max = if (isSystem || isError) 350.dp else 300.dp)
         ) {
             Text(
                 text = content,
                 modifier = Modifier.padding(8.dp),
                 style = MaterialTheme.typography.bodyMedium,
                 color = textColor,
-                textAlign = if (isSystem) TextAlign.Center else TextAlign.Start
+                textAlign = if (isSystem || isError) TextAlign.Center else TextAlign.Start
             )
         }
     }

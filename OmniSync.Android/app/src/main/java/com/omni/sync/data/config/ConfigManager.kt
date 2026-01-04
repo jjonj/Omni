@@ -16,7 +16,12 @@ data class AppConfig(
     var cortexTemplatesJson: String? = null,
     var globalPasswordHash: String? = null,
     var autosaveEnabled: Boolean = false,
-    var notificationActions: List<NotificationAction> = emptyList()
+    var notificationActions: List<NotificationAction> = emptyList(),
+    var macros: List<com.omni.sync.data.model.Macro> = emptyList(),
+    var maxCacheFileSize: Long = 10 * 1024 * 1024, // 10 MB default
+    var cacheExclusionPatterns: List<String> = emptyList(),
+    var wakeOnLanMac: String = "10FFE0379DAC",
+    var subnetBroadcastIp: String = "192.168.1.255"
 )
 
 class ConfigManager(private val context: Context) {
@@ -27,18 +32,33 @@ class ConfigManager(private val context: Context) {
     }
 
     fun loadConfig(): AppConfig {
-        if (configFile.exists()) {
+        val config = if (configFile.exists()) {
             try {
-                return gson.fromJson(configFile.readText(), AppConfig::class.java)
+                gson.fromJson(configFile.readText(), AppConfig::class.java)
             } catch (e: Exception) {
                 android.util.Log.e("ConfigManager", "Error loading config", e)
+                AppConfig()
             }
+        } else {
+            val c = AppConfig()
+            migrateFromPrefs(c)
+            c
         }
         
-        // Fallback to SharedPreferences migration or defaults
-        val config = AppConfig()
-        migrateFromPrefs(config)
+        if (config.macros.isEmpty()) {
+            config.macros = getDefaultMacros()
+        }
+        
         return config
+    }
+
+    fun getDefaultMacros(): List<com.omni.sync.data.model.Macro> {
+        return listOf(
+            com.omni.sync.data.model.Macro(name = "Open Downloads", script = "run explorer.exe C:\\Users\\crovea\\Downloads", iconName = "folder"),
+            com.omni.sync.data.model.Macro(name = "Omni AI CLI", script = "run B:\\GDrive\\Tools\\05 Automation\\omni_ai.bat", iconName = "ai"),
+            com.omni.sync.data.model.Macro(name = "Close Tab", script = "send ^w", iconName = "browser"),
+            com.omni.sync.data.model.Macro(name = "Refresh Tab", script = "send {F5}", iconName = "browser")
+        )
     }
 
     fun saveConfig(config: AppConfig) {

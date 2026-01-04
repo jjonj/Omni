@@ -10,6 +10,7 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.PowerSettingsNew
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -73,8 +74,24 @@ fun DashboardScreen(modifier: Modifier = Modifier, signalRClient: SignalRClient,
             HubConnectionCard(
                 connectionStatus = connectionStatus,
                 connectionMessage = connectionStateString,
-                onReconnect = { signalRClient?.manualReconnect() }
+                onReconnect = { signalRClient?.manualReconnect() },
+                onWake = { mainViewModel.sendWakeOnLan(appConfig.wakeOnLanMac) }
             )
+
+            if (!isConnected) {
+                Card(
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.5f))
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text("Remote Wake-on-LAN Help", fontWeight = FontWeight.Bold)
+                        Text(
+                            "To wake your PC from outside your home network, you must configure your router to forward UDP port 9 to your PC's IP address. Use MAC-IP binding (ARP reservation) for best results.",
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+                }
+            }
             
             // Test Buttons Section
             Card(
@@ -126,7 +143,7 @@ fun DashboardScreen(modifier: Modifier = Modifier, signalRClient: SignalRClient,
                         
                         Button(
                             onClick = {
-                                mainViewModel.sendWakeOnLan("10FFE0379DAC", "10.0.0.255", 9)
+                                mainViewModel.sendWakeOnLan(appConfig.wakeOnLanMac)
                             },
                             modifier = Modifier.weight(1f).padding(start = 4.dp, end = 4.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.tertiary)
@@ -231,7 +248,8 @@ fun LogItem(log: LogEntry) {
 fun HubConnectionCard(
     connectionStatus: ConnectionStatus,
     connectionMessage: String,
-    onReconnect: () -> Unit
+    onReconnect: () -> Unit,
+    onWake: () -> Unit
 ) {
     val statusColor = when (connectionStatus) {
         ConnectionStatus.CONNECTED -> Color(0xFF4CAF50)
@@ -298,14 +316,23 @@ fun HubConnectionCard(
                     }
                 }
                 
-                // Show reconnect button only when not connected
+                // Show reconnect and wake buttons when not connected
                 if (connectionStatus != ConnectionStatus.CONNECTED) {
-                    IconButton(onClick = onReconnect) {
-                        Icon(
-                            imageVector = Icons.Filled.Refresh,
-                            contentDescription = "Reconnect",
-                            tint = MaterialTheme.colorScheme.primary
-                        )
+                    Row {
+                        IconButton(onClick = onWake) {
+                            Icon(
+                                imageVector = Icons.Filled.PowerSettingsNew,
+                                contentDescription = "Wake PC",
+                                tint = MaterialTheme.colorScheme.tertiary
+                            )
+                        }
+                        IconButton(onClick = onReconnect) {
+                            Icon(
+                                imageVector = Icons.Filled.Refresh,
+                                contentDescription = "Reconnect",
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        }
                     }
                 }
             }

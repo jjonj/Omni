@@ -1,0 +1,8 @@
+{
+  "track_id": "tft_comps_20260104",
+  "type": "feature",
+  "status": "new",
+  "created_at": "2026-01-04T20:46:00Z",
+  "updated_at": "2026-01-04T20:46:00Z",
+  "description": "Let the user save the current team as a Comp that will work like a template that can be easily loaded, so add a save button next to the clear button for current team. The first unit in the team will become the icon for the Comp. The comps will be listed above the alphabet filter buttons. Remove the 'Units' header label"
+}

@@ -9,21 +9,54 @@ namespace OmniSync.Hub.Infrastructure.Services
 {
     public class ProcessService
     {
+        private readonly HubSettingsService _settingsService;
         public event EventHandler<string> CommandOutputReceived;
+
+        public ProcessService(HubSettingsService settingsService)
+        {
+            _settingsService = settingsService;
+        }
 
         public async Task ExecuteCommand(string command)
         {
+            // Resolve mapping if available
+            string finalCommand = command;
+            var parts = command.Split(' ', 2);
+            var firstPart = parts[0];
+            var mappedPath = _settingsService.GetPath(firstPart);
+            
+            if (mappedPath != null)
+            {
+                if (parts.Length > 1)
+                {
+                    finalCommand = $"\"{mappedPath}\" {parts[1]}";
+                }
+                else
+                {
+                    finalCommand = $"\"{mappedPath}\"";
+                }
+            }
+
             await Task.Run(() =>
             {
                 var processStartInfo = new ProcessStartInfo
                 {
                     FileName = "cmd.exe",
-                    Arguments = $"/c \"{command}\"", // Wrap command in quotes to handle spaces
+                    Arguments = $"/c {finalCommand}", // Removed extra quotes around finalCommand since we handled them above or if it's just a raw command
                     RedirectStandardOutput = true,
                     RedirectStandardError = true,
                     UseShellExecute = false,
                     CreateNoWindow = true
                 };
+
+                // Re-evaluate: if finalCommand has internal quotes, $"/c \"{finalCommand}\"" might be better or worse.
+                // cmd.exe /c "C:\Path\To\Exe" args
+                // Let's use the safer way:
+                processStartInfo.Arguments = $"/c {finalCommand}";
+                // Wait, if finalCommand is: "C:\Program Files\Chrome.exe" https://google.com
+                // cmd /c "C:\Program Files\Chrome.exe" https://google.com
+                // This usually works.
+
 
                 using (var process = new Process { StartInfo = processStartInfo })
                 {

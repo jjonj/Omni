@@ -55,6 +55,7 @@ namespace OmniSync.Hub.Logic.Services
         {
             if (e.IsHistory)
             {
+                Console.WriteLine($"[HubEventSender] Received History for PID {e.Pid}");
                 await _hubContext.Clients.All.SendAsync("ReceiveAiHistory", e.Text, e.Pid);
             }
             else 
@@ -62,11 +63,14 @@ namespace OmniSync.Hub.Logic.Services
                  // Always send the text if present
                  if (!string.IsNullOrEmpty(e.Text))
                  {
+                     string preview = e.Text.Length > 50 ? e.Text.Substring(0, 50) + "..." : e.Text;
+                     Console.WriteLine($"[HubEventSender] Broadcasting Response for PID {e.Pid}: {preview}");
                      await _hubContext.Clients.All.SendAsync("ReceiveAiResponse", e.Text, e.Pid);
                  }
 
                  if (e.IsFinished)
                  {
+                     Console.WriteLine($"[HubEventSender] Turn FINISHED for PID {e.Pid}");
                      await _hubContext.Clients.All.SendAsync("ReceiveAiStatus", "FINISHED", e.Pid);
                  }
             }
@@ -90,6 +94,12 @@ namespace OmniSync.Hub.Logic.Services
         private async void OnShutdownScheduled(object? sender, DateTime? scheduledTime)
         {
             await _hubContext.Clients.All.SendAsync("ShutdownScheduled", scheduledTime);
+        }
+
+        public async Task BroadcastSessions()
+        {
+            var sessions = _aiCliService.GetActiveSessions();
+            await _hubContext.Clients.All.SendAsync("ReceiveAiSessions", sessions);
         }
 
         public async Task BroadcastLogEntryAdded(string message)
@@ -124,9 +134,9 @@ namespace OmniSync.Hub.Logic.Services
             });
         }
 
-        public async Task SendAiError(string connectionId, string errorMessage)
+        public async Task SendAiError(string connectionId, string errorMessage, int targetPid = -1)
         {
-            await _hubContext.Clients.Client(connectionId).SendAsync("ReceiveAiResponse", errorMessage);
+            await _hubContext.Clients.Client(connectionId).SendAsync("ReceiveAiResponse", errorMessage, targetPid);
         }
 
         // Method to be called by RpcApiHub when a client connects and wants command output

@@ -283,6 +283,9 @@ fun FilesScreen(
                             onCliHere = { entry ->
                                 filesViewModel.openCliHere(entry)
                             },
+                            onCacheFolderRecursive = { entry ->
+                                filesViewModel.cacheFolderRecursive(entry)
+                            },
                             onDownloadVideo = { entry, isEncrypted ->
                                 if (isEncrypted) {
                                     val cachedPassword = filesViewModel.getVerifiedPassword()
@@ -572,6 +575,7 @@ fun FileSystemEntryItem(
     onOpenInAiChat: (FileSystemEntry) -> Unit = {},
     onDuplicate: (FileSystemEntry) -> Unit = {},
     onCliHere: (FileSystemEntry) -> Unit = {},
+    onCacheFolderRecursive: (FileSystemEntry) -> Unit = {},
     onDownloadVideo: (FileSystemEntry, Boolean) -> Unit = { _, _ -> },
     onDeleteByPath: (String) -> Unit = {},
     onDeleteAllEncrypted: () -> Unit = {}
@@ -733,6 +737,13 @@ fun FileSystemEntryItem(
                     onClick = {
                         showMenu = false
                         onCliHere(entry)
+                    }
+                )
+                DropdownMenuItem(
+                    text = { Text("Cache Whole Folder") },
+                    onClick = {
+                        showMenu = false
+                        onCacheFolderRecursive(entry)
                     }
                 )
             }

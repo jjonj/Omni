@@ -20,6 +20,9 @@ OmniSync is a multi-platform ecosystem utilizing native technologies for maximum
     -   `AccessibilityService` for input injection and macro triggers.
     -   `ForegroundService` for persistent connection.
     -   `WorkManager` for background tasks.
+    -   **Logic Components:**
+        -   `MacroParser` & `MacroExecutor`: Custom parser for AHK-like automation scripts.
+        -   `ConflictResolver`: Line-by-line merge engine for offline/online sync.
 -   **Build System:** Gradle (Headless/CLI support).
 
 ### 3. Chrome Extension (Browser Integration)

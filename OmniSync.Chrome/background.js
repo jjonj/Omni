@@ -287,7 +287,48 @@ chrome.runtime.onStartup.addListener(() => {
 
 chrome.runtime.onInstalled.addListener(() => {
     console.log("Extension installed/updated - connecting...");
+    
+    // Create Context Menu Items
+    chrome.contextMenus.create({
+        id: "sendPageToPhone",
+        title: "Send Page to Phone",
+        contexts: ["page"]
+    });
+    
+    chrome.contextMenus.create({
+        id: "sendLatestYouTubeToPhone",
+        title: "Latest YouTube to Phone",
+        contexts: ["action", "page"]
+    });
+
+    chrome.contextMenus.create({
+        id: "openLatestYouTubeOnPC",
+        title: "Latest YouTube on PC",
+        contexts: ["action", "page"]
+    });
+
     start();
+});
+
+// Handle Context Menu Clicks
+chrome.contextMenus.onClicked.addListener((info, tab) => {
+    if (info.menuItemId === "sendPageToPhone") {
+        if (tab && tab.url) {
+            connection.invoke("SendTabToPhone", tab.url);
+        }
+    } else if (info.menuItemId === "sendLatestYouTubeToPhone") {
+        chrome.history.search({ text: 'youtube.com/watch', maxResults: 1 }, (results) => {
+            if (results && results.length > 0) {
+                connection.invoke("SendTabToPhone", results[0].url);
+            }
+        });
+    } else if (info.menuItemId === "openLatestYouTubeOnPC") {
+        chrome.history.search({ text: 'youtube.com/watch', maxResults: 1 }, (results) => {
+            if (results && results.length > 0) {
+                chrome.tabs.create({ url: results[0].url, active: true });
+            }
+        });
+    }
 });
 
 start();

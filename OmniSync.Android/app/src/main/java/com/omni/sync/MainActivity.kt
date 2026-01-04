@@ -220,7 +220,8 @@ class MainActivity : ComponentActivity() {
                             
                             Box(modifier = Modifier.fillMaxSize()) {
                                 if (currentScreen == AppScreen.EDITOR || currentScreen == AppScreen.SETTINGS || 
-                                    currentScreen == AppScreen.DOWNLOADED_VIDEOS || currentScreen == AppScreen.FILES || currentScreen == AppScreen.AI_CHAT) {
+                                    currentScreen == AppScreen.DOWNLOADED_VIDEOS || currentScreen == AppScreen.FILES || 
+                                    currentScreen == AppScreen.AI_CHAT || currentScreen == AppScreen.MACRO_MANAGER) {
                                     MainScreenContent(currentScreen, signalRClient, browserViewModel, filesViewModel, mainViewModel, innerPadding)
                                 } else {
                                     // Custom touch slop to make paging less sensitive to diagonal swipes
@@ -382,6 +383,10 @@ class MainActivity : ComponentActivity() {
             AppScreen.ALARM -> com.omni.sync.ui.screen.AlarmScreen(
                 mainViewModel = mainViewModel,
                 signalRClient = signalRClient,
+                onBack = { mainViewModel.goBack() }
+            )
+            AppScreen.MACRO_MANAGER -> com.omni.sync.ui.screen.MacroManagerScreen(
+                mainViewModel = mainViewModel,
                 onBack = { mainViewModel.goBack() }
             )
             AppScreen.IMAGE_VIEWER -> {

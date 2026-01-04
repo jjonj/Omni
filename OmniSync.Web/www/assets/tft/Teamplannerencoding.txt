@@ -1,0 +1,36 @@
+a Fixed-Width Chunked ID Serialization.
+
+In this format, the payload is divided into ten discrete "slots," each exactly 3 hexadecimal characters (12 bits) long. This allows the game to store up to 10 unique champion IDs while maintaining a deterministic string length.
+Updated Technical Specification: Chunked ID Serialization
+
+For developers building parsers, the logic should follow this schema:
+
+    Header (2 chars): 02 (Signals protocol version 2).
+
+    Payload (30 chars): 10 slots of 3-character hexadecimal IDs.
+
+        Slot 1: Chars 3–5
+
+        Slot 2: Chars 6–8
+
+        ...and so on.
+
+    Padding: Unused slots must be filled with 000.
+
+    Trailer (9 chars): TFTSet16.
+
+Verified Set 16 Champion IDs
+
+Based on the examples provided and your confirmation that 33c corresponds to Garen, we can map the following "Sure" IDs. These values appear to be hex offsets derived from the internal Riot database rather than a simple 1–100 index.
+Champion	Hex ID	Category
+Ryze	013	Unlockable (Legendary)
+Kog'Maw	2e0	Base Unit
+Briar	32f	Base Unit
+Zoe	333	Base Unit
+Garen	33c	Base Unit
+Anivia	33e	Base Unit
+Blitzcrank	34a	Base Unit
+Cho'Gath	354	Base Unit
+Lulu	355	Base Unit
+Sett	362	Base Unit
+Ziggs	371	Base Unit
