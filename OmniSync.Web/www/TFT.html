@@ -839,41 +839,64 @@
                 <!-- Quiz Panel -->
                 <div id="quiz" class="tab-panel">
                     <div class="quiz-container">
-                        <div class="quiz-header">
-                            <div class="quiz-stats">
-                                <div class="quiz-stat">
-                                    <span class="quiz-stat-label">Score</span>
-                                    <span id="quiz-score" class="quiz-stat-value">0</span>
+                        <div class="quiz-header" style="flex-direction: column; gap: 10px; align-items: stretch; padding: 12px;">
+                            <!-- Top Row: Stats -->
+                            <div class="quiz-stats" style="display: flex; flex-wrap: wrap; gap: 12px; justify-content: space-between;">
+                                <div style="display: flex; gap: 12px;">
+                                    <div class="quiz-stat">
+                                        <span class="quiz-stat-label">Score</span>
+                                        <span id="quiz-score" class="quiz-stat-value" style="font-size: 16px;">0</span>
+                                    </div>
+                                    <div class="quiz-stat">
+                                        <span class="quiz-stat-label">Streak</span>
+                                        <span id="quiz-streak" class="quiz-stat-value" style="font-size: 16px;">0</span>
+                                    </div>
+                                    <div class="quiz-stat">
+                                        <span class="quiz-stat-label">Rank</span>
+                                        <span id="quiz-rank" class="quiz-stat-value" style="font-size: 16px; color: #a19d94;">IRON</span>
+                                    </div>
                                 </div>
-                                <div class="quiz-stat">
-                                    <span class="quiz-stat-label">Streak</span>
-                                    <span id="quiz-streak" class="quiz-stat-value">0</span>
-                                </div>
-                                <div class="quiz-stat">
-                                    <span class="quiz-stat-label">Best</span>
-                                    <span id="quiz-best-streak" class="quiz-stat-value">0</span>
-                                </div>
-                                <div class="quiz-stat">
-                                    <span class="quiz-stat-label">High Score</span>
-                                    <span id="quiz-high-score" class="quiz-stat-value">0</span>
-                                </div>
-                                <div class="quiz-stat">
-                                    <span class="quiz-stat-label">Rank</span>
-                                    <span id="quiz-rank" class="quiz-stat-value" style="color: #a19d94;">IRON</span>
+                                <div style="display: flex; gap: 12px;">
+                                    <div class="quiz-stat">
+                                        <span class="quiz-stat-label">Best</span>
+                                        <span id="quiz-best-streak" class="quiz-stat-value" style="font-size: 16px;">0</span>
+                                    </div>
+                                    <div class="quiz-stat">
+                                        <span class="quiz-stat-label">High</span>
+                                        <span id="quiz-high-score" class="quiz-stat-value" style="font-size: 16px;">0</span>
+                                    </div>
                                 </div>
                             </div>
-                            <div style="display: flex; gap: 12px; align-items: center;">
-                                <label class="hub-status-label" style="text-transform: none; display: flex; align-items: center; gap: 4px; cursor: pointer; font-size: 10px;">
-                                    <input type="checkbox" id="quiz-show-traits-toggle" checked onchange="toggleQuizTraits(this.checked)"> Show Traits
-                                </label>
-                                <select id="quiz-difficulty" onchange="changeQuizDifficulty(this.value)" class="search-input" style="width: 80px; height: 24px; padding: 0 4px;">
-                                    <option value="classic">Classic</option>
-                                    <option value="hard">Hardcore</option>
-                                    <option value="blitz">Blitz</option>
-                                </select>
-                                <button id="next-quiz-btn" class="modern-btn primary" onclick="startNewQuiz()" style="display: none; height: 30px; padding: 0 12px;">Next Board</button>
+
+                            <!-- Middle Row: Controls -->
+                            <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap;">
+                                <div style="display: flex; gap: 8px; align-items: center;">
+                                    <select id="quiz-difficulty" onchange="changeQuizDifficulty(this.value)" class="search-input" style="width: 75px; height: 24px; padding: 0 4px; font-size: 10px;">
+                                        <option value="classic">Classic</option>
+                                        <option value="hard">Hardcore</option>
+                                        <option value="blitz">Blitz</option>
+                                        <option value="zen">Zen</option>
+                                    </select>
+                                    <label class="hub-status-label" style="text-transform: none; display: flex; align-items: center; gap: 4px; cursor: pointer; font-size: 10px; margin: 0;">
+                                        <input type="checkbox" id="quiz-show-traits-toggle" checked onchange="toggleQuizTraits(this.checked)"> Traits
+                                    </label>
+                                </div>
+                                <div id="quiz-timer" style="font-family: var(--font-mono); color: var(--accent); font-weight: bold; font-size: 14px;"></div>
+                                <button id="next-quiz-btn" class="modern-btn primary" onclick="startNewQuiz()" style="display: none; height: 26px; padding: 0 10px; font-size: 10px;">Next Board</button>
                             </div>
-                            <div id="quiz-loading" style="display: none; color: var(--text-dim); font-size: 12px;">Generating...</div>
+                            
+                            <!-- Bottom Row: XP Bar -->
+                            <div style="background: var(--bg); padding: 4px 8px; border-radius: 6px; border: 1px solid var(--border);">
+                                <div id="quiz-xp-container" style="height: 4px; background: var(--bg-elevated); border-radius: 2px; overflow: hidden; position: relative; margin-bottom: 2px;">
+                                    <div id="quiz-xp-bar" style="width: 0%; height: 100%; background: linear-gradient(90deg, var(--accent), var(--success)); transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1);"></div>
+                                </div>
+                                <div style="display: flex; justify-content: space-between; font-size: 8px; color: var(--text-dim); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">
+                                    <span id="quiz-level-text">LVL 1</span>
+                                    <span id="quiz-xp-text">0 / 1000 XP</span>
+                                </div>
+                            </div>
+
+                            <div id="quiz-loading" style="display: none; color: var(--text-dim); font-size: 11px; text-align: center;">Generating...</div>
                         </div>
 
                         <div class="quiz-board-area">

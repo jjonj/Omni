@@ -26,6 +26,8 @@ let quizState = {
     highScore: parseInt(localStorage.getItem('tft_quiz_high_score') || '0'),
     streak: 0,
     bestStreak: parseInt(localStorage.getItem('tft_quiz_best_streak') || '0'),
+    xp: parseInt(localStorage.getItem('tft_quiz_xp') || '0'),
+    level: parseInt(localStorage.getItem('tft_quiz_level') || '1'),
     currentBoard: null,
     hiddenUnit: null,
     activeEmblems: [],
@@ -34,9 +36,67 @@ let quizState = {
     showTraits: true,
     difficulty: 'classic',
     isAnswered: false,
+    isGenerating: false,
     timer: null,
     secondsLeft: 0
 };
+
+function getXPToNextLevel(level) {
+    return level * 1000;
+}
+
+function gainXP(amount) {
+    quizState.xp += amount;
+    let nextXP = getXPToNextLevel(quizState.level);
+    
+    while (quizState.xp >= nextXP) {
+        quizState.xp -= nextXP;
+        quizState.level++;
+        nextXP = getXPToNextLevel(quizState.level);
+        
+        // Level up visual feedback
+        const levelText = document.getElementById('quiz-level-text');
+        if (levelText) {
+            levelText.style.color = 'var(--success)';
+            levelText.style.transform = 'scale(1.5)';
+            setTimeout(() => {
+                levelText.style.color = '';
+                levelText.style.transform = '';
+            }, 1000);
+        }
+    }
+    
+    localStorage.setItem('tft_quiz_xp', quizState.xp);
+    localStorage.setItem('tft_quiz_level', quizState.level);
+    updateQuizStats();
+}
+
+function triggerConfetti() {
+    for (let i = 0; i < 50; i++) {
+        const confetti = document.createElement('div');
+        confetti.style.position = 'fixed';
+        confetti.style.width = '8px';
+        confetti.style.height = '8px';
+        confetti.style.backgroundColor = ['#0a84ff', '#32d74b', '#ff9500', '#ff453a', '#bf5af2'][Math.floor(Math.random() * 5)];
+        confetti.style.top = '-10px';
+        confetti.style.left = Math.random() * 100 + 'vw';
+        confetti.style.zIndex = '10000';
+        confetti.style.borderRadius = '2px';
+        confetti.style.pointerEvents = 'none';
+        
+        document.body.appendChild(confetti);
+        
+        const animation = confetti.animate([
+            { transform: `translate3d(0, 0, 0) rotate(0deg)`, opacity: 1 },
+            { transform: `translate3d(${(Math.random() - 0.5) * 200}px, 105vh, 0) rotate(${Math.random() * 360}deg)`, opacity: 0 }
+        ], {
+            duration: 2000 + Math.random() * 3000,
+            easing: 'cubic-bezier(0, .9, .57, 1)'
+        });
+        
+        animation.onfinish = () => confetti.remove();
+    }
+}
 
 function toggleQuizTraits(enabled) {
     quizState.showTraits = enabled;
@@ -1702,6 +1762,18 @@ function exportTeamPlannerCode() {
     }
 }
 
+function getQuizTimeForRank(streak) {
+    if (streak >= 15) return 10;  // Challenger
+    if (streak >= 12) return 15;  // GM
+    if (streak >= 10) return 20;  // Master
+    if (streak >= 8)  return 30;  // Diamond
+    if (streak >= 6)  return 45;  // Plat
+    if (streak >= 4)  return 60;  // Gold
+    if (streak >= 2)  return 90;  // Silver
+    if (streak >= 1)  return 105; // Bronze
+    return 120; // Iron
+}
+
 async function startNewQuiz() {
     if (!optimizer || !tftData) return;
     
@@ -1763,10 +1835,14 @@ async function startNewQuiz() {
             renderQuizOptions();
             renderQuizTraits();
             
-            let time = 15;
-            if (quizState.difficulty === 'blitz') time = 7;
-            if (quizState.difficulty === 'hard') time = 12;
-            startQuizTimer(time);
+            let time = getQuizTimeForRank(quizState.streak);
+            if (quizState.difficulty === 'blitz') time = Math.min(time, 7);
+            if (quizState.difficulty === 'hard') time = Math.min(time, 12);
+            if (quizState.difficulty === 'zen') {
+                document.getElementById('quiz-timer').innerText = "Zen Mode";
+            } else {
+                startQuizTimer(time);
+            }
         }
     } catch (err) {
         console.error("Quiz generation failed:", err);
@@ -1791,8 +1867,13 @@ function startQuizTimer(seconds) {
 function updateTimerDisplay() {
     const el = document.getElementById('quiz-timer');
     if (el) {
-        el.innerText = `Time: ${quizState.secondsLeft}s`;
-        el.style.color = quizState.secondsLeft <= 3 ? 'var(--danger)' : 'var(--accent)';
+        if (quizState.difficulty === 'zen') {
+            el.innerText = "Zen Mode";
+            el.style.color = 'var(--text-dim)';
+        } else {
+            el.innerText = `Time: ${quizState.secondsLeft}s`;
+            el.style.color = quizState.secondsLeft <= 5 ? 'var(--danger)' : 'var(--accent)';
+        }
     }
 }
 
@@ -1822,7 +1903,10 @@ function renderQuizTraits() {
         const reached = breakpoints.filter(b => b <= count);
         const isActive = reached.length > 0 || trait === 'Targon';
         
-        if (!isActive && !quizState.isAnswered) return;
+        // During guessing, if showTraits is ON, we show everything.
+        // If OFF, we show nothing (handled above).
+        // If Hardcore, we show nothing (handled above).
+        // After reveal, we show everything.
 
         const traitEl = document.createElement('div');
         traitEl.style.display = 'flex';
@@ -1831,7 +1915,7 @@ function renderQuizTraits() {
         traitEl.style.padding = '2px 6px';
         traitEl.style.borderRadius = '4px';
         traitEl.style.background = isActive ? 'rgba(255,255,255,0.05)' : 'transparent';
-        traitEl.style.border = '1px solid ' + (isActive ? 'var(--border-light)' : 'transparent');
+        traitEl.style.border = '1px solid ' + (isActive ? 'var(--border-light)' : 'rgba(255,255,255,0.05)');
         
         // Highlight logic
         if (quizState.isAnswered) {
@@ -2007,11 +2091,21 @@ function updateQuizStats() {
     document.getElementById('quiz-streak').innerText = quizState.streak;
     document.getElementById('quiz-best-streak').innerText = quizState.bestStreak;
     
+    // Update Level & XP
+    const nextXP = getXPToNextLevel(quizState.level);
+    const levelText = document.getElementById('quiz-level-text');
+    const xpText = document.getElementById('quiz-xp-text');
+    const xpBar = document.getElementById('quiz-xp-bar');
+    
+    if (levelText) levelText.innerText = `LVL ${quizState.level}`;
+    if (xpText) xpText.innerText = `${quizState.xp} / ${nextXP} XP`;
+    if (xpBar) xpBar.style.width = (quizState.xp / nextXP * 100) + '%';
+
     const rank = getRankInfo(quizState.streak);
     const rankEl = document.getElementById('quiz-rank');
     if (rankEl) {
         if (rank.name !== lastRankName) {
-            // Rank up animation
+            // Rank change animation
             rankEl.style.transform = "scale(1.5)";
             rankEl.style.transition = "transform 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275)";
             setTimeout(() => { rankEl.style.transform = "scale(1)"; }, 500);
