@@ -27,10 +27,43 @@ let quizState = {
     bestStreak: 0,
     currentBoard: null,
     hiddenUnit: null,
+    activeEmblems: [],
+    baseCounts: {},
+    finalCounts: {},
+    showTraits: true,
+    difficulty: 'classic',
     isAnswered: false,
     timer: null,
     secondsLeft: 0
 };
+
+function toggleQuizTraits(enabled) {
+    quizState.showTraits = enabled;
+    if (!quizState.isAnswered) {
+        renderQuizTraits();
+    }
+}
+
+function changeQuizDifficulty(val) {
+    quizState.difficulty = val;
+    startNewQuiz();
+}
+
+function calculateBoardCounts(units, emblems) {
+    const counts = {};
+    units.forEach(u => {
+        if (!u || !u.traits) return;
+        u.traits.forEach(t => {
+            counts[t] = (counts[t] || 0) + 1;
+        });
+    });
+    if (emblems) {
+        emblems.forEach(t => {
+            counts[t] = (counts[t] || 0) + 1;
+        });
+    }
+    return counts;
+}
 
 function setActiveZone(zoneId) {
     activeDropZone = zoneId;
@@ -1679,29 +1712,30 @@ async function startNewQuiz() {
     if (quizState.timer) clearInterval(quizState.timer);
     
     // Random Level 4-8
-    const level = Math.floor(Math.random() * 5) + 4;
-    document.getElementById('quiz-board-title').innerText = `Level ${level} Board`;
+    let level = Math.floor(Math.random() * 5) + 4;
+    if (quizState.difficulty === 'hard') level = Math.min(8, level + 1);
     
-    // Pick 1-2 random units as seeds to make it diverse
+    document.getElementById('quiz-board-title').innerText = `${quizState.difficulty.toUpperCase()} - Level ${level} Board`;
+    
+    // Pick seeds
     const seeds = [];
     const seedCount = level >= 6 ? 2 : 1;
     while (seeds.length < seedCount) {
         const randUnit = tftData.units[Math.floor(Math.random() * tftData.units.length)];
-        if (randUnit.cost <= (level <= 6 ? 3 : 5) && !seeds.includes(randUnit.name)) {
+        if (!activeDisabledUnits.includes(randUnit.name) && 
+            randUnit.cost <= (level <= 6 ? 3 : 5) && !seeds.includes(randUnit.name)) {
             seeds.push(randUnit.name);
         }
     }
     
-    // Chance for a random emblem to be active (25%)
     let quizEmblems = [];
-    if (Math.random() < 0.25) {
+    if (Math.random() < 0.3) {
         const emblemItems = tftData.items.filter(i => i.is_emblem);
-        const randomEmblem = emblemItems[Math.floor(Math.random() * emblemItems.length)];
-        quizEmblems.push(randomEmblem.trait);
+        quizEmblems.push(emblemItems[Math.floor(Math.random() * emblemItems.length)].trait);
     }
     
-    // Generate a quick optimal board
     const pool = tftData.units.filter(u => {
+        if (activeDisabledUnits.includes(u.name)) return false;
         if (level <= 6 && u.cost > 3) return false;
         if (level < 8 && u.cost === 5) return false;
         return true;
@@ -1713,16 +1747,25 @@ async function startNewQuiz() {
             const board = res.results[0].board;
             quizState.currentBoard = board;
             quizState.activeEmblems = quizEmblems;
+            quizState.finalCounts = res.results[0].counts;
             
-            // Pick a random unit to hide (preferably one NOT in seeds)
             const hideable = board.filter(u => !seeds.includes(u.name));
             quizState.hiddenUnit = hideable.length > 0 
                 ? hideable[Math.floor(Math.random() * hideable.length)]
                 : board[Math.floor(Math.random() * board.length)];
             
+            // Calculate base counts (excluding hidden unit)
+            const visibleUnits = board.filter(u => u.name !== quizState.hiddenUnit.name);
+            quizState.baseCounts = calculateBoardCounts(visibleUnits, quizEmblems);
+            
             renderQuizBoard();
             renderQuizOptions();
-            startQuizTimer();
+            renderQuizTraits();
+            
+            let time = 15;
+            if (quizState.difficulty === 'blitz') time = 7;
+            if (quizState.difficulty === 'hard') time = 12;
+            startQuizTimer(time);
         }
     } catch (err) {
         console.error("Quiz generation failed:", err);
@@ -1731,8 +1774,8 @@ async function startNewQuiz() {
     }
 }
 
-function startQuizTimer() {
-    quizState.secondsLeft = 15;
+function startQuizTimer(seconds) {
+    quizState.secondsLeft = seconds || 15;
     updateTimerDisplay();
     quizState.timer = setInterval(() => {
         quizState.secondsLeft--;
@@ -1746,7 +1789,71 @@ function startQuizTimer() {
 
 function updateTimerDisplay() {
     const el = document.getElementById('quiz-timer');
-    if (el) el.innerText = `Time: ${quizState.secondsLeft}s`;
+    if (el) {
+        el.innerText = `Time: ${quizState.secondsLeft}s`;
+        el.style.color = quizState.secondsLeft <= 3 ? 'var(--danger)' : 'var(--accent)';
+    }
+}
+
+function renderQuizTraits() {
+    const container = document.getElementById('quiz-board-traits');
+    if (!container) return;
+    container.innerHTML = '';
+    
+    if (!quizState.showTraits && !quizState.isAnswered) {
+        container.innerHTML = '<div style="color: var(--text-dimmer); font-size: 10px;">Traits Hidden</div>';
+        return;
+    }
+
+    if (quizState.difficulty === 'hard' && !quizState.isAnswered) {
+        container.innerHTML = '<div style="color: var(--danger); font-size: 10px; font-weight: bold;">HARDCORE: No Traits Hint</div>';
+        return;
+    }
+
+    const countsToUse = quizState.isAnswered ? quizState.finalCounts : quizState.baseCounts;
+    const sortedTraits = Object.entries(countsToUse).sort((a, b) => b[1] - a[1]);
+
+    sortedTraits.forEach(([trait, count]) => {
+        const traitInfo = tftData.trait_metadata[trait];
+        if (!traitInfo) return;
+        
+        const breakpoints = traitInfo.breakpoints;
+        const reached = breakpoints.filter(b => b <= count);
+        const isActive = reached.length > 0 || trait === 'Targon';
+        
+        if (!isActive && !quizState.isAnswered) return;
+
+        const traitEl = document.createElement('div');
+        traitEl.style.display = 'flex';
+        traitEl.style.alignItems = 'center';
+        traitEl.style.gap = '4px';
+        traitEl.style.padding = '2px 6px';
+        traitEl.style.borderRadius = '4px';
+        traitEl.style.background = isActive ? 'rgba(255,255,255,0.05)' : 'transparent';
+        traitEl.style.border = '1px solid ' + (isActive ? 'var(--border-light)' : 'transparent');
+        
+        // Highlight logic
+        if (quizState.isAnswered) {
+            const oldCount = quizState.baseCounts[trait] || 0;
+            const oldReached = breakpoints.filter(b => b <= oldCount);
+            const newReached = reached;
+            
+            if (newReached.length > oldReached.length || (count > oldCount && isActive)) {
+                traitEl.style.borderColor = 'var(--success)';
+                traitEl.style.background = 'rgba(50, 215, 75, 0.1)';
+                traitEl.style.boxShadow = '0 0 8px rgba(50, 215, 75, 0.2)';
+            }
+        }
+
+        const iconUrl = `assets/tft/${currentConfig.current_set}/traits/${trait.replace(/ /g, '')}.svg`;
+        const filter = isActive ? '' : 'opacity: 0.3; filter: grayscale(1);';
+        
+        traitEl.innerHTML = `
+            <img src="${iconUrl}" style="width: 14px; height: 14px; ${filter}" onerror="this.style.display='none'">
+            <span style="font-size: 10px; color: ${isActive ? 'var(--text-bright)' : 'var(--text-dim)'}">${count}</span>
+        `;
+        container.appendChild(traitEl);
+    });
 }
 
 function renderQuizBoard() {
@@ -1790,6 +1897,8 @@ function renderQuizBoard() {
             container.appendChild(slot);
         });
     }
+    
+    renderQuizTraits();
 }
 
 function renderQuizOptions() {
@@ -1797,8 +1906,10 @@ function renderQuizOptions() {
     if (!container) return;
     container.innerHTML = '';
     
-    // Show all units in the set sorted by cost then name
-    const sortedUnits = [...tftData.units].sort((a, b) => a.cost - b.cost || a.name.localeCompare(b.name));
+    // Show all units in the set sorted by cost then name (filtering out disabled)
+    const sortedUnits = [...tftData.units]
+        .filter(u => !activeDisabledUnits.includes(u.name))
+        .sort((a, b) => a.cost - b.cost || a.name.localeCompare(b.name));
     
     sortedUnits.forEach(u => {
         const item = document.createElement('div');
@@ -1825,9 +1936,12 @@ function handleQuizGuess(unitName) {
     const isCorrect = unitName === quizState.hiddenUnit.name;
     
     if (isCorrect) {
-        // Bonus points for speed
+        let multiplier = 1;
+        if (quizState.difficulty === 'blitz') multiplier = 2;
+        if (quizState.difficulty === 'hard') multiplier = 1.5;
+
         const speedBonus = quizState.secondsLeft * 10;
-        quizState.score += 100 + (quizState.streak * 20) + speedBonus;
+        quizState.score += Math.floor((100 + (quizState.streak * 20) + speedBonus) * multiplier);
         quizState.streak++;
         if (quizState.streak > quizState.bestStreak) quizState.bestStreak = quizState.streak;
         
@@ -1840,6 +1954,7 @@ function handleQuizGuess(unitName) {
     updateQuizStats();
     renderQuizBoard();
     renderQuizOptions();
+    renderQuizTraits();
     document.getElementById('next-quiz-btn').style.display = 'block';
 }
 

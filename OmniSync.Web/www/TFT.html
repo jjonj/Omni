@@ -858,7 +858,17 @@
                                     <span id="quiz-rank" class="quiz-stat-value" style="color: #a19d94;">IRON</span>
                                 </div>
                             </div>
-                            <button id="next-quiz-btn" class="modern-btn primary" onclick="startNewQuiz()" style="display: none;">Next Board</button>
+                            <div style="display: flex; gap: 12px; align-items: center;">
+                                <label class="hub-status-label" style="text-transform: none; display: flex; align-items: center; gap: 4px; cursor: pointer; font-size: 10px;">
+                                    <input type="checkbox" id="quiz-show-traits-toggle" checked onchange="toggleQuizTraits(this.checked)"> Show Traits
+                                </label>
+                                <select id="quiz-difficulty" onchange="changeQuizDifficulty(this.value)" class="search-input" style="width: 80px; height: 24px; padding: 0 4px;">
+                                    <option value="classic">Classic</option>
+                                    <option value="hard">Hardcore</option>
+                                    <option value="blitz">Blitz</option>
+                                </select>
+                                <button id="next-quiz-btn" class="modern-btn primary" onclick="startNewQuiz()" style="display: none; height: 30px; padding: 0 12px;">Next Board</button>
+                            </div>
                             <div id="quiz-loading" style="display: none; color: var(--text-dim); font-size: 12px;">Generating...</div>
                         </div>
 
@@ -867,6 +877,9 @@
                             <div id="quiz-board-title" class="quiz-board-title">Level 6 Board</div>
                             <div id="quiz-board-units" class="quiz-board-units">
                                 <!-- Units will be injected here -->
+                            </div>
+                            <div id="quiz-board-traits" style="display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; justify-content: center; min-height: 24px;">
+                                <!-- Traits will be injected here -->
                             </div>
                         </div>
 
