@@ -109,6 +109,12 @@ body {
     flex-shrink: 0;
     box-shadow: var(--shadow-sm);
     z-index: 100;
+    overflow-x: auto; /* Allow horizontal scrolling */
+    scrollbar-width: none; /* Firefox */
+}
+
+.nav-menu::-webkit-scrollbar {
+    display: none; /* Chrome, Safari, Opera */
 }
 
 .nav-brand {
@@ -117,17 +123,21 @@ body {
     color: var(--text-bright);
     margin-right: 32px;
     letter-spacing: 0.5px;
+    white-space: nowrap; /* Prevent text wrapping */
 }
 
 .nav-item {
     color: var(--text-dim);
-    text-decoration: none;    font-size: 13px;
+    text-decoration: none;
+    font-size: 13px;
     font-weight: 500;
     padding: 8px 16px;
     border-radius: 6px;
     transition: all var(--transition-fast);
     text-transform: uppercase;
     letter-spacing: 0.5px;
+    white-space: nowrap; /* Prevent text wrapping */
+    flex-shrink: 0; /* Prevent shrinking */
 }
 
 .nav-item:hover {
