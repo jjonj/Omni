@@ -170,6 +170,14 @@ The system will initially support these command sets:
     *   Run `.\deploy.bat` (Encapsulates `gradlew installDebug`).
     *   Action: Pushes APK via USB and launches it.
 
+## 8. Submodules & External Tools
+
+### 8.1. Island Generator
+*   **Location:** `OmniSync.Web/www/IslandGenerator`
+*   **Purpose:** A procedural island generation tool used for world-building and map generation.
+*   **Integration:** Served via the OmniSync Web interface. It is a standalone submodule with its own internal logic for hydrology, heightmaps, and river generation.
+*   **Status:** Active development.
+
 
 
 ### C. The Network Layer

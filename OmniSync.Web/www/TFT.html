@@ -635,6 +635,18 @@
                         </div>
                         
                         <div style="margin-top: 20px;">
+                            <h3>Team Planner Code</h3>
+                            <p style="font-size: 11px; color: var(--text-dim); margin-bottom: 10px;">Import or export Riot Games Team Planner codes.</p>
+                            <div style="display: flex; flex-direction: column; gap: 8px;">
+                                <textarea id="team-planner-code" placeholder="02...TFTSet16" class="modern-input" style="width: 100%; height: 60px; background: var(--bg); color: var(--text-bright); border: 1px solid var(--border); padding: 10px; border-radius: 6px; font-family: var(--font-mono); font-size: 11px;"></textarea>
+                                <div style="display: flex; gap: 10px;">
+                                    <button class="modern-btn primary" onclick="importTeamPlannerCode()">Import to Current Team</button>
+                                    <button class="modern-btn" onclick="exportTeamPlannerCode()">Export Current Team</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div style="margin-top: 30px;">
                             <h3>Solver Exclusions</h3>
                             <p style="font-size: 11px; color: var(--text-dim); margin-bottom: 10px;">Right-click units in the pool to toggle disable. Manage defaults below.</p>
                             <textarea id="disabled-units-config" class="modern-input" style="width: 100%; height: 80px; background: var(--bg); color: var(--text-bright); border: 1px solid var(--border); padding: 10px; border-radius: 6px; font-family: var(--font-mono); font-size: 11px;"></textarea>
@@ -674,6 +686,7 @@
         }
     </script>
     <script src="js/tft_optimizer.js"></script>
+    <script src="js/TeamPlannerCode.js"></script>
     <script src="js/tft_tests.js"></script>
     <script src="js/tft.js"></script>
 </body>

@@ -28,6 +28,6 @@ Let's assume "TFTSet16." including the dot, or maybe I should look for examples 
 Actually, let's stick to the prompt description.
 
 ## Tasks
-- [ ] Create a utility class/module `TeamPlannerCode.js` (or Python equivalent if backend needed) to parse/generate these codes.
-- [ ] Map the "Verified Set 16 Champion IDs" provided.
-- [ ] Add UI in `TFT.html` to import/export these codes.
+- [x] Create a utility class/module TeamPlannerCode.js (or Python equivalent if backend needed) to parse/generate these codes. 473a241
+- [x] Map the "Verified Set 16 Champion IDs" provided. 473a241
+- [x] Add UI in TFT.html to import/export these codes. 08c2a91

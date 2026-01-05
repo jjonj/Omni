@@ -27,10 +27,15 @@ OmniSync is a multi-platform ecosystem utilizing native technologies for maximum
 
 ### 3. Chrome Extension (Browser Integration)
 -   **Language:** JavaScript / HTML / CSS
--   **Manifest Version:** V3
--   **Networking:** SignalR JavaScript Client.
+-   -   **Manifest Version:** V3
+-   -   **Networking:** SignalR JavaScript Client.
 
-### 4. Infrastructure & Communication
+### 4. Web Utilities & Submodules
+-   **Island Generator:** A standalone procedural generation tool integrated as a git submodule.
+    -   **Tech:** Vanilla JavaScript, HTML5 Canvas, Hydrology-based heightmap generation.
+    -   **Path:** `OmniSync.Web/www/IslandGenerator`
+
+### 5. Infrastructure & Communication
 -   **Protocol:** SignalR (WebSockets with Long Polling fallback).
 -   **Transport Security:** Tailscale VPN Mesh (WireGuard) - No public internet exposure.
 -   **Serialization:** JSON / Protocol Buffers.
