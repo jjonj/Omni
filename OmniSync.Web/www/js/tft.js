@@ -23,8 +23,9 @@ let lastReceivedClipboard = "";
 // Quiz State
 let quizState = {
     score: 0,
+    highScore: parseInt(localStorage.getItem('tft_quiz_high_score') || '0'),
     streak: 0,
-    bestStreak: 0,
+    bestStreak: parseInt(localStorage.getItem('tft_quiz_best_streak') || '0'),
     currentBoard: null,
     hiddenUnit: null,
     activeEmblems: [],
@@ -1941,9 +1942,19 @@ function handleQuizGuess(unitName) {
         if (quizState.difficulty === 'hard') multiplier = 1.5;
 
         const speedBonus = quizState.secondsLeft * 10;
-        quizState.score += Math.floor((100 + (quizState.streak * 20) + speedBonus) * multiplier);
+        const gain = Math.floor((100 + (quizState.streak * 20) + speedBonus) * multiplier);
+        quizState.score += gain;
         quizState.streak++;
-        if (quizState.streak > quizState.bestStreak) quizState.bestStreak = quizState.streak;
+        
+        if (quizState.streak > quizState.bestStreak) {
+            quizState.bestStreak = quizState.streak;
+            localStorage.setItem('tft_quiz_best_streak', quizState.bestStreak);
+        }
+        
+        if (quizState.score > quizState.highScore) {
+            quizState.highScore = quizState.score;
+            localStorage.setItem('tft_quiz_high_score', quizState.highScore);
+        }
         
         showQuizFeedback(true);
     } else {
@@ -1961,7 +1972,12 @@ function handleQuizGuess(unitName) {
 function showQuizFeedback(correct) {
     const el = document.getElementById('quiz-feedback');
     if (correct) {
-        el.innerText = quizState.streak > 5 ? "GODLIKE!" : (quizState.streak > 2 ? "GREAT!" : "CORRECT!");
+        let msg = "CORRECT!";
+        if (quizState.streak >= 10) msg = "LEGENDARY!!";
+        else if (quizState.streak >= 7) msg = "UNSTOPPABLE!";
+        else if (quizState.streak >= 5) msg = "GODLIKE!";
+        else if (quizState.streak >= 3) msg = "GREAT!";
+        el.innerText = msg;
     } else {
         el.innerText = quizState.secondsLeft <= 0 ? "TIMEOUT!" : "WRONG!";
     }
@@ -1984,14 +2000,23 @@ function getRankInfo(streak) {
     return { name: "IRON", color: "#a19d94" };
 }
 
+let lastRankName = "IRON";
 function updateQuizStats() {
     document.getElementById('quiz-score').innerText = quizState.score;
+    document.getElementById('quiz-high-score').innerText = quizState.highScore;
     document.getElementById('quiz-streak').innerText = quizState.streak;
     document.getElementById('quiz-best-streak').innerText = quizState.bestStreak;
     
     const rank = getRankInfo(quizState.streak);
     const rankEl = document.getElementById('quiz-rank');
     if (rankEl) {
+        if (rank.name !== lastRankName) {
+            // Rank up animation
+            rankEl.style.transform = "scale(1.5)";
+            rankEl.style.transition = "transform 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275)";
+            setTimeout(() => { rankEl.style.transform = "scale(1)"; }, 500);
+            lastRankName = rank.name;
+        }
         rankEl.innerText = rank.name;
         rankEl.style.color = rank.color;
     }
