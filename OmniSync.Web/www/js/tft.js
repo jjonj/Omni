@@ -1438,7 +1438,7 @@ function copyResultCode(index) {
 }
 
 
-function copyZoneCode(zone) {
+function copyZoneCode(zone, event) {
     let units = [];
     if (zone === 'current-team') {
         units = selectedCurrentTeam;
@@ -1456,10 +1456,12 @@ function copyZoneCode(zone) {
         if (hubConnection && hubConnection.state === signalR.HubConnectionState.Connected) {
             hubConnection.invoke("UpdateClipboard", code);
             // Visual feedback
-            const btn = event.currentTarget;
-            const originalColor = btn.style.color;
-            btn.style.color = 'var(--accent)';
-            setTimeout(() => btn.style.color = originalColor, 1000);
+            if (event && event.currentTarget) {
+                const btn = event.currentTarget;
+                const originalColor = btn.style.color;
+                btn.style.color = 'var(--accent)';
+                setTimeout(() => btn.style.color = originalColor, 1000);
+            }
         } else {
             // Fallback to local clipboard if possible, but browser usually requires user gesture
             const tempInput = document.createElement('input');
@@ -1475,7 +1477,7 @@ function copyZoneCode(zone) {
     }
 }
 
-async function pasteToZone(zone) {
+async function pasteToZone(zone, event) {
     let code = "";
     
     // 1. Try Hub clipboard first
@@ -1490,12 +1492,16 @@ async function pasteToZone(zone) {
         try {
             code = await navigator.clipboard.readText();
         } catch (e) {
-            // Fallback to prompt if clipboard API fails
-            code = prompt("Paste Team Planner Code here:");
+            // No prompt here to avoid unnecessary clicks
+            console.warn("Clipboard API failed and no Hub code available.");
         }
     }
 
-    if (!code) return;
+    if (!code) {
+        alert("Clipboard is empty or invalid.");
+        return;
+    }
+
     code = code.trim();
     if (!code.startsWith("02") || !code.endsWith("TFTSet16")) {
         alert("Invalid code format in clipboard.");
@@ -1529,10 +1535,12 @@ async function pasteToZone(zone) {
         renderUnitPools();
         
         // Visual feedback
-        const btn = event.currentTarget;
-        const originalColor = btn.style.color;
-        btn.style.color = 'var(--accent)';
-        setTimeout(() => btn.style.color = originalColor, 1000);
+        if (event && event.currentTarget) {
+            const btn = event.currentTarget;
+            const originalColor = btn.style.color;
+            btn.style.color = 'var(--accent)';
+            setTimeout(() => btn.style.color = originalColor, 1000);
+        }
         
     } catch (err) {
         alert("Failed to paste: " + err.message);

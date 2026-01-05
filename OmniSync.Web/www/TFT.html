@@ -503,10 +503,10 @@
                                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
                                     <h2 style="font-size: 10px; margin: 0; border: none; padding: 0;">Current Team</h2>
                                     <div style="display: flex; gap: 4px; align-items: center;">
-                                        <button class="icon-btn" onclick="copyZoneCode('current-team')" title="Copy Team Code" style="background: none; border: none; cursor: pointer; padding: 2px; display: flex; align-items: center; color: var(--text-dim); transition: color 0.2s;">
+                                        <button class="icon-btn" onclick="copyZoneCode('current-team', event)" title="Copy Team Code" style="background: none; border: none; cursor: pointer; padding: 2px; display: flex; align-items: center; color: var(--text-dim); transition: color 0.2s;">
                                             <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
                                         </button>
-                                        <button class="icon-btn" onclick="pasteToZone('current-team')" title="Paste Team Code" style="background: none; border: none; cursor: pointer; padding: 2px; display: flex; align-items: center; color: var(--text-dim); transition: color 0.2s;">
+                                        <button class="icon-btn" onclick="pasteToZone('current-team', event)" title="Paste Team Code" style="background: none; border: none; cursor: pointer; padding: 2px; display: flex; align-items: center; color: var(--text-dim); transition: color 0.2s;">
                                             <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path><rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect></svg>
                                         </button>
                                         <button class="btn primary" onclick="handleSaveComp()" style="font-size: 8px; padding: 1px 4px; height: 16px;">Save</button>
@@ -522,10 +522,10 @@
                                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
                                     <h2 style="font-size: 10px; margin: 0; border: none; padding: 0;">Must Include Units & Traits</h2>
                                     <div style="display: flex; gap: 4px; align-items: center;">
-                                        <button class="icon-btn" onclick="copyZoneCode('must-include')" title="Copy Team Code" style="background: none; border: none; cursor: pointer; padding: 2px; display: flex; align-items: center; color: var(--text-dim); transition: color 0.2s;">
+                                        <button class="icon-btn" onclick="copyZoneCode('must-include', event)" title="Copy Team Code" style="background: none; border: none; cursor: pointer; padding: 2px; display: flex; align-items: center; color: var(--text-dim); transition: color 0.2s;">
                                             <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
                                         </button>
-                                        <button class="icon-btn" onclick="pasteToZone('must-include')" title="Paste Team Code" style="background: none; border: none; cursor: pointer; padding: 2px; display: flex; align-items: center; color: var(--text-dim); transition: color 0.2s;">
+                                        <button class="icon-btn" onclick="pasteToZone('must-include', event)" title="Paste Team Code" style="background: none; border: none; cursor: pointer; padding: 2px; display: flex; align-items: center; color: var(--text-dim); transition: color 0.2s;">
                                             <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path><rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect></svg>
                                         </button>
                                         <button class="btn danger" onclick="clearMustInclude()" style="font-size: 8px; padding: 1px 4px; height: 16px;">Clear</button>
