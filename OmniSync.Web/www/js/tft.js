@@ -5,6 +5,7 @@ let optimizer = null;
 let selectedMustInclude = []; 
 let selectedCurrentTeam = [];
 let selectedEmblems = [];
+let activeDropZone = 'current-team';
 let unitFilter = 'all';
 let unitAlphaFilter = null;
 let alphaFilterTimeout = null;
@@ -18,6 +19,23 @@ let activeDisabledUnits = [];
 
 let hubConnection = null;
 let lastReceivedClipboard = "";
+
+function setActiveZone(zoneId) {
+    activeDropZone = zoneId;
+    document.querySelectorAll('.drop-zone').forEach(el => el.classList.remove('active-zone'));
+    
+    const zoneMap = {
+        'current-team': 'current-team-zone',
+        'must-include': 'must-include-zone',
+        'emblems': 'emblem-drop-zone'
+    };
+    
+    const elId = zoneMap[zoneId];
+    if (elId) {
+        const el = document.getElementById(elId);
+        if (el) el.classList.add('active-zone');
+    }
+}
 
 async function initHubConnection() {
     hubConnection = new signalR.HubConnectionBuilder()
@@ -99,6 +117,7 @@ async function loadTFTData() {
         optimizer = new TFTOptimizer(tftData.units, tftData.trait_metadata);
         setupSolverListeners();
         updateUI();
+        setActiveZone('current-team');
         renderSavedComps();
         initHubConnection();
     } catch (err) {
@@ -267,7 +286,11 @@ function renderUnitPools() {
             
             item.addEventListener('click', (e) => {
                 if (!activeDisabledUnits.includes(u.name)) {
-                    addToCurrentTeam(u);
+                    if (activeDropZone === 'must-include') {
+                        addToMustInclude(u);
+                    } else {
+                        addToCurrentTeam(u);
+                    }
                 }
             });
 
@@ -290,6 +313,43 @@ function toggleActiveDisableUnit(name) {
         activeDisabledUnits.push(name);
     }
     renderUnitPools();
+}
+
+function addToMustInclude(unit) {
+    if (!selectedMustInclude.find(item => item.name === unit.name)) {
+        selectedMustInclude.push({
+            name: unit.name,
+            iconUrl: unit.icon_url,
+            type: 'unit',
+            cost: unit.cost
+        });
+        renderSelectionZones();
+    }
+}
+
+function addToMustIncludeEmblem(emblem) {
+    if (!selectedMustInclude.find(item => item.name === emblem.name)) {
+        selectedMustInclude.push({
+            name: emblem.name,
+            iconUrl: emblem.icon_url,
+            type: 'emblem',
+            trait: emblem.trait,
+            targetBreakpointIndex: -1
+        });
+        renderSelectionZones();
+    }
+}
+
+function addToSelectedEmblems(emblem) {
+    if (!selectedEmblems.find(em => em.name === emblem.name)) {
+        selectedEmblems.push({
+            name: emblem.name,
+            iconUrl: emblem.icon_url,
+            type: 'emblem',
+            trait: emblem.trait
+        });
+        renderSelectionZones();
+    }
 }
 
 function addToCurrentTeam(unit) {
@@ -341,6 +401,14 @@ function renderEmblemPool() {
         const displayName = e.name.replace(" Emblem", "");
         const item = createDraggableItem(displayName, e.icon_url, 'emblem', null, e.trait);
         
+        item.addEventListener('click', (ev) => {
+             if (activeDropZone === 'must-include') {
+                 addToMustIncludeEmblem(e);
+             } else {
+                 addToSelectedEmblems(e);
+             }
+        });
+
         item.addEventListener('contextmenu', (ev) => {
             ev.preventDefault();
             ev.stopPropagation();

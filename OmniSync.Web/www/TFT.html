@@ -108,6 +108,12 @@
             background: rgba(10, 132, 255, 0.05);
         }
 
+        .drop-zone.active-zone {
+            border-color: var(--accent);
+            background: rgba(10, 132, 255, 0.15);
+            box-shadow: 0 0 12px rgba(10, 132, 255, 0.2);
+        }
+
         .placeholder-text {
             color: var(--text-dimmer);
             font-size: 12px;
@@ -533,7 +539,7 @@
                                         <button class="btn danger" onclick="clearCurrentTeam()" style="font-size: 8px; padding: 1px 4px; height: 16px;">Clear</button>
                                     </div>
                                 </div>
-                                <div class="drop-zone" id="current-team-zone" ondrop="dropToCurrentTeam(event)" ondragover="allowDrop(event)" style="flex: 1; min-height: 50px;">
+                                <div class="drop-zone" id="current-team-zone" onclick="setActiveZone('current-team')" ondrop="dropToCurrentTeam(event)" ondragover="allowDrop(event)" style="flex: 1; min-height: 50px;">
                                     <div class="placeholder-text">Drag Units Here</div>
                                 </div>
                             </div>
@@ -551,7 +557,7 @@
                                         <button class="btn danger" onclick="clearMustInclude()" style="font-size: 8px; padding: 1px 4px; height: 16px;">Clear</button>
                                     </div>
                                 </div>
-                                <div class="drop-zone" id="must-include-zone" ondrop="dropToMustInclude(event)" ondragover="allowDrop(event)" style="flex: 1; min-height: 50px;">
+                                <div class="drop-zone" id="must-include-zone" onclick="setActiveZone('must-include')" ondrop="dropToMustInclude(event)" ondragover="allowDrop(event)" style="flex: 1; min-height: 50px;">
                                     <div class="placeholder-text">Units or Traits</div>
                                 </div>
                             </div>
@@ -561,7 +567,7 @@
                                     <h2 style="font-size: 10px; margin: 0; border: none; padding: 0;">Selected Emblems</h2>
                                     <button class="btn danger" onclick="clearEmblems()" style="font-size: 8px; padding: 1px 4px; height: 16px;">Clear</button>
                                 </div>
-                                <div class="drop-zone emblem-zone" id="emblem-drop-zone" ondrop="dropEmblem(event)" ondragover="allowDrop(event)" style="flex: 1; min-height: 60px;">
+                                <div class="drop-zone emblem-zone" id="emblem-drop-zone" onclick="setActiveZone('emblems')" ondrop="dropEmblem(event)" ondragover="allowDrop(event)" style="flex: 1; min-height: 60px;">
                                     <div class="placeholder-text">Emblems</div>
                                 </div>
                             </div>
