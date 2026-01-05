@@ -97,7 +97,20 @@ static async Task ForwardToHub(string? apiKey, string command, string payload)
     }
 }
 
+// --- Global Exception Handling for Crashes ---
+CrashHandler.Initialize();
+
 var builder = WebApplication.CreateBuilder(args);
+
+// Configure logging
+builder.Logging.ClearProviders();
+builder.Logging.AddConsole();
+string logFilePath = Path.Combine(AppContext.BaseDirectory, "hub_log.txt");
+// Try to log to solution root if running from bin
+string rootLogPath = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "..", "hub_log.txt");
+if (Directory.Exists(Path.GetDirectoryName(rootLogPath))) logFilePath = rootLogPath;
+builder.Logging.AddProvider(new FileLoggerProvider(logFilePath));
+
 
 // Configure Kestrel to listen on multiple ports
 builder.WebHost.ConfigureKestrel(options =>
@@ -152,6 +165,7 @@ builder.Services.AddSingleton<InputService>(provider =>
 });
 builder.Services.AddSingleton<AudioService>();
 builder.Services.AddSingleton<HubSettingsService>();
+builder.Services.AddSingleton<GlobalHotkeyService>();
 builder.Services.AddSingleton<ShutdownService>(provider =>
 {
     var logger = provider.GetRequiredService<ILogger<ShutdownService>>();
@@ -178,6 +192,7 @@ builder.Services.AddSingleton<HubEventSender>(provider =>
 });
 builder.Services.AddSingleton<HubMonitorService>(); // Register the new monitoring service
 builder.Services.AddHostedService<TrayIconManager>();
+builder.Services.AddHostedService<GlobalHotkeyService>();
 builder.Services.AddHostedService<HubStartupService>(); // Auto-launch AI components
 builder.Services.AddHostedService<ScreenshotHostedService>();
 builder.Services.AddSingleton<KeyboardHook>(); // Register KeyboardHook
