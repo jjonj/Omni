@@ -420,20 +420,21 @@
             <a href="Scheduler.html" class="nav-item">Scheduler</a>
             <a href="TFT.html" class="nav-item active">TFT</a>
             <a href="Test.html" class="nav-item">Test</a>
+            <a href="Settings.html" class="nav-item">Settings</a>
             <a href="IslandGenerator/index.html" class="nav-item">Island</a>
         </nav>
 
         <div class="tft-container">
             <!-- Secondary Navigation Tabs -->
             <div class="tft-tabs">
-                <div class="tft-tab active" onclick="switchTab('emblem-portal')">Emblem Portal</div>
+                <div class="tft-tab active" onclick="switchTab('solver')">Solver</div>
                 <div class="tft-tab" onclick="switchTab('director')">Director</div>
                 <div class="tft-tab" onclick="switchTab('config')">Configuration</div>
             </div>
 
             <div class="tft-content">
-                <!-- Emblem Portal Panel -->
-                <div id="emblem-portal" class="tab-panel active">
+                <!-- Solver Panel -->
+                <div id="solver" class="tab-panel active">
                     <div class="optimizer-layout">
                         <!-- Left Column: Selection Zone -->
                         <div class="selection-zone">
@@ -475,10 +476,10 @@
                                                 <input type="radio" name="heuristic-mode" value="none"> None
                                             </label>
                                             <label class="hub-status-label" title="Balanced pruning." style="text-transform: none; font-size: 9px; margin: 0; display: flex; align-items: center; gap: 2px; cursor: pointer;">
-                                                <input type="radio" name="heuristic-mode" value="standard" checked> Std
+                                                <input type="radio" name="heuristic-mode" value="standard"> Std
                                             </label>
                                             <label class="hub-status-label" title="Elite. Fast as Aggr but smarter." style="text-transform: none; font-size: 9px; margin: 0; display: flex; align-items: center; gap: 2px; cursor: pointer;">
-                                                <input type="radio" name="heuristic-mode" value="super"> Super
+                                                <input type="radio" name="heuristic-mode" value="super" checked> Super
                                             </label>
                                             <label class="hub-status-label" title="Fast pruning." style="text-transform: none; font-size: 9px; margin: 0; display: flex; align-items: center; gap: 2px; cursor: pointer;">
                                                 <input type="radio" name="heuristic-mode" value="aggressive"> Aggr

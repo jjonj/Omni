@@ -45,7 +45,7 @@ function switchTab(tabId) {
         tab.classList.remove('active');
         const text = tab.innerText.toLowerCase().replace(/ /g, '-');
         if (text === tabId || 
-            (tabId === 'emblem-portal' && tab.innerText === 'Emblem Portal') ||
+            (tabId === 'solver' && tab.innerText === 'Solver') ||
             (tabId === 'director' && tab.innerText === 'Director') ||
             (tabId === 'config' && tab.innerText === 'Configuration')) {
             tab.classList.add('active');
@@ -53,7 +53,7 @@ function switchTab(tabId) {
     });
 
     const tabMap = {
-        'Emblem Portal': 'emblem-portal',
+        'Solver': 'solver',
         'Director': 'director',
         'Configuration': 'config'
     };
@@ -620,7 +620,7 @@ function resetAll() {
     selectedEmblems = [];
     const defRadio = document.querySelector('input[name="solver-mode"][value="default"]');
     if (defRadio) defRadio.checked = true;
-    const defHeuristic = document.querySelector('input[name="heuristic-mode"][value="standard"]');
+    const defHeuristic = document.querySelector('input[name="heuristic-mode"][value="super"]');
     if (defHeuristic) defHeuristic.checked = true;
     document.querySelectorAll('.lvl-cb').forEach(cb => {
         cb.checked = (cb.value === "6" || cb.value === "8");
@@ -1406,8 +1406,8 @@ function importTeamPlannerCode() {
         renderSelectionZones();
         renderUnitPools();
         
-        // Switch to Emblem Portal tab to see the result
-        switchTab('emblem-portal');
+        // Switch to Solver tab to see the result
+        switchTab('solver');
         
         alert(`Successfully imported ${selectedCurrentTeam.length} units.`);
     } catch (err) {
