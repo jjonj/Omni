@@ -20,6 +20,18 @@ let activeDisabledUnits = [];
 let hubConnection = null;
 let lastReceivedClipboard = "";
 
+// Quiz State
+let quizState = {
+    score: 0,
+    streak: 0,
+    bestStreak: 0,
+    currentBoard: null,
+    hiddenUnit: null,
+    isAnswered: false,
+    timer: null,
+    secondsLeft: 0
+};
+
 function setActiveZone(zoneId) {
     activeDropZone = zoneId;
     document.querySelectorAll('.drop-zone').forEach(el => el.classList.remove('active-zone'));
@@ -64,6 +76,7 @@ function switchTab(tabId) {
         const text = tab.innerText.toLowerCase().replace(/ /g, '-');
         if (text === tabId || 
             (tabId === 'solver' && tab.innerText === 'Solver') ||
+            (tabId === 'quiz' && tab.innerText === 'Quiz') ||
             (tabId === 'director' && tab.innerText === 'Director') ||
             (tabId === 'config' && tab.innerText === 'Configuration')) {
             tab.classList.add('active');
@@ -72,6 +85,7 @@ function switchTab(tabId) {
 
     const tabMap = {
         'Solver': 'solver',
+        'Quiz': 'quiz',
         'Director': 'director',
         'Configuration': 'config'
     };
@@ -83,6 +97,10 @@ function switchTab(tabId) {
     const targetId = tabMap[tabId] || tabId;
     const el = document.getElementById(targetId);
     if (el) el.classList.add('active');
+
+    if (targetId === 'quiz' && !quizState.currentBoard) {
+        startNewQuiz();
+    }
 }
 
 async function loadTFTData() {
@@ -1650,18 +1668,149 @@ function exportTeamPlannerCode() {
     }
 }
 
-function copyResultCode(btn) {
-    const card = btn.closest('.result-card');
-    if (card) {
-        copyCardBoard(card, btn);
+async function startNewQuiz() {
+    if (!optimizer || !tftData) return;
+    
+    // UI Reset
+    quizState.isAnswered = false;
+    document.getElementById('next-quiz-btn').style.display = 'none';
+    document.getElementById('quiz-loading').style.display = 'block';
+    document.getElementById('quiz-feedback').className = 'quiz-feedback';
+    
+    // Random Level 4-8
+    const level = Math.floor(Math.random() * 5) + 4;
+    document.getElementById('quiz-board-title').innerText = `Level ${level} Board`;
+    
+    // Pick 1-2 random units as seeds to make it diverse
+    const seeds = [];
+    const seedCount = level >= 6 ? 2 : 1;
+    while (seeds.length < seedCount) {
+        const randUnit = tftData.units[Math.floor(Math.random() * tftData.units.length)];
+        if (randUnit.cost <= (level <= 6 ? 3 : 5) && !seeds.includes(randUnit.name)) {
+            seeds.push(randUnit.name);
+        }
+    }
+    
+    // Generate a quick optimal board
+    const pool = tftData.units.filter(u => {
+        if (level <= 6 && u.cost > 3) return false;
+        if (level < 8 && u.cost === 5) return false;
+        return true;
+    });
+    
+    try {
+        const res = await optimizer.findBestBoards(pool, level, [], seeds, 'default', {}, 1, null, 'aggressive');
+        if (res.results.length > 0) {
+            const board = res.results[0].board;
+            quizState.currentBoard = board;
+            
+            // Pick a random unit to hide (preferably one NOT in seeds)
+            const hideable = board.filter(u => !seeds.includes(u.name));
+            quizState.hiddenUnit = hideable.length > 0 
+                ? hideable[Math.floor(Math.random() * hideable.length)]
+                : board[Math.floor(Math.random() * board.length)];
+            
+            renderQuizBoard();
+            renderQuizOptions();
+        }
+    } catch (err) {
+        console.error("Quiz generation failed:", err);
+    } finally {
+        document.getElementById('quiz-loading').style.display = 'none';
     }
 }
 
-function copyImprovementCode(btn) {
-    const card = btn.closest('.result-card');
-    if (card) {
-        copyCardBoard(card, btn);
+function renderQuizBoard() {
+    const container = document.getElementById('quiz-board-units');
+    if (!container) return;
+    container.innerHTML = '';
+    
+    quizState.currentBoard.forEach(u => {
+        const slot = document.createElement('div');
+        slot.className = 'quiz-unit-slot';
+        
+        const isHidden = u.name === quizState.hiddenUnit.name && !quizState.isAnswered;
+        
+        if (isHidden) {
+            slot.classList.add('hidden');
+            slot.innerHTML = `
+                <div class="quiz-unit-icon">?</div>
+                <div class="quiz-unit-name">???</div>
+            `;
+        } else {
+            const costColors = { 1: '#808080', 2: '#11b288', 3: '#207ac7', 4: '#c440da', 5: '#ffb93b' };
+            const borderColor = costColors[u.cost] || '#ccc';
+            slot.innerHTML = `
+                <img src="${u.icon_url}" class="quiz-unit-icon" style="border-color: ${borderColor}">
+                <div class="quiz-unit-name">${u.name}</div>
+            `;
+        }
+        container.appendChild(slot);
+    });
+}
+
+function renderQuizOptions() {
+    const container = document.getElementById('quiz-options');
+    if (!container) return;
+    container.innerHTML = '';
+    
+    // Show all units in the set sorted by cost then name
+    const sortedUnits = [...tftData.units].sort((a, b) => a.cost - b.cost || a.name.localeCompare(b.name));
+    
+    sortedUnits.forEach(u => {
+        const item = document.createElement('div');
+        item.className = 'quiz-option-item';
+        if (quizState.isAnswered) item.classList.add('disabled');
+        
+        const costColors = { 1: '#808080', 2: '#11b288', 3: '#207ac7', 4: '#c440da', 5: '#ffb93b' };
+        const borderColor = costColors[u.cost] || '#ccc';
+        
+        item.innerHTML = `
+            <img src="${u.icon_url}" class="unit-icon" style="border-color: ${borderColor}; width: 44px; height: 44px;">
+        `;
+        
+        item.onclick = () => handleQuizGuess(u.name);
+        container.appendChild(item);
+    });
+}
+
+function handleQuizGuess(unitName) {
+    if (quizState.isAnswered) return;
+    
+    quizState.isAnswered = true;
+    const isCorrect = unitName === quizState.hiddenUnit.name;
+    
+    if (isCorrect) {
+        quizState.score += 100 + (quizState.streak * 20);
+        quizState.streak++;
+        if (quizState.streak > quizState.bestStreak) quizState.bestStreak = quizState.streak;
+        
+        showQuizFeedback(true);
+    } else {
+        quizState.streak = 0;
+        showQuizFeedback(false);
     }
+    
+    updateQuizStats();
+    renderQuizBoard();
+    renderQuizOptions();
+    document.getElementById('next-quiz-btn').style.display = 'block';
+}
+
+function showQuizFeedback(correct) {
+    const el = document.getElementById('quiz-feedback');
+    el.innerText = correct ? "CORRECT!" : "WRONG!";
+    el.className = `quiz-feedback show ${correct ? 'correct' : 'wrong'}`;
+    
+    setTimeout(() => {
+        el.classList.remove('show');
+    }, 1500);
+}
+
+function updateQuizStats() {
+    document.getElementById('quiz-score').innerText = quizState.score;
+    document.getElementById('quiz-streak').innerText = quizState.streak;
+    document.getElementById('quiz-best-streak').innerText = quizState.bestStreak;
 }
 
 function copyCardBoard(card, btn) {
