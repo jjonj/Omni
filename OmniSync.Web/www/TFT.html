@@ -369,6 +369,7 @@
                 height: auto;
                 display: flex;
                 flex-direction: column;
+                padding-bottom: 40px;
             }
 
             .tft-container {
@@ -389,8 +390,26 @@
             }
 
             .pools-zone {
-                height: 600px; /* Fixed height for scrolling pools internally */
+                height: auto; /* Allow expansion so page scrolls instead of internal area */
+                overflow: visible;
                 order: 3; /* Move pools to bottom */
+                display: flex;
+                flex-direction: column;
+                gap: 24px;
+            }
+            
+            .pool-container {
+                height: auto !important; /* Override inline heights */
+            }
+
+            .unit-cost-groups {
+                overflow: visible;
+                flex: none;
+            }
+            
+            /* Ensure emblem pool container expands */
+            .pool-container > div[style*="overflow-y: auto"] {
+                overflow: visible !important;
             }
 
             .results-zone {
