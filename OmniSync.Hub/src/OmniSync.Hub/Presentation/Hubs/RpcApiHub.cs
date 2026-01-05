@@ -122,6 +122,34 @@ namespace OmniSync.Hub.Presentation.Hubs
             return false;
         }
 
+        public HubSettings GetSettings()
+        {
+            if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
+            {
+                var settingsService = Context.GetHttpContext()?.RequestServices.GetService(typeof(HubSettingsService)) as HubSettingsService;
+                return settingsService?.Settings ?? new HubSettings();
+            }
+            throw new UnauthorizedAccessException();
+        }
+
+        public void UpdateHotkeys(List<HotkeyConfig> hotkeys)
+        {
+            if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
+            {
+                var settingsService = Context.GetHttpContext()?.RequestServices.GetService(typeof(HubSettingsService)) as HubSettingsService;
+                if (settingsService != null)
+                {
+                    settingsService.Settings.Hotkeys = hotkeys;
+                    settingsService.SaveSettings();
+                    _hubMonitorService.AddLogMessage("Hotkeys updated via web interface.");
+                }
+            }
+            else
+            {
+                throw new UnauthorizedAccessException();
+            }
+        }
+
         public object GetHubStatus()
         {
             if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
@@ -205,7 +233,20 @@ namespace OmniSync.Hub.Presentation.Hubs
                     Console.WriteLine($"Error moving mouse: {ex.Message}");
                 }
             }
-        }        public void UpdateClipboard(string text)
+        }        public string GetClipboardText()
+        {
+            try
+            {
+                return _clipboardService.GetClipboardText();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting clipboard text via RPC");
+                return string.Empty;
+            }
+        }
+
+        public void UpdateClipboard(string text)
         {
             if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
             {

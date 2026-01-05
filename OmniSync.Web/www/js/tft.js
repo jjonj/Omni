@@ -991,7 +991,7 @@ function renderResults(results, container, level) {
         card.innerHTML = `<div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
                 <div style="display: flex; align-items: center; gap: 8px;">
                     <strong>Option ${index + 1} ${bronzeInfo}</strong>
-                    <button class="icon-btn" onclick="copyResultCode(${index})" title="Copy Team Code" style="background: none; border: none; cursor: pointer; padding: 2px; display: flex; align-items: center; color: var(--text-dim); transition: color 0.2s;">
+                    <button class="icon-btn" onclick="copyResultCode(this)" title="Copy Team Code" style="background: none; border: none; cursor: pointer; padding: 2px; display: flex; align-items: center; color: var(--text-dim); transition: color 0.2s;">
                         <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
                     </button>
                 </div>
@@ -1114,6 +1114,7 @@ function renderImproveResults(suggestions, container, currentCounts) {
     const solverMode = solverModeEl ? solverModeEl.value : 'default';
 
     suggestions.forEach((group, index) => {
+        const bestCandidate = group.candidates[0];
         const card = document.createElement('div');
         card.className = 'result-card';
         card.style.border = '1px solid var(--accent)';
@@ -1134,8 +1135,14 @@ function renderImproveResults(suggestions, container, currentCounts) {
                         ${candidatesHtml}
                     </div>
                 </div>
+                <button class="icon-btn" onclick="copyImprovementCode(this)" title="Copy Improved Team Code" style="background: none; border: none; cursor: pointer; padding: 2px; display: flex; align-items: center; color: var(--text-dim); transition: color 0.2s;">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                </button>
             </div>`;
-        const bestCandidate = group.candidates[0];
+        
+        // Store the best candidate board
+        card.dataset.board = JSON.stringify(bestCandidate.board);
+        
         const list = document.createElement('div');
         list.className = 'unit-list';
         list.style.gap = '4px';
@@ -1480,25 +1487,27 @@ function copyZoneCode(zone, event) {
 async function pasteToZone(zone, event) {
     let code = "";
     
-    // 1. Try Hub clipboard first
+    // 1. Try Hub clipboard first (Instant fetch)
     if (hubConnection && hubConnection.state === signalR.HubConnectionState.Connected) {
-        // The Hub doesn't have a GetClipboard method, it broadcasts updates.
-        // We'll use the lastReceivedClipboard.
-        code = lastReceivedClipboard;
+        try {
+            code = await hubConnection.invoke("GetClipboardText");
+        } catch (e) {
+            console.error("Hub GetClipboardText failed:", e);
+            code = lastReceivedClipboard;
+        }
     }
 
-    // 2. If Hub code doesn't look like a TFT code, try browser clipboard
+    // 2. If Hub code doesn't look like a TFT code, try browser clipboard (may show menu)
     if (!code || !code.startsWith("02") || !code.endsWith("TFTSet16")) {
         try {
             code = await navigator.clipboard.readText();
         } catch (e) {
-            // No prompt here to avoid unnecessary clicks
             console.warn("Clipboard API failed and no Hub code available.");
         }
     }
 
-    if (!code) {
-        alert("Clipboard is empty or invalid.");
+    if (!code || !code.trim()) {
+        alert("Clipboard is empty.");
         return;
     }
 
@@ -1573,33 +1582,43 @@ function exportTeamPlannerCode() {
     }
 }
 
-function copyResultCode(index) {
-    const cards = document.querySelectorAll('.result-card');
-    if (cards[index]) {
-        try {
-            const board = JSON.parse(cards[index].dataset.board);
-            const code = TeamPlannerCode.encode(board);
-            
-            if (hubConnection && hubConnection.state === signalR.HubConnectionState.Connected) {
-                hubConnection.invoke("UpdateClipboard", code);
-                // Visual feedback
-                const btn = cards[index].querySelector('.icon-btn');
-                if (btn) {
-                    const originalColor = btn.style.color;
-                    btn.style.color = 'var(--accent)';
-                    setTimeout(() => btn.style.color = originalColor, 1000);
-                }
-            } else {
-                const tempInput = document.createElement('input');
-                document.body.appendChild(tempInput);
-                tempInput.value = code;
-                tempInput.select();
-                document.execCommand('copy');
-                document.body.removeChild(tempInput);
-                alert('Copied to local clipboard (Hub disconnected)');
+function copyResultCode(btn) {
+    const card = btn.closest('.result-card');
+    if (card) {
+        copyCardBoard(card, btn);
+    }
+}
+
+function copyImprovementCode(btn) {
+    const card = btn.closest('.result-card');
+    if (card) {
+        copyCardBoard(card, btn);
+    }
+}
+
+function copyCardBoard(card, btn) {
+    try {
+        const board = JSON.parse(card.dataset.board);
+        const code = TeamPlannerCode.encode(board);
+        
+        if (hubConnection && hubConnection.state === signalR.HubConnectionState.Connected) {
+            hubConnection.invoke("UpdateClipboard", code);
+            // Visual feedback
+            if (btn) {
+                const originalColor = btn.style.color;
+                btn.style.color = 'var(--accent)';
+                setTimeout(() => btn.style.color = originalColor, 1000);
             }
-        } catch (err) {
-            alert('Failed to copy: ' + err.message);
+        } else {
+            const tempInput = document.createElement('input');
+            document.body.appendChild(tempInput);
+            tempInput.value = code;
+            tempInput.select();
+            document.execCommand('copy');
+            document.body.removeChild(tempInput);
+            alert('Copied to local clipboard (Hub disconnected)');
         }
+    } catch (err) {
+        alert('Failed to copy: ' + err.message);
     }
 }

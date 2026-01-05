@@ -69,27 +69,39 @@ namespace OmniSync.Hub.Infrastructure.Services
 
         public void SetClipboardText(string text)
         {
-            if (!OpenClipboard(IntPtr.Zero))
-                return;
-
-            EmptyClipboard();
-
-            IntPtr hGlobal = IntPtr.Zero;
-            try
+            Thread staThread = new Thread(() =>
             {
-                hGlobal = Marshal.StringToHGlobalUni(text);
-                SetClipboardData(CF_UNICODETEXT, hGlobal);
-            }
-            finally
-            {
-                if (hGlobal != IntPtr.Zero)
-                    Marshal.FreeHGlobal(hGlobal);
+                if (!OpenClipboard(IntPtr.Zero))
+                    return;
 
-                CloseClipboard();
-            }
+                try
+                {
+                    EmptyClipboard();
+
+                    IntPtr hGlobal = IntPtr.Zero;
+                    hGlobal = Marshal.StringToHGlobalUni(text);
+                    if (SetClipboardData(CF_UNICODETEXT, hGlobal) == IntPtr.Zero)
+                    {
+                        Marshal.FreeHGlobal(hGlobal);
+                    }
+                    // If SetClipboardData succeeds, the system owns the memory. Do NOT free it.
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Clipboard Error: {ex.Message}");
+                }
+                finally
+                {
+                    CloseClipboard();
+                }
+            });
+
+            staThread.SetApartmentState(ApartmentState.STA);
+            staThread.Start();
+            staThread.Join();
         }
 
-        private string GetClipboardText()
+        public string GetClipboardText()
         {
             if (!IsClipboardFormatAvailable(CF_UNICODETEXT))
                 return null;
