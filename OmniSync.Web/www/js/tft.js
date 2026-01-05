@@ -16,6 +16,30 @@ let factoryDefaultDisabled = [];
 let userDefaultDisabledUnits = []; 
 let activeDisabledUnits = [];      
 
+let hubConnection = null;
+let lastReceivedClipboard = "";
+
+async function initHubConnection() {
+    hubConnection = new signalR.HubConnectionBuilder()
+        .withUrl(HUB_URL)
+        .withAutomaticReconnect()
+        .build();
+
+    try {
+        await hubConnection.start();
+        console.log("TFT Hub Connected");
+        
+        hubConnection.on("ClipboardUpdated", (text) => {
+            lastReceivedClipboard = text;
+        });
+
+        await hubConnection.invoke("Authenticate", API_KEY);
+    } catch (err) {
+        console.error("TFT Hub Connection Error:", err);
+        setTimeout(initHubConnection, 5000);
+    }
+}
+
 function switchTab(tabId) {
     document.querySelectorAll('.tft-tab').forEach(tab => {
         tab.classList.remove('active');
@@ -76,6 +100,7 @@ async function loadTFTData() {
         setupSolverListeners();
         updateUI();
         renderSavedComps();
+        initHubConnection();
     } catch (err) {
         console.error("Failed to load TFT data:", err);
     }
@@ -964,9 +989,18 @@ function renderResults(results, container, level) {
         }
 
         card.innerHTML = `<div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
-                <strong>Option ${index + 1} ${bronzeInfo}</strong>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <strong>Option ${index + 1} ${bronzeInfo}</strong>
+                    <button class="icon-btn" onclick="copyResultCode(${index})" title="Copy Team Code" style="background: none; border: none; cursor: pointer; padding: 2px; display: flex; align-items: center; color: var(--text-dim); transition: color 0.2s;">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                    </button>
+                </div>
                 <span style="color: var(--accent); font-weight: 600;">${res.score}</span>
             </div>`;
+        
+        // Store the result board for easy access
+        card.dataset.board = JSON.stringify(res.board);
+        
         const list = document.createElement('div');
         list.className = 'unit-list';
         list.style.gap = '4px';
@@ -1374,6 +1408,137 @@ function importTeamPlannerCode() {
     }
 }
 
+function copyResultCode(index) {
+    const cards = document.querySelectorAll('.result-card');
+    if (cards[index]) {
+        try {
+            const board = JSON.parse(cards[index].dataset.board);
+            const code = TeamPlannerCode.encode(board);
+            
+            if (hubConnection && hubConnection.state === signalR.HubConnectionState.Connected) {
+                hubConnection.invoke("UpdateClipboard", code);
+                // Visual feedback
+                const btn = cards[index].querySelector('.icon-btn');
+                const originalColor = btn.style.color;
+                btn.style.color = 'var(--accent)';
+                setTimeout(() => btn.style.color = originalColor, 1000);
+            } else {
+                const tempInput = document.createElement('input');
+                document.body.appendChild(tempInput);
+                tempInput.value = code;
+                tempInput.select();
+                document.execCommand('copy');
+                document.body.removeChild(tempInput);
+                alert('Copied to local clipboard (Hub disconnected)');
+            }
+        } catch (err) {
+            alert('Failed to copy: ' + err.message);
+        }
+    }
+}
+
+
+function copyZoneCode(zone) {
+    let units = [];
+    if (zone === 'current-team') {
+        units = selectedCurrentTeam;
+    } else if (zone === 'must-include') {
+        units = selectedMustInclude.filter(i => i.type === 'unit');
+    }
+
+    if (units.length === 0) {
+        alert('Zone is empty!');
+        return;
+    }
+
+    try {
+        const code = TeamPlannerCode.encode(units);
+        if (hubConnection && hubConnection.state === signalR.HubConnectionState.Connected) {
+            hubConnection.invoke("UpdateClipboard", code);
+            // Visual feedback
+            const btn = event.currentTarget;
+            const originalColor = btn.style.color;
+            btn.style.color = 'var(--accent)';
+            setTimeout(() => btn.style.color = originalColor, 1000);
+        } else {
+            // Fallback to local clipboard if possible, but browser usually requires user gesture
+            const tempInput = document.createElement('input');
+            document.body.appendChild(tempInput);
+            tempInput.value = code;
+            tempInput.select();
+            document.execCommand('copy');
+            document.body.removeChild(tempInput);
+            alert('Copied to local clipboard (Hub disconnected)');
+        }
+    } catch (err) {
+        alert('Failed to copy: ' + err.message);
+    }
+}
+
+async function pasteToZone(zone) {
+    let code = "";
+    
+    // 1. Try Hub clipboard first
+    if (hubConnection && hubConnection.state === signalR.HubConnectionState.Connected) {
+        // The Hub doesn't have a GetClipboard method, it broadcasts updates.
+        // We'll use the lastReceivedClipboard.
+        code = lastReceivedClipboard;
+    }
+
+    // 2. If Hub code doesn't look like a TFT code, try browser clipboard
+    if (!code || !code.startsWith("02") || !code.endsWith("TFTSet16")) {
+        try {
+            code = await navigator.clipboard.readText();
+        } catch (e) {
+            // Fallback to prompt if clipboard API fails
+            code = prompt("Paste Team Planner Code here:");
+        }
+    }
+
+    if (!code) return;
+    code = code.trim();
+    if (!code.startsWith("02") || !code.endsWith("TFTSet16")) {
+        alert("Invalid code format in clipboard.");
+        return;
+    }
+
+    try {
+        const unitNames = TeamPlannerCode.decode(code);
+        const restoredUnits = [];
+        
+        unitNames.forEach(name => {
+            const freshUnit = tftData.units.find(u => u.name === name);
+            if (freshUnit) {
+                restoredUnits.push({
+                    name: freshUnit.name,
+                    iconUrl: freshUnit.icon_url,
+                    type: 'unit',
+                    cost: freshUnit.cost
+                });
+            }
+        });
+
+        if (zone === 'current-team') {
+            selectedCurrentTeam = restoredUnits;
+        } else if (zone === 'must-include') {
+            const existingEmblems = selectedMustInclude.filter(i => i.type === 'emblem');
+            selectedMustInclude = [...restoredUnits, ...existingEmblems];
+        }
+
+        renderSelectionZones();
+        renderUnitPools();
+        
+        // Visual feedback
+        const btn = event.currentTarget;
+        const originalColor = btn.style.color;
+        btn.style.color = 'var(--accent)';
+        setTimeout(() => btn.style.color = originalColor, 1000);
+        
+    } catch (err) {
+        alert("Failed to paste: " + err.message);
+    }
+}
+
 function exportTeamPlannerCode() {
     if (selectedCurrentTeam.length === 0) {
         alert('Current team is empty!');
@@ -1386,10 +1551,47 @@ function exportTeamPlannerCode() {
         if (codeArea) {
             codeArea.value = code;
             codeArea.select();
+        }
+        
+        if (hubConnection && hubConnection.state === signalR.HubConnectionState.Connected) {
+            hubConnection.invoke("UpdateClipboard", code);
+            alert('Code exported and sent to Hub clipboard!');
+        } else {
             document.execCommand('copy');
-            alert('Code exported and copied to clipboard!');
+            alert('Code exported and copied to local clipboard (Hub disconnected)!');
         }
     } catch (err) {
         alert('Failed to export code: ' + err.message);
+    }
+}
+
+function copyResultCode(index) {
+    const cards = document.querySelectorAll('.result-card');
+    if (cards[index]) {
+        try {
+            const board = JSON.parse(cards[index].dataset.board);
+            const code = TeamPlannerCode.encode(board);
+            
+            if (hubConnection && hubConnection.state === signalR.HubConnectionState.Connected) {
+                hubConnection.invoke("UpdateClipboard", code);
+                // Visual feedback
+                const btn = cards[index].querySelector('.icon-btn');
+                if (btn) {
+                    const originalColor = btn.style.color;
+                    btn.style.color = 'var(--accent)';
+                    setTimeout(() => btn.style.color = originalColor, 1000);
+                }
+            } else {
+                const tempInput = document.createElement('input');
+                document.body.appendChild(tempInput);
+                tempInput.value = code;
+                tempInput.select();
+                document.execCommand('copy');
+                document.body.removeChild(tempInput);
+                alert('Copied to local clipboard (Hub disconnected)');
+            }
+        } catch (err) {
+            alert('Failed to copy: ' + err.message);
+        }
     }
 }
