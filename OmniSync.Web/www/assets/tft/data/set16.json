@@ -1256,6 +1256,18 @@
       "is_emblem": true,
       "trait": "Zaun",
       "icon_url": "assets/tft/set16/traits/Zaun.svg"
+    },
+    {
+      "name": "Targon Emblem",
+      "is_emblem": true,
+      "trait": "Targon",
+      "icon_url": "assets/tft/set16/traits/Targon.svg"
+    },
+    {
+      "name": "Shadow Isles Emblem",
+      "is_emblem": true,
+      "trait": "Shadow Isles",
+      "icon_url": "assets/tft/set16/traits/ShadowIsles.svg"
     }
   ],
   "trait_metadata": {
