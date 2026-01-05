@@ -1030,6 +1030,92 @@
       "locked": false,
       "requires": "Neeko",
       "icon_url": "assets/tft/set16/champions/Nidalee.png"
+    },
+    {
+      "name": "Bard",
+      "cost": 2,
+      "traits": [],
+      "is_carry": false,
+      "locked": false,
+      "icon_url": "assets/tft/set16/champions/Bard.png"
+    },
+    {
+      "name": "Yone",
+      "cost": 4,
+      "traits": [
+        "Ionia",
+        "Slayer",
+        "D"
+      ],
+      "is_carry": true,
+      "locked": false,
+      "icon_url": "assets/tft/set16/champions/Yone.png"
+    },
+    {
+      "name": "Aurelion Sol",
+      "cost": 5,
+      "traits": [
+        "Targon",
+        "D"
+      ],
+      "is_carry": true,
+      "locked": false,
+      "icon_url": "assets/tft/set16/champions/AurelionSol.png"
+    },
+    {
+      "name": "Baron Naashor",
+      "cost": 5,
+      "traits": [
+        "Void",
+        "D"
+      ],
+      "is_carry": false,
+      "locked": false,
+      "icon_url": "assets/tft/set16/champions/BaronNashor.png"
+    },
+    {
+      "name": "Brock",
+      "cost": 5,
+      "traits": [
+        "Ixtal",
+        "D"
+      ],
+      "is_carry": false,
+      "locked": false,
+      "icon_url": "assets/tft/set16/champions/Brock.png"
+    },
+    {
+      "name": "Galio",
+      "cost": 5,
+      "traits": [
+        "Demacia",
+        "D"
+      ],
+      "is_carry": false,
+      "locked": false,
+      "icon_url": "assets/tft/set16/champions/Galio.png"
+    },
+    {
+      "name": "T-Hex",
+      "cost": 5,
+      "traits": [
+        "Piltover",
+        "D"
+      ],
+      "is_carry": false,
+      "locked": false,
+      "icon_url": "assets/tft/set16/champions/THex.png"
+    },
+    {
+      "name": "Zaahen",
+      "cost": 5,
+      "traits": [
+        "Darkin",
+        "D"
+      ],
+      "is_carry": true,
+      "locked": false,
+      "icon_url": "assets/tft/set16/champions/Zaahen.png"
     }
   ],
   "items": [

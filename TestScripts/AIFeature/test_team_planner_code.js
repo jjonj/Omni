@@ -4,9 +4,25 @@ const TeamPlannerCode = require('../../OmniSync.Web/www/js/TeamPlannerCode.js');
 
 console.log("Starting TeamPlannerCode tests...");
 
+// Initialize mapping from JSON
+const mappingPath = path.join(__dirname, '../../OmniSync.Web/www/assets/tft/data/unit_id_map.json');
+const mapping = JSON.parse(fs.readFileSync(mappingPath, 'utf8'));
+TeamPlannerCode.setMapping(mapping);
+
 // Test 1: Encoding 1-cost units (Anivia to Qiyana)
 try {
-    const units1 = ["Anivia", "Blitzcrank", "Briar", "Caitlyn", "Illaoi", "Jarvan IV", "Jhin", "Kog'Maw", "Lulu", "Qiyana"];
+    const units1 = [
+        {name: "Anivia", cost: 1}, 
+        {name: "Blitzcrank", cost: 1}, 
+        {name: "Briar", cost: 1}, 
+        {name: "Caitlyn", cost: 1}, 
+        {name: "Illaoi", cost: 1}, 
+        {name: "Jarvan IV", cost: 1}, 
+        {name: "Jhin", cost: 1}, 
+        {name: "Kog'Maw", cost: 1}, 
+        {name: "Lulu", cost: 1}, 
+        {name: "Qiyana", cost: 1}
+    ];
     const expected1 = "0233e34a32f34932c3383743552e002cTFTSet16";
     const actual1 = TeamPlannerCode.encode(units1);
     
@@ -21,7 +37,12 @@ try {
 
 // Test 2: Encoding 4-cost units (Ambessa to Lux)
 try {
-    const units2 = ["Ambessa", "Bel'Veth", "Braum", "Diana", "Fizz", "Garen", "Kai'Sa", "Kalista", "Lissandra", "Lux"];
+    const units2 = [
+        {name: "Ambessa", cost: 4}, {name: "Bel'Veth", cost: 4}, {name: "Braum", cost: 4}, 
+        {name: "Diana", cost: 4}, {name: "Fizz", cost: 4}, {name: "Garen", cost: 4}, 
+        {name: "Kai'Sa", cost: 4}, {name: "Kalista", cost: 4}, {name: "Lissandra", cost: 4}, 
+        {name: "Lux", cost: 4}
+    ];
     const expected2 = "0233236634002336e33c01b01e34133dTFTSet16";
     const actual2 = TeamPlannerCode.encode(units2);
     
