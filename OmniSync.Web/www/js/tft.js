@@ -1676,6 +1676,7 @@ async function startNewQuiz() {
     document.getElementById('next-quiz-btn').style.display = 'none';
     document.getElementById('quiz-loading').style.display = 'block';
     document.getElementById('quiz-feedback').className = 'quiz-feedback';
+    if (quizState.timer) clearInterval(quizState.timer);
     
     // Random Level 4-8
     const level = Math.floor(Math.random() * 5) + 4;
@@ -1691,6 +1692,14 @@ async function startNewQuiz() {
         }
     }
     
+    // Chance for a random emblem to be active (25%)
+    let quizEmblems = [];
+    if (Math.random() < 0.25) {
+        const emblemItems = tftData.items.filter(i => i.is_emblem);
+        const randomEmblem = emblemItems[Math.floor(Math.random() * emblemItems.length)];
+        quizEmblems.push(randomEmblem.trait);
+    }
+    
     // Generate a quick optimal board
     const pool = tftData.units.filter(u => {
         if (level <= 6 && u.cost > 3) return false;
@@ -1699,10 +1708,11 @@ async function startNewQuiz() {
     });
     
     try {
-        const res = await optimizer.findBestBoards(pool, level, [], seeds, 'default', {}, 1, null, 'aggressive');
+        const res = await optimizer.findBestBoards(pool, level, quizEmblems, seeds, 'default', {}, 1, null, 'aggressive');
         if (res.results.length > 0) {
             const board = res.results[0].board;
             quizState.currentBoard = board;
+            quizState.activeEmblems = quizEmblems;
             
             // Pick a random unit to hide (preferably one NOT in seeds)
             const hideable = board.filter(u => !seeds.includes(u.name));
@@ -1712,12 +1722,31 @@ async function startNewQuiz() {
             
             renderQuizBoard();
             renderQuizOptions();
+            startQuizTimer();
         }
     } catch (err) {
         console.error("Quiz generation failed:", err);
     } finally {
         document.getElementById('quiz-loading').style.display = 'none';
     }
+}
+
+function startQuizTimer() {
+    quizState.secondsLeft = 15;
+    updateTimerDisplay();
+    quizState.timer = setInterval(() => {
+        quizState.secondsLeft--;
+        updateTimerDisplay();
+        if (quizState.secondsLeft <= 0) {
+            clearInterval(quizState.timer);
+            if (!quizState.isAnswered) handleQuizGuess(null);
+        }
+    }, 1000);
+}
+
+function updateTimerDisplay() {
+    const el = document.getElementById('quiz-timer');
+    if (el) el.innerText = `Time: ${quizState.secondsLeft}s`;
 }
 
 function renderQuizBoard() {
@@ -1747,6 +1776,20 @@ function renderQuizBoard() {
         }
         container.appendChild(slot);
     });
+
+    // Also show active emblems for the quiz
+    if (quizState.activeEmblems && quizState.activeEmblems.length > 0) {
+        quizState.activeEmblems.forEach(trait => {
+            const slot = document.createElement('div');
+            slot.className = 'quiz-unit-slot';
+            const iconUrl = `assets/tft/${currentConfig.current_set}/traits/${trait.replace(/ /g, '')}.svg`;
+            slot.innerHTML = `
+                <img src="${iconUrl}" class="quiz-unit-icon" style="border-color: var(--accent); background: rgba(10,132,255,0.1); padding: 8px;">
+                <div class="quiz-unit-name">${trait} Emb</div>
+            `;
+            container.appendChild(slot);
+        });
+    }
 }
 
 function renderQuizOptions() {
@@ -1776,12 +1819,15 @@ function renderQuizOptions() {
 
 function handleQuizGuess(unitName) {
     if (quizState.isAnswered) return;
+    if (quizState.timer) clearInterval(quizState.timer);
     
     quizState.isAnswered = true;
     const isCorrect = unitName === quizState.hiddenUnit.name;
     
     if (isCorrect) {
-        quizState.score += 100 + (quizState.streak * 20);
+        // Bonus points for speed
+        const speedBonus = quizState.secondsLeft * 10;
+        quizState.score += 100 + (quizState.streak * 20) + speedBonus;
         quizState.streak++;
         if (quizState.streak > quizState.bestStreak) quizState.bestStreak = quizState.streak;
         
@@ -1799,7 +1845,11 @@ function handleQuizGuess(unitName) {
 
 function showQuizFeedback(correct) {
     const el = document.getElementById('quiz-feedback');
-    el.innerText = correct ? "CORRECT!" : "WRONG!";
+    if (correct) {
+        el.innerText = quizState.streak > 5 ? "GODLIKE!" : (quizState.streak > 2 ? "GREAT!" : "CORRECT!");
+    } else {
+        el.innerText = quizState.secondsLeft <= 0 ? "TIMEOUT!" : "WRONG!";
+    }
     el.className = `quiz-feedback show ${correct ? 'correct' : 'wrong'}`;
     
     setTimeout(() => {
@@ -1807,10 +1857,29 @@ function showQuizFeedback(correct) {
     }, 1500);
 }
 
+function getRankInfo(streak) {
+    if (streak >= 15) return { name: "CHALLENGER", color: "#64d2ff" };
+    if (streak >= 12) return { name: "GRANDMASTER", color: "#ff453a" };
+    if (streak >= 10) return { name: "MASTER", color: "#bf5af2" };
+    if (streak >= 8) return { name: "DIAMOND", color: "#00d9ff" };
+    if (streak >= 6) return { name: "PLATINUM", color: "#32d74b" };
+    if (streak >= 4) return { name: "GOLD", color: "#ffd700" };
+    if (streak >= 2) return { name: "SILVER", color: "#c0c0c0" };
+    if (streak >= 1) return { name: "BRONZE", color: "#cd7f32" };
+    return { name: "IRON", color: "#a19d94" };
+}
+
 function updateQuizStats() {
     document.getElementById('quiz-score').innerText = quizState.score;
     document.getElementById('quiz-streak').innerText = quizState.streak;
     document.getElementById('quiz-best-streak').innerText = quizState.bestStreak;
+    
+    const rank = getRankInfo(quizState.streak);
+    const rankEl = document.getElementById('quiz-rank');
+    if (rankEl) {
+        rankEl.innerText = rank.name;
+        rankEl.style.color = rank.color;
+    }
 }
 
 function copyCardBoard(card, btn) {
