@@ -124,8 +124,11 @@ fun AiChatScreen(
     }
 
     // Jump between user messages
-    val userMessageIndices = remember(filteredMessages) {
-        filteredMessages.indices.filter { filteredMessages[it].first == "Me" }.reversed()
+    val userMessageItemIndices = remember(filteredMessages) {
+        val total = filteredMessages.size
+        filteredMessages.indices.filter { filteredMessages[it].first == "Me" }
+            .map { total - 1 - it } // Map to reversed list indices
+            .sorted()
     }
 
     Scaffold(
@@ -345,7 +348,7 @@ fun AiChatScreen(
                         selectedPid, 
                         isConnected, 
                         listState, 
-                        userMessageIndices,
+                        userMessageItemIndices,
                         filteredMessages.size
                     )
                 }
@@ -388,7 +391,7 @@ fun QuickActionPanel(
     selectedPid: Int,
     isConnected: Boolean,
     listState: androidx.compose.foundation.lazy.LazyListState,
-    userMessageIndices: List<Int>,
+    userMessageItemIndices: List<Int>,
     totalMessages: Int
 ) {
     var isZoomed by remember { mutableStateOf(false) }
@@ -403,26 +406,26 @@ fun QuickActionPanel(
             ActionKeyButton(
                 text = "Esc",
                 modifier = Modifier.weight(1f),
-                onClick = { signalRClient.sendAiSpecialKey("escape") }
+                onClick = { signalRClient.sendAiSpecialKey("escape", selectedPid) }
             )
 
             ActionKeyButton(
                 icon = Icons.Default.KeyboardArrowUp,
                 modifier = Modifier.weight(1f),
-                onClick = { signalRClient.sendAiSpecialKey("up") }
+                onClick = { signalRClient.sendAiSpecialKey("up", selectedPid) }
             )
 
             ActionKeyButton(
                 icon = Icons.Default.KeyboardArrowDown,
                 modifier = Modifier.weight(1f),
-                onClick = { signalRClient.sendAiSpecialKey("down") }
+                onClick = { signalRClient.sendAiSpecialKey("down", selectedPid) }
             )
 
             ActionKeyButton(
                 text = "Enter",
                 icon = Icons.AutoMirrored.Filled.KeyboardReturn,
                 modifier = Modifier.weight(1f),
-                onClick = { signalRClient.sendAiSpecialKey("enter") }
+                onClick = { signalRClient.sendAiSpecialKey("enter", selectedPid) }
             )
         }
 
@@ -433,11 +436,14 @@ fun QuickActionPanel(
                 modifier = Modifier.weight(1f),
                 onClick = { 
                     coroutineScope.launch {
-                        val currentFirst = listState.firstVisibleItemIndex
-                        // Find the smallest index that is greater than current view (older message)
-                        val targetIndex = userMessageIndices.filter { it > currentFirst }.minOrNull()
+                        if (userMessageItemIndices.isEmpty()) return@launch
+                        val currentFirstVisibleItem = listState.firstVisibleItemIndex
+                        val targetIndex = userMessageItemIndices.filter { it > currentFirstVisibleItem }.minOrNull()
                         if (targetIndex != null) {
                             listState.animateScrollToItem(targetIndex)
+                        } else {
+                            // Wrap around to the "oldest" message (highest index in reverse layout)
+                            listState.animateScrollToItem(userMessageItemIndices.maxOrNull() ?: 0)
                         }
                     }
                 }
@@ -449,13 +455,15 @@ fun QuickActionPanel(
                 modifier = Modifier.weight(1f),
                 onClick = { 
                     coroutineScope.launch {
-                        val currentFirst = listState.firstVisibleItemIndex
-                        // Find the largest index that is smaller than current view (newer message)
-                        val targetIndex = userMessageIndices.filter { it < currentFirst }.maxOrNull()
+                        if (userMessageItemIndices.isEmpty()) return@launch
+                        val currentFirstVisibleItem = listState.firstVisibleItemIndex
+                        // Find the largest index that is smaller than or equal to current view (newer message)
+                        val targetIndex = userMessageItemIndices.filter { it < currentFirstVisibleItem }.maxOrNull()
                         if (targetIndex != null) {
                             listState.animateScrollToItem(targetIndex)
                         } else {
-                            listState.animateScrollToItem(0)
+                            // Wrap around to the "newest" message (index 0)
+                            listState.animateScrollToItem(userMessageItemIndices.minOrNull() ?: 0)
                         }
                     }
                 }
@@ -466,10 +474,7 @@ fun QuickActionPanel(
                 modifier = Modifier.weight(1f),
                 onClick = { 
                     coroutineScope.launch {
-                        signalRClient.sendKeyEvent("INPUT_KEY_DOWN", VK_CONTROL)
-                        signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_Y)
-                        kotlinx.coroutines.delay(100)
-                        signalRClient.sendKeyEvent("INPUT_KEY_UP", VK_CONTROL)
+                        signalRClient.sendAiYolo(selectedPid)
                     }
                 }
             )

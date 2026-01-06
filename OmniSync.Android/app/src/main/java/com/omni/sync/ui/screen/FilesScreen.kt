@@ -210,7 +210,70 @@ fun FilesScreen(
                 }
             )
         },
-        modifier = modifier.fillMaxSize()
+        bottomBar = {
+            // --- Compact Bookmarks Area (Bottom, always visible) ---
+            Surface(
+                tonalElevation = 2.dp,
+                color = MaterialTheme.colorScheme.surface
+            ) {
+                Column {
+                    HorizontalDivider()
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth().padding(end = 8.dp)
+                    ) {
+                        IconButton(onClick = { 
+                            showBookmarksList = !showBookmarksList
+                            if (showBookmarksList) showCachesList = false
+                        }) {
+                            Icon(if (showBookmarksList) Icons.Default.Close else Icons.Default.Menu, contentDescription = "Manage Bookmarks")
+                        }
+                        IconButton(onClick = { 
+                            showCachesList = !showCachesList
+                            if (showCachesList) showBookmarksList = false
+                        }) {
+                            Icon(if (showCachesList) Icons.Default.Close else Icons.Default.Storage, contentDescription = "Manage Caches")
+                        }
+                        if (bookmarks.isEmpty()) {
+                            Text(
+                                "No bookmarks yet", 
+                                style = MaterialTheme.typography.bodySmall, 
+                                modifier = Modifier.weight(1f).padding(8.dp),
+                                color = MaterialTheme.colorScheme.outline
+                            )
+                        } else {
+                            LazyRow(
+                                modifier = Modifier.weight(1f).padding(vertical = 4.dp),
+                                contentPadding = PaddingValues(horizontal = 4.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                items(bookmarks) { bookmark ->
+                                    InputChip(
+                                        selected = currentPath == bookmark.path,
+                                        onClick = { 
+                                            if (bookmark.isDirectory) {
+                                                filesViewModel.loadDirectory(bookmark.path)
+                                            } else {
+                                                filesViewModel.openForEditing(bookmark)
+                                            }
+                                        },
+                                        label = { Text(bookmark.name, maxLines = 1) },
+                                        leadingIcon = { 
+                                            Icon(
+                                                if (bookmark.isDirectory) Icons.Default.Folder else Icons.Default.InsertDriveFile, 
+                                                null, 
+                                                modifier = Modifier.size(16.dp)
+                                            ) 
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        modifier = modifier.fillMaxSize().padding(bottom = parentPadding.calculateBottomPadding())
     ) { innerPadding ->
         Column(
             modifier = Modifier
@@ -375,68 +438,6 @@ fun FilesScreen(
                             onDeleteByPath = { filesViewModel.deleteByPath(it) },
                             onDeleteAllEncrypted = { filesViewModel.deleteAllEncrypted() }
                         )
-                    }
-                }
-            }
-
-            // --- Compact Bookmarks Area (Bottom, always visible) ---
-            Surface(
-                tonalElevation = 2.dp,
-                color = MaterialTheme.colorScheme.surface
-            ) {
-                Column {
-                    HorizontalDivider()
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.fillMaxWidth().padding(end = 8.dp)
-                    ) {
-                        IconButton(onClick = { 
-                            showBookmarksList = !showBookmarksList
-                            if (showBookmarksList) showCachesList = false
-                        }) {
-                            Icon(if (showBookmarksList) Icons.Default.Close else Icons.Default.Menu, contentDescription = "Manage Bookmarks")
-                        }
-                        IconButton(onClick = { 
-                            showCachesList = !showCachesList
-                            if (showCachesList) showBookmarksList = false
-                        }) {
-                            Icon(if (showCachesList) Icons.Default.Close else Icons.Default.Storage, contentDescription = "Manage Caches")
-                        }
-                        if (bookmarks.isEmpty()) {
-                            Text(
-                                "No bookmarks yet", 
-                                style = MaterialTheme.typography.bodySmall, 
-                                modifier = Modifier.weight(1f).padding(8.dp),
-                                color = MaterialTheme.colorScheme.outline
-                            )
-                        } else {
-                            LazyRow(
-                                modifier = Modifier.weight(1f).padding(vertical = 4.dp),
-                                contentPadding = PaddingValues(horizontal = 4.dp),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                items(bookmarks) { bookmark ->
-                                    InputChip(
-                                        selected = currentPath == bookmark.path,
-                                        onClick = { 
-                                            if (bookmark.isDirectory) {
-                                                filesViewModel.loadDirectory(bookmark.path)
-                                            } else {
-                                                filesViewModel.openForEditing(bookmark)
-                                            }
-                                        },
-                                        label = { Text(bookmark.name, maxLines = 1) },
-                                        leadingIcon = { 
-                                            Icon(
-                                                if (bookmark.isDirectory) Icons.Default.Folder else Icons.Default.InsertDriveFile, 
-                                                null, 
-                                                modifier = Modifier.size(16.dp)
-                                            ) 
-                                        }
-                                    )
-                                }
-                            }
-                        }
                     }
                 }
             }

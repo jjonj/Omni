@@ -635,18 +635,79 @@ namespace OmniSync.Hub.Presentation.Hubs
         {
             if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
             {
-                _logger.LogInformation($"[RpcApiHub] SendAiSpecialKey: {key} (Session: {sessionId})");
                 int targetPid = sessionId ?? -1;
-                
-                // Focus the window first to ensure key is received
-                var sessionName = _aiCliService.GetSessionName(targetPid);
-                if (!string.IsNullOrEmpty(sessionName))
-                {
-                    _processService.WinActivate(sessionName);
-                    await Task.Delay(100); // Give OS time to focus
-                }
+                if (targetPid == -1) return;
 
-                await _aiCliService.SendSpecialKeyAsync(key, targetPid);
+                _logger.LogInformation($"[RpcApiHub] SendAiSpecialKey: {key} to PID {targetPid}");
+                _processService.WinActivatePid(targetPid);
+                await Task.Delay(100); // Give OS time to focus
+
+                switch (key.ToLower())
+                {
+                    case "escape":
+                        _inputService.SendKeyPress(0x1B);
+                        break;
+                    case "enter":
+                        _inputService.SendKeyPress(0x0D);
+                        break;
+                    case "up":
+                        _inputService.SendKeyPress(0x26);
+                        break;
+                    case "down":
+                        _inputService.SendKeyPress(0x28);
+                        break;
+                    case "left":
+                        _inputService.SendKeyPress(0x25);
+                        break;
+                    case "right":
+                        _inputService.SendKeyPress(0x27);
+                        break;
+                    case "yolo":
+                        await SendAiYolo(targetPid); // Re-use the yolo logic
+                        break;
+                    default:
+                        // Fallback to pipe for other special keys if necessary, or log a warning
+                        _logger.LogWarning($"[RpcApiHub] Unknown special key '{key}' for direct SendKeyPress.");
+                        await _aiCliService.SendSpecialKeyAsync(key, targetPid);
+                        break;
+                }
+            }
+        }
+
+        public async Task SendAiYolo(int? sessionId = null)
+        {
+            if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
+            {
+                int targetPid = sessionId ?? _aiCliService.GetTargetPid();
+                if (targetPid == -1) return;
+
+                _logger.LogInformation($"[RpcApiHub] Sending YOLO to PID {targetPid}");
+                _processService.WinActivatePid(targetPid);
+                await Task.Delay(150); // Give OS time to focus
+
+                _inputService.KeyDown(0x11); // VK_CONTROL
+                _inputService.SendKeyPress(0x59); // VK_Y
+                await Task.Delay(50);
+                _inputService.KeyUp(0x11); // VK_CONTROL
+            }
+        }
+
+        public async Task SendAiKeyEvent(int pid, ushort keyCode, bool ctrl = false, bool shift = false, bool alt = false)
+        {
+            if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
+            {
+                _processService.WinActivatePid(pid);
+                await Task.Delay(100);
+                
+                if (ctrl) _inputService.KeyDown(0x11);
+                if (shift) _inputService.KeyDown(0x10);
+                if (alt) _inputService.KeyDown(0x12);
+                
+                _inputService.SendKeyPress(keyCode);
+                
+                if (alt) _inputService.KeyUp(0x12);
+                if (shift) _inputService.KeyUp(0x10);
+                if (ctrl) _inputService.KeyUp(0x11);
             }
         }
 

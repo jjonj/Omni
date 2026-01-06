@@ -560,13 +560,19 @@ class SignalRClient(
             }
         }
     
-        fun sendAiSpecialKey(key: String, pid: Int? = null) {
-            if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
-                val targetPid = pid ?: _selectedPid.value
-                hubConnection?.send("SendAiSpecialKey", key, targetPid)
+            fun sendAiSpecialKey(key: String, pid: Int? = null) {
+                if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
+                    val targetPid = pid ?: _selectedPid.value
+                    hubConnection?.send("SendAiSpecialKey", key, targetPid)
+                }
             }
-        }
-    
+        
+            fun sendAiYolo(pid: Int? = null) {
+                if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
+                    val targetPid = pid ?: _selectedPid.value
+                    hubConnection?.send("SendAiYolo", targetPid)
+                }
+            }    
             fun sendAiMessage(message: String, pid: Int? = null) {
     
                 if (_isStartingSession) {
@@ -673,35 +679,60 @@ class SignalRClient(
         }
     }
 
-        fun startCliAtWorkspace(path: String) {
-            if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {       
-                _aiStatus.value = "Starting session at workspace..."
-                hubConnection?.send("StartCliAtWorkspace", path)
-            }
+    fun startCliAtWorkspace(path: String) {
+        if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
+            _aiStatus.value = "Starting session at workspace..."
+            hubConnection?.send("StartCliAtWorkspace", path)
         }
-    
-            fun clearAiMessages(pid: Int? = null) {
-                val targetPid = pid ?: _selectedPid.value
-                if (hubConnection != null && hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED && aiSessions.value.isNotEmpty()) {
-                    hubConnection?.send("SendAiMessage", "/clear", targetPid)
-                }
-                
-                // Insta-clear local view
-                _aiMessagesMap.value = _aiMessagesMap.value.toMutableMap().apply {
-                    remove(targetPid)
-                }
-                updateActiveView()
-                
-                // Repopulate (request history from Hub which should now be empty or have a system message)
-                requestAiHistory()
-            }    
-        fun stopConnection() {        reconnectJob?.cancel()
-        reconnectJob = null
-        isReconnecting.set(false)
-        hubConnection?.stop()
-        _connectionState.value = "Disconnected"
-        mainViewModel.setConnected(false)
     }
+
+        fun clearAiMessages(pid: Int? = null) {
+
+            val targetPid = pid ?: _selectedPid.value
+
+            if (hubConnection != null && hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED && aiSessions.value.isNotEmpty()) {
+
+                hubConnection?.send("SendAiMessage", "/clear", targetPid)
+
+            }
+
+    
+
+            // Insta-clear local view
+
+            _aiMessagesMap.value = _aiMessagesMap.value.toMutableMap().apply {
+
+                remove(targetPid)
+
+            }
+
+            updateActiveView()
+
+    
+
+            // Repopulate (request history from Hub which should now be empty or have a system message)
+
+            requestAiHistory()
+
+        }
+
+    
+
+        fun stopConnection() {
+
+            reconnectJob?.cancel()
+
+            reconnectJob = null
+
+            isReconnecting.set(false)
+
+            hubConnection?.stop()
+
+            _connectionState.value = "Disconnected"
+
+            mainViewModel.setConnected(false)
+
+        }
 
     fun manualReconnect() {
         coroutineScope.launch {

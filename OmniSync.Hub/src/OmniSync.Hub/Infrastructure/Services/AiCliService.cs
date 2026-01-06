@@ -470,6 +470,8 @@ namespace OmniSync.Hub.Infrastructure.Services
             }
         }
 
+        public int GetTargetPid() => _targetPid;
+
         public async Task<bool> SendPromptAsync(string text, int pid = -1)
         {
             _logger.LogInformation($"[AiCliService] SendPromptAsync: pid={pid}, _targetPid={_targetPid}, text='{(text.Length > 20 ? text.Substring(0, 20) + "..." : text)}'");
