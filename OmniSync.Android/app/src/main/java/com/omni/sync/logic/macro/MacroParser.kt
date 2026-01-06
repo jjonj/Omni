@@ -29,6 +29,12 @@ class MacroParser {
             .map { parseLine(it) }
     }
 
+    fun isValid(line: String): Boolean {
+        val trimmed = line.trim()
+        if (trimmed.isEmpty() || trimmed.startsWith(";")) return true
+        return parseLine(trimmed) !is MacroCommand.Unknown
+    }
+
     private fun parseLine(line: String): MacroCommand {
         val parts = line.split(" ", limit = 2)
         val command = parts[0].lowercase()

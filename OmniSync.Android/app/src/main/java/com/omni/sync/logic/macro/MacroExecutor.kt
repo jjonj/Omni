@@ -19,9 +19,7 @@ class MacroExecutor(private val signalRClient: SignalRClient) {
                     signalRClient.executeCommand(command.path)
                 }
                 is MacroCommand.WinActivate -> {
-                    // We might need a specific command for this on the Hub
-                    // For now, let's use executeCommand with a powershell snippet or similar
-                    signalRClient.executeCommand("powershell -Command \"(New-Object -ComObject WScript.Shell).AppActivate('${command.title}')\"")
+                    signalRClient.winActivate(command.title)
                 }
                 is MacroCommand.KeyDown -> {
                     mapToKeyCode(command.key)?.let { signalRClient.sendKeyEvent("INPUT_KEY_DOWN", it) }

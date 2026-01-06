@@ -701,6 +701,19 @@ class SignalRClient(
         return null
     }
 
+    fun processMacro(script: String): Single<String>? {
+        if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
+            return hubConnection?.invoke(String::class.java, "ProcessMacro", script)
+        }
+        return null
+    }
+
+    fun winActivate(target: String) {
+        if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
+            hubConnection?.send("WinActivate", target)
+        }
+    }
+
     fun listDirectory(relativePath: String): Single<List<FileSystemEntry>>? {       
         if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
             return hubConnection?.invoke(List::class.java, "ListDirectory", relativePath)

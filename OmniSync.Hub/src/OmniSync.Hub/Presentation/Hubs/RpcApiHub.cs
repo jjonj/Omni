@@ -667,6 +667,71 @@ namespace OmniSync.Hub.Presentation.Hubs
             }
         }
 
+        public async Task<string> ProcessMacro(string script)
+        {
+            if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
+            {
+                AnyCommandReceived?.Invoke(this, "ProcessMacro");
+                var lines = script.Split('\n');
+                var modified = false;
+                var settings = _authService.GetType() == typeof(AuthService) ? // Hacky access to settings service if not injected directly? 
+                    Context.GetHttpContext()?.RequestServices.GetService(typeof(HubSettingsService)) as HubSettingsService : null;
+
+                if (settings == null) return script; // Should not happen
+
+                for (int i = 0; i < lines.Length; i++)
+                {
+                    var line = lines[i].Trim();
+                    if (line.StartsWith("run ", StringComparison.OrdinalIgnoreCase))
+                    {
+                        var arg = line.Substring(4).Trim();
+                        // Check if it's already a full path
+                        if (arg.Contains(":\\") || arg.StartsWith("/")) continue;
+                        if (arg.StartsWith("http", StringComparison.OrdinalIgnoreCase)) continue;
+
+                        // Check mapping
+                        var mapped = settings.GetPath(arg);
+                        if (mapped != null)
+                        {
+                            // Already mapped, maybe update script to be explicit? 
+                            // Requirement: "replace truecrypt.exe with E:\...\TrueCrypt.exe"
+                            // If it's mapped, ProcessService handles it. 
+                            // But maybe the user WANTS the full path in the script.
+                            // The requirement says: "first check if truecrypt.exe exists as a mapping in hub settings. If not, search..."
+                            // And "app will update the macro automatically to replace truecrypt.exe with E:\Program Files\..."
+                            // This implies we resolve it to a full path.
+                            lines[i] = $"run {mapped}";
+                            modified = true;
+                        }
+                        else
+                        {
+                            // Not mapped, search
+                            var foundPath = _fileService.FindExecutable(arg);
+                            if (foundPath != null)
+                            {
+                                settings.AddMapping(arg, foundPath);
+                                lines[i] = $"run {foundPath}";
+                                modified = true;
+                                await Clients.Caller.SendAsync("ReceiveCommandOutput", $"[Macro] Resolved '{arg}' to '{foundPath}'");
+                            }
+                        }
+                    }
+                }
+
+                return modified ? string.Join("\n", lines) : script;
+            }
+            throw new UnauthorizedAccessException();
+        }
+
+        public void WinActivate(string target)
+        {
+            if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
+            {
+                AnyCommandReceived?.Invoke(this, $"WinActivate: {target}");
+                _processService.WinActivate(target);
+            }
+        }
+
         public async Task<int?> StartNewAiSession()
         {
             if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)

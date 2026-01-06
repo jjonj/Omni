@@ -21,20 +21,31 @@ namespace OmniSync.Hub.Infrastructure.Services
         {
             // Resolve mapping if available
             string finalCommand = command;
-            var parts = command.Split(' ', 2);
-            var firstPart = parts[0];
-            var mappedPath = _settingsService.GetPath(firstPart);
+            string executable;
+            string arguments = "";
+
+            if (command.StartsWith("\""))
+            {
+                int nextQuote = command.IndexOf("\"", 1);
+                if (nextQuote != -1)
+                {
+                    executable = command.Substring(1, nextQuote - 1);
+                    arguments = command.Substring(nextQuote + 1).Trim();
+                }
+                else executable = command;
+            }
+            else
+            {
+                var parts = command.Split(' ', 2);
+                executable = parts[0];
+                if (parts.Length > 1) arguments = parts[1];
+            }
+
+            var mappedPath = _settingsService.GetPath(executable);
             
             if (mappedPath != null)
             {
-                if (parts.Length > 1)
-                {
-                    finalCommand = $"\"{mappedPath}\" {parts[1]}";
-                }
-                else
-                {
-                    finalCommand = $"\"{mappedPath}\"";
-                }
+                finalCommand = string.IsNullOrEmpty(arguments) ? $"\"{mappedPath}\"" : $"\"{mappedPath}\" {arguments}";
             }
 
             await Task.Run(() =>
@@ -42,21 +53,12 @@ namespace OmniSync.Hub.Infrastructure.Services
                 var processStartInfo = new ProcessStartInfo
                 {
                     FileName = "cmd.exe",
-                    Arguments = $"/c {finalCommand}", // Removed extra quotes around finalCommand since we handled them above or if it's just a raw command
+                    Arguments = $"/c {finalCommand}", 
                     RedirectStandardOutput = true,
                     RedirectStandardError = true,
                     UseShellExecute = false,
                     CreateNoWindow = true
                 };
-
-                // Re-evaluate: if finalCommand has internal quotes, $"/c \"{finalCommand}\"" might be better or worse.
-                // cmd.exe /c "C:\Path\To\Exe" args
-                // Let's use the safer way:
-                processStartInfo.Arguments = $"/c {finalCommand}";
-                // Wait, if finalCommand is: "C:\Program Files\Chrome.exe" https://google.com
-                // cmd /c "C:\Program Files\Chrome.exe" https://google.com
-                // This usually works.
-
 
                 using (var process = new Process { StartInfo = processStartInfo })
                 {
@@ -80,6 +82,28 @@ namespace OmniSync.Hub.Infrastructure.Services
                     process.BeginErrorReadLine();
                     process.WaitForExit();
                 }
+            });
+        }
+
+        public void WinActivate(string target)
+        {
+            // Intelligent activation: try exact title, partial title, then process name
+            string script = $@"
+$target = '{target.Replace("'", "''")}'
+$wshell = New-Object -ComObject WScript.Shell
+if ($wshell.AppActivate($target)) {{ exit }}
+
+$procs = Get-Process | Where-Object {{ $_.MainWindowTitle -like ""*$target*"" -or $_.ProcessName -eq $target }}
+foreach ($p in $procs) {{
+    if ($wshell.AppActivate($p.Id)) {{ exit }}
+}}
+";
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = "powershell",
+                Arguments = $"-Command \"{script.Replace("\n", " ").Replace("\r", "")}\"",
+                CreateNoWindow = true,
+                UseShellExecute = false
             });
         }
 

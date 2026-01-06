@@ -22,6 +22,39 @@ import kotlinx.coroutines.launch
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.TextRange
 
+import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.input.TransformedText
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.graphics.Color
+
+class MacroSyntaxVisualTransformation(
+    private val parser: com.omni.sync.logic.macro.MacroParser,
+    private val cursorPosition: Int
+) : VisualTransformation {
+    override fun filter(text: AnnotatedString): TransformedText {
+        val builder = AnnotatedString.Builder(text)
+        val lines = text.text.split('\n')
+        var currentOffset = 0
+        
+        for (line in lines) {
+            val lineRange = currentOffset until (currentOffset + line.length)
+            val isCursorInLine = cursorPosition in currentOffset..(currentOffset + line.length)
+            
+            if (!isCursorInLine && !parser.isValid(line)) {
+                builder.addStyle(
+                    style = SpanStyle(color = Color.Red, fontWeight = FontWeight.Bold),
+                    start = currentOffset,
+                    end = currentOffset + line.length
+                )
+            }
+            currentOffset += line.length + 1 // +1 for \n
+        }
+        
+        return TransformedText(builder.toAnnotatedString(), androidx.compose.ui.text.input.OffsetMapping.Identity)
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun MacroManagerScreen(
@@ -200,7 +233,8 @@ fun MacroManagerScreen(
                         label = { Text("Script") },
                         modifier = Modifier.fillMaxWidth().heightIn(min = 100.dp, max = 200.dp),
                         textStyle = MaterialTheme.typography.bodySmall.copy(fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace),
-                        placeholder = { Text("send Hello\nsleep 1000") }
+                        placeholder = { Text("send Hello\nsleep 1000") },
+                        visualTransformation = MacroSyntaxVisualTransformation(parser, editorScript.selection.start)
                     )
 
                     Spacer(modifier = Modifier.height(8.dp))
@@ -222,19 +256,30 @@ fun MacroManagerScreen(
                                 Text("Cancel")
                             }
                         }
-                        Button(
+                            Button(
                             onClick = {
-                                val newMacros = macros.toMutableList()
-                                if (editingMacroId != null) {
-                                    val index = newMacros.indexOfFirst { it.id == editingMacroId }
-                                    if (index != -1) {
-                                        newMacros[index] = newMacros[index].copy(name = editorName, script = editorScript.text, iconName = editorIconName)
+                                val currentScript = editorScript.text
+                                coroutineScope.launch {
+                                    val processedScript = try {
+                                        signalRClient.processMacro(currentScript)
+                                            ?.subscribeOn(io.reactivex.rxjava3.schedulers.Schedulers.io())
+                                            ?.blockingGet() ?: currentScript
+                                    } catch (e: Exception) {
+                                        currentScript
                                     }
-                                } else {
-                                    newMacros.add(Macro(name = editorName, script = editorScript.text, iconName = editorIconName))
+
+                                    val newMacros = macros.toMutableList()
+                                    if (editingMacroId != null) {
+                                        val index = newMacros.indexOfFirst { it.id == editingMacroId }
+                                        if (index != -1) {
+                                            newMacros[index] = newMacros[index].copy(name = editorName, script = processedScript, iconName = editorIconName)
+                                        }
+                                    } else {
+                                        newMacros.add(Macro(name = editorName, script = processedScript, iconName = editorIconName))
+                                    }
+                                    saveMacros(newMacros)
+                                    resetEditor()
                                 }
-                                saveMacros(newMacros)
-                                resetEditor()
                             },
                             enabled = editorName.isNotBlank() && editorScript.text.isNotBlank()
                         ) {
@@ -388,6 +433,48 @@ fun MacroManagerScreen(
                         "^=Ctrl, !=Alt, +=Shift, #=Win\n(Enter), (Tab), (Esc), (F1)-(F12), (Up), (Down), (Left), (Right), (Space), (Backspace), (Delete)",
                         style = MaterialTheme.typography.bodySmall
                     )
+
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
+                    Text(
+                        "Templates:", 
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.secondary
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    val templates = listOf(
+                        "Google Search" to "run https://www.google.com/search?q={CLIPBOARD}",
+                        "Open Notepad" to "run notepad.exe\nsleep 500\nsend Hello from Omni!",
+                        "Alt+Tab" to "keydown alt\nsend (Tab)\nkeyup alt",
+                        "Refresh Chrome" to "winactivate chrome\nsleep 100\nsend (F5)",
+                        "Copy All" to "send ^a\nsend ^c",
+                        "New Folder" to "send ^+n",
+                        "Close Window" to "send !{F4}",
+                        "Task Manager" to "send ^+(Esc)",
+                        "Lock PC" to "send #l",
+                        "Omni Workspace" to "aihere D:\\SSDProjects\\Omni\nwinactivate vscode"
+                    )
+
+                    templates.forEach { (label, script) ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                            Button(
+                                onClick = { 
+                                    editorScript = TextFieldValue(script, TextRange(script.length))
+                                    if (editorName.isBlank()) editorName = label
+                                    showHelpDialog = false
+                                },
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                                modifier = Modifier.height(32.dp)
+                            ) {
+                                Text("Insert", style = MaterialTheme.typography.labelSmall)
+                            }
+                        }
+                    }
                 }
             },
             confirmButton = {

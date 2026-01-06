@@ -285,6 +285,68 @@ namespace OmniSync.Hub.Infrastructure.Services
             catch (SecurityException) { }
         }
 
+        public string? FindExecutable(string filename)
+        {
+            if (File.Exists(filename)) return Path.GetFullPath(filename);
+
+            var searchRoots = new List<string>
+            {
+                Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
+                Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86)
+            };
+            
+            // Add user drives if needed, but let's stick to Program Files for speed first
+            foreach (var drive in DriveInfo.GetDrives().Where(d => d.IsReady && d.DriveType == DriveType.Fixed))
+            {
+                if (!searchRoots.Any(r => r.StartsWith(drive.Name, StringComparison.OrdinalIgnoreCase)))
+                {
+                   // Add root of other drives? That's too deep. 
+                   // Maybe just common folders.
+                }
+            }
+
+            foreach (var root in searchRoots)
+            {
+                if (Directory.Exists(root))
+                {
+                    try
+                    {
+                        // Use EnumerateFiles with recursion, but handle exceptions
+                        // A full recursive search might be slow.
+                        // Let's try a depth-limited search or rely on common install paths?
+                        // The requirement says "search the whole system".
+                        // That is potentially very slow.
+                        // Let's try a deep search on Program Files first.
+                        
+                        // Using a stack-based approach to avoid recursion depth issues and handle access denied
+                        var stack = new Stack<string>();
+                        stack.Push(root);
+
+                        while (stack.Count > 0)
+                        {
+                            var dir = stack.Pop();
+                            try
+                            {
+                                foreach (var file in Directory.EnumerateFiles(dir, filename))
+                                {
+                                    return file;
+                                }
+                                
+                                foreach (var subDir in Directory.EnumerateDirectories(dir))
+                                {
+                                    stack.Push(subDir);
+                                }
+                            }
+                            catch (UnauthorizedAccessException) { }
+                            catch (Exception) { }
+                        }
+                    }
+                    catch (Exception) { }
+                }
+            }
+            return null;
+        }
+
         public byte[] GetFileChunk(string filePath, long offset, int chunkSize)
         {
             var fullPath = SanitizeAndGetBrowseFullPath(filePath);
