@@ -46,9 +46,9 @@ Syntax error highlighting on all lines that doesnt have the cursor
 Process macro on hub after saving, first processing step will be to look for pathless run commands, e.g. "run truecrypt.exe", first check if truecrypt.exe exists as a mapping in hub settings. If not, search the whole system for it, find it at "E:\Program Files\TrueCrypt\TrueCrypt.exe" and send a message back to app and app will update the macro automatically to replace truecrypt.exe with E:\Program Files\TrueCrypt\TrueCrypt.exe
 Ensure run commands support having spaces in the path of the program
 Winactivate command should be intelligent about finding the process to activate, either by executable name or partial string of window should work. 
-Add windows key to special key and tab
-Use normal brackets () instead of {} for special keys
-Add more easy insert buttons (e.g. the sleep run exe etc), including a dropdown for special keys
+✅ Add windows key to special key and tab
+✅ Use normal brackets () instead of {} for special keys
+✅ Add more easy insert buttons (e.g. the sleep run exe etc), including a dropdown for special keys
 At the bottom of the help screen add 10 different examples of correct scripts, and also use them as templates that can be inserted in the current edit window.
 
 

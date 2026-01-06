@@ -8,7 +8,8 @@ class MacroExecutor(private val signalRClient: SignalRClient) {
                 for (command in commands) {
                     when (command) {
                         is MacroCommand.Send -> {
-                            signalRClient.sendPayload("SEND_KEYS", mapOf("Keys" to command.keys))
+                            val processedKeys = command.keys.replace(Regex("\\(([a-zA-Z0-9]+)\\)"), "{$1}")
+                            signalRClient.sendPayload("SEND_KEYS", mapOf("Keys" to processedKeys))
                         }
                         is MacroCommand.Sleep -> {                    if (command.durationMs > 0) {
                         delay(command.durationMs)

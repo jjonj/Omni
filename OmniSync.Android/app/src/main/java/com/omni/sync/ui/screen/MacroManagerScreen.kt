@@ -182,6 +182,14 @@ fun MacroManagerScreen(
                             onClick = { insertAtCursor("{CLIPBOARD}") },
                             label = { Text("Clip") }
                         )
+                        AssistChip(
+                            onClick = { insertAtCursor("#") },
+                            label = { Text("Win") }
+                        )
+                        AssistChip(
+                            onClick = { insertAtCursor("(Tab)") },
+                            label = { Text("Tab") }
+                        )
                     }
 
                     Spacer(modifier = Modifier.height(4.dp))
@@ -325,7 +333,7 @@ fun MacroManagerScreen(
                     SyntaxHelpItem(
                         "send <keys>", 
                         "Sends keystrokes to the PC.",
-                        "send Hello\nsend ^w (Ctrl+W)\nsend {F5} (Refresh)"
+                        "send Hello\nsend ^w (Ctrl+W)\nsend (F5) (Refresh)"
                     )
                     HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
                     SyntaxHelpItem(
@@ -377,7 +385,7 @@ fun MacroManagerScreen(
                         color = MaterialTheme.colorScheme.primary
                     )
                     Text(
-                        "^=Ctrl, !=Alt, +=Shift, #=Win\n{Enter}, {Tab}, {Esc}, {F1}-{F12}, {Up}, {Down}, {Left}, {Right}, {Space}, {Backspace}, {Delete}",
+                        "^=Ctrl, !=Alt, +=Shift, #=Win\n(Enter), (Tab), (Esc), (F1)-(F12), (Up), (Down), (Left), (Right), (Space), (Backspace), (Delete)",
                         style = MaterialTheme.typography.bodySmall
                     )
                 }
