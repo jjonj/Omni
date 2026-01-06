@@ -117,6 +117,9 @@ Only work on subtasks if told to do so or if told explicitly to do a Megasession
 
 ✅ When not scrolled to bottom of history i experience the scroll amount jumping when new messages are added at the bottom, i dont want it to move what I'm looking at. it would only auto scroll if I'm scrolled to bottom already or if i send a message myself 
 
+✅ Prev/Next Msg buttons should jump to right places and wrap history, next msg jumps to bottom if at newest
+✅ Input buttons on AI screen focus PID before sending input
+
 In order to get better rendering of ai message formatting we need to carefully investigate how gemini-
 
 ### OmniWeb Screen 

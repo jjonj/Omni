@@ -635,12 +635,12 @@ namespace OmniSync.Hub.Presentation.Hubs
         {
             if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
             {
-                int targetPid = sessionId ?? -1;
+                int targetPid = sessionId ?? _aiCliService.GetTargetPid();
                 if (targetPid == -1) return;
 
                 _logger.LogInformation($"[RpcApiHub] SendAiSpecialKey: {key} to PID {targetPid}");
                 _processService.WinActivatePid(targetPid);
-                await Task.Delay(100); // Give OS time to focus
+                await Task.Delay(150); // Give OS time to focus
 
                 switch (key.ToLower())
                 {

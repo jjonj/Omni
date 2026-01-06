@@ -464,13 +464,13 @@ fun QuickActionPanel(
                     coroutineScope.launch {
                         if (userMessageItemIndices.isEmpty()) return@launch
                         val currentFirstVisibleItem = listState.firstVisibleItemIndex
-                        // Find the largest index that is smaller than or equal to current view (newer message)
+                        // Find the largest index that is smaller than current view (newer message)
                         val targetIndex = userMessageItemIndices.filter { it < currentFirstVisibleItem }.maxOrNull()
                         if (targetIndex != null) {
                             listState.animateScrollToItem(targetIndex)
                         } else {
-                            // Wrap around to the "newest" message (index 0)
-                            listState.animateScrollToItem(userMessageItemIndices.minOrNull() ?: 0)
+                            // If already at the newest user message, jump to the absolute bottom (index 0)
+                            listState.animateScrollToItem(0)
                         }
                     }
                 }
