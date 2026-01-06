@@ -121,4 +121,31 @@ Only work on subtasks if told to do so or if told explicitly to do a Megasession
 
 
 ✅ Try to add more advanced rendering of AI replies that contain e.g. codeblocks and tool calls.
-✅ Allow selecting/copy to clipboard messag
+✅ Allow selecting/copy to clipboard messages
+
+### Alarm screen
+
+## Web
+
+✅ Reordering blocks, e.g. moving flex before gamedev is not persisted after reload. it should persist the entire day and only reset once per day. Wake up time does persist, do it same way?
+
+## Chrome extension
+
+✅ For all the functions that the extension can do, add them to the right click menu of the extension inside chrome. So e.g. i can open the youtube history video in chrome, from the extension right click menu   
+
+✅ Seems unable to reconnect after getting disconnected, I have to uninstall reinstall the extension to work (Fixed using chrome.alarms in MV3)
+
+✅ When disconnecting from hub it gives these errors. Disconnecting shouldnt result in errors, warnings at most or just handle it gracefully.
+
+## Firefox plugin
+
+✅ See D:\SSDProjects\Omni\OmniSync.Firefox
+✅ Integrate that into omni, make it connect to hub but do nothing with that connection for now.
+✅ It should NOT have the same features as the chrome plugin, its a separate thing. For now it should just have the mute functionality
+
+
+## Suff only USER can do
+
+Configure node red options for:
+ - Clean browser tabs
+ - Alarm for 8.5 hours

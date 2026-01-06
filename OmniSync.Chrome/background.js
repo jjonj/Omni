@@ -24,45 +24,79 @@ let connection = new signalR.HubConnectionBuilder()
             return Math.min(2000 + retryContext.previousRetryCount * 2000, 10000);
         }
     })
-    .configureLogging(signalR.LogLevel.Warning)
+    .configureLogging(signalR.LogLevel.Error) // Only log errors to reduce noise
     .build();
 
 async function start() {
-    if (connection.state !== signalR.HubConnectionState.Disconnected) return;
+    if (connection.state !== signalR.HubConnectionState.Disconnected) {
+        console.log("SignalR: Skipping start, current state is", connection.state);
+        return;
+    }
     
+    console.log("SignalR: Attempting to connect...");
     try {
         await connection.start();
-        console.log("SignalR Connected.");
-        // Authenticate
-        await connection.invoke("Authenticate", API_KEY);
+        console.log("SignalR: Connected.");
+        await authenticate();
+        // Clear any retry alarms
+        chrome.alarms.clear("reconnect-alarm");
     } catch (err) {
-        // Only log if it's not a common fetch failure during disconnect/reconnect
-        if (!err.toString().includes("Failed to fetch") && !err.toString().includes("TypeError")) {
-            console.warn("SignalR connection attempt failed:", err);
+        const errStr = err.toString();
+        if (!errStr.includes("Failed to fetch") && !errStr.includes("TypeError")) {
+            console.error("SignalR: Connection failed:", err);
+        } else {
+            console.log("SignalR: Hub unreachable, will try again via alarm.");
         }
         
-        setTimeout(start, 10000);
+        // Schedule a retry via alarm (more reliable in MV3 than setTimeout)
+        chrome.alarms.create("reconnect-alarm", { delayInMinutes: 0.2 }); // Try in ~12 seconds
+    }
+}
+
+async function authenticate() {
+    if (connection.state === signalR.HubConnectionState.Connected) {
+        try {
+            const success = await connection.invoke("Authenticate", API_KEY);
+            console.log("SignalR: Authentication result:", success);
+        } catch (e) {
+            console.error("SignalR: Authentication failed:", e);
+        }
     }
 }
 
 connection.onclose(async (error) => {
-    if (error) {
-        // Silent closure for common codes
-        const errorStr = error.toString();
-        if (!errorStr.includes("1006") && !errorStr.includes("WebSocket closed")) {
-            console.warn("SignalR connection closed with error:", error);
-        }
-    }
-    setTimeout(start, 5000);
+    console.log("SignalR: Connection closed.", error || "");
+    // Ensure we try to reconnect
+    chrome.alarms.create("reconnect-alarm", { delayInMinutes: 0.1 });
 });
 
 connection.onreconnecting((error) => {
-    console.log("SignalR Reconnecting...");
+    console.log("SignalR: Reconnecting...");
 });
 
-connection.onreconnected((connectionId) => {
-    console.log("SignalR Reconnected.");
-    connection.invoke("Authenticate", API_KEY);
+connection.onreconnected(async (connectionId) => {
+    console.log("SignalR: Reconnected. ID:", connectionId);
+    await authenticate();
+});
+
+// Alarm listener to wake up the service worker and try connecting
+chrome.alarms.onAlarm.addListener((alarm) => {
+    if (alarm.name === "reconnect-alarm") {
+        start();
+    }
+});
+
+// Periodic check alarm to keep things alive and ensure we haven't stayed disconnected
+chrome.alarms.create("keep-alive-check", { periodInMinutes: 1 });
+chrome.alarms.onAlarm.addListener((alarm) => {
+    if (alarm.name === "keep-alive-check") {
+        if (connection.state === signalR.HubConnectionState.Disconnected) {
+            start();
+        } else if (connection.state === signalR.HubConnectionState.Connected) {
+            // Optional: minimal ping to keep connection from idling
+            connection.invoke("GetHubStatus").catch(() => {});
+        }
+    }
 });
 
 // Helper function to check if URL matches a pattern (supports * wildcard)
