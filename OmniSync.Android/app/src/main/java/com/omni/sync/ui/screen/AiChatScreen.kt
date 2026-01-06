@@ -13,6 +13,8 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Cached
+import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.Home
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -54,6 +56,7 @@ import com.omni.sync.utils.WindowsKeyCodes.VK_Y
 fun AiChatScreen(
     signalRClient: SignalRClient,
     mainViewModel: MainViewModel,
+    filesViewModel: com.omni.sync.viewmodel.FilesViewModel,
     parentPadding: PaddingValues = PaddingValues(0.dp)
 ) {
     val messages by signalRClient.aiMessages.collectAsState()
@@ -65,6 +68,10 @@ fun AiChatScreen(
     var showRenameDialog by remember { mutableStateOf(false) }
     var renameText by remember { mutableStateOf("") }
     var pidToRename by remember { mutableIntStateOf(-1) }
+
+    val bookmarks by filesViewModel.bookmarks.collectAsState()
+    var selectedWorkspace by remember { mutableStateOf<String?>(null) }
+    var showWorkspaceMenu by remember { mutableStateOf(false) }
     
     val listState = rememberLazyListState()
     val isAiThinking = aiStatus?.contains("Thinking", ignoreCase = true) == true
@@ -176,7 +183,29 @@ fun AiChatScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = { signalRClient.startNewAiSession() }, enabled = isConnected) {
+                    Box {
+                        IconButton(onClick = { showWorkspaceMenu = true }, enabled = isConnected) {
+                            Icon(Icons.Default.Folder, contentDescription = "Select Workspace")
+                        }
+                        DropdownMenu(
+                            expanded = showWorkspaceMenu,
+                            onDismissRequest = { showWorkspaceMenu = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("Default Workspace", fontWeight = if (selectedWorkspace == null) FontWeight.Bold else FontWeight.Normal) },
+                                onClick = { selectedWorkspace = null; showWorkspaceMenu = false },
+                                leadingIcon = { Icon(Icons.Default.Home, null) }
+                            )
+                            bookmarks.filter { it.isDirectory }.forEach { bookmark ->
+                                DropdownMenuItem(
+                                    text = { Text(bookmark.name, fontWeight = if (selectedWorkspace == bookmark.path) FontWeight.Bold else FontWeight.Normal) },
+                                    onClick = { selectedWorkspace = bookmark.path; showWorkspaceMenu = false },
+                                    leadingIcon = { Icon(Icons.Default.Folder, null) }
+                                )
+                            }
+                        }
+                    }
+                    IconButton(onClick = { signalRClient.startNewAiSession(selectedWorkspace) }, enabled = isConnected) {
                         Icon(Icons.Default.Add, contentDescription = "New Session")
                     }
                     IconButton(onClick = { 

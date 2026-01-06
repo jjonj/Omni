@@ -289,60 +289,51 @@ namespace OmniSync.Hub.Infrastructure.Services
         {
             if (File.Exists(filename)) return Path.GetFullPath(filename);
 
-            var searchRoots = new List<string>
-            {
-                Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
-                Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86)
-            };
-            
-            // Add user drives if needed, but let's stick to Program Files for speed first
+            var extensions = new[] { "", ".exe", ".bat", ".py", ".ps1" };
+            var searchRoots = new List<string>();
+
+            // 1. Add specific tool directory
+            if (Directory.Exists(@"B:\Gdrive\tools")) searchRoots.Add(@"B:\Gdrive\tools");
+
+            // 2. Add Program Files on all fixed drives
             foreach (var drive in DriveInfo.GetDrives().Where(d => d.IsReady && d.DriveType == DriveType.Fixed))
             {
-                if (!searchRoots.Any(r => r.StartsWith(drive.Name, StringComparison.OrdinalIgnoreCase)))
-                {
-                   // Add root of other drives? That's too deep. 
-                   // Maybe just common folders.
-                }
+                var pf = Path.Combine(drive.Name, "Program Files");
+                var pf86 = Path.Combine(drive.Name, "Program Files (x86)");
+                if (Directory.Exists(pf)) searchRoots.Add(pf);
+                if (Directory.Exists(pf86)) searchRoots.Add(pf86);
             }
 
             foreach (var root in searchRoots)
             {
-                if (Directory.Exists(root))
+                try
                 {
-                    try
-                    {
-                        // Use EnumerateFiles with recursion, but handle exceptions
-                        // A full recursive search might be slow.
-                        // Let's try a depth-limited search or rely on common install paths?
-                        // The requirement says "search the whole system".
-                        // That is potentially very slow.
-                        // Let's try a deep search on Program Files first.
-                        
-                        // Using a stack-based approach to avoid recursion depth issues and handle access denied
-                        var stack = new Stack<string>();
-                        stack.Push(root);
+                    var stack = new Stack<string>();
+                    stack.Push(root);
 
-                        while (stack.Count > 0)
+                    while (stack.Count > 0)
+                    {
+                        var dir = stack.Pop();
+                        try
                         {
-                            var dir = stack.Pop();
-                            try
+                            foreach (var ext in extensions)
                             {
-                                foreach (var file in Directory.EnumerateFiles(dir, filename))
-                                {
-                                    return file;
-                                }
-                                
-                                foreach (var subDir in Directory.EnumerateDirectories(dir))
-                                {
-                                    stack.Push(subDir);
-                                }
+                                var target = filename.EndsWith(ext, StringComparison.OrdinalIgnoreCase) ? filename : filename + ext;
+                                var files = Directory.EnumerateFiles(dir, target);
+                                var first = files.FirstOrDefault();
+                                if (first != null) return first;
                             }
-                            catch (UnauthorizedAccessException) { }
-                            catch (Exception) { }
+                            
+                            foreach (var subDir in Directory.EnumerateDirectories(dir))
+                            {
+                                stack.Push(subDir);
+                            }
                         }
+                        catch (UnauthorizedAccessException) { }
+                        catch (Exception) { }
                     }
-                    catch (Exception) { }
                 }
+                catch (Exception) { }
             }
             return null;
         }

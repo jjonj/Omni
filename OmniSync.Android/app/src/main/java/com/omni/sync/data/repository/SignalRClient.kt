@@ -633,7 +633,7 @@ class SignalRClient(
                 hubConnection?.send("SwitchAiSession", pid)
             }
         }
-        fun startNewAiSession() {
+        fun startNewAiSession(workspace: String? = null) {
             if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {       
                 _isStartingSession = true
                 isStartingSessionFlow.value = true
@@ -644,7 +644,7 @@ class SignalRClient(
                 setSelectedPid(-1)
                 updateSessionStatus(-1, "Starting new session...")
 
-                hubConnection?.send("StartNewAiSession")
+                hubConnection?.send("StartNewAiSession", workspace)
             }
         }
     

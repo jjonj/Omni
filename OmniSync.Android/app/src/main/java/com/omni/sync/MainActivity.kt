@@ -374,6 +374,7 @@ class MainActivity : ComponentActivity() {
             AppScreen.AI_CHAT -> com.omni.sync.ui.screen.AiChatScreen(
                 signalRClient = signalRClient,
                 mainViewModel = mainViewModel,
+                filesViewModel = filesViewModel,
                 parentPadding = paddingValues
             )
             AppScreen.DOWNLOADED_VIDEOS -> com.omni.sync.ui.screen.DownloadedVideosScreen(

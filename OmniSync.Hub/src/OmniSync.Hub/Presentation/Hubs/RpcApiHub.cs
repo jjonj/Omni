@@ -742,20 +742,20 @@ namespace OmniSync.Hub.Presentation.Hubs
             }
         }
 
-        public async Task<int?> StartNewAiSession()
+        public async Task<int?> StartNewAiSession(string? workspace = null)
         {
             if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
             {
                 try
                 {
-                    _logger.LogInformation("[RpcApiHub] StartNewAiSession requested. Broadcasting status...");
-                    AnyCommandReceived?.Invoke(this, "StartNewAiSession requested");
+                    _logger.LogInformation($"[RpcApiHub] StartNewAiSession requested (Workspace: {workspace}). Broadcasting status...");
+                    AnyCommandReceived?.Invoke(this, $"StartNewAiSession requested (Workspace: {workspace})");
                     await Clients.All.SendAsync("ReceiveAiHistory", "[]");
                     await Clients.All.SendAsync("ReceiveAiStatus", "Starting session...");
                     
                     _logger.LogInformation("[RpcApiHub] Calling AiCliService.LaunchSessionAsync...");
                     
-                    var result = await _aiCliService.LaunchSessionAsync(null, (status) => 
+                    var result = await _aiCliService.LaunchSessionAsync(workspace, (status) => 
                     {
                         AnyCommandReceived?.Invoke(this, $"AI Launch: {status}");
                     });
