@@ -124,7 +124,7 @@ fun MacroManagerScreen(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
-                        val icons = listOf("play", "browser", "folder", "ai", "terminal", "code", "settings", "music", "video", "chat", "work")
+                        val icons = listOf("play", "browser", "folder", "ai", "terminal", "code", "settings", "music", "video", "chat", "work", "game", "home", "lock", "refresh", "star")
                         icons.forEach { icon ->
                             val isSelected = editorIconName == icon
                             val vector = when (icon) {
@@ -138,6 +138,11 @@ fun MacroManagerScreen(
                                 "video" -> Icons.Default.Movie
                                 "chat" -> Icons.Default.Chat
                                 "work" -> Icons.Default.Work
+                                "game" -> Icons.Default.SportsEsports
+                                "home" -> Icons.Default.Home
+                                "lock" -> Icons.Default.Lock
+                                "refresh" -> Icons.Default.Refresh
+                                "star" -> Icons.Default.Star
                                 else -> Icons.Default.PlayArrow
                             }
                             IconButton(
@@ -193,6 +198,17 @@ fun MacroManagerScreen(
                     Spacer(modifier = Modifier.height(8.dp))
 
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                        TextButton(
+                            onClick = { 
+                                coroutineScope.launch {
+                                    executor.execute(parser.parse(editorScript.text, context))
+                                }
+                            },
+                            enabled = editorScript.text.isNotBlank()
+                        ) {
+                            Text("Test")
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
                         if (editingMacroId != null) {
                             TextButton(onClick = { resetEditor() }) {
                                 Text("Cancel")
@@ -246,6 +262,11 @@ fun MacroManagerScreen(
                             "video" -> Icons.Default.Movie
                             "chat" -> Icons.Default.Chat
                             "work" -> Icons.Default.Work
+                            "game" -> Icons.Default.SportsEsports
+                            "home" -> Icons.Default.Home
+                            "lock" -> Icons.Default.Lock
+                            "refresh" -> Icons.Default.Refresh
+                            "star" -> Icons.Default.Star
                             else -> Icons.Default.PlayArrow
                         }
 

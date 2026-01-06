@@ -40,8 +40,8 @@ Only work on subtasks if told to do so or if told explicitly to do a Megasession
 ### Remote Control Screen
 
 #### Macro screen
-Add 5 more icon options
-Add button on creation screen to test macro as is. 
+✅ Add 5 more icon options
+✅ Add button on creation screen to test macro as is. 
 Syntax error highlighting on all lines that doesnt have the cursor
 Process macro on hub after saving, first processing step will be to look for pathless run commands, e.g. "run truecrypt.exe", first check if truecrypt.exe exists as a mapping in hub settings. If not, search the whole system for it, find it at "E:\Program Files\TrueCrypt\TrueCrypt.exe" and send a message back to app and app will update the macro automatically to replace truecrypt.exe with E:\Program Files\TrueCrypt\TrueCrypt.exe
 Ensure run commands support having spaces in the path of the program
