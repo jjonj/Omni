@@ -15,10 +15,9 @@ When finishing a subtask and BEFORE moving on the to the next subtask in here, A
 2. Prefix the line in tasks.txt with "✅" 
 3. git commit (use a txt file called commitmsg.txt for the message, overwrite if exists)
 Do not do batch marking with ✅ or batch committing, do it between each. .
-
-Only work on subtasks if told to do so or if told to do a Megasession.
 If told to do a megasession then fix/implement as many issues of the ones below as possible without user intervention. 
 If necessary you may use AISpeak to ask the user for help/clarifications.
+Only work on subtasks if told to do so or if told explicitly to do a Megasession. Did the user say megasession?
 
 
 ## General
@@ -38,12 +37,7 @@ If necessary you may use AISpeak to ask the user for help/clarifications.
 
 ✅ After using wake on lan, Start a reconnecting cycle after 1 minute
 
-✅ Adb log button should filter by com.omni.sync
-
 ### Remote Control Screen
-
-✅ add another button to go to a third button panel which takes up most of the screen. This screen has a grid containing all macros and macro buttons can be rearranged with long press drag 
-
 
 #### Macro screen
 Add 5 more icon options
@@ -58,24 +52,17 @@ Add more easy insert buttons (e.g. the sleep run exe etc), including a dropdown 
 At the bottom of the help screen add 10 different examples of correct scripts, and also use them as templates that can be inserted in the current edit window.
 
 
-
-
-✅ add a macro manager screen accessible from third panel 
-  ✅ allow defining macros with an ahk like syntax, allow let input, custom delays, opening and focusing windows, starting cli ai in configured workspaces, opening windows explorer to specific folders, etc
-  ✅ macros to into a dropdown for easy activation and deletion 
-  ✅ macros can be used a quick action in  notification or widget 
   
-  
-
-✅ Replace the "kbd" text with a keyboard icon
-
 ✅ Stream PC monitor, replacing background of the trackpad leaving the trackpad functioning still, options to toggle monitor, pinch to zoom, (advanced feature, do last)       
 Streaming pc monitor should have a on/off toggle button (default off) on page2 of button panel, and to settings for resolutioni and framerate. Default to full resolution 10fps
  
 
 ### Files & Video Screen
 
-The header at the top showing current path should allow long pressing it (to give folder context actions)
+✅ When any ai session is active, add "AI: Add dir to [SessionName]"  option to long press folder which will send "/dir add X" to the active session  
+
+
+✅ The header at the top showing current path should allow long pressing it (to give folder context actions)
 
 
 ✅ + button to add files does not work in offline mode, it should be able to create a file that's cached from birth and will sync when connected 
@@ -123,42 +110,15 @@ The header at the top showing current path should allow long pressing it (to giv
 
 ### AI screen
 
-✅ Write AIScreen.md that describes the entire AI screen in very high detail, including every button, what function it calls, how things are above and below eachother and various behaviors and reactions. 
+Add a new input button for sending the enter key 
 
-✅ zoom button zooms in the wrong direction 
-
-✅ The conversation bubbles dont separate very well. When new messages come in, they just get kinda appended to the last message. However if i go to the session list and reselect the same session, the history reloads and looks perfect, except for a dangling "AI: ..." even though the AI isnt thinking. It also becomes stuck on status "Switching sessions..." even though it already switched or didnt need to switch depending on your perspective. 
-
-✅ When the android keyboard is up, there is too much empty space between the keyboard and the buttons. Remote screen previously had this issue but it got fixed, so reference how it handles keyboard up moving of stuff. 
-✅ The "Ask AI..." inputfieldispartially hidden behind the button panel
-
-✅ Reload history doesnt work well
+When sending input such as escape or enter we need to make sure that input gets send to the PID of the active session. don't know if you can do that directly or if we have to focus the windows first 
 
 
+Names for sessions now use the first message to figure out but it's not persistent enough, if i come back to app later it will still show the sessions but have forgotten the names and falls back to session id names 
 
-### Alarm screen
-
-## Web
-
-✅ Reordering blocks, e.g. moving flex before gamedev is not persisted after reload. it should persist the entire day and only reset once per day. Wake up time does persist, do it same way?
-
-## Chrome extension
-
-✅ For all the functions that the extension can do, add them to the right click menu of the extension inside chrome. So e.g. i can open the youtube history video in chrome, from the extension right click menu
-
-✅ Seems unable to reconnect after getting disconnected, I have to uninstall reinstall the extension to work
-
-✅ When disconnecting from hub it gives these errors. Disconnecting shouldnt result in errors, warnings at most or just handle it gracefully.
-
-## Firefox plugin
-
-✅ See D:\SSDProjects\Omni\OmniSync.Firefox
-✅ Integrate that into omni, make it connect to hub but do nothing with that connection for now. 
-✅ It should NOT have the same features as the chrome plugin, its a separate thing. For now it should just have the mute functionality
+if I go on ai screen and type a prompt without creating a session first it gives error instead of auto creating session and sending message when it's ready 
 
 
-## Suff only USER can do
-
-Configure node red options for:
- - Clean browser tabs
- - Alarm for 8.5 hours
+Try to add more advanced rendering of AI replies that contain e.g. codeblocks and tool calls.
+Allow selecting/copy to clipboard messag

@@ -66,6 +66,10 @@ fun FilesScreen(
     val recentlyChangedPaths by filesViewModel.recentlyChangedPaths.collectAsState()
     val cachedPaths by filesViewModel.cachedPaths.collectAsState()
 
+    val sessions by filesViewModel.signalRClient.aiSessions.collectAsState()
+    val selectedPid by filesViewModel.signalRClient.selectedPid.collectAsState()
+    val activeSessionName = sessions[selectedPid]
+
     var showBookmarksList by remember { mutableStateOf(false) }
     var showCachesList by remember { mutableStateOf(false) }
     var showCreateFileDialog by remember { mutableStateOf(false) }
@@ -113,8 +117,65 @@ fun FilesScreen(
 
     Scaffold(
         topBar = {
+            var showHeaderMenu by remember { mutableStateOf(false) }
             TopAppBar(
-                title = { Text(text = "Files: ${currentPath.ifEmpty { "/" }}") },
+                title = { 
+                    Box {
+                        Text(
+                            text = "Files: ${currentPath.ifEmpty { "/" }}",
+                            modifier = Modifier.combinedClickable(
+                                onClick = { },
+                                onLongClick = { showHeaderMenu = true }
+                            )
+                        )
+                        DropdownMenu(
+                            expanded = showHeaderMenu,
+                            onDismissRequest = { showHeaderMenu = false }
+                        ) {
+                            if (currentPath.isNotEmpty() && currentPath != "/") {
+                                if (selectedPid != -1 && activeSessionName != null) {
+                                     DropdownMenuItem(
+                                        text = { Text("AI: Add dir to $activeSessionName") },
+                                        onClick = {
+                                            showHeaderMenu = false
+                                            filesViewModel.signalRClient.sendAiMessage("/dir add \"$currentPath\"")
+                                            Toast.makeText(context, "Added to $activeSessionName", Toast.LENGTH_SHORT).show()
+                                        }
+                                    )
+                                }
+                                DropdownMenuItem(
+                                    text = { Text("Open folder in AI chat") },
+                                    onClick = {
+                                        showHeaderMenu = false
+                                        filesViewModel.mainViewModel.navigateTo(com.omni.sync.viewmodel.AppScreen.AI_CHAT)
+                                        filesViewModel.signalRClient.sendAiMessage("/dir add \"$currentPath\"")
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("CLI Here") },
+                                    onClick = {
+                                        showHeaderMenu = false
+                                        filesViewModel.openCliHere(FileSystemEntry("", currentPath, true, 0, java.util.Date()))
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Cache Whole Folder") },
+                                    onClick = {
+                                        showHeaderMenu = false
+                                        filesViewModel.cacheFolderRecursive(FileSystemEntry("", currentPath, true, 0, java.util.Date()))
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(if (filesViewModel.isBookmarked(currentPath)) "Remove Bookmark" else "Add Bookmark") },
+                                    onClick = {
+                                        showHeaderMenu = false
+                                        filesViewModel.bookmarkCurrentDirectory()
+                                    }
+                                )
+                            }
+                        }
+                    }
+                },
                 navigationIcon = {
                     if (showBookmarksList) {
                         IconButton(onClick = { showBookmarksList = false }) {
@@ -221,12 +282,17 @@ fun FilesScreen(
                         val isRecentlyChanged = recentlyChangedPaths.contains(entry.path)
                         FileSystemEntryItem(
                             entry = entry,
+                            activeSessionName = activeSessionName,
                             isSearching = searchQuery.isNotEmpty(),
                             isBookmarked = filesViewModel.isBookmarked(entry.path),
                             hasPendingEdit = hasPendingEdit,
                             isRecentlyChanged = isRecentlyChanged,
                             formatFileSize = { filesViewModel.formatFileSize(it) },
                             onBookmarkToggle = { filesViewModel.toggleBookmark(it) },
+                            onAddToSession = { entry, name ->
+                                filesViewModel.signalRClient.sendAiMessage("/dir add \"${entry.path}\"")
+                                Toast.makeText(context, "Added to $name", Toast.LENGTH_SHORT).show()
+                            },
                             onClick = { clickedEntry ->
                                 if (clickedEntry.isDirectory) {
                                     if (clickedEntry.path == "VIRTUAL_ENCRYPTED") {
@@ -562,6 +628,8 @@ fun FilesScreen(
 @Composable
 fun FileSystemEntryItem(
     entry: FileSystemEntry, 
+    activeSessionName: String? = null,
+    onAddToSession: (FileSystemEntry, String) -> Unit = { _, _ -> },
     isSearching: Boolean = false,
     isBookmarked: Boolean = false,
     hasPendingEdit: Boolean = false,
@@ -725,6 +793,15 @@ fun FileSystemEntryItem(
                 )
             }
             if (entry.isDirectory) {
+                if (activeSessionName != null) {
+                    DropdownMenuItem(
+                        text = { Text("AI: Add dir to $activeSessionName") },
+                        onClick = {
+                            showMenu = false
+                            onAddToSession(entry, activeSessionName)
+                        }
+                    )
+                }
                 DropdownMenuItem(
                     text = { Text("Open folder in AI chat") },
                     onClick = {
