@@ -81,6 +81,13 @@ fun AiChatScreen(
     val isStartingSession by signalRClient.isStartingSessionFlow.collectAsState()
     val isConnected by mainViewModel.isConnected.collectAsState()
 
+    // Filter messages to avoid empty/dangling bubbles
+    val filteredMessages = remember(messages) {
+        messages.filter { it.second.isNotBlank() }
+    }
+
+    var lastMessageCount by remember { mutableIntStateOf(filteredMessages.size) }
+
     // Animation for session button flash
     val sessionButtonAnim = remember { Animatable(0f) }
     
@@ -92,17 +99,14 @@ fun AiChatScreen(
         }
     }
 
-    // Filter messages to avoid empty/dangling bubbles
-    val filteredMessages = remember(messages) {
-        messages.filter { it.second.isNotBlank() }
-    }
-
     LaunchedEffect(Unit) {
         signalRClient.getAiSessions()
     }
 
-    // Auto-scroll to bottom (Index 0 in reverse layout)
-    LaunchedEffect(filteredMessages, isAiThinking) {
+    // Auto-scroll logic
+    LaunchedEffect(filteredMessages.size, isAiThinking) {
+        val countIncreased = filteredMessages.size > lastMessageCount
+        
         if (filteredMessages.isNotEmpty()) {
             val isReloading = aiStatus?.contains("Reloading", ignoreCase = true) == true || 
                              aiStatus?.contains("Switching", ignoreCase = true) == true
@@ -112,15 +116,15 @@ fun AiChatScreen(
                 listState.scrollToItem(0)
             } else {
                 // Only auto-scroll if we are already at the bottom (index 0)
-                if (listState.firstVisibleItemIndex <= 1) {
-                    if (isAiThinking) {
-                        listState.animateScrollToItem(0)
-                    } else {
-                        listState.animateScrollToItem(0)
-                    }
+                val isAtBottom = listState.firstVisibleItemIndex <= 1
+                val newestIsMe = filteredMessages.lastOrNull()?.first == "Me"
+
+                if (isAtBottom || (countIncreased && newestIsMe)) {
+                    listState.animateScrollToItem(0)
                 }
             }
         }
+        lastMessageCount = filteredMessages.size
     }
 
     // Jump between user messages
@@ -278,12 +282,15 @@ fun AiChatScreen(
                     contentPadding = PaddingValues(top = 8.dp, bottom = 8.dp)
                 ) {
                     if (isAiThinking) {
-                        item {
+                        item(key = "typing_indicator") {
                             AiTypingIndicator()
                         }
                     }
 
-                    items(filteredMessages.reversed()) { (sender, content) ->
+                    items(
+                        items = filteredMessages.reversed(),
+                        key = { it.first + it.second.hashCode() + filteredMessages.indexOf(it) }
+                    ) { (sender, content) ->
                         ChatBubble(sender, content)
                     }
                 }

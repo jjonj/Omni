@@ -77,6 +77,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _dashboardLogs = MutableStateFlow<List<LogEntry>>(emptyList())
     val dashboardLogs: StateFlow<List<LogEntry>> = _dashboardLogs
 
+    private val _activeBaseUrl = MutableStateFlow("")
+    val activeBaseUrl: StateFlow<String> = _activeBaseUrl
+
+    fun setActiveBaseUrl(url: String) {
+        _activeBaseUrl.value = url
+    }
+
     // Add state to hold the current video to play and playlist
     private val _currentVideoUrl = MutableStateFlow<String?>(null)
     val currentVideoUrl: StateFlow<String?> = _currentVideoUrl
@@ -113,7 +120,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     // Helper to extract the base URL (http://10.0.0.37:5000) from the specific Hub URL
     fun getBaseUrl(): String {
-        return appConfig.hubUrl.substringBefore("/signalrhub")
+        return if (_activeBaseUrl.value.isNotEmpty()) _activeBaseUrl.value 
+               else appConfig.hubUrl.substringBefore("/signalrhub")
+    }
+
+    fun getWebServerUrl(): String {
+        val baseUrl = getBaseUrl()
+        return if (baseUrl.contains(":5000")) {
+            baseUrl.replace(":5000", ":3333")
+        } else {
+            // Fallback or if port not specified, append 3333
+            val uri = android.net.Uri.parse(baseUrl)
+            val host = uri.host ?: "10.0.0.37"
+            "http://$host:3333"
+        }
     }
 
     fun saveAppConfig() {

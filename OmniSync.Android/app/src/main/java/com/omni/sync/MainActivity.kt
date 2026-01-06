@@ -221,8 +221,8 @@ class MainActivity : ComponentActivity() {
                             
                             Box(modifier = Modifier.fillMaxSize()) {
                                 if (currentScreen == AppScreen.EDITOR || currentScreen == AppScreen.SETTINGS || 
-                                    currentScreen == AppScreen.DOWNLOADED_VIDEOS || currentScreen == AppScreen.FILES || 
-                                    currentScreen == AppScreen.AI_CHAT || currentScreen == AppScreen.MACRO_MANAGER) {
+                                    currentScreen == AppScreen.DOWNLOADED_VIDEOS || 
+                                    currentScreen == AppScreen.MACRO_MANAGER) {
                                     MainScreenContent(currentScreen, signalRClient, browserViewModel, filesViewModel, mainViewModel, innerPadding)
                                 } else {
                                     // Custom touch slop to make paging less sensitive to diagonal swipes

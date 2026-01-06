@@ -51,7 +51,8 @@ val navigationItems = listOf(
 // Define the burger menu items
 val burgerMenuItems = listOf(
     NavItem(AppScreen.PROCESS, "Process", Icons.Default.Memory),
-    NavItem(AppScreen.ALARM, "Alarm", Icons.Default.Alarm)
+    NavItem(AppScreen.ALARM, "Alarm", Icons.Default.Alarm),
+    NavItem(AppScreen.WEB_SERVER, "OmniWeb", Icons.Default.Public)
 )
 
 @OptIn(ExperimentalLayoutApi::class)

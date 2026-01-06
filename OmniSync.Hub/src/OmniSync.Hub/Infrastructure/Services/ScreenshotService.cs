@@ -2,6 +2,7 @@ using System;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.IO;
+using System.Linq;
 using System.Windows.Forms;
 
 namespace OmniSync.Hub.Infrastructure.Services
@@ -35,32 +36,60 @@ namespace OmniSync.Hub.Infrastructure.Services
             }
         }
 
-        public byte[] CapturePrimaryScreenToMemory()
+        public byte[] CapturePrimaryScreenToMemory(double scale = 1.0, long quality = 50L)
         {
             var primaryScreen = Screen.PrimaryScreen;
             if (primaryScreen == null) return Array.Empty<byte>();
 
-            int width = primaryScreen.Bounds.Width;
-            int height = primaryScreen.Bounds.Height;
+            int sourceWidth = primaryScreen.Bounds.Width;
+            int sourceHeight = primaryScreen.Bounds.Height;
             int top = primaryScreen.Bounds.Top;
             int left = primaryScreen.Bounds.Left;
 
-            using (Bitmap bitmap = new Bitmap(width, height))
+            int targetWidth = (int)(sourceWidth * scale);
+            int targetHeight = (int)(sourceHeight * scale);
+
+            // Sanity check
+            if (targetWidth <= 0) targetWidth = 1;
+            if (targetHeight <= 0) targetHeight = 1;
+
+            using (Bitmap sourceBitmap = new Bitmap(sourceWidth, sourceHeight))
             {
-                using (Graphics g = Graphics.FromImage(bitmap))
+                using (Graphics g = Graphics.FromImage(sourceBitmap))
                 {
-                    g.CopyFromScreen(left, top, 0, 0, bitmap.Size);
+                    g.CopyFromScreen(left, top, 0, 0, sourceBitmap.Size);
                 }
 
-                using (MemoryStream ms = new MemoryStream())
+                Bitmap? targetBitmap = null;
+                try
                 {
-                    // Use a lower quality for streaming to reduce bandwidth
-                    var encoder = ImageCodecInfo.GetImageEncoders().First(c => c.FormatID == ImageFormat.Jpeg.Guid);
-                    var parameters = new EncoderParameters(1);
-                    parameters.Param[0] = new EncoderParameter(Encoder.Quality, 50L); // 50% quality
+                    if (scale >= 0.99 && scale <= 1.01)
+                    {
+                        targetBitmap = sourceBitmap;
+                    }
+                    else
+                    {
+                        targetBitmap = new Bitmap(sourceBitmap, targetWidth, targetHeight);
+                    }
 
-                    bitmap.Save(ms, encoder, parameters);
-                    return ms.ToArray();
+                    using (MemoryStream ms = new MemoryStream())
+                    {
+                        var encoder = ImageCodecInfo.GetImageEncoders().FirstOrDefault(c => c.FormatID == ImageFormat.Jpeg.Guid);
+                        if (encoder == null) return Array.Empty<byte>();
+
+                        var parameters = new EncoderParameters(1);
+                        parameters.Param[0] = new EncoderParameter(Encoder.Quality, quality);
+
+                        targetBitmap.Save(ms, encoder, parameters);
+                        return ms.ToArray();
+                    }
+                }
+                finally
+                {
+                    if (targetBitmap != null && targetBitmap != sourceBitmap)
+                    {
+                        targetBitmap.Dispose();
+                    }
                 }
             }
         }

@@ -38,9 +38,9 @@ namespace OmniSync.Hub.Presentation.Controllers
         }
 
         [HttpGet("screenshot")]
-        public IActionResult GetScreenshot()
+        public IActionResult GetScreenshot([FromQuery] double scale = 1.0, [FromQuery] long quality = 50L)
         {
-            var data = _screenshotService.CapturePrimaryScreenToMemory();
+            var data = _screenshotService.CapturePrimaryScreenToMemory(scale, quality);
             if (data == null || data.Length == 0) return NotFound();
             return File(data, "image/jpeg");
         }

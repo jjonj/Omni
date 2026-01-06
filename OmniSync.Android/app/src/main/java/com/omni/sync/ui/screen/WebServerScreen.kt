@@ -11,8 +11,9 @@ import androidx.compose.ui.viewinterop.AndroidView
 
 @Composable
 fun WebServerScreen(
-    url: String = "http://10.0.0.37:3333"
+    mainViewModel: com.omni.sync.viewmodel.MainViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
 ) {
+    val url = mainViewModel.getWebServerUrl()
     Scaffold(
         modifier = Modifier.fillMaxSize()
     ) { padding ->

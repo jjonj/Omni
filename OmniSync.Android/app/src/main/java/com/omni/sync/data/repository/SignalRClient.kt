@@ -94,6 +94,9 @@ class SignalRClient(
     private val _connectionState = MutableStateFlow("Disconnected")
     val connectionState: StateFlow<String> = _connectionState
 
+    private val _currentBaseUrl = MutableStateFlow("")
+    val currentBaseUrl: StateFlow<String> = _currentBaseUrl
+
     private val _cleanupPatterns = MutableStateFlow<List<String>>(emptyList())      
     val cleanupPatterns: StateFlow<List<String>> = _cleanupPatterns
 
@@ -146,14 +149,17 @@ class SignalRClient(
         const val KEY_LAST_CONNECTED_HUB_URL = "last_connected_hub_url"
     }
 
-    private fun onConnected() {
+    private fun onConnected(url: String) {
         _connectionState.value = "Connected"
+        val baseUrl = url.substringBefore("/signalrhub")
+        _currentBaseUrl.value = baseUrl
+        mainViewModel.setActiveBaseUrl(baseUrl)
         mainViewModel.setConnected(true)
         authenticateClient()
         getAiSessions()
         val sharedPrefs = context.getSharedPreferences(SHARED_PREFS_NAME, Context.MODE_PRIVATE)
-        sharedPrefs.edit().putString(KEY_LAST_CONNECTED_HUB_URL, hubUrl).apply()    
-        mainViewModel.addLog("Connected to hub: $hubUrl", com.omni.sync.ui.screen.LogType.SUCCESS)
+        sharedPrefs.edit().putString(KEY_LAST_CONNECTED_HUB_URL, url).apply()    
+        mainViewModel.addLog("Connected to hub: $url", com.omni.sync.ui.screen.LogType.SUCCESS)
 
         if (isReconnecting.compareAndSet(true, false)) {
             reconnectJob?.cancel()
@@ -222,7 +228,7 @@ class SignalRClient(
 
         hubConnection?.start()
             ?.doOnComplete { 
-                onConnected() 
+                onConnected(url) 
                 mainViewModel.addLog("Connected to: $url", com.omni.sync.ui.screen.LogType.SUCCESS)
             }
             ?.doOnError { error ->
