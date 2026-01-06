@@ -503,6 +503,22 @@
         .quiz-feedback.correct { color: var(--success); text-shadow: 0 0 20px rgba(50, 215, 75, 0.5); }
         .quiz-feedback.wrong { color: var(--danger); text-shadow: 0 0 20px rgba(255, 69, 58, 0.5); }
 
+        #quiz-rank {
+            font-family: 'Inter', sans-serif;
+            letter-spacing: 1px;
+            text-shadow: 0 0 10px rgba(0,0,0,0.5);
+        }
+
+        @keyframes rank-up {
+            0% { transform: scale(1); filter: brightness(1); }
+            50% { transform: scale(1.5); filter: brightness(2); }
+            100% { transform: scale(1); filter: brightness(1); }
+        }
+
+        .rank-changed {
+            animation: rank-up 0.8s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
         .quiz-options-area {
             background: var(--bg-elevated);
             border: 1px solid var(--border);
@@ -617,6 +633,7 @@
             <a href="Test.html" class="nav-item">Test</a>
             <a href="Settings.html" class="nav-item">Settings</a>
             <a href="IslandGenerator/index.html" class="nav-item">Island</a>
+            <button id="toggle-dev-console" class="nav-item" style="margin-left: auto; font-size: 10px; background: transparent; border: 1px solid var(--border);">Console</button>
         </nav>
 
         <div class="tft-container">
@@ -919,6 +936,14 @@
                                 <!-- Selection pool -->
                             </div>
                         </div>
+
+                        <!-- Historical Rank Graph -->
+                        <div class="hub-box" style="padding: 12px; display: flex; flex-direction: column; gap: 8px;">
+                            <h3 style="font-size: 10px; text-transform: uppercase; color: var(--text-dim); margin: 0;">Historical Rank Progress</h3>
+                            <div id="quiz-history-graph" style="width: 100%; height: 100px; background: var(--bg); border-radius: 8px; border: 1px solid var(--border); overflow: hidden; position: relative;">
+                                <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: var(--text-dimmer); font-size: 10px;">Play more games to see your progress</div>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
@@ -953,10 +978,22 @@
                             </div>
                         </div>
 
+                        <div style="margin-top: 30px;">
+                            <h3>Debug Tools</h3>
+                            <div class="hub-status-item" style="flex-direction: column; align-items: flex-start; gap: 8px;">
+                                <label class="hub-status-label">Rank Cheat (Disables History/Saving)</label>
+                                <div style="display: flex; align-items: center; gap: 12px; width: 100%;">
+                                    <input type="range" id="rank-cheat-slider" min="0" max="9" value="0" step="1" oninput="cheatRank(this.value)" style="flex: 1;">
+                                    <span id="rank-cheat-value" class="hub-status-value" style="width: 100px; text-align: right;">IRON</span>
+                                </div>
+                            </div>
+                        </div>
+
                         <div style="margin-top: 30px; border-top: 1px solid var(--border); padding-top: 20px;">
                             <div style="display: flex; gap: 10px; margin-bottom: 10px;">
                                 <button class="modern-btn" onclick="loadTFTData()">Reload Data</button>
                                 <button class="modern-btn primary" onclick="runLogicTests()">Run Logic Tests</button>
+                                <button class="modern-btn danger" onclick="reproduceFilterIssue()">Reproduce Filter Issue</button>
                             </div>
                             <button class="modern-btn danger" style="width: 100%;" onclick="hardRefresh()">FORCE CACHE CLEAR & REFRESH</button>
                         </div>
@@ -973,9 +1010,13 @@
     <script src="js/config.js"></script>
     <script>
         function hardRefresh() {
-            if (confirm("This will clear local settings and force a full reload. Continue?")) {
-                // Clear all local storage related to TFT
-                localStorage.clear();
+            if (confirm("This will clear local settings (except persistent quiz progress) and force a full reload. Continue?")) {
+                // Clear all local storage related to TFT except persistent ones
+                Object.keys(localStorage).forEach(key => {
+                    if (key.startsWith('tft_') && !key.startsWith('tft_persistent_')) {
+                        localStorage.removeItem(key);
+                    }
+                });
                 // Clear session storage
                 sessionStorage.clear();
                 // Append cache buster to force browser to ignore cache
@@ -985,7 +1026,18 @@
     </script>
     <script src="js/tft_optimizer.js"></script>
     <script src="js/TeamPlannerCode.js"></script>
-    <script src="js/tft_tests.js"></script>
-    <script src="js/tft.js"></script>
-</body>
-</html>
+        <script src="js/tft_tests.js"></script>
+        <script src="js/tft_filter_test.js"></script>
+        <script src="js/tft.js"></script>
+    
+        <div id="dev-console" class="hidden">
+            <div class="dev-console-header">
+                <span class="dev-console-title">System Console</span>
+                <button id="btn-clear-console">Clear</button>
+            </div>
+            <div id="console-output"></div>
+        </div>
+        <script src="js/dev-console.js"></script>
+    </body>
+    </html>
+    

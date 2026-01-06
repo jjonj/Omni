@@ -103,20 +103,21 @@ namespace OmniSync.Hub.Infrastructure.Services
                 bool isShiftPressed = (GetKeyState((int)Keys.LShiftKey) & 0x8000) != 0 || (GetKeyState((int)Keys.RShiftKey) & 0x8000) != 0;
                 bool isCtrlPressed = (GetKeyState((int)Keys.LControlKey) & 0x8000) != 0 || (GetKeyState((int)Keys.RControlKey) & 0x8000) != 0;
                 bool isAltPressed = (GetKeyState((int)Keys.LMenu) & 0x8000) != 0 || (GetKeyState((int)Keys.RMenu) & 0x8000) != 0;
+                bool isWinPressed = (GetKeyState((int)Keys.LWin) & 0x8000) != 0 || (GetKeyState((int)Keys.RWin) & 0x8000) != 0;
 
                 if (wParam == (IntPtr)WM_KEYDOWN || wParam == (IntPtr)WM_SYSKEYDOWN)
                 {
                     KBDLLHOOKSTRUCT hookStruct = (KBDLLHOOKSTRUCT)Marshal.PtrToStructure(lParam, typeof(KBDLLHOOKSTRUCT));
                     Keys key = (Keys)hookStruct.vkCode;
-                    _logger.LogDebug($"Key Down: {key}, Shift: {isShiftPressed}, Ctrl: {isCtrlPressed}, Alt: {isAltPressed}");
-                    KeyActionOccurred?.Invoke(this, new KeyHookEventArgs(key, KeyState.Down, isShiftPressed, isCtrlPressed, isAltPressed));
+                    _logger.LogDebug($"Key Down: {key}, Shift: {isShiftPressed}, Ctrl: {isCtrlPressed}, Alt: {isAltPressed}, Win: {isWinPressed}");
+                    KeyActionOccurred?.Invoke(this, new KeyHookEventArgs(key, KeyState.Down, isShiftPressed, isCtrlPressed, isAltPressed, isWinPressed));
                 }
                 else if (wParam == (IntPtr)WM_KEYUP || wParam == (IntPtr)WM_SYSKEYUP)
                 {
                     KBDLLHOOKSTRUCT hookStruct = (KBDLLHOOKSTRUCT)Marshal.PtrToStructure(lParam, typeof(KBDLLHOOKSTRUCT));
                     Keys key = (Keys)hookStruct.vkCode;
-                    _logger.LogDebug($"Key Up: {key}, Shift: {isShiftPressed}, Ctrl: {isCtrlPressed}, Alt: {isAltPressed}");
-                    KeyActionOccurred?.Invoke(this, new KeyHookEventArgs(key, KeyState.Up, isShiftPressed, isCtrlPressed, isAltPressed));
+                    _logger.LogDebug($"Key Up: {key}, Shift: {isShiftPressed}, Ctrl: {isCtrlPressed}, Alt: {isAltPressed}, Win: {isWinPressed}");
+                    KeyActionOccurred?.Invoke(this, new KeyHookEventArgs(key, KeyState.Up, isShiftPressed, isCtrlPressed, isAltPressed, isWinPressed));
                 }
             }
             return CallNextHookEx(_hookID, nCode, wParam, lParam);
@@ -143,14 +144,16 @@ namespace OmniSync.Hub.Infrastructure.Services
         public bool Shift { get; private set; }
         public bool Control { get; private set; }
         public bool Alt { get; private set; }
+        public bool Win { get; private set; }
 
-        public KeyHookEventArgs(Keys key, KeyState state, bool shift, bool control, bool alt)
+        public KeyHookEventArgs(Keys key, KeyState state, bool shift, bool control, bool alt, bool win = false)
         {
             Key = key;
             State = state;
             Shift = shift;
             Control = control;
             Alt = alt;
+            Win = win;
         }
     }
 }

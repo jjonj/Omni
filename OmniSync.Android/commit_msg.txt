@@ -1,6 +1,5 @@
-Fix keyboard overlay, system bar visibility, and backspace buffer in RemoteControlScreen
+Update Macro syntax to use () and add helper buttons
 
-- Added adjustResize to AndroidManifest.xml
-- Corrected system bar visibility logic in MainActivity.kt
-- Increased backspace buffer to 2 spaces in RemoteControlScreen.kt
-- Improved Set 2 button layout and fixed Left Arrow icon
+- Updated MacroExecutor to allow using () instead of {} for special keys (e.g. (Enter)).
+- Added "Win" (#) and "Tab" ((Tab)) insert buttons.
+- Updated syntax help to reflect the new () convention.

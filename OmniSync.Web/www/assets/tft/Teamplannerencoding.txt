@@ -34,3 +34,51 @@ Cho'Gath	354	Base Unit
 Lulu	355	Base Unit
 Sett	362	Base Unit
 Ziggs	371	Base Unit
+
+
+
+Below are teamcodes of up to 10 units per code, all units sorted first by cost and then by alphabet, use that to extAnivia to extract unit codes.
+
+1 Costs
+Anivia to qiyanna 
+0233e34a32f34932c3383743552e002cTFTSet16
+
+Rumble to Viego
+0232135133a024000000000000000000TFTSet16
+
+2 costs
+Aphelios to Reksai
+0233533f01835401502734302b36f353TFTSet16
+Sion to Yorick
+0232e3202df01132334b01034d00f000TFTSet16
+
+3 costs
+ahri to leblanc
+0234f36b33102f32401d348370035017TFTSet16
+
+Leona to Zoe
+02334020352342322361004333000000TFTSet16
+
+4 costs
+Ambessa to Lux
+
+0233236634002336e33c01b01e34133dTFTSet16
+
+MF
+0232d000000000000000000000000000TFTSet16
+
+Nasus to Veigar (Nasus Nidalee renekton rift herald seraphine singed skarner swain taric veigar) // I think you might be missing rift herald in ur data. Its brusier void
+0202201401c01634c36701a025336369TFTSet16
+
+Warwick Wukong Yone Yunara
+0236d35036c02a000000000000000000TFTSet16
+
+5 costs ( you might be missing several of these, ask me for their traits and add them)
+Aatrox annie aurelion sol azir baron naashor brock fiddlesticks galio kindred Lucian & Senna
+0237235636835936a36335b35f358034TFTSet16
+
+Mel ornn ryze sett shyvana sylas tahm kench T-Hex Thresh Volibear
+0201935701336235d012360365021373TFTSet16
+
+Azir Zaahen Ziggs Zilean
+0201f03037135a000000000000000000TFTSet16

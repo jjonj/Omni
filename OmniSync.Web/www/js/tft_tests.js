@@ -391,6 +391,21 @@ class TFTTester {
         this.assert(checked.includes(5) && checked.includes(9), "Levels not restored correctly");
     }
 
+    async testDemacia7AtLevel8() {
+        const demaciaTrait = "Demacia";
+        const pool = this.data.units.filter(u => u.cost <= 5);
+        const mustIncludeTraits = { "Demacia": 7 };
+        
+        console.log("[Test] Finding 7 Demacia at level 8...");
+        const { results } = await this.optimizer.findBestBoards(pool, 8, [], [], 'default', mustIncludeTraits, 1, null, 'super');
+        
+        this.assert(results.length > 0, "Failed to find any Demacia 7 board at level 8");
+        const res = results[0];
+        const demaciaCount = res.counts[demaciaTrait] || 0;
+        this.assert(demaciaCount >= 7, `Board only has ${demaciaCount} Demacia (expected >= 7). Board: ${res.board.map(u=>u.name).join(',')}`);
+        console.log("[Test] Found Demacia 7 board:", res.board.map(u => u.name).join(', '));
+    }
+
     async testNidaleeAutoIncludeBug() {
         // This test simulates the UI's rendering logic fix.
         const neekoUnit = this.data.units.find(u => u.name === "Neeko");

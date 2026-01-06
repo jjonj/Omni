@@ -1,0 +1,8 @@
+{
+  "track_id": "heightmap_diagnostics_20260105",
+  "type": "feature",
+  "status": "new",
+  "created_at": "2026-01-05T12:12:00Z",
+  "updated_at": "2026-01-05T12:12:00Z",
+  "description": "Expose heightmap generation stages as sublayers and add a hillshade toggle."
+}

@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OmniSync - Settings</title>
+    <link rel="stylesheet" href="css/style.css">
+    <style>
+        .settings-container {
+            display: flex;
+            flex-direction: column;
+            height: calc(100vh - 56px);
+            overflow: hidden;
+            background: var(--bg);
+        }
+
+        .settings-tabs {
+            display: flex;
+            background: var(--bg-elevated);
+            border-bottom: 1px solid var(--border);
+            padding: 0 24px;
+            gap: 16px;
+        }
+
+        .settings-tab {
+            padding: 12px 20px;
+            color: var(--text-dim);
+            text-decoration: none;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            transition: all var(--transition-fast);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .settings-tab:hover {
+            color: var(--text-bright);
+        }
+
+        .settings-tab.active {
+            color: var(--accent);
+            border-bottom-color: var(--accent);
+        }
+
+        .settings-content {
+            flex: 1;
+            padding: 24px;
+            overflow-y: auto;
+        }
+
+        .tab-panel {
+            display: none;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        .tab-panel.active {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .hotkey-row {
+            display: grid;
+            grid-template-columns: 1fr 150px 100px;
+            gap: 16px;
+            align-items: center;
+            background: var(--bg-elevated);
+            padding: 12px 16px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            transition: border-color var(--transition-fast);
+        }
+
+        .hotkey-row:hover {
+            border-color: var(--border-light);
+        }
+
+        .hotkey-name {
+            font-size: 14px;
+            color: var(--text-bright);
+            font-weight: 500;
+        }
+
+        .hotkey-input {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            color: var(--accent);
+            padding: 6px 10px;
+            border-radius: 4px;
+            font-family: var(--font-mono);
+            font-size: 12px;
+            text-align: center;
+            cursor: pointer;
+            transition: all var(--transition-fast);
+        }
+
+        .hotkey-input:focus {
+            outline: none;
+            border-color: var(--accent);
+            box-shadow: 0 0 0 2px rgba(10, 132, 255, 0.2);
+        }
+
+        .hotkey-input.recording {
+            background: rgba(10, 132, 255, 0.1);
+            border-color: var(--accent);
+            color: var(--text-bright);
+            animation: pulse-border 1.5s infinite;
+        }
+
+        @keyframes pulse-border {
+            0% { border-color: var(--accent); }
+            50% { border-color: var(--text-bright); }
+            100% { border-color: var(--accent); }
+        }
+
+        .save-bar {
+            position: sticky;
+            bottom: 0;
+            background: var(--bg);
+            padding: 16px 0;
+            border-top: 1px solid var(--border);
+            display: flex;
+            justify-content: flex-end;
+            margin-top: auto;
+        }
+    </style>
+</head>
+<body>
+    <div class="app-layout">
+        <!-- Navigation -->
+        <nav class="nav-menu">
+            <div class="nav-brand">OMNISYNC</div>
+            <a href="index.html" class="nav-item">Hub</a>
+            <a href="Scheduler.html" class="nav-item">Scheduler</a>
+            <a href="TFT.html" class="nav-item">TFT</a>
+            <a href="Test.html" class="nav-item">Test</a>
+            <a href="Settings.html" class="nav-item active">Settings</a>
+            <a href="IslandGenerator/index.html" class="nav-item">Island</a>
+            <button id="toggle-dev-console" class="nav-item" style="margin-left: auto; font-size: 10px; background: transparent; border: 1px solid var(--border);">Console</button>
+        </nav>
+
+        <div class="settings-container">
+            <!-- Secondary Navigation Tabs -->
+            <div class="settings-tabs">
+                <div class="settings-tab active" onclick="switchTab('general')">General</div>
+                <div class="settings-tab" onclick="switchTab('hotkeys')">Hotkeys</div>
+            </div>
+
+            <div class="settings-content">
+                <!-- General Settings Panel -->
+                <div id="general" class="tab-panel active">
+                    <div class="hub-box">
+                        <h2>General Hub Settings</h2>
+                        <div style="display: flex; flex-direction: column; gap: 16px;">
+                            <label class="hub-status-label" style="display: flex; align-items: center; gap: 12px; cursor: pointer; text-transform: none; font-size: 14px;">
+                                <input type="checkbox" id="run-on-startup" onchange="toggleStartup(this.checked)">
+                                Run OmniSync Hub on Windows Startup
+                            </label>
+                            
+                            <div style="border-top: 1px solid var(--border); padding-top: 16px; margin-top: 8px;">
+                                <h3 style="font-size: 12px; color: var(--text-dim); margin-bottom: 12px; text-transform: uppercase;">Exe Mappings</h3>
+                                <div id="exe-mappings-list" style="display: flex; flex-direction: column; gap: 8px;">
+                                    <!-- Populated by JS -->
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Hotkeys Panel -->
+                <div id="hotkeys" class="tab-panel">
+                    <div class="hub-box">
+                        <h2>Hotkey Management</h2>
+                        <p style="font-size: 12px; color: var(--text-dim); margin-bottom: 20px;">
+                            Configure global hotkeys for OmniSync Hub. Click a box and press the desired key combination.
+                        </p>
+                        <div id="hotkeys-list" style="display: flex; flex-direction: column; gap: 10px;">
+                            <!-- Populated by JS -->
+                        </div>
+                        
+                        <div class="save-bar">
+                            <button class="modern-btn primary" onclick="saveHotkeys()">Save Hotkey Configuration</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/signalr.min.js"></script>
+    <script src="js/config.js"></script>
+        <script src="js/settings.js"></script>
+        <div id="dev-console" class="hidden">
+            <div class="dev-console-header">
+                <span class="dev-console-title">System Console</span>
+                <button id="btn-clear-console">Clear</button>
+            </div>
+            <div id="console-output"></div>
+        </div>
+        <script src="js/dev-console.js"></script>
+    </body>
+    </html>
+    

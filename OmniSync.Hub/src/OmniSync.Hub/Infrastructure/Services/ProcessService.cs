@@ -3,14 +3,27 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace OmniSync.Hub.Infrastructure.Services
 {
     public class ProcessService
     {
+        [DllImport("user32.dll")]
+        private static extern bool SetForegroundWindow(IntPtr hWnd);
+
+        [DllImport("user32.dll")]
+        private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+
+        [DllImport("user32.dll")]
+        private static extern bool IsIconic(IntPtr hWnd);
+
+        private const int SW_RESTORE = 9;
+
         private readonly HubSettingsService _settingsService;
         public event EventHandler<string> CommandOutputReceived;
 
@@ -137,6 +150,26 @@ foreach ($p in $procs) {{
 }}
 ";
             RunPowerShell(script);
+        }
+
+        public void WinActivatePid(int pid)
+        {
+            try
+            {
+                var proc = Process.GetProcessById(pid);
+                var handle = proc.MainWindowHandle;
+                if (handle != IntPtr.Zero)
+                {
+                    if (IsIconic(handle)) ShowWindow(handle, SW_RESTORE);
+                    SetForegroundWindow(handle);
+                }
+                else
+                {
+                    // Fallback to Shell AppActivate if MainWindowHandle is not ready/available
+                    RunPowerShell($"(New-Object -ComObject WScript.Shell).AppActivate({pid})");
+                }
+            }
+            catch { }
         }
 
         public void WinClose(string target)

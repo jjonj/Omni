@@ -15,7 +15,9 @@
             <a href="Scheduler.html" class="nav-item active">Scheduler</a>
             <a href="TFT.html" class="nav-item">TFT</a>
             <a href="Test.html" class="nav-item">Test</a>
+            <a href="Settings.html" class="nav-item">Settings</a>
             <a href="IslandGenerator/index.html" class="nav-item">Island</a>
+            <button id="toggle-dev-console" class="nav-item" style="margin-left: auto; font-size: 10px; background: transparent; border: 1px solid var(--border);">Console</button>
         </nav>
         
         <!-- Content Wrapper with Sidebar + Main -->
@@ -122,6 +124,15 @@
     <script src="js/config.js"></script>
     <script src="js/audio.js"></script>
     <script src="js/gcal.js"></script>
-    <script src="js/app.js"></script>
-</body>
-</html>
+        <script src="js/app.js"></script>
+        <div id="dev-console" class="hidden">
+            <div class="dev-console-header">
+                <span class="dev-console-title">System Console</span>
+                <button id="btn-clear-console">Clear</button>
+            </div>
+            <div id="console-output"></div>
+        </div>
+        <script src="js/dev-console.js"></script>
+    </body>
+    </html>
+    

@@ -3,11 +3,10 @@
 ---
 ---
 
-## [ ] Track: TFT Team Planner Encoding
+## [~] Track: TFT Team Planner Encoding
 *Link: [./conductor/tracks/feat_tft_team_planner_encoding_20260104/](./conductor/tracks/feat_tft_team_planner_encoding_20260104/)*
 
-## [x] Track: TFT Composition Templates
-*Link: [./conductor/tracks/tft_comps_20260104/](./conductor/tracks/tft_comps_20260104/)*
+---
 
 ## [ ] Track: Island Generator
 *Submodule: [OmniSync.Web/www/IslandGenerator/](../OmniSync.Web/www/IslandGenerator/)*
@@ -15,5 +14,5 @@
 
 ---
 
-## [~] Track: Heightmap Generation Diagnostics
-*Link: [./conductor/tracks/heightmap_diagnostics_20260105/](./conductor/tracks/heightmap_diagnostics_20260105/)*
+## [~] Track: Improving Hydrology Height Generation
+*Link: [./conductor/tracks/hydrology_height_improvement_20260105/](./conductor/tracks/hydrology_height_improvement_20260105/)*

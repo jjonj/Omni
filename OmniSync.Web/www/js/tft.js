@@ -20,16 +20,41 @@ let activeDisabledUnits = [];
 let hubConnection = null;
 let lastReceivedClipboard = "";
 
+// Migrate old quiz progress keys to persistent ones
+[
+    'quiz_lp', 'quiz_rank_index', 'quiz_division_index', 'quiz_history', 
+    'quiz_xp', 'quiz_level', 'quiz_best_streak', 'quiz_high_score'
+].forEach(suffix => {
+    const oldKey = 'tft_' + suffix;
+    const newKey = 'tft_persistent_' + suffix;
+    if (localStorage.getItem(oldKey) !== null && localStorage.getItem(newKey) === null) {
+        localStorage.setItem(newKey, localStorage.getItem(oldKey));
+    }
+});
+
 // Quiz State
+const RANKS = ['IRON', 'BRONZE', 'SILVER', 'GOLD', 'PLATINUM', 'EMERALD', 'DIAMOND', 'MASTER', 'GRANDMASTER', 'CHALLENGER'];
+const DIVISIONS = ['IV', 'III', 'II', 'I'];
+const SCORE_THRESHOLD = 50; // Points within best score to be considered correct
+
 let quizState = {
     score: 0,
-    highScore: parseInt(localStorage.getItem('tft_quiz_high_score') || '0'),
+    highScore: parseInt(localStorage.getItem('tft_persistent_quiz_high_score') || '0'),
     streak: 0,
-    bestStreak: parseInt(localStorage.getItem('tft_quiz_best_streak') || '0'),
-    xp: parseInt(localStorage.getItem('tft_quiz_xp') || '0'),
-    level: parseInt(localStorage.getItem('tft_quiz_level') || '1'),
+    bestStreak: parseInt(localStorage.getItem('tft_persistent_quiz_best_streak') || '0'),
+    xp: parseInt(localStorage.getItem('tft_persistent_quiz_xp') || '0'),
+    level: parseInt(localStorage.getItem('tft_persistent_quiz_level') || '1'),
+    
+    // LoL Rank System
+    lp: parseInt(localStorage.getItem('tft_persistent_quiz_lp') || '0'),
+    rankIndex: parseInt(localStorage.getItem('tft_persistent_quiz_rank_index') || '0'), // Index in RANKS
+    divisionIndex: parseInt(localStorage.getItem('tft_persistent_quiz_division_index') || '0'), // Index in DIVISIONS (0=IV, 3=I)
+    history: JSON.parse(localStorage.getItem('tft_persistent_quiz_history') || '[]'), // Array of {t: timestamp, lp: cumulative_lp}
+
     currentBoard: null,
-    hiddenUnit: null,
+    hiddenUnits: [], // Now an array for multiple hidden units
+    validAlternativeUnits: [], // Array of arrays, matching hiddenUnits length. Each inner array contains alternative unit objects.
+    guessedUnits: [], // Units correctly guessed in current turn
     activeEmblems: [],
     baseCounts: {},
     finalCounts: {},
@@ -38,8 +63,183 @@ let quizState = {
     isAnswered: false,
     isGenerating: false,
     timer: null,
-    secondsLeft: 0
+    secondsLeft: 0,
+    lastLevel: 6, // Track current question level for LP calculation
+    debugMode: false // When true, rank changes are not saved
 };
+
+function getQuizTime() {
+    if (quizState.difficulty === 'zen') return 0;
+    
+    // Ranks: 0: Iron, 1: Bronze, 2: Silver, 3: Gold, 4: Platinum, 5: Emerald, 6: Diamond, 7: Master, 8: GM, 9: Challenger
+    const times = [120, 100, 80, 60, 45, 35, 25, 20, 15, 10];
+    let baseTime = times[quizState.rankIndex] || 20;
+    
+    // Blitz and Hardcore modifiers
+    if (quizState.difficulty === 'blitz') baseTime = Math.min(baseTime, 10);
+    if (quizState.difficulty === 'hard') baseTime = Math.min(baseTime, 15);
+    
+    // 50% extra time for 2-unit questions
+    if (quizState.hiddenUnits && quizState.hiddenUnits.length > 1) {
+        baseTime = Math.floor(baseTime * 1.5);
+    }
+    
+    return baseTime;
+}
+
+function cheatRank(val) {
+    quizState.rankIndex = parseInt(val);
+    quizState.divisionIndex = 0;
+    quizState.lp = 0;
+    quizState.debugMode = true; // Flag to disable history/saving
+    
+    const label = document.getElementById('rank-cheat-value');
+    if (label) label.innerText = RANKS[quizState.rankIndex];
+    
+    const slider = document.getElementById('rank-cheat-slider');
+    if (slider) slider.value = val;
+    
+    updateQuizStats();
+}
+
+function getCumulativeLP(rankIdx, divIdx, lp) {
+    if (rankIdx >= 7) { // Master+
+        return (7 * 400) + lp;
+    }
+    return (rankIdx * 400) + (divIdx * 100) + lp;
+}
+
+function saveQuizProgress() {
+    localStorage.setItem('tft_persistent_quiz_lp', quizState.lp);
+    localStorage.setItem('tft_persistent_quiz_rank_index', quizState.rankIndex);
+    localStorage.setItem('tft_persistent_quiz_division_index', quizState.divisionIndex);
+    localStorage.setItem('tft_persistent_quiz_history', JSON.stringify(quizState.history));
+    localStorage.setItem('tft_persistent_quiz_xp', quizState.xp);
+    localStorage.setItem('tft_persistent_quiz_level', quizState.level);
+    localStorage.setItem('tft_persistent_quiz_best_streak', quizState.bestStreak);
+    localStorage.setItem('tft_persistent_quiz_high_score', quizState.highScore);
+}
+
+function updateRank(lpChange) {
+    if (quizState.debugMode) {
+        quizState.lp += lpChange;
+        updateQuizStats();
+        return;
+    }
+    let oldCumulative = getCumulativeLP(quizState.rankIndex, quizState.divisionIndex, quizState.lp);
+    quizState.lp += lpChange;
+
+    // Rank Up / Down Logic
+    if (quizState.rankIndex < 7) { // Below Master
+        while (quizState.lp >= 100) {
+            if (quizState.divisionIndex < 3) {
+                quizState.divisionIndex++;
+                quizState.lp -= 100;
+            } else {
+                if (quizState.rankIndex < RANKS.length - 1) {
+                    quizState.rankIndex++;
+                    quizState.divisionIndex = 0;
+                    quizState.lp -= 100;
+                    triggerConfetti();
+                } else {
+                    quizState.lp = 100; // Cap? Or just let it grow in Challenger?
+                    break;
+                }
+            }
+        }
+        while (quizState.lp < 0) {
+            if (quizState.divisionIndex > 0) {
+                quizState.divisionIndex--;
+                quizState.lp += 100;
+            } else {
+                if (quizState.rankIndex > 0) {
+                    quizState.rankIndex--;
+                    quizState.divisionIndex = 3;
+                    quizState.lp += 100;
+                } else {
+                    quizState.lp = 0;
+                    break;
+                }
+            }
+        }
+    } else { // Master+ (No divisions)
+        // Check for promotion to GM/Challenger based on LP thresholds
+        // Simplified: Master starts at 2800 cumulative (7 * 400)
+        // GM at 3300 (+500), Challenger at 3800 (+1000)
+        let totalMasterLP = quizState.lp; // In Master+, lp is just uncapped
+        if (totalMasterLP >= 1000) {
+            quizState.rankIndex = 9; // Challenger
+        } else if (totalMasterLP >= 500) {
+            quizState.rankIndex = 8; // Grandmaster
+        } else {
+            quizState.rankIndex = 7; // Master
+        }
+        
+        if (quizState.lp < 0 && quizState.rankIndex === 7) {
+            // Drop back to Diamond I
+            quizState.rankIndex = 6;
+            quizState.divisionIndex = 3;
+            quizState.lp = 75; // Safety buffer
+        }
+    }
+
+    // Add to history
+    let newCumulative = getCumulativeLP(quizState.rankIndex, quizState.divisionIndex, quizState.lp);
+    quizState.history.push({
+        t: Date.now(),
+        lp: newCumulative
+    });
+    
+    // Keep history manageable (last 50 games)
+    if (quizState.history.length > 50) {
+        quizState.history.shift();
+    }
+
+    saveQuizProgress();
+    updateQuizStats();
+    renderRankGraph();
+}
+
+function renderRankGraph() {
+    const container = document.getElementById('quiz-history-graph');
+    if (!container || quizState.history.length < 2) return;
+
+    const width = container.clientWidth;
+    const height = container.clientHeight;
+    const padding = 20;
+
+    const history = quizState.history;
+    const minLP = Math.min(...history.map(h => h.lp));
+    const maxLP = Math.max(...history.map(h => h.lp));
+    const lpRange = Math.max(100, maxLP - minLP);
+    
+    const points = history.map((h, i) => {
+        const x = padding + (i / (history.length - 1)) * (width - 2 * padding);
+        const y = height - padding - ((h.lp - minLP) / lpRange) * (height - 2 * padding);
+        return `${x},${y}`;
+    }).join(' ');
+
+    container.innerHTML = `
+        <svg width="100%" height="100%" viewBox="0 0 ${width} ${height}" style="overflow: visible;">
+            <defs>
+                <linearGradient id="graphGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stop-color="var(--accent)" stop-opacity="0.3"/>
+                    <stop offset="100%" stop-color="var(--accent)" stop-opacity="0"/>
+                </linearGradient>
+            </defs>
+            <path d="M ${points} L ${width - padding},${height - padding} L ${padding},${height - padding} Z" fill="url(#graphGradient)" />
+            <polyline points="${points}" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linejoin="round" />
+            ${history.map((h, i) => {
+                const x = padding + (i / (history.length - 1)) * (width - 2 * padding);
+                const y = height - padding - ((h.lp - minLP) / lpRange) * (height - 2 * padding);
+                if (i === history.length - 1 || i === 0) {
+                    return `<circle cx="${x}" cy="${y}" r="3" fill="var(--accent)" />`;
+                }
+                return '';
+            }).join('')}
+        </svg>
+    `;
+}
 
 function getXPToNextLevel(level) {
     return level * 1000;
@@ -66,8 +266,8 @@ function gainXP(amount) {
         }
     }
     
-    localStorage.setItem('tft_quiz_xp', quizState.xp);
-    localStorage.setItem('tft_quiz_level', quizState.level);
+    localStorage.setItem('tft_persistent_quiz_xp', quizState.xp);
+    localStorage.setItem('tft_persistent_quiz_level', quizState.level);
     updateQuizStats();
 }
 
@@ -387,9 +587,8 @@ function renderUnitPools() {
             });
 
         units.forEach(u => {
-            const item = createDraggableItem(u.name, u.icon_url, 'unit', u.cost);
+            const item = createDraggableItem(u.name, u.icon_url, 'unit', u.cost, null, false, 0, false, null, u.traits);
             item.classList.add('unit-node');
-            item.dataset.traits = JSON.stringify(u.traits);
 
             if (activeDisabledUnits.includes(u.name)) {
                 item.style.opacity = '0.3';
@@ -581,7 +780,7 @@ document.addEventListener('click', (e) => {
     }
 });
 
-function createDraggableItem(name, iconUrl, type, cost, trait, isSelected = false, breakpointIdx = 0, isMustInclude = false, zoneId = null) {
+function createDraggableItem(name, iconUrl, type, cost, trait, isSelected = false, breakpointIdx = 0, isMustInclude = false, zoneId = null, traits = []) {
     const div = document.createElement('div');
     div.className = 'draggable-item';
     div.draggable = true; 
@@ -591,6 +790,7 @@ function createDraggableItem(name, iconUrl, type, cost, trait, isSelected = fals
     if (trait) div.dataset.trait = trait;
     div.dataset.icon = iconUrl;
     div.dataset.selected = isSelected;
+    if (traits && traits.length > 0) div.dataset.traits = JSON.stringify(traits);
 
     const tierColors = ['#cd7f32', '#c0c0c0', '#ffd700', '#e5e4e2']; 
     const costColors = { 1: '#808080', 2: '#11b288', 3: '#207ac7', 4: '#c440da', 5: '#ffb93b' };
@@ -616,6 +816,13 @@ function createDraggableItem(name, iconUrl, type, cost, trait, isSelected = fals
         </div>
         <div class="item-name">${name}</div>
     `;
+
+    // Tooltip logic
+    if (type === 'unit' && traits && traits.length > 0) {
+        div.title = traits.join(', ');
+    } else if (type === 'emblem') {
+        div.title = trait;
+    }
 
     div.addEventListener('dragstart', (e) => {
         e.dataTransfer.setData('text/plain', JSON.stringify({
@@ -747,7 +954,8 @@ function renderSelectionZones() {
     currentZone.innerHTML = '';
     if (selectedCurrentTeam.length > 0) {
         selectedCurrentTeam.forEach(u => {
-            const el = createDraggableItem(u.name, u.iconUrl, 'unit', u.cost, null, true, 0, false, 'current-team');
+            const unitData = tftData.units.find(du => du.name === u.name);
+            const el = createDraggableItem(u.name, u.iconUrl, 'unit', u.cost, null, true, 0, false, 'current-team', unitData ? unitData.traits : []);
             currentZone.appendChild(el);
         });
     } else {
@@ -757,7 +965,12 @@ function renderSelectionZones() {
     mustZone.innerHTML = '';
     if (selectedMustInclude.length > 0) {
         selectedMustInclude.forEach(item => {
-            const el = createDraggableItem(item.name, item.iconUrl, item.type, item.cost, item.trait, true, item.hasOwnProperty('targetBreakpointIndex') ? item.targetBreakpointIndex : 0, true, 'must-include');
+            let itemTraits = [];
+            if (item.type === 'unit') {
+                const unitData = tftData.units.find(du => du.name === item.name);
+                if (unitData) itemTraits = unitData.traits;
+            }
+            const el = createDraggableItem(item.name, item.iconUrl, item.type, item.cost, item.trait, true, item.hasOwnProperty('targetBreakpointIndex') ? item.targetBreakpointIndex : 0, true, 'must-include', itemTraits);
             mustZone.appendChild(el);
         });
     } else {
@@ -1410,19 +1623,19 @@ async function runLogicTests() {
     resultsDiv.innerHTML = "";
     if (!tftData || !optimizer) return;
     const runner = new TFTTester(optimizer, tftData);
-    const tests = [
-        runner.testLevel4Optimal, runner.testAnnieTibbersLogic, runner.testLevel4CostConstraint,
-        runner.testLevel5CostConstraint, runner.testBronzeForLifeLogic, runner.testLevel10Constraints,
-        runner.testSpecificLevelUnitRestrictions, runner.testMustIncludeTraits, runner.testAnnieOneArcanistFix,
-        runner.testTargonSpecialLogic, runner.testUnitReplacementPersistenceBug, runner.testSylasForbiddenUnits,
-        runner.testLevel8FiveCostLimit, runner.testLevel9Constraints, runner.testTraitIgnoreList,
-        runner.testForbiddenShurima, runner.testCarryRequirements, runner.testMustIncludeBypassLevelRestriction,
-        runner.testNeekoNidaleeLogic, runner.testNeekoNidaleeOneWayLogic, runner.testNidaleeAutoIncludeBug,
-        runner.testNidaleeRequiresNeeko, runner.testSuperHeuristicPoppyLevel6, runner.testSuperHeuristicKobukoLevel6,
-        runner.testWorldRunesLogic, runner.testRuneSolverLevel5, runner.testRuneSolverLevel5PiltoverDemacia,
-        runner.testRyzeUnlockSolver, runner.testSaveLoadComps, runner.testFullLoadFlow
-    ];
-    for (const test of tests) {
+            const tests = [
+                runner.testLevel4Optimal, runner.testAnnieTibbersLogic, runner.testLevel4CostConstraint,
+                runner.testLevel5CostConstraint, runner.testBronzeForLifeLogic, runner.testLevel10Constraints,
+                runner.testSpecificLevelUnitRestrictions, runner.testMustIncludeTraits, runner.testAnnieOneArcanistFix,
+                runner.testTargonSpecialLogic, runner.testUnitReplacementPersistenceBug, runner.testSylasForbiddenUnits,
+                runner.testLevel8FiveCostLimit, runner.testLevel9Constraints, runner.testTraitIgnoreList,
+                runner.testForbiddenShurima, runner.testCarryRequirements, runner.testMustIncludeBypassLevelRestriction,
+                runner.testNeekoNidaleeLogic, runner.testNeekoNidaleeOneWayLogic, runner.testNidaleeAutoIncludeBug,
+                runner.testNidaleeRequiresNeeko, runner.testSuperHeuristicPoppyLevel6, runner.testSuperHeuristicKobukoLevel6,
+                runner.testWorldRunesLogic, runner.testRuneSolverLevel5, runner.testRuneSolverLevel5PiltoverDemacia,
+                runner.testRyzeUnlockSolver, runner.testSaveLoadComps, runner.testFullLoadFlow,
+                runner.testNidaleeAutoIncludeBug, runner.testDemacia7AtLevel8
+            ];    for (const test of tests) {
         const statusEl = document.createElement('div');
         statusEl.style.color = "#aaa";
         statusEl.innerText = `[WAIT] Running ${test.name}...`;
@@ -1762,23 +1975,12 @@ function exportTeamPlannerCode() {
     }
 }
 
-function getQuizTimeForRank(streak) {
-    if (streak >= 15) return 10;  // Challenger
-    if (streak >= 12) return 15;  // GM
-    if (streak >= 10) return 20;  // Master
-    if (streak >= 8)  return 30;  // Diamond
-    if (streak >= 6)  return 45;  // Plat
-    if (streak >= 4)  return 60;  // Gold
-    if (streak >= 2)  return 90;  // Silver
-    if (streak >= 1)  return 105; // Bronze
-    return 120; // Iron
-}
-
 async function startNewQuiz() {
     if (!optimizer || !tftData) return;
     
     // UI Reset
     quizState.isAnswered = false;
+    quizState.guessedUnits = [];
     document.getElementById('next-quiz-btn').style.display = 'none';
     document.getElementById('quiz-loading').style.display = 'block';
     document.getElementById('quiz-feedback').className = 'quiz-feedback';
@@ -1788,6 +1990,7 @@ async function startNewQuiz() {
     let level = Math.floor(Math.random() * 5) + 4;
     if (quizState.difficulty === 'hard') level = Math.min(8, level + 1);
     
+    quizState.lastLevel = level;
     document.getElementById('quiz-board-title').innerText = `${quizState.difficulty.toUpperCase()} - Level ${level} Board`;
     
     // Pick seeds
@@ -1823,21 +2026,52 @@ async function startNewQuiz() {
             quizState.finalCounts = res.results[0].counts;
             
             const hideable = board.filter(u => !seeds.includes(u.name));
-            quizState.hiddenUnit = hideable.length > 0 
-                ? hideable[Math.floor(Math.random() * hideable.length)]
-                : board[Math.floor(Math.random() * board.length)];
             
-            // Calculate base counts (excluding hidden unit)
-            const visibleUnits = board.filter(u => u.name !== quizState.hiddenUnit.name);
+            // Logic for multiple hidden units in Master+
+            let numToHide = 1;
+            if (quizState.rankIndex >= 7 && Math.random() > 0.4 && hideable.length >= 2) {
+                numToHide = 2;
+            }
+
+            quizState.hiddenUnits = [];
+            let poolToHide = [...hideable];
+            for (let i = 0; i < numToHide && poolToHide.length > 0; i++) {
+                const idx = Math.floor(Math.random() * poolToHide.length);
+                quizState.hiddenUnits.push(poolToHide.splice(idx, 1)[0]);
+            }
+            
+            // Find valid alternatives for each hidden unit
+            quizState.validAlternativeUnits = [];
+            const bestScore = res.results[0].score;
+            
+            for (let i = 0; i < quizState.hiddenUnits.length; i++) {
+                const hu = quizState.hiddenUnits[i];
+                const alternatives = [hu]; // Best unit is always an alternative
+                
+                // Try replacing ONLY this hidden unit with others from pool
+                for (const candidate of pool) {
+                    if (board.some(u => u.name === candidate.name)) continue;
+                    
+                    const testBoard = board.map(u => u.name === hu.name ? candidate : u);
+                    const { score } = optimizer.scoreBoard(testBoard, quizEmblems, level);
+                    
+                    if (score >= bestScore - SCORE_THRESHOLD) {
+                        alternatives.push(candidate);
+                    }
+                }
+                quizState.validAlternativeUnits.push(alternatives);
+            }
+
+            // Calculate base counts (excluding ALL hidden units)
+            const hiddenNames = quizState.hiddenUnits.map(u => u.name);
+            const visibleUnits = board.filter(u => !hiddenNames.includes(u.name));
             quizState.baseCounts = calculateBoardCounts(visibleUnits, quizEmblems);
             
             renderQuizBoard();
             renderQuizOptions();
             renderQuizTraits();
             
-            let time = getQuizTimeForRank(quizState.streak);
-            if (quizState.difficulty === 'blitz') time = Math.min(time, 7);
-            if (quizState.difficulty === 'hard') time = Math.min(time, 12);
+            let time = getQuizTime();
             if (quizState.difficulty === 'zen') {
                 document.getElementById('quiz-timer').innerText = "Zen Mode";
             } else {
@@ -1946,11 +2180,16 @@ function renderQuizBoard() {
     if (!container) return;
     container.innerHTML = '';
     
-    quizState.currentBoard.forEach(u => {
+    quizState.currentBoard.forEach((u, uIdx) => {
         const slot = document.createElement('div');
         slot.className = 'quiz-unit-slot';
         
-        const isHidden = u.name === quizState.hiddenUnit.name && !quizState.isAnswered;
+        const hiddenIdx = quizState.hiddenUnits.findIndex(hu => hu.name === u.name);
+        const isHiddenUnit = hiddenIdx !== -1;
+        const isAlreadyGuessed = isHiddenUnit && quizState.guessedUnits.some(gu => 
+            quizState.validAlternativeUnits[hiddenIdx].some(alt => alt.name === gu)
+        );
+        const isHidden = isHiddenUnit && !quizState.isAnswered && !isAlreadyGuessed;
         
         if (isHidden) {
             slot.classList.add('hidden');
@@ -1961,10 +2200,34 @@ function renderQuizBoard() {
         } else {
             const costColors = { 1: '#808080', 2: '#11b288', 3: '#207ac7', 4: '#c440da', 5: '#ffb93b' };
             const borderColor = costColors[u.cost] || '#ccc';
-            slot.innerHTML = `
-                <img src="${u.icon_url}" class="quiz-unit-icon" style="border-color: ${borderColor}">
-                <div class="quiz-unit-name">${u.name}</div>
-            `;
+            
+            // If it's a hidden slot that was revealed or guessed, show alternatives if any
+            if (isHiddenUnit) {
+                const alternatives = quizState.validAlternativeUnits[hiddenIdx];
+                if (alternatives.length > 1) {
+                    slot.innerHTML = `
+                        <div style="position: relative;">
+                            <img src="${u.icon_url}" class="quiz-unit-icon" style="border-color: ${borderColor}">
+                            <div style="position: absolute; -1px; right: -1px; background: var(--accent); color: white; border-radius: 50%; width: 16px; height: 16px; font-size: 10px; display: flex; align-items: center; justify-content: center; font-weight: bold; border: 1px solid var(--bg);" title="Multiple valid options: ${alternatives.map(a => a.name).join(', ')}">${alternatives.length}</div>
+                        </div>
+                        <div class="quiz-unit-name">${u.name}*</div>
+                    `;
+                } else {
+                    slot.innerHTML = `
+                        <img src="${u.icon_url}" class="quiz-unit-icon" style="border-color: ${borderColor}">
+                        <div class="quiz-unit-name">${u.name}</div>
+                    `;
+                }
+            } else {
+                slot.innerHTML = `
+                    <img src="${u.icon_url}" class="quiz-unit-icon" style="border-color: ${borderColor}">
+                    <div class="quiz-unit-name">${u.name}</div>
+                `;
+            }
+
+            if (isAlreadyGuessed && !quizState.isAnswered) {
+                slot.style.boxShadow = '0 0 10px var(--success)';
+            }
         }
         container.appendChild(slot);
     });
@@ -1999,7 +2262,7 @@ function renderQuizOptions() {
     sortedUnits.forEach(u => {
         const item = document.createElement('div');
         item.className = 'quiz-option-item';
-        if (quizState.isAnswered) item.classList.add('disabled');
+        if (quizState.isAnswered || quizState.guessedUnits.includes(u.name)) item.classList.add('disabled');
         
         const costColors = { 1: '#808080', 2: '#11b288', 3: '#207ac7', 4: '#c440da', 5: '#ffb93b' };
         const borderColor = costColors[u.cost] || '#ccc';
@@ -2015,73 +2278,127 @@ function renderQuizOptions() {
 
 function handleQuizGuess(unitName) {
     if (quizState.isAnswered) return;
-    if (quizState.timer) clearInterval(quizState.timer);
     
-    quizState.isAnswered = true;
-    const isCorrect = unitName === quizState.hiddenUnit.name;
-    
-    if (isCorrect) {
-        let multiplier = 1;
-        if (quizState.difficulty === 'blitz') multiplier = 2;
-        if (quizState.difficulty === 'hard') multiplier = 1.5;
+    // Find which hidden slot this guess might correspond to
+    let hiddenSlotIdx = -1;
+    for (let i = 0; i < quizState.hiddenUnits.length; i++) {
+        // Skip slots already correctly guessed
+        const isAlreadyGuessed = quizState.guessedUnits.some(gu => 
+            quizState.validAlternativeUnits[i].some(alt => alt.name === gu)
+        );
+        if (isAlreadyGuessed) continue;
 
-        const speedBonus = quizState.secondsLeft * 10;
-        const gain = Math.floor((100 + (quizState.streak * 20) + speedBonus) * multiplier);
-        quizState.score += gain;
-        quizState.streak++;
-        
-        if (quizState.streak > quizState.bestStreak) {
-            quizState.bestStreak = quizState.streak;
-            localStorage.setItem('tft_quiz_best_streak', quizState.bestStreak);
+        // Check if guess is in alternatives for this slot
+        if (quizState.validAlternativeUnits[i].some(alt => alt.name === unitName)) {
+            hiddenSlotIdx = i;
+            break;
         }
-        
-        if (quizState.score > quizState.highScore) {
-            quizState.highScore = quizState.score;
-            localStorage.setItem('tft_quiz_high_score', quizState.highScore);
-        }
-        
-        showQuizFeedback(true);
-    } else {
-        quizState.streak = 0;
-        showQuizFeedback(false);
     }
     
-    updateQuizStats();
-    renderQuizBoard();
-    renderQuizOptions();
-    renderQuizTraits();
-    document.getElementById('next-quiz-btn').style.display = 'block';
+    const isCorrectChoice = hiddenSlotIdx !== -1;
+    
+    if (isCorrectChoice) {
+        quizState.guessedUnits.push(unitName);
+        
+        if (quizState.guessedUnits.length === quizState.hiddenUnits.length) {
+            // Fully Correct!
+            if (quizState.timer) clearInterval(quizState.timer);
+            quizState.isAnswered = true;
+            
+            // Base LP values per level
+            const baseLPValues = { 4: 15, 5: 20, 6: 25, 7: 30, 8: 40, 9: 50, 10: 60 };
+            let lpChange = baseLPValues[quizState.lastLevel] || 25;
+            
+            let multiplier = 1;
+            if (quizState.difficulty === 'blitz') multiplier = 1.2;
+            if (quizState.difficulty === 'hard') multiplier = 1.5;
+            if (quizState.difficulty === 'zen') multiplier = 0.5;
+            
+            // 2-unit bonus
+            if (quizState.hiddenUnits.length > 1) multiplier *= 1.5;
+
+            const speedBonus = quizState.secondsLeft * 2;
+            const gain = Math.floor((100 + (quizState.streak * 20) + speedBonus) * multiplier);
+            quizState.score += gain;
+            quizState.streak++;
+            
+            let lpGain = Math.floor(lpChange * multiplier);
+            if (quizState.streak > 3) lpGain += 5; 
+            
+            updateRank(lpGain);
+            gainXP(lpGain * 10);
+            
+            if (quizState.streak > quizState.bestStreak) {
+                quizState.bestStreak = quizState.streak;
+                localStorage.setItem('tft_persistent_quiz_best_streak', quizState.bestStreak);
+            }
+            if (quizState.score > quizState.highScore) {
+                quizState.highScore = quizState.score;
+                localStorage.setItem('tft_persistent_quiz_high_score', quizState.highScore);
+            }
+            
+            showQuizFeedback(true);
+            updateQuizStats();
+            renderQuizBoard();
+            renderQuizOptions();
+            renderQuizTraits();
+            document.getElementById('next-quiz-btn').style.display = 'block';
+        } else {
+            // Found one, but more to go
+            showQuizFeedback(true, "Found One! Find the rest...");
+            renderQuizBoard();
+            renderQuizOptions();
+            
+            // Re-calculate traits hint for visible + newly guessed units
+            const hiddenLeft = quizState.hiddenUnits.filter(u => !quizState.guessedUnits.includes(u.name));
+            const hiddenLeftNames = hiddenLeft.map(u => u.name);
+            const currentVisibleUnits = quizState.currentBoard.filter(u => !hiddenLeftNames.includes(u.name));
+            quizState.baseCounts = calculateBoardCounts(currentVisibleUnits, quizState.activeEmblems);
+            renderQuizTraits();
+        }
+    } else {
+        // WRONG
+        if (quizState.timer) clearInterval(quizState.timer);
+        quizState.isAnswered = true;
+        quizState.streak = 0;
+        
+        const baseLPValues = { 4: 15, 5: 20, 6: 25, 7: 30, 8: 40, 9: 50, 10: 60 };
+        let lpChange = baseLPValues[quizState.lastLevel] || 25;
+        
+        let multiplier = 1;
+        if (quizState.difficulty === 'zen') multiplier = 0.5;
+        
+        let lpLoss = Math.floor(lpChange * multiplier);
+        updateRank(-lpLoss);
+        
+        showQuizFeedback(false);
+        updateQuizStats();
+        renderQuizBoard();
+        renderQuizOptions();
+        renderQuizTraits();
+        document.getElementById('next-quiz-btn').style.display = 'block';
+    }
 }
 
-function showQuizFeedback(correct) {
+function showQuizFeedback(correct, customMsg) {
     const el = document.getElementById('quiz-feedback');
     if (correct) {
-        let msg = "CORRECT!";
-        if (quizState.streak >= 10) msg = "LEGENDARY!!";
-        else if (quizState.streak >= 7) msg = "UNSTOPPABLE!";
-        else if (quizState.streak >= 5) msg = "GODLIKE!";
-        else if (quizState.streak >= 3) msg = "GREAT!";
+        let msg = customMsg || "CORRECT!";
+        if (!customMsg) {
+            if (quizState.streak >= 10) msg = "LEGENDARY!!";
+            else if (quizState.streak >= 7) msg = "UNSTOPPABLE!";
+            else if (quizState.streak >= 5) msg = "GODLIKE!";
+            else if (quizState.streak >= 3) msg = "GREAT!";
+        }
         el.innerText = msg;
     } else {
-        el.innerText = quizState.secondsLeft <= 0 ? "TIMEOUT!" : "WRONG!";
+        el.innerText = (quizState.secondsLeft <= 0 && !quizState.isAnswered) ? "TIMEOUT!" : "WRONG!";
     }
     el.className = `quiz-feedback show ${correct ? 'correct' : 'wrong'}`;
     
     setTimeout(() => {
         el.classList.remove('show');
     }, 1500);
-}
-
-function getRankInfo(streak) {
-    if (streak >= 15) return { name: "CHALLENGER", color: "#64d2ff" };
-    if (streak >= 12) return { name: "GRANDMASTER", color: "#ff453a" };
-    if (streak >= 10) return { name: "MASTER", color: "#bf5af2" };
-    if (streak >= 8) return { name: "DIAMOND", color: "#00d9ff" };
-    if (streak >= 6) return { name: "PLATINUM", color: "#32d74b" };
-    if (streak >= 4) return { name: "GOLD", color: "#ffd700" };
-    if (streak >= 2) return { name: "SILVER", color: "#c0c0c0" };
-    if (streak >= 1) return { name: "BRONZE", color: "#cd7f32" };
-    return { name: "IRON", color: "#a19d94" };
 }
 
 let lastRankName = "IRON";
@@ -2101,19 +2418,43 @@ function updateQuizStats() {
     if (xpText) xpText.innerText = `${quizState.xp} / ${nextXP} XP`;
     if (xpBar) xpBar.style.width = (quizState.xp / nextXP * 100) + '%';
 
-    const rank = getRankInfo(quizState.streak);
+    const rankName = RANKS[quizState.rankIndex];
+    const divisionName = DIVISIONS[quizState.divisionIndex];
     const rankEl = document.getElementById('quiz-rank');
+    
+    const rankColors = {
+        'IRON': '#a19d94',
+        'BRONZE': '#cd7f32',
+        'SILVER': '#c0c0c0',
+        'GOLD': '#ffd700',
+        'PLATINUM': '#32d74b',
+        'EMERALD': '#2ecc71',
+        'DIAMOND': '#00d9ff',
+        'MASTER': '#bf5af2',
+        'GRANDMASTER': '#ff453a',
+        'CHALLENGER': '#64d2ff'
+    };
+
     if (rankEl) {
-        if (rank.name !== lastRankName) {
+        if (rankName !== lastRankName) {
             // Rank change animation
-            rankEl.style.transform = "scale(1.5)";
-            rankEl.style.transition = "transform 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275)";
-            setTimeout(() => { rankEl.style.transform = "scale(1)"; }, 500);
-            lastRankName = rank.name;
+            rankEl.classList.remove('rank-changed');
+            void rankEl.offsetWidth; // Force reflow
+            rankEl.classList.add('rank-changed');
+            lastRankName = rankName;
         }
-        rankEl.innerText = rank.name;
-        rankEl.style.color = rank.color;
+        
+        let rankText = rankName;
+        if (quizState.rankIndex < 7) {
+            rankText += ` ${divisionName}`;
+        }
+        rankText += ` ${quizState.lp} LP`;
+        
+        rankEl.innerText = rankText;
+        rankEl.style.color = rankColors[rankName];
     }
+    
+    renderRankGraph();
 }
 
 function copyCardBoard(card, btn) {

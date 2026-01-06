@@ -22,10 +22,11 @@ namespace OmniSync.Hub.Presentation
         private readonly ShutdownService _shutdownService;
         private readonly RegistryService _registryService;
         private readonly HubSettingsService _settingsService;
+        private readonly GlobalHotkeyService _hotkeyService;
         private TrayApplicationContext _applicationContext;
         private Thread _trayThread;
 
-        public TrayIconManager(IHostApplicationLifetime appLifetime, HubMonitorService hubMonitorService, InputService inputService, ShutdownService shutdownService, RegistryService registryService, HubSettingsService settingsService) // Add InputService to constructor
+        public TrayIconManager(IHostApplicationLifetime appLifetime, HubMonitorService hubMonitorService, InputService inputService, ShutdownService shutdownService, RegistryService registryService, HubSettingsService settingsService, GlobalHotkeyService hotkeyService) // Add InputService to constructor
         {
             _appLifetime = appLifetime;
             _hubMonitorService = hubMonitorService; // Assign the injected service
@@ -33,6 +34,7 @@ namespace OmniSync.Hub.Presentation
             _shutdownService = shutdownService;
             _registryService = registryService;
             _settingsService = settingsService;
+            _hotkeyService = hotkeyService;
         }
 
         public Task StartAsync(CancellationToken cancellationToken)
@@ -61,7 +63,7 @@ namespace OmniSync.Hub.Presentation
             WinFormsApp.EnableVisualStyles(); // Enable visual styles for WinForms NotifyIcon
             WinFormsApp.SetCompatibleTextRenderingDefault(false); // For WinForms interop
 
-            _applicationContext = new TrayApplicationContext(_appLifetime, app, _hubMonitorService, _inputService, _shutdownService, _registryService, _settingsService); // Pass hubMonitorService and inputService
+            _applicationContext = new TrayApplicationContext(_appLifetime, app, _hubMonitorService, _inputService, _shutdownService, _registryService, _settingsService, _hotkeyService); // Pass hubMonitorService and inputService
             
             // Add message filter to route messages to WPF's ComponentDispatcher
             WinFormsApp.AddMessageFilter(new WpfMessageFilter());
@@ -109,9 +111,10 @@ namespace OmniSync.Hub.Presentation
             private readonly ShutdownService _shutdownService;
             private readonly RegistryService _registryService;
             private readonly HubSettingsService _settingsService;
+            private readonly GlobalHotkeyService _hotkeyService;
             private MainWindow _mainWindow;
 
-            public TrayApplicationContext(IHostApplicationLifetime appLifetime, WpfApp wpfApplication, HubMonitorService hubMonitorService, InputService inputService, ShutdownService shutdownService, RegistryService registryService, HubSettingsService settingsService) // Add InputService to constructor
+            public TrayApplicationContext(IHostApplicationLifetime appLifetime, WpfApp wpfApplication, HubMonitorService hubMonitorService, InputService inputService, ShutdownService shutdownService, RegistryService registryService, HubSettingsService settingsService, GlobalHotkeyService hotkeyService) // Add InputService to constructor
             {
                 _appLifetime = appLifetime;
                 _wpfApplication = wpfApplication; // Store reference to the WPF Application instance
@@ -120,6 +123,7 @@ namespace OmniSync.Hub.Presentation
                 _shutdownService = shutdownService;
                 _registryService = registryService;
                 _settingsService = settingsService;
+                _hotkeyService = hotkeyService;
                 InitializeComponent();
             }
 
@@ -160,6 +164,8 @@ namespace OmniSync.Hub.Presentation
                 _hubMonitorService.ExternalCommandReceived += (s, cmd) => {
                     _notifyIcon.ShowBalloonTip(3000, "External Command", $"Executed: {cmd}", ToolTipIcon.Info);
                 };
+
+                _hotkeyService.OpenHubWindowRequested += (s, e) => OnShowWindow(null, EventArgs.Empty);
             }
 
             private void OnMouseClick(object? sender, MouseEventArgs e)
