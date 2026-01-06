@@ -80,6 +80,16 @@ fun RemoteControlScreen(
     var monitorScale by remember { mutableFloatStateOf(1f) }
     var monitorOffset by remember { mutableStateOf(Offset.Zero) }
     var showMacroGrid by remember { mutableStateOf(false) }
+    var showMoreButtons by remember { mutableStateOf(false) }
+
+    // Handle back press
+    androidx.activity.compose.BackHandler(enabled = showMacroGrid || showMoreButtons) {
+        if (showMoreButtons) {
+            showMoreButtons = false
+        } else if (showMacroGrid) {
+            showMacroGrid = false
+        }
+    }
 
     // Layered layout: Trackpad fills the screen, ButtonPanel sits on top with shadow
     Box(modifier = modifier.fillMaxSize()) {
@@ -133,6 +143,8 @@ fun RemoteControlScreen(
                 isKeyboardVisible = isKeyboardVisible,
                 focusRequester = focusRequester,
                 isMonitorVisible = isMonitorVisible,
+                showMoreButtons = showMoreButtons,
+                onToggleMore = { showMoreButtons = it },
                 onToggleMonitor = { 
                     isMonitorVisible = it
                     if (!it) {
@@ -156,8 +168,9 @@ fun MacroGridPanel(
     var macros by remember { mutableStateOf(appConfig.macros) }
     val coroutineScope = rememberCoroutineScope()
     val parser = remember { com.omni.sync.logic.macro.MacroParser() }
-    val executor = remember { com.omni.sync.logic.macro.MacroExecutor(signalRClient) }
+    val executor = remember { com.omni.sync.logic.macro.MacroExecutor(signalRClient, macros) }
     val context = LocalContext.current
+    var macroProgress by remember { mutableStateOf<String?>(null) }
 
     // Drag and Drop state
     var draggingMacroId by remember { mutableStateOf<String?>(null) }
@@ -182,7 +195,7 @@ fun MacroGridPanel(
                 columns = androidx.compose.foundation.lazy.grid.GridCells.Fixed(3),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
-                modifier = Modifier.fillMaxSize().padding(bottom = 140.dp) // Leave room for ButtonPanel
+                modifier = Modifier.fillMaxSize().padding(bottom = 180.dp) // Leave room for ButtonPanel (increased from 140)
             ) {
                 itemsIndexed(macros, key = { _, m -> m.id }) { index, macro ->
                     val isDragging = draggingMacroId == macro.id
@@ -228,7 +241,8 @@ fun MacroGridPanel(
                         onClick = {
                             if (draggingMacroId == null) {
                                 coroutineScope.launch {
-                                    executor.execute(parser.parse(macro.script, context))
+                                    executor.execute(parser.parse(macro.script, context), context) { macroProgress = it }
+                                    macroProgress = null
                                 }
                             }
                         }
@@ -246,6 +260,34 @@ fun MacroGridPanel(
                     ) {
                         Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
                             Icon(Icons.Default.Settings, contentDescription = "Manage", tint = MaterialTheme.colorScheme.primary)
+                        }
+                    }
+                }
+            }
+        }
+
+        if (macroProgress != null) {
+            Box(
+                modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.4f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Card(
+                    modifier = Modifier.width(250.dp),
+                    shape = RoundedCornerShape(16.dp)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        CircularProgressIndicator(modifier = Modifier.size(48.dp))
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text(macroProgress!!, style = MaterialTheme.typography.titleMedium)
+                        Spacer(modifier = Modifier.height(24.dp))
+                        Button(
+                            onClick = { macroProgress = null },
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                        ) {
+                            Text("Stop")
                         }
                     }
                 }
@@ -337,11 +379,13 @@ fun TrackpadArea(
     var lastTapTime by remember { mutableLongStateOf(0L) }
     var isDraggingLeftClick by remember { mutableStateOf(false) }
     var screenshotTick by remember { mutableIntStateOf(0) }
+    val appConfig = mainViewModel.appConfig
 
-    LaunchedEffect(isMonitorVisible) {
+    LaunchedEffect(isMonitorVisible, appConfig.streamFps) {
         if (isMonitorVisible) {
+            val interval = (1000 / appConfig.streamFps).toLong()
             while (true) {
-                delay(200) // Refresh every 200ms (5fps)
+                delay(interval)
                 screenshotTick++
             }
         }
@@ -350,7 +394,7 @@ fun TrackpadArea(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .background(Color.Black) // Solid background to avoid z-fighting/transparency issues
             .pointerInput(isMonitorVisible) {
                 if (isMonitorVisible) {
                     detectTransformGestures { _, pan, zoom, _ ->
@@ -442,12 +486,15 @@ fun TrackpadArea(
     ) {
         if (isMonitorVisible) {
             val baseUrl = mainViewModel.getBaseUrl()
-            val imageUrl = "$baseUrl/api/screenshot?t=$screenshotTick"
+            val scaleParam = appConfig.streamResolution / 100f
+            val imageUrl = "$baseUrl/api/screenshot?t=$screenshotTick&scale=$scaleParam&quality=${appConfig.streamResolution}"
             
             AsyncImage(
                 model = ImageRequest.Builder(LocalContext.current)
                     .data(imageUrl)
-                    .crossfade(true)
+                    .crossfade(false) // Disable crossfade to stop flickering between frames
+                    .diskCachePolicy(coil.request.CachePolicy.DISABLED) // Ensure fresh frames
+                    .memoryCachePolicy(coil.request.CachePolicy.DISABLED)
                     .build(),
                 contentDescription = "PC Monitor",
                 modifier = Modifier
@@ -588,6 +635,8 @@ fun ButtonPanel(
     isKeyboardVisible: Boolean,
     focusRequester: FocusRequester,
     isMonitorVisible: Boolean,
+    showMoreButtons: Boolean,
+    onToggleMore: (Boolean) -> Unit,
     onToggleMonitor: (Boolean) -> Unit,
     onToggleMacros: () -> Unit
 ) {
@@ -730,7 +779,6 @@ fun ButtonPanel(
             // Grid 3
             val shutdownTimes = listOf(0, 15, 30, 60, 120, 300, 720)
             val context = LocalContext.current
-            var showMoreButtons by remember { mutableStateOf(false) }
 
             if (!showMoreButtons) {
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -758,7 +806,7 @@ fun ButtonPanel(
                         onClick = { onToggleMonitor(!isMonitorVisible) }
                     )
                     ActionKeyButton(text = "More", modifier = Modifier.weight(1f)) {
-                        showMoreButtons = true
+                        onToggleMore(true)
                     }
                 }
             } else {
@@ -802,7 +850,7 @@ fun ButtonPanel(
                         }
 
                         ActionKeyButton(text = "Back", modifier = Modifier.weight(1f)) {
-                            showMoreButtons = false
+                            onToggleMore(false)
                         }
                     }
                 }

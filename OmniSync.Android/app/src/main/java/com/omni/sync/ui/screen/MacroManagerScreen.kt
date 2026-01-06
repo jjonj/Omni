@@ -1,6 +1,7 @@
 package com.omni.sync.ui.screen
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.background
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -66,6 +67,11 @@ fun MacroManagerScreen(
     var macros by remember { mutableStateOf(appConfig.macros) }
     var showHelpDialog by remember { mutableStateOf(false) }
     val coroutineScope = rememberCoroutineScope()
+
+    // Handle back press
+    androidx.activity.compose.BackHandler(enabled = true) {
+        onBack()
+    }
     
     // Editor State
     var editingMacroId by remember { mutableStateOf<String?>(null) }
@@ -73,11 +79,68 @@ fun MacroManagerScreen(
     var editorScript by remember { mutableStateOf(TextFieldValue("")) }
     var editorIconName by remember { mutableStateOf("play") }
 
+    // Execution state
+    var macroProgress by remember { mutableStateOf<String?>(null) }
+    var inputPrompt by remember { mutableStateOf<String?>(null) }
+    var inputValue by remember { mutableStateOf("") }
+    var showInputDialog by remember { mutableStateOf(false) }
+    val inputQueue = remember { mutableStateListOf<String>() }
+    var currentMacroOnFinish by remember { mutableStateOf<(() -> Unit)?>(null) }
+
+    // Dropdown state
+    var showKeysMenu by remember { mutableStateOf(false) }
+    val specialKeys = listOf("Enter", "Tab", "Esc", "Space", "Backspace", "Delete", "Up", "Down", "Left", "Right", "F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "F9", "F10", "F11", "F12")
+
     // We need SignalRClient for the "Test" functionality
     val omniSyncApplication = context.applicationContext as com.omni.sync.OmniSyncApplication
     val signalRClient = omniSyncApplication.signalRClient
     val parser = remember { com.omni.sync.logic.macro.MacroParser() }
-    val executor = remember { com.omni.sync.logic.macro.MacroExecutor(signalRClient) }
+    val executor = remember { com.omni.sync.logic.macro.MacroExecutor(signalRClient, macros) }
+
+    fun runMacro(script: String) {
+        val inputRegex = Regex("\\{INPUT:([^}]+)\\}")
+        val matches = inputRegex.findAll(script).map { it.groupValues[1] }.distinct().toList()
+        
+        if (matches.isNotEmpty()) {
+            inputQueue.clear()
+            inputQueue.addAll(matches)
+            
+            fun processNext() {
+                if (inputQueue.isEmpty()) {
+                    coroutineScope.launch {
+                        executor.execute(parser.parse(script, context), context) { macroProgress = it }
+                        macroProgress = null
+                    }
+                } else {
+                    inputPrompt = inputQueue.removeAt(0)
+                    showInputDialog = true
+                }
+            }
+
+            var finalScript = script
+            currentMacroOnFinish = {
+                val label = inputPrompt ?: ""
+                finalScript = finalScript.replace("{INPUT:$label}", inputValue)
+                inputValue = ""
+                if (inputQueue.isEmpty()) {
+                    coroutineScope.launch {
+                        executor.execute(parser.parse(finalScript, context), context) { macroProgress = it }
+                        macroProgress = null
+                    }
+                } else {
+                    inputPrompt = inputQueue.removeAt(0)
+                    showInputDialog = true
+                }
+            }
+            
+            processNext()
+        } else {
+            coroutineScope.launch {
+                executor.execute(parser.parse(script, context), context) { macroProgress = it }
+                macroProgress = null
+            }
+        }
+    }
 
     fun saveMacros(newMacros: List<Macro>) {
         macros = newMacros
@@ -215,14 +278,38 @@ fun MacroManagerScreen(
                             onClick = { insertAtCursor("{CLIPBOARD}") },
                             label = { Text("Clip") }
                         )
-                        AssistChip(
-                            onClick = { insertAtCursor("#") },
-                            label = { Text("Win") }
-                        )
-                        AssistChip(
-                            onClick = { insertAtCursor("(Tab)") },
-                            label = { Text("Tab") }
-                        )
+                        
+                        Box {
+                            AssistChip(
+                                onClick = { showKeysMenu = true },
+                                label = { Text("Special Key") },
+                                trailingIcon = { Icon(Icons.Default.ArrowDropDown, null, modifier = Modifier.size(16.dp)) }
+                            )
+                            DropdownMenu(
+                                expanded = showKeysMenu,
+                                onDismissRequest = { showKeysMenu = false },
+                                modifier = Modifier.heightIn(max = 300.dp)
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text("Win Key") },
+                                    onClick = { 
+                                        insertAtCursor("#")
+                                        showKeysMenu = false
+                                    },
+                                    leadingIcon = { Icon(Icons.Default.Keyboard, null) }
+                                )
+                                HorizontalDivider()
+                                specialKeys.forEach { key ->
+                                    DropdownMenuItem(
+                                        text = { Text(key) },
+                                        onClick = { 
+                                            insertAtCursor("send ($key)\n")
+                                            showKeysMenu = false
+                                        }
+                                    )
+                                }
+                            }
+                        }
                     }
 
                     Spacer(modifier = Modifier.height(4.dp))
@@ -241,11 +328,7 @@ fun MacroManagerScreen(
 
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                         TextButton(
-                            onClick = { 
-                                coroutineScope.launch {
-                                    executor.execute(parser.parse(editorScript.text, context))
-                                }
-                            },
+                            onClick = { runMacro(editorScript.text) },
                             enabled = editorScript.text.isNotBlank()
                         ) {
                             Text("Test")
@@ -347,12 +430,8 @@ fun MacroManagerScreen(
                                     Text(macro.name, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
                                 }
                                 
-                                IconButton(onClick = {
-                                    coroutineScope.launch {
-                                        executor.execute(parser.parse(macro.script, context))
-                                    }
-                                }, modifier = Modifier.size(32.dp)) {
-                                    Icon(Icons.Default.PlayCircle, contentDescription = "Test", tint = MaterialTheme.colorScheme.tertiary, modifier = Modifier.size(20.dp))
+                                IconButton(onClick = { runMacro(macro.script) }, modifier = Modifier.size(32.dp)) {
+                                    Icon(Icons.Default.PlayCircle, contentDescription = "Run", tint = MaterialTheme.colorScheme.tertiary, modifier = Modifier.size(20.dp))
                                 }
 
                                 IconButton(onClick = {
@@ -390,13 +469,25 @@ fun MacroManagerScreen(
                     SyntaxHelpItem(
                         "run <path/url>", 
                         "Execute program or open URL.",
-                        "run notepad.exe\run https://google.com"
+                        "run notepad.exe\nrun \"C:\\Path with space\\app.exe\""
                     )
                     HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
                     SyntaxHelpItem(
-                        "winactivate <title>", 
-                        "Focus window by title.",
-                        "winactivate Notepad"
+                        "winactivate/winclose <title>", 
+                        "Focus or close window by title/process.",
+                        "winactivate Notepad\nwinclose chrome"
+                    )
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+                    SyntaxHelpItem(
+                        "volup / voldown / volmute", 
+                        "System volume control.",
+                        "volup\nvolmute"
+                    )
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+                    SyntaxHelpItem(
+                        "screenshot", 
+                        "Capture full screen to Hub.",
+                        "screenshot"
                     )
                     HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
                     SyntaxHelpItem(
@@ -425,7 +516,7 @@ fun MacroManagerScreen(
                     
                     HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
                     Text(
-                        "Special Keys:", 
+                        "Special Keys (Case Insensitive):", 
                         style = MaterialTheme.typography.labelLarge,
                         color = MaterialTheme.colorScheme.primary
                     )
@@ -447,10 +538,10 @@ fun MacroManagerScreen(
                         "Open Notepad" to "run notepad.exe\nsleep 500\nsend Hello from Omni!",
                         "Alt+Tab" to "keydown alt\nsend (Tab)\nkeyup alt",
                         "Refresh Chrome" to "winactivate chrome\nsleep 100\nsend (F5)",
+                        "Close Window" to "winclose current",
+                        "Volume Mute" to "volmute",
                         "Copy All" to "send ^a\nsend ^c",
                         "New Folder" to "send ^+n",
-                        "Close Window" to "send !{F4}",
-                        "Task Manager" to "send ^+(Esc)",
                         "Lock PC" to "send #l",
                         "Omni Workspace" to "aihere D:\\SSDProjects\\Omni\nwinactivate vscode"
                     )
@@ -483,6 +574,70 @@ fun MacroManagerScreen(
                 }
             }
         )
+    }
+
+    if (showInputDialog) {
+        AlertDialog(
+            onDismissRequest = { showInputDialog = false },
+            title = { Text("Macro Input Required") },
+            text = {
+                Column {
+                    Text("Provide value for: ${inputPrompt ?: "Input"}")
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = inputValue,
+                        onValueChange = { inputValue = it },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                Button(onClick = { 
+                    showInputDialog = false
+                    currentMacroOnFinish?.invoke()
+                }) {
+                    Text("Continue")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showInputDialog = false }) {
+                    Text("Cancel Macro")
+                }
+            }
+        )
+    }
+
+    if (macroProgress != null) {
+        Box(
+            modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.4f)),
+            contentAlignment = Alignment.Center
+        ) {
+            Card(
+                modifier = Modifier.width(250.dp),
+                shape = RoundedCornerShape(16.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    CircularProgressIndicator(modifier = Modifier.size(48.dp))
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text(macroProgress!!, style = MaterialTheme.typography.titleMedium)
+                    Spacer(modifier = Modifier.height(24.dp))
+                    Button(
+                        onClick = { 
+                            // How to cancel coroutine? We need a job reference.
+                            // For simplicity now, just clear UI.
+                            macroProgress = null 
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                    ) {
+                        Text("Stop")
+                    }
+                }
+            }
+        }
     }
 }
 

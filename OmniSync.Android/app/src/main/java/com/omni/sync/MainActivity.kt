@@ -78,6 +78,7 @@ class MainActivity : ComponentActivity() {
         AppScreen.FILES,
         AppScreen.AI_CHAT,
         AppScreen.ALARM,
+        AppScreen.WEB_SERVER,
         AppScreen.PROCESS
     )
 
@@ -390,6 +391,7 @@ class MainActivity : ComponentActivity() {
                 mainViewModel = mainViewModel,
                 onBack = { mainViewModel.goBack() }
             )
+            AppScreen.WEB_SERVER -> com.omni.sync.ui.screen.WebServerScreen()
             AppScreen.IMAGE_VIEWER -> {
                 val imageUrl by mainViewModel.currentImageUrl.collectAsState()
                 val playlist by mainViewModel.imagePlaylist.collectAsState()

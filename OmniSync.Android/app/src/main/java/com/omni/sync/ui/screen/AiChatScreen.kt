@@ -15,6 +15,8 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Cached
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.KeyboardDoubleArrowUp
+import androidx.compose.material.icons.filled.KeyboardDoubleArrowDown
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -62,7 +64,7 @@ fun AiChatScreen(
     val messages by signalRClient.aiMessages.collectAsState()
     val aiStatus by signalRClient.aiStatus.collectAsState()
     val sessions by signalRClient.aiSessions.collectAsState()
-    var inputText by remember { mutableStateOf("") }
+    val inputText by signalRClient.aiInputText.collectAsState()
     var showSessionMenu by remember { mutableStateOf(false) }
     val selectedPid by signalRClient.selectedPid.collectAsState()
     var showRenameDialog by remember { mutableStateOf(false) }
@@ -108,11 +110,22 @@ fun AiChatScreen(
             if (isReloading) {
                 // Jump instantly for history reloads/switches
                 listState.scrollToItem(0)
-            } else if (isAiThinking) {
-                // Animate for thinking indicator
-                listState.animateScrollToItem(0)
+            } else {
+                // Only auto-scroll if we are already at the bottom (index 0)
+                if (listState.firstVisibleItemIndex <= 1) {
+                    if (isAiThinking) {
+                        listState.animateScrollToItem(0)
+                    } else {
+                        listState.animateScrollToItem(0)
+                    }
+                }
             }
         }
+    }
+
+    // Jump between user messages
+    val userMessageIndices = remember(filteredMessages) {
+        filteredMessages.indices.filter { filteredMessages[it].first == "Me" }.reversed()
     }
 
     Scaffold(
@@ -234,7 +247,7 @@ fun AiChatScreen(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(bottom = currentBottomPadding + 115.dp) // Leave room for floating panel
+                    .padding(bottom = currentBottomPadding + 160.dp) // Leave room for floating panel (increased from 115)
             ) {
                 if (!isConnected) {
                     Surface(
@@ -280,7 +293,7 @@ fun AiChatScreen(
                 ) {
                     OutlinedTextField(
                         value = inputText,
-                        onValueChange = { inputText = it },
+                        onValueChange = { signalRClient.updateAiInputText(it) },
                         modifier = Modifier.weight(1f),
                         placeholder = { Text(if (isConnected) "Ask AI something..." else "Connecting...") },
                         maxLines = 3,
@@ -291,7 +304,7 @@ fun AiChatScreen(
                         onClick = {
                             if (inputText.isNotBlank()) {
                                 signalRClient.sendAiMessage(inputText, if (selectedPid != -1) selectedPid else null)
-                                inputText = ""
+                                signalRClient.updateAiInputText("")
                                 coroutineScope.launch {
                                     listState.animateScrollToItem(0)
                                 }
@@ -326,7 +339,15 @@ fun AiChatScreen(
             ) {
                 Column {
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                    QuickActionPanel(signalRClient, coroutineScope, selectedPid, isConnected)
+                    QuickActionPanel(
+                        signalRClient, 
+                        coroutineScope, 
+                        selectedPid, 
+                        isConnected, 
+                        listState, 
+                        userMessageIndices,
+                        filteredMessages.size
+                    )
                 }
             }
         }
@@ -365,7 +386,10 @@ fun QuickActionPanel(
     signalRClient: SignalRClient, 
     coroutineScope: kotlinx.coroutines.CoroutineScope, 
     selectedPid: Int,
-    isConnected: Boolean
+    isConnected: Boolean,
+    listState: androidx.compose.foundation.lazy.LazyListState,
+    userMessageIndices: List<Int>,
+    totalMessages: Int
 ) {
     var isZoomed by remember { mutableStateOf(false) }
 
@@ -404,6 +428,40 @@ fun QuickActionPanel(
 
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             ActionKeyButton(
+                icon = Icons.Default.KeyboardDoubleArrowUp,
+                text = "Prev Msg",
+                modifier = Modifier.weight(1f),
+                onClick = { 
+                    coroutineScope.launch {
+                        val currentFirst = listState.firstVisibleItemIndex
+                        // Find the smallest index that is greater than current view (older message)
+                        val targetIndex = userMessageIndices.filter { it > currentFirst }.minOrNull()
+                        if (targetIndex != null) {
+                            listState.animateScrollToItem(targetIndex)
+                        }
+                    }
+                }
+            )
+
+            ActionKeyButton(
+                icon = Icons.Default.KeyboardDoubleArrowDown,
+                text = "Next Msg",
+                modifier = Modifier.weight(1f),
+                onClick = { 
+                    coroutineScope.launch {
+                        val currentFirst = listState.firstVisibleItemIndex
+                        // Find the largest index that is smaller than current view (newer message)
+                        val targetIndex = userMessageIndices.filter { it < currentFirst }.maxOrNull()
+                        if (targetIndex != null) {
+                            listState.animateScrollToItem(targetIndex)
+                        } else {
+                            listState.animateScrollToItem(0)
+                        }
+                    }
+                }
+            )
+
+            ActionKeyButton(
                 text = "Yolo",
                 modifier = Modifier.weight(1f),
                 onClick = { 
@@ -415,7 +473,9 @@ fun QuickActionPanel(
                     }
                 }
             )
+        }
 
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             ActionKeyButton(
                 text = if (isZoomed) "Unzoom" else "Zoom 1.5x",
                 modifier = Modifier.weight(1f),

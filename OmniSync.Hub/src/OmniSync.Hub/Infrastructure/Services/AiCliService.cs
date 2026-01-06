@@ -72,7 +72,21 @@ namespace OmniSync.Hub.Infrastructure.Services
         {
             int target = pid == -1 ? _targetPid : pid;
             if (target == -1 || string.IsNullOrWhiteSpace(firstMessage)) return;
-            if (_sessionNames.ContainsKey(target)) return; // Already named
+            
+            // Check in-memory first
+            if (_sessionNames.ContainsKey(target)) return; 
+
+            // Check settings before renaming to ensure true persistence
+            if (_sessions.TryGetValue(target, out var session))
+            {
+                var key = $"{session.StartTime.Ticks}_{target}";
+                var savedName = _settingsService.GetAiSessionName(key);
+                if (savedName != null)
+                {
+                    _sessionNames[target] = savedName;
+                    return;
+                }
+            }
 
             string name = GenerateName(firstMessage);
             if (!string.IsNullOrWhiteSpace(name))
@@ -80,9 +94,9 @@ namespace OmniSync.Hub.Infrastructure.Services
                 _sessionNames[target] = name;
                 _logger.LogInformation($"Auto-renamed session PID {target} to '{name}' based on first message.");
                 
-                if (_sessions.TryGetValue(target, out var session))
+                if (_sessions.TryGetValue(target, out var session2))
                 {
-                    var key = $"{session.StartTime.Ticks}_{target}";
+                    var key = $"{session2.StartTime.Ticks}_{target}";
                     _settingsService.SetAiSessionName(key, name);
                 }
             }

@@ -637,6 +637,15 @@ namespace OmniSync.Hub.Presentation.Hubs
             {
                 _logger.LogInformation($"[RpcApiHub] SendAiSpecialKey: {key} (Session: {sessionId})");
                 int targetPid = sessionId ?? -1;
+                
+                // Focus the window first to ensure key is received
+                var sessionName = _aiCliService.GetSessionName(targetPid);
+                if (!string.IsNullOrEmpty(sessionName))
+                {
+                    _processService.WinActivate(sessionName);
+                    await Task.Delay(100); // Give OS time to focus
+                }
+
                 await _aiCliService.SendSpecialKeyAsync(key, targetPid);
             }
         }
@@ -696,21 +705,24 @@ namespace OmniSync.Hub.Presentation.Hubs
                     {
                         var arg = line.Substring(4).Trim();
                         // Check if it's already a full path
-                        if (arg.Contains(":\\") || arg.StartsWith("/")) continue;
+                        if (arg.Contains(":\\") || arg.StartsWith("/"))
+                        {
+                            if (arg.Contains(" ") && !arg.StartsWith("\""))
+                            {
+                                lines[i] = $"run \"{arg}\"";
+                                modified = true;
+                            }
+                            continue;
+                        }
                         if (arg.StartsWith("http", StringComparison.OrdinalIgnoreCase)) continue;
 
                         // Check mapping
                         var mapped = settings.GetPath(arg);
                         if (mapped != null)
                         {
-                            // Already mapped, maybe update script to be explicit? 
-                            // Requirement: "replace truecrypt.exe with E:\...\TrueCrypt.exe"
-                            // If it's mapped, ProcessService handles it. 
-                            // But maybe the user WANTS the full path in the script.
-                            // The requirement says: "first check if truecrypt.exe exists as a mapping in hub settings. If not, search..."
-                            // And "app will update the macro automatically to replace truecrypt.exe with E:\Program Files\..."
-                            // This implies we resolve it to a full path.
-                            lines[i] = $"run {mapped}";
+                            // Already mapped, resolution logic
+                            var finalPath = mapped.Contains(" ") && !mapped.StartsWith("\"") ? $"\"{mapped}\"" : mapped;
+                            lines[i] = $"run {finalPath}";
                             modified = true;
                         }
                         else
@@ -720,7 +732,8 @@ namespace OmniSync.Hub.Presentation.Hubs
                             if (foundPath != null)
                             {
                                 settings.AddMapping(arg, foundPath);
-                                lines[i] = $"run {foundPath}";
+                                var finalPath = foundPath.Contains(" ") && !foundPath.StartsWith("\"") ? $"\"{foundPath}\"" : foundPath;
+                                lines[i] = $"run {finalPath}";
                                 modified = true;
                                 await Clients.Caller.SendAsync("ReceiveCommandOutput", $"[Macro] Resolved '{arg}' to '{foundPath}'");
                             }
@@ -739,6 +752,15 @@ namespace OmniSync.Hub.Presentation.Hubs
             {
                 AnyCommandReceived?.Invoke(this, $"WinActivate: {target}");
                 _processService.WinActivate(target);
+            }
+        }
+
+        public void WinClose(string target)
+        {
+            if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
+            {
+                AnyCommandReceived?.Invoke(this, $"WinClose: {target}");
+                _processService.WinClose(target);
             }
         }
 
@@ -969,6 +991,15 @@ namespace OmniSync.Hub.Presentation.Hubs
                 return _pcgService.GetAllStatesForWorld(worldId);
             }
             return new List<PcgObjectState>();
+        }
+
+        public async Task ExecuteMacro(JsonElement commands)
+        {
+            if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
+            {
+                AnyCommandReceived?.Invoke(this, "ExecuteMacro");
+                await _processService.ExecuteMacro(commands, _inputService, _clipboardService);
+            }
         }
 
         private (string commandName, List<string> args) ParseCommand(string commandString)

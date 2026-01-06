@@ -35,7 +35,8 @@ enum class AppScreen {
     DOWNLOADED_VIDEOS,
     ALARM,
     IMAGE_VIEWER,
-    MACRO_MANAGER
+    MACRO_MANAGER,
+    WEB_SERVER
 }
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {

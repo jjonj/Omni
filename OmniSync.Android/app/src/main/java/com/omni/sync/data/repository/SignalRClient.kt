@@ -124,6 +124,13 @@ class SignalRClient(
     private val _aiSessions = MutableStateFlow<Map<Int, String>>(emptyMap())
     val aiSessions: StateFlow<Map<Int, String>> = _aiSessions
 
+    private val _aiInputText = MutableStateFlow("")
+    val aiInputText: StateFlow<String> = _aiInputText
+
+    fun updateAiInputText(text: String) {
+        _aiInputText.value = text
+    }
+
     val anyAiActivityEvent = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
 
     val lastCreatedSessionPid = MutableSharedFlow<Int>()
@@ -673,17 +680,21 @@ class SignalRClient(
             }
         }
     
-        fun clearAiMessages(pid: Int? = null) {
-            val targetPid = pid ?: _selectedPid.value
-            if (hubConnection != null && hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED && aiSessions.value.isNotEmpty()) {
-                hubConnection?.send("SendAiMessage", "/clear", pid)
-            }
-            
-            val currentMap = _aiMessagesMap.value
-            _aiMessagesMap.value = currentMap + (targetPid to emptyList())
-            updateActiveView()
-        }
-    
+            fun clearAiMessages(pid: Int? = null) {
+                val targetPid = pid ?: _selectedPid.value
+                if (hubConnection != null && hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED && aiSessions.value.isNotEmpty()) {
+                    hubConnection?.send("SendAiMessage", "/clear", targetPid)
+                }
+                
+                // Insta-clear local view
+                _aiMessagesMap.value = _aiMessagesMap.value.toMutableMap().apply {
+                    remove(targetPid)
+                }
+                updateActiveView()
+                
+                // Repopulate (request history from Hub which should now be empty or have a system message)
+                requestAiHistory()
+            }    
         fun stopConnection() {        reconnectJob?.cancel()
         reconnectJob = null
         isReconnecting.set(false)
@@ -751,6 +762,12 @@ class SignalRClient(
     fun winActivate(target: String) {
         if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
             hubConnection?.send("WinActivate", target)
+        }
+    }
+
+    fun winClose(target: String) {
+        if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
+            hubConnection?.send("WinClose", target)
         }
     }
 
@@ -915,6 +932,12 @@ class SignalRClient(
             return hubConnection?.invoke(Boolean::class.java, "DeleteFile", path)
         }
         return null
+    }
+
+    fun executeMacroBatch(commands: List<com.omni.sync.logic.macro.MacroCommand>) {
+        if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
+            hubConnection?.send("ExecuteMacro", commands)
+        }
     }
 
     fun sendPayload(command: String, payload: Any?) {

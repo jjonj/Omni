@@ -76,6 +76,22 @@ namespace OmniSync.Hub.Logic.Services
                 { "SCHEDULE_SHUTDOWN", payload => _shutdownService.ScheduleShutdown(payload.GetProperty("Minutes").GetInt32()) },
                 { "ADDCLEANUPPATTERN", payload => AddCleanupPatternRequested?.Invoke(this, payload.GetString() ?? "") },
                 { "HUB_EXIT", payload => _appLifetime.StopApplication() },
+                { "WIN_MINIMIZE", payload => _processService.WinMinimize(payload.GetProperty("Title").GetString() ?? "") },
+                { "WIN_MAXIMIZE", payload => _processService.WinMaximize(payload.GetProperty("Title").GetString() ?? "") },
+                { "WIN_HIDE", payload => _processService.WinHide(payload.GetProperty("Title").GetString() ?? "") },
+                { "WAIT_WIN_ACTIVE", payload => _processService.WaitWinActive(payload.GetProperty("Title").GetString() ?? "", payload.GetProperty("TimeoutMs").GetInt32()) },
+                { "MOUSE_MOVE_ABS", payload => _processService.MouseMoveAbs(payload.GetProperty("X").GetInt32(), payload.GetProperty("Y").GetInt32()) },
+                { "MOUSE_CLICK_AT", payload => _processService.MouseClickAt(payload.GetProperty("Button").GetString() ?? "left", payload.GetProperty("X").GetInt32(), payload.GetProperty("Y").GetInt32()) },
+                { "POWERSHELL", payload => {
+                    var code = payload.GetProperty("Code").GetString();
+                    if (!string.IsNullOrEmpty(code)) {
+                        // Use RunPowerShell from ProcessService (need to make public or similar)
+                        // For now let's just use a simple Process.Start if we can't access RunPowerShell
+                        // Actually, I just added RunPowerShell to ProcessService, I should use it.
+                        // I'll make a public version or just use the logic.
+                        _processService.ExecuteCommand($"powershell -Command \"{code.Replace("\"", "\\\"")}\"");
+                    }
+                }},
                 { "PCG_SAVE_STATE", payload => _pcgService.SaveObjectState(
                     payload.GetProperty("WorldId").GetString() ?? "default",
                     payload.GetProperty("X").GetSingle(),

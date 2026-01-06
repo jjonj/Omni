@@ -353,6 +353,59 @@ fun SettingsScreen(
                 modifier = Modifier.fillMaxWidth()
             )
 
+            Spacer(modifier = Modifier.height(24.dp))
+            HorizontalDivider()
+            Spacer(modifier = Modifier.height(24.dp))
+
+            Text("Monitor Streaming", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+            Spacer(modifier = Modifier.height(8.dp))
+
+            var streamFps by remember { mutableIntStateOf(appConfig.streamFps) }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text("Stream FPS")
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(streamFps.toString(), modifier = Modifier.padding(horizontal = 8.dp))
+                    Slider(
+                        value = streamFps.toFloat(),
+                        onValueChange = { 
+                            streamFps = it.toInt()
+                            appConfig.streamFps = streamFps
+                            mainViewModel.saveAppConfig()
+                        },
+                        valueRange = 1f..30f,
+                        steps = 29,
+                        modifier = Modifier.width(150.dp)
+                    )
+                }
+            }
+
+            var streamResolution by remember { mutableIntStateOf(appConfig.streamResolution) }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text("Resolution Scale (%)")
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(streamResolution.toString() + "%", modifier = Modifier.padding(horizontal = 8.dp))
+                    Slider(
+                        value = streamResolution.toFloat(),
+                        onValueChange = { 
+                            streamResolution = it.toInt()
+                            appConfig.streamResolution = streamResolution
+                            mainViewModel.saveAppConfig()
+                        },
+                        valueRange = 10f..100f,
+                        steps = 17, // 10, 15, 20... 100
+                        modifier = Modifier.width(150.dp)
+                    )
+                }
+            }
+
             Spacer(modifier = Modifier.height(8.dp))
 
             Button(

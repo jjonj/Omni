@@ -21,7 +21,9 @@ data class AppConfig(
     var maxCacheFileSize: Long = 10 * 1024 * 1024, // 10 MB default
     var cacheExclusionPatterns: List<String> = emptyList(),
     var wakeOnLanMac: String = "10FFE0379DAC",
-    var subnetBroadcastIp: String = "192.168.1.255"
+    var subnetBroadcastIp: String = "192.168.1.255",
+    var streamFps: Int = 10,
+    var streamResolution: Int = 100 // Percentage
 )
 
 class ConfigManager(private val context: Context) {
@@ -126,6 +128,8 @@ class ConfigManager(private val context: Context) {
         
         config.globalPasswordHash = filesPrefs.getString("global_password_hash", null)
         config.autosaveEnabled = filesPrefs.getBoolean("autosave_enabled", false)
+        config.streamFps = settingsPrefs.getInt("stream_fps", config.streamFps)
+        config.streamResolution = settingsPrefs.getInt("stream_resolution", config.streamResolution)
         
         val actionsJson = settingsPrefs.getString("notification_actions", null)
         if (actionsJson != null) {

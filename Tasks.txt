@@ -54,7 +54,7 @@ Only work on subtasks if told to do so or if told explicitly to do a Megasession
 
   
 ✅ Stream PC monitor, replacing background of the trackpad leaving the trackpad functioning still, options to toggle monitor, pinch to zoom, (advanced feature, do last)       
-Streaming pc monitor should have a on/off toggle button (default off) on page2 of button panel, and to settings for resolutioni and framerate. Default to full resolution 10fps
+✅ Streaming pc monitor should have a on/off toggle button (default off) on page2 of button panel, and to settings for resolutioni and framerate. Default to full resolution 10fps
  
 
 ### Files & Video Screen
