@@ -296,6 +296,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun handleBackPress(exitApp: () -> Unit) {
+        if (_currentScreen.value == AppScreen.IMAGE_VIEWER) {
+            _currentScreen.value = AppScreen.FILES
+            _canGoBack.value = true
+            return
+        }
         if (backStack.isNotEmpty()) {
             val previous = backStack.removeAt(backStack.lastIndex)
             _currentScreen.value = previous

@@ -214,7 +214,7 @@ fun FilesScreen(
     ) { innerPadding ->
         Column(
             modifier = Modifier
-                .padding(top = innerPadding.calculateTopPadding(), bottom = parentPadding.calculateBottomPadding())
+                .padding(top = innerPadding.calculateTopPadding(), bottom = innerPadding.calculateBottomPadding())
                 .fillMaxSize()
         ) {
             // --- Search Bar ---

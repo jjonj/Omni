@@ -631,6 +631,16 @@ namespace OmniSync.Hub.Presentation.Hubs
             }
         }
 
+        public async Task SendAiSpecialKey(string key, int? sessionId = null)
+        {
+            if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
+            {
+                _logger.LogInformation($"[RpcApiHub] SendAiSpecialKey: {key} (Session: {sessionId})");
+                int targetPid = sessionId ?? -1;
+                await _aiCliService.SendSpecialKeyAsync(key, targetPid);
+            }
+        }
+
         public async Task SendAiResponse(string response)
         {
             if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)

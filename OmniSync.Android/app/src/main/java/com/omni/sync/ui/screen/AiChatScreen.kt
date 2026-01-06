@@ -18,6 +18,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -26,6 +27,13 @@ import com.omni.sync.data.repository.SignalRClient
 import com.omni.sync.viewmodel.MainViewModel
 import com.omni.sync.ui.components.ActionKeyButton
 import androidx.compose.animation.core.*
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
+import android.content.ClipboardManager
+import android.content.ClipData
+import android.content.Context
+import android.widget.Toast
+import androidx.compose.ui.platform.LocalContext
 
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardReturn
@@ -41,7 +49,7 @@ import com.omni.sync.utils.WindowsKeyCodes.VK_RETURN
 import com.omni.sync.utils.WindowsKeyCodes.VK_UP
 import com.omni.sync.utils.WindowsKeyCodes.VK_Y
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun AiChatScreen(
     signalRClient: SignalRClient,
@@ -259,8 +267,8 @@ fun AiChatScreen(
                                     listState.animateScrollToItem(0)
                                 }
                             } else {
-                                // If empty, send Enter key to Hub
-                                signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_RETURN)
+                                // If empty, send Enter key to targeted PID
+                                signalRClient.sendAiSpecialKey("enter")
                                 coroutineScope.launch {
                                     listState.animateScrollToItem(0)
                                 }
@@ -342,21 +350,30 @@ fun QuickActionPanel(
             ActionKeyButton(
                 text = "Esc",
                 modifier = Modifier.weight(1f),
-                onClick = { signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_ESCAPE) }
+                onClick = { signalRClient.sendAiSpecialKey("escape") }
             )
 
             ActionKeyButton(
                 icon = Icons.Default.KeyboardArrowUp,
                 modifier = Modifier.weight(1f),
-                onClick = { signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_UP) }
+                onClick = { signalRClient.sendAiSpecialKey("up") }
             )
 
             ActionKeyButton(
                 icon = Icons.Default.KeyboardArrowDown,
                 modifier = Modifier.weight(1f),
-                onClick = { signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_DOWN) }
+                onClick = { signalRClient.sendAiSpecialKey("down") }
             )
 
+            ActionKeyButton(
+                text = "Enter",
+                icon = Icons.AutoMirrored.Filled.KeyboardReturn,
+                modifier = Modifier.weight(1f),
+                onClick = { signalRClient.sendAiSpecialKey("enter") }
+            )
+        }
+
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             ActionKeyButton(
                 text = "Yolo",
                 modifier = Modifier.weight(1f),
@@ -369,9 +386,7 @@ fun QuickActionPanel(
                     }
                 }
             )
-        }
 
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             ActionKeyButton(
                 text = if (isZoomed) "Unzoom" else "Zoom 1.5x",
                 modifier = Modifier.weight(1f),
@@ -384,12 +399,12 @@ fun QuickActionPanel(
                 }
             )
 
-                        ActionKeyButton(
-                            text = "Clear",
-                            icon = Icons.Default.Delete,
-                            modifier = Modifier.weight(1f),
-                            onClick = { if (selectedPid != -1) signalRClient.clearAiMessages(selectedPid) } 
-                        )            
+            ActionKeyButton(
+                text = "Clear",
+                icon = Icons.Default.Delete,
+                modifier = Modifier.weight(1f),
+                onClick = { if (selectedPid != -1) signalRClient.clearAiMessages(selectedPid) } 
+            )            
             ActionKeyButton(
                 text = "History",
                 icon = Icons.Default.Cached,
@@ -449,12 +464,15 @@ fun Dot(alpha: Float) {
     )
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun ChatBubble(sender: String, content: String) {
     val isMe = sender == "Me"
     val isAi = sender == "AI"
     val isError = sender == "Error" || content.startsWith("Error:")
     val isSystem = sender == "System" || (!isMe && !isAi && !isError)
+    
+    val context = LocalContext.current
 
     val alignment = when {
         isError || isSystem -> Alignment.CenterHorizontally
@@ -491,15 +509,75 @@ fun ChatBubble(sender: String, content: String) {
         Surface(
             color = bgColor,
             shape = RoundedCornerShape(12.dp),
-            modifier = Modifier.widthIn(max = if (isSystem || isError) 350.dp else 300.dp)
+            modifier = Modifier
+                .widthIn(max = if (isSystem || isError) 350.dp else 300.dp)
+                .combinedClickable(
+                    onClick = { },
+                    onLongClick = {
+                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                        val clip = ClipData.newPlainText("AI Message", content)
+                        clipboard.setPrimaryClip(clip)
+                        Toast.makeText(context, "Copied to clipboard", Toast.LENGTH_SHORT).show()
+                    }
+                )
         ) {
-            Text(
+            MarkdownText(
                 text = content,
-                modifier = Modifier.padding(8.dp),
-                style = MaterialTheme.typography.bodyMedium,
-                color = textColor,
+                textColor = textColor,
                 textAlign = if (isSystem || isError) TextAlign.Center else TextAlign.Start
             )
+        }
+    }
+}
+
+@Composable
+fun MarkdownText(text: String, textColor: Color, textAlign: TextAlign) {
+    val parts = remember(text) {
+        val regex = Regex("```([a-zA-Z]*)\\n?([\\s\\S]*?)```")
+        val matches = regex.findAll(text)
+        val result = mutableListOf<Pair<String, Boolean>>() // text, isCode
+        var lastIndex = 0
+        for (match in matches) {
+            if (match.range.first > lastIndex) {
+                result.add(text.substring(lastIndex, match.range.first) to false)
+            }
+            result.add(match.groupValues[2] to true)
+            lastIndex = match.range.last + 1
+        }
+        if (lastIndex < text.length) {
+            result.add(text.substring(lastIndex) to false)
+        }
+        if (result.isEmpty()) result.add(text to false)
+        result
+    }
+
+    Column(modifier = Modifier.padding(8.dp)) {
+        parts.forEach { (content, isCode) ->
+            if (isCode) {
+                Surface(
+                    color = Color.Black.copy(alpha = 0.7f),
+                    shape = RoundedCornerShape(4.dp),
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+                ) {
+                    Text(
+                        text = content.trim(),
+                        modifier = Modifier.padding(8.dp),
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            fontFamily = FontFamily.Monospace,
+                            color = Color.White
+                        )
+                    )
+                }
+            } else {
+                if (content.isNotBlank()) {
+                    Text(
+                        text = content.trim(),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = textColor,
+                        textAlign = textAlign
+                    )
+                }
+            }
         }
     }
 }

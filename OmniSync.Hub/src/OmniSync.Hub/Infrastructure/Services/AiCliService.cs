@@ -37,6 +37,7 @@ namespace OmniSync.Hub.Infrastructure.Services
     public class AiCliService : IDisposable
     {
         private readonly ILogger<AiCliService> _logger;
+        private readonly HubSettingsService _settingsService;
         private readonly ConcurrentDictionary<int, GeminiSession> _sessions = new();
         private readonly ConcurrentDictionary<int, string> _sessionNames = new();
         private readonly ConcurrentDictionary<int, (DateTime LastAttempt, int FailCount)> _failedPids = new();
@@ -47,15 +48,23 @@ namespace OmniSync.Hub.Infrastructure.Services
 
         public event EventHandler<GeminiResponseEventArgs>? ResponseReceived;
 
-        public AiCliService(ILogger<AiCliService> logger)
+        public AiCliService(ILogger<AiCliService> logger, HubSettingsService settingsService)
         {
             _logger = logger;
+            _settingsService = settingsService;
         }
 
         public Task SetSessionNameAsync(int pid, string name)
         {
             _sessionNames[pid] = name;
             _logger.LogInformation($"Renamed session PID {pid} to '{name}'");
+            
+            if (_sessions.TryGetValue(pid, out var session))
+            {
+                var key = $"{session.StartTime.Ticks}_{pid}";
+                _settingsService.SetAiSessionName(key, name);
+            }
+
             return Task.CompletedTask;
         }
 
@@ -70,6 +79,12 @@ namespace OmniSync.Hub.Infrastructure.Services
             {
                 _sessionNames[target] = name;
                 _logger.LogInformation($"Auto-renamed session PID {target} to '{name}' based on first message.");
+                
+                if (_sessions.TryGetValue(target, out var session))
+                {
+                    var key = $"{session.StartTime.Ticks}_{target}";
+                    _settingsService.SetAiSessionName(key, name);
+                }
             }
         }
 
@@ -393,6 +408,15 @@ namespace OmniSync.Hub.Infrastructure.Services
                     {
                         _sessions[pid] = session;
                         _logger.LogInformation($"[AiCliService] Connected to Gemini session PID {pid}");
+
+                        // Load persistent name
+                        var key = $"{startTime.Ticks}_{pid}";
+                        var savedName = _settingsService.GetAiSessionName(key);
+                        if (savedName != null)
+                        {
+                            _sessionNames[pid] = savedName;
+                            _logger.LogInformation($"[AiCliService] Restored persistent name '{savedName}' for PID {pid}");
+                        }
                     }
                     else
                     {
@@ -502,6 +526,17 @@ namespace OmniSync.Hub.Infrastructure.Services
             }
         }
 
+        public async Task<bool> SendSpecialKeyAsync(string key, int pid = -1)
+        {
+            int target = pid == -1 ? _targetPid : pid;
+            if (target == -1 || !_sessions.TryGetValue(target, out var session) || !session.IsConnected)
+            {
+                return false;
+            }
+
+            return await session.SendSpecialKeyAsync(key);
+        }
+
         public async Task GetHistoryAsync(int pid)
         {
             if (_sessions.TryGetValue(pid, out var session))
@@ -515,6 +550,9 @@ namespace OmniSync.Hub.Infrastructure.Services
             int target = pid == -1 ? _targetPid : pid;
             if (_sessions.TryGetValue(target, out var session))
             {
+                var key = $"{session.StartTime.Ticks}_{target}";
+                _settingsService.RemoveAiSessionName(key);
+
                 session.Dispose();
                 _sessions.TryRemove(target, out _);
                 _sessionNames.TryRemove(target, out _);
@@ -607,6 +645,12 @@ namespace OmniSync.Hub.Infrastructure.Services
             _logger.LogDebug($"[GeminiSession] SendPromptAsync to PID {_pid}");
             _currentResponse.Clear();
             return await SendCommandAsync("prompt", text);
+        }
+
+        public async Task<bool> SendSpecialKeyAsync(string key)
+        {
+            _logger.LogDebug($"[GeminiSession] SendSpecialKeyAsync to PID {_pid}: {key}");
+            return await SendCommandAsync("key", key);
         }
 
         public async Task RequestHistoryAsync()

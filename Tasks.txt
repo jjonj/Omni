@@ -110,15 +110,15 @@ Streaming pc monitor should have a on/off toggle button (default off) on page2 o
 
 ### AI screen
 
-Add a new input button for sending the enter key 
+✅ Add a new input button for sending the enter key 
 
-When sending input such as escape or enter we need to make sure that input gets send to the PID of the active session. don't know if you can do that directly or if we have to focus the windows first 
-
-
-Names for sessions now use the first message to figure out but it's not persistent enough, if i come back to app later it will still show the sessions but have forgotten the names and falls back to session id names 
-
-if I go on ai screen and type a prompt without creating a session first it gives error instead of auto creating session and sending message when it's ready 
+✅ When sending input such as escape or enter we need to make sure that input gets send to the PID of the active session. don't know if you can do that directly or if we have to focus the windows first 
 
 
-Try to add more advanced rendering of AI replies that contain e.g. codeblocks and tool calls.
-Allow selecting/copy to clipboard messag
+✅ Names for sessions now use the first message to figure out but it's not persistent enough, if i come back to app later it will still show the sessions but have forgotten the names and falls back to session id names 
+
+✅ if I go on ai screen and type a prompt without creating a session first it gives error instead of auto creating session and sending message when it's ready 
+
+
+✅ Try to add more advanced rendering of AI replies that contain e.g. codeblocks and tool calls.
+✅ Allow selecting/copy to clipboard messag

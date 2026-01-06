@@ -547,28 +547,68 @@ class SignalRClient(
         }
     }
 
-    fun sendCortexTemplates(templatesJson: String) {
-        if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
-            hubConnection?.send("SetCortexTemplates", templatesJson)
-        }
-    }
-
-        fun sendAiMessage(message: String, pid: Int? = null) {
-            if (_isStartingSession) {
-                messageQueue.add(message)
-                // Immediate feedback for queued messages
-                updateSessionMessages(-1) { it + Pair("Me", message) }
-                return
+        fun sendCortexTemplates(templatesJson: String) {
+            if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
+                hubConnection?.send("SetCortexTemplates", templatesJson)
             }
+        }
     
-            if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {       
+        fun sendAiSpecialKey(key: String, pid: Int? = null) {
+            if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
                 val targetPid = pid ?: _selectedPid.value
-                if (!message.startsWith("/")) {
-                    updateSessionStatus(targetPid, "AI Thinking...")
-                }
-                hubConnection?.send("SendAiMessage", message, pid)
+                hubConnection?.send("SendAiSpecialKey", key, targetPid)
             }
         }
+    
+            fun sendAiMessage(message: String, pid: Int? = null) {
+    
+                if (_isStartingSession) {
+    
+                    messageQueue.add(message)
+    
+                    // Immediate feedback for queued messages
+    
+                    updateSessionMessages(-1) { it + Pair("Me", message) }
+    
+                    return
+    
+                }
+    
+        
+    
+                if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {       
+    
+                    val targetPid = pid ?: _selectedPid.value
+    
+                    
+    
+                    if (targetPid == -1 && !message.startsWith("/")) {
+    
+                        // Auto-create session
+    
+                        startNewAiSession()
+    
+                        messageQueue.add(message)
+    
+                        updateSessionMessages(-1) { it + Pair("Me", message) }
+    
+                        return
+    
+                    }
+    
+        
+    
+                    if (!message.startsWith("/")) {
+    
+                        updateSessionStatus(targetPid, "AI Thinking...")
+    
+                    }
+    
+                    hubConnection?.send("SendAiMessage", message, targetPid)
+    
+                }
+    
+            }
     fun getAiSessions() {
         if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
             hubConnection?.send("GetAiSessions")

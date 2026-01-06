@@ -719,7 +719,6 @@ fun TextEditorScreen(
         val layout = currentTextLayoutResult ?: return@LaunchedEffect
         
         // Only trigger scroll if text actually changed (typing)
-        // We compare editingContent with lastText to be sure it's a content change
         if (editingContent != lastText) {
             lastText = editingContent
             
@@ -739,9 +738,6 @@ fun TextEditorScreen(
                 verticalScrollState.animateScrollTo((lineBottom - vHeight + buffer).toInt())
             }
         } else {
-            // Just selection change (cursor placement) - do NOT scroll automatically
-            // But we MUST update lastText to editingContent even if they are same 
-            // to stay in sync for next actual text change.
             lastText = editingContent
         }
     }
@@ -1371,13 +1367,13 @@ fun TextEditorScreen(
                 ) {
                     val layout = currentTextLayoutResult
                     if (layout != null) {
-                        val cursorLine = layout.getLineForOffset(textFieldValue.selection.end) + 1
+                        val cursorOffset = textFieldValue.selection.end
+                        val cursorLine = layout.getLineForOffset(cursorOffset) + 1
                         
                         val scrollOffset = verticalScrollState.value
                         val firstVisibleLine = layout.getLineForVerticalPosition(scrollOffset.toFloat()) + 1
                         
                         // Without accounting for keyboard (full viewport)
-                        // LocalConfiguration gives us the total height roughly
                         val config = LocalConfiguration.current
                         val totalHeightPx = with(density) { config.screenHeightDp.dp.toPx() }
                         val lastVisibleLineNoKbd = layout.getLineForVerticalPosition(scrollOffset.toFloat() + totalHeightPx) + 1
@@ -1391,7 +1387,8 @@ fun TextEditorScreen(
                             Text("Cursor Line: $cursorLine", style = MaterialTheme.typography.labelSmall)
                             Text("Visible (No Kbd): $firstVisibleLine - $lastVisibleLineNoKbd", style = MaterialTheme.typography.labelSmall)
                             Text("Visible (With Kbd): $firstVisibleLine - $lastVisibleLineWithKbd", style = MaterialTheme.typography.labelSmall)
-                            Text("Current Viewport Height: ${viewportHeight.toInt()}", style = MaterialTheme.typography.labelSmall)
+                            Text("Scroll Offset: $scrollOffset", style = MaterialTheme.typography.labelSmall)
+                            Text("Viewport Height: ${viewportHeight.toInt()}", style = MaterialTheme.typography.labelSmall)
                         }
                     } else {
                         Text("No layout data", modifier = Modifier.padding(8.dp))

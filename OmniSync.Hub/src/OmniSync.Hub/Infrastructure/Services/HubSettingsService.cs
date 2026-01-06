@@ -6,9 +6,18 @@ using Microsoft.Extensions.Logging;
 
 namespace OmniSync.Hub.Infrastructure.Services
 {
+    public class HotkeyConfig
+    {
+        public string Name { get; set; } = string.Empty;
+        public string Key { get; set; } = string.Empty;
+        public string Action { get; set; } = string.Empty;
+    }
+
     public class HubSettings
     {
         public Dictionary<string, string> ExeMappings { get; set; } = new();
+        public List<HotkeyConfig> Hotkeys { get; set; } = new();
+        public Dictionary<string, string> AiSessionNames { get; set; } = new();
     }
 
     public class HubSettingsService
@@ -34,6 +43,19 @@ namespace OmniSync.Hub.Infrastructure.Services
             _settingsPath = Path.Combine(appDataPath, "settings.json");
             
             LoadSettings();
+            InitializeDefaultHotkeys();
+        }
+
+        private void InitializeDefaultHotkeys()
+        {
+            if (_settings.Hotkeys.Count == 0)
+            {
+                _settings.Hotkeys.Add(new HotkeyConfig { Name = "Send clipboard to TFT must include and solve for level+1", Key = "", Action = "TFT_CLIPBOARD_MUST_INCLUDE_SOLVE_NEXT" });
+                _settings.Hotkeys.Add(new HotkeyConfig { Name = "Send Clipboard to TFT current team", Key = "", Action = "TFT_CLIPBOARD_CURRENT_TEAM" });
+                _settings.Hotkeys.Add(new HotkeyConfig { Name = "Copy solution [1,2,3,4,5] team code to clipboard", Key = "", Action = "TFT_COPY_SOLUTION_CODE" });
+                _settings.Hotkeys.Add(new HotkeyConfig { Name = "Open Hub Window", Key = "Ctrl+Alt+H", Action = "OPEN_HUB_WINDOW" });
+                SaveSettings();
+            }
         }
 
         public void LoadSettings()
@@ -44,6 +66,7 @@ namespace OmniSync.Hub.Infrastructure.Services
                 {
                     string json = File.ReadAllText(_settingsPath);
                     _settings = JsonSerializer.Deserialize<HubSettings>(json) ?? new HubSettings();
+                    if (_settings.AiSessionNames == null) _settings.AiSessionNames = new();
                     _logger.LogInformation("Settings loaded successfully.");
                 }
                 else
@@ -95,6 +118,25 @@ namespace OmniSync.Hub.Infrastructure.Services
                 return path;
             }
             return null;
+        }
+
+        public void SetAiSessionName(string key, string name)
+        {
+            _settings.AiSessionNames[key] = name;
+            SaveSettings();
+        }
+
+        public string? GetAiSessionName(string key)
+        {
+            return _settings.AiSessionNames.TryGetValue(key, out var name) ? name : null;
+        }
+
+        public void RemoveAiSessionName(string key)
+        {
+            if (_settings.AiSessionNames.Remove(key))
+            {
+                SaveSettings();
+            }
         }
 
         protected virtual void OnSettingsChanged()
