@@ -329,51 +329,20 @@ class SignalRClient(
                 }, String::class.java, String::class.java, Int::class.java)
         
                 hubConnection?.on("ReceiveAiResponse", { response: String, pid: Int ->
-                    if (response == "[TURN_FINISHED]") {
-                        updateSessionStatus(pid, null)
-                        isNextResponseNewBubble = true
-                        return@on
-                    }
-        
-                    if (response.isBlank()) return@on
-
-                    // Notify any AI activity
-                    coroutineScope.launch { anyAiActivityEvent.emit(Unit) }
-        
-                    // If we receive a real response, clear any "Switching..." status
-                    val currentStatus = _aiStatusMap.value[pid]
-                    if (currentStatus?.contains("Switching") == true || currentStatus?.contains("Reloading") == true) {
-                        updateSessionStatus(pid, null)
-                    }
-        
-                    val isError = response.startsWith("Error:")
-                    val isSystem = response.contains("A new version of Gemini CLI is available") || 
-                                   response.startsWith("System:") || 
-                                   response.startsWith("Info:") ||
-                                   response.startsWith("Replacement") ||
-                                   response.startsWith("Read") ||
-                                   response.startsWith("Tool Call") ||
-                                   response.startsWith("Thinking") ||
-                                   response.startsWith("Executing")
-                    
-                    val sender = when {
-                        isError -> "Error"
-                        isSystem -> "System"
-                        else -> "AI"
-                    }
-        
-                    updateSessionMessages(pid) { currentMessages ->
-                        val mutable = currentMessages.toMutableList()
-                        if (!isNextResponseNewBubble && !isError && !isSystem && mutable.isNotEmpty() && mutable.last().first == "AI") {
-                            val lastMsg = mutable.last()
-                            mutable[mutable.size - 1] = Pair("AI", lastMsg.second + response)
-                            mutable
-                        } else {
-                            if (!isError && !isSystem) isNextResponseNewBubble = false
-                            mutable + Pair(sender, response)
-                        }
-                    }
+                    handleAiResponse(response, pid)
                 }, String::class.java, Int::class.java)
+
+                hubConnection?.on("ReceiveAiResponse", { response: String ->
+                    handleAiResponse(response, _selectedPid.value)
+                }, String::class.java)
+
+                hubConnection?.on("ReceiveAiThought", { thought: String, pid: Int ->
+                    updateSessionStatus(pid, "Thinking: $thought")
+                }, String::class.java, Int::class.java)
+
+                hubConnection?.on("ReceiveAiThought", { thought: String ->
+                    updateSessionStatus(_selectedPid.value, "Thinking: $thought")
+                }, String::class.java)
         
                 hubConnection?.on("ReceiveAiStatus", { status: String?, pid: Int ->
                     if (status == "FINISHED" || status == "DONE" || status == null || status.isBlank()) {
@@ -386,6 +355,16 @@ class SignalRClient(
                         }
                     }
                 }, String::class.java, Int::class.java)
+
+                hubConnection?.on("ReceiveAiStatus", { status: String? ->
+                    val pid = _selectedPid.value
+                    if (status == "FINISHED" || status == "DONE" || status == null || status.isBlank()) {
+                        updateSessionStatus(pid, null)
+                        isNextResponseNewBubble = true
+                    } else {
+                        updateSessionStatus(pid, status)
+                    }
+                }, String::class.java)
         
                 hubConnection?.on("ReceiveNewAiSessionPid", { pid: Int ->
                     getAiSessions()
@@ -990,5 +969,52 @@ class SignalRClient(
             }, { error ->
                 Log.e("SignalR", "Auth failed", error)
             })
+    }
+
+    private fun handleAiResponse(response: String, pid: Int) {
+        if (response == "[TURN_FINISHED]") {
+            updateSessionStatus(pid, null)
+            isNextResponseNewBubble = true
+            return
+        }
+
+        if (response.isBlank()) return
+
+        // Notify any AI activity
+        coroutineScope.launch { anyAiActivityEvent.emit(Unit) }
+
+        // If we receive a real response, clear any "Switching..." status
+        val currentStatus = _aiStatusMap.value[pid]
+        if (currentStatus?.contains("Switching") == true || currentStatus?.contains("Reloading") == true || currentStatus?.contains("Thinking") == true) {
+            updateSessionStatus(pid, null)
+        }
+
+        val isError = response.startsWith("Error:")
+        val isSystem = response.contains("A new version of Gemini CLI is available") ||
+                response.startsWith("System:") ||
+                response.startsWith("Info:") ||
+                response.startsWith("Replacement") ||
+                response.startsWith("Read") ||
+                response.startsWith("Tool Call") ||
+                response.startsWith("Thinking") ||
+                response.startsWith("Executing")
+
+        val sender = when {
+            isError -> "Error"
+            isSystem -> "System"
+            else -> "AI"
+        }
+
+        updateSessionMessages(pid) { currentMessages ->
+            val mutable = currentMessages.toMutableList()
+            if (!isNextResponseNewBubble && !isError && !isSystem && mutable.isNotEmpty() && mutable.last().first == "AI") {
+                val lastMsg = mutable.last()
+                mutable[mutable.size - 1] = Pair("AI", lastMsg.second + response)
+                mutable
+            } else {
+                if (!isError && !isSystem) isNextResponseNewBubble = false
+                mutable + Pair(sender, response)
+            }
+        }
     }
 }

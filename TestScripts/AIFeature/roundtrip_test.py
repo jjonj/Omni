@@ -48,6 +48,7 @@ class RoundtripTester:
         # Hub sends [response, pid]
         if args:
             response = args[0]
+            logger.info(f"AI Response: {response}")
             if str(response).startswith("Error:") or "Error:" in str(response)[:20]:
                 logger.error(f"FAIL: AI Response indicated an error: {response}")
                 self.failure_detected = True
@@ -59,6 +60,11 @@ class RoundtripTester:
             logger.info(f"AI Status: {status}")
             if status == "FINISHED":
                 self.response_received = True
+
+    def on_ai_thought(self, args):
+        if args:
+            thought = args[0]
+            logger.info(f"AI Thought: {thought}")
 
     def on_new_session_pid(self, args):
         pid = args[0]
@@ -76,6 +82,7 @@ class RoundtripTester:
         self.hub.on("ReceiveAiMessage", self.on_ai_message)
         self.hub.on("ReceiveAiResponse", self.on_ai_response)
         self.hub.on("ReceiveAiStatus", self.on_ai_status)
+        self.hub.on("ReceiveAiThought", self.on_ai_thought)
         self.hub.on("ReceiveNewAiSessionPid", self.on_new_session_pid)
         self.hub.on_open(self.on_open)
         self.hub.on_error(lambda data: logger.error(f"SignalR Error: {data}"))
@@ -112,6 +119,8 @@ class RoundtripTester:
         logger.info(f"Targeting new session PID: {target_pid}")
 
         # 4. Send test message with PID
+        # Reset response flag to ignore startup 'FINISHED' event
+        self.response_received = False 
         test_msg = "Hello AI, this is an automated roundtrip test. Please respond."
         logger.info(f"Sending message via Hub to PID {target_pid}: {test_msg}")
         self.hub.send("SendAiMessage", [test_msg, target_pid])

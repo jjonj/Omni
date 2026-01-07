@@ -283,7 +283,7 @@ fun AiChatScreen(
                 ) {
                     if (isAiThinking) {
                         item(key = "typing_indicator") {
-                            AiTypingIndicator()
+                            AiTypingIndicator(aiStatus)
                         }
                     }
 
@@ -517,7 +517,7 @@ fun QuickActionPanel(
 }
 
 @Composable
-fun AiTypingIndicator() {
+fun AiTypingIndicator(status: String? = null) {
     val infiniteTransition = rememberInfiniteTransition(label = "typing")
     val dotAlpha1 by infiniteTransition.animateFloat(
         initialValue = 0.2f, targetValue = 1f,
@@ -547,10 +547,21 @@ fun AiTypingIndicator() {
             shape = RoundedCornerShape(12.dp),
             modifier = Modifier.widthIn(max = 300.dp)
         ) {
-            Row(modifier = Modifier.padding(12.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                Dot(dotAlpha1)
-                Dot(dotAlpha2)
-                Dot(dotAlpha3)
+            Column(modifier = Modifier.padding(12.dp)) {
+                if (status != null && status.startsWith("Thinking: ")) {
+                    val thoughtText = status.substring("Thinking: ".length)
+                    Text(
+                        text = thoughtText,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.7f),
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Dot(dotAlpha1)
+                    Dot(dotAlpha2)
+                    Dot(dotAlpha3)
+                }
             }
         }
     }
@@ -671,12 +682,35 @@ fun MarkdownText(text: String, textColor: Color, textAlign: TextAlign) {
                 }
             } else {
                 if (content.isNotBlank()) {
-                    Text(
-                        text = content.trim(),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = textColor,
-                        textAlign = textAlign
-                    )
+                    // Improved bullet point rendering
+                    val lines = content.trim().split("\n")
+                    lines.forEach { line ->
+                        val trimmedLine = line.trim()
+                        if (trimmedLine.startsWith("* ") || trimmedLine.startsWith("- ")) {
+                            Row(modifier = Modifier.padding(start = 8.dp, bottom = 2.dp)) {
+                                Text(
+                                    text = "•",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = textColor,
+                                    modifier = Modifier.padding(end = 8.dp)
+                                )
+                                Text(
+                                    text = trimmedLine.substring(2),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = textColor,
+                                    textAlign = textAlign
+                                )
+                            }
+                        } else if (trimmedLine.isNotEmpty()) {
+                            Text(
+                                text = trimmedLine,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = textColor,
+                                textAlign = textAlign,
+                                modifier = Modifier.padding(bottom = 4.dp)
+                            )
+                        }
+                    }
                 }
             }
         }

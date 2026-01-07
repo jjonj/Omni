@@ -34,21 +34,26 @@ class DiffDisplayTester:
         self.last_activity_time = time.time()
 
     def on_ai_message(self, args):
-        sender_id, message = args
-        self.update_activity()
+        # args is [sender_id, message, targetPid]
+        if len(args) >= 2:
+            self.update_activity()
 
     def on_ai_response(self, args):
-        response = args[0]
-        # logger.info(f"Received chunk: {response}")
-        self.full_response_text += str(response)
-        self.update_activity()
+        # args is [text, targetPid]
+        if args:
+            response = args[0]
+            # logger.info(f"Received chunk: {response}")
+            self.full_response_text += str(response)
+            self.update_activity()
 
     def on_ai_status(self, args):
-        status = args[0]
-        logger.info(f"AI Status: {status}")
-        self.update_activity()
-        if status == "FINISHED":
-            self.response_received = True
+        # args is [status, targetPid]
+        if args:
+            status = args[0]
+            logger.info(f"AI Status: {status}")
+            self.update_activity()
+            if status == "FINISHED":
+                self.response_received = True
 
     def on_new_session_pid(self, args):
         pid = args[0]

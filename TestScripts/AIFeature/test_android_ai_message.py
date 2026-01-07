@@ -25,20 +25,23 @@ class AndroidAiTester:
         self.connection_started = True
 
     def on_ai_message(self, args):
-        sender_id, message = args
-        logger.info(f"HUB BROADCAST: Message from {sender_id}: {message}")
-        self.message_received = True
+        if len(args) >= 2:
+            sender_id, message = args[0], args[1]
+            logger.info(f"HUB BROADCAST: Message from {sender_id}: {message}")
+            self.message_received = True
 
     def on_ai_response(self, args):
-        response = args[0]
-        logger.info(f"HUB BROADCAST: AI Response received: {response}")
-        self.response_received = True
+        if args:
+            response = args[0]
+            logger.info(f"HUB BROADCAST: AI Response received: {response}")
+            self.response_received = True
 
     def on_ai_status(self, args):
-        status = args[0]
-        logger.info(f"AI Status: {status}")
-        if status == "FINISHED":
-            self.response_received = True
+        if args:
+            status = args[0]
+            logger.info(f"AI Status: {status}")
+            if status == "FINISHED":
+                self.response_received = True
 
     async def run_test(self):
         self.hub = HubConnectionBuilder()\

@@ -325,7 +325,7 @@ namespace OmniSync.Hub.Infrastructure.Services
                 _logger.LogInformation($"[AiCliService] Launching process: cd /d {geminiDir} && node bundle/gemini.js --workspace {workspace}");
                 onProgress?.Invoke($"Launching process in {workspace}...");
 
-                string command = $"title OMNI_GEMINI_INTERACTIVE && cd /d \"{geminiDir}\" && node bundle/gemini.js --workspace {workspace} --yolo --bridge";
+                string command = $"title OMNI_GEMINI_INTERACTIVE && cd /d \"{geminiDir}\" && node bundle/gemini.js --workspace {workspace} --yolo";
                 string debugLog = Path.Combine(rootPath, "gemini_cli_debug.log");
                 string finalCommand = $"set GEMINI_DEBUG_LOG_FILE={debugLog} && {command}";
 

@@ -34,8 +34,9 @@ class SpecialMessageTester:
         self.last_activity_time = time.time()
 
     def on_ai_message(self, args):
-        if len(args) >= 3:
-            sender_id, message, pid = args[0], args[1], args[2]
+        if len(args) >= 2:
+            sender_id, message = args[0], args[1]
+            pid = args[2] if len(args) > 2 else -1
             logger.info(f"HUB BROADCAST: Message from {sender_id} to PID {pid}: {message}")
         self.message_received = True
         self.update_activity()
@@ -45,16 +46,16 @@ class SpecialMessageTester:
         if args:
             response = str(args[0])
             self.full_response_text += response
-            logger.info(f"AI Response Chunk: {response[:50]}...")
+            # logger.info(f"AI Response Chunk: {response[:50]}...")
             self.update_activity()
 
     def on_ai_status(self, args):
-        if not args: return
-        status = args[0]
-        logger.info(f"AI Status: {status}")
-        if status == "FINISHED":
-            self.response_received = True
-        self.update_activity()
+        if args:
+            status = args[0]
+            logger.info(f"AI Status: {status}")
+            if status == "FINISHED":
+                self.response_received = True
+            self.update_activity()
 
     def on_new_session_pid(self, args):
         pid = args[0]
