@@ -227,6 +227,8 @@ namespace OmniSync.Hub.Infrastructure.Services
                                                  commandLine.Contains("OMNI_GEMINI")) && 
                                                 !commandLine.Contains("@google");
 
+                                _logger.LogDebug($"[AiCliService] PID {foundPid} command line: {commandLine} (isGemini: {isGemini})");
+
                                 if (isGemini)
                                 {
                                     _logger.LogInformation($"[AiCliService] Found potential Gemini process: PID {foundPid}");
@@ -303,9 +305,10 @@ namespace OmniSync.Hub.Infrastructure.Services
             onProgress?.Invoke("Initializing launch sequence...");
             try
             {
-                // Capture existing sessions before launch
+                // Capture ALL existing Gemini PIDs before launch (even if not yet connected)
                 onProgress?.Invoke("Scanning for existing sessions...");
-                var initialSessions = await DiscoverSessionsAsync(500, 1000); 
+                var initialPids = await GetAllGeminiPidsAsync(); 
+                _logger.LogInformation($"[AiCliService] Baseline Gemini PIDs: {string.Join(", ", initialPids)}");
 
                 string rootPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", ".."));
                 string geminiDir = Path.GetFullPath(Path.Combine(rootPath, "..", "Tools", "gemini-cli"));
@@ -322,7 +325,7 @@ namespace OmniSync.Hub.Infrastructure.Services
                 _logger.LogInformation($"[AiCliService] Launching process: cd /d {geminiDir} && node bundle/gemini.js --workspace {workspace}");
                 onProgress?.Invoke($"Launching process in {workspace}...");
 
-                string command = $"title OMNI_GEMINI_INTERACTIVE && cd /d \"{geminiDir}\" && node bundle/gemini.js --workspace {workspace} --yolo";
+                string command = $"title OMNI_GEMINI_INTERACTIVE && cd /d \"{geminiDir}\" && node bundle/gemini.js --workspace {workspace} --yolo --bridge";
                 string debugLog = Path.Combine(rootPath, "gemini_cli_debug.log");
                 string finalCommand = $"set GEMINI_DEBUG_LOG_FILE={debugLog} && {command}";
 
@@ -340,16 +343,17 @@ namespace OmniSync.Hub.Infrastructure.Services
                 onProgress?.Invoke("Process started. Waiting for connection...");
 
                 // Wait for the process and its pipe
-                for (int i = 0; i < 20; i++) 
+                for (int i = 0; i < 40; i++) 
                 {
-                    _logger.LogInformation($"[AiCliService] Launch check iteration {i+1}/20...");
+                    _logger.LogInformation($"[AiCliService] Launch check iteration {i+1}/40...");
                     await Task.Delay(1000);
                     
                     // Force a WMI refresh by resetting cache
                     _lastWmiDiscovery = DateTime.MinValue;
                     var currentSessions = await DiscoverSessionsAsync(1000, 5000); 
                     
-                    var newPid = currentSessions.Except(initialSessions).FirstOrDefault();
+                    var newPid = currentSessions.Except(initialPids).FirstOrDefault();
+                    _logger.LogInformation($"[AiCliService] Baseline PIDs: {string.Join(", ", initialPids)}. Current Connected PIDs: {string.Join(", ", currentSessions)}. New PID Candidate: {newPid}");
                     if (newPid != 0)
                     {
                         string msg = $"Successfully connected to new session PID {newPid} after {i+1} seconds.";
@@ -471,6 +475,44 @@ namespace OmniSync.Hub.Infrastructure.Services
         }
 
         public int GetTargetPid() => _targetPid;
+
+        private async Task<List<int>> GetAllGeminiPidsAsync()
+        {
+            var pids = new List<int>();
+            try
+            {
+                if (OperatingSystem.IsWindows())
+                {
+                    string query = "SELECT ProcessId, CommandLine FROM Win32_Process WHERE Name LIKE 'node%'";
+                    using var searcher = new ManagementObjectSearcher(query);
+                    using var collection = searcher.Get();
+
+                    foreach (var process in collection)
+                    {
+                        var commandLine = process["CommandLine"]?.ToString();
+                        var pidObj = process["ProcessId"];
+                        if (commandLine != null && pidObj != null)
+                        {
+                            int foundPid = Convert.ToInt32(pidObj);
+                            bool isGemini = (commandLine.Contains("bundle/gemini.js") || 
+                                             commandLine.Contains("gemini-cli") || 
+                                             commandLine.Contains("OMNI_GEMINI")) && 
+                                            !commandLine.Contains("@google");
+
+                            if (isGemini)
+                            {
+                                pids.Add(foundPid);
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "[AiCliService] Error getting all Gemini PIDs");
+            }
+            return pids;
+        }
 
         public async Task<bool> SendPromptAsync(string text, int pid = -1)
         {
@@ -651,7 +693,11 @@ namespace OmniSync.Hub.Infrastructure.Services
             }
             catch (Exception ex)
             {
-                _logger.LogWarning($"[GeminiSession] Could not connect to pipe for PID {_pid} within {timeoutMs}ms: {ex.Message}");
+                _logger.LogWarning($"[GeminiSession] Could not connect to pipe for PID {_pid} within {timeoutMs}ms: {ex.Message} (Type: {ex.GetType().Name})");
+                if (ex.InnerException != null)
+                {
+                    _logger.LogDebug($"[GeminiSession] Inner Exception: {ex.InnerException.Message}");
+                }
                 return false;
             }
         }
@@ -761,6 +807,11 @@ namespace OmniSync.Hub.Infrastructure.Services
                                 {
                                     _onResponse(_pid, text, false, false);
                                 }
+                            }
+                            else if (typeStr == "thought")
+                            {
+                                _logger.LogDebug($"[GeminiSession] Received thought from PID {_pid}: {text}");
+                                _onResponse(_pid, $"Thinking: {text}", false, false);
                             }
                             else if (typeStr == "codeDiff")
                             {
