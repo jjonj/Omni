@@ -123,13 +123,20 @@ fun AiChatScreen(
             
             if (isReloading) {
                 // Jump instantly for history reloads/switches
+                mainViewModel.addLog("[UI] History reload/switch detected for PID $selectedPid. Scrolling to bottom.", com.omni.sync.ui.screen.LogType.INFO)
+                delay(100) // Small delay to let items render
                 listState.scrollToItem(0)
             } else {
                 // Only auto-scroll if we are already at the bottom (index 0)
+                // We check first visible item index. In reverseLayout, 0 is bottom.
                 val isAtBottom = listState.firstVisibleItemIndex <= 1
                 val newestIsMe = filteredMessages.lastOrNull()?.sender == "Me"
 
                 if (isAtBottom || (countIncreased && newestIsMe)) {
+                    if (countIncreased) {
+                        mainViewModel.addLog("[UI] New message in PID $selectedPid. Auto-scrolling.", com.omni.sync.ui.screen.LogType.INFO)
+                    }
+                    delay(50) // Small delay to let Compose measure new items
                     listState.animateScrollToItem(0)
                 }
             }
@@ -888,19 +895,25 @@ fun DiffText(diffJson: String) {
     val displayData = remember(diffJson) {
         try {
             val gson = com.google.gson.GsonBuilder().setPrettyPrinting().create()
-            val element = gson.fromJson(diffJson, com.google.gson.JsonElement::class.java)
-            if (element.isJsonObject) {
-                val obj = element.asJsonObject
-                if (obj.has("fileDiff")) {
-                    obj.get("fileDiff").asString to true // text, isDiff
+            // Try parsing as JSON first
+            if (diffJson.trim().startsWith("{") || diffJson.trim().startsWith("[")) {
+                val element = gson.fromJson(diffJson, com.google.gson.JsonElement::class.java)
+                if (element.isJsonObject) {
+                    val obj = element.asJsonObject
+                    if (obj.has("fileDiff")) {
+                        obj.get("fileDiff").asString to true
+                    } else {
+                        gson.toJson(element) to false
+                    }
                 } else {
-                    gson.toJson(element) to false // pretty print, not diff
+                    gson.toJson(element) to false
                 }
             } else {
-                diffJson to diffJson.contains("@@") // fallback check
+                // Not JSON, check if it's a raw diff
+                diffJson to (diffJson.contains("@@") || diffJson.contains("--- ") || diffJson.contains("+++ "))
             }
         } catch (e: Exception) {
-            diffJson to diffJson.contains("@@")
+            diffJson to (diffJson.contains("@@") || diffJson.contains("--- ") || diffJson.contains("+++ "))
         }
     }
 

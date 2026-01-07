@@ -224,23 +224,25 @@ fun LogItem(log: LogEntry) {
         LogType.INFO -> MaterialTheme.colorScheme.onSurface
     }
     
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(backgroundColor)
-            .padding(vertical = 4.dp, horizontal = 8.dp)
-    ) {
-        Text(
-            text = "[${java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date(log.timestamp))}]",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(end = 8.dp)
-        )
-        Text(
-            text = log.message,
-            style = MaterialTheme.typography.bodySmall,
-            color = textColor
-        )
+    androidx.compose.foundation.text.selection.SelectionContainer {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(backgroundColor)
+                .padding(vertical = 4.dp, horizontal = 8.dp)
+        ) {
+            Text(
+                text = "[${java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date(log.timestamp))}]",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(end = 8.dp)
+            )
+            Text(
+                text = log.message,
+                style = MaterialTheme.typography.bodySmall,
+                color = textColor
+            )
+        }
     }
 }
 

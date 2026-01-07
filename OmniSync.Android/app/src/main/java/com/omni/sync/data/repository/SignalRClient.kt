@@ -92,6 +92,7 @@ class SignalRClient(
     private val coroutineScope = CoroutineScope(Dispatchers.IO + SupervisorJob())   
     private var reconnectJob: Job? = null
     private val isReconnecting = AtomicBoolean(false)
+    private var handlersRegistered = false
 
     @Volatile
     var isUpdatingClipboardInternally: Boolean = false
@@ -213,6 +214,7 @@ class SignalRClient(
     }
 
     private fun buildAndStartConnection(url: String, onFailure: (Throwable) -> Unit) {
+        stopConnection()
         hubConnection = HubConnectionBuilder.create(url).build()
 
         hubConnection?.onClosed { error ->
@@ -253,6 +255,9 @@ class SignalRClient(
     }
 
     private fun registerHubHandlers() {
+        if (handlersRegistered) return
+        handlersRegistered = true
+        
         hubConnection?.on("ClipboardUpdated", { newText: String ->
             try {
                 isUpdatingClipboardInternally = true
@@ -335,34 +340,30 @@ class SignalRClient(
         
                 hubConnection?.on("ReceiveAiMessage", { senderId: String, message: String, pid: Int ->
                     val senderName = if (senderId == hubConnection?.connectionId) "Me" else "User"
+                    mainViewModel.addLog("[AI] PID $pid: Message from $senderName: ${message.take(30)}...", com.omni.sync.ui.screen.LogType.INFO)
                     updateSessionMessages(pid) { it + AiMessage(senderName, message) }
                 }, String::class.java, String::class.java, Int::class.java)
         
                 hubConnection?.on("ReceiveAiResponse", { response: String, pid: Int ->
+                    Log.d("SignalRClient", "ReceiveAiResponse: pid=$pid, text=${response.take(20)}...")
+                    mainViewModel.addLog("[AI] PID $pid: Response: ${response.take(30)}...", com.omni.sync.ui.screen.LogType.INFO)
                     handleAiResponse(response, pid)
                 }, String::class.java, Int::class.java)
 
-                hubConnection?.on("ReceiveAiResponse", { response: String ->
-                    handleAiResponse(response, _selectedPid.value)
-                }, String::class.java)
-
                 hubConnection?.on("ReceiveAiThought", { thought: String, pid: Int ->
+                    Log.d("SignalRClient", "ReceiveAiThought: pid=$pid")
+                    mainViewModel.addLog("[AI] PID $pid: Thought: ${thought.take(30)}...", com.omni.sync.ui.screen.LogType.INFO)
                     updateSessionThought(pid, thought)
                 }, String::class.java, Int::class.java)
 
-                hubConnection?.on("ReceiveAiThought", { thought: String ->
-                    updateSessionThought(_selectedPid.value, thought)
-                }, String::class.java)
-
                 hubConnection?.on("ReceiveAiCodeDiff", { diff: String, pid: Int ->
+                    Log.d("SignalRClient", "ReceiveAiCodeDiff: pid=$pid")
+                    mainViewModel.addLog("[AI] PID $pid: Code Diff received.", com.omni.sync.ui.screen.LogType.INFO)
                     handleAiCodeDiff(diff, pid)
                 }, String::class.java, Int::class.java)
-
-                hubConnection?.on("ReceiveAiCodeDiff", { diff: String ->
-                    handleAiCodeDiff(diff, _selectedPid.value)
-                }, String::class.java)
         
                 hubConnection?.on("ReceiveAiStatus", { status: String?, pid: Int ->
+                    mainViewModel.addLog("[AI] PID $pid: Status -> ${status ?: "NULL"}", com.omni.sync.ui.screen.LogType.INFO)
                     if (status == "FINISHED" || status == "DONE" || status == null || status.isBlank()) {
                         updateSessionStatus(pid, null)
                         updateSessionThought(pid, null)
@@ -374,19 +375,9 @@ class SignalRClient(
                         }
                     }
                 }, String::class.java, Int::class.java)
-
-                hubConnection?.on("ReceiveAiStatus", { status: String? ->
-                    val pid = _selectedPid.value
-                    if (status == "FINISHED" || status == "DONE" || status == null || status.isBlank()) {
-                        updateSessionStatus(pid, null)
-                        updateSessionThought(pid, null)
-                        isNextResponseNewBubble = true
-                    } else {
-                        updateSessionStatus(pid, status)
-                    }
-                }, String::class.java)
         
                 hubConnection?.on("ReceiveNewAiSessionPid", { pid: Int ->
+                    mainViewModel.addLog("[Hub] New session created: PID $pid", com.omni.sync.ui.screen.LogType.INFO)
                     getAiSessions()
                     val wasStartingOurOwn = _isStartingSession
                     _isStartingSession = false
@@ -394,7 +385,10 @@ class SignalRClient(
                     updateSessionStatus(pid, null)
                     
                     if (wasStartingOurOwn) {
+                        mainViewModel.addLog("[AI] Auto-switching to our new session: PID $pid", com.omni.sync.ui.screen.LogType.SUCCESS)
                         setSelectedPid(pid)
+                    } else {
+                        mainViewModel.addLog("[AI] New session PID $pid started externally. Not switching.", com.omni.sync.ui.screen.LogType.INFO)
                     }
                     
                     coroutineScope.launch { lastCreatedSessionPid.emit(pid) }
@@ -563,6 +557,7 @@ class SignalRClient(
             }
         
                             fun setSelectedPid(pid: Int) {
+                                mainViewModel.addLog("[AI] Selected PID set to: $pid", com.omni.sync.ui.screen.LogType.INFO)
                                 _selectedPid.value = pid
                                 updateActiveView()
                             }            fun sendTabToPhone(url: String) {        if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
@@ -668,6 +663,7 @@ class SignalRClient(
                 isStartingSessionFlow.value = false
                 messageQueue.clear()
 
+                mainViewModel.addLog("[AI] Switching to session PID $pid (Request)", com.omni.sync.ui.screen.LogType.INFO)
                 setSelectedPid(pid)
                 updateSessionStatus(pid, "Switching session...")
                 hubConnection?.send("SwitchAiSession", pid)
@@ -746,19 +742,13 @@ class SignalRClient(
     
 
         fun stopConnection() {
-
             reconnectJob?.cancel()
-
             reconnectJob = null
-
             isReconnecting.set(false)
-
+            removeHubHandlers()
             hubConnection?.stop()
-
             _connectionState.value = "Disconnected"
-
             mainViewModel.setConnected(false)
-
         }
 
     fun manualReconnect() {
@@ -1074,5 +1064,34 @@ class SignalRClient(
             currentMessages + AiMessage("CodeDiff", diff)
         }
         isNextResponseNewBubble = true
+    }
+
+    private fun removeHubHandlers() {
+        if (!handlersRegistered) return
+        handlersRegistered = false
+        
+        val hub = hubConnection ?: return
+        hub.remove("ClipboardUpdated")
+        hub.remove("InjectText")
+        hub.remove("ReceiveCommandOutput")
+        hub.remove("ModifierStateUpdated")
+        hub.remove("ShutdownScheduled")
+        hub.remove("ShutdownModeUpdated")
+        hub.remove("FileChanged")
+        hub.remove("ReceiveCleanupPatterns")
+        hub.remove("ReceiveAvailableDrives")
+        hub.remove("ReceiveTabInfo")
+        hub.remove("ReceiveTabList")
+        hub.remove("ReceiveTabToPhone")
+        hub.remove("ReceiveAiMessage")
+        hub.remove("ReceiveAiResponse")
+        hub.remove("ReceiveAiThought")
+        hub.remove("ReceiveAiCodeDiff")
+        hub.remove("ReceiveAiStatus")
+        hub.remove("ReceiveNewAiSessionPid")
+        hub.remove("ReceiveCortexActivity")
+        hub.remove("ReceiveAiSessions")
+        hub.remove("ReceiveAiHistory")
+        hub.remove("ReceivePayload")
     }
 }

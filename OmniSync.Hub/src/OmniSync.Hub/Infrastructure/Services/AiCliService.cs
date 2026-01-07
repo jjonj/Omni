@@ -658,6 +658,7 @@ namespace OmniSync.Hub.Infrastructure.Services
         private StreamWriter? _writer;
         private CancellationTokenSource? _cts;
         private readonly StringBuilder _currentResponse = new();
+        private readonly HashSet<string> _sentMessages = new();
         private readonly SemaphoreSlim _writeLock = new(1, 1);
         private Process? _shellProcess;
 
@@ -788,6 +789,7 @@ namespace OmniSync.Hub.Infrastructure.Services
                                 if (text.Contains("[HISTORY_START]"))
                                 {
                                     _logger.LogInformation($"[GeminiSession] Received history from PID {_pid}");
+                                    _sentMessages.Clear(); // Clear baseline on history load
                                     int startIdx = text.IndexOf("[HISTORY_START]") + "[HISTORY_START]".Length;
                                     int endIdx = text.IndexOf("[HISTORY_END]", startIdx);
                                     if (endIdx != -1)
@@ -799,6 +801,7 @@ namespace OmniSync.Hub.Infrastructure.Services
                                 else if (text == "[TURN_FINISHED]")
                                 {
                                     _logger.LogInformation($"[GeminiSession] Turn finished for PID {_pid}");
+                                    _sentMessages.Clear(); // Clear for next turn
                                     _onResponse(_pid, string.Empty, true, false, false);
                                 }
                                 else if (text == "[Command Handled]")
@@ -807,23 +810,35 @@ namespace OmniSync.Hub.Infrastructure.Services
                                 }
                                 else
                                 {
-                                    _onResponse(_pid, text, false, false, false);
+                                    if (_sentMessages.Add(text))
+                                    {
+                                        _onResponse(_pid, text, false, false, false);
+                                    }
                                 }
                             }
                             else if (typeStr == "thought")
                             {
-                                _logger.LogDebug($"[GeminiSession] Received thought from PID {_pid}: {text}");
-                                _onResponse(_pid, $"Thinking: {text}", false, false, false);
+                                if (_sentMessages.Add($"thought_{text}"))
+                                {
+                                    _logger.LogDebug($"[GeminiSession] Received thought from PID {_pid}: {text}");
+                                    _onResponse(_pid, $"Thinking: {text}", false, false, false);
+                                }
                             }
                             else if (typeStr == "codeDiff")
                             {
-                                _logger.LogInformation($"[GeminiSession] Received codeDiff from PID {_pid}");
-                                _onResponse(_pid, text ?? string.Empty, false, false, true);
+                                if (text != null && _sentMessages.Add($"diff_{text}"))
+                                {
+                                    _logger.LogInformation($"[GeminiSession] Received codeDiff from PID {_pid}");
+                                    _onResponse(_pid, text, false, false, true);
+                                }
                             }
                             else if (typeStr == "toolCall")
                             {
-                                _logger.LogInformation($"[GeminiSession] Received toolCall from PID {_pid}");
-                                _onResponse(_pid, text ?? string.Empty, false, false, false);
+                                if (text != null && _sentMessages.Add($"tool_{text}"))
+                                {
+                                    _logger.LogInformation($"[GeminiSession] Received toolCall from PID {_pid}");
+                                    _onResponse(_pid, text, false, false, false);
+                                }
                             }
                         }
                     }

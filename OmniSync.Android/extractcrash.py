@@ -5,7 +5,7 @@ from datetime import datetime
 import os
 
 PACKAGE = "com.omni.sync"
-LOG_TIMEOUT_SECONDS = 5
+LOG_TIMEOUT_SECONDS = 300
 
 # ADB Configuration - Update this if ADB is in a different location
 ADB_PATH = r"E:\SDKS\AndroidSDK\platform-tools"
@@ -66,12 +66,12 @@ def capture_crash(device):
     # Allow app to start
     time.sleep(5)
 
-    print("Monitoring for crashes...")
+    print("Monitoring for crashes... (Press Ctrl+C to stop manually)")
 
     # We use -v threadtime to get PIDs and timestamps. 
-    # We filter by package name to only get relevant logs.
+    # removed --package as it is not supported on all adb versions
     proc = subprocess.Popen(
-        ["adb", "-s", device, "logcat", "-v", "threadtime", "--package", PACKAGE],
+        ["adb", "-s", device, "logcat", "-v", "threadtime"],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
@@ -84,30 +84,47 @@ def capture_crash(device):
     crash_detected_time = None
     lines = []
 
-    while True:
-        # Check for overall timeout if no crash found yet
-        if crash_detected_time is None and time.time() > max_duration:
-            break
-        
-        # If crash was found, give it 1 second to flush the full stack trace then stop
-        if crash_detected_time and time.time() > crash_detected_time + 1.0:
-            break
-
-        # Non-blocking read line hack (or just rely on line buffering)
-        line = proc.stdout.readline()
-        
-        if not line:
-            # If process ended or stream closed
-            break
+    try:
+        while True:
+            # Check for overall timeout if no crash found yet
+            if crash_detected_time is None and time.time() > max_duration:
+                print("Timeout reached.")
+                break
             
-        lines.append(line)
+            # If crash was found, give it 1 second to flush the full stack trace then stop
+            if crash_detected_time and time.time() > crash_detected_time + 1.0:
+                break
 
-        # Detect the start of a crash
-        if "FATAL EXCEPTION" in line and crash_detected_time is None:
-            print("Crash detected! Capturing stack trace...")
-            crash_detected_time = time.time()
+            # Check if process exited unexpectedly
+            if proc.poll() is not None:
+                print("ADB logcat process ended.")
+                stderr_output = proc.stderr.read()
+                if stderr_output:
+                    print(f"Error: {stderr_output}")
+                break
 
-    proc.terminate()
+            # Non-blocking read line hack (or just rely on line buffering)
+            line = proc.stdout.readline()
+            
+            if not line:
+                # If process ended or stream closed, but poll() didn't catch it yet
+                if proc.poll() is not None:
+                    break
+                # If strictly no line but process running, just continue (readline might block though)
+                continue
+                
+            lines.append(line)
+
+            # Detect the start of a crash
+            if "FATAL EXCEPTION" in line and crash_detected_time is None:
+                print("Crash detected! Capturing stack trace...")
+                crash_detected_time = time.time()
+
+    except KeyboardInterrupt:
+        print("\nUser stopped capture.")
+    
+    if proc.poll() is None:
+        proc.terminate()
 
     # Filter logic: We want the block around the crash
     crash_report = []

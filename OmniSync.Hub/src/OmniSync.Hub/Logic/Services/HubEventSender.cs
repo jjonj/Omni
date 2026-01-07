@@ -60,22 +60,17 @@ namespace OmniSync.Hub.Logic.Services
             }
             else if (e.IsCodeDiff)
             {
-                Console.WriteLine($"[HubEventSender] Broadcasting Code Diff for PID {e.Pid}");
-                if (e.Pid > 0)
-                    await _hubContext.Clients.All.SendAsync("ReceiveAiCodeDiff", e.Text, e.Pid);
-                else
-                    await _hubContext.Clients.All.SendAsync("ReceiveAiCodeDiff", e.Text);
+                int broadcastPid = e.Pid > 0 ? e.Pid : _aiCliService.GetTargetPid();
+                Console.WriteLine($"[HubEventSender] Broadcasting Code Diff for PID {broadcastPid}");
+                await _hubContext.Clients.All.SendAsync("ReceiveAiCodeDiff", e.Text, broadcastPid);
             }
             else if (e.Text.StartsWith("Thinking: "))
             {
                 string thought = e.Text.Substring("Thinking: ".Length);
-                Console.WriteLine($"[HubEventSender] Broadcasting Thought for PID {e.Pid}: {thought.Substring(0, Math.Min(thought.Length, 50))}...");
+                int broadcastPid = e.Pid > 0 ? e.Pid : _aiCliService.GetTargetPid();
+                Console.WriteLine($"[HubEventSender] Broadcasting Thought for PID {broadcastPid}: {thought.Substring(0, Math.Min(thought.Length, 50))}...");
                 
-                // Broadcast to all clients (including Android)
-                if (e.Pid > 0)
-                    await _hubContext.Clients.All.SendAsync("ReceiveAiThought", thought, e.Pid);
-                else
-                    await _hubContext.Clients.All.SendAsync("ReceiveAiThought", thought);
+                await _hubContext.Clients.All.SendAsync("ReceiveAiThought", thought, broadcastPid);
             }
             else 
             {
@@ -83,21 +78,16 @@ namespace OmniSync.Hub.Logic.Services
                  if (!string.IsNullOrEmpty(e.Text))
                  {
                      string preview = e.Text.Length > 50 ? e.Text.Substring(0, 50) + "..." : e.Text;
-                     Console.WriteLine($"[HubEventSender] Broadcasting Response for PID {e.Pid}: {preview}");
-                     
-                     if (e.Pid > 0)
-                        await _hubContext.Clients.All.SendAsync("ReceiveAiResponse", e.Text, e.Pid);
-                     else
-                        await _hubContext.Clients.All.SendAsync("ReceiveAiResponse", e.Text);
+                     int broadcastPid = e.Pid > 0 ? e.Pid : _aiCliService.GetTargetPid();
+                     Console.WriteLine($"[HubEventSender] Broadcasting Response for PID {broadcastPid}: {preview}");
+                     await _hubContext.Clients.All.SendAsync("ReceiveAiResponse", e.Text, broadcastPid);
                  }
 
                  if (e.IsFinished)
                  {
-                     Console.WriteLine($"[HubEventSender] Turn FINISHED for PID {e.Pid}");
-                     if (e.Pid > 0)
-                        await _hubContext.Clients.All.SendAsync("ReceiveAiStatus", "FINISHED", e.Pid);
-                     else
-                        await _hubContext.Clients.All.SendAsync("ReceiveAiStatus", "FINISHED");
+                     int broadcastPid = e.Pid > 0 ? e.Pid : _aiCliService.GetTargetPid();
+                     Console.WriteLine($"[HubEventSender] Turn FINISHED for PID {broadcastPid}");
+                     await _hubContext.Clients.All.SendAsync("ReceiveAiStatus", "FINISHED", broadcastPid);
                  }
             }
         }
@@ -162,10 +152,8 @@ namespace OmniSync.Hub.Logic.Services
 
         public async Task SendAiError(string connectionId, string errorMessage, int targetPid = -1)
         {
-            if (targetPid > 0)
-                await _hubContext.Clients.Client(connectionId).SendAsync("ReceiveAiResponse", errorMessage, targetPid);
-            else
-                await _hubContext.Clients.Client(connectionId).SendAsync("ReceiveAiResponse", errorMessage);
+            int broadcastPid = targetPid > 0 ? targetPid : _aiCliService.GetTargetPid();
+            await _hubContext.Clients.Client(connectionId).SendAsync("ReceiveAiResponse", errorMessage, broadcastPid);
         }
 
         // Method to be called by RpcApiHub when a client connects and wants command output
