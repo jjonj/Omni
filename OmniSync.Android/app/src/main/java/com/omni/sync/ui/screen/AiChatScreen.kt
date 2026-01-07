@@ -93,7 +93,7 @@ fun AiChatScreen(
 
     // Filter messages to avoid empty/dangling bubbles
     val filteredMessages = remember(messages) {
-        messages.filter { it.second.isNotBlank() }
+        messages.filter { it.text.isNotBlank() }
     }
 
     var lastMessageCount by remember { mutableIntStateOf(filteredMessages.size) }
@@ -127,7 +127,7 @@ fun AiChatScreen(
             } else {
                 // Only auto-scroll if we are already at the bottom (index 0)
                 val isAtBottom = listState.firstVisibleItemIndex <= 1
-                val newestIsMe = filteredMessages.lastOrNull()?.first == "Me"
+                val newestIsMe = filteredMessages.lastOrNull()?.sender == "Me"
 
                 if (isAtBottom || (countIncreased && newestIsMe)) {
                     listState.animateScrollToItem(0)
@@ -140,7 +140,7 @@ fun AiChatScreen(
     // Jump between user messages
     val userMessageItemIndices = remember(filteredMessages) {
         val total = filteredMessages.size
-        filteredMessages.indices.filter { filteredMessages[it].first == "Me" }
+        filteredMessages.indices.filter { filteredMessages[it].sender == "Me" }
             .map { total - 1 - it } // Map to reversed list indices
             .sorted()
     }
@@ -305,13 +305,9 @@ fun AiChatScreen(
 
                     items(
                         items = filteredMessages.reversed(),
-                        key = { (sender, content) -> 
-                            // Use index from the original filteredMessages to ensure uniqueness
-                            val index = filteredMessages.indexOf(sender to content)
-                            "$sender$index${content.hashCode()}"
-                        }
-                    ) { (sender, content) ->
-                        ChatBubble(sender, content)
+                        key = { it.id }
+                    ) { message ->
+                        ChatBubble(message)
                     }
                 }
 
@@ -618,7 +614,9 @@ fun Dot(alpha: Float) {
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun ChatBubble(sender: String, content: String) {
+fun ChatBubble(message: com.omni.sync.data.repository.AiMessage) {
+    val sender = message.sender
+    val content = message.text
     val isMe = sender == "Me"
     val isAi = sender == "AI"
     val isCodeDiff = sender == "CodeDiff"
@@ -887,32 +885,50 @@ fun RenderTextWithStyles(
 
 @Composable
 fun DiffText(diffJson: String) {
-    val diffText = remember(diffJson) {
+    val displayData = remember(diffJson) {
         try {
-            val gson = com.google.gson.Gson()
-            val map = gson.fromJson(diffJson, Map::class.java)
-            (map["fileDiff"] as? String) ?: diffJson
+            val gson = com.google.gson.GsonBuilder().setPrettyPrinting().create()
+            val element = gson.fromJson(diffJson, com.google.gson.JsonElement::class.java)
+            if (element.isJsonObject) {
+                val obj = element.asJsonObject
+                if (obj.has("fileDiff")) {
+                    obj.get("fileDiff").asString to true // text, isDiff
+                } else {
+                    gson.toJson(element) to false // pretty print, not diff
+                }
+            } else {
+                diffJson to diffJson.contains("@@") // fallback check
+            }
         } catch (e: Exception) {
-            diffJson
+            diffJson to diffJson.contains("@@")
         }
     }
 
-    val lines = remember(diffText) { diffText.split("\n") }
+    val (text, isDiff) = displayData
+    val lines = remember(text) { text.split("\n") }
 
     Column(modifier = Modifier.padding(8.dp)) {
         lines.forEach { line ->
-            val bgColor = when {
-                line.startsWith("+") && !line.startsWith("+++") -> Color(0xFF1B5E20).copy(alpha = 0.3f) // Green for add
-                line.startsWith("-") && !line.startsWith("---") -> Color(0xFFB71C1C).copy(alpha = 0.3f) // Red for remove
-                line.startsWith("@@") -> Color(0xFF0D47A1).copy(alpha = 0.3f) // Blue for hunk header
-                else -> Color.Transparent
+            val bgColor = if (isDiff) {
+                when {
+                    line.startsWith("+") && !line.startsWith("+++") -> Color(0xFF1B5E20).copy(alpha = 0.3f)
+                    line.startsWith("-") && !line.startsWith("---") -> Color(0xFFB71C1C).copy(alpha = 0.3f)
+                    line.startsWith("@@") -> Color(0xFF0D47A1).copy(alpha = 0.3f)
+                    else -> Color.Transparent
+                }
+            } else {
+                Color.Transparent
             }
 
-            val textColor = when {
-                line.startsWith("+") && !line.startsWith("+++") -> Color(0xFFA5D6A7)
-                line.startsWith("-") && !line.startsWith("---") -> Color(0xFFEF9A9A)
-                line.startsWith("@@") -> Color(0xFF90CAF9)
-                else -> Color.White
+            val textColor = if (isDiff) {
+                when {
+                    line.startsWith("+") && !line.startsWith("+++") -> Color(0xFFA5D6A7)
+                    line.startsWith("-") && !line.startsWith("---") -> Color(0xFFEF9A9A)
+                    line.startsWith("@@") -> Color(0xFF90CAF9)
+                    else -> Color.White
+                }
+            } else {
+                Color(0xFF81D4FA) // Light blue for generic tool data
             }
 
             Surface(

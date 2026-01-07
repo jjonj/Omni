@@ -59,6 +59,12 @@ data class ReceivePayload(
     @SerializedName("Timestamp") val timestamp: Long
 )
 
+data class AiMessage(
+    val sender: String,
+    val text: String,
+    val id: String = java.util.UUID.randomUUID().toString()
+)
+
 class SignalRClient(
     private val context: Context,
     private val mainViewModel: MainViewModel
@@ -112,15 +118,15 @@ class SignalRClient(
     private val _availableDrivesReceived = MutableSharedFlow<List<String>>(extraBufferCapacity = 1)
     val availableDrivesReceived: SharedFlow<List<String>> = _availableDrivesReceived.asSharedFlow()
 
-    private val _aiMessagesMap = MutableStateFlow<Map<Int, List<Pair<String, String>>>>(emptyMap())
+    private val _aiMessagesMap = MutableStateFlow<Map<Int, List<AiMessage>>>(emptyMap())
     private val _aiStatusMap = MutableStateFlow<Map<Int, String?>>(emptyMap())
     private val _aiThoughtMap = MutableStateFlow<Map<Int, String?>>(emptyMap())
     private val _selectedPid = MutableStateFlow(-1)
 
     val selectedPid: StateFlow<Int> = _selectedPid
 
-    private val _aiMessages = MutableStateFlow<List<Pair<String, String>>>(emptyList())
-    val aiMessages: StateFlow<List<Pair<String, String>>> = _aiMessages
+    private val _aiMessages = MutableStateFlow<List<AiMessage>>(emptyList())
+    val aiMessages: StateFlow<List<AiMessage>> = _aiMessages
 
     private val _aiStatus = MutableStateFlow<String?>(null)
     val aiStatus: StateFlow<String?> = _aiStatus
@@ -329,7 +335,7 @@ class SignalRClient(
         
                 hubConnection?.on("ReceiveAiMessage", { senderId: String, message: String, pid: Int ->
                     val senderName = if (senderId == hubConnection?.connectionId) "Me" else "User"
-                    updateSessionMessages(pid) { it + Pair(senderName, message) }
+                    updateSessionMessages(pid) { it + AiMessage(senderName, message) }
                 }, String::class.java, String::class.java, Int::class.java)
         
                 hubConnection?.on("ReceiveAiResponse", { response: String, pid: Int ->
@@ -382,10 +388,14 @@ class SignalRClient(
         
                 hubConnection?.on("ReceiveNewAiSessionPid", { pid: Int ->
                     getAiSessions()
+                    val wasStartingOurOwn = _isStartingSession
                     _isStartingSession = false
                     isStartingSessionFlow.value = false
                     updateSessionStatus(pid, null)
-                    setSelectedPid(pid)
+                    
+                    if (wasStartingOurOwn) {
+                        setSelectedPid(pid)
+                    }
                     
                     coroutineScope.launch { lastCreatedSessionPid.emit(pid) }
         
@@ -457,7 +467,7 @@ class SignalRClient(
                             val sender = it["sender"] ?: "Unknown"
                             val text = it["text"] ?: ""
                             
-                            // Map existing sender to our new categories if it's from AI/System
+                            // Map existing sender to our new categories if it's from AI/System/Unknown
                             val mappedSender = if (sender == "AI" || sender == "System" || sender == "Unknown") {
                                 when {
                                     text.startsWith("Error:") -> "Error"
@@ -472,9 +482,9 @@ class SignalRClient(
                                     else -> "AI"
                                 }
                             } else {
-                                sender
+                                sender // Keeps 'CodeDiff', 'Me', etc.
                             }
-                            Pair(mappedSender, text)
+                            AiMessage(mappedSender, text)
                         }
                         
                         _aiMessagesMap.value = _aiMessagesMap.value + (pid to mappedHistory)
@@ -519,24 +529,30 @@ class SignalRClient(
                 }, Any::class.java)
             }
         
-            private fun updateSessionMessages(pid: Int, block: (List<Pair<String, String>>) -> List<Pair<String, String>>) {
+            private fun updateSessionMessages(pid: Int, block: (List<AiMessage>) -> List<AiMessage>) {
                 val currentMap = _aiMessagesMap.value
                 val sessionMessages = currentMap[pid] ?: emptyList()
                 val newMessages = block(sessionMessages)
                 _aiMessagesMap.value = currentMap + (pid to newMessages)
-                updateActiveView()
+                if (pid == _selectedPid.value) {
+                    updateActiveView()
+                }
             }
         
             private fun updateSessionStatus(pid: Int, status: String?) {
                 val currentMap = _aiStatusMap.value
                 _aiStatusMap.value = currentMap + (pid to status)
-                updateActiveView()
+                if (pid == _selectedPid.value) {
+                    updateActiveView()
+                }
             }
 
             private fun updateSessionThought(pid: Int, thought: String?) {
                 val currentMap = _aiThoughtMap.value
                 _aiThoughtMap.value = currentMap + (pid to thought)
-                updateActiveView()
+                if (pid == _selectedPid.value) {
+                    updateActiveView()
+                }
             }
         
             private fun updateActiveView() {
@@ -587,7 +603,7 @@ class SignalRClient(
     
                     // Immediate feedback for queued messages
     
-                    updateSessionMessages(-1) { it + Pair("Me", message) }
+                    updateSessionMessages(-1) { it + AiMessage("Me", message) }
     
                     return
     
@@ -609,7 +625,7 @@ class SignalRClient(
     
                         messageQueue.add(message)
     
-                        updateSessionMessages(-1) { it + Pair("Me", message) }
+                        updateSessionMessages(-1) { it + AiMessage("Me", message) }
     
                         return
     
@@ -1034,13 +1050,13 @@ class SignalRClient(
 
         updateSessionMessages(pid) { currentMessages ->
             val mutable = currentMessages.toMutableList()
-            if (!isNextResponseNewBubble && !isError && !isSystem && mutable.isNotEmpty() && mutable.last().first == "AI") {
+            if (!isNextResponseNewBubble && !isError && !isSystem && mutable.isNotEmpty() && mutable.last().sender == "AI") {
                 val lastMsg = mutable.last()
-                mutable[mutable.size - 1] = Pair("AI", lastMsg.second + response)
+                mutable[mutable.size - 1] = lastMsg.copy(text = lastMsg.text + response)
                 mutable
             } else {
                 if (!isError && !isSystem) isNextResponseNewBubble = false
-                mutable + Pair(sender, response)
+                mutable + AiMessage(sender, response)
             }
         }
     }
@@ -1055,7 +1071,7 @@ class SignalRClient(
         
         // Always treat code diffs as new bubbles for proper rendering
         updateSessionMessages(pid) { currentMessages ->
-            currentMessages + Pair("CodeDiff", diff)
+            currentMessages + AiMessage("CodeDiff", diff)
         }
         isNextResponseNewBubble = true
     }
