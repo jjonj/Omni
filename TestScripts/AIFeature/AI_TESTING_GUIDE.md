@@ -8,24 +8,50 @@ Never assume the environment is ready. Always verify:
 - **AI Connectivity:** Verify the AI acknowledges the first command or finishes its startup mandate.
 - **Basic Reply:** Check if the AI replies *anything* at all within a reasonable timeout before checking for specific content.
 
-## 2. Robust Synchronization (Silence Detection)
+## 2. Event Types & Distinction
+The system now separates different types of AI activity into distinct events. Ensure your test listens to the correct ones:
+- **`ReceiveAiThought`**: Captures the AI's internal reasoning/thinking. This is streamed in real-time.
+- **`ReceiveAiResponse`**: Captures the final content meant for the user.
+- **`ReceiveAiStatus`**: Used for turn markers (e.g., `FINISHED`).
+- **Separation Benefits:** High-level formatting tests can now ignore "thoughts" to avoid triggering false positives on reasoning text, while roundtrip tests can monitor thoughts to ensure the AI is active.
+
+## 3. SignalR Argument Robustness
+The Hub broadcasts events with a variable number of arguments depending on the context:
+- **With PID:** `(text, pid)` is sent if the session PID is known and positive.
+- **Without PID:** `(text)` is sent if the PID is unknown or for legacy broadcasts.
+- **Python Implementation:** Always use robust unpacking in your handlers:
+  ```python
+  def on_ai_response(self, args):
+      if args:
+          response = args[0] # The text is always first
+          pid = args[1] if len(args) > 1 else -1 # Optional PID
+          # ... process ...
+  ```
+
+## 4. Robust Synchronization (Silence Detection)
 The AI is non-deterministic and often uses **multiple turns** to complete a task (e.g., read file -> plan change -> apply change -> verify).
 - **Avoid `FINISHED` dependence:** Don't stop your test at the first `FINISHED` status. The AI might immediately start another turn.
 - **Use Silence Detection:** Wait for a period of inactivity (e.g., 5-10 seconds) where no new responses or status updates are received. This is the most reliable way to ensure a multi-turn task is truly complete.
 - **Accumulate Content:** Always append chunks to a `full_response_text` buffer. Verification should happen on the aggregate content of all turns.
 
-## 3. Context Management
+## 5. Discovery & Baseline Management
+The Hub now takes a baseline of **all** existing Gemini processes (even those not yet connected) before launching a new one.
+- **Zombie Prevention:** This ensures the Hub doesn't accidentally connect to a "zombie" process from a previous crashed test.
+- **Cleanup:** Always use the `cleanup_gemini_windows.py` script at the start of your test to ensure a clean state.
+- **Early Startup:** The Gemini CLI starts its Named Pipe server (`\\.\pipe\gemini-cli-<PID>`) almost immediately upon launch. If discovery fails, check if `patchStdio` or an early crash is preventing the process from reaching the `main()` function.
+
+## 6. Context Management
 AI context pollution is a common source of flaky tests.
 - **Fresh Sessions:** Prefer starting a new session (`StartCliAtWorkspace`) for each major test run.
 - **Clear Command:** Use the `/clear` command before starting a specific test scenario to wipe the conversation history within an active session.
 - **Unique Test Data:** Use unique, randomly generated, or highly specific strings (e.g., `test_target_word_123`) instead of common words like "apple" or "hello" to ensure you aren't matching old context or pre-existing file content.
 
-## 4. Verification Strategies
+## 7. Verification Strategies
 - **Keyword Matching:** Check for both the original and the new state (e.g., in a replacement test, look for the old word and the new word to verify a diff was shown).
 - **Tool Call Verification:** Verify that the AI actually invoked the expected tools (e.g., look for "Tool Call: replace" in the broadcast log).
 - **JSON Handling:** Remember that tool results are often JSON objects (like file diffs). Your verification logic should handle stringified JSON if checking the raw broadcast stream.
 
-## 5. Implementation Pattern (Python)
+## 8. Implementation Pattern (Python)
 Refer to `TestScripts/AIFeature/test_diff_display.py` for a reference implementation of the `wait_for_startup_completion` (silence detection) and sanity check pattern.
 
 ```python
@@ -37,4 +63,6 @@ async def wait_for_idle(self, timeout=120, silence_duration=10):
             return True # AI is idle
         await asyncio.sleep(1)
     return False # Timeout
+```
+
 ```
