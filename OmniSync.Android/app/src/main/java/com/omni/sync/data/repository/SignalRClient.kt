@@ -114,6 +114,7 @@ class SignalRClient(
 
     private val _aiMessagesMap = MutableStateFlow<Map<Int, List<Pair<String, String>>>>(emptyMap())
     private val _aiStatusMap = MutableStateFlow<Map<Int, String?>>(emptyMap())
+    private val _aiThoughtMap = MutableStateFlow<Map<Int, String?>>(emptyMap())
     private val _selectedPid = MutableStateFlow(-1)
 
     val selectedPid: StateFlow<Int> = _selectedPid
@@ -123,6 +124,9 @@ class SignalRClient(
 
     private val _aiStatus = MutableStateFlow<String?>(null)
     val aiStatus: StateFlow<String?> = _aiStatus
+
+    private val _aiThought = MutableStateFlow<String?>(null)
+    val aiThought: StateFlow<String?> = _aiThought
 
     private val _aiSessions = MutableStateFlow<Map<Int, String>>(emptyMap())
     val aiSessions: StateFlow<Map<Int, String>> = _aiSessions
@@ -337,16 +341,25 @@ class SignalRClient(
                 }, String::class.java)
 
                 hubConnection?.on("ReceiveAiThought", { thought: String, pid: Int ->
-                    updateSessionStatus(pid, "Thinking: $thought")
+                    updateSessionThought(pid, thought)
                 }, String::class.java, Int::class.java)
 
                 hubConnection?.on("ReceiveAiThought", { thought: String ->
-                    updateSessionStatus(_selectedPid.value, "Thinking: $thought")
+                    updateSessionThought(_selectedPid.value, thought)
+                }, String::class.java)
+
+                hubConnection?.on("ReceiveAiCodeDiff", { diff: String, pid: Int ->
+                    handleAiCodeDiff(diff, pid)
+                }, String::class.java, Int::class.java)
+
+                hubConnection?.on("ReceiveAiCodeDiff", { diff: String ->
+                    handleAiCodeDiff(diff, _selectedPid.value)
                 }, String::class.java)
         
                 hubConnection?.on("ReceiveAiStatus", { status: String?, pid: Int ->
                     if (status == "FINISHED" || status == "DONE" || status == null || status.isBlank()) {
                         updateSessionStatus(pid, null)
+                        updateSessionThought(pid, null)
                         isNextResponseNewBubble = true
                     } else {
                         updateSessionStatus(pid, status)
@@ -360,6 +373,7 @@ class SignalRClient(
                     val pid = _selectedPid.value
                     if (status == "FINISHED" || status == "DONE" || status == null || status.isBlank()) {
                         updateSessionStatus(pid, null)
+                        updateSessionThought(pid, null)
                         isNextResponseNewBubble = true
                     } else {
                         updateSessionStatus(pid, status)
@@ -518,11 +532,18 @@ class SignalRClient(
                 _aiStatusMap.value = currentMap + (pid to status)
                 updateActiveView()
             }
+
+            private fun updateSessionThought(pid: Int, thought: String?) {
+                val currentMap = _aiThoughtMap.value
+                _aiThoughtMap.value = currentMap + (pid to thought)
+                updateActiveView()
+            }
         
             private fun updateActiveView() {
                 val pid = _selectedPid.value
                 _aiMessages.value = _aiMessagesMap.value[pid] ?: emptyList()
                 _aiStatus.value = _aiStatusMap.value[pid]
+                _aiThought.value = _aiThoughtMap.value[pid]
             }
         
                             fun setSelectedPid(pid: Int) {
@@ -615,8 +636,13 @@ class SignalRClient(
 
         fun requestAiHistory() {
             if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {       
-                updateSessionStatus(_selectedPid.value, "Reloading history...")
-                hubConnection?.send("RequestAiHistory")
+                val pid = _selectedPid.value
+                // Clear current messages to show it's reloading
+                _aiMessagesMap.value = _aiMessagesMap.value + (pid to emptyList())
+                updateActiveView()
+                
+                updateSessionStatus(pid, "Reloading history...")
+                hubConnection?.send("RequestAiHistory", pid)
             }
         }
     
@@ -988,6 +1014,7 @@ class SignalRClient(
         if (currentStatus?.contains("Switching") == true || currentStatus?.contains("Reloading") == true || currentStatus?.contains("Thinking") == true) {
             updateSessionStatus(pid, null)
         }
+        updateSessionThought(pid, null)
 
         val isError = response.startsWith("Error:")
         val isSystem = response.contains("A new version of Gemini CLI is available") ||
@@ -1016,5 +1043,20 @@ class SignalRClient(
                 mutable + Pair(sender, response)
             }
         }
+    }
+
+    private fun handleAiCodeDiff(diff: String, pid: Int) {
+        if (diff.isBlank()) return
+        
+        // Notify any AI activity
+        coroutineScope.launch { anyAiActivityEvent.emit(Unit) }
+        
+        updateSessionThought(pid, null)
+        
+        // Always treat code diffs as new bubbles for proper rendering
+        updateSessionMessages(pid) { currentMessages ->
+            currentMessages + Pair("CodeDiff", diff)
+        }
+        isNextResponseNewBubble = true
     }
 }

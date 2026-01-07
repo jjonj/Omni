@@ -58,6 +58,14 @@ namespace OmniSync.Hub.Logic.Services
                 Console.WriteLine($"[HubEventSender] Received History for PID {e.Pid}");
                 await _hubContext.Clients.All.SendAsync("ReceiveAiHistory", e.Text, e.Pid);
             }
+            else if (e.IsCodeDiff)
+            {
+                Console.WriteLine($"[HubEventSender] Broadcasting Code Diff for PID {e.Pid}");
+                if (e.Pid > 0)
+                    await _hubContext.Clients.All.SendAsync("ReceiveAiCodeDiff", e.Text, e.Pid);
+                else
+                    await _hubContext.Clients.All.SendAsync("ReceiveAiCodeDiff", e.Text);
+            }
             else if (e.Text.StartsWith("Thinking: "))
             {
                 string thought = e.Text.Substring("Thinking: ".Length);

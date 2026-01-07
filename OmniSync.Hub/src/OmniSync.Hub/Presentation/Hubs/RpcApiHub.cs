@@ -992,6 +992,17 @@ namespace OmniSync.Hub.Presentation.Hubs
             }
         }
 
+        public async Task RequestAiHistory(int? pid = null)
+        {
+            if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
+            {
+                int targetPid = pid ?? _aiCliService.GetTargetPid();
+                _logger.LogInformation($"[RpcApiHub] RequestAiHistory for PID {targetPid}");
+                await Clients.All.SendAsync("ReceiveAiStatus", "Reloading history...", targetPid);
+                await _aiCliService.GetHistoryAsync(targetPid);
+            }
+        }
+
         public async Task ReceiveAiHistory(string historyJson)
         {
             if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)

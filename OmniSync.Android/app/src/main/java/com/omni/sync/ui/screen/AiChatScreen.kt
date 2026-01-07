@@ -24,6 +24,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -44,6 +48,11 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardReturn
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.SmartToy
+import androidx.compose.material.icons.filled.SettingsSuggest
+import androidx.compose.material.icons.filled.Error
+import androidx.compose.material.icons.filled.Code
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import com.omni.sync.utils.WindowsKeyCodes.VK_CONTROL
@@ -63,6 +72,7 @@ fun AiChatScreen(
 ) {
     val messages by signalRClient.aiMessages.collectAsState()
     val aiStatus by signalRClient.aiStatus.collectAsState()
+    val aiThought by signalRClient.aiThought.collectAsState()
     val sessions by signalRClient.aiSessions.collectAsState()
     val inputText by signalRClient.aiInputText.collectAsState()
     var showSessionMenu by remember { mutableStateOf(false) }
@@ -283,13 +293,23 @@ fun AiChatScreen(
                 ) {
                     if (isAiThinking) {
                         item(key = "typing_indicator") {
-                            AiTypingIndicator(aiStatus)
+                            AiTypingIndicator()
+                        }
+                    }
+
+                    if (aiThought != null) {
+                        item(key = "thought_bubble") {
+                            ThoughtBubble(aiThought!!)
                         }
                     }
 
                     items(
                         items = filteredMessages.reversed(),
-                        key = { it.first + it.second.hashCode() + filteredMessages.indexOf(it) }
+                        key = { (sender, content) -> 
+                            // Use index from the original filteredMessages to ensure uniqueness
+                            val index = filteredMessages.indexOf(sender to content)
+                            "$sender$index${content.hashCode()}"
+                        }
                     ) { (sender, content) ->
                         ChatBubble(sender, content)
                     }
@@ -517,7 +537,7 @@ fun QuickActionPanel(
 }
 
 @Composable
-fun AiTypingIndicator(status: String? = null) {
+fun AiTypingIndicator() {
     val infiniteTransition = rememberInfiniteTransition(label = "typing")
     val dotAlpha1 by infiniteTransition.animateFloat(
         initialValue = 0.2f, targetValue = 1f,
@@ -547,22 +567,42 @@ fun AiTypingIndicator(status: String? = null) {
             shape = RoundedCornerShape(12.dp),
             modifier = Modifier.widthIn(max = 300.dp)
         ) {
-            Column(modifier = Modifier.padding(12.dp)) {
-                if (status != null && status.startsWith("Thinking: ")) {
-                    val thoughtText = status.substring("Thinking: ".length)
-                    Text(
-                        text = thoughtText,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.7f),
-                        modifier = Modifier.padding(bottom = 8.dp)
-                    )
-                }
-                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Dot(dotAlpha1)
-                    Dot(dotAlpha2)
-                    Dot(dotAlpha3)
-                }
+            Row(modifier = Modifier.padding(12.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                Dot(dotAlpha1)
+                Dot(dotAlpha2)
+                Dot(dotAlpha3)
             }
+        }
+    }
+}
+
+@Composable
+fun ThoughtBubble(thought: String) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalAlignment = Alignment.Start
+    ) {
+        Text(
+            text = "Thinking...",
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(horizontal = 4.dp),
+            color = MaterialTheme.colorScheme.primary
+        )
+        Surface(
+            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+            shape = RoundedCornerShape(12.dp),
+            modifier = Modifier.widthIn(max = 300.dp),
+            border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.3f))
+        ) {
+            Text(
+                text = thought,
+                modifier = Modifier.padding(12.dp),
+                style = MaterialTheme.typography.bodySmall.copy(
+                    fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
+                ),
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     }
 }
@@ -581,13 +621,17 @@ fun Dot(alpha: Float) {
 fun ChatBubble(sender: String, content: String) {
     val isMe = sender == "Me"
     val isAi = sender == "AI"
+    val isCodeDiff = sender == "CodeDiff"
     val isError = sender == "Error" || content.startsWith("Error:")
-    val isSystem = sender == "System" || (!isMe && !isAi && !isError)
+    val isSystem = sender == "System" || (!isMe && !isAi && !isError && !isCodeDiff)
     
     val context = LocalContext.current
+    val timestamp = remember { 
+        java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()).format(java.util.Date()) 
+    }
 
     val alignment = when {
-        isError || isSystem -> Alignment.CenterHorizontally
+        isError || isSystem || isCodeDiff -> Alignment.CenterHorizontally
         isMe -> Alignment.End
         else -> Alignment.Start
     }
@@ -595,6 +639,7 @@ fun ChatBubble(sender: String, content: String) {
     val bgColor = when {
         isError -> MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.8f)
         isSystem -> Color(0xFFFFF176).copy(alpha = 0.7f) // Yellow for system
+        isCodeDiff -> Color.Black.copy(alpha = 0.9f)
         isMe -> MaterialTheme.colorScheme.primaryContainer
         isAi -> MaterialTheme.colorScheme.secondaryContainer
         else -> MaterialTheme.colorScheme.surfaceVariant
@@ -603,26 +648,55 @@ fun ChatBubble(sender: String, content: String) {
     val textColor = when {
         isError -> MaterialTheme.colorScheme.onErrorContainer
         isSystem -> Color(0xFF333333) // Dark text for yellow
+        isCodeDiff -> Color.White
         else -> MaterialTheme.colorScheme.onSurface
+    }
+
+    val icon = when {
+        isMe -> Icons.Default.Person
+        isAi -> Icons.Default.SmartToy
+        isCodeDiff -> Icons.Default.Code
+        isError -> Icons.Default.Error
+        else -> Icons.Default.SettingsSuggest
     }
 
     Column(
         modifier = Modifier.fillMaxWidth(),
         horizontalAlignment = alignment
     ) {
-        if (!isSystem && !isError) {
-            Text(
-                text = sender,
-                style = MaterialTheme.typography.labelSmall,
-                fontWeight = FontWeight.Bold,
+        if (!isSystem && !isError && !isCodeDiff) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.padding(horizontal = 4.dp)
-            )
+            ) {
+                if (!isMe) {
+                    Icon(icon, null, modifier = Modifier.size(12.dp), tint = MaterialTheme.colorScheme.primary)
+                    Spacer(Modifier.width(4.dp))
+                }
+                Text(
+                    text = sender,
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Bold
+                )
+                if (isMe) {
+                    Spacer(Modifier.width(4.dp))
+                    Icon(icon, null, modifier = Modifier.size(12.dp), tint = MaterialTheme.colorScheme.primary)
+                }
+            }
+        } else if (isCodeDiff || isError || isSystem) {
+             Icon(
+                 icon, 
+                 null, 
+                 modifier = Modifier.size(16.dp).padding(bottom = 2.dp), 
+                 tint = if (isError) MaterialTheme.colorScheme.error else if (isSystem) Color(0xFF666600) else Color.White
+             )
         }
+
         Surface(
             color = bgColor,
             shape = RoundedCornerShape(12.dp),
             modifier = Modifier
-                .widthIn(max = if (isSystem || isError) 350.dp else 300.dp)
+                .widthIn(max = if (isSystem || isError || isCodeDiff) 380.dp else 300.dp)
                 .combinedClickable(
                     onClick = { },
                     onLongClick = {
@@ -633,11 +707,24 @@ fun ChatBubble(sender: String, content: String) {
                     }
                 )
         ) {
-            MarkdownText(
-                text = content,
-                textColor = textColor,
-                textAlign = if (isSystem || isError) TextAlign.Center else TextAlign.Start
-            )
+            Column {
+                if (isCodeDiff) {
+                    DiffText(content)
+                } else {
+                    MarkdownText(
+                        text = content,
+                        textColor = textColor,
+                        textAlign = if (isSystem || isError) TextAlign.Center else TextAlign.Start
+                    )
+                }
+                
+                Text(
+                    text = timestamp,
+                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.sp),
+                    color = textColor.copy(alpha = 0.5f),
+                    modifier = Modifier.align(Alignment.End).padding(end = 8.dp, bottom = 4.dp)
+                )
+            }
         }
     }
 }
@@ -694,24 +781,152 @@ fun MarkdownText(text: String, textColor: Color, textAlign: TextAlign) {
                                     color = textColor,
                                     modifier = Modifier.padding(end = 8.dp)
                                 )
-                                Text(
+                                RenderTextWithStyles(
                                     text = trimmedLine.substring(2),
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = textColor,
+                                    textColor = textColor,
                                     textAlign = textAlign
                                 )
                             }
                         } else if (trimmedLine.isNotEmpty()) {
-                            Text(
+                            RenderTextWithStyles(
                                 text = trimmedLine,
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = textColor,
+                                textColor = textColor,
                                 textAlign = textAlign,
                                 modifier = Modifier.padding(bottom = 4.dp)
                             )
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+fun RenderTextWithStyles(
+    text: String, 
+    textColor: Color, 
+    textAlign: TextAlign,
+    modifier: Modifier = Modifier
+) {
+    val annotatedString = buildAnnotatedString {
+        val titleRegex = Regex("\\[(.*?)\\]\\s*:\\s*###\\s*(.*)")
+        val boldRegex = Regex("\\*\\*(.*?)\\*\\*")
+        val italicRegex = Regex("\\*(.*?)\\*")
+        val codeRegex = Regex("`(.*?)`")
+        val urlRegex = Regex("(https?://[\\w\\d./?=#+%&-]+)")
+        
+        val allMatches = (titleRegex.findAll(text) + 
+                          boldRegex.findAll(text) + 
+                          italicRegex.findAll(text) +
+                          codeRegex.findAll(text) +
+                          urlRegex.findAll(text))
+            .sortedBy { it.range.first }
+            .toList()
+            
+        var currentPos = 0
+        for (match in allMatches) {
+            if (match.range.first < currentPos) continue 
+            
+            append(text.substring(currentPos, match.range.first))
+            
+            when {
+                match.value.startsWith("[") && match.value.contains(": ###") -> {
+                    withStyle(SpanStyle(color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)) {
+                        append("[${match.groupValues[1]}]")
+                    }
+                    append(" : ")
+                    withStyle(SpanStyle(color = MaterialTheme.colorScheme.tertiary, fontWeight = FontWeight.Black)) {
+                        append("### ${match.groupValues[2]}")
+                    }
+                }
+                match.value.startsWith("**") -> {
+                    withStyle(SpanStyle(fontWeight = FontWeight.Bold)) {
+                        append(match.groupValues[1])
+                    }
+                }
+                match.value.startsWith("*") -> {
+                    withStyle(SpanStyle(fontStyle = FontStyle.Italic)) {
+                        append(match.groupValues[1])
+                    }
+                }
+                match.value.startsWith("`") -> {
+                    withStyle(SpanStyle(
+                        fontFamily = FontFamily.Monospace,
+                        background = Color.Black.copy(alpha = 0.05f),
+                        color = MaterialTheme.colorScheme.secondary
+                    )) {
+                        append(match.groupValues[1])
+                    }
+                }
+                match.value.startsWith("http") -> {
+                    withStyle(SpanStyle(
+                        color = Color(0xFF2196F3),
+                        textDecoration = androidx.compose.ui.text.style.TextDecoration.Underline
+                    )) {
+                        append(match.value)
+                    }
+                }
+            }
+            currentPos = match.range.last + 1
+        }
+        
+        if (currentPos < text.length) {
+            append(text.substring(currentPos))
+        }
+    }
+
+    Text(
+        text = annotatedString,
+        style = MaterialTheme.typography.bodyMedium,
+        color = textColor,
+        textAlign = textAlign,
+        modifier = modifier
+    )
+}
+
+@Composable
+fun DiffText(diffJson: String) {
+    val diffText = remember(diffJson) {
+        try {
+            val gson = com.google.gson.Gson()
+            val map = gson.fromJson(diffJson, Map::class.java)
+            (map["fileDiff"] as? String) ?: diffJson
+        } catch (e: Exception) {
+            diffJson
+        }
+    }
+
+    val lines = remember(diffText) { diffText.split("\n") }
+
+    Column(modifier = Modifier.padding(8.dp)) {
+        lines.forEach { line ->
+            val bgColor = when {
+                line.startsWith("+") && !line.startsWith("+++") -> Color(0xFF1B5E20).copy(alpha = 0.3f) // Green for add
+                line.startsWith("-") && !line.startsWith("---") -> Color(0xFFB71C1C).copy(alpha = 0.3f) // Red for remove
+                line.startsWith("@@") -> Color(0xFF0D47A1).copy(alpha = 0.3f) // Blue for hunk header
+                else -> Color.Transparent
+            }
+
+            val textColor = when {
+                line.startsWith("+") && !line.startsWith("+++") -> Color(0xFFA5D6A7)
+                line.startsWith("-") && !line.startsWith("---") -> Color(0xFFEF9A9A)
+                line.startsWith("@@") -> Color(0xFF90CAF9)
+                else -> Color.White
+            }
+
+            Surface(
+                color = bgColor,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    text = line,
+                    style = MaterialTheme.typography.bodySmall.copy(
+                        fontFamily = FontFamily.Monospace,
+                        color = textColor
+                    ),
+                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                )
             }
         }
     }
