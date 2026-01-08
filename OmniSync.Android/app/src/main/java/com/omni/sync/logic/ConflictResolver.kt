@@ -22,7 +22,7 @@ class ConflictResolver {
         val dp = Array(n + 1) { IntArray(m + 1) }
         for (i in 1..n) {
             for (j in 1..m) {
-                if (localLines[i - 1] == remoteLines[j - 1]) {
+                if (localLines[i - 1].trimEnd() == remoteLines[j - 1].trimEnd()) {
                     dp[i][j] = dp[i - 1][j - 1] + 1
                 } else {
                     dp[i][j] = max(dp[i - 1][j], dp[i][j - 1])
@@ -36,8 +36,8 @@ class ConflictResolver {
         val operations = mutableListOf<Op>()
         
         while (i > 0 || j > 0) {
-            if (i > 0 && j > 0 && localLines[i - 1] == remoteLines[j - 1]) {
-                operations.add(Op.Match(localLines[i - 1]))
+            if (i > 0 && j > 0 && localLines[i - 1].trimEnd() == remoteLines[j - 1].trimEnd()) {
+                operations.add(Op.Match(remoteLines[j - 1])) // Prefer remote version for whitespace
                 i--
                 j--
             } else if (j > 0 && (i == 0 || dp[i][j - 1] >= dp[i - 1][j])) {
