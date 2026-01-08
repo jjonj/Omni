@@ -16,6 +16,10 @@ import com.google.gson.reflect.TypeToken
 import com.omni.sync.MainActivity
 import com.omni.sync.OmniSyncApplication
 import com.omni.sync.data.model.NotificationAction
+import android.content.BroadcastReceiver
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
+import androidx.lifecycle.viewModelScope
 
 import android.widget.RemoteViews
 
@@ -23,6 +27,24 @@ class ForegroundService : Service() {
 
     private val CHANNEL_ID = "OmniSyncForegroundServiceChannel"
     private var statusMessage: String? = null
+    
+    private val batteryReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            val app = application as OmniSyncApplication
+            val mainViewModel = app.mainViewModel
+            
+            when (intent.action) {
+                Intent.ACTION_POWER_CONNECTED -> {
+                    // Connected to charger, might be going to sleep if late? 
+                    // Or just recording activity.
+                    mainViewModel.recordActivity()
+                }
+                Intent.ACTION_POWER_DISCONNECTED -> {
+                    mainViewModel.recordActivity()
+                }
+            }
+        }
+    }
 
     companion object {
         const val ACTION_TRIGGER_NOTIFICATION_ACTION = "com.omni.sync.TRIGGER_ACTION"
@@ -31,9 +53,35 @@ class ForegroundService : Service() {
         const val EXTRA_STATUS_MESSAGE = "extra_status_message"
     }
 
+    private var refreshJob: kotlinx.coroutines.Job? = null
+
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
+        
+        val filter = android.content.IntentFilter().apply {
+            addAction(Intent.ACTION_POWER_CONNECTED)
+            addAction(Intent.ACTION_POWER_DISCONNECTED)
+        }
+        registerReceiver(batteryReceiver, filter)
+        
+        startNotificationRefresh()
+    }
+
+    private fun startNotificationRefresh() {
+        val app = application as OmniSyncApplication
+        refreshJob = app.mainViewModel.viewModelScope.launch {
+            while (true) {
+                delay(60000) // Refresh every minute
+                updateNotification()
+            }
+        }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        unregisterReceiver(batteryReceiver)
+        refreshJob?.cancel()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -165,6 +213,11 @@ class ForegroundService : Service() {
     }
 
     private fun createNotification(): Notification {
+        val app = application as OmniSyncApplication
+        val mainViewModel = app.mainViewModel
+        val isSleeping = mainViewModel.isSleeping.value
+        val sleepDuration = mainViewModel.sleepDuration.value
+
         val intent = Intent(this, MainActivity::class.java)
         val pendingIntent = PendingIntent.getActivity(this, 0, intent, PendingIntent.FLAG_IMMUTABLE)
 
@@ -185,6 +238,10 @@ class ForegroundService : Service() {
             }
             val pendingDismiss = PendingIntent.getService(this, 999, dismissIntent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
             customLayout.setOnClickPendingIntent(R.id.btn_dismiss_alarm, pendingDismiss)
+        } else if (isSleeping) {
+            customLayout.setViewVisibility(R.id.notification_status, android.view.View.VISIBLE)
+            customLayout.setTextViewText(R.id.notification_status, "Asleep for $sleepDuration")
+            customLayout.setViewVisibility(R.id.btn_dismiss_alarm, android.view.View.GONE)
         } else {
             customLayout.setViewVisibility(R.id.notification_status, android.view.View.GONE)
             customLayout.setViewVisibility(R.id.btn_dismiss_alarm, android.view.View.GONE)

@@ -40,6 +40,9 @@ fun DashboardScreen(modifier: Modifier = Modifier, signalRClient: SignalRClient,
     val connectionStateString by signalRClient.connectionState.collectAsState()
     val isConnected by mainViewModel.isConnected.collectAsState()
     
+    val sleepDuration by mainViewModel.sleepDuration.collectAsState()
+    val isSleeping by mainViewModel.isSleeping.collectAsState()
+
     val logs by mainViewModel.dashboardLogs.collectAsState()
     val listState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
@@ -76,6 +79,13 @@ fun DashboardScreen(modifier: Modifier = Modifier, signalRClient: SignalRClient,
                 connectionMessage = connectionStateString,
                 onReconnect = { signalRClient?.manualReconnect() },
                 onWake = { mainViewModel.sendWakeOnLan(appConfig.wakeOnLanMac) }
+            )
+
+            SleepTrackingCard(
+                isSleeping = isSleeping,
+                duration = sleepDuration,
+                onStartSleep = { mainViewModel.startSleep() },
+                onWokeUp = { mainViewModel.resetSleep() }
             )
 
             if (!isConnected) {
@@ -272,72 +282,252 @@ fun HubConnectionCard(
         ConnectionStatus.UNKNOWN -> "Unknown Status"
     }
     
-    Card(
-        modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = statusColor.copy(alpha = 0.1f)
-        )
-    ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
+        Card(
+    
+            modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
+    
+            colors = CardDefaults.cardColors(
+    
+                containerColor = statusColor.copy(alpha = 0.1f)
+    
+            )
+    
+        ) {
+    
+            Column(modifier = Modifier.padding(16.dp)) {
+    
                 Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.weight(1f)
+    
+                    modifier = Modifier.fillMaxWidth(),
+    
+                    horizontalArrangement = Arrangement.SpaceBetween,
+    
+                    verticalAlignment = Alignment.CenterVertically
+    
                 ) {
-                    Icon(
-                        imageVector = statusIcon,
-                        contentDescription = "Connection Status",
-                        tint = statusColor,
-                        modifier = Modifier.size(32.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "Hub Connection",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold
+    
+                    Row(
+    
+                        verticalAlignment = Alignment.CenterVertically,
+    
+                        modifier = Modifier.weight(1f)
+    
+                    ) {
+    
+                        Icon(
+    
+                            imageVector = statusIcon,
+    
+                            contentDescription = "Connection Status",
+    
+                            tint = statusColor,
+    
+                            modifier = Modifier.size(32.dp)
+    
                         )
-                        Text(
-                            text = statusText,
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.SemiBold,
-                            color = statusColor
-                        )
-                        if (connectionMessage.isNotBlank() && connectionMessage != statusText) {
+    
+                        Spacer(modifier = Modifier.width(8.dp))
+    
+                        Column(modifier = Modifier.weight(1f)) {
+    
                             Text(
-                                text = connectionMessage,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 2
+    
+                                text = "Hub Connection",
+    
+                                style = MaterialTheme.typography.titleMedium,
+    
+                                fontWeight = FontWeight.Bold
+    
                             )
+    
+                            Text(
+    
+                                text = statusText,
+    
+                                style = MaterialTheme.typography.bodyMedium,
+    
+                                fontWeight = FontWeight.SemiBold,
+    
+                                color = statusColor
+    
+                            )
+    
+                            if (connectionMessage.isNotBlank() && connectionMessage != statusText) {
+    
+                                Text(
+    
+                                    text = connectionMessage,
+    
+                                    style = MaterialTheme.typography.bodySmall,
+    
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+    
+                                    maxLines = 2
+    
+                                )
+    
+                            }
+    
                         }
+    
                     }
-                }
-                
-                // Show reconnect and wake buttons when not connected
-                if (connectionStatus != ConnectionStatus.CONNECTED) {
-                    Row {
-                        IconButton(onClick = onWake) {
-                            Icon(
-                                imageVector = Icons.Filled.PowerSettingsNew,
-                                contentDescription = "Wake PC",
-                                tint = MaterialTheme.colorScheme.tertiary
-                            )
+    
+                    
+    
+                    // Show reconnect and wake buttons when not connected
+    
+                    if (connectionStatus != ConnectionStatus.CONNECTED) {
+    
+                        Row {
+    
+                            IconButton(onClick = onWake) {
+    
+                                Icon(
+    
+                                    imageVector = Icons.Filled.PowerSettingsNew,
+    
+                                    contentDescription = "Wake PC",
+    
+                                    tint = MaterialTheme.colorScheme.tertiary
+    
+                                )
+    
+                            }
+    
+                            IconButton(onClick = onReconnect) {
+    
+                                Icon(
+    
+                                    imageVector = Icons.Filled.Refresh,
+    
+                                    contentDescription = "Reconnect",
+    
+                                    tint = MaterialTheme.colorScheme.primary
+    
+                                )
+    
+                            }
+    
                         }
-                        IconButton(onClick = onReconnect) {
-                            Icon(
-                                imageVector = Icons.Filled.Refresh,
-                                contentDescription = "Reconnect",
-                                tint = MaterialTheme.colorScheme.primary
-                            )
-                        }
+    
                     }
+    
                 }
+    
             }
+    
         }
+    
     }
-}
+    
+    
+    
+    @Composable
+    
+    fun SleepTrackingCard(
+    
+        isSleeping: Boolean,
+    
+        duration: String,
+    
+        onStartSleep: () -> Unit,
+    
+        onWokeUp: () -> Unit
+    
+    ) {
+    
+        Card(
+    
+            modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
+    
+            colors = CardDefaults.cardColors(
+    
+                containerColor = if (isSleeping) Color(0xFF3F51B5).copy(alpha = 0.1f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+    
+            )
+    
+        ) {
+    
+            Column(modifier = Modifier.padding(16.dp)) {
+    
+                Row(
+    
+                    modifier = Modifier.fillMaxWidth(),
+    
+                    horizontalArrangement = Arrangement.SpaceBetween,
+    
+                    verticalAlignment = Alignment.CenterVertically
+    
+                ) {
+    
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+    
+                        Icon(
+    
+                            imageVector = if (isSleeping) Icons.Default.CheckCircle else Icons.Default.Refresh,
+    
+                            contentDescription = "Sleep Status",
+    
+                            tint = if (isSleeping) Color(0xFF3F51B5) else MaterialTheme.colorScheme.outline,
+    
+                            modifier = Modifier.size(32.dp)
+    
+                        )
+    
+                        Spacer(modifier = Modifier.width(8.dp))
+    
+                        Column {
+    
+                            Text(
+    
+                                text = "Sleep Tracking",
+    
+                                style = MaterialTheme.typography.titleMedium,
+    
+                                fontWeight = FontWeight.Bold
+    
+                            )
+    
+                            Text(
+    
+                                text = if (isSleeping) "Asleep for $duration" else "User is active",
+    
+                                style = MaterialTheme.typography.bodyMedium,
+    
+                                color = if (isSleeping) Color(0xFF3F51B5) else MaterialTheme.colorScheme.onSurfaceVariant
+    
+                            )
+    
+                        }
+    
+                    }
+    
+                    
+    
+                    if (isSleeping) {
+    
+                        Button(onClick = onWokeUp) {
+    
+                            Text("Woke up")
+    
+                        }
+    
+                    } else {
+    
+                        OutlinedButton(onClick = onStartSleep) {
+    
+                            Text("Start Sleep")
+    
+                        }
+    
+                    }
+    
+                }
+    
+            }
+    
+        }
+    
+    }
+    
+    

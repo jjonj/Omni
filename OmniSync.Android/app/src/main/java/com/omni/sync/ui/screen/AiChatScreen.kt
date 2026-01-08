@@ -61,6 +61,7 @@ import com.omni.sync.utils.WindowsKeyCodes.VK_ESCAPE
 import com.omni.sync.utils.WindowsKeyCodes.VK_RETURN
 import com.omni.sync.utils.WindowsKeyCodes.VK_UP
 import com.omni.sync.utils.WindowsKeyCodes.VK_Y
+import com.omni.sync.ui.components.DirectoryPickerDialog
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
@@ -84,6 +85,7 @@ fun AiChatScreen(
     val bookmarks by filesViewModel.bookmarks.collectAsState()
     var selectedWorkspace by remember { mutableStateOf<String?>(null) }
     var showWorkspaceMenu by remember { mutableStateOf(false) }
+    var showDirectoryPicker by remember { mutableStateOf(false) }
     
     val listState = rememberLazyListState()
     val isAiThinking = aiStatus?.contains("Thinking", ignoreCase = true) == true
@@ -232,28 +234,62 @@ fun AiChatScreen(
                 actions = {
                     Box {
                         IconButton(onClick = { showWorkspaceMenu = true }, enabled = isConnected) {
-                            Icon(Icons.Default.Folder, contentDescription = "Select Workspace")
+                            Icon(Icons.Default.Folder, contentDescription = "AI Actions")
                         }
                         DropdownMenu(
                             expanded = showWorkspaceMenu,
                             onDismissRequest = { showWorkspaceMenu = false }
                         ) {
                             DropdownMenuItem(
+                                text = { Text("New Session (Default Workspace)") },
+                                onClick = { 
+                                    selectedWorkspace = null
+                                    signalRClient.startNewAiSession(null)
+                                    showWorkspaceMenu = false 
+                                },
+                                leadingIcon = { Icon(Icons.Default.Add, null) }
+                            )
+                            
+                            HorizontalDivider()
+                            
+                            Text("Switch Workspace / New from Bookmark", 
+                                style = MaterialTheme.typography.labelSmall, 
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                color = MaterialTheme.colorScheme.primary
+                            )
+
+                            DropdownMenuItem(
                                 text = { Text("Default Workspace", fontWeight = if (selectedWorkspace == null) FontWeight.Bold else FontWeight.Normal) },
-                                onClick = { selectedWorkspace = null; showWorkspaceMenu = false },
+                                onClick = { 
+                                    selectedWorkspace = null
+                                    signalRClient.sendAiMessage("/dir set") // Clear workspace
+                                    showWorkspaceMenu = false 
+                                },
                                 leadingIcon = { Icon(Icons.Default.Home, null) }
                             )
+
                             bookmarks.filter { it.isDirectory }.forEach { bookmark ->
                                 DropdownMenuItem(
                                     text = { Text(bookmark.name, fontWeight = if (selectedWorkspace == bookmark.path) FontWeight.Bold else FontWeight.Normal) },
-                                    onClick = { selectedWorkspace = bookmark.path; showWorkspaceMenu = false },
+                                    onClick = { 
+                                        selectedWorkspace = bookmark.path
+                                        signalRClient.sendAiMessage("/dir set \"${bookmark.path}\"")
+                                        showWorkspaceMenu = false 
+                                    },
                                     leadingIcon = { Icon(Icons.Default.Folder, null) }
                                 )
                             }
+                            
+                            HorizontalDivider()
+                            DropdownMenuItem(
+                                text = { Text("Browse...") },
+                                onClick = {
+                                    showDirectoryPicker = true
+                                    showWorkspaceMenu = false
+                                },
+                                leadingIcon = { Icon(Icons.Default.Cached, null) }
+                            )
                         }
-                    }
-                    IconButton(onClick = { signalRClient.startNewAiSession(selectedWorkspace) }, enabled = isConnected) {
-                        Icon(Icons.Default.Add, contentDescription = "New Session")
                     }
                     IconButton(onClick = { 
                         if (selectedPid != -1) {
@@ -418,6 +454,18 @@ fun AiChatScreen(
                     TextButton(onClick = { showRenameDialog = false }) {
                         Text("Cancel")
                     }
+                }
+            )
+        }
+
+        if (showDirectoryPicker) {
+            DirectoryPickerDialog(
+                filesViewModel = filesViewModel,
+                onDismiss = { showDirectoryPicker = false },
+                onConfirm = { path ->
+                    showDirectoryPicker = false
+                    selectedWorkspace = path
+                    signalRClient.sendAiMessage("/dir add \"$path\"")
                 }
             )
         }

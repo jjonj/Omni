@@ -10,7 +10,9 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.launch
-import com.omni.sync.ui.screen.LogEntry // We will define this or use the one from Dashboard
+import kotlinx.coroutines.delay
+import com.omni.sync.ui.screen.LogEntry
+ // We will define this or use the one from Dashboard
 import com.omni.sync.ui.screen.LogType
 import java.lang.Exception
 import java.net.DatagramPacket
@@ -21,6 +23,7 @@ import android.net.Uri
 import android.app.NotificationManager
 import androidx.core.app.NotificationCompat
 import com.omni.sync.R
+import com.omni.sync.logic.SleepTracker
 
 enum class AppScreen {
     DASHBOARD,
@@ -79,6 +82,44 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _activeBaseUrl = MutableStateFlow("")
     val activeBaseUrl: StateFlow<String> = _activeBaseUrl
+
+    val sleepTracker = SleepTracker(application)
+    private val _sleepDuration = MutableStateFlow(sleepTracker.getFormattedSleepDuration())
+    val sleepDuration: StateFlow<String> = _sleepDuration
+    
+    private val _isSleeping = MutableStateFlow(sleepTracker.isSleeping())
+    val isSleeping: StateFlow<Boolean> = _isSleeping
+
+    init {
+        viewModelScope.launch {
+            while (true) {
+                _sleepDuration.value = sleepTracker.getFormattedSleepDuration()
+                _isSleeping.value = sleepTracker.isSleeping()
+                delay(60000) // Update every minute
+            }
+        }
+    }
+
+    fun recordActivity() {
+        sleepTracker.recordActivity()
+        if (sleepTracker.isSleeping()) {
+            sleepTracker.resetSleep()
+            _isSleeping.value = false
+            _sleepDuration.value = sleepTracker.getFormattedSleepDuration()
+        }
+    }
+
+    fun startSleep() {
+        sleepTracker.recordPotentialSleepStart()
+        _isSleeping.value = true
+        _sleepDuration.value = sleepTracker.getFormattedSleepDuration()
+    }
+
+    fun resetSleep() {
+        sleepTracker.resetSleep()
+        _isSleeping.value = false
+        _sleepDuration.value = sleepTracker.getFormattedSleepDuration()
+    }
 
     fun setActiveBaseUrl(url: String) {
         _activeBaseUrl.value = url

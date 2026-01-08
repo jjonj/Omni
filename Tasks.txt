@@ -35,6 +35,8 @@ Only work on subtasks if told to do so or if told explicitly to do a Megasession
 
 ### Dashboard
 
+✅ Prominently display the time the user has been asleep, guess from the latest time when an alarm was set, the app opened, phone connected to battery or the app has been disconnected from hub and display on dash and notification when not connected in minutes and hours, this needs to persistent between app restarts and needs to detect last disconnect time even with app in background 
+
 ✅ After using wake on lan, Start a reconnecting cycle after 1 minute
 
 ### Remote Control Screen
@@ -64,7 +66,7 @@ Only work on subtasks if told to do so or if told explicitly to do a Megasession
 
 ✅ when a file is open the navigation bar gets hidden, change that 
 
-the automatic merge feature does not work well, seems everything is marked as conflict, run some unit tests 
+✅ the automatic merge feature does not work well, seems everything is marked as conflict, run some unit tests 
 
 ✅ When any ai session is active, add "AI: Add dir to [SessionName]"  option to long press folder which will send "/dir add X" to the active session  
 
@@ -117,12 +119,16 @@ the automatic merge feature does not work well, seems everything is marked as co
 
 ### AI screen
 
-merge the + and foldericon buttons. when pasting prompt user with the folder bookmarks list and add browse option that opens a popup
+✅ add a new button that let's me /dir addmypath with a button press and then navigating the file system in a popup to select the folder to add
 
-sessions are named according to the first message sent to ai with fallback to session id. change that to primarily use the workspace folder name (not full path), append with number if multiple with same workspaces
+✅ on all other screens i can swipe left and right to navigate screens but i can't from ai
+
+✅ When not scrolled to bottom of history i experience the scroll amount jumping when new messages are added at the bottom, i dont want it to move what I'm looking at. it would only auto scroll if I'm scrolled to bottom already or if i send a message myself 
+
+✅ merge the + and foldericon buttons. when pasting prompt user with the folder bookmarks list and add browse option that opens a popup
 
 ### Omni web screen 
 
-screen is simply black, not working 
+✅ screen is simply black, not working 
 
 

@@ -166,6 +166,7 @@ class SignalRClient(
         _currentBaseUrl.value = baseUrl
         mainViewModel.setActiveBaseUrl(baseUrl)
         mainViewModel.setConnected(true)
+        mainViewModel.recordActivity() // Record activity on connect
         authenticateClient()
         getAiSessions()
         val sharedPrefs = context.getSharedPreferences(SHARED_PREFS_NAME, Context.MODE_PRIVATE)
@@ -221,6 +222,9 @@ class SignalRClient(
             _connectionState.value = "Disconnected: ${error?.message}"
             mainViewModel.setConnected(false)
             mainViewModel.setScheduledShutdownTime(null)
+            
+            // Suspect sleep if disconnected (e.g. PC shutdown at night)
+            mainViewModel.startSleep()
 
             if (isReconnecting.compareAndSet(false, true)) {
                 mainViewModel.addLog("Connection lost. Starting auto-reconnect...", com.omni.sync.ui.screen.LogType.WARNING)

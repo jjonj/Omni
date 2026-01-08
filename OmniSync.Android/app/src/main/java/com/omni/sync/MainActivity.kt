@@ -107,6 +107,7 @@ class MainActivity : ComponentActivity() {
 
         omniSyncApplication = application as OmniSyncApplication
         mainViewModel = omniSyncApplication.mainViewModel
+        mainViewModel.recordActivity()
         
         omniSyncApplication.signalRClient.startConnection()
 
