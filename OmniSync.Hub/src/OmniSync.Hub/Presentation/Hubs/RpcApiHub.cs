@@ -907,9 +907,20 @@ namespace OmniSync.Hub.Presentation.Hubs
         {
             if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
             {
-                _logger.LogInformation($"[RpcApiHub] RenameAiSession: {pid} -> {name}");
+                _logger.LogInformation($"RenameAiSession: {pid} -> {name}");
                 AnyCommandReceived?.Invoke(this, $"RenameAiSession: {pid} -> {name}");
                 await _aiCliService.SetSessionNameAsync(pid, name);
+                await GetAiSessions();
+            }
+        }
+
+        public async Task ResetAiSessions()
+        {
+            if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
+            {
+                _logger.LogInformation("[RpcApiHub] ResetAiSessions requested. Nuking all Gemini processes...");
+                AnyCommandReceived?.Invoke(this, "ResetAiSessions");
+                _aiCliService.KillAllGeminiProcesses();
                 await GetAiSessions();
             }
         }

@@ -1,0 +1,6 @@
+fix(hub): improve AI CLI discovery and support thought streaming
+
+- Enhanced DiscoverSessionsAsync to accurately baseline existing Gemini processes before launching new ones.
+- Increased connection timeouts and added detailed logging for pipe connection troubleshooting.
+- Added support for 'thought' message type in GeminiSession to distinguish AI reasoning from final responses.
+- Fixed a regression where the Hub would connect to unintended or stale CLI instances.

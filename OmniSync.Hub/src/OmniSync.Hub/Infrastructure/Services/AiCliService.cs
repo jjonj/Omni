@@ -397,6 +397,21 @@ namespace OmniSync.Hub.Infrastructure.Services
                 string errorMsg = "Failed to find new Gemini session after 40 seconds.";
                 _logger.LogWarning($"[AiCliService] {errorMsg}");
                 onProgress?.Invoke(errorMsg);
+                
+                // Cleanup the shell process if we failed to connect
+                try
+                {
+                    if (!shellProcess.HasExited)
+                    {
+                        shellProcess.Kill(true);
+                        _logger.LogInformation($"[AiCliService] Killed shell process {shellProcess.Id} after failed launch.");
+                    }
+                }
+                catch (Exception killEx)
+                {
+                    _logger.LogWarning($"[AiCliService] Failed to kill shell process after failed launch: {killEx.Message}");
+                }
+
                 return null;
             }
             catch (Exception ex)
@@ -405,6 +420,64 @@ namespace OmniSync.Hub.Infrastructure.Services
                 onProgress?.Invoke($"Error launching session: {ex.Message}");
                 return null;
             }
+        }
+
+        public void KillAllGeminiProcesses()
+        {
+            _logger.LogInformation("[AiCliService] KillAllGeminiProcesses requested.");
+            
+            // 1. Clear internal state first
+            foreach (var session in _sessions.Values)
+            {
+                session.Dispose();
+            }
+            _sessions.Clear();
+            _sessionNames.Clear();
+            _targetPid = -1;
+            
+            // 2. Kill all node processes running gemini
+            try
+            {
+                if (OperatingSystem.IsWindows())
+                {
+                    string query = "SELECT ProcessId, CommandLine FROM Win32_Process WHERE Name LIKE 'node%'";
+                    using var searcher = new ManagementObjectSearcher(query);
+                    using var collection = searcher.Get();
+
+                    foreach (var process in collection)
+                    {
+                        var commandLine = process["CommandLine"]?.ToString();
+                        var pidObj = process["ProcessId"];
+                        if (commandLine != null && pidObj != null)
+                        {
+                            int pid = Convert.ToInt32(pidObj);
+                            bool isGemini = (commandLine.Contains("bundle/gemini.js") || 
+                                             commandLine.Contains("gemini-cli") || 
+                                             commandLine.Contains("OMNI_GEMINI")) && 
+                                            !commandLine.Contains("@google");
+
+                            if (isGemini)
+                            {
+                                try
+                                {
+                                    Process.GetProcessById(pid).Kill(true);
+                                    _logger.LogInformation($"[AiCliService] Killed zombie process PID {pid}");
+                                }
+                                catch (Exception ex)
+                                {
+                                    _logger.LogWarning($"[AiCliService] Failed to kill zombie process PID {pid}: {ex.Message}");
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "[AiCliService] Error killing all Gemini processes");
+            }
+            
+            _lastWmiDiscovery = DateTime.MinValue; // Force refresh
         }
 
         private int? GetNodeProcessIdByParent(int parentPid)

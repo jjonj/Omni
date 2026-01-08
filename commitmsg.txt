@@ -1,0 +1,5 @@
+Keep bottom navigation bar visible when opening files (VideoPlayer, ImageViewer).
+
+- Moved VideoPlayerScreen and ImageViewerScreen inside the main Scaffold.
+- Added parentPadding support to VideoPlayerScreen and ImageViewerScreen to respect bottom navigation bar.
+- Updated MainActivity to include these screens in MainScreenContent.

@@ -1,28 +1,30 @@
 package com.omni.sync.logic.macro
 
 sealed class MacroCommand {
-    data class Send(val keys: String) : MacroCommand()
-    data class Sleep(val durationMs: Long) : MacroCommand()
-    data class Run(val path: String) : MacroCommand()
-    data class WinActivate(val title: String) : MacroCommand()
-    data class WinClose(val title: String) : MacroCommand()
-    data class WinMinimize(val title: String) : MacroCommand()
-    data class WinMaximize(val title: String) : MacroCommand()
-    data class WinHide(val title: String) : MacroCommand()
-    data class WaitWinActive(val title: String, val timeoutMs: Int) : MacroCommand()
-    data class MouseMoveAbs(val x: Int, val y: Int) : MacroCommand()
-    data class MouseClickAt(val button: String, val x: Int, val y: Int) : MacroCommand()
-    data class PowerShell(val code: String) : MacroCommand()
-    data class MacroChain(val name: String) : MacroCommand()
-    object VolUp : MacroCommand()
-    object VolDown : MacroCommand()
-    object VolMute : MacroCommand()
-    object Screenshot : MacroCommand()
-    data class KeyDown(val key: String) : MacroCommand()
-    data class KeyUp(val key: String) : MacroCommand()
-    data class Clipboard(val text: String) : MacroCommand()
-    data class AiHere(val workspace: String) : MacroCommand()
-    data class Unknown(val raw: String) : MacroCommand()
+    abstract val type: String
+
+    data class Send(val keys: String) : MacroCommand() { override val type = "send" }
+    data class Sleep(val durationMs: Long) : MacroCommand() { override val type = "sleep" }
+    data class Run(val path: String) : MacroCommand() { override val type = "run" }
+    data class WinActivate(val title: String) : MacroCommand() { override val type = "winactivate" }
+    data class WinClose(val title: String) : MacroCommand() { override val type = "winclose" }
+    data class WinMinimize(val title: String) : MacroCommand() { override val type = "winminimize" }
+    data class WinMaximize(val title: String) : MacroCommand() { override val type = "winmaximize" }
+    data class WinHide(val title: String) : MacroCommand() { override val type = "winhide" }
+    data class WaitWinActive(val title: String, val timeoutMs: Int) : MacroCommand() { override val type = "waitwinactive" }
+    data class MouseMoveAbs(val x: Int, val y: Int) : MacroCommand() { override val type = "mousemoveabs" }
+    data class MouseClickAt(val button: String, val x: Int, val y: Int) : MacroCommand() { override val type = "mouseclickat" }
+    data class PowerShell(val code: String) : MacroCommand() { override val type = "powershell" }
+    data class MacroChain(val name: String) : MacroCommand() { override val type = "macro" }
+    object VolUp : MacroCommand() { override val type = "volup" }
+    object VolDown : MacroCommand() { override val type = "voldown" }
+    object VolMute : MacroCommand() { override val type = "volmute" }
+    object Screenshot : MacroCommand() { override val type = "screenshot" }
+    data class KeyDown(val key: String) : MacroCommand() { override val type = "keydown" }
+    data class KeyUp(val key: String) : MacroCommand() { override val type = "keyup" }
+    data class Clipboard(val text: String) : MacroCommand() { override val type = "clipboard" }
+    data class AiHere(val workspace: String) : MacroCommand() { override val type = "aihere" }
+    data class Unknown(val raw: String) : MacroCommand() { override val type = "unknown" }
 }
 
 class MacroParser {
@@ -76,7 +78,12 @@ class MacroParser {
         val args = if (parts.size > 1) parts[1] else ""
 
         return when (command) {
-            "send" -> MacroCommand.Send(args)
+            "send" -> {
+                val processedKeys = args.replace(Regex("\\(([a-zA-Z0-9]+)\\)")) { matchResult ->
+                    "{" + matchResult.groupValues[1].uppercase() + "}"
+                }
+                MacroCommand.Send(processedKeys)
+            }
             "sleep" -> MacroCommand.Sleep(args.toLongOrNull() ?: 0L)
             "run" -> MacroCommand.Run(args)
             "winactivate" -> MacroCommand.WinActivate(args)

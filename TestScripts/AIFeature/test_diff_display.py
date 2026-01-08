@@ -4,6 +4,8 @@ import time
 import os
 import sys
 import logging
+import tempfile
+import shutil
 from signalrcore.hub_connection_builder import HubConnectionBuilder
 
 # --- CONFIGURATION ---
@@ -25,6 +27,7 @@ class DiffDisplayTester:
         self.hub = None
         self.new_session_pid = None
         self.last_activity_time = 0
+        self.test_dir = tempfile.mkdtemp(prefix="gemini_test_ws_")
 
     def on_open(self):
         logger.info("SignalR Connection opened.")
@@ -91,9 +94,8 @@ class DiffDisplayTester:
         return True
 
     async def start_session(self):
-        workspace = os.getcwd()
-        logger.info(f"Requesting Hub to launch Gemini CLI at {workspace}...")
-        self.hub.send("StartCliAtWorkspace", [workspace])
+        logger.info(f"Requesting Hub to launch Gemini CLI at {self.test_dir}...")
+        self.hub.send("StartCliAtWorkspace", [self.test_dir])
         
         start_wait = time.time()
         while self.new_session_pid is None and time.time() - start_wait < 30:
@@ -127,7 +129,7 @@ class DiffDisplayTester:
 
     async def run_test(self):
         # 1. Setup file
-        target_path = os.path.join(os.getcwd(), TEST_FILE_NAME).replace("\\", "/")
+        target_path = os.path.join(self.test_dir, TEST_FILE_NAME).replace("\\", "/")
         with open(target_path, "w") as f:
             f.write(TEST_CONTENT)
         logger.info(f"Created test file '{target_path}' with content: '{TEST_CONTENT}'")
@@ -184,7 +186,7 @@ class DiffDisplayTester:
 
         # Cleanup
         try:
-            os.remove(TEST_FILE_NAME)
+            shutil.rmtree(self.test_dir)
         except:
             pass
 

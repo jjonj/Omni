@@ -696,6 +696,19 @@ class SignalRClient(
                 hubConnection?.send("RenameAiSession", pid, name)
             }
         }
+
+        fun resetAiSessions() {
+            if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
+                mainViewModel.addLog("[AI] Requesting session reset (Nuke all)...", com.omni.sync.ui.screen.LogType.WARNING)
+                hubConnection?.send("ResetAiSessions")
+                // Clear local state
+                _aiMessagesMap.value = emptyMap()
+                _aiStatusMap.value = emptyMap()
+                _aiThoughtMap.value = emptyMap()
+                setSelectedPid(-1)
+                updateActiveView()
+            }
+        }
     fun setAiZoom(pid: Int, level: Double) {
         if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
             hubConnection?.send("SetAiZoom", pid, level)

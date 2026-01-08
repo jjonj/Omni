@@ -216,6 +216,16 @@ fun AiChatScreen(
                                     }
                                 )
                             }
+                            
+                            HorizontalDivider()
+                            DropdownMenuItem(
+                                text = { Text("Reset All Sessions", color = MaterialTheme.colorScheme.error) },
+                                onClick = {
+                                    signalRClient.resetAiSessions()
+                                    showSessionMenu = false
+                                },
+                                leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error) }
+                            )
                         }
                     }
                 },
