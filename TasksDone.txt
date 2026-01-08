@@ -1,0 +1,85 @@
+# Completed Tasks
+
+## General
+
+✅ need poc for persistent pcg changes, change 07 diff saved and compared by pcg node using 2d position hash, allow exclusion or modification.
+
+## For the hub
+
+### Hub window
+
+## in OmniSync.Android
+
+### General
+
+### Dashboard
+
+✅ After using wake on lan, Start a reconnecting cycle after 1 minute
+✅ Prominently display the time the user has been asleep, guess from the latest time when an alarm was set, the app opened, phone connected to battery or the app has been disconnected from hub and display on dash and notification when not connected in minutes and hours, this needs to persistent between app restarts and needs to detect last disconnect time even with app in background
+
+### Remote Control Screen
+
+#### Macro screen
+
+✅ Streaming monitor to this screen queries earlier but was flickeribg. now it doesn't work at all
+✅ Add 5 more icon options
+✅ Add button on creation screen to test macro as is.
+✅ Syntax error highlighting on all lines that doesnt have the cursor
+✅ Process macro on hub after saving, first processing step will be to look for pathless run commands, e.g. "run truecrypt.exe", first check if truecrypt.exe exists as a mapping in hub settings. If not, search the whole system for it, find it at "E:\Program Files\TrueCrypt\TrueCrypt.exe" and send a message back to app and app will update the macro automatically to replace truecrypt.exe with E:\Program Files\TrueCrypt\TrueCrypt.exe
+✅ Ensure run commands support having spaces in the path of the program
+✅ Winactivate command should be intelligent about finding the process to activate, either by executable name or partial string of window should work.
+✅ Add windows key to special key and tab
+✅ Use normal brackets () instead of {} for special keys
+✅ Add more easy insert buttons (e.g. the sleep run exe etc), including a dropdown for special keys
+✅ At the bottom of the help screen add 10 different examples of correct scripts, and also use them as templates that can be inserted in the current edit window.
+
+✅ Stream PC monitor, replacing background of the trackpad leaving the trackpad functioning still, options to toggle monitor, pinch to zoom, (advanced feature, do last)
+✅ Streaming pc monitor should have a on/off toggle button (default off) on page2 of button panel, and to settings for resolutioni and framerate. Default to full resolution 10fps
+
+### Files & Video Screen
+
+✅ when a file is open the navigation bar gets hidden, change that
+✅ the automatic merge feature does not work well, seems everything is marked as conflict, run some unit tests
+✅ When any ai session is active, add "AI: Add dir to [SessionName]"  option to long press folder which will send "/dir add X" to the active session
+✅ The header at the top showing current path should allow long pressing it (to give folder context actions)
+✅ + button to add files does not work in offline mode, it should be able to create a file that's cached from birth and will sync when connected
+✅ add logging in activity log for all cache related operations
+✅ allow caching a whole folder recursively but with a max size per file, files above that size are replaced by empty myfile.mp4.fake files. when a folder is cached this way do not list every single subitem in the cached list that already exists, just the selected folder with bold foldername. ask user for clarification. add max file size to settings
+✅ to settings screen add a way to exclude files and folders from automatic caching recursively, allowing patterns. e.g. "G:/*", "*porn*". This prevents automatic caching when visiting a folder and when using the above cache whole folder feature but does not prevent visiting those places manually when connected
+✅ When we have files edited offline and we connect and see that last saved time don't match cached save time on windows and we save as conflicted.txt then first try to resolve with a simple merge strategy going line by line and comparing. leave some tags like [MERGED] when doing this and be careful not to delete anything, better keep both versions of lines
+✅ if a certain ratio of lines mismatch then fall back to conflicted suffix
+✅ on image viewer screen the android back button seems to close app instead of going back to the containing folder
+✅ The jump/scroll to cursor when typng out of view is not working right, on the text editor screen, add a temporary panel that twice displays the currently visible line numbers, once accounting for keyboard and once not accounting for android keyboard as well as the current cursor line number, for debugging purposes and then only scroll/jump when typing and the cursor is outside the visible line numbers
+✅ On folder view, Recent changes made the bottom bar with bookmarks hover too far above the navigation bar. fix that
+✅ it also auto sceolls when placing the cursor but it should not as by definition the cursor place location is in view
+✅ On the small menu when long pressing without selecting that has paste, select all bold and itallic, add a button for adding common emoji like ✅ etc, make it a looong dropdown
+✅ Improve markdown rendering by hiding formatting, e.g. "###" and the * symbols in **bold text** similar to how the obsidian app does it. Those symbols are only visible when the cursor is on the line that contain them.
+
+### Browser control screen
+
+✅ Remove the "Advanced actions" and "Bookmarks" subheaders, its obvious.
+✅ Custom patterns added to the browser cleaning do not persist across reinstalls of app like other settings do. Same goes for bookmarks it seems.
+✅ The bookmarks can be reordered with arrow buttons, instead make that a draggable marker so i can drag to reorder.
+✅ The whole screen has some padding on the left and right and top and bottom edges wasting pixels, please reduce that padding to just 2 pixels or so. Other screens waste less space.
+
+### Notification panel
+
+### Android Home screen launcher widgets
+
+✅ Use better widget icons somehow, either let user choose or be smart
+
+### Settings screen (accessed by button on dashboard, not bottom panel)
+
+✅ Add settings to configure Cortex web, need to be able to adjust wake time (currently hardcoded to reset to 7am adjustable for the day but not enough) and block definitions
+
+### AI screen
+
+✅ add a new button that let's me /dir addmypath with a button press and then navigating the file system in a popup to select the folder to add
+✅ on all other screens i can swipe left and right to navigate screens but i can't from ai
+✅ When not scrolled to bottom of history i experience the scroll amount jumping when new messages are added at the bottom, i dont want it to move what I'm looking at. it would only auto scroll if I'm scrolled to bottom already or if i send a message myself
+✅ merge the + and foldericon buttons. when pasting prompt user with the folder bookmarks list and add browse option that opens a popup
+✅ sessions are named according to the first message sent to ai with fallback to session id. change that to primarily use the workspace folder name (not full path), append with number if multiple with same workspaces
+
+### Omni web screen
+
+✅ screen is simply black, not working

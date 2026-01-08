@@ -731,8 +731,7 @@ class FilesViewModel(
             try {
                 // Download the entire file into memory as a string
                 val totalSize = entry.size
-                var downloadedBytes = 0L
-                val contentBuilder = StringBuilder()
+                val outputStream = java.io.ByteArrayOutputStream()
                 val chunkSize = 128 * 1024 // 128 KB for text is plenty
 
                 var currentOffset = 0L
@@ -747,8 +746,7 @@ class FilesViewModel(
                         ?.blockingGet() as? ByteArray
 
                     if (chunk != null && chunk.isNotEmpty()) {
-                        contentBuilder.append(String(chunk, Charsets.UTF_8))
-                        downloadedBytes += chunk.size
+                        outputStream.write(chunk)
                         currentOffset += chunk.size
                     } else if (chunk != null && chunk.isEmpty()) {
                         // End of file reached earlier than expected (e.g. stale bookmark size)
@@ -758,7 +756,7 @@ class FilesViewModel(
                     }
                 }
 
-                val content = contentBuilder.toString()
+                val content = outputStream.toString("UTF-8")
                 
                 // Manage multiple open files
                 val currentOpen = _openFiles.value.toMutableList()
