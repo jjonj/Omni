@@ -340,7 +340,7 @@ namespace OmniSync.Hub.Infrastructure.Services
                 };
 
                 var shellProcess = Process.Start(startInfo);
-                _logger.LogInformation("[AiCliService] Process started. Waiting for it to establish named pipe...");
+                _logger.LogInformation($"[AiCliService] Process started (Shell PID: {shellProcess.Id}). Waiting for node child process...");
                 onProgress?.Invoke("Process started. Waiting for connection...");
 
                 // Wait for the process and its pipe
@@ -349,15 +349,37 @@ namespace OmniSync.Hub.Infrastructure.Services
                     _logger.LogInformation($"[AiCliService] Launch check iteration {i+1}/40...");
                     await Task.Delay(1000);
                     
+                    // Strategy 1: Look for child process (Most robust)
+                    int? childPid = GetNodeProcessIdByParent(shellProcess.Id);
+                    if (childPid.HasValue)
+                    {
+                        _logger.LogInformation($"[AiCliService] Found Node child process PID: {childPid.Value}");
+                        
+                        // Verify it's a Gemini process (optional but good safety)
+                        // Connect to it
+                        await EnsureSessionAsync(childPid.Value, 2000);
+                        
+                        if (_sessions.ContainsKey(childPid.Value))
+                        {
+                            if (_sessions.TryGetValue(childPid.Value, out var session))
+                            {
+                                session.SetShellProcess(shellProcess);
+                            }
+                            string msg = $"Successfully connected to new session PID {childPid.Value}.";
+                            onProgress?.Invoke(msg);
+                            return childPid.Value;
+                        }
+                    }
+
+                    // Strategy 2: Fallback to Diff (Legacy/Safety)
                     // Force a WMI refresh by resetting cache
                     _lastWmiDiscovery = DateTime.MinValue;
                     var currentSessions = await DiscoverSessionsAsync(1000, 5000); 
-                    
                     var newPid = currentSessions.Except(initialPids).FirstOrDefault();
-                    _logger.LogInformation($"[AiCliService] Baseline PIDs: {string.Join(", ", initialPids)}. Current Connected PIDs: {string.Join(", ", currentSessions)}. New PID Candidate: {newPid}");
+                    
                     if (newPid != 0)
                     {
-                        string msg = $"Successfully connected to new session PID {newPid} after {i+1} seconds.";
+                        string msg = $"Connected via discovery diff to PID {newPid}.";
                         _logger.LogInformation($"[AiCliService] {msg}");
                         onProgress?.Invoke(msg);
 
@@ -368,15 +390,11 @@ namespace OmniSync.Hub.Infrastructure.Services
 
                         return newPid;
                     }
-                    else
-                    {
-                        string msg = $"Waiting for new PID... (Iter {i+1}/20)";
-                        _logger.LogInformation($"[AiCliService] {msg}");
-                        onProgress?.Invoke(msg);
-                    }
+                    
+                    onProgress?.Invoke($"Waiting for startup... (Iter {i+1}/40)");
                 }
 
-                string errorMsg = "Failed to find new Gemini session after 20 seconds.";
+                string errorMsg = "Failed to find new Gemini session after 40 seconds.";
                 _logger.LogWarning($"[AiCliService] {errorMsg}");
                 onProgress?.Invoke(errorMsg);
                 return null;
@@ -387,6 +405,28 @@ namespace OmniSync.Hub.Infrastructure.Services
                 onProgress?.Invoke($"Error launching session: {ex.Message}");
                 return null;
             }
+        }
+
+        private int? GetNodeProcessIdByParent(int parentPid)
+        {
+            try
+            {
+                if (OperatingSystem.IsWindows())
+                {
+                    string query = $"SELECT ProcessId FROM Win32_Process WHERE ParentProcessId = {parentPid} AND Name LIKE 'node%'";
+                    using var searcher = new ManagementObjectSearcher(query);
+                    using var collection = searcher.Get();
+                    foreach (var process in collection)
+                    {
+                        return Convert.ToInt32(process["ProcessId"]);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                 _logger.LogDebug($"Error finding child process: {ex.Message}");
+            }
+            return null;
         }
 
         private async Task EnsureSessionAsync(int pid, int timeoutMs)
@@ -632,6 +672,10 @@ namespace OmniSync.Hub.Infrastructure.Services
                 }
 
                 if (_targetPid == target) _targetPid = -1;
+                
+                // Invalidate WMI cache to ensure immediate discovery of death
+                _lastWmiDiscovery = DateTime.MinValue;
+                
                 return Task.FromResult(true);
             }
             return Task.FromResult(false);
