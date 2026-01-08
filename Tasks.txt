@@ -62,6 +62,10 @@ Only work on subtasks if told to do so or if told explicitly to do a Megasession
 
 ### Files & Video Screen
 
+✅ when a file is open the navigation bar gets hidden, change that 
+
+the automatic merge feature does not work well, seems everything is marked as conflict, run some unit tests 
+
 ✅ When any ai session is active, add "AI: Add dir to [SessionName]"  option to long press folder which will send "/dir add X" to the active session  
 
 
@@ -113,10 +117,12 @@ Only work on subtasks if told to do so or if told explicitly to do a Megasession
 
 ### AI screen
 
-add a new button that let's me /dir addmypath with a button press and then navigating the file system in a popup to select the folder to add
+merge the + and foldericon buttons. when pasting prompt user with the folder bookmarks list and add browse option that opens a popup
 
-✅ on all other screens i can swipe left and right to navigate screens but i can't from ai
+sessions are named according to the first message sent to ai with fallback to session id. change that to primarily use the workspace folder name (not full path), append with number if multiple with same workspaces
 
-✅ When not scrolled to bottom of history i experience the scroll amount jumping when new messages are added at the bottom, i dont want it to move what I'm looking at. it would only auto scroll if I'm scrolled to bottom already or if i send a message myself 
+### Omni web screen 
 
-�
+screen is simply black, not working 
+
+

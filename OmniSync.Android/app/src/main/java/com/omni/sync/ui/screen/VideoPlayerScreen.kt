@@ -52,7 +52,8 @@ fun VideoPlayerScreen(
     videoUrl: String, 
     playlist: List<String> = emptyList(),
     initialIndex: Int = 0,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    parentPadding: PaddingValues = PaddingValues(0.dp)
 ) {
     val context = LocalContext.current
     val activity = context as? Activity
@@ -183,6 +184,7 @@ fun VideoPlayerScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
+            .padding(bottom = parentPadding.calculateBottomPadding())
             .background(Color.Black)
             .onSizeChanged { containerSize = it }
     ) {

@@ -31,7 +31,8 @@ fun ImageViewerScreen(
     initialImageUrl: String,
     playlist: List<String> = emptyList(),
     initialIndex: Int = 0,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    parentPadding: PaddingValues = PaddingValues(0.dp)
 ) {
     androidx.activity.compose.BackHandler(onBack = onBack)
     val context = LocalContext.current
@@ -82,6 +83,7 @@ fun ImageViewerScreen(
 
     Box(modifier = Modifier
         .fillMaxSize()
+        .padding(bottom = parentPadding.calculateBottomPadding())
         .background(Color.Black)
     ) {
         HorizontalPager(

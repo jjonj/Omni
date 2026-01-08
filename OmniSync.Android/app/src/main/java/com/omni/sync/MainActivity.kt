@@ -136,115 +136,89 @@ class MainActivity : ComponentActivity() {
                 // Observe Alarm State
                 val isAlarmRinging by AlarmService.isRinging.collectAsState()
 
-                if (currentScreen == AppScreen.VIDEOPLAYER) {
-                    val videoUrl by mainViewModel.currentVideoUrl.collectAsState()
-                    val playlist by mainViewModel.videoPlaylist.collectAsState()
-                    val initialIndex by mainViewModel.currentVideoIndex.collectAsState()
-                    
-                    if (videoUrl != null) {
-                        com.omni.sync.ui.screen.VideoPlayerScreen(
-                            videoUrl = videoUrl!!,
-                            playlist = playlist,
-                            initialIndex = initialIndex,
-                            onBack = { mainViewModel.goBack() }
-                        )
+                Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    color = MaterialTheme.colorScheme.background
+                ) {
+                    BackHandler(enabled = true) {
+                        mainViewModel.handleBackPress { finish() }
                     }
-                } else if (currentScreen == AppScreen.IMAGE_VIEWER) {
-                    val imageUrl by mainViewModel.currentImageUrl.collectAsState()
-                    val playlist by mainViewModel.imagePlaylist.collectAsState()
-                    val initialIndex by mainViewModel.currentImageIndex.collectAsState()
                     
-                    if (imageUrl != null) {
-                        com.omni.sync.ui.screen.ImageViewerScreen(
-                            initialImageUrl = imageUrl!!,
-                            playlist = playlist,
-                            initialIndex = initialIndex,
-                            onBack = { mainViewModel.goBack() }
-                        )
-                    }
-                } else {
-                    Surface(
-                        modifier = Modifier.fillMaxSize(),
-                        color = MaterialTheme.colorScheme.background
-                    ) {
-                        BackHandler(enabled = true) {
-                            mainViewModel.handleBackPress { finish() }
+                    val filesViewModel: FilesViewModel = viewModel(
+                        factory = FilesViewModelFactory(application, signalRClient, mainViewModel)
+                    )
+                    val browserViewModel: BrowserViewModel = viewModel(
+                        factory = BrowserViewModelFactory(application, signalRClient)
+                    )
+
+                    val pagerState = rememberPagerState(pageCount = { swipeableScreens.size })
+
+                    val configuration = LocalConfiguration.current
+                    val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+
+                    LaunchedEffect(currentScreen) {
+                        val index = swipeableScreens.indexOf(currentScreen)
+                        if (index != -1 && pagerState.currentPage != index) {
+                            pagerState.scrollToPage(index)
                         }
-                        
-                        val filesViewModel: FilesViewModel = viewModel(
-                            factory = FilesViewModelFactory(application, signalRClient, mainViewModel)
-                        )
-                        val browserViewModel: BrowserViewModel = viewModel(
-                            factory = BrowserViewModelFactory(application, signalRClient)
-                        )
+                    }
 
-                        val pagerState = rememberPagerState(pageCount = { swipeableScreens.size })
-
-                        val configuration = LocalConfiguration.current
-                        val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
-
-                        LaunchedEffect(currentScreen) {
-                            val index = swipeableScreens.indexOf(currentScreen)
-                            if (index != -1 && pagerState.currentPage != index) {
-                                pagerState.scrollToPage(index)
+                    LaunchedEffect(pagerState) {
+                        snapshotFlow { pagerState.currentPage }.collect { page ->
+                            val screen = swipeableScreens[page]
+                            if (mainViewModel.currentScreen.value != screen) {
+                                mainViewModel.navigateTo(screen)
                             }
                         }
+                    }
 
-                        LaunchedEffect(pagerState) {
-                            snapshotFlow { pagerState.currentPage }.collect { page ->
-                                val screen = swipeableScreens[page]
-                                if (mainViewModel.currentScreen.value != screen) {
-                                    mainViewModel.navigateTo(screen)
+                    androidx.compose.material3.Scaffold(
+                        modifier = if (!isLandscape) Modifier.systemBarsPadding() else Modifier,
+                        bottomBar = {
+                            val coroutineScope = androidx.compose.runtime.rememberCoroutineScope()
+                            OmniBottomNavigation(
+                                currentScreen = currentScreen,
+                                onNavigate = { screen -> mainViewModel.navigateTo(screen) },
+                                onSwipe = { delta ->
+                                    coroutineScope.launch {
+                                        val next = (pagerState.currentPage + delta).coerceIn(0, swipeableScreens.size - 1)
+                                        pagerState.animateScrollToPage(next)
+                                    }
                                 }
-                            }
+                            )
                         }
-
-                        androidx.compose.material3.Scaffold(
-                            modifier = if (!isLandscape) Modifier.systemBarsPadding() else Modifier,
-                            bottomBar = {
-                                val coroutineScope = androidx.compose.runtime.rememberCoroutineScope()
-                                OmniBottomNavigation(
-                                    currentScreen = currentScreen,
-                                    onNavigate = { screen -> mainViewModel.navigateTo(screen) },
-                                    onSwipe = { delta ->
-                                        coroutineScope.launch {
-                                            val next = (pagerState.currentPage + delta).coerceIn(0, swipeableScreens.size - 1)
-                                            pagerState.animateScrollToPage(next)
-                                        }
+                    ) { innerPadding ->
+                        // Use a special modifier for RemoteControl to allow it to be truly full-screen
+                        // while others stay safely padded.
+                        val isRemote = currentScreen == AppScreen.REMOTECONTROL
+                        
+                        Box(modifier = Modifier.fillMaxSize()) {
+                            if (currentScreen == AppScreen.EDITOR || currentScreen == AppScreen.SETTINGS || 
+                                currentScreen == AppScreen.DOWNLOADED_VIDEOS || 
+                                currentScreen == AppScreen.MACRO_MANAGER ||
+                                currentScreen == AppScreen.VIDEOPLAYER ||
+                                currentScreen == AppScreen.IMAGE_VIEWER) {
+                                MainScreenContent(currentScreen, signalRClient, browserViewModel, filesViewModel, mainViewModel, innerPadding)
+                            } else {
+                                // Custom touch slop to make paging less sensitive to diagonal swipes
+                                val viewConfig = androidx.compose.ui.platform.LocalViewConfiguration.current
+                                val customViewConfig = remember {
+                                    object : androidx.compose.ui.platform.ViewConfiguration by viewConfig {
+                                        override val touchSlop: Float get() = viewConfig.touchSlop * 2.5f
                                     }
-                                )
-                            }
-                        ) { innerPadding ->
-                            // Use a special modifier for RemoteControl to allow it to be truly full-screen
-                            // while others stay safely padded.
-                            val isRemote = currentScreen == AppScreen.REMOTECONTROL
-                            
-                            Box(modifier = Modifier.fillMaxSize()) {
-                                if (currentScreen == AppScreen.EDITOR || currentScreen == AppScreen.SETTINGS || 
-                                    currentScreen == AppScreen.DOWNLOADED_VIDEOS || 
-                                    currentScreen == AppScreen.MACRO_MANAGER) {
-                                    MainScreenContent(currentScreen, signalRClient, browserViewModel, filesViewModel, mainViewModel, innerPadding)
-                                } else {
-                                    // Custom touch slop to make paging less sensitive to diagonal swipes
-                                    val viewConfig = androidx.compose.ui.platform.LocalViewConfiguration.current
-                                    val customViewConfig = remember {
-                                        object : androidx.compose.ui.platform.ViewConfiguration by viewConfig {
-                                            override val touchSlop: Float get() = viewConfig.touchSlop * 2.5f
-                                        }
-                                    }
-                                    androidx.compose.runtime.CompositionLocalProvider(
-                                        androidx.compose.ui.platform.LocalViewConfiguration provides customViewConfig
-                                    ) {
-                                        HorizontalPager(
-                                            state = pagerState,
-                                            modifier = Modifier.fillMaxSize(),
-                                            userScrollEnabled = true 
-                                        ) { page ->
-                                            val screenAtPage = swipeableScreens[page]
-                                            val pageModifier = if (screenAtPage == AppScreen.REMOTECONTROL || screenAtPage == AppScreen.FILES || screenAtPage == AppScreen.AI_CHAT) Modifier else Modifier.padding(innerPadding)
-                                            Box(modifier = pageModifier) {
-                                                MainScreenContent(screenAtPage, signalRClient, browserViewModel, filesViewModel, mainViewModel, innerPadding)
-                                            }
+                                }
+                                androidx.compose.runtime.CompositionLocalProvider(
+                                    androidx.compose.ui.platform.LocalViewConfiguration provides customViewConfig
+                                ) {
+                                    HorizontalPager(
+                                        state = pagerState,
+                                        modifier = Modifier.fillMaxSize(),
+                                        userScrollEnabled = true 
+                                    ) { page ->
+                                        val screenAtPage = swipeableScreens[page]
+                                        val pageModifier = if (screenAtPage == AppScreen.REMOTECONTROL || screenAtPage == AppScreen.FILES || screenAtPage == AppScreen.AI_CHAT) Modifier else Modifier.padding(innerPadding)
+                                        Box(modifier = pageModifier) {
+                                            MainScreenContent(screenAtPage, signalRClient, browserViewModel, filesViewModel, mainViewModel, innerPadding)
                                         }
                                     }
                                 }
@@ -392,6 +366,20 @@ class MainActivity : ComponentActivity() {
                 onBack = { mainViewModel.goBack() }
             )
             AppScreen.WEB_SERVER -> com.omni.sync.ui.screen.WebServerScreen()
+            AppScreen.VIDEOPLAYER -> {
+                val videoUrl by mainViewModel.currentVideoUrl.collectAsState()
+                val playlist by mainViewModel.videoPlaylist.collectAsState()
+                val initialIndex by mainViewModel.currentVideoIndex.collectAsState()
+                if (videoUrl != null) {
+                    com.omni.sync.ui.screen.VideoPlayerScreen(
+                        videoUrl = videoUrl!!,
+                        playlist = playlist,
+                        initialIndex = initialIndex,
+                        onBack = { mainViewModel.goBack() },
+                        parentPadding = paddingValues
+                    )
+                }
+            }
             AppScreen.IMAGE_VIEWER -> {
                 val imageUrl by mainViewModel.currentImageUrl.collectAsState()
                 val playlist by mainViewModel.imagePlaylist.collectAsState()
@@ -401,7 +389,8 @@ class MainActivity : ComponentActivity() {
                         initialImageUrl = imageUrl!!,
                         playlist = playlist,
                         initialIndex = initialIndex,
-                        onBack = { mainViewModel.goBack() }
+                        onBack = { mainViewModel.goBack() },
+                        parentPadding = paddingValues
                     )
                 }
             }
