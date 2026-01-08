@@ -127,6 +127,8 @@ Only work on subtasks if told to do so or if told explicitly to do a Megasession
 
 ✅ merge the + and foldericon buttons. when pasting prompt user with the folder bookmarks list and add browse option that opens a popup
 
+✅ sessions are named according to the first message sent to ai with fallback to session id. change that to primarily use the workspace folder name (not full path), append with number if multiple with same workspaces
+
 ### Omni web screen 
 
 ✅ screen is simply black, not working 

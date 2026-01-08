@@ -314,19 +314,20 @@ namespace OmniSync.Hub.Infrastructure.Services
                 string rootPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", ".."));
                 string geminiDir = Path.GetFullPath(Path.Combine(rootPath, "..", "Tools", "gemini-cli"));
 
+                string finalWorkspace = "";
                 if (string.IsNullOrWhiteSpace(workspace))
                 {
-                    workspace = Path.GetFullPath(Path.Combine(rootPath, ".."));
+                    finalWorkspace = Path.GetFullPath(Path.Combine(rootPath, ".."));
                 }
                 else
                 {
-                    workspace = Path.GetFullPath(workspace);
+                    finalWorkspace = Path.GetFullPath(workspace);
                 }
 
-                _logger.LogInformation($"[AiCliService] Launching process: cd /d {geminiDir} && node bundle/gemini.js --workspace {workspace}");
-                onProgress?.Invoke($"Launching process in {workspace}...");
+                _logger.LogInformation($"[AiCliService] Launching process: cd /d {geminiDir} && node bundle/gemini.js --workspace {finalWorkspace}");
+                onProgress?.Invoke($"Launching process in {finalWorkspace}...");
 
-                string command = $"title OMNI_GEMINI_INTERACTIVE && cd /d \"{geminiDir}\" && node bundle/gemini.js --workspace {workspace} --yolo";
+                string command = $"title OMNI_GEMINI_INTERACTIVE && cd /d \"{geminiDir}\" && node bundle/gemini.js --workspace {finalWorkspace} --yolo";
                 string debugLog = Path.Combine(rootPath, "gemini_cli_debug.log");
                 string finalCommand = $"set GEMINI_DEBUG_LOG_FILE={debugLog} && {command}";
 
@@ -343,6 +344,8 @@ namespace OmniSync.Hub.Infrastructure.Services
                 _logger.LogInformation($"[AiCliService] Process started (Shell PID: {shellProcess.Id}). Waiting for node child process...");
                 onProgress?.Invoke("Process started. Waiting for connection...");
 
+                int? launchedPid = null;
+
                 // Wait for the process and its pipe
                 for (int i = 0; i < 40; i++) 
                 {
@@ -355,8 +358,6 @@ namespace OmniSync.Hub.Infrastructure.Services
                     {
                         _logger.LogInformation($"[AiCliService] Found Node child process PID: {childPid.Value}");
                         
-                        // Verify it's a Gemini process (optional but good safety)
-                        // Connect to it
                         await EnsureSessionAsync(childPid.Value, 2000);
                         
                         if (_sessions.ContainsKey(childPid.Value))
@@ -365,33 +366,54 @@ namespace OmniSync.Hub.Infrastructure.Services
                             {
                                 session.SetShellProcess(shellProcess);
                             }
-                            string msg = $"Successfully connected to new session PID {childPid.Value}.";
-                            onProgress?.Invoke(msg);
-                            return childPid.Value;
+                            launchedPid = childPid.Value;
+                            break;
                         }
                     }
 
-                    // Strategy 2: Fallback to Diff (Legacy/Safety)
-                    // Force a WMI refresh by resetting cache
+                    // Strategy 2: Fallback to Diff
                     _lastWmiDiscovery = DateTime.MinValue;
                     var currentSessions = await DiscoverSessionsAsync(1000, 5000); 
                     var newPid = currentSessions.Except(initialPids).FirstOrDefault();
                     
                     if (newPid != 0)
                     {
-                        string msg = $"Connected via discovery diff to PID {newPid}.";
-                        _logger.LogInformation($"[AiCliService] {msg}");
-                        onProgress?.Invoke(msg);
-
                         if (_sessions.TryGetValue(newPid, out var session))
                         {
                             session.SetShellProcess(shellProcess);
                         }
-
-                        return newPid;
+                        launchedPid = newPid;
+                        break;
                     }
                     
                     onProgress?.Invoke($"Waiting for startup... (Iter {i+1}/40)");
+                }
+
+                if (launchedPid.HasValue)
+                {
+                    // AUTO-NAME based on workspace
+                    try 
+                    {
+                        string dirName = Path.GetFileName(finalWorkspace.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+                        if (string.IsNullOrEmpty(dirName)) dirName = "Root";
+                        
+                        string baseName = dirName;
+                        int counter = 1;
+                        while (_sessionNames.Values.Contains(baseName, StringComparer.OrdinalIgnoreCase))
+                        {
+                            baseName = $"{dirName} ({++counter})";
+                        }
+                        
+                        await SetSessionNameAsync(launchedPid.Value, baseName);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning($"Failed to auto-name session for workspace {workspace}: {ex.Message}");
+                    }
+
+                    string msg = $"Successfully connected to new session PID {launchedPid.Value}.";
+                    onProgress?.Invoke(msg);
+                    return launchedPid.Value;
                 }
 
                 string errorMsg = "Failed to find new Gemini session after 40 seconds.";
