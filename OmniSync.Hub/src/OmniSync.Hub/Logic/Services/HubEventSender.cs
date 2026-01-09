@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
 
 namespace OmniSync.Hub.Logic.Services
 {
@@ -18,6 +19,7 @@ namespace OmniSync.Hub.Logic.Services
 
     public class HubEventSender
     {
+        private readonly ILogger<HubEventSender> _logger;
         private readonly IHubContext<RpcApiHub> _hubContext;
         private readonly ProcessService _processService;
         private readonly InputService _inputService;
@@ -25,10 +27,12 @@ namespace OmniSync.Hub.Logic.Services
         private readonly CommandDispatcher _commandDispatcher;
         private readonly FileService _fileService; // Added FileService dependency
         private readonly AiCliService _aiCliService; // Added AiCliService
+        private readonly HubSettingsService _settingsService;
         private readonly Dictionary<string, string> _clientCommandOutputSubscriptions = new Dictionary<string, string>(); // ClientId -> ConnectionId for command output
 
-        public HubEventSender(IHubContext<RpcApiHub> hubContext, ProcessService processService, InputService inputService, ShutdownService shutdownService, CommandDispatcher commandDispatcher, FileService fileService, AiCliService aiCliService) // Added AiCliService
+        public HubEventSender(ILogger<HubEventSender> logger, IHubContext<RpcApiHub> hubContext, ProcessService processService, InputService inputService, ShutdownService shutdownService, CommandDispatcher commandDispatcher, FileService fileService, AiCliService aiCliService, HubSettingsService settingsService) // Added AiCliService
         {
+            _logger = logger;
             _hubContext = hubContext;
             _processService = processService;
             _inputService = inputService;
@@ -36,6 +40,7 @@ namespace OmniSync.Hub.Logic.Services
             _commandDispatcher = commandDispatcher;
             _fileService = fileService; // Assign FileService
             _aiCliService = aiCliService;
+            _settingsService = settingsService;
 
             _processService.CommandOutputReceived += OnCommandOutputReceived;
             _inputService.ModifierStateChanged += OnModifierStateChanged;
@@ -49,6 +54,28 @@ namespace OmniSync.Hub.Logic.Services
             
             // Subscribe to AI events
             _aiCliService.ResponseReceived += OnAiCliResponseReceived;
+            _aiCliService.DialogReceived += OnAiCliDialogReceived;
+        }
+
+        private async void OnAiCliDialogReceived(object? sender, GeminiDialogEventArgs e)
+        {
+            _logger.LogInformation($"[HubEventSender] Received Dialog from PID {e.Pid}. Type: {e.Type}, Prompt: {e.Prompt}");
+
+            // Auto-approve based on settings
+            if (_settingsService.Settings.AutoApprovePatterns != null)
+            {
+                foreach (var pattern in _settingsService.Settings.AutoApprovePatterns)
+                {
+                    if (e.Prompt.Contains(pattern, StringComparison.OrdinalIgnoreCase))
+                    {
+                        _logger.LogInformation($"[HubEventSender] Auto-approving '{pattern}' for PID {e.Pid}");
+                        await _aiCliService.SendDialogResponseAsync("yes", e.Pid);
+                        return;
+                    }
+                }
+            }
+
+            await _hubContext.Clients.All.SendAsync("ReceiveAiDialog", e.Pid, e.Type, e.Prompt, e.Options);
         }
 
         private async void OnAiCliResponseReceived(object? sender, GeminiResponseEventArgs e)

@@ -23,6 +23,14 @@ namespace OmniSync.Hub.Infrastructure.Services
         public bool IsCodeDiff { get; set; }
     }
 
+    public class GeminiDialogEventArgs : EventArgs
+    {
+        public int Pid { get; set; }
+        public string Type { get; set; } = string.Empty;
+        public string Prompt { get; set; } = string.Empty;
+        public List<string>? Options { get; set; }
+    }
+
     public class AiSessionInfo
     {
         [System.Text.Json.Serialization.JsonPropertyName("pid")]
@@ -48,6 +56,7 @@ namespace OmniSync.Hub.Infrastructure.Services
         private readonly SemaphoreSlim _sessionLock = new(1, 1);
 
         public event EventHandler<GeminiResponseEventArgs>? ResponseReceived;
+        public event EventHandler<GeminiDialogEventArgs>? DialogReceived;
 
         public AiCliService(ILogger<AiCliService> logger, HubSettingsService settingsService)
         {
@@ -234,6 +243,12 @@ namespace OmniSync.Hub.Infrastructure.Services
                                 {
                                     _logger.LogInformation($"[AiCliService] Found potential Gemini process: PID {foundPid}");
                                     pids.Add(foundPid);
+
+                                    // Try to extract workspace for naming if not already named
+                                    if (!_sessionNames.ContainsKey(foundPid))
+                                    {
+                                        TryExtractWorkspaceAndName(foundPid, commandLine);
+                                    }
                                 }
                             }
                         }
@@ -300,6 +315,45 @@ namespace OmniSync.Hub.Infrastructure.Services
             return connectedPids;
         }
 
+        private void TryExtractWorkspaceAndName(int pid, string commandLine)
+        {
+            try
+            {
+                string? workspace = null;
+                var parts = commandLine.Split(' ');
+                for (int i = 0; i < parts.Length - 1; i++)
+                {
+                    if (parts[i] == "--workspace" || parts[i] == "-w")
+                    {
+                        workspace = parts[i + 1].Trim('\"');
+                        break;
+                    }
+                }
+
+                if (!string.IsNullOrEmpty(workspace))
+                {
+                    string dirName = Path.GetFileName(workspace.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+                    if (string.IsNullOrEmpty(dirName)) dirName = "Root";
+                    _sessionNames[pid] = GetUniqueSessionName(dirName, pid);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug($"Failed to extract workspace from command line for PID {pid}: {ex.Message}");
+            }
+        }
+
+        private string GetUniqueSessionName(string baseName, int pid)
+        {
+            string candidate = baseName;
+            int counter = 1;
+            while (_sessionNames.Any(kvp => kvp.Key != pid && kvp.Value.Equals(candidate, StringComparison.OrdinalIgnoreCase)))
+            {
+                candidate = $"{baseName} ({++counter})";
+            }
+            return candidate;
+        }
+
         public async Task<int?> LaunchSessionAsync(string? workspace = null, Action<string>? onProgress = null)
         {
             _logger.LogInformation($"[AiCliService] LaunchSessionAsync starting (workspace: {workspace ?? "default"})");
@@ -327,7 +381,7 @@ namespace OmniSync.Hub.Infrastructure.Services
                 _logger.LogInformation($"[AiCliService] Launching process: cd /d {geminiDir} && node bundle/gemini.js --workspace {finalWorkspace}");
                 onProgress?.Invoke($"Launching process in {finalWorkspace}...");
 
-                string command = $"title OMNI_GEMINI_INTERACTIVE && cd /d \"{geminiDir}\" && node bundle/gemini.js --workspace {finalWorkspace} --yolo";
+                string command = $"title OMNI_GEMINI_INTERACTIVE && cd /d \"{geminiDir}\" && node bundle/gemini.js --workspace \"{finalWorkspace}\" --yolo";
                 string debugLog = Path.Combine(rootPath, "gemini_cli_debug.log");
                 string finalCommand = $"set GEMINI_DEBUG_LOG_FILE={debugLog} && {command}";
 
@@ -397,14 +451,7 @@ namespace OmniSync.Hub.Infrastructure.Services
                         string dirName = Path.GetFileName(finalWorkspace.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
                         if (string.IsNullOrEmpty(dirName)) dirName = "Root";
                         
-                        string baseName = dirName;
-                        int counter = 1;
-                        while (_sessionNames.Values.Contains(baseName, StringComparer.OrdinalIgnoreCase))
-                        {
-                            baseName = $"{dirName} ({++counter})";
-                        }
-                        
-                        await SetSessionNameAsync(launchedPid.Value, baseName);
+                        await SetSessionNameAsync(launchedPid.Value, GetUniqueSessionName(dirName, launchedPid.Value));
                     }
                     catch (Exception ex)
                     {
@@ -550,6 +597,15 @@ namespace OmniSync.Hub.Infrastructure.Services
                     IsFinished = finished,
                     IsHistory = history,
                     IsCodeDiff = isCodeDiff
+                });
+            }, (p, type, prompt, options) =>
+            {
+                DialogReceived?.Invoke(this, new GeminiDialogEventArgs
+                {
+                    Pid = p,
+                    Type = type,
+                    Prompt = prompt,
+                    Options = options
                 });
             });
 
@@ -732,6 +788,17 @@ namespace OmniSync.Hub.Infrastructure.Services
             return await session.SendSpecialKeyAsync(key);
         }
 
+        public async Task<bool> SendDialogResponseAsync(string response, int pid = -1)
+        {
+            int target = pid == -1 ? _targetPid : pid;
+            if (target == -1 || !_sessions.TryGetValue(target, out var session) || !session.IsConnected)
+            {
+                return false;
+            }
+
+            return await session.SendDialogResponseAsync(response);
+        }
+
         public async Task GetHistoryAsync(int pid)
         {
             if (_sessions.TryGetValue(pid, out var session))
@@ -793,6 +860,7 @@ namespace OmniSync.Hub.Infrastructure.Services
         private readonly DateTime _startTime;
         private readonly ILogger _logger;
         private readonly Action<int, string, bool, bool, bool> _onResponse;
+        private readonly Action<int, string, string, List<string>?> _onDialog;
         private NamedPipeClientStream? _pipeClient;
         private StreamWriter? _writer;
         private CancellationTokenSource? _cts;
@@ -805,12 +873,13 @@ namespace OmniSync.Hub.Infrastructure.Services
         public int Pid => _pid;
         public DateTime StartTime => _startTime;
 
-        public GeminiSession(int pid, DateTime startTime, ILogger logger, Action<int, string, bool, bool, bool> onResponse)
+        public GeminiSession(int pid, DateTime startTime, ILogger logger, Action<int, string, bool, bool, bool> onResponse, Action<int, string, string, List<string>?> onDialog)
         {
             _pid = pid;
             _startTime = startTime;
             _logger = logger;
             _onResponse = onResponse;
+            _onDialog = onDialog;
         }
 
         public void SetShellProcess(Process? process)
@@ -857,13 +926,19 @@ namespace OmniSync.Hub.Infrastructure.Services
             return await SendCommandAsync("key", key);
         }
 
+        public async Task<bool> SendDialogResponseAsync(string response)
+        {
+            _logger.LogDebug($"[GeminiSession] SendDialogResponseAsync to PID {_pid}: {response}");
+            return await SendCommandAsync("dialogResponse", response, "response");
+        }
+
         public async Task RequestHistoryAsync()
         {
             _logger.LogDebug($"[GeminiSession] RequestHistoryAsync to PID {_pid}");
             await SendCommandAsync("getHistory", null);
         }
 
-        private async Task<bool> SendCommandAsync(string command, string? text)
+        private async Task<bool> SendCommandAsync(string command, string? text, string textPropName = "text")
         {
             if (!IsConnected || _writer == null) 
             {
@@ -876,7 +951,12 @@ namespace OmniSync.Hub.Infrastructure.Services
                             {
                                 // Normalize path separators in prompt text to avoid double-escaping issues
                                 string normalizedText = text?.Replace("\\\\", "/") ?? string.Empty;
-                                var payload = JsonSerializer.Serialize(new { command, text = normalizedText });
+                                var payloadObj = new Dictionary<string, object>
+                                {
+                                    { "command", command },
+                                    { textPropName, normalizedText }
+                                };
+                                var payload = JsonSerializer.Serialize(payloadObj);
                                 Console.WriteLine($"[GeminiPipe WRITE] PID {_pid}: {payload}");
                                 _logger.LogInformation($"[GeminiSession] Sending to PID {_pid}: {payload}");
                 await _writer.WriteLineAsync(payload);
@@ -978,6 +1058,16 @@ namespace OmniSync.Hub.Infrastructure.Services
                                     _logger.LogInformation($"[GeminiSession] Received toolCall from PID {_pid}");
                                     _onResponse(_pid, text, false, false, false);
                                 }
+                            }
+                            else if (typeStr == "dialog")
+                            {
+                                var dialogType = msg.RootElement.TryGetProperty("dialogType", out var dt) ? dt.GetString() : "unknown";
+                                var prompt = msg.RootElement.TryGetProperty("prompt", out var pr) ? pr.GetString() : "";
+                                var options = msg.RootElement.TryGetProperty("options", out var op) ? 
+                                    JsonSerializer.Deserialize<List<string>>(op.GetRawText()) : null;
+
+                                _logger.LogInformation($"[GeminiSession] Received dialog from PID {_pid}: {dialogType}");
+                                _onDialog(_pid, dialogType ?? "unknown", prompt ?? "", options);
                             }
                         }
                     }
