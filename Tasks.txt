@@ -28,11 +28,9 @@ Only work on subtasks if told to do so or if told explicitly to do a Megasession
 
 ### Dashboard
 
-i can select one message in the activity log but i can't select multiple, they are like separate elements. i want to be able to select all log, and add a copy all to clipboard  button (simple icon button) 
+## General
 
 ### Remote Control Screen
-
-streaming desktop not working at all, the initial implementation of it worked but was flickering 
 
 
 #### Macro screen
@@ -89,3 +87,4 @@ omni web is just a blank screen, the embedded browser is not working. maybe try 
 ### Settings screen
 
 add more quick action options, including but not limited to, set alarm 8h45m, browser functionality like send youtube history video to chrome etc and double check at can use macros as quick actions 
+

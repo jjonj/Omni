@@ -45,6 +45,10 @@ import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.painter.Painter
+import androidx.compose.foundation.Image
+import coil.compose.rememberAsyncImagePainter
+import coil.compose.AsyncImagePainter
 import com.omni.sync.utils.WindowsKeyCodes.VK_A
 import com.omni.sync.utils.WindowsKeyCodes.VK_BACK
 import com.omni.sync.utils.WindowsKeyCodes.VK_CONTROL
@@ -367,7 +371,7 @@ fun MacroButton(
 
 @Composable
 fun TrackpadArea(
-    signalRClient: SignalRClient, 
+    signalRClient: SignalRClient,
     mainViewModel: MainViewModel,
     modifier: Modifier = Modifier,
     isMonitorVisible: Boolean = false,
@@ -380,16 +384,38 @@ fun TrackpadArea(
     var isDraggingLeftClick by remember { mutableStateOf(false) }
     var screenshotTick by remember { mutableIntStateOf(0) }
     val appConfig = mainViewModel.appConfig
+    var currentFrame by remember { mutableStateOf<Painter?>(null) }
 
     LaunchedEffect(isMonitorVisible, appConfig.streamFps) {
         if (isMonitorVisible) {
-            val interval = (1000 / appConfig.streamFps).toLong()
+            val fps = if (appConfig.streamFps > 0) appConfig.streamFps else 10
+            val interval = (1000 / fps).toLong()
             while (true) {
                 delay(interval)
                 screenshotTick++
             }
         }
     }
+
+    val baseUrl = mainViewModel.getBaseUrl()
+    val scaleParam = appConfig.streamResolution / 100f
+    val imageUrl = "$baseUrl/api/screenshot?t=$screenshotTick&scale=$scaleParam&quality=${appConfig.streamResolution}"
+
+    val painter = rememberAsyncImagePainter(
+        model = ImageRequest.Builder(LocalContext.current)
+            .data(imageUrl)
+            .crossfade(false)
+            .diskCachePolicy(coil.request.CachePolicy.DISABLED)
+            .memoryCachePolicy(coil.request.CachePolicy.DISABLED)
+            .build(),
+        onState = { state ->
+            if (state is AsyncImagePainter.State.Success) {
+                currentFrame = state.painter
+            } else if (state is AsyncImagePainter.State.Error) {
+                Log.e("TrackpadArea", "Failed to load screenshot: ${state.result.throwable.message}")
+            }
+        }
+    )
 
     Box(
         modifier = modifier
@@ -484,18 +510,9 @@ fun TrackpadArea(
                 }
             }
     ) {
-        if (isMonitorVisible) {
-            val baseUrl = mainViewModel.getBaseUrl()
-            val scaleParam = appConfig.streamResolution / 100f
-            val imageUrl = "$baseUrl/api/screenshot?t=$screenshotTick&scale=$scaleParam&quality=${appConfig.streamResolution}"
-            
-            AsyncImage(
-                model = ImageRequest.Builder(LocalContext.current)
-                    .data(imageUrl)
-                    .crossfade(false) // Disable crossfade to stop flickering between frames
-                    .diskCachePolicy(coil.request.CachePolicy.DISABLED) // Ensure fresh frames
-                    .memoryCachePolicy(coil.request.CachePolicy.DISABLED)
-                    .build(),
+        if (isMonitorVisible && currentFrame != null) {
+            Image(
+                painter = currentFrame!!,
                 contentDescription = "PC Monitor",
                 modifier = Modifier
                     .fillMaxSize()
@@ -518,7 +535,6 @@ fun TrackpadArea(
         )
     }
 }
-
 /**
  * Isolated keyboard input component.
  * Uses an "Append-Only" strategy to avoid fighting the keyboard state.

@@ -25,6 +25,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.rememberCoroutineScope
 
+import androidx.compose.material.icons.filled.ContentCopy
+
 enum class ConnectionStatus {
     CONNECTED,
     DISCONNECTED,
@@ -51,6 +53,7 @@ fun DashboardScreen(modifier: Modifier = Modifier, signalRClient: SignalRClient,
 
     val listState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
+    val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
 
     // Determine connection status based on actual isConnected state
     val connectionStatus = when {
@@ -213,23 +216,37 @@ fun DashboardScreen(modifier: Modifier = Modifier, signalRClient: SignalRClient,
                             fontWeight = FontWeight.Bold
                         )
                         
-                        TextButton(onClick = { 
-                            if (!isShowingHubLogs) {
-                                // Switch to Hub logs
-                                signalRClient.getHubStatus()?.subscribe({ status ->
-                                    @Suppress("UNCHECKED_CAST")
-                                    val logMessages = status["LogMessages"] as? List<String> ?: emptyList()
-                                    mainViewModel.updateHubLogs(logMessages)
-                                    mainViewModel.toggleLogSource()
-                                }, {
-                                    mainViewModel.addLog("Failed to fetch Hub logs: ${it.message}", LogType.ERROR)
-                                })
-                            } else {
-                                // Switch back to App logs
-                                mainViewModel.toggleLogSource()
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            IconButton(onClick = {
+                                val allLogs = displayLogs.joinToString("\n") { 
+                                    "[${java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date(it.timestamp))}] ${it.message}" 
+                                }
+                                clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(allLogs))
+                                mainViewModel.addLog("Logs copied to clipboard", LogType.SUCCESS)
+                            }) {
+                                Icon(Icons.Default.ContentCopy, contentDescription = "Copy All Logs")
                             }
-                        }) {
-                            Text(if (isShowingHubLogs) "Show App Log" else "Fetch Hub Log")
+
+                            Spacer(modifier = Modifier.width(8.dp))
+
+                            TextButton(onClick = { 
+                                if (!isShowingHubLogs) {
+                                    // Switch to Hub logs
+                                    signalRClient.getHubStatus()?.subscribe({ status ->
+                                        @Suppress("UNCHECKED_CAST")
+                                        val logMessages = status["LogMessages"] as? List<String> ?: emptyList()
+                                        mainViewModel.updateHubLogs(logMessages)
+                                        mainViewModel.toggleLogSource()
+                                    }, {
+                                        mainViewModel.addLog("Failed to fetch Hub logs: ${it.message}", LogType.ERROR)
+                                    })
+                                } else {
+                                    // Switch back to App logs
+                                    mainViewModel.toggleLogSource()
+                                }
+                            }) {
+                                Text(if (isShowingHubLogs) "Show App Log" else "Fetch Hub Log")
+                            }
                         }
                     }
                     

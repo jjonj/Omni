@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using System;
 using System.Drawing;
 using System.Drawing.Imaging;
@@ -9,88 +10,122 @@ namespace OmniSync.Hub.Infrastructure.Services
 {
     public class ScreenshotService
     {
+        private readonly ILogger<ScreenshotService> _logger;
+
+        public ScreenshotService(ILogger<ScreenshotService> logger)
+        {
+            _logger = logger;
+        }
+
         public void CapturePrimaryScreen(string filePath)
         {
-            var primaryScreen = Screen.PrimaryScreen;
-            if (primaryScreen == null) return;
-
-            int width = primaryScreen.Bounds.Width;
-            int height = primaryScreen.Bounds.Height;
-            int top = primaryScreen.Bounds.Top;
-            int left = primaryScreen.Bounds.Left;
-
-            using (Bitmap bitmap = new Bitmap(width, height))
+            try
             {
-                using (Graphics g = Graphics.FromImage(bitmap))
+                var primaryScreen = Screen.PrimaryScreen;
+                if (primaryScreen == null)
                 {
-                    g.CopyFromScreen(left, top, 0, 0, bitmap.Size);
+                    _logger.LogWarning("CapturePrimaryScreen: PrimaryScreen is null.");
+                    return;
                 }
 
-                string? directory = Path.GetDirectoryName(filePath);
-                if (directory != null && !Directory.Exists(directory))
-                {
-                    Directory.CreateDirectory(directory);
-                }
+                int width = primaryScreen.Bounds.Width;
+                int height = primaryScreen.Bounds.Height;
+                int top = primaryScreen.Bounds.Top;
+                int left = primaryScreen.Bounds.Left;
 
-                bitmap.Save(filePath, ImageFormat.Jpeg);
+                using (Bitmap bitmap = new Bitmap(width, height))
+                {
+                    using (Graphics g = Graphics.FromImage(bitmap))
+                    {
+                        g.CopyFromScreen(left, top, 0, 0, bitmap.Size);
+                    }
+
+                    string? directory = Path.GetDirectoryName(filePath);
+                    if (directory != null && !Directory.Exists(directory))
+                    {
+                        Directory.CreateDirectory(directory);
+                    }
+
+                    bitmap.Save(filePath, ImageFormat.Jpeg);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error in CapturePrimaryScreen");
             }
         }
 
         public byte[] CapturePrimaryScreenToMemory(double scale = 1.0, long quality = 50L)
         {
-            var primaryScreen = Screen.PrimaryScreen;
-            if (primaryScreen == null) return Array.Empty<byte>();
-
-            int sourceWidth = primaryScreen.Bounds.Width;
-            int sourceHeight = primaryScreen.Bounds.Height;
-            int top = primaryScreen.Bounds.Top;
-            int left = primaryScreen.Bounds.Left;
-
-            int targetWidth = (int)(sourceWidth * scale);
-            int targetHeight = (int)(sourceHeight * scale);
-
-            // Sanity check
-            if (targetWidth <= 0) targetWidth = 1;
-            if (targetHeight <= 0) targetHeight = 1;
-
-            using (Bitmap sourceBitmap = new Bitmap(sourceWidth, sourceHeight))
+            try
             {
-                using (Graphics g = Graphics.FromImage(sourceBitmap))
+                var primaryScreen = Screen.PrimaryScreen;
+                if (primaryScreen == null)
                 {
-                    g.CopyFromScreen(left, top, 0, 0, sourceBitmap.Size);
+                    _logger.LogWarning("CapturePrimaryScreenToMemory: PrimaryScreen is null.");
+                    return Array.Empty<byte>();
                 }
 
-                Bitmap? targetBitmap = null;
-                try
+                int sourceWidth = primaryScreen.Bounds.Width;
+                int sourceHeight = primaryScreen.Bounds.Height;
+                int top = primaryScreen.Bounds.Top;
+                int left = primaryScreen.Bounds.Left;
+
+                int targetWidth = (int)(sourceWidth * scale);
+                int targetHeight = (int)(sourceHeight * scale);
+
+                // Sanity check
+                if (targetWidth <= 0) targetWidth = 1;
+                if (targetHeight <= 0) targetHeight = 1;
+
+                using (Bitmap sourceBitmap = new Bitmap(sourceWidth, sourceHeight))
                 {
-                    if (scale >= 0.99 && scale <= 1.01)
+                    using (Graphics g = Graphics.FromImage(sourceBitmap))
                     {
-                        targetBitmap = sourceBitmap;
-                    }
-                    else
-                    {
-                        targetBitmap = new Bitmap(sourceBitmap, targetWidth, targetHeight);
+                        g.CopyFromScreen(left, top, 0, 0, sourceBitmap.Size);
                     }
 
-                    using (MemoryStream ms = new MemoryStream())
+                    Bitmap? targetBitmap = null;
+                    try
                     {
-                        var encoder = ImageCodecInfo.GetImageEncoders().FirstOrDefault(c => c.FormatID == ImageFormat.Jpeg.Guid);
-                        if (encoder == null) return Array.Empty<byte>();
+                        if (scale >= 0.99 && scale <= 1.01)
+                        {
+                            targetBitmap = sourceBitmap;
+                        }
+                        else
+                        {
+                            targetBitmap = new Bitmap(sourceBitmap, targetWidth, targetHeight);
+                        }
 
-                        var parameters = new EncoderParameters(1);
-                        parameters.Param[0] = new EncoderParameter(Encoder.Quality, quality);
+                        using (MemoryStream ms = new MemoryStream())
+                        {
+                            var encoder = ImageCodecInfo.GetImageEncoders().FirstOrDefault(c => c.FormatID == ImageFormat.Jpeg.Guid);
+                            if (encoder == null)
+                            {
+                                _logger.LogError("JPEG encoder not found.");
+                                return Array.Empty<byte>();
+                            }
 
-                        targetBitmap.Save(ms, encoder, parameters);
-                        return ms.ToArray();
+                            var parameters = new EncoderParameters(1);
+                            parameters.Param[0] = new EncoderParameter(Encoder.Quality, quality);
+
+                            targetBitmap.Save(ms, encoder, parameters);
+                            return ms.ToArray();
+                        }
+                    }
+                    finally
+                    {
+                        if (targetBitmap != null && targetBitmap != sourceBitmap)
+                        {
+                            targetBitmap.Dispose();
+                        }
                     }
                 }
-                finally
-                {
-                    if (targetBitmap != null && targetBitmap != sourceBitmap)
-                    {
-                        targetBitmap.Dispose();
-                    }
-                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error in CapturePrimaryScreenToMemory");
+                return Array.Empty<byte>();
             }
         }
     }
