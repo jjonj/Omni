@@ -575,7 +575,7 @@ fun CustomTextSelectionMenu(toolbar: CustomTextToolbar) {
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
+@OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun TextEditorScreen(
     filesViewModel: FilesViewModel,
@@ -583,6 +583,7 @@ fun TextEditorScreen(
     onBack: () -> Unit,
     parentPadding: PaddingValues = PaddingValues(0.dp)
 ) {
+    val isKeyboardVisible = WindowInsets.isImeVisible
     val editingFile by filesViewModel.editingFile.collectAsState()
     val editingContent by filesViewModel.editingContent.collectAsState()
     val openFiles by filesViewModel.openFiles.collectAsState()
@@ -729,13 +730,19 @@ fun TextEditorScreen(
             
             val scrollPos = verticalScrollState.value
             val vHeight = if (viewportHeight > 0) viewportHeight else with(density) { 200.dp.toPx() } 
-            val lineHeight = with(density) { (fontSize * 1.4f).sp.toPx() }
-            val buffer = lineHeight * 2 // 2 lines buffer
             
-            if (lineTop < (scrollPos + buffer)) {
-                verticalScrollState.animateScrollTo((lineTop - buffer).toInt().coerceAtLeast(0))
-            } else if (lineBottom > (scrollPos + vHeight - buffer)) {
-                verticalScrollState.animateScrollTo((lineBottom - vHeight + buffer).toInt())
+            // Task 7 Fix: Only scroll if cursor is truly out of view
+            val isOutOfView = lineTop < scrollPos || lineBottom > (scrollPos + vHeight)
+            
+            if (isOutOfView) {
+                val lineHeight = with(density) { (fontSize * 1.4f).sp.toPx() }
+                val buffer = lineHeight * 2 // 2 lines buffer
+                
+                if (lineTop < (scrollPos + buffer)) {
+                    verticalScrollState.animateScrollTo((lineTop - buffer).toInt().coerceAtLeast(0))
+                } else if (lineBottom > (scrollPos + vHeight - buffer)) {
+                    verticalScrollState.animateScrollTo((lineBottom - vHeight + buffer).toInt())
+                }
             }
         } else {
             lastText = editingContent
@@ -1359,7 +1366,7 @@ fun TextEditorScreen(
             }
         }
     ) { paddingValues ->
-        Column(modifier = Modifier.padding(top = paddingValues.calculateTopPadding(), bottom = parentPadding.calculateBottomPadding()).fillMaxSize()) {
+        Column(modifier = Modifier.padding(top = paddingValues.calculateTopPadding(), bottom = if (isKeyboardVisible) 0.dp else parentPadding.calculateBottomPadding()).fillMaxSize()) {
             if (showDebugPanel) {
                 Surface(
                     color = MaterialTheme.colorScheme.secondaryContainer,

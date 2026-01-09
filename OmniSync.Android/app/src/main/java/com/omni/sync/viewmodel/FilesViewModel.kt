@@ -846,6 +846,13 @@ class FilesViewModel(
         _hasUnsavedChanges.value = false
     }
 
+    fun exitEditor() {
+        _editingFile.value = null
+        _editingContent.value = ""
+        _hasUnsavedChanges.value = false
+        mainViewModel.navigateTo(AppScreen.FILES)
+    }
+
     fun saveEditingContentAsCopy(newFileName: String) {
         val entry = _editingFile.value ?: return
         val content = _editingContent.value
@@ -1487,6 +1494,50 @@ class FilesViewModel(
                 }
             } catch (e: Exception) {
                 _errorMessage.value = "Delete failed: ${e.message}"
+            }
+        }
+    }
+
+    fun copyFile(sourcePath: String, destPath: String) {
+        if (!mainViewModel.isConnected.value) return
+        viewModelScope.launch(Schedulers.io().asCoroutineDispatcher()) {
+            try {
+                val success = signalRClient.copyFile(sourcePath, destPath)
+                    ?.subscribeOn(Schedulers.io())
+                    ?.blockingGet() ?: false
+                
+                if (success) {
+                    mainViewModel.addLog("Copied successfully", com.omni.sync.ui.screen.LogType.SUCCESS)
+                    viewModelScope.launch(AndroidSchedulers.mainThread().asCoroutineDispatcher()) {
+                        loadDirectory(_currentPath.value)
+                    }
+                } else {
+                    _errorMessage.value = "Copy failed."
+                }
+            } catch (e: Exception) {
+                _errorMessage.value = "Copy error: ${e.message}"
+            }
+        }
+    }
+
+    fun moveFile(sourcePath: String, destPath: String) {
+        if (!mainViewModel.isConnected.value) return
+        viewModelScope.launch(Schedulers.io().asCoroutineDispatcher()) {
+            try {
+                val success = signalRClient.moveFile(sourcePath, destPath)
+                    ?.subscribeOn(Schedulers.io())
+                    ?.blockingGet() ?: false
+                
+                if (success) {
+                    mainViewModel.addLog("Moved successfully", com.omni.sync.ui.screen.LogType.SUCCESS)
+                    viewModelScope.launch(AndroidSchedulers.mainThread().asCoroutineDispatcher()) {
+                        loadDirectory(_currentPath.value)
+                    }
+                } else {
+                    _errorMessage.value = "Move failed."
+                }
+            } catch (e: Exception) {
+                _errorMessage.value = "Move error: ${e.message}"
             }
         }
     }

@@ -168,7 +168,11 @@ class MainActivity : ComponentActivity() {
                         snapshotFlow { pagerState.currentPage }.collect { page ->
                             val screen = swipeableScreens[page]
                             if (mainViewModel.currentScreen.value != screen) {
-                                mainViewModel.navigateTo(screen)
+                                if (screen == AppScreen.FILES && filesViewModel.editingFile.value != null) {
+                                    mainViewModel.navigateTo(AppScreen.EDITOR)
+                                } else {
+                                    mainViewModel.navigateTo(screen)
+                                }
                             }
                         }
                     }
@@ -179,7 +183,13 @@ class MainActivity : ComponentActivity() {
                             val coroutineScope = androidx.compose.runtime.rememberCoroutineScope()
                             OmniBottomNavigation(
                                 currentScreen = currentScreen,
-                                onNavigate = { screen -> mainViewModel.navigateTo(screen) },
+                                onNavigate = { screen -> 
+                                    if (screen == AppScreen.FILES && filesViewModel.editingFile.value != null) {
+                                        mainViewModel.navigateTo(AppScreen.EDITOR)
+                                    } else {
+                                        mainViewModel.navigateTo(screen)
+                                    }
+                                },
                                 onSwipe = { delta ->
                                     coroutineScope.launch {
                                         val next = (pagerState.currentPage + delta).coerceIn(0, swipeableScreens.size - 1)
@@ -339,7 +349,7 @@ class MainActivity : ComponentActivity() {
             AppScreen.EDITOR -> com.omni.sync.ui.screen.TextEditorScreen(
                 filesViewModel = filesViewModel,
                 signalRClient = signalRClient,
-                onBack = { mainViewModel.goBack() },
+                onBack = { filesViewModel.exitEditor() },
                 parentPadding = paddingValues
             )
             AppScreen.SETTINGS -> com.omni.sync.ui.screen.SettingsScreen(

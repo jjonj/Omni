@@ -62,6 +62,9 @@
 ✅ Improve markdown rendering by hiding formatting, e.g. "###" and the * symbols in **bold text** similar to how the obsidian app does it. Those symbols are only visible when the cursor is on the line that contain them.
 ✅ plus button to create text file does not work (Fixed by correctly adding new file to open files list in ViewModel)
 ✅ long press for files and folders should have copy to and move to options, reuse browse popup from Ai screen
+✅ when a text file is open and i switch screen and then switch back to file screen then the file is now closed and i see folders. don't auto close file like that.
+✅ when i first open a text file and tap to place cursor, it auto scrolls, but it should not do this because the place i tappped is by definition in view. auto scrolling is for when typing while out of view of cursor.
+✅ When keyboard is up there is a black blank box above the keyboard with the height of the navigation bar. this started after i requested that the navigation bar not be hidden in text editor.
 
 ### Browser control screen
 
