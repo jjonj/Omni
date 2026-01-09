@@ -1275,8 +1275,20 @@ class FilesViewModel(
             lastModified = java.util.Date()
         )
         
+        // Add to open files list
+        val currentOpen = _openFiles.value.toMutableList()
+        if (currentOpen.none { it.path == newEntry.path }) {
+            currentOpen.add(newEntry)
+            _openFiles.value = currentOpen
+        }
+        
+        val currentContents = _openFileContents.value.toMutableMap()
+        currentContents[newEntry.path] = ""
+        _openFileContents.value = currentContents
+
         _editingFile.value = newEntry
         _editingContent.value = ""
+        _hasUnsavedChanges.value = true // Force save on first edit
         mainViewModel.navigateTo(AppScreen.EDITOR)
     }
 

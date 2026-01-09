@@ -38,8 +38,6 @@ Only work on subtasks if told to do so or if told explicitly to do a Megasession
 ### Files & Video Screen
 
 
-plus button to create text file does not work 
-
 long press for files and folders should have copy to and move to options, reuse browse popup from Ai screen 
 
 when a text file is open and i switch screen and then switch back to file screen then the file is now closed and i see folders. don't auto close file like that. 
