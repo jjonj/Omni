@@ -17,6 +17,7 @@ namespace OmniSync.Hub.Infrastructure.Services
         private readonly string _path;
         private readonly string _category;
         private static readonly object _lock = new();
+        private static bool _fileCleared = false;
 
         public FileLogger(string path, string category)
         {

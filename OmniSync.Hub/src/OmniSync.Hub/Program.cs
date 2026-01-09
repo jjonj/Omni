@@ -178,8 +178,11 @@ builder.Services.AddSingleton<RegistryService>();
 builder.Services.AddSingleton<ScreenshotService>();
 builder.Services.AddSingleton<PcgPersistentService>();
 builder.Services.AddSingleton<NodeRedService>();
+builder.Services.AddSingleton<HubMonitorService>();
+builder.Services.AddHostedService<HubMonitorService>(provider => provider.GetRequiredService<HubMonitorService>());
 builder.Services.AddSingleton<HubEventSender>(provider =>
 {
+    var logger = provider.GetRequiredService<ILogger<HubEventSender>>();
     var hubContext = provider.GetRequiredService<IHubContext<RpcApiHub>>();
     var processService = provider.GetRequiredService<ProcessService>();
     var inputService = provider.GetRequiredService<InputService>();
@@ -187,10 +190,11 @@ builder.Services.AddSingleton<HubEventSender>(provider =>
     var commandDispatcher = provider.GetRequiredService<CommandDispatcher>();
     var fileService = provider.GetRequiredService<FileService>(); // Get FileService
     var aiCliService = provider.GetRequiredService<AiCliService>(); // Get AiCliService
+    var settingsService = provider.GetRequiredService<HubSettingsService>();
+    var monitorService = provider.GetRequiredService<HubMonitorService>();
 
-    return new HubEventSender(hubContext, processService, inputService, shutdownService, commandDispatcher, fileService, aiCliService);
+    return new HubEventSender(logger, hubContext, processService, inputService, shutdownService, commandDispatcher, fileService, aiCliService, settingsService, monitorService);
 });
-builder.Services.AddSingleton<HubMonitorService>(); // Register the new monitoring service
 builder.Services.AddHostedService<TrayIconManager>();
 builder.Services.AddHostedService<GlobalHotkeyService>();
 builder.Services.AddHostedService<HubStartupService>(); // Auto-launch AI components

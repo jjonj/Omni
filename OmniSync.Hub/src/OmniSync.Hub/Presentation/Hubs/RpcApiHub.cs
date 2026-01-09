@@ -34,9 +34,10 @@ namespace OmniSync.Hub.Presentation.Hubs
         private readonly HubMonitorService _hubMonitorService;
         private readonly AiCliService _aiCliService;
         private readonly PcgPersistentService _pcgService;
+        private readonly HubSettingsService _settingsService;
         private readonly ILogger<RpcApiHub> _logger; // Added for logging
 
-        public RpcApiHub(AuthService authService, FileService fileService, ClipboardService clipboardService, CommandDispatcher commandDispatcher, ProcessService processService, HubEventSender hubEventSender, InputService inputService, AudioService audioService, ShutdownService shutdownService, RegistryService registryService, HubMonitorService hubMonitorService, AiCliService aiCliService, PcgPersistentService pcgService, ILogger<RpcApiHub> logger)
+        public RpcApiHub(AuthService authService, FileService fileService, ClipboardService clipboardService, CommandDispatcher commandDispatcher, ProcessService processService, HubEventSender hubEventSender, InputService inputService, AudioService audioService, ShutdownService shutdownService, RegistryService registryService, HubMonitorService hubMonitorService, AiCliService aiCliService, PcgPersistentService pcgService, HubSettingsService settingsService, ILogger<RpcApiHub> logger)
         {
             _authService = authService;
             _fileService = fileService;
@@ -51,6 +52,7 @@ namespace OmniSync.Hub.Presentation.Hubs
             _hubMonitorService = hubMonitorService;
             _aiCliService = aiCliService;
             _pcgService = pcgService;
+            _settingsService = settingsService;
             _logger = logger;
         }
 
@@ -528,6 +530,48 @@ namespace OmniSync.Hub.Presentation.Hubs
             }
         }
 
+        public bool CopyFile(string source, string dest)
+        {
+            if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
+            {
+                AnyCommandReceived?.Invoke(this, $"CopyFile: {source} -> {dest}");
+                try
+                {
+                    return _fileService.CopyEntry(source, dest);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, $"Error copying file from '{source}' to '{dest}'");
+                    throw new HubException($"Error copying file: {ex.Message}", ex);
+                }
+            }
+            else
+            {
+                throw new UnauthorizedAccessException("Client is not authenticated.");
+            }
+        }
+
+        public bool MoveFile(string source, string dest)
+        {
+            if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
+            {
+                AnyCommandReceived?.Invoke(this, $"MoveFile: {source} -> {dest}");
+                try
+                {
+                    return _fileService.MoveEntry(source, dest);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, $"Error moving file from '{source}' to '{dest}'");
+                    throw new HubException($"Error moving file: {ex.Message}", ex);
+                }
+            }
+            else
+            {
+                throw new UnauthorizedAccessException("Client is not authenticated.");
+            }
+        }
+
         public async Task SendBrowserCommand(string command, string url, bool newTab)
         {
             if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
@@ -671,6 +715,18 @@ namespace OmniSync.Hub.Presentation.Hubs
                         await _aiCliService.SendSpecialKeyAsync(key, targetPid);
                         break;
                 }
+            }
+        }
+
+        public async Task SendAiDialogResponse(string response, int? sessionId = null)
+        {
+            if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
+            {
+                int targetPid = sessionId ?? _aiCliService.GetTargetPid();
+                if (targetPid == -1) return;
+
+                _logger.LogInformation($"[RpcApiHub] SendAiDialogResponse: {response} to PID {targetPid}");
+                await _aiCliService.SendDialogResponseAsync(response, targetPid);
             }
         }
 
@@ -921,7 +977,19 @@ namespace OmniSync.Hub.Presentation.Hubs
                 _logger.LogInformation("[RpcApiHub] ResetAiSessions requested. Nuking all Gemini processes...");
                 AnyCommandReceived?.Invoke(this, "ResetAiSessions");
                 _aiCliService.KillAllGeminiProcesses();
-                await GetAiSessions();
+                await _aiCliService.DiscoverSessionsAsync();
+                await _hubEventSender.BroadcastSessions();
+            }
+        }
+
+        public async Task ReloadAiSessions(List<AiSessionInfo> androidSessions)
+        {
+            if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
+            {
+                _logger.LogInformation("[RpcApiHub] ReloadAiSessions requested.");
+                AnyCommandReceived?.Invoke(this, "ReloadAiSessions");
+                await _aiCliService.ReloadAiSessionsAsync(androidSessions);
+                await _hubEventSender.BroadcastSessions();
             }
         }
 
@@ -983,6 +1051,16 @@ namespace OmniSync.Hub.Presentation.Hubs
             }
         }
 
+        public async Task FocusAiSession(int pid)
+        {
+            if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
+            {
+                _logger.LogInformation($"[RpcApiHub] FocusAiSession: {pid}");
+                AnyCommandReceived?.Invoke(this, $"FocusAiSession: {pid}");
+                await _aiCliService.FocusSessionAsync(pid);
+            }
+        }
+
         public async Task SetAiZoom(int pid, double level)
         {
             if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
@@ -1011,6 +1089,35 @@ namespace OmniSync.Hub.Presentation.Hubs
                 _logger.LogInformation($"[RpcApiHub] RequestAiHistory for PID {targetPid}");
                 await Clients.All.SendAsync("ReceiveAiStatus", "Reloading history...", targetPid);
                 await _aiCliService.GetHistoryAsync(targetPid);
+            }
+        }
+
+        public async Task GetAiPresets()
+        {
+            if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
+            {
+                var presets = _settingsService.GetAiPresets();
+                await Clients.Caller.SendAsync("ReceiveAiPresets", presets);
+            }
+        }
+
+        public async Task AddAiPreset(string preset)
+        {
+            if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
+            {
+                _settingsService.AddAiPreset(preset);
+                var presets = _settingsService.GetAiPresets();
+                await Clients.All.SendAsync("ReceiveAiPresets", presets);
+            }
+        }
+
+        public async Task RemoveAiPreset(string preset)
+        {
+            if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
+            {
+                _settingsService.RemoveAiPreset(preset);
+                var presets = _settingsService.GetAiPresets();
+                await Clients.All.SendAsync("ReceiveAiPresets", presets);
             }
         }
 

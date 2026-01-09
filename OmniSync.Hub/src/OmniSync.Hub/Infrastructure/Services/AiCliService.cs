@@ -41,14 +41,19 @@ namespace OmniSync.Hub.Infrastructure.Services
         
         [System.Text.Json.Serialization.JsonPropertyName("startTime")]
         public DateTime StartTime { get; set; }
+
+        [System.Text.Json.Serialization.JsonPropertyName("workspace")]
+        public string Workspace { get; set; } = string.Empty;
     }
 
     public class AiCliService : IDisposable
     {
         private readonly ILogger<AiCliService> _logger;
         private readonly HubSettingsService _settingsService;
+        private readonly ProcessService _processService;
         private readonly ConcurrentDictionary<int, GeminiSession> _sessions = new();
         private readonly ConcurrentDictionary<int, string> _sessionNames = new();
+        private readonly ConcurrentDictionary<int, string> _workspaces = new();
         private readonly ConcurrentDictionary<int, (DateTime LastAttempt, int FailCount)> _failedPids = new();
         private DateTime _lastWmiDiscovery = DateTime.MinValue;
         private List<int> _cachedWmiPids = new();
@@ -58,10 +63,46 @@ namespace OmniSync.Hub.Infrastructure.Services
         public event EventHandler<GeminiResponseEventArgs>? ResponseReceived;
         public event EventHandler<GeminiDialogEventArgs>? DialogReceived;
 
-        public AiCliService(ILogger<AiCliService> logger, HubSettingsService settingsService)
+        public AiCliService(ILogger<AiCliService> logger, HubSettingsService settingsService, ProcessService processService)
         {
             _logger = logger;
             _settingsService = settingsService;
+            _processService = processService;
+            
+            // Trigger initial discovery in background
+            _ = Task.Run(async () => {
+                await Task.Delay(2000); // Give Hub time to fully start
+                await DiscoverSessionsAsync();
+            });
+        }
+
+        public async Task FocusSessionAsync(int pid)
+        {
+            _logger.LogInformation($"[AiCliService] Focusing session PID {pid}");
+            
+            if (_sessions.TryGetValue(pid, out var session))
+            {
+                // Try to focus the shell process first (the terminal window)
+                if (session.ShellProcess != null && !session.ShellProcess.HasExited)
+                {
+                    _logger.LogInformation($"[AiCliService] Focusing shell process PID {session.ShellProcess.Id}");
+                    _processService.WinActivatePid(session.ShellProcess.Id);
+                }
+                else
+                {
+                    // Fallback to focusing the node process itself
+                    _logger.LogInformation($"[AiCliService] Focusing node process PID {pid}");
+                    _processService.WinActivatePid(pid);
+                }
+            }
+            else
+            {
+                // Last resort: try to focus the PID directly even if not in our sessions list
+                _logger.LogWarning($"[AiCliService] Session PID {pid} not found in tracked sessions. Attempting direct focus.");
+                _processService.WinActivatePid(pid);
+            }
+
+            await Task.CompletedTask;
         }
 
         public Task SetSessionNameAsync(int pid, string name)
@@ -172,7 +213,8 @@ namespace OmniSync.Hub.Infrastructure.Services
                 {
                     Pid = s.Pid,
                     Name = GetSessionName(s.Pid),
-                    StartTime = s.StartTime
+                    StartTime = s.StartTime,
+                    Workspace = _workspaces.TryGetValue(s.Pid, out var ws) ? ws : string.Empty
                 })
                 .ToList();
         }
@@ -245,7 +287,7 @@ namespace OmniSync.Hub.Infrastructure.Services
                                     pids.Add(foundPid);
 
                                     // Try to extract workspace for naming if not already named
-                                    if (!_sessionNames.ContainsKey(foundPid))
+                                    if (!_sessionNames.ContainsKey(foundPid) || !_workspaces.ContainsKey(foundPid))
                                     {
                                         TryExtractWorkspaceAndName(foundPid, commandLine);
                                     }
@@ -313,6 +355,128 @@ namespace OmniSync.Hub.Infrastructure.Services
             }
 
             return connectedPids;
+        }
+
+        public async Task ReloadAiSessionsAsync(List<AiSessionInfo> androidSessions)
+        {
+            _logger.LogInformation("[AiCliService] ReloadAiSessionsAsync requested. Generating report...");
+            
+            var report = new StringBuilder();
+            report.AppendLine("================================================================================");
+            report.AppendLine("                      OMNI SESSION DEBUG REPORT");
+            report.AppendLine($"                      GENERATED: {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
+            report.AppendLine("================================================================================");
+            report.AppendLine();
+
+            report.AppendLine("ANDROID REPORTED SESSIONS:");
+            if (androidSessions == null || androidSessions.Count == 0)
+            {
+                report.AppendLine("  (NONE)");
+            }
+            else
+            {
+                foreach (var s in androidSessions)
+                {
+                    report.AppendLine($"  PID: {s.Pid,-8} NAME: {s.Name,-20} START: {s.StartTime:HH:mm:ss} WS: {s.Workspace}");
+                }
+            }
+            report.AppendLine();
+
+            var hubSessions = GetActiveSessions();
+            report.AppendLine("HUB CURRENT SESSIONS:");
+            if (hubSessions.Count == 0)
+            {
+                report.AppendLine("  (NONE)");
+            }
+            else
+            {
+                foreach (var s in hubSessions)
+                {
+                    report.AppendLine($"  PID: {s.Pid,-8} NAME: {s.Name,-20} START: {s.StartTime:HH:mm:ss} WS: {s.Workspace}");
+                }
+            }
+            report.AppendLine();
+
+            report.AppendLine("COMPARISON ANALYSIS:");
+            var androidPids = androidSessions?.Select(s => s.Pid).ToHashSet() ?? new HashSet<int>();
+            var hubPids = hubSessions.Select(s => s.Pid).ToHashSet();
+
+            var phantomOnAndroid = androidPids.Except(hubPids).ToList();
+            var hiddenFromAndroid = hubPids.Except(androidPids).ToList();
+
+            if (phantomOnAndroid.Count == 0 && hiddenFromAndroid.Count == 0)
+            {
+                report.AppendLine("  STATUS: MATCHED. Hub and Android see the same sessions.");
+            }
+            else
+            {
+                if (phantomOnAndroid.Count > 0)
+                {
+                    report.AppendLine($"  PHANTOM SESSIONS (On Android, not on Hub): {string.Join(", ", phantomOnAndroid)}");
+                    foreach (var pid in phantomOnAndroid)
+                    {
+                        bool existsInSystem = false;
+                        try { existsInSystem = Process.GetProcesses().Any(p => p.Id == pid); } catch { }
+                        report.AppendLine($"    - PID {pid}: System Process Exists? {existsInSystem}");
+                    }
+                }
+                if (hiddenFromAndroid.Count > 0)
+                {
+                    report.AppendLine($"  HIDDEN SESSIONS (On Hub, not on Android): {string.Join(", ", hiddenFromAndroid)}");
+                }
+            }
+            report.AppendLine();
+
+            report.AppendLine("SYSTEM PROCESS SCAN:");
+            try
+            {
+                var geminiProcesses = Process.GetProcesses()
+                    .Where(p => p.ProcessName.Contains("node", StringComparison.OrdinalIgnoreCase))
+                    .ToList();
+                
+                report.AppendLine($"  Found {geminiProcesses.Count} node processes in system.");
+            }
+            catch (Exception ex)
+            {
+                report.AppendLine($"  Failed to scan processes: {ex.Message}");
+            }
+            report.AppendLine();
+
+            report.AppendLine("ACTION: Force refreshing discovery...");
+            var finalPids = await DiscoverSessionsAsync(2000, 5000);
+            report.AppendLine($"  Discovery finished. Now active: {string.Join(", ", finalPids)}");
+            report.AppendLine();
+            report.AppendLine("================================================================================");
+
+            try
+            {
+                // Write to root of project
+                var rootPath = AppDomain.CurrentDomain.BaseDirectory;
+                // Try to find the root where OmniSync.Hub folder is or similar
+                // Based on context, root is D:\SSDProjects\Omni
+                var fileName = "OMNI_SESSION_DEBUG_REPORT.LOG";
+                var filePath = Path.Combine(rootPath, fileName);
+                
+                // If we are in bin/Debug/net9.0, go up
+                for (int i = 0; i < 4; i++)
+                {
+                    if (File.Exists(Path.Combine(rootPath, "OmniSync.Hub.sln")) || Directory.Exists(Path.Combine(rootPath, ".git")))
+                    {
+                        filePath = Path.Combine(rootPath, fileName);
+                        break;
+                    }
+                    var parent = Directory.GetParent(rootPath);
+                    if (parent == null) break;
+                    rootPath = parent.FullName;
+                }
+
+                await File.WriteAllTextAsync(filePath, report.ToString());
+                _logger.LogInformation($"[AiCliService] Debug report written to {filePath}");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "[AiCliService] Failed to write debug report file.");
+            }
         }
 
         private void TryExtractWorkspaceAndName(int pid, string commandLine)
@@ -502,6 +666,7 @@ namespace OmniSync.Hub.Infrastructure.Services
             }
             _sessions.Clear();
             _sessionNames.Clear();
+            _workspaces.Clear();
             _targetPid = -1;
             
             // 2. Kill all node processes running gemini
@@ -818,6 +983,7 @@ namespace OmniSync.Hub.Infrastructure.Services
                 session.Dispose();
                 _sessions.TryRemove(target, out _);
                 _sessionNames.TryRemove(target, out _);
+                _workspaces.TryRemove(target, out _);
                 
                 try
                 {
@@ -872,6 +1038,7 @@ namespace OmniSync.Hub.Infrastructure.Services
         public bool IsConnected => _pipeClient?.IsConnected ?? false;
         public int Pid => _pid;
         public DateTime StartTime => _startTime;
+        public Process? ShellProcess => _shellProcess;
 
         public GeminiSession(int pid, DateTime startTime, ILogger logger, Action<int, string, bool, bool, bool> onResponse, Action<int, string, string, List<string>?> onDialog)
         {

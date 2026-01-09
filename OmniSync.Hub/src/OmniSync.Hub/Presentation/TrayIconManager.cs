@@ -11,6 +11,7 @@ using System.Windows; // For WPF Window and Application
 using OmniSync.Hub.Logic.Monitoring; // For HubMonitorService
 using OmniSync.Hub.Infrastructure.Services; // Add this using directive
 using OmniSync.Hub.Logic.Services;
+using Microsoft.Extensions.Logging;
 
 namespace OmniSync.Hub.Presentation
 {
@@ -23,10 +24,11 @@ namespace OmniSync.Hub.Presentation
         private readonly RegistryService _registryService;
         private readonly HubSettingsService _settingsService;
         private readonly GlobalHotkeyService _hotkeyService;
+        private readonly ILogger<TrayIconManager> _logger;
         private TrayApplicationContext _applicationContext;
         private Thread _trayThread;
 
-        public TrayIconManager(IHostApplicationLifetime appLifetime, HubMonitorService hubMonitorService, InputService inputService, ShutdownService shutdownService, RegistryService registryService, HubSettingsService settingsService, GlobalHotkeyService hotkeyService) // Add InputService to constructor
+        public TrayIconManager(IHostApplicationLifetime appLifetime, HubMonitorService hubMonitorService, InputService inputService, ShutdownService shutdownService, RegistryService registryService, HubSettingsService settingsService, GlobalHotkeyService hotkeyService, ILogger<TrayIconManager> logger) // Add logger to constructor
         {
             _appLifetime = appLifetime;
             _hubMonitorService = hubMonitorService; // Assign the injected service
@@ -35,10 +37,12 @@ namespace OmniSync.Hub.Presentation
             _registryService = registryService;
             _settingsService = settingsService;
             _hotkeyService = hotkeyService;
+            _logger = logger;
         }
 
         public Task StartAsync(CancellationToken cancellationToken)
         {
+            _logger.LogInformation("TrayIconManager: StartAsync called. Starting tray thread.");
             _trayThread = new Thread(ThreadRun);
             _trayThread.IsBackground = true;
             _trayThread.SetApartmentState(ApartmentState.STA); // Set apartment state for UI components
@@ -49,28 +53,39 @@ namespace OmniSync.Hub.Presentation
 
         private void ThreadRun()
         {
-            // Initialize WPF Application on this thread
-            var app = new WpfApp();
-            app.ShutdownMode = System.Windows.ShutdownMode.OnExplicitShutdown; // Manage shutdown manually
-
-            // Handle unhandled exceptions on the WPF dispatcher thread
-            app.DispatcherUnhandledException += (sender, e) =>
+            try
             {
-                CrashHandler.HandleCrash("WpfDispatcherException", e.Exception);
-                e.Handled = true; // Prevents default crash dialog, but HandleCrash calls Environment.Exit
-            };
+                _logger.LogInformation("TrayIconManager: ThreadRun started.");
+                // Initialize WPF Application on this thread
+                var app = new WpfApp();
+                _logger.LogInformation("TrayIconManager: WpfApp instance created.");
+                app.ShutdownMode = System.Windows.ShutdownMode.OnExplicitShutdown; // Manage shutdown manually
 
-            WinFormsApp.EnableVisualStyles(); // Enable visual styles for WinForms NotifyIcon
-            WinFormsApp.SetCompatibleTextRenderingDefault(false); // For WinForms interop
+                // Handle unhandled exceptions on the WPF dispatcher thread
+                app.DispatcherUnhandledException += (sender, e) =>
+                {
+                    _logger.LogError(e.Exception, "TrayIconManager: WpfDispatcherException occurred.");
+                    CrashHandler.HandleCrash("WpfDispatcherException", e.Exception);
+                    e.Handled = true; // Prevents default crash dialog, but HandleCrash calls Environment.Exit
+                };
 
-            _applicationContext = new TrayApplicationContext(_appLifetime, app, _hubMonitorService, _inputService, _shutdownService, _registryService, _settingsService, _hotkeyService); // Pass hubMonitorService and inputService
-            
-            // Add message filter to route messages to WPF's ComponentDispatcher
-            WinFormsApp.AddMessageFilter(new WpfMessageFilter());
+                WinFormsApp.EnableVisualStyles(); // Enable visual styles for WinForms NotifyIcon
+                WinFormsApp.SetCompatibleTextRenderingDefault(false); // For WinForms interop
 
-            Console.WriteLine("TrayIconManager: Starting WinForms message loop.");
-            WinFormsApp.Run(_applicationContext); // Start the message pump with our custom context
-            Console.WriteLine("TrayIconManager: WinForms message loop finished.");
+                _logger.LogInformation("TrayIconManager: Creating TrayApplicationContext.");
+                _applicationContext = new TrayApplicationContext(_appLifetime, app, _hubMonitorService, _inputService, _shutdownService, _registryService, _settingsService, _hotkeyService, _logger); // Pass logger
+                
+                // Add message filter to route messages to WPF's ComponentDispatcher
+                WinFormsApp.AddMessageFilter(new WpfMessageFilter());
+
+                _logger.LogInformation("TrayIconManager: Starting WinForms message loop.");
+                WinFormsApp.Run(_applicationContext); // Start the message pump with our custom context
+                _logger.LogInformation("TrayIconManager: WinForms message loop finished.");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "TrayIconManager: Error in ThreadRun.");
+            }
         }
 
         private class WpfMessageFilter : IMessageFilter
@@ -90,13 +105,13 @@ namespace OmniSync.Hub.Presentation
 
         public Task StopAsync(CancellationToken cancellationToken)
         {
-            Console.WriteLine("TrayIconManager: StopAsync called.");
+            _logger.LogInformation("TrayIconManager: StopAsync called.");
             return Task.CompletedTask;
         }
 
         public void Dispose()
         {
-            Console.WriteLine("TrayIconManager: Dispose called.");
+            _logger.LogInformation("TrayIconManager: Dispose called.");
             _applicationContext?.Dispose();
         }
 
@@ -112,9 +127,10 @@ namespace OmniSync.Hub.Presentation
             private readonly RegistryService _registryService;
             private readonly HubSettingsService _settingsService;
             private readonly GlobalHotkeyService _hotkeyService;
+            private readonly ILogger _logger;
             private MainWindow _mainWindow;
 
-            public TrayApplicationContext(IHostApplicationLifetime appLifetime, WpfApp wpfApplication, HubMonitorService hubMonitorService, InputService inputService, ShutdownService shutdownService, RegistryService registryService, HubSettingsService settingsService, GlobalHotkeyService hotkeyService) // Add InputService to constructor
+            public TrayApplicationContext(IHostApplicationLifetime appLifetime, WpfApp wpfApplication, HubMonitorService hubMonitorService, InputService inputService, ShutdownService shutdownService, RegistryService registryService, HubSettingsService settingsService, GlobalHotkeyService hotkeyService, ILogger logger) // Add logger
             {
                 _appLifetime = appLifetime;
                 _wpfApplication = wpfApplication; // Store reference to the WPF Application instance
@@ -124,48 +140,62 @@ namespace OmniSync.Hub.Presentation
                 _registryService = registryService;
                 _settingsService = settingsService;
                 _hotkeyService = hotkeyService;
+                _logger = logger;
                 InitializeComponent();
             }
 
             private void InitializeComponent()
             {
-                _notifyIcon = new NotifyIcon();
-                // Load the custom icon from the application's directory
-                string iconPath = Path.Combine(AppContext.BaseDirectory, "OmniIcon.ico");
-                if (File.Exists(iconPath))
+                try
                 {
-                    _notifyIcon.Icon = new Icon(iconPath);
+                    _logger.LogInformation("TrayApplicationContext: Initializing components.");
+                    _notifyIcon = new NotifyIcon();
+                    // Load the custom icon from the application's directory
+                    string iconPath = Path.Combine(AppContext.BaseDirectory, "OmniIcon.ico");
+                    if (File.Exists(iconPath))
+                    {
+                        _logger.LogInformation("TrayApplicationContext: Loading icon from {Path}", iconPath);
+                        _notifyIcon.Icon = new Icon(iconPath);
+                    }
+                    else
+                    {
+                        _logger.LogWarning("TrayApplicationContext: Icon not found at {Path}, using fallback.", iconPath);
+                        _notifyIcon.Icon = SystemIcons.Application; // Fallback to default
+                    }
+                    _notifyIcon.Text = "OmniSync Hub";
+                    _notifyIcon.Visible = true; // Make visible first
+
+                    _logger.LogInformation("TrayApplicationContext: Creating MainWindow.");
+                    // Create and store the WPF main window, passing the HubMonitorService
+                    _mainWindow = new MainWindow(_hubMonitorService, _inputService, _shutdownService, _registryService, _settingsService);
+                    _logger.LogInformation("TrayApplicationContext: MainWindow created.");
+
+                    // Create Context Menu
+                    var contextMenu = new ContextMenuStrip();
+                    var showWindowMenuItem = new ToolStripMenuItem("S&how Window", null, OnShowWindow);
+                    var hideWindowMenuItem = new ToolStripMenuItem("H&ide Window", null, OnHideWindow);
+                    var exitMenuItem = new ToolStripMenuItem("E&xit", null, OnExit);
+
+                    contextMenu.Items.Add(showWindowMenuItem);
+                    contextMenu.Items.Add(hideWindowMenuItem);
+                    contextMenu.Items.Add(new ToolStripSeparator()); // Separator
+                    contextMenu.Items.Add(exitMenuItem);
+
+                    _notifyIcon.ContextMenuStrip = contextMenu;
+
+                    _notifyIcon.MouseClick += OnMouseClick; // Handle left-click to show/hide window
+
+                    _hubMonitorService.ExternalCommandReceived += (s, cmd) => {
+                        _notifyIcon.ShowBalloonTip(3000, "External Command", $"Executed: {cmd}", ToolTipIcon.Info);
+                    };
+
+                    _hotkeyService.OpenHubWindowRequested += (s, e) => OnShowWindow(null, EventArgs.Empty);
+                    _logger.LogInformation("TrayApplicationContext: Components initialized.");
                 }
-                else
+                catch (Exception ex)
                 {
-                    _notifyIcon.Icon = SystemIcons.Application; // Fallback to default
+                    _logger.LogError(ex, "TrayApplicationContext: Error in InitializeComponent.");
                 }
-                _notifyIcon.Text = "OmniSync Hub";
-                _notifyIcon.Visible = true; // Make visible first
-
-                // Create and store the WPF main window, passing the HubMonitorService
-                _mainWindow = new MainWindow(_hubMonitorService, _inputService, _shutdownService, _registryService, _settingsService);
-
-                // Create Context Menu
-                var contextMenu = new ContextMenuStrip();
-                var showWindowMenuItem = new ToolStripMenuItem("S&how Window", null, OnShowWindow);
-                var hideWindowMenuItem = new ToolStripMenuItem("H&ide Window", null, OnHideWindow);
-                var exitMenuItem = new ToolStripMenuItem("E&xit", null, OnExit);
-
-                contextMenu.Items.Add(showWindowMenuItem);
-                contextMenu.Items.Add(hideWindowMenuItem);
-                contextMenu.Items.Add(new ToolStripSeparator()); // Separator
-                contextMenu.Items.Add(exitMenuItem);
-
-                _notifyIcon.ContextMenuStrip = contextMenu;
-
-                _notifyIcon.MouseClick += OnMouseClick; // Handle left-click to show/hide window
-
-                _hubMonitorService.ExternalCommandReceived += (s, cmd) => {
-                    _notifyIcon.ShowBalloonTip(3000, "External Command", $"Executed: {cmd}", ToolTipIcon.Info);
-                };
-
-                _hotkeyService.OpenHubWindowRequested += (s, e) => OnShowWindow(null, EventArgs.Empty);
             }
 
             private void OnMouseClick(object? sender, MouseEventArgs e)

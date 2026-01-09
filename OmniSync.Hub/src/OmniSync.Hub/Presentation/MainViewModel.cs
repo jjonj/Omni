@@ -4,6 +4,7 @@ using System.ComponentModel;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Windows.Threading; // For Dispatcher
+using WpfApp = System.Windows.Application;
 using OmniSync.Hub.Infrastructure.Services;
 using OmniSync.Hub.Logic.Monitoring;
 using OmniSync.Hub.Logic.Services; // Ensure Logic.Services is included for ShutdownMode
@@ -174,11 +175,13 @@ namespace OmniSync.Hub.Presentation
             _settingsService.SettingsChanged += (s, e) =>
             {
                 // Refresh mappings when settings change
-                ExeMappings.Clear();
-                foreach (var mapping in _settingsService.Settings.ExeMappings)
-                {
-                    ExeMappings.Add(mapping);
-                }
+                WpfApp.Current?.Dispatcher.BeginInvoke(new Action(() => {
+                    ExeMappings.Clear();
+                    foreach (var mapping in _settingsService.Settings.ExeMappings)
+                    {
+                        ExeMappings.Add(mapping);
+                    }
+                }));
             };
 
 

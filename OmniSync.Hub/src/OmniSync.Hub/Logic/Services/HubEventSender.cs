@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.SignalR;
 using OmniSync.Hub.Presentation.Hubs;
 using OmniSync.Hub.Infrastructure.Services;
+using OmniSync.Hub.Logic.Monitoring;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -28,9 +29,10 @@ namespace OmniSync.Hub.Logic.Services
         private readonly FileService _fileService; // Added FileService dependency
         private readonly AiCliService _aiCliService; // Added AiCliService
         private readonly HubSettingsService _settingsService;
+        private readonly HubMonitorService _monitorService;
         private readonly Dictionary<string, string> _clientCommandOutputSubscriptions = new Dictionary<string, string>(); // ClientId -> ConnectionId for command output
 
-        public HubEventSender(ILogger<HubEventSender> logger, IHubContext<RpcApiHub> hubContext, ProcessService processService, InputService inputService, ShutdownService shutdownService, CommandDispatcher commandDispatcher, FileService fileService, AiCliService aiCliService, HubSettingsService settingsService) // Added AiCliService
+        public HubEventSender(ILogger<HubEventSender> logger, IHubContext<RpcApiHub> hubContext, ProcessService processService, InputService inputService, ShutdownService shutdownService, CommandDispatcher commandDispatcher, FileService fileService, AiCliService aiCliService, HubSettingsService settingsService, HubMonitorService monitorService) // Added AiCliService
         {
             _logger = logger;
             _hubContext = hubContext;
@@ -41,6 +43,7 @@ namespace OmniSync.Hub.Logic.Services
             _fileService = fileService; // Assign FileService
             _aiCliService = aiCliService;
             _settingsService = settingsService;
+            _monitorService = monitorService;
 
             _processService.CommandOutputReceived += OnCommandOutputReceived;
             _inputService.ModifierStateChanged += OnModifierStateChanged;
@@ -52,14 +55,20 @@ namespace OmniSync.Hub.Logic.Services
             _fileService.BrowseFileWritten += OnBrowseFileWritten;
             _fileService.FileChanged += OnFileSystemChanged;
             
-            // Subscribe to AI events
             _aiCliService.ResponseReceived += OnAiCliResponseReceived;
             _aiCliService.DialogReceived += OnAiCliDialogReceived;
+
+            // Subscribe to Monitor events
+            _monitorService.LogEntryAdded += (s, msg) => _ = BroadcastLogEntryAdded(msg);
+            _monitorService.CommandUpdateOccurred += (s, cmd) => _ = BroadcastCommandUpdate(cmd);
+            _monitorService.ConnectionAdded += (s, id) => _ = BroadcastConnectionAdded(id);
+            _monitorService.ConnectionRemoved += (s, id) => _ = BroadcastConnectionRemoved(id);
         }
 
         private async void OnAiCliDialogReceived(object? sender, GeminiDialogEventArgs e)
         {
             _logger.LogInformation($"[HubEventSender] Received Dialog from PID {e.Pid}. Type: {e.Type}, Prompt: {e.Prompt}");
+            _monitorService.AddLogMessage($"AI Dialog ({e.Type}): {e.Prompt}");
 
             // Auto-approve based on settings
             if (_settingsService.Settings.AutoApprovePatterns != null)
@@ -69,6 +78,7 @@ namespace OmniSync.Hub.Logic.Services
                     if (e.Prompt.Contains(pattern, StringComparison.OrdinalIgnoreCase))
                     {
                         _logger.LogInformation($"[HubEventSender] Auto-approving '{pattern}' for PID {e.Pid}");
+                        _monitorService.AddLogMessage($"Auto-approving dialog pattern: {pattern}");
                         await _aiCliService.SendDialogResponseAsync("yes", e.Pid);
                         return;
                     }

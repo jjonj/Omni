@@ -18,6 +18,8 @@ namespace OmniSync.Hub.Infrastructure.Services
         public Dictionary<string, string> ExeMappings { get; set; } = new();
         public List<HotkeyConfig> Hotkeys { get; set; } = new();
         public Dictionary<string, string> AiSessionNames { get; set; } = new();
+        public List<string> AutoApprovePatterns { get; set; } = new();
+        public List<string> AiPresets { get; set; } = new();
     }
 
     public class HubSettingsService
@@ -44,6 +46,32 @@ namespace OmniSync.Hub.Infrastructure.Services
             
             LoadSettings();
             InitializeDefaultHotkeys();
+            InitializeDefaultAutoApprovals();
+            InitializeDefaultPresets();
+        }
+
+        private void InitializeDefaultPresets()
+        {
+            if (_settings.AiPresets == null || _settings.AiPresets.Count == 0)
+            {
+                _settings.AiPresets = new List<string> 
+                { 
+                    "/model", 
+                    "/conductor:newTrack", 
+                    "/conductor:implement", 
+                    "Please run any final scripts and commit all changes" 
+                };
+                SaveSettings();
+            }
+        }
+
+        private void InitializeDefaultAutoApprovals()
+        {
+            if (_settings.AutoApprovePatterns == null || _settings.AutoApprovePatterns.Count == 0)
+            {
+                _settings.AutoApprovePatterns = new List<string> { "aispeak.py" };
+                SaveSettings();
+            }
         }
 
         private void InitializeDefaultHotkeys()
@@ -134,6 +162,29 @@ namespace OmniSync.Hub.Infrastructure.Services
         public void RemoveAiSessionName(string key)
         {
             if (_settings.AiSessionNames.Remove(key))
+            {
+                SaveSettings();
+            }
+        }
+
+        public List<string> GetAiPresets()
+        {
+            return _settings.AiPresets ?? new List<string>();
+        }
+
+        public void AddAiPreset(string preset)
+        {
+            if (_settings.AiPresets == null) _settings.AiPresets = new List<string>();
+            if (!_settings.AiPresets.Contains(preset))
+            {
+                _settings.AiPresets.Add(preset);
+                SaveSettings();
+            }
+        }
+
+        public void RemoveAiPreset(string preset)
+        {
+            if (_settings.AiPresets != null && _settings.AiPresets.Remove(preset))
             {
                 SaveSettings();
             }

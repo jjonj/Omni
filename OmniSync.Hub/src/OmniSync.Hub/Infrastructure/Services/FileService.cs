@@ -387,6 +387,78 @@ namespace OmniSync.Hub.Infrastructure.Services
             }
         }
 
+        public bool CopyEntry(string sourcePath, string destPath)
+        {
+            try
+            {
+                string source = string.IsNullOrEmpty(_browseRootPath) ? sourcePath : SanitizeAndGetBrowseFullPath(sourcePath);
+                string dest = string.IsNullOrEmpty(_browseRootPath) ? destPath : SanitizeAndGetBrowseFullPath(destPath);
+
+                if (File.Exists(source))
+                {
+                    File.Copy(source, dest, true);
+                    return true;
+                }
+                if (Directory.Exists(source))
+                {
+                    CopyDirectory(source, dest);
+                    return true;
+                }
+                return false;
+            }
+            catch (Exception)
+            {
+                return false;
+            }
+        }
+
+        public bool MoveEntry(string sourcePath, string destPath)
+        {
+            try
+            {
+                string source = string.IsNullOrEmpty(_browseRootPath) ? sourcePath : SanitizeAndGetBrowseFullPath(sourcePath);
+                string dest = string.IsNullOrEmpty(_browseRootPath) ? destPath : SanitizeAndGetBrowseFullPath(destPath);
+
+                if (File.Exists(source))
+                {
+                    if (File.Exists(dest)) File.Delete(dest);
+                    File.Move(source, dest);
+                    return true;
+                }
+                if (Directory.Exists(source))
+                {
+                    if (Directory.Exists(dest)) Directory.Delete(dest, true);
+                    Directory.Move(source, dest);
+                    return true;
+                }
+                return false;
+            }
+            catch (Exception)
+            {
+                return false;
+            }
+        }
+
+        private static void CopyDirectory(string sourceDir, string destinationDir)
+        {
+            var dir = new DirectoryInfo(sourceDir);
+            if (!dir.Exists) throw new DirectoryNotFoundException($"Source directory not found: {dir.FullName}");
+
+            Directory.CreateDirectory(destinationDir);
+
+            foreach (FileInfo file in dir.GetFiles())
+            {
+                string targetFilePath = Path.Combine(destinationDir, file.Name);
+                file.CopyTo(targetFilePath);
+            }
+
+            foreach (DirectoryInfo subDir in dir.GetDirectories())
+            {
+                string newDestinationDir = Path.Combine(destinationDir, subDir.Name);
+                CopyDirectory(subDir.FullName, newDestinationDir);
+            }
+        }
+
         // Sanitizes paths for the specific note root (Obsidian directory)
         private string SanitizeAndGetNoteFullPath(string filePath)
         {

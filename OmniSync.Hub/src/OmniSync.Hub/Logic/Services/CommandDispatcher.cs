@@ -51,6 +51,8 @@ namespace OmniSync.Hub.Logic.Services
                 { "TOGGLE_MUTE", payload => _audioService.ToggleMute() },
                 { "APPEND_NOTE", payload => _fileService.AppendToFile(payload.GetProperty("filename").GetString(), payload.GetProperty("content").GetString()) },
                 { "SAVE_FILE", payload => _fileService.WriteBrowseFile(payload.GetProperty("Path").GetString(), payload.GetProperty("Content").GetString()) },
+                { "COPY_FILE", payload => _fileService.CopyEntry(payload.GetProperty("Source").GetString(), payload.GetProperty("Dest").GetString()) },
+                { "MOVE_FILE", payload => _fileService.MoveEntry(payload.GetProperty("Source").GetString(), payload.GetProperty("Dest").GetString()) },
                 { "OPEN_ON_PC", payload => {
                     string? path = null;
                     if (payload.TryGetProperty("Exe", out var exeProp)) {
