@@ -80,6 +80,23 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _dashboardLogs = MutableStateFlow<List<LogEntry>>(emptyList())
     val dashboardLogs: StateFlow<List<LogEntry>> = _dashboardLogs
 
+    // --- Hub Logs ---
+    private val _hubLogs = MutableStateFlow<List<LogEntry>>(emptyList())
+    val hubLogs: StateFlow<List<LogEntry>> = _hubLogs
+    
+    private val _isShowingHubLogs = MutableStateFlow(false)
+    val isShowingHubLogs: StateFlow<Boolean> = _isShowingHubLogs
+
+    fun toggleLogSource() {
+        _isShowingHubLogs.value = !_isShowingHubLogs.value
+    }
+
+    fun updateHubLogs(logs: List<String>) {
+         // Hub logs already come formatted with timestamps, so we just treat them as INFO
+         // In a real scenario, we could parse the timestamp from the string
+         _hubLogs.value = logs.map { LogEntry(it, LogType.INFO, System.currentTimeMillis()) }
+    }
+
     private val _activeBaseUrl = MutableStateFlow("")
     val activeBaseUrl: StateFlow<String> = _activeBaseUrl
 

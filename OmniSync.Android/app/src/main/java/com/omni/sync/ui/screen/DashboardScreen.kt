@@ -44,6 +44,11 @@ fun DashboardScreen(modifier: Modifier = Modifier, signalRClient: SignalRClient,
     val isSleeping by mainViewModel.isSleeping.collectAsState()
 
     val logs by mainViewModel.dashboardLogs.collectAsState()
+    val hubLogs by mainViewModel.hubLogs.collectAsState()
+    val isShowingHubLogs by mainViewModel.isShowingHubLogs.collectAsState()
+    
+    val displayLogs = if (isShowingHubLogs) hubLogs else logs
+
     val listState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
 
@@ -56,9 +61,9 @@ fun DashboardScreen(modifier: Modifier = Modifier, signalRClient: SignalRClient,
     }
     
     // Auto-scroll to bottom when new logs arrive
-    LaunchedEffect(logs.size) {
-        if (logs.isNotEmpty()) {
-            listState.animateScrollToItem(logs.size - 1)
+    LaunchedEffect(displayLogs.size) {
+        if (displayLogs.isNotEmpty()) {
+            listState.animateScrollToItem(displayLogs.size - 1)
         }
     }
     
@@ -197,18 +202,42 @@ fun DashboardScreen(modifier: Modifier = Modifier, signalRClient: SignalRClient,
                 modifier = Modifier.fillMaxWidth().weight(1f)
             ) {
                 Column(modifier = Modifier.padding(16.dp).fillMaxSize()) {
-                    Text(
-                        text = "Activity Log",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(bottom = 8.dp)
-                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = if (isShowingHubLogs) "Hub Log" else "Activity Log",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                        
+                        TextButton(onClick = { 
+                            if (!isShowingHubLogs) {
+                                // Switch to Hub logs
+                                signalRClient.getHubStatus()?.subscribe({ status ->
+                                    @Suppress("UNCHECKED_CAST")
+                                    val logMessages = status["LogMessages"] as? List<String> ?: emptyList()
+                                    mainViewModel.updateHubLogs(logMessages)
+                                    mainViewModel.toggleLogSource()
+                                }, {
+                                    mainViewModel.addLog("Failed to fetch Hub logs: ${it.message}", LogType.ERROR)
+                                })
+                            } else {
+                                // Switch back to App logs
+                                mainViewModel.toggleLogSource()
+                            }
+                        }) {
+                            Text(if (isShowingHubLogs) "Show App Log" else "Fetch Hub Log")
+                        }
+                    }
                     
                     LazyColumn(
                         state = listState,
                         modifier = Modifier.fillMaxSize()
                     ) {
-                        items(logs) { log ->
+                        items(displayLogs) { log ->
                             LogItem(log)
                         }
                     }

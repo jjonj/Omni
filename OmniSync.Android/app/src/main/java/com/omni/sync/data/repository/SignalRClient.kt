@@ -799,6 +799,22 @@ class SignalRClient(
         }
     }
 
+    fun getHubStatus(): Single<Map<String, Any>>? {
+        if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
+            return hubConnection?.invoke(Any::class.java, "GetHubStatus")
+                ?.map { rawResponse ->
+                    try {
+                        val jsonElement = gson.toJsonTree(rawResponse)
+                        val mapType = object : TypeToken<Map<String, Any>>() {}.type
+                        gson.fromJson(jsonElement, mapType)
+                    } catch (e: Exception) {
+                        emptyMap<String, Any>()
+                    }
+                } as? Single<Map<String, Any>>
+        }
+        return null
+    }
+
     fun listProcesses(): Single<List<ProcessInfo>>? {
         if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
             return hubConnection?.invoke(Any::class.java, "ListProcesses")?.map { rawResponse ->

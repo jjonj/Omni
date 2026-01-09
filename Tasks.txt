@@ -17,7 +17,6 @@ Only work on subtasks if told to do so or if told explicitly to do a Megasession
 
 
 ## General
-Add option to fetch hub log and display that instead of activity hub, and option to go back to activity log
 
 
 ## For the hub
