@@ -80,9 +80,15 @@ fun FilesScreen(
     var passwordTargetEntry by remember { mutableStateOf<FileSystemEntry?>(null) }
     var passwordAction by remember { mutableStateOf<(() -> Unit)?>(null) }
 
-    // Handle back press to navigate up
-    BackHandler(enabled = currentPath.isNotEmpty() && currentPath != "/") {
-        filesViewModel.loadDirectory(getParentPath(currentPath))
+    // Handle back press to navigate up or close panels
+    BackHandler(enabled = (currentPath.isNotEmpty() && currentPath != "/") || showBookmarksList || showCachesList) {
+        if (showBookmarksList) {
+            showBookmarksList = false
+        } else if (showCachesList) {
+            showCachesList = false
+        } else {
+            filesViewModel.loadDirectory(getParentPath(currentPath))
+        }
     }
 
     // Download-specific states

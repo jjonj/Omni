@@ -68,11 +68,6 @@ fun MacroManagerScreen(
     var showHelpDialog by remember { mutableStateOf(false) }
     val coroutineScope = rememberCoroutineScope()
 
-    // Handle back press
-    androidx.activity.compose.BackHandler(enabled = true) {
-        onBack()
-    }
-    
     // Editor State
     var editingMacroId by remember { mutableStateOf<String?>(null) }
     var editorName by remember { mutableStateOf("") }
@@ -153,6 +148,17 @@ fun MacroManagerScreen(
         editorName = ""
         editorScript = TextFieldValue("")
         editorIconName = "play"
+    }
+
+    // Handle back press
+    androidx.activity.compose.BackHandler(enabled = true) {
+        if (macroProgress != null) {
+            macroProgress = null
+        } else if (editingMacroId != null) {
+            resetEditor()
+        } else {
+            onBack()
+        }
     }
 
     fun insertAtCursor(text: String, cursorOffset: Int = 0) {

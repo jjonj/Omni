@@ -35,8 +35,6 @@ Only work on subtasks if told to do so or if told explicitly to do a Megasession
 
 #### Macro screen
 
-analyze android back button behavior, does it return as user would expect? 
-
 ### Files & Video Screen
 
 
