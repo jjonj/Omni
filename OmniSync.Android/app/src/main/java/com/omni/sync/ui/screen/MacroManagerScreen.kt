@@ -314,6 +314,28 @@ fun MacroManagerScreen(
 
                     Spacer(modifier = Modifier.height(4.dp))
 
+                    // Managed side indicator
+                    val currentCommands = remember(editorScript.text) { parser.parse(editorScript.text, context) }
+                    val isHubManaged = currentCommands.isNotEmpty() && !currentCommands.any { it is com.omni.sync.logic.macro.MacroCommand.AiHere || it is com.omni.sync.logic.macro.MacroCommand.MacroChain }
+                    
+                    if (editorScript.text.isNotBlank()) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                if (isHubManaged) Icons.Default.CloudQueue else Icons.Default.Smartphone,
+                                contentDescription = null,
+                                modifier = Modifier.size(14.dp),
+                                tint = if (isHubManaged) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.tertiary
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = if (isHubManaged) "Hub-managed (Batch)" else "Android-managed (Step-by-step)",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (isHubManaged) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.tertiary
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(4.dp))
+                    }
+
                     OutlinedTextField(
                         value = editorScript,
                         onValueChange = { editorScript = it },
