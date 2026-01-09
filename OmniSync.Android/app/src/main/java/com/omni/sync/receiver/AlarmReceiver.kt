@@ -26,8 +26,19 @@ class AlarmReceiver : BroadcastReceiver() {
                 val minute = intent.getIntExtra("MINUTE", 0)
                 val isAM = intent.getBooleanExtra("IS_AM", true)
                 val soundId = intent.getStringExtra("SOUND_ID") ?: "gentle"
+                val macroOnTrigger = intent.getStringExtra("MACRO_ON_TRIGGER")
+                val macroOnDismiss = intent.getStringExtra("MACRO_ON_DISMISS")
                 
-                val alarmData = AlarmData(enabled = true, hour = hour, minute = minute, isAM = isAM, soundId = soundId, repeatDaily = true)
+                val alarmData = AlarmData(
+                    enabled = true, 
+                    hour = hour, 
+                    minute = minute, 
+                    isAM = isAM, 
+                    soundId = soundId, 
+                    repeatDaily = true,
+                    macroOnTrigger = macroOnTrigger,
+                    macroOnDismiss = macroOnDismiss
+                )
                 val config = GradualConfig(
                     initialVolume = intent.getIntExtra("CURRENT_VOLUME", 5),
                     alarmDuration = intent.getIntExtra("ALARM_DURATION", 3),

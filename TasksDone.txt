@@ -96,6 +96,10 @@
 ✅ the new folder icon button when using s bookmark does not work right (Improved workspace menu behavior and added arrow sub-buttons for /dir add)
 ✅ when rendering a filename, i think it uses this format `my.file` turn that into a link that i can click and it will find the file in the workspace of the ai session and item it in file view
 
+### Alarm screen
+
+✅ support activating a macro when alarm begins ringing OR when alarm is dismissed
+
 ### Omni web screen
 
 ✅ screen is simply black, not working

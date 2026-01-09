@@ -52,10 +52,6 @@ when a text file is open and i switch screen and then switch back to file screen
 ### AI screen
 
 
-### Alarm screen 
-
-support activating a macro when alarm begins ringing OR when alarm is dismissed 
-
 ### Omni web screen
 
 omni web is just a blank screen, the embedded browser is not working. maybe try a hello world instead 

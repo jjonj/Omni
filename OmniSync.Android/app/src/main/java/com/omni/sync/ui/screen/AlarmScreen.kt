@@ -45,7 +45,9 @@ data class AlarmData(
     var quickToggleMode: Int = 0,
     var repeatDaily: Boolean = false,
     var useGradual: Boolean = true,
-    var soundId: String = "gentle"
+    var soundId: String = "gentle",
+    var macroOnTrigger: String? = null,
+    var macroOnDismiss: String? = null
 )
 
 data class GradualConfig(
@@ -64,6 +66,7 @@ fun AlarmScreen(
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
+    val appConfig = mainViewModel.appConfig
     val prefs = remember { context.getSharedPreferences("alarm_prefs", Context.MODE_PRIVATE) }
     val gson = remember { com.google.gson.Gson() }
 
@@ -224,7 +227,8 @@ fun AlarmScreen(
                 timeFormat = timeFormat,
                 onShowTimePicker = { showTimePicker = 1 },
                 onShowSoundPicker = { showSoundPicker = 1 },
-                hideOptionsWhenDisabled = false
+                hideOptionsWhenDisabled = false,
+                macros = appConfig.macros
             )
             
             AlarmCard(
@@ -235,7 +239,8 @@ fun AlarmScreen(
                 timeFormat = timeFormat,
                 onShowTimePicker = { showTimePicker = 2 },
                 onShowSoundPicker = { showSoundPicker = 2 },
-                hideOptionsWhenDisabled = true
+                hideOptionsWhenDisabled = true,
+                macros = appConfig.macros
             )
 
             // Dismiss Button when ringing or snoozing
@@ -396,7 +401,8 @@ fun AlarmCard(
     timeFormat: SimpleDateFormat,
     onShowTimePicker: () -> Unit,
     onShowSoundPicker: () -> Unit,
-    hideOptionsWhenDisabled: Boolean
+    hideOptionsWhenDisabled: Boolean,
+    macros: List<com.omni.sync.data.model.Macro>
 ) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -498,7 +504,70 @@ fun AlarmCard(
                     OutlinedButton(onClick = onShowSoundPicker, modifier = Modifier.fillMaxWidth()) {
                         Text("Sound: ${availableSounds.find { it.first == alarm.soundId }?.second ?: "Select"}")
                     }
+
+                    HorizontalDivider()
+                    Text("Automation", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                    
+                    MacroPicker(
+                        label = "Trigger",
+                        selectedMacroScript = alarm.macroOnTrigger,
+                        macros = macros,
+                        onMacroSelected = { onAlarmChange(alarm.copy(macroOnTrigger = it)) }
+                    )
+                    
+                    MacroPicker(
+                        label = "Dismiss",
+                        selectedMacroScript = alarm.macroOnDismiss,
+                        macros = macros,
+                        onMacroSelected = { onAlarmChange(alarm.copy(macroOnDismiss = it)) }
+                    )
                 }
+            }
+        }
+    }
+}
+
+@Composable
+fun MacroPicker(
+    label: String,
+    selectedMacroScript: String?,
+    macros: List<com.omni.sync.data.model.Macro>,
+    onMacroSelected: (String?) -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+    val selectedMacro = macros.find { it.script == selectedMacroScript }
+
+    Box(modifier = Modifier.fillMaxWidth()) {
+        OutlinedButton(
+            onClick = { expanded = true },
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text(
+                text = "$label: ${selectedMacro?.name ?: "None"}",
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+            )
+        }
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+            modifier = Modifier.fillMaxWidth(0.8f)
+        ) {
+            DropdownMenuItem(
+                text = { Text("None") },
+                onClick = {
+                    onMacroSelected(null)
+                    expanded = false
+                }
+            )
+            macros.forEach { macro ->
+                DropdownMenuItem(
+                    text = { Text(macro.name) },
+                    onClick = {
+                        onMacroSelected(macro.script)
+                        expanded = false
+                    }
+                )
             }
         }
     }

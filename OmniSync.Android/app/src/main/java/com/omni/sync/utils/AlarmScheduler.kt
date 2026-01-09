@@ -45,6 +45,8 @@ object AlarmScheduler {
             putExtra("SNOOZE_DURATION", config.snoozeDuration)
             putExtra("REPEAT_DAILY", data.repeatDaily)
             putExtra("CURRENT_REPETITION", 0)
+            putExtra("MACRO_ON_TRIGGER", data.macroOnTrigger)
+            putExtra("MACRO_ON_DISMISS", data.macroOnDismiss)
         }
 
         val pendingIntent = PendingIntent.getBroadcast(
@@ -113,7 +115,9 @@ object AlarmScheduler {
         volIncrement: Int,
         maxReps: Int,
         repetition: Int,
-        repeatDaily: Boolean
+        repeatDaily: Boolean,
+        macroOnTrigger: String?,
+        macroOnDismiss: String?
     ) {
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
         
@@ -133,6 +137,8 @@ object AlarmScheduler {
             putExtra("SNOOZE_DURATION", snoozeMin)
             putExtra("REPEAT_DAILY", repeatDaily)
             putExtra("CURRENT_REPETITION", repetition)
+            putExtra("MACRO_ON_TRIGGER", macroOnTrigger)
+            putExtra("MACRO_ON_DISMISS", macroOnDismiss)
         }
 
         val pendingIntent = PendingIntent.getBroadcast(

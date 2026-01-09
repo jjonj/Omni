@@ -44,6 +44,8 @@ class AlarmService : Service(), android.content.SharedPreferences.OnSharedPrefer
     private var repeatDaily: Boolean = false
     private var currentDurationSec: Int = 3
     private var snoozeMessage: String? = null
+    private var macroOnTrigger: String? = null
+    private var macroOnDismiss: String? = null
 
     companion object {
         const val CHANNEL_ID = "OmniAlarmChannel"
@@ -139,10 +141,17 @@ class AlarmService : Service(), android.content.SharedPreferences.OnSharedPrefer
         snoozeDurationMin = intent?.getIntExtra("SNOOZE_DURATION", 10) ?: 10
         currentRepetition = intent?.getIntExtra("CURRENT_REPETITION", 0) ?: 0
         repeatDaily = intent?.getBooleanExtra("REPEAT_DAILY", false) ?: false
+        macroOnTrigger = intent?.getStringExtra("MACRO_ON_TRIGGER")
+        macroOnDismiss = intent?.getStringExtra("MACRO_ON_DISMISS")
 
         _isRinging.value = true
         _isSnoozing.value = false
         
+        // Execute macro on first trigger
+        if (currentRepetition == 0 && !macroOnTrigger.isNullOrBlank()) {
+            executeAlarmMacro(macroOnTrigger!!)
+        }
+
         // Force open activity
         val alarmActivityIntent = Intent(this, MainActivity::class.java).apply {
             this.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
@@ -234,7 +243,9 @@ class AlarmService : Service(), android.content.SharedPreferences.OnSharedPrefer
                 volIncrement = volumeIncrement,
                 maxReps = maxRepetitions,
                 repetition = nextRepetition,
-                repeatDaily = repeatDaily
+                repeatDaily = repeatDaily,
+                macroOnTrigger = macroOnTrigger,
+                macroOnDismiss = macroOnDismiss
             )
         } else {
             // Max repetitions reached. 
@@ -257,6 +268,11 @@ class AlarmService : Service(), android.content.SharedPreferences.OnSharedPrefer
         timeoutJob?.cancel()
         snoozeMessage = null
 
+        // Execute Dismiss Macro
+        if (!macroOnDismiss.isNullOrBlank()) {
+            executeAlarmMacro(macroOnDismiss!!)
+        }
+
         // Cancel any pending snoozes for this alarm
         if (currentAlarmId != 0) {
             AlarmScheduler.cancelSnooze(this, currentAlarmId)
@@ -268,6 +284,17 @@ class AlarmService : Service(), android.content.SharedPreferences.OnSharedPrefer
         }
 
         stopSelf()
+    }
+
+    private fun executeAlarmMacro(script: String) {
+        val app = application as? com.omni.sync.OmniSyncApplication ?: return
+        val signalRClient = app.signalRClient
+        val parser = com.omni.sync.logic.macro.MacroParser()
+        val executor = com.omni.sync.logic.macro.MacroExecutor(signalRClient, app.mainViewModel.appConfig.macros)
+        
+        serviceScope.launch {
+            executor.execute(parser.parse(script, applicationContext), applicationContext)
+        }
     }
     
     private fun disableAlarmState() {
