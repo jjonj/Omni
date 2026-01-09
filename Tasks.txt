@@ -52,8 +52,6 @@ when a text file is open and i switch screen and then switch back to file screen
 ### AI screen
 
 
-the new folder icon button when using s bookmark does not work right, it tries to use /dir set command which does not exist. each folder in poup should have an arrow subbutton, if subbutton pressed it does /dir add in the current session. if the bookmark is pressed without hitting the subbutton is clicked then a new session with that workspace is created. OBS don't change filescreen behavior 
-
 when rendering a filename, i think it uses this format `my.file` turn that into a link that i can click and it will find the file in the workspace of the ai session and item it in file view 
 
 ### Alarm screen 

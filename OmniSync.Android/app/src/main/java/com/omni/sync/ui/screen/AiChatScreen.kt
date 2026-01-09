@@ -44,6 +44,7 @@ import android.widget.Toast
 import androidx.compose.ui.platform.LocalContext
 
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.KeyboardReturn
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
@@ -262,7 +263,7 @@ fun AiChatScreen(
                                 text = { Text("Default Workspace", fontWeight = if (selectedWorkspace == null) FontWeight.Bold else FontWeight.Normal) },
                                 onClick = { 
                                     selectedWorkspace = null
-                                    signalRClient.sendAiMessage("/dir set") // Clear workspace
+                                    signalRClient.startNewAiSession(null)
                                     showWorkspaceMenu = false 
                                 },
                                 leadingIcon = { Icon(Icons.Default.Home, null) }
@@ -273,10 +274,18 @@ fun AiChatScreen(
                                     text = { Text(bookmark.name, fontWeight = if (selectedWorkspace == bookmark.path) FontWeight.Bold else FontWeight.Normal) },
                                     onClick = { 
                                         selectedWorkspace = bookmark.path
-                                        signalRClient.sendAiMessage("/dir set \"${bookmark.path}\"")
+                                        signalRClient.startNewAiSession(bookmark.path)
                                         showWorkspaceMenu = false 
                                     },
-                                    leadingIcon = { Icon(Icons.Default.Folder, null) }
+                                    leadingIcon = { Icon(Icons.Default.Folder, null) },
+                                    trailingIcon = {
+                                        IconButton(onClick = {
+                                            signalRClient.sendAiMessage("/dir add \"${bookmark.path}\"")
+                                            showWorkspaceMenu = false 
+                                        }) {
+                                            Icon(Icons.AutoMirrored.Filled.ArrowForward, "Add to current session")
+                                        }
+                                    }
                                 )
                             }
                             
