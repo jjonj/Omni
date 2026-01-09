@@ -102,4 +102,4 @@
 
 ### Omni web screen
 
-✅ screen is simply black, not working
+✅ omni web is just a blank screen, the embedded browser is not working. maybe try a hello world instead (Added TopAppBar with URL and Refresh button, and improved WebView settings)
