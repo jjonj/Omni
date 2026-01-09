@@ -27,6 +27,7 @@ class ForegroundService : Service() {
 
     private val CHANNEL_ID = "OmniSyncForegroundServiceChannel"
     private var statusMessage: String? = null
+    private var isActionsSuppressedBySleep = true
     
     private val batteryReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
@@ -51,6 +52,7 @@ class ForegroundService : Service() {
         const val EXTRA_ACTION_ID = "extra_action_id"
         const val ACTION_REFRESH_NOTIFICATION = "com.omni.sync.REFRESH_NOTIFICATION"
         const val EXTRA_STATUS_MESSAGE = "extra_status_message"
+        const val ACTION_SHOW_ACTIONS = "com.omni.sync.SHOW_ACTIONS"
     }
 
     private var refreshJob: kotlinx.coroutines.Job? = null
@@ -94,6 +96,10 @@ class ForegroundService : Service() {
             }
             ACTION_REFRESH_NOTIFICATION -> {
                 statusMessage = intent.getStringExtra(EXTRA_STATUS_MESSAGE)
+                updateNotification()
+            }
+            ACTION_SHOW_ACTIONS -> {
+                isActionsSuppressedBySleep = false
                 updateNotification()
             }
             AlarmService.ACTION_DISMISS -> {
@@ -218,6 +224,10 @@ class ForegroundService : Service() {
         val isSleeping = mainViewModel.isSleeping.value
         val sleepDuration = mainViewModel.sleepDuration.value
 
+        if (!isSleeping) {
+            isActionsSuppressedBySleep = true
+        }
+
         val intent = Intent(this, MainActivity::class.java)
         val pendingIntent = PendingIntent.getActivity(this, 0, intent, PendingIntent.FLAG_IMMUTABLE)
 
@@ -238,30 +248,51 @@ class ForegroundService : Service() {
             }
             val pendingDismiss = PendingIntent.getService(this, 999, dismissIntent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
             customLayout.setOnClickPendingIntent(R.id.btn_dismiss_alarm, pendingDismiss)
+            
+            customLayout.setViewVisibility(R.id.btn_sleep_time, android.view.View.GONE)
         } else if (isSleeping) {
             customLayout.setViewVisibility(R.id.notification_status, android.view.View.VISIBLE)
             customLayout.setTextViewText(R.id.notification_status, "Asleep for $sleepDuration")
             customLayout.setViewVisibility(R.id.btn_dismiss_alarm, android.view.View.GONE)
+            
+            if (isActionsSuppressedBySleep) {
+                customLayout.setViewVisibility(R.id.btn_sleep_time, android.view.View.VISIBLE)
+                customLayout.setTextViewText(R.id.btn_sleep_time, "Asleep for $sleepDuration")
+                
+                val showActionsIntent = Intent(this, ForegroundService::class.java).apply {
+                    action = ACTION_SHOW_ACTIONS
+                }
+                val pendingShow = PendingIntent.getService(this, 1001, showActionsIntent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+                customLayout.setOnClickPendingIntent(R.id.btn_sleep_time, pendingShow)
+            } else {
+                customLayout.setViewVisibility(R.id.btn_sleep_time, android.view.View.GONE)
+            }
         } else {
             customLayout.setViewVisibility(R.id.notification_status, android.view.View.GONE)
             customLayout.setViewVisibility(R.id.btn_dismiss_alarm, android.view.View.GONE)
+            customLayout.setViewVisibility(R.id.btn_sleep_time, android.view.View.GONE)
         }
 
         // Hide all buttons initially
         val btnIds = listOf(R.id.btn1, R.id.btn2, R.id.btn3, R.id.btn4, R.id.btn5, R.id.btn6)
         btnIds.forEach { customLayout.setViewVisibility(it, android.view.View.GONE) }
 
-        actions.take(6).forEachIndexed { index, action ->
-            val btnId = btnIds[index]
-            customLayout.setViewVisibility(btnId, android.view.View.VISIBLE)
-            customLayout.setTextViewText(btnId, action.label)
-            
-            val triggerIntent = Intent(this, ForegroundService::class.java).apply {
-                this.action = ACTION_TRIGGER_NOTIFICATION_ACTION
-                putExtra(EXTRA_ACTION_ID, action.id)
+        if (!isSleeping || !isActionsSuppressedBySleep || statusMessage != null) {
+            customLayout.setViewVisibility(R.id.notification_button_container, android.view.View.VISIBLE)
+            actions.take(6).forEachIndexed { index, action ->
+                val btnId = btnIds[index]
+                customLayout.setViewVisibility(btnId, android.view.View.VISIBLE)
+                customLayout.setTextViewText(btnId, action.label)
+                
+                val triggerIntent = Intent(this, ForegroundService::class.java).apply {
+                    this.action = ACTION_TRIGGER_NOTIFICATION_ACTION
+                    putExtra(EXTRA_ACTION_ID, action.id)
+                }
+                val triggerPendingIntent = PendingIntent.getService(this, action.id.hashCode(), triggerIntent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+                customLayout.setOnClickPendingIntent(btnId, triggerPendingIntent)
             }
-            val triggerPendingIntent = PendingIntent.getService(this, action.id.hashCode(), triggerIntent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
-            customLayout.setOnClickPendingIntent(btnId, triggerPendingIntent)
+        } else {
+            customLayout.setViewVisibility(R.id.notification_button_container, android.view.View.GONE)
         }
 
         val builder = NotificationCompat.Builder(this, CHANNEL_ID)

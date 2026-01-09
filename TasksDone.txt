@@ -75,6 +75,8 @@
 
 ### Notification panel
 
+✅ When sleep tracking, show current sleep time in the notification instead of quick actions, but make it a button such that if tapped the buttons come right back
+
 ### Android Home screen launcher widgets
 
 ✅ Use better widget icons somehow, either let user choose or be smart
