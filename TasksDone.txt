@@ -16,6 +16,7 @@
 
 ✅ After using wake on lan, Start a reconnecting cycle after 1 minute
 ✅ Prominently display the time the user has been asleep, guess from the latest time when an alarm was set, the app opened, phone connected to battery or the app has been disconnected from hub and display on dash and notification when not connected in minutes and hours, this needs to persistent between app restarts and needs to detect last disconnect time even with app in background
+✅ on app startup it doesn't connect to hub, it like connects and disconnected twice before finally connecting, very odd. add to logging disconnect reason
 
 ### Remote Control Screen
 

@@ -219,7 +219,8 @@ class SignalRClient(
         hubConnection = HubConnectionBuilder.create(url).build()
 
         hubConnection?.onClosed { error ->
-            _connectionState.value = "Disconnected: ${error?.message}"
+            val reason = error?.message ?: "Unknown reason"
+            _connectionState.value = "Disconnected: $reason"
             mainViewModel.setConnected(false)
             mainViewModel.setScheduledShutdownTime(null)
             
@@ -227,7 +228,7 @@ class SignalRClient(
             mainViewModel.startSleep()
 
             if (isReconnecting.compareAndSet(false, true)) {
-                mainViewModel.addLog("Connection lost. Starting auto-reconnect...", com.omni.sync.ui.screen.LogType.WARNING)
+                mainViewModel.addLog("Connection closed. Reason: $reason. Starting auto-reconnect...", com.omni.sync.ui.screen.LogType.WARNING)
                 reconnectJob = coroutineScope.launch {
                     while (true) {
                         delay(10000)
@@ -237,6 +238,8 @@ class SignalRClient(
                         break 
                     }
                 }
+            } else {
+                mainViewModel.addLog("Connection closed. Reason: $reason", com.omni.sync.ui.screen.LogType.INFO)
             }
         }
 
@@ -245,9 +248,10 @@ class SignalRClient(
         hubConnection?.start()
             ?.doOnComplete { 
                 onConnected(url) 
-                mainViewModel.addLog("Connected to: $url", com.omni.sync.ui.screen.LogType.SUCCESS)
+                mainViewModel.addLog("Connected successfully to: $url", com.omni.sync.ui.screen.LogType.SUCCESS)
             }
             ?.doOnError { error ->
+                mainViewModel.addLog("Failed to connect to $url: ${error.message}", com.omni.sync.ui.screen.LogType.ERROR)
                 onFailure(error)
             }
             ?.subscribe({

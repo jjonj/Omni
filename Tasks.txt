@@ -17,9 +17,7 @@ Only work on subtasks if told to do so or if told explicitly to do a Megasession
 
 
 ## General
-
-
-
+Add option to fetch hub log and display that instead of activity hub, and option to go back to activity log
 
 
 ## For the hub
@@ -31,19 +29,38 @@ Only work on subtasks if told to do so or if told explicitly to do a Megasession
 
 ### Dashboard
 
+i can select one message in the activity log but i can't select multiple, they are like separate elements. i want to be able to select all log, and add a copy all to clipboard  button (simple icon button) 
 
 ### Remote Control Screen
 
+streaming desktop not working at all, the initial implementation of it worked but was flickering 
+
+
 #### Macro screen
 
+some macros are sent to hub entirely and some are managed by android and sends commands one by one, display which side manages the macro on edit screenø, 33 12  
+
+analyze android back button behavior, does it return as user would expect? 
 
 ### Files & Video Screen
 
+
+plus button to create text file does not work 
+
+long press for files and folders should have copy to and move to options, reuse browse popup from Ai screen 
+
+when a text file is open and i switch screen and then switch back to file screen then the file is now closed and i see folders. don't auto close file like that. 
+
+when i first open a text file and tap to place cursor, it auto scrolls, but it should not do this because the place i tappped is by definition in view. auto scrolling is for when typing while out of view of cursor. 
+
+When keyboard is up there is a black blank box above the keyboard with the height of the navigation bar. this started after i requested that the navigation bar not be hidden in text editor. 
 
 ### Browser control screen 
 
 
 ### Notification panel
+
+When sleep tracking, show current sleep time in the notification instead of quick actions, but make it a button such that if tapped the buttons come right back
 	   
 ### Android Home screen launcher widgets
 
@@ -54,4 +71,22 @@ Only work on subtasks if told to do so or if told explicitly to do a Megasession
 ### AI screen
 
 
+Code functionality of Ai screen recently broke, i cant send messages to sessions anymore 
+
+im not happy with session naming, it should use workspace folder name instead of session id
+
+the new folder icon button when using s bookmark does not work right, it tries to use /dir set command which does not exist. each folder in poup should have an arrow subbutton, if subbutton pressed it does /dir add in the current session. if the bookmark is pressed without hitting the subbutton is clicked then a new session with that workspace is created. OBS don't change filescreen behavior 
+
+when rendering a filename, i think it uses this format `my.file` turn that into a link that i can click and it will find the file in the workspace of the ai session and item it in file view 
+
+### Alarm screen 
+
+support activating a macro when alarm begins ringing OR when alarm is dismissed 
+
 ### Omni web screen
+
+omni web is just a blank screen, the embedded browser is not working. maybe try a hello world instead 
+
+### Settings screen
+
+add more quick action options, including but not limited to, set alarm 8h45m, browser functionality like send youtube history video to chrome etc and double check at can use macros as quick actions 
