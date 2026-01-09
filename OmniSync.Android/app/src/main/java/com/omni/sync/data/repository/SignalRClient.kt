@@ -636,17 +636,35 @@ class SignalRClient(
     
         
     
-                    if (!message.startsWith("/")) {
+                                        if (!message.startsWith("/")) {
     
-                        updateSessionStatus(targetPid, "AI Thinking...")
+        
     
-                    }
+                                            updateSessionStatus(targetPid, "AI Thinking...")
     
-                    hubConnection?.send("SendAiMessage", message, targetPid)
+        
     
-                }
+                                        }
     
-            }
+        
+    
+                                        
+    
+        
+    
+                                        val hubPid = if (targetPid == -1) null else targetPid
+    
+        
+    
+                                        hubConnection?.send("SendAiMessage", message, hubPid)
+    
+        
+    
+                                    }
+    
+        
+    
+                                }
     fun getAiSessions() {
         if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
             hubConnection?.send("GetAiSessions")
@@ -661,7 +679,8 @@ class SignalRClient(
                 updateActiveView()
                 
                 updateSessionStatus(pid, "Reloading history...")
-                hubConnection?.send("RequestAiHistory", pid)
+                val hubPid = if (pid == -1) null else pid
+                hubConnection?.send("RequestAiHistory", hubPid)
             }
         }
     
@@ -1015,6 +1034,20 @@ class SignalRClient(
     fun deleteFile(path: String): Single<Boolean>? {
         if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
             return hubConnection?.invoke(Boolean::class.java, "DeleteFile", path)
+        }
+        return null
+    }
+
+    fun copyFile(source: String, dest: String): Single<Boolean>? {
+        if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
+            return hubConnection?.invoke(Boolean::class.java, "CopyFile", source, dest)
+        }
+        return null
+    }
+
+    fun moveFile(source: String, dest: String): Single<Boolean>? {
+        if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
+            return hubConnection?.invoke(Boolean::class.java, "MoveFile", source, dest)
         }
         return null
     }

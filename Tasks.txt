@@ -52,8 +52,6 @@ when a text file is open and i switch screen and then switch back to file screen
 ### AI screen
 
 
-Code functionality of Ai screen recently broke, i cant send messages to sessions anymore 
-
 im not happy with session naming, it should use workspace folder name instead of session id
 
 the new folder icon button when using s bookmark does not work right, it tries to use /dir set command which does not exist. each folder in poup should have an arrow subbutton, if subbutton pressed it does /dir add in the current session. if the bookmark is pressed without hitting the subbutton is clicked then a new session with that workspace is created. OBS don't change filescreen behavior 

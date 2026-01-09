@@ -92,6 +92,7 @@
 ✅ When not scrolled to bottom of history i experience the scroll amount jumping when new messages are added at the bottom, i dont want it to move what I'm looking at. it would only auto scroll if I'm scrolled to bottom already or if i send a message myself
 ✅ merge the + and foldericon buttons. when pasting prompt user with the folder bookmarks list and add browse option that opens a popup
 ✅ sessions are named according to the first message sent to ai with fallback to session id. change that to primarily use the workspace folder name (not full path), append with number if multiple with same workspaces
+✅ Code functionality of Ai screen recently broke, i cant send messages to sessions anymore (Fixed by correctly handling nullable sessionId in SignalR calls)
 
 ### Omni web screen
 

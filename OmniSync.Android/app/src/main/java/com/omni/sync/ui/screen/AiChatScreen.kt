@@ -460,7 +460,8 @@ fun AiChatScreen(
 
         if (showDirectoryPicker) {
             DirectoryPickerDialog(
-                filesViewModel = filesViewModel,
+                signalRClient = signalRClient,
+                isConnected = isConnected,
                 onDismiss = { showDirectoryPicker = false },
                 onConfirm = { path ->
                     showDirectoryPicker = false
