@@ -369,7 +369,12 @@ fun AiChatScreen(
                         items = filteredMessages.reversed(),
                         key = { it.id }
                     ) { message ->
-                        ChatBubble(message)
+                        ChatBubble(
+                            message = message, 
+                            signalRClient = signalRClient, 
+                            mainViewModel = mainViewModel,
+                            selectedPid = selectedPid
+                        )
                     }
                 }
 
@@ -689,7 +694,12 @@ fun Dot(alpha: Float) {
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun ChatBubble(message: com.omni.sync.data.repository.AiMessage) {
+fun ChatBubble(
+    message: com.omni.sync.data.repository.AiMessage,
+    signalRClient: SignalRClient,
+    mainViewModel: MainViewModel,
+    selectedPid: Int
+) {
     val sender = message.sender
     val content = message.text
     val isMe = sender == "Me"
@@ -787,7 +797,10 @@ fun ChatBubble(message: com.omni.sync.data.repository.AiMessage) {
                     MarkdownText(
                         text = content,
                         textColor = textColor,
-                        textAlign = if (isSystem || isError) TextAlign.Center else TextAlign.Start
+                        textAlign = if (isSystem || isError) TextAlign.Center else TextAlign.Start,
+                        signalRClient = signalRClient,
+                        mainViewModel = mainViewModel,
+                        selectedPid = selectedPid
                     )
                 }
                 
@@ -803,7 +816,14 @@ fun ChatBubble(message: com.omni.sync.data.repository.AiMessage) {
 }
 
 @Composable
-fun MarkdownText(text: String, textColor: Color, textAlign: TextAlign) {
+fun MarkdownText(
+    text: String, 
+    textColor: Color, 
+    textAlign: TextAlign,
+    signalRClient: SignalRClient,
+    mainViewModel: MainViewModel,
+    selectedPid: Int
+) {
     val parts = remember(text) {
         val regex = Regex("```([a-zA-Z]*)\\n?([\\s\\S]*?)```")
         val matches = regex.findAll(text)
@@ -857,7 +877,10 @@ fun MarkdownText(text: String, textColor: Color, textAlign: TextAlign) {
                                 RenderTextWithStyles(
                                     text = trimmedLine.substring(2),
                                     textColor = textColor,
-                                    textAlign = textAlign
+                                    textAlign = textAlign,
+                                    signalRClient = signalRClient,
+                                    mainViewModel = mainViewModel,
+                                    selectedPid = selectedPid
                                 )
                             }
                         } else if (trimmedLine.isNotEmpty()) {
@@ -865,6 +888,9 @@ fun MarkdownText(text: String, textColor: Color, textAlign: TextAlign) {
                                 text = trimmedLine,
                                 textColor = textColor,
                                 textAlign = textAlign,
+                                signalRClient = signalRClient,
+                                mainViewModel = mainViewModel,
+                                selectedPid = selectedPid,
                                 modifier = Modifier.padding(bottom = 4.dp)
                             )
                         }
@@ -880,8 +906,14 @@ fun RenderTextWithStyles(
     text: String, 
     textColor: Color, 
     textAlign: TextAlign,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    signalRClient: SignalRClient,
+    mainViewModel: MainViewModel,
+    selectedPid: Int
 ) {
+    val aiWorkspaces by signalRClient.aiWorkspaces.collectAsState()
+    val workspace = aiWorkspaces[selectedPid] ?: ""
+
     val annotatedString = buildAnnotatedString {
         val titleRegex = Regex("\\[(.*?)\\]\\s*:\\s*###\\s*(.*)")
         val boldRegex = Regex("\\*\\*(.*?)\\*\\*")
@@ -919,17 +951,32 @@ fun RenderTextWithStyles(
                     }
                 }
                 match.value.startsWith("*") -> {
-                    withStyle(SpanStyle(fontStyle = FontStyle.Italic)) {
+                    withStyle(SpanStyle(fontStyle = androidx.compose.ui.text.font.FontStyle.Italic)) {
                         append(match.groupValues[1])
                     }
                 }
                 match.value.startsWith("`") -> {
-                    withStyle(SpanStyle(
-                        fontFamily = FontFamily.Monospace,
-                        background = Color.Black.copy(alpha = 0.05f),
-                        color = MaterialTheme.colorScheme.secondary
-                    )) {
-                        append(match.groupValues[1])
+                    val inner = match.groupValues[1]
+                    val isLikelyFile = inner.contains(".") && inner.length > 3
+                    
+                    if (isLikelyFile) {
+                        pushStringAnnotation(tag = "FILE", annotation = inner)
+                        withStyle(SpanStyle(
+                            color = MaterialTheme.colorScheme.primary,
+                            textDecoration = androidx.compose.ui.text.style.TextDecoration.Underline,
+                            fontWeight = FontWeight.Bold
+                        )) {
+                            append(inner)
+                        }
+                        pop()
+                    } else {
+                        withStyle(SpanStyle(
+                            fontFamily = FontFamily.Monospace,
+                            background = Color.Black.copy(alpha = 0.05f),
+                            color = MaterialTheme.colorScheme.secondary
+                        )) {
+                            append(inner)
+                        }
                     }
                 }
                 match.value.startsWith("http") -> {
@@ -949,12 +996,21 @@ fun RenderTextWithStyles(
         }
     }
 
-    Text(
+    androidx.compose.foundation.text.ClickableText(
         text = annotatedString,
-        style = MaterialTheme.typography.bodyMedium,
-        color = textColor,
-        textAlign = textAlign,
-        modifier = modifier
+        style = MaterialTheme.typography.bodyMedium.copy(color = textColor, textAlign = textAlign),
+        modifier = modifier,
+        onClick = { offset ->
+            annotatedString.getStringAnnotations(tag = "FILE", start = offset, end = offset)
+                .firstOrNull()?.let { annotation ->
+                    val filename = annotation.item
+                    val separator = if (workspace.contains("/")) "/" else "\\"
+                    val fullPath = if (workspace.isEmpty()) filename 
+                                   else if (workspace.endsWith(separator)) workspace + filename
+                                   else workspace + separator + filename
+                    mainViewModel.handleOpenFile(fullPath)
+                }
+        }
     )
 }
 

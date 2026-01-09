@@ -138,6 +138,9 @@ class SignalRClient(
     private val _aiSessions = MutableStateFlow<Map<Int, String>>(emptyMap())
     val aiSessions: StateFlow<Map<Int, String>> = _aiSessions
 
+    private val _aiWorkspaces = MutableStateFlow<Map<Int, String>>(emptyMap())
+    val aiWorkspaces: StateFlow<Map<Int, String>> = _aiWorkspaces
+
     private val _aiInputText = MutableStateFlow("")
     val aiInputText: StateFlow<String> = _aiInputText
 
@@ -423,6 +426,7 @@ class SignalRClient(
                         
                         // Maintain order from Hub (sorted by start time)
                         val sessionsMap = LinkedHashMap<Int, String>()
+                        val workspacesMap = mutableMapOf<Int, String>()
                         sessionsList.forEach { session ->
                             val pidRaw = session["pid"] ?: session["Pid"]
                             val pid = when (pidRaw) {
@@ -434,13 +438,16 @@ class SignalRClient(
                                 else -> 0
                             }
                             val name = (session["name"] ?: session["Name"]) as? String ?: "Session $pid"
-                            Log.d("SignalRClient", "Parsed Session: PID=$pid, Name=$name")
+                            val workspace = (session["workspace"] ?: session["Workspace"]) as? String ?: ""
+                            Log.d("SignalRClient", "Parsed Session: PID=$pid, Name=$name, Workspace=$workspace")
                             if (pid != 0) {
                                 sessionsMap[pid] = name
+                                workspacesMap[pid] = workspace
                             }
                         }
 
                         _aiSessions.value = sessionsMap
+                        _aiWorkspaces.value = workspacesMap
                         
                         // Clean up statuses for sessions that no longer exist
                         val currentStatusMap = _aiStatusMap.value

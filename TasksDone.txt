@@ -94,6 +94,7 @@
 ✅ sessions are named according to the first message sent to ai with fallback to session id. change that to primarily use the workspace folder name (not full path), append with number if multiple with same workspaces
 ✅ Code functionality of Ai screen recently broke, i cant send messages to sessions anymore (Fixed by correctly handling nullable sessionId in SignalR calls)
 ✅ the new folder icon button when using s bookmark does not work right (Improved workspace menu behavior and added arrow sub-buttons for /dir add)
+✅ when rendering a filename, i think it uses this format `my.file` turn that into a link that i can click and it will find the file in the workspace of the ai session and item it in file view
 
 ### Omni web screen
 
