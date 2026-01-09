@@ -545,6 +545,23 @@ fun SettingsScreen(
                                 )
                             }
                         }
+
+                        if (appConfig.macros.isNotEmpty()) {
+                            HorizontalDivider()
+                            Text("Macros", modifier = Modifier.padding(8.dp), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                            appConfig.macros.forEach { macro ->
+                                DropdownMenuItem(
+                                    text = { Text(macro.name) },
+                                    onClick = {
+                                        val newActions = notificationActions.toMutableList()
+                                        val id = java.util.UUID.randomUUID().toString()
+                                        newActions.add(NotificationAction(id, macro.name, "MACRO:${macro.script}"))
+                                        saveActions(newActions)
+                                        showAddMenu = false
+                                    }
+                                )
+                            }
+                        }
                     }
                 }
             }

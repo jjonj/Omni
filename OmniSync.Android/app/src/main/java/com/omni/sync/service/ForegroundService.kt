@@ -175,6 +175,14 @@ class ForegroundService : Service() {
             val cmd = action.command.substring(8)
             mainViewModel.addLog("Notification: Browser $cmd...", com.omni.sync.ui.screen.LogType.INFO)
             signalRClient.sendBrowserCommand(cmd, "", false)
+        } else if (action.command.startsWith("MACRO:")) {
+            val script = action.command.substring(6)
+            mainViewModel.addLog("Notification: Running macro...", com.omni.sync.ui.screen.LogType.INFO)
+            val parser = com.omni.sync.logic.macro.MacroParser()
+            val executor = com.omni.sync.logic.macro.MacroExecutor(signalRClient, app.mainViewModel.appConfig.macros)
+            mainViewModel.viewModelScope.launch {
+                executor.execute(parser.parse(script, applicationContext), applicationContext)
+            }
         } else {
             mainViewModel.addLog("Notification: Triggering ".plus(action.label).plus("..."), com.omni.sync.ui.screen.LogType.INFO)
             signalRClient.executeCommand(action.command)

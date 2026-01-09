@@ -84,6 +84,7 @@
 ### Settings screen (accessed by button on dashboard, not bottom panel)
 
 ✅ Add settings to configure Cortex web, need to be able to adjust wake time (currently hardcoded to reset to 7am adjustable for the day but not enough) and block definitions
+✅ add more quick action options, including but not limited to, set alarm 8h45m, browser functionality like send youtube history video to chrome etc and double check at can use macros as quick actions
 
 ### AI screen
 

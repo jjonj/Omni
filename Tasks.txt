@@ -54,5 +54,3 @@ when a text file is open and i switch screen and then switch back to file screen
 
 ### Settings screen
 
-add more quick action options, including but not limited to, set alarm 8h45m, browser functionality like send youtube history video to chrome etc and double check at can use macros as quick actions 
-
