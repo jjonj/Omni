@@ -12,3 +12,5 @@ If you get compile errors that are not related to the changes you have made, tha
 When committing, there may be files in status not related to your changes as the user is working on other things. Try to only commit the files relevant to your task, if a file is relevant for both then do commit it.
 
 If told to do a megasession then read Tasks.txt
+
+Keep the WPF Hub UI and Web Settings UI in sync for features like Hotkeys, but prioritize the WPF version as primary.

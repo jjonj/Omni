@@ -471,7 +471,8 @@ namespace OmniSync.Hub.Infrastructure.Services
                 }
 
                 await File.WriteAllTextAsync(filePath, report.ToString());
-                _logger.LogInformation($"[AiCliService] Debug report written to {filePath}");
+                _logger.LogInformation($"[AiCliService] Debug report written to: {filePath}");
+                Console.WriteLine($"[AiCliService] Debug report written to: {filePath}");
             }
             catch (Exception ex)
             {
@@ -685,10 +686,10 @@ namespace OmniSync.Hub.Infrastructure.Services
                         if (commandLine != null && pidObj != null)
                         {
                             int pid = Convert.ToInt32(pidObj);
-                            bool isGemini = (commandLine.Contains("bundle/gemini.js") || 
-                                             commandLine.Contains("gemini-cli") || 
-                                             commandLine.Contains("OMNI_GEMINI")) && 
-                                            !commandLine.Contains("@google");
+                            string cmdLower = commandLine.ToLower();
+                            bool isGemini = (cmdLower.Contains("bundle/gemini.js") || 
+                                             cmdLower.Contains("omni_gemini") || 
+                                             (cmdLower.Contains("node") && cmdLower.Contains("gemini") && !cmdLower.Contains("@google") && !cmdLower.Contains("node_modules")));
 
                             if (isGemini)
                             {
@@ -852,10 +853,10 @@ namespace OmniSync.Hub.Infrastructure.Services
                         if (commandLine != null && pidObj != null)
                         {
                             int foundPid = Convert.ToInt32(pidObj);
-                            bool isGemini = (commandLine.Contains("bundle/gemini.js") || 
-                                             commandLine.Contains("gemini-cli") || 
-                                             commandLine.Contains("OMNI_GEMINI")) && 
-                                            !commandLine.Contains("@google");
+                            string cmdLower = commandLine.ToLower();
+                            bool isGemini = (cmdLower.Contains("bundle/gemini.js") || 
+                                             cmdLower.Contains("omni_gemini") || 
+                                             (cmdLower.Contains("node") && cmdLower.Contains("gemini") && !cmdLower.Contains("@google") && !cmdLower.Contains("node_modules")));
 
                             if (isGemini)
                             {
@@ -1131,6 +1132,7 @@ namespace OmniSync.Hub.Infrastructure.Services
                                 // Add to sent prompts to prevent echo ghosting
                                 if (command == "prompt" && !string.IsNullOrEmpty(text))
                                 {
+                                    _logger.LogDebug($"[GeminiSession] Adding to _sentPrompts: {text.Take(30)}...");
                                     _sentPrompts.Add(text);
                                 }
 
@@ -1206,16 +1208,22 @@ namespace OmniSync.Hub.Infrastructure.Services
                                 }
                                 else
                                 {
+                                    _logger.LogDebug($"[GeminiSession] Processing response from PID {_pid}: {text.Take(30)}...");
                                     // Ghost echo protection: if this matches a prompt we just sent, ignore it
                                     if (_sentPrompts.Contains(text))
                                     {
-                                        _logger.LogDebug($"[GeminiSession] Ignoring echoed prompt: {text.Take(30)}...");
+                                        _logger.LogInformation($"[GeminiSession] IGNORED echo from PID {_pid}: {text.Take(30)}...");
                                         continue;
                                     }
 
                                     if (_recentlyBroadcastMessages.Add(text))
                                     {
+                                        _logger.LogDebug($"[GeminiSession] Broadcasting unique response from PID {_pid}");
                                         _onResponse(_pid, text, false, false, false);
+                                    }
+                                    else
+                                    {
+                                        _logger.LogDebug($"[GeminiSession] Suppressing already broadcast message from PID {_pid}");
                                     }
                                 }
                             }

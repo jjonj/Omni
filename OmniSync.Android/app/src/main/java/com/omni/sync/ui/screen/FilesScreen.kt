@@ -124,6 +124,12 @@ fun FilesScreen(
         }
     }
 
+    LaunchedEffect(Unit) {
+        if (currentPath.isEmpty() && filesViewModel.mainViewModel.pendingNavigationPath.value == null) {
+            filesViewModel.loadDirectory("")
+        }
+    }
+
     Scaffold(
         topBar = {
             var showHeaderMenu by remember { mutableStateOf(false) }

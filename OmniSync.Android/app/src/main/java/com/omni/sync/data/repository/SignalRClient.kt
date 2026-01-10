@@ -738,6 +738,11 @@ class SignalRClient(
             }
         }
 
+        fun clearSessions() {
+            _aiSessions.value = emptyMap()
+            _aiWorkspaces.value = emptyMap()
+        }
+
         fun reloadAiSessions() {
             if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {       
                 mainViewModel.addLog("[AI] Requesting session reload and debug report...", com.omni.sync.ui.screen.LogType.INFO)

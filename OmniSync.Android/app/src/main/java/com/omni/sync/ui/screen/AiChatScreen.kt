@@ -49,6 +49,9 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardReturn
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import com.omni.sync.viewmodel.AppScreen
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.draw.clip
 import androidx.compose.material.icons.filled.Adjust
 import androidx.compose.material.icons.filled.List
@@ -102,6 +105,15 @@ fun AiChatScreen(
     val coroutineScope = rememberCoroutineScope()
     val isStartingSession by signalRClient.isStartingSessionFlow.collectAsState()
     val isConnected by mainViewModel.isConnected.collectAsState()
+
+    var textFieldValue by remember { mutableStateOf(TextFieldValue(inputText)) }
+    
+    // Sync external changes to internal state (e.g. clearing after send)
+    LaunchedEffect(inputText) {
+        if (inputText != textFieldValue.text) {
+            textFieldValue = textFieldValue.copy(text = inputText)
+        }
+    }
 
     // Filter messages to avoid empty/dangling bubbles
     val filteredMessages = remember(messages) {
@@ -233,6 +245,7 @@ fun AiChatScreen(
                             DropdownMenuItem(
                                 text = { Text("Reload All Sessions (Debug)") },
                                 onClick = {
+                                    signalRClient.clearSessions() // New method to clear local list
                                     signalRClient.reloadAiSessions()
                                     showSessionMenu = false
                                 },
@@ -251,8 +264,8 @@ fun AiChatScreen(
                 },
                 actions = {
                     if (selectedPid != -1) {
-                        IconButton(onClick = { signalRClient.focusAiSession(selectedPid) }, enabled = isConnected) {
-                            Icon(imageVector = Icons.Default.SettingsSuggest, contentDescription = "Focus Window")
+                        IconButton(onClick = { /* Could be rename or settings */ }, enabled = isConnected) {
+                            Icon(imageVector = Icons.Default.Settings, contentDescription = "Session Settings")
                         }
                     }
                     Box {
@@ -416,8 +429,11 @@ fun AiChatScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     OutlinedTextField(
-                        value = inputText,
-                        onValueChange = { signalRClient.updateAiInputText(it) },
+                        value = textFieldValue,
+                        onValueChange = { 
+                            textFieldValue = it
+                            signalRClient.updateAiInputText(it.text) 
+                        },
                         modifier = Modifier.weight(1f),
                         placeholder = { Text(if (isConnected) "Ask AI something..." else "Connecting...") },
                         maxLines = 3,
@@ -479,6 +495,7 @@ fun AiChatScreen(
                                     },
                                     onClick = {
                                         signalRClient.updateAiInputText(preset)
+                                        textFieldValue = TextFieldValue(preset, TextRange(preset.length))
                                         showPresetsMenu = false
                                     }
                                 )
@@ -676,6 +693,17 @@ fun QuickActionPanel(
                 onClick = { 
                     coroutineScope.launch {
                         signalRClient.sendAiYolo(selectedPid)
+                    }
+                }
+            )
+
+            ActionKeyButton(
+                text = "Focus",
+                icon = Icons.Default.Adjust,
+                modifier = Modifier.weight(1f),
+                onClick = { 
+                    if (selectedPid != -1) {
+                        signalRClient.focusAiSession(selectedPid)
                     }
                 }
             )

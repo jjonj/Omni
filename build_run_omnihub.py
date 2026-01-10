@@ -107,8 +107,8 @@ def delete_with_retry(path, max_retries=5, delay=1):
 
 def main():
     print(f"HUB_DIR is {HUB_DIR}")
-    hub_log_path = os.path.join(os.environ.get("GEMINI_TEMP_DIR", ""), "hub_output.log")
-    cli_log_path = os.path.join(os.environ.get("GEMINI_TEMP_DIR", ""), "cli_output.log")
+    hub_log_path = os.path.join(SCRIPT_DIR, "hub_output.log")
+    cli_log_path = os.path.join(SCRIPT_DIR, "cli_output.log")
 
 
     # Clear previous logs
