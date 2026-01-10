@@ -199,6 +199,16 @@ namespace OmniSync.Hub.Presentation.Hubs
             throw new UnauthorizedAccessException("Client is not authenticated.");
         }
 
+        public List<string> GetHubLog()
+        {
+            if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
+            {
+                AnyCommandReceived?.Invoke(this, "GetHubLog");
+                return new List<string>(_hubMonitorService.LogMessages);
+            }
+            throw new UnauthorizedAccessException();
+        }
+
         public void SendPayload(string command, JsonElement payload)
         {
             if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)

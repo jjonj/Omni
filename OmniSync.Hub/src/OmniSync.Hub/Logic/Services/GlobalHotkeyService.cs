@@ -20,6 +20,8 @@ namespace OmniSync.Hub.Logic.Services
         private readonly HubMonitorService _hubMonitorService;
         private readonly KeyboardHook _keyboardHook;
 
+        private readonly HashSet<Keys> _pressedKeys = new();
+
         public event EventHandler? OpenHubWindowRequested;
 
         public GlobalHotkeyService(
@@ -54,7 +56,14 @@ namespace OmniSync.Hub.Logic.Services
 
         private void OnKeyActionOccurred(object? sender, KeyHookEventArgs e)
         {
+            // Track state for both Down and Up to be accurate
+            if (e.State == KeyState.Down) _pressedKeys.Add(e.Key);
+            else _pressedKeys.Remove(e.Key);
+
             if (e.State != KeyState.Down) return;
+
+            // Don't trigger if we are in recording mode (MainViewModel handles that)
+            if (_keyboardHook.IsRecording) return;
 
             foreach (var hotkey in _settingsService.Settings.Hotkeys)
             {
@@ -62,7 +71,7 @@ namespace OmniSync.Hub.Logic.Services
 
                 if (MatchHotkey(hotkey.Key, e))
                 {
-                    _logger.LogInformation($"Hotkey triggered: {hotkey.Name} ({hotkey.Key})");
+                    _logger.LogInformation($"[GlobalHotkeyService] Triggered: {hotkey.Name} ({hotkey.Key})");
                     _hubMonitorService.AddLogMessage($"Hotkey triggered: {hotkey.Name}");
                     ExecuteHotkeyAction(hotkey.Action);
                 }
@@ -73,23 +82,38 @@ namespace OmniSync.Hub.Logic.Services
         {
             var parts = hotkeyStr.Split('+').Select(p => p.Trim().ToUpper()).ToList();
             
+            // Required modifiers from the config string
             bool ctrlReq = parts.Contains("CTRL");
             bool altReq = parts.Contains("ALT");
             bool shiftReq = parts.Contains("SHIFT");
             bool winReq = parts.Contains("WIN");
 
-            if (ctrlReq != e.Control) return false;
-            if (altReq != e.Alt) return false;
-            if (shiftReq != e.Shift) return false;
-            if (winReq != e.Win) return false;
+            // Current modifier state (use tracked keys for reliability)
+            bool isCtrl = _pressedKeys.Any(k => k == Keys.ControlKey || k == Keys.LControlKey || k == Keys.RControlKey);
+            bool isAlt = _pressedKeys.Any(k => k == Keys.Menu || k == Keys.LMenu || k == Keys.RMenu);
+            bool isShift = _pressedKeys.Any(k => k == Keys.ShiftKey || k == Keys.LShiftKey || k == Keys.RShiftKey);
+            bool isWin = _pressedKeys.Any(k => k == Keys.LWin || k == Keys.RWin);
 
-            string targetKey = parts.Last();
-            string pressedKey = e.Key.ToString().ToUpper();
+            if (ctrlReq != isCtrl || altReq != isAlt || shiftReq != isShift || winReq != isWin) return false;
+
+            string targetKeyName = parts.Last();
+            string pressedKeyName = e.Key.ToString().ToUpper();
 
             // Special cases
-            if (targetKey == "SPACE" && e.Key == Keys.Space) return true;
+            if (targetKeyName == "SPACE" && e.Key == Keys.Space) return true;
             
-            return targetKey == pressedKey;
+            // If the pressed key IS a modifier, we don't trigger (Wait for the actual key)
+            if (IsModifier(e.Key)) return false;
+
+            return targetKeyName == pressedKeyName;
+        }
+
+        private bool IsModifier(Keys k)
+        {
+            return k == Keys.ControlKey || k == Keys.LControlKey || k == Keys.RControlKey ||
+                   k == Keys.ShiftKey || k == Keys.LShiftKey || k == Keys.RShiftKey ||
+                   k == Keys.Menu || k == Keys.LMenu || k == Keys.RMenu ||
+                   k == Keys.LWin || k == Keys.RWin;
         }
 
         private void ExecuteHotkeyAction(string action)
@@ -116,7 +140,10 @@ namespace OmniSync.Hub.Logic.Services
 
         public void Dispose()
         {
-            _keyboardHook.KeyActionOccurred -= OnKeyActionOccurred;
+            if (_keyboardHook != null)
+            {
+                _keyboardHook.KeyActionOccurred -= OnKeyActionOccurred;
+            }
         }
     }
 }

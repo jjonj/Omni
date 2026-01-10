@@ -76,14 +76,33 @@ namespace OmniSync.Hub.Infrastructure.Services
 
         private void InitializeDefaultHotkeys()
         {
-            if (_settings.Hotkeys.Count == 0)
+            var defaults = new List<HotkeyConfig>
             {
-                _settings.Hotkeys.Add(new HotkeyConfig { Name = "TFT: Clipboard to Must Include", Key = "Ctrl+Alt+I", Action = "TFT_CLIPBOARD_MUST_INCLUDE_SOLVE_NEXT" });
-                _settings.Hotkeys.Add(new HotkeyConfig { Name = "TFT: Clipboard to Current Team", Key = "Ctrl+Alt+T", Action = "TFT_CLIPBOARD_CURRENT_TEAM" });
-                _settings.Hotkeys.Add(new HotkeyConfig { Name = "TFT: Copy Team Code", Key = "Ctrl+Alt+C", Action = "TFT_COPY_SOLUTION_CODE" });
-                _settings.Hotkeys.Add(new HotkeyConfig { Name = "Open Hub Window", Key = "Ctrl+Alt+H", Action = "OPEN_HUB_WINDOW" });
-                SaveSettings();
+                new HotkeyConfig { Name = "TFT: Clipboard to Must Include", Key = "Ctrl+Alt+I", Action = "TFT_CLIPBOARD_MUST_INCLUDE_SOLVE_NEXT" },
+                new HotkeyConfig { Name = "TFT: Clipboard to Current Team", Key = "Ctrl+Alt+T", Action = "TFT_CLIPBOARD_CURRENT_TEAM" },
+                new HotkeyConfig { Name = "TFT: Copy Team Code", Key = "Ctrl+Alt+C", Action = "TFT_COPY_SOLUTION_CODE" },
+                new HotkeyConfig { Name = "Open Hub Window", Key = "Ctrl+Alt+H", Action = "OPEN_HUB_WINDOW" }
+            };
+
+            bool changed = false;
+            if (_settings.Hotkeys == null) _settings.Hotkeys = new List<HotkeyConfig>();
+
+            foreach (var def in defaults)
+            {
+                var existing = _settings.Hotkeys.Find(h => h.Action == def.Action);
+                if (existing == null)
+                {
+                    _settings.Hotkeys.Add(def);
+                    changed = true;
+                }
+                else if (string.IsNullOrEmpty(existing.Key))
+                {
+                    existing.Key = def.Key;
+                    changed = true;
+                }
             }
+
+            if (changed) SaveSettings();
         }
 
         public void LoadSettings()

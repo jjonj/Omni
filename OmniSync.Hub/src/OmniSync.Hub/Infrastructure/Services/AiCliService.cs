@@ -80,9 +80,12 @@ namespace OmniSync.Hub.Infrastructure.Services
         {
             _logger.LogInformation($"[AiCliService] Focusing session PID {pid}");
             
+            // 1. Try focusing by known terminal title first (most reliable for terminals)
+            _processService.WinActivate("OMNI_GEMINI_INTERACTIVE");
+
             if (_sessions.TryGetValue(pid, out var session))
             {
-                // Try to focus the shell process first (the terminal window)
+                // 2. Try to focus the shell process first (the terminal window)
                 if (session.ShellProcess != null && !session.ShellProcess.HasExited)
                 {
                     _logger.LogInformation($"[AiCliService] Focusing shell process PID {session.ShellProcess.Id}");
@@ -90,7 +93,7 @@ namespace OmniSync.Hub.Infrastructure.Services
                 }
                 else
                 {
-                    // Fallback to focusing the node process itself
+                    // 3. Fallback to focusing the node process itself
                     _logger.LogInformation($"[AiCliService] Focusing node process PID {pid}");
                     _processService.WinActivatePid(pid);
                 }

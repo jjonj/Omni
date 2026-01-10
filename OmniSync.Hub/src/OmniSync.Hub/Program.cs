@@ -166,6 +166,8 @@ builder.Services.AddSingleton<InputService>(provider =>
 builder.Services.AddSingleton<AudioService>();
 builder.Services.AddSingleton<HubSettingsService>();
 builder.Services.AddSingleton<GlobalHotkeyService>();
+builder.Services.AddHostedService<GlobalHotkeyService>(p => p.GetRequiredService<GlobalHotkeyService>());
+
 builder.Services.AddSingleton<ShutdownService>(provider =>
 {
     var logger = provider.GetRequiredService<ILogger<ShutdownService>>();
@@ -209,7 +211,7 @@ builder.Services.AddSingleton<TrayIconManager>(provider =>
     return new TrayIconManager(appLifetime, hubMonitorService, inputService, shutdownService, registryService, settingsService, hotkeyService, keyboardHook, logger);
 });
 builder.Services.AddHostedService<TrayIconManager>(provider => provider.GetRequiredService<TrayIconManager>());
-builder.Services.AddHostedService<GlobalHotkeyService>();
+
 builder.Services.AddHostedService<HubStartupService>(); // Auto-launch AI components
 builder.Services.AddHostedService<ScreenshotHostedService>();
 builder.Services.AddSingleton<KeyboardHook>(); // Register KeyboardHook

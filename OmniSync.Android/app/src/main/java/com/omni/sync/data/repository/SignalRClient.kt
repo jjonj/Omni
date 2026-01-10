@@ -1076,6 +1076,18 @@ class SignalRClient(
         return null
     }
 
+    fun getHubLog(): Single<List<String>>? {
+        if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
+            return hubConnection?.invoke(List::class.java, "GetHubLog")
+                ?.map { rawList ->
+                    val jsonElement = gson.toJsonTree(rawList)
+                    val listType = object : TypeToken<List<String>>() {}.type
+                    gson.fromJson(jsonElement, listType)
+                } as? Single<List<String>>
+        }
+        return null
+    }
+
     fun isMuted(): Single<Boolean>? {
         if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
             return hubConnection?.invoke(Boolean::class.java, "IsMuted")

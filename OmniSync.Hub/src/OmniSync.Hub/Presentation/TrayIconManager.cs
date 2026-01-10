@@ -193,6 +193,11 @@ namespace OmniSync.Hub.Presentation
                     };
 
                     _hotkeyService.OpenHubWindowRequested += (s, e) => OnShowWindow(null, EventArgs.Empty);
+                    
+                    // CRITICAL: Set the keyboard hook on the UI thread (this thread has the message pump)
+                    _logger.LogInformation("TrayApplicationContext: Setting Global Keyboard Hook on UI Thread...");
+                    _keyboardHook.SetHook();
+                    
                     _logger.LogInformation("TrayApplicationContext: Components initialized.");
                 }
                 catch (Exception ex)

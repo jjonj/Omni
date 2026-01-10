@@ -97,6 +97,25 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
          _hubLogs.value = logs.map { LogEntry(it, LogType.INFO, System.currentTimeMillis()) }
     }
 
+    fun fetchHubLogs(signalRClient: com.omni.sync.data.repository.SignalRClient) {
+        viewModelScope.launch {
+            try {
+                addLog("Fetching logs from Hub...", LogType.INFO)
+                signalRClient.getHubLog()
+                    ?.subscribeOn(io.reactivex.rxjava3.schedulers.Schedulers.io())
+                    ?.observeOn(io.reactivex.rxjava3.android.schedulers.AndroidSchedulers.mainThread())
+                    ?.subscribe({ logs ->
+                        updateHubLogs(logs)
+                        addLog("Fetched ${logs.size} log entries from Hub.", LogType.SUCCESS)
+                    }, { error ->
+                        addLog("Failed to fetch Hub logs: ${error.message}", LogType.ERROR)
+                    })
+            } catch (e: Exception) {
+                addLog("Error initiating log fetch: ${e.message}", LogType.ERROR)
+            }
+        }
+    }
+
     private val _activeBaseUrl = MutableStateFlow("")
     val activeBaseUrl: StateFlow<String> = _activeBaseUrl
 

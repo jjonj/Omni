@@ -156,33 +156,30 @@ foreach ($p in $procs) {{
         {
             try
             {
-                // PowerShell script to find ANY window in the process tree (self or parents)
+                // Use synchronous call to ensure activation happens before we return
                 string script = $@"
-$pid = {pid}
+$targetPid = {pid}
 $wshell = New-Object -ComObject WScript.Shell
 
 function Try-Activate($pId) {{
     $p = Get-Process -Id $pId -ErrorAction SilentlyContinue
     if ($null -eq $p) {{ return $false }}
-    if ($p.MainWindowHandle -ne 0) {{
-        if ($wshell.AppActivate($p.Id)) {{ return $true }}
-    }}
+    if ($wshell.AppActivate($p.Id)) {{ return $true }}
     return $false
 }}
 
-# 1. Try target PID
-if (Try-Activate($pid)) {{ exit }}
+if (Try-Activate($targetPid)) {{ exit }}
 
-# 2. Try Parent processes (climbing up to find the terminal window)
-$currPid = $pid
+$currPid = $targetPid
 for ($i=0; $i -lt 5; $i++) {{
-    $parent = (Get-CimInstance Win32_Process -Filter ""ProcessId = $currPid"").ParentProcessId
+    $procInfo = Get-CimInstance Win32_Process -Filter ""ProcessId = $currPid""
+    $parent = $procInfo.ParentProcessId
     if (!$parent) {{ break }}
     if (Try-Activate($parent)) {{ exit }}
     $currPid = $parent
 }}
 ";
-                RunPowerShell(script);
+                RunPowerShellSynchronous(script);
 
                 // C# Fallback attempt using handle if available
                 var proc = Process.GetProcessById(pid);
@@ -191,11 +188,6 @@ for ($i=0; $i -lt 5; $i++) {{
                 {
                     if (IsIconic(handle)) ShowWindow(handle, SW_RESTORE);
                     SetForegroundWindow(handle);
-                }
-                else
-                {
-                    // Direct PID activation fallback
-                    RunPowerShell($"(New-Object -ComObject WScript.Shell).AppActivate({pid})");
                 }
             }
             catch { }
@@ -409,13 +401,49 @@ Add-Type -MemberDefinition $code -Name Win32 -Namespace Native
 
         private void RunPowerShell(string script)
         {
-            Process.Start(new ProcessStartInfo
+            // For asynchronous execution, we still use the simple approach but with a file if complex
+            Task.Run(() => RunPowerShellSynchronous(script));
+        }
+
+        private string RunPowerShellSynchronous(string script)
+        {
+            string tempFile = Path.Combine(Path.GetTempPath(), $"omni_script_{Guid.NewGuid():N}.ps1");
+            try
             {
-                FileName = "powershell",
-                Arguments = $"-Command \"{script.Replace("\n", " ").Replace("\r", "")}\"",
-                CreateNoWindow = true,
-                UseShellExecute = false
-            });
+                File.WriteAllText(tempFile, script, Encoding.UTF8);
+                var psi = new ProcessStartInfo
+                {
+                    FileName = "powershell.exe",
+                    Arguments = $"-NoProfile -ExecutionPolicy Bypass -File \"{tempFile}\"",
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                };
+
+                using (var process = Process.Start(psi))
+                {
+                    if (process == null) return "";
+                    string output = process.StandardOutput.ReadToEnd();
+                    string error = process.StandardError.ReadToEnd();
+                    process.WaitForExit();
+                    
+                    if (!string.IsNullOrEmpty(error))
+                    {
+                        Console.WriteLine($"[PS ERROR] {error}");
+                    }
+                    return output;
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[PS EXCEPTION] {ex.Message}");
+                return "";
+            }
+            finally
+            {
+                if (File.Exists(tempFile)) try { File.Delete(tempFile); } catch { }
+            }
         }
 
         public IEnumerable<ProcessInfo> ListProcesses()

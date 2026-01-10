@@ -152,6 +152,16 @@ fun SettingsScreen(
                     Text("Save & Reconnect")
                 }
             }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Button(
+                onClick = { mainViewModel.fetchHubLogs(signalRClient) },
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.tertiary)
+            ) {
+                Text("Fetch Hub Log")
+            }
             
             Spacer(modifier = Modifier.height(24.dp))
             HorizontalDivider()

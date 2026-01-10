@@ -231,15 +231,8 @@ fun DashboardScreen(modifier: Modifier = Modifier, signalRClient: SignalRClient,
 
                             TextButton(onClick = { 
                                 if (!isShowingHubLogs) {
-                                    // Switch to Hub logs
-                                    signalRClient.getHubStatus()?.subscribe({ status ->
-                                        @Suppress("UNCHECKED_CAST")
-                                        val logMessages = status["LogMessages"] as? List<String> ?: emptyList()
-                                        mainViewModel.updateHubLogs(logMessages)
-                                        mainViewModel.toggleLogSource()
-                                    }, {
-                                        mainViewModel.addLog("Failed to fetch Hub logs: ${it.message}", LogType.ERROR)
-                                    })
+                                    mainViewModel.fetchHubLogs(signalRClient)
+                                    mainViewModel.toggleLogSource()
                                 } else {
                                     // Switch back to App logs
                                     mainViewModel.toggleLogSource()

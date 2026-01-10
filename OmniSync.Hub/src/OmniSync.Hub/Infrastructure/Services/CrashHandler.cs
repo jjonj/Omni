@@ -12,6 +12,16 @@ namespace OmniSync.Hub.Infrastructure.Services
 
         public static void Initialize()
         {
+            // Clear existing crash logs on startup
+            try
+            {
+                if (File.Exists(LogPath)) File.Delete(LogPath);
+                
+                var rootLogPath = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "..", "hub_crash_log.log");
+                if (File.Exists(rootLogPath)) File.Delete(rootLogPath);
+            }
+            catch { /* Ignore errors clearing logs */ }
+
             AppDomain.CurrentDomain.UnhandledException += (sender, e) =>
             {
                 HandleCrash("UnhandledException", e.ExceptionObject as Exception);

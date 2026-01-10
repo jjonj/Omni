@@ -46,8 +46,9 @@ namespace OmniSync.Hub.Infrastructure.Services
         private LowLevelKeyboardProc _proc;
         private readonly ILogger<KeyboardHook> _logger; // Added for logging
 
-        // Event to expose key press and modifier state changes
         public event EventHandler<KeyHookEventArgs>? KeyActionOccurred;
+
+        public bool IsRecording { get; set; }
 
         public KeyboardHook(ILogger<KeyboardHook> logger)
         {
@@ -65,14 +66,19 @@ namespace OmniSync.Hub.Infrastructure.Services
                     _logger.LogError("Main module not found for current process. Cannot set keyboard hook.");
                     return;
                 }
-                _hookID = SetWindowsHookEx(WH_KEYBOARD_LL, _proc, GetModuleHandle(curModule.ModuleName), 0);
+                
+                uint threadId = 0; // 0 for global hook
+                _hookID = SetWindowsHookEx(WH_KEYBOARD_LL, _proc, GetModuleHandle(curModule.ModuleName), threadId);
+                
                 if (_hookID == IntPtr.Zero)
                 {
                     var lastError = Marshal.GetLastWin32Error();
-                    _logger.LogError($"Failed to set keyboard hook. Error: {lastError}");
-                    throw new System.ComponentModel.Win32Exception(lastError);
+                    _logger.LogError($"[KeyboardHook] FAILED to set hook. Error code: {lastError}. Thread ID: {Environment.CurrentManagedThreadId}");
                 }
-                _logger.LogInformation("Keyboard hook set successfully.");
+                else
+                {
+                    _logger.LogInformation($"[KeyboardHook] SUCCESS. Hook handle: {_hookID}. Thread ID: {Environment.CurrentManagedThreadId}");
+                }
             }
         }
 
@@ -105,19 +111,24 @@ namespace OmniSync.Hub.Infrastructure.Services
                 bool isAltPressed = (GetKeyState((int)Keys.LMenu) & 0x8000) != 0 || (GetKeyState((int)Keys.RMenu) & 0x8000) != 0;
                 bool isWinPressed = (GetKeyState((int)Keys.LWin) & 0x8000) != 0 || (GetKeyState((int)Keys.RWin) & 0x8000) != 0;
 
-                if (wParam == (IntPtr)WM_KEYDOWN || wParam == (IntPtr)WM_SYSKEYDOWN)
+                bool isKeyDown = wParam == (IntPtr)WM_KEYDOWN || wParam == (IntPtr)WM_SYSKEYDOWN;
+                bool isKeyUp = wParam == (IntPtr)WM_KEYUP || wParam == (IntPtr)WM_SYSKEYUP;
+
+                if (isKeyDown || isKeyUp)
                 {
                     KBDLLHOOKSTRUCT hookStruct = (KBDLLHOOKSTRUCT)Marshal.PtrToStructure(lParam, typeof(KBDLLHOOKSTRUCT));
                     Keys key = (Keys)hookStruct.vkCode;
-                    _logger.LogDebug($"Key Down: {key}, Shift: {isShiftPressed}, Ctrl: {isCtrlPressed}, Alt: {isAltPressed}, Win: {isWinPressed}");
-                    KeyActionOccurred?.Invoke(this, new KeyHookEventArgs(key, KeyState.Down, isShiftPressed, isCtrlPressed, isAltPressed, isWinPressed));
-                }
-                else if (wParam == (IntPtr)WM_KEYUP || wParam == (IntPtr)WM_SYSKEYUP)
-                {
-                    KBDLLHOOKSTRUCT hookStruct = (KBDLLHOOKSTRUCT)Marshal.PtrToStructure(lParam, typeof(KBDLLHOOKSTRUCT));
-                    Keys key = (Keys)hookStruct.vkCode;
-                    _logger.LogDebug($"Key Up: {key}, Shift: {isShiftPressed}, Ctrl: {isCtrlPressed}, Alt: {isAltPressed}, Win: {isWinPressed}");
-                    KeyActionOccurred?.Invoke(this, new KeyHookEventArgs(key, KeyState.Up, isShiftPressed, isCtrlPressed, isAltPressed, isWinPressed));
+                    
+                    var state = isKeyDown ? KeyState.Down : KeyState.Up;
+                    
+                    _logger.LogDebug($"Key {state}: {key}, Shift: {isShiftPressed}, Ctrl: {isCtrlPressed}, Alt: {isAltPressed}, Win: {isWinPressed}");
+                    KeyActionOccurred?.Invoke(this, new KeyHookEventArgs(key, state, isShiftPressed, isCtrlPressed, isAltPressed, isWinPressed));
+
+                    // If we are recording, consume the key so Windows doesn't handle it (e.g. Win+D)
+                    if (IsRecording)
+                    {
+                        return 1; // Handled
+                    }
                 }
             }
             return CallNextHookEx(_hookID, nCode, wParam, lParam);

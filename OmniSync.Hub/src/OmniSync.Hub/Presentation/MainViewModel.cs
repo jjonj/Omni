@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Linq;
@@ -9,6 +10,8 @@ using OmniSync.Hub.Infrastructure.Services;
 using OmniSync.Hub.Logic.Monitoring;
 using OmniSync.Hub.Logic.Services; // Ensure Logic.Services is included for ShutdownMode
 using System.Windows.Forms; // For MessageBox
+using System.Windows.Input;
+using OmniSync.Hub.Infrastructure;
 
 namespace OmniSync.Hub.Presentation
 {
@@ -24,6 +27,16 @@ namespace OmniSync.Hub.Presentation
         private DispatcherTimer _uiUpdateTimer;
         private DispatcherTimer _longPressTimer;
         private bool _isLongPress;
+
+        // --- Commands ---
+        public ICommand ClearLogCommand { get; }
+        public ICommand AddMappingCommand { get; }
+        public ICommand DeleteMappingCommand { get; }
+        public ICommand StartRecordingHotkeyCommand { get; }
+        public ICommand AddHotkeyCommand { get; }
+        public ICommand DeleteHotkeyCommand { get; }
+        public ICommand ScheduleShutdownCommand { get; }
+        public ICommand ToggleShutdownModeCommand { get; }
 
         // --- Properties bound in XAML ---
         public ObservableCollection<string> ActiveConnections { get; }
@@ -157,10 +170,21 @@ namespace OmniSync.Hub.Presentation
         public bool IsRecordingHotkey
         {
             get => _isRecordingHotkey;
-            set { if (_isRecordingHotkey != value) { _isRecordingHotkey = value; OnPropertyChanged(); } }
+            set 
+            { 
+                if (_isRecordingHotkey != value) 
+                { 
+                    _isRecordingHotkey = value; 
+                    _keyboardHook.IsRecording = value;
+                    OnPropertyChanged(); 
+                } 
+            }
         }
 
         private HotkeyConfig? _recordingTarget;
+        private readonly HashSet<Keys> _currentlyPressedKeys = new();
+        private string _lastCapturedCombo = "";
+        private bool _hasNonModifierInCombo = false;
 
         public string ActiveWindowText { get; private set; } = "N/A";
 
@@ -171,6 +195,15 @@ namespace OmniSync.Hub.Presentation
             LogMessages = new ObservableCollection<string>();
             ExeMappings = new ObservableCollection<KeyValuePair<string, string>>();
             Hotkeys = new ObservableCollection<HotkeyConfig>();
+
+            ClearLogCommand = new RelayCommand(_ => { });
+            AddMappingCommand = new RelayCommand(_ => { });
+            DeleteMappingCommand = new RelayCommand(_ => { });
+            StartRecordingHotkeyCommand = new RelayCommand(_ => { });
+            AddHotkeyCommand = new RelayCommand(_ => { });
+            DeleteHotkeyCommand = new RelayCommand(_ => { });
+            ScheduleShutdownCommand = new RelayCommand(_ => { });
+            ToggleShutdownModeCommand = new RelayCommand(_ => { });
         }
 
         // Modifier Key States
@@ -240,6 +273,15 @@ namespace OmniSync.Hub.Presentation
                 }));
             };
 
+            // Initialize commands
+            ClearLogCommand = new RelayCommand(_ => _hubMonitorService.ClearLog());
+            AddMappingCommand = new RelayCommand(_ => ExecuteAddMapping());
+            DeleteMappingCommand = new RelayCommand(p => ExecuteDeleteMapping(p as string));
+            StartRecordingHotkeyCommand = new RelayCommand(p => ExecuteStartRecording(p as HotkeyConfig));
+            AddHotkeyCommand = new RelayCommand(_ => ExecuteAddHotkey());
+            DeleteHotkeyCommand = new RelayCommand(p => ExecuteDeleteHotkey(p as string));
+            ScheduleShutdownCommand = new RelayCommand(_ => ExecuteScheduleShutdown());
+            ToggleShutdownModeCommand = new RelayCommand(_ => ExecuteToggleShutdownMode());
 
             // Initialize timers
             _uiUpdateTimer = new DispatcherTimer();
@@ -259,13 +301,8 @@ namespace OmniSync.Hub.Presentation
         }
 
 
-        // --- Commands/Actions ---
-        public void ClearLogCommand()
-        {
-            _hubMonitorService.ClearLog();
-        }
-
-        public void AddMappingCommand()
+        // --- Command Implementations ---
+        private void ExecuteAddMapping()
         {
             if (string.IsNullOrEmpty(NewMappingKey) || string.IsNullOrEmpty(NewMappingPath))
             {
@@ -278,55 +315,102 @@ namespace OmniSync.Hub.Presentation
             RefreshMappingsGrid();
         }
 
-        public void DeleteMappingCommand(string key)
+        private void ExecuteDeleteMapping(string? key)
         {
+            if (key == null) return;
             _settingsService.RemoveMapping(key);
             RefreshMappingsGrid();
         }
 
-        public void StartRecordingHotkeyCommand(HotkeyConfig? target = null)
+        private void ExecuteStartRecording(HotkeyConfig? target)
         {
+            _hubMonitorService.AddLogMessage($"HOTKEY_RECORDING_STARTED for: {(target?.Name ?? "New Hotkey Input")}");
             _recordingTarget = target;
+            _currentlyPressedKeys.Clear();
+            _lastCapturedCombo = "";
+            _hasNonModifierInCombo = false;
             IsRecordingHotkey = true;
-            // The actual recording is handled by listening to global keys while this flag is true
         }
 
         private void OnGlobalKeyAction(object? sender, KeyHookEventArgs e)
         {
-            if (!IsRecordingHotkey || e.State != KeyState.Down) return;
+            if (!IsRecordingHotkey) return;
 
-            // Don't capture just modifiers
-            if (e.Key == Keys.ControlKey || e.Key == Keys.ShiftKey || e.Key == Keys.Menu || e.Key == Keys.LWin || e.Key == Keys.RWin) return;
-
-            var keys = new List<string>();
-            if (e.Control) keys.Add("Ctrl");
-            if (e.Alt) keys.Add("Alt");
-            if (e.Shift) keys.Add("Shift");
-            if (e.Win) keys.Add("Win");
-            
-            string keyName = e.Key.ToString().ToUpper();
-            if (keyName == "SPACE") keyName = "SPACE";
-            keys.Add(keyName);
-
-            string hotkeyStr = string.Join("+", keys);
-
-            WpfApp.Current?.Dispatcher.BeginInvoke(new Action(() => {
-                if (_recordingTarget != null)
+            if (e.State == KeyState.Down)
+            {
+                _currentlyPressedKeys.Add(e.Key);
+                
+                if (!IsModifier(e.Key))
                 {
-                    _recordingTarget.Key = hotkeyStr;
-                    _settingsService.SaveSettings(); // Persist change
-                    RefreshHotkeysGrid();
+                    _hasNonModifierInCombo = true;
                 }
-                else
+
+                // Build string from CURRENTLY pressed keys to be 100% sure
+                var displayKeys = new List<string>();
+                
+                // Keep standard order: Ctrl, Alt, Shift, Win, then the key
+                if (_currentlyPressedKeys.Any(k => k == Keys.ControlKey || k == Keys.LControlKey || k == Keys.RControlKey)) displayKeys.Add("Ctrl");
+                if (_currentlyPressedKeys.Any(k => k == Keys.Menu || k == Keys.LMenu || k == Keys.RMenu)) displayKeys.Add("Alt");
+                if (_currentlyPressedKeys.Any(k => k == Keys.ShiftKey || k == Keys.LShiftKey || k == Keys.RShiftKey)) displayKeys.Add("Shift");
+                if (_currentlyPressedKeys.Any(k => k == Keys.LWin || k == Keys.RWin)) displayKeys.Add("Win");
+
+                foreach (var k in _currentlyPressedKeys)
                 {
-                    NewHotkeyValue = hotkeyStr;
+                    if (!IsModifier(k))
+                    {
+                        string name = k.ToString().ToUpper();
+                        if (name == "SPACE") name = "SPACE";
+                        displayKeys.Add(name);
+                    }
                 }
-                IsRecordingHotkey = false;
-                _recordingTarget = null;
-            }));
+
+                if (displayKeys.Count > 0)
+                {
+                    _lastCapturedCombo = string.Join("+", displayKeys.Distinct());
+                    
+                    // Update UI preview
+                    WpfApp.Current?.Dispatcher.BeginInvoke(new Action(() => {
+                        if (_recordingTarget != null) _recordingTarget.Key = _lastCapturedCombo + "...";
+                        else NewHotkeyValue = _lastCapturedCombo + "...";
+                    }));
+                }
+            }
+            else // KeyUp
+            {
+                // If we are about to release the last key and we have a valid combo, finalize
+                if (_currentlyPressedKeys.Count == 1 && _currentlyPressedKeys.Contains(e.Key) && _hasNonModifierInCombo && !string.IsNullOrEmpty(_lastCapturedCombo))
+                {
+                    string finalCombo = _lastCapturedCombo;
+                    WpfApp.Current?.Dispatcher.BeginInvoke(new Action(() => {
+                        _hubMonitorService.AddLogMessage($"Smart Capture Finished: {finalCombo}");
+                        if (_recordingTarget != null)
+                        {
+                            _recordingTarget.Key = finalCombo;
+                            _settingsService.SaveSettings();
+                            RefreshHotkeysGrid();
+                        }
+                        else
+                        {
+                            NewHotkeyValue = finalCombo;
+                        }
+                        IsRecordingHotkey = false;
+                        _recordingTarget = null;
+                    }));
+                }
+
+                _currentlyPressedKeys.Remove(e.Key);
+            }
         }
 
-        public void AddHotkeyCommand()
+        private bool IsModifier(Keys k)
+        {
+            return k == Keys.ControlKey || k == Keys.LControlKey || k == Keys.RControlKey ||
+                   k == Keys.ShiftKey || k == Keys.LShiftKey || k == Keys.RShiftKey ||
+                   k == Keys.Menu || k == Keys.LMenu || k == Keys.RMenu ||
+                   k == Keys.LWin || k == Keys.RWin;
+        }
+
+        private void ExecuteAddHotkey()
         {
             if (string.IsNullOrEmpty(NewHotkeyName) || string.IsNullOrEmpty(NewHotkeyAction))
             {
@@ -346,13 +430,14 @@ namespace OmniSync.Hub.Presentation
             RefreshHotkeysGrid();
         }
 
-        public void DeleteHotkeyCommand(string name)
+        private void ExecuteDeleteHotkey(string? name)
         {
+            if (name == null) return;
             _settingsService.RemoveHotkey(name);
             RefreshHotkeysGrid();
         }
 
-        public void ToggleShutdownModeCommand()
+        private void ExecuteToggleShutdownMode()
         {
             var currentMode = _shutdownService.GetCurrentMode();
             var newMode = currentMode == ShutdownMode.Shutdown
@@ -365,7 +450,7 @@ namespace OmniSync.Hub.Presentation
         private int _shutdownIndex = 0;
         private int[] _shutdownTimes = { 0, 15, 30, 60, 120, 300, 720 }; // Minutes
 
-        public void ScheduleShutdownCommand()
+        private void ExecuteScheduleShutdown()
         {
             _shutdownIndex = (_shutdownIndex + 1) % _shutdownTimes.Length;
             int minutes = _shutdownTimes[_shutdownIndex];
@@ -384,7 +469,7 @@ namespace OmniSync.Hub.Presentation
             // Handle click only if it wasn't a long press
             if (!_isLongPress)
             {
-                ScheduleShutdownCommand();
+                ExecuteScheduleShutdown();
             }
         }
 
@@ -392,7 +477,7 @@ namespace OmniSync.Hub.Presentation
         {
             _longPressTimer.Stop();
             _isLongPress = true;
-            ToggleShutdownModeCommand(); // Toggle mode on long press
+            ExecuteToggleShutdownMode(); // Toggle mode on long press
         }
 
         // --- Event Handlers from Services ---

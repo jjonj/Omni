@@ -74,22 +74,12 @@ namespace OmniSync.Hub.Presentation
             this.Hide();
         }
 
-        // XAML Event Handlers (delegating to ViewModel)
-        private void ClearLogButton_Click(object sender, RoutedEventArgs e) => _viewModel.ClearLogCommand();
-        private void AddMappingButton_Click(object sender, RoutedEventArgs e) => _viewModel.AddMappingCommand();
-        private void DeleteMappingButton_Click(object sender, RoutedEventArgs e)
-        {
-            if (sender is FrameworkElement element && element.DataContext is KeyValuePair<string, string> mapping)
-            {
-                _viewModel.DeleteMappingCommand(mapping.Key);
-            }
-        }
+        // XAML Event Handlers (delegating to ViewModel where needed for complex interactions)
         private void RunOnStartupCheckBox_Checked(object sender, RoutedEventArgs e) => _viewModel.IsRunOnStartupEnabled = true;
         private void RunOnStartupCheckBox_Unchecked(object sender, RoutedEventArgs e) => _viewModel.IsRunOnStartupEnabled = false;
 
-        // Long press for shutdown button
+        // Long press for shutdown button remains in code-behind to handle MouseDown/Up events properly
         private void ShutdownButton_MouseDown(object sender, MouseButtonEventArgs e) => _viewModel.StartLongPressTimer();
         private void ShutdownButton_MouseUp(object sender, MouseButtonEventArgs e) => _viewModel.StopLongPressTimer();
-        private void ShutdownButton_Click(object sender, RoutedEventArgs e) => _viewModel.ScheduleShutdownCommand();
     }
 }
