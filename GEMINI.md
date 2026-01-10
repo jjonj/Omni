@@ -14,3 +14,5 @@ When committing, there may be files in status not related to your changes as the
 If told to do a megasession then read Tasks.txt
 
 Keep the WPF Hub UI and Web Settings UI in sync for features like Hotkeys, but prioritize the WPF version as primary.
+
+When asked to add logging, use the activity log on android and hub, not logcat.

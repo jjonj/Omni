@@ -264,7 +264,11 @@ fun AiChatScreen(
                 },
                 actions = {
                     if (selectedPid != -1) {
-                        IconButton(onClick = { /* Could be rename or settings */ }, enabled = isConnected) {
+                        IconButton(onClick = { 
+                            val hubUrl = mainViewModel.appConfig.hubUrl
+                            val baseUrl = hubUrl.substringBeforeLast("/")
+                            mainViewModel.openUrlOnPhone("$baseUrl/Settings.html")
+                        }, enabled = isConnected) {
                             Icon(imageVector = Icons.Default.Settings, contentDescription = "Session Settings")
                         }
                     }
@@ -1130,11 +1134,8 @@ fun RenderTextWithStyles(
             annotatedString.getStringAnnotations(tag = "FILE", start = offset, end = offset)
                 .firstOrNull()?.let { annotation ->
                     val filename = annotation.item
-                    val separator = if (workspace.contains("/")) "/" else "\\"
-                    val fullPath = if (workspace.isEmpty()) filename 
-                                   else if (workspace.endsWith(separator)) workspace + filename
-                                   else workspace + separator + filename
-                    mainViewModel.setPendingNavigationPath("AI_FILE:$fullPath")
+                    // We just pass the raw name now, FilesViewModel handles finding it in workspace/current dir
+                    mainViewModel.setPendingNavigationPath("AI_FILE:$filename")
                     mainViewModel.navigateTo(AppScreen.EDITOR)
                 }
         }

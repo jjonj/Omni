@@ -19,6 +19,7 @@ namespace OmniSync.Hub.Presentation
         private readonly ShutdownService _shutdownService;
         private readonly RegistryService _registryService;
         private readonly HubSettingsService _settingsService;
+        private readonly KeyboardHook _keyboardHook;
 
         private DispatcherTimer _uiUpdateTimer;
         private DispatcherTimer _longPressTimer;
@@ -114,7 +115,52 @@ namespace OmniSync.Hub.Presentation
             }
         }
 
+        private string _newHotkeyName = "";
+        public string NewHotkeyName
+        {
+            get => _newHotkeyName;
+            set { if (_newHotkeyName != value) { _newHotkeyName = value; OnPropertyChanged(); } }
+        }
+
+        private string _newHotkeyAction = "";
+        public string NewHotkeyAction
+        {
+            get => _newHotkeyAction;
+            set { if (_newHotkeyAction != value) { _newHotkeyAction = value; OnPropertyChanged(); } }
+        }
+
+        private string _newHotkeyValue = "";
+        public string NewHotkeyValue
+        {
+            get => _newHotkeyValue;
+            set { if (_newHotkeyValue != value) { _newHotkeyValue = value; OnPropertyChanged(); } }
+        }
+
         public ObservableCollection<KeyValuePair<string, string>> ExeMappings { get; }
+        public ObservableCollection<HotkeyConfig> Hotkeys { get; }
+
+        public List<string> AvailableActions { get; } = new()
+        {
+            "OPEN_HUB_WINDOW",
+            "TOGGLE_MUTE",
+            "VOL_UP",
+            "VOL_DOWN",
+            "SLEEP_PC",
+            "SHUTDOWN_PC",
+            "TFT_CLIPBOARD_MUST_INCLUDE_SOLVE_NEXT",
+            "TFT_CLIPBOARD_CURRENT_TEAM",
+            "TFT_COPY_SOLUTION_CODE",
+            "SCREENSHOT"
+        };
+
+        private bool _isRecordingHotkey;
+        public bool IsRecordingHotkey
+        {
+            get => _isRecordingHotkey;
+            set { if (_isRecordingHotkey != value) { _isRecordingHotkey = value; OnPropertyChanged(); } }
+        }
+
+        private HotkeyConfig? _recordingTarget;
 
         public string ActiveWindowText { get; private set; } = "N/A";
 
@@ -124,6 +170,7 @@ namespace OmniSync.Hub.Presentation
             ActiveConnections = new ObservableCollection<string>();
             LogMessages = new ObservableCollection<string>();
             ExeMappings = new ObservableCollection<KeyValuePair<string, string>>();
+            Hotkeys = new ObservableCollection<HotkeyConfig>();
         }
 
         // Modifier Key States
@@ -148,19 +195,21 @@ namespace OmniSync.Hub.Presentation
             set { _isAltPressed = value; OnPropertyChanged(); }
         }
 
-        public MainViewModel(HubMonitorService hubMonitorService, InputService inputService, ShutdownService shutdownService, RegistryService registryService, HubSettingsService settingsService)
+        public MainViewModel(HubMonitorService hubMonitorService, InputService inputService, ShutdownService shutdownService, RegistryService registryService, HubSettingsService settingsService, KeyboardHook keyboardHook)
         {
             _hubMonitorService = hubMonitorService;
             _inputService = inputService;
             _shutdownService = shutdownService;
             _registryService = registryService;
             _settingsService = settingsService;
+            _keyboardHook = keyboardHook;
 
             // Initialize collections
             ActiveConnections = _hubMonitorService.ActiveConnections;
             LogMessages = _hubMonitorService.LogMessages;
             LogMessages.CollectionChanged += (s, e) => OnPropertyChanged(nameof(LogMessagesText));
             ExeMappings = new ObservableCollection<KeyValuePair<string, string>>(_settingsService.Settings.ExeMappings.ToList());
+            Hotkeys = new ObservableCollection<HotkeyConfig>(_settingsService.Settings.Hotkeys);
 
             // Hook up event handlers
             _hubMonitorService.PropertyChanged += (s, e) =>
@@ -170,6 +219,7 @@ namespace OmniSync.Hub.Presentation
                     LastIncomingCommand = _hubMonitorService.LastIncomingCommand;
                 }
             };
+            _keyboardHook.KeyActionOccurred += OnGlobalKeyAction;
             _shutdownService.ShutdownScheduled += (s, scheduledTime) => UpdateShutdownLabel(scheduledTime);
             _inputService.ModifierStateChanged += (s, e) => UpdateModifierState(e.Modifier, e.IsPressed);
             _settingsService.SettingsChanged += (s, e) =>
@@ -180,6 +230,12 @@ namespace OmniSync.Hub.Presentation
                     foreach (var mapping in _settingsService.Settings.ExeMappings)
                     {
                         ExeMappings.Add(mapping);
+                    }
+                    
+                    Hotkeys.Clear();
+                    foreach (var hk in _settingsService.Settings.Hotkeys)
+                    {
+                        Hotkeys.Add(hk);
                     }
                 }));
             };
@@ -226,6 +282,74 @@ namespace OmniSync.Hub.Presentation
         {
             _settingsService.RemoveMapping(key);
             RefreshMappingsGrid();
+        }
+
+        public void StartRecordingHotkeyCommand(HotkeyConfig? target = null)
+        {
+            _recordingTarget = target;
+            IsRecordingHotkey = true;
+            // The actual recording is handled by listening to global keys while this flag is true
+        }
+
+        private void OnGlobalKeyAction(object? sender, KeyHookEventArgs e)
+        {
+            if (!IsRecordingHotkey || e.State != KeyState.Down) return;
+
+            // Don't capture just modifiers
+            if (e.Key == Keys.ControlKey || e.Key == Keys.ShiftKey || e.Key == Keys.Menu || e.Key == Keys.LWin || e.Key == Keys.RWin) return;
+
+            var keys = new List<string>();
+            if (e.Control) keys.Add("Ctrl");
+            if (e.Alt) keys.Add("Alt");
+            if (e.Shift) keys.Add("Shift");
+            if (e.Win) keys.Add("Win");
+            
+            string keyName = e.Key.ToString().ToUpper();
+            if (keyName == "SPACE") keyName = "SPACE";
+            keys.Add(keyName);
+
+            string hotkeyStr = string.Join("+", keys);
+
+            WpfApp.Current?.Dispatcher.BeginInvoke(new Action(() => {
+                if (_recordingTarget != null)
+                {
+                    _recordingTarget.Key = hotkeyStr;
+                    _settingsService.SaveSettings(); // Persist change
+                    RefreshHotkeysGrid();
+                }
+                else
+                {
+                    NewHotkeyValue = hotkeyStr;
+                }
+                IsRecordingHotkey = false;
+                _recordingTarget = null;
+            }));
+        }
+
+        public void AddHotkeyCommand()
+        {
+            if (string.IsNullOrEmpty(NewHotkeyName) || string.IsNullOrEmpty(NewHotkeyAction))
+            {
+                MessageBox.Show("Please enter both a name and an action.", "Missing Data", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+            
+            _settingsService.AddHotkey(new HotkeyConfig { 
+                Name = NewHotkeyName, 
+                Action = NewHotkeyAction, 
+                Key = NewHotkeyValue 
+            });
+            
+            NewHotkeyName = "";
+            NewHotkeyAction = "";
+            NewHotkeyValue = "";
+            RefreshHotkeysGrid();
+        }
+
+        public void DeleteHotkeyCommand(string name)
+        {
+            _settingsService.RemoveHotkey(name);
+            RefreshHotkeysGrid();
         }
 
         public void ToggleShutdownModeCommand()
@@ -317,6 +441,15 @@ namespace OmniSync.Hub.Presentation
             foreach(var mapping in _settingsService.Settings.ExeMappings)
             {
                 ExeMappings.Add(mapping);
+            }
+        }
+
+        public void RefreshHotkeysGrid()
+        {
+            Hotkeys.Clear();
+            foreach (var hk in _settingsService.Settings.Hotkeys)
+            {
+                Hotkeys.Add(hk);
             }
         }
 

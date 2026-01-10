@@ -127,17 +127,30 @@ fun SettingsScreen(
             )
             Spacer(modifier = Modifier.height(8.dp))
             
-            Button(
-                onClick = {
-                    appConfig.hubUrl = hubUrl
-                    appConfig.wanIp = wanIp
-                    appConfig.apiKey = apiKey
-                    mainViewModel.saveAppConfig()
-                    signalRClient.manualReconnect()
-                },
-                modifier = Modifier.align(Alignment.End)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("Save & Reconnect")
+                TextButton(onClick = {
+                    val hubUrl = mainViewModel.appConfig.hubUrl
+                    val baseUrl = hubUrl.substringBeforeLast("/")
+                    mainViewModel.openUrlOnPhone("$baseUrl/Settings.html")
+                }) {
+                    Text("Manage Hub (Hotkeys, Exes)")
+                }
+
+                Button(
+                    onClick = {
+                        appConfig.hubUrl = hubUrl
+                        appConfig.wanIp = wanIp
+                        appConfig.apiKey = apiKey
+                        mainViewModel.saveAppConfig()
+                        signalRClient.manualReconnect()
+                    }
+                ) {
+                    Text("Save & Reconnect")
+                }
             }
             
             Spacer(modifier = Modifier.height(24.dp))

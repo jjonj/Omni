@@ -20,6 +20,7 @@ Only work on subtasks if told to do so or if told explicitly to do a Megasession
 
 
 ## For the hub
+Add mapping button in settings doesn't work, nothing happens. 
 
 
 ## in OmniSync.Android

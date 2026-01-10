@@ -156,6 +156,35 @@ foreach ($p in $procs) {{
         {
             try
             {
+                // PowerShell script to find ANY window in the process tree (self or parents)
+                string script = $@"
+$pid = {pid}
+$wshell = New-Object -ComObject WScript.Shell
+
+function Try-Activate($pId) {{
+    $p = Get-Process -Id $pId -ErrorAction SilentlyContinue
+    if ($null -eq $p) {{ return $false }}
+    if ($p.MainWindowHandle -ne 0) {{
+        if ($wshell.AppActivate($p.Id)) {{ return $true }}
+    }}
+    return $false
+}}
+
+# 1. Try target PID
+if (Try-Activate($pid)) {{ exit }}
+
+# 2. Try Parent processes (climbing up to find the terminal window)
+$currPid = $pid
+for ($i=0; $i -lt 5; $i++) {{
+    $parent = (Get-CimInstance Win32_Process -Filter ""ProcessId = $currPid"").ParentProcessId
+    if (!$parent) {{ break }}
+    if (Try-Activate($parent)) {{ exit }}
+    $currPid = $parent
+}}
+";
+                RunPowerShell(script);
+
+                // C# Fallback attempt using handle if available
                 var proc = Process.GetProcessById(pid);
                 var handle = proc.MainWindowHandle;
                 if (handle != IntPtr.Zero)
@@ -165,7 +194,7 @@ foreach ($p in $procs) {{
                 }
                 else
                 {
-                    // Fallback to Shell AppActivate if MainWindowHandle is not ready/available
+                    // Direct PID activation fallback
                     RunPowerShell($"(New-Object -ComObject WScript.Shell).AppActivate({pid})");
                 }
             }

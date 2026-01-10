@@ -244,56 +244,69 @@ namespace OmniSync.Hub.Infrastructure.Services
                 {
                     if (OperatingSystem.IsWindows())
                     {
-                        string query = "SELECT ProcessId, CommandLine FROM Win32_Process WHERE Name LIKE 'node%'";
+                        string query = "SELECT ProcessId, CommandLine, ParentProcessId FROM Win32_Process WHERE Name LIKE 'node%'";
                         using var searcher = new ManagementObjectSearcher(query);
                         using var collection = searcher.Get();
+
+                        var rawGeminiProcesses = new List<(int Pid, string Cmd, int Parent)>();
 
                         foreach (var process in collection)
                         {
                             var commandLine = process["CommandLine"]?.ToString();
                             var pidObj = process["ProcessId"];
+                            var parentObj = process["ParentProcessId"];
+                            
                             if (commandLine != null && pidObj != null)
                             {
                                 int foundPid = Convert.ToInt32(pidObj);
-
-                                // Skip if it's already a connected session
-                                if (_sessions.TryGetValue(foundPid, out var existing) && existing.IsConnected)
-                                {
-                                    pids.Add(foundPid);
-                                    continue;
-                                }
-
-                                // Skip if failed too many times
-                                if (_failedPids.TryGetValue(foundPid, out var failInfo))
-                                {
-                                    if (failInfo.FailCount >= 3)
-                                    {
-                                        if ((now - failInfo.LastAttempt).TotalMinutes < 1) continue;
-                                    }
-                                    if ((now - failInfo.LastAttempt).TotalSeconds < 10) continue;
-                                }
-
-                                // Refined matching:
-                                bool isGemini = (commandLine.Contains("bundle/gemini.js") || 
-                                                 commandLine.Contains("gemini-cli") || 
-                                                 commandLine.Contains("OMNI_GEMINI")) && 
-                                                !commandLine.Contains("@google");
-
-                                _logger.LogDebug($"[AiCliService] PID {foundPid} command line: {commandLine} (isGemini: {isGemini})");
+                                int parentPid = parentObj != null ? Convert.ToInt32(parentObj) : 0;
+                                string cmdLower = commandLine.ToLower();
+                                bool isGemini = (cmdLower.Contains("bundle/gemini.js") || 
+                                                 cmdLower.Contains("omni_gemini") || 
+                                                 (cmdLower.Contains("node") && cmdLower.Contains("gemini") && !cmdLower.Contains("@google") && !cmdLower.Contains("node_modules")));
 
                                 if (isGemini)
                                 {
-                                    _logger.LogInformation($"[AiCliService] Found potential Gemini process: PID {foundPid}");
-                                    pids.Add(foundPid);
-
-                                    // Try to extract workspace for naming if not already named
-                                    if (!_sessionNames.ContainsKey(foundPid) || !_workspaces.ContainsKey(foundPid))
-                                    {
-                                        TryExtractWorkspaceAndName(foundPid, commandLine);
-                                    }
+                                    rawGeminiProcesses.Add((foundPid, commandLine, parentPid));
                                 }
                             }
                         }
+
+                        // Deduplicate: If a process has a child that is ALSO a Gemini process, 
+                        // then this process is likely a wrapper (e.g. cmd.exe or a node parent).
+                        // We prefer the 'leaf' process which usually holds the pipe.
+                        foreach (var gp in rawGeminiProcesses)
+                        {
+                            // If this process is a PARENT of another gemini process in our list, skip it (prefer the leaf)
+                            if (rawGeminiProcesses.Any(other => other.Parent == gp.Pid))
+                            {
+                                _logger.LogDebug($"[AiCliService] Skipping parent Gemini process PID {gp.Pid} (Child PID {rawGeminiProcesses.First(o => o.Parent == gp.Pid).Pid} is leaf)");
+                                continue;
+                            }
+
+                            // Skip if it's already a connected session
+                            if (_sessions.TryGetValue(gp.Pid, out var existing) && existing.IsConnected)
+                            {
+                                if (!pids.Contains(gp.Pid)) pids.Add(gp.Pid);
+                                continue;
+                            }
+
+                            // Skip if failed too many times
+                            if (_failedPids.TryGetValue(gp.Pid, out var failInfo))
+                            {
+                                if (failInfo.FailCount >= 3 && (now - failInfo.LastAttempt).TotalMinutes < 1) continue;
+                                if ((now - failInfo.LastAttempt).TotalSeconds < 10) continue;
+                            }
+
+                            _logger.LogInformation($"[AiCliService] Found verified Gemini process: PID {gp.Pid}");
+                            pids.Add(gp.Pid);
+
+                            if (!_sessionNames.ContainsKey(gp.Pid) || !_workspaces.ContainsKey(gp.Pid))
+                            {
+                                TryExtractWorkspaceAndName(gp.Pid, gp.Cmd);
+                            }
+                        }
+                        
                         _lastWmiDiscovery = now;
                         _cachedWmiPids = pids.ToList();
                     }
@@ -510,9 +523,18 @@ namespace OmniSync.Hub.Infrastructure.Services
 
         private string GetUniqueSessionName(string baseName, int pid)
         {
+            // If the PID already has a name that matches our base, keep it
+            if (_sessionNames.TryGetValue(pid, out var existingName) && existingName.StartsWith(baseName, StringComparison.OrdinalIgnoreCase))
+            {
+                return existingName;
+            }
+
             string candidate = baseName;
             int counter = 1;
-            while (_sessionNames.Any(kvp => kvp.Key != pid && kvp.Value.Equals(candidate, StringComparison.OrdinalIgnoreCase)))
+            
+            // Check against ALL known names to ensure uniqueness during discovery
+            while (_sessionNames.Any(kvp => kvp.Key != pid && 
+                                           kvp.Value.Equals(candidate, StringComparison.OrdinalIgnoreCase)))
             {
                 candidate = $"{baseName} ({++counter})";
             }
@@ -813,24 +835,29 @@ namespace OmniSync.Hub.Infrastructure.Services
             }
         }
 
-        public async Task SetTargetPidAsync(int pid)
+        public async Task<bool> SetTargetPidAsync(int pid)
         {
             _logger.LogInformation($"[AiCliService] Setting target PID to {pid}");
-            if (!_sessions.ContainsKey(pid))
+            
+            // Ensure we are connected
+            if (!_sessions.TryGetValue(pid, out var session) || !session.IsConnected)
             {
-                _logger.LogInformation($"[AiCliService] Target PID {pid} not in dictionary, discovering...");
-                await DiscoverSessionsAsync(2000);
+                _logger.LogInformation($"[AiCliService] Session {pid} not connected. Attempting immediate connection...");
+                await EnsureSessionAsync(pid, 2000);
             }
 
-            if (_sessions.ContainsKey(pid))
+            bool connected = _sessions.TryGetValue(pid, out var s) && s.IsConnected;
+            if (connected)
             {
                 _targetPid = pid;
-                _logger.LogInformation($"[AiCliService] Target PID set to {pid}");
+                _logger.LogInformation($"[AiCliService] Successfully targeted and connected to PID {pid}");
             }
             else
             {
-                _logger.LogWarning($"[AiCliService] Target PID {pid} still not found after discovery.");
+                _logger.LogWarning($"[AiCliService] Failed to connect to targeted PID {pid}");
             }
+            
+            return connected;
         }
 
         public int GetTargetPid() => _targetPid;
@@ -1132,8 +1159,9 @@ namespace OmniSync.Hub.Infrastructure.Services
                                 // Add to sent prompts to prevent echo ghosting
                                 if (command == "prompt" && !string.IsNullOrEmpty(text))
                                 {
-                                    _logger.LogDebug($"[GeminiSession] Adding to _sentPrompts: {text.Take(30)}...");
-                                    _sentPrompts.Add(text);
+                                    string normalized = text.Trim().ToLower();
+                                    _logger.LogDebug($"[GeminiSession] Adding to _sentPrompts: {normalized.Take(30)}...");
+                                    _sentPrompts.Add(normalized);
                                 }
 
                                 await _writer.WriteLineAsync(payload);
@@ -1210,7 +1238,8 @@ namespace OmniSync.Hub.Infrastructure.Services
                                 {
                                     _logger.LogDebug($"[GeminiSession] Processing response from PID {_pid}: {text.Take(30)}...");
                                     // Ghost echo protection: if this matches a prompt we just sent, ignore it
-                                    if (_sentPrompts.Contains(text))
+                                    string normalizedText = text.Trim().ToLower();
+                                    if (_sentPrompts.Contains(normalizedText))
                                     {
                                         _logger.LogInformation($"[GeminiSession] IGNORED echo from PID {_pid}: {text.Take(30)}...");
                                         continue;

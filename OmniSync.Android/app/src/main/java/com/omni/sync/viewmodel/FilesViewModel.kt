@@ -183,17 +183,47 @@ class FilesViewModel(
                 if (path != null) {
                     if (path.startsWith("AI_FILE:")) {
                         val filename = path.removePrefix("AI_FILE:")
-                        // Logic to find file in workspace... for now let's assume direct path or search
-                        // For simplicity, we'll try to find an entry with this name in our current or cached lists
+                        Log.d("FilesViewModel", "AI_FILE requested: $filename")
+                        mainViewModel.addLog("AI Link: Searching for $filename...", com.omni.sync.ui.screen.LogType.INFO)
+                        
+                        // Logic to find file in workspace... 
                         val entry = findEntryByFilename(filename)
                         if (entry != null) {
-                            openForEditing(entry)
+                            Log.d("FilesViewModel", "Found matching entry for AI_FILE: ${entry.path}")
+                            mainViewModel.addLog("AI Link: Found ${entry.name}", com.omni.sync.ui.screen.LogType.SUCCESS)
+                            if (isMediaFile(entry.name)) {
+                                handleFileOpen(entry)
+                            } else {
+                                openForEditing(entry)
+                            }
                             mainViewModel.setPendingNavigationPath(null)
                         } else {
                             // If not found in current list, maybe it's a full path already
                             val isLikelyFile = filename.contains(".") && !filename.endsWith("/") && !filename.endsWith("\\")
-                            if (isLikelyFile) {
-                                openForEditing(FileSystemEntry(filename.substringAfterLast("\\").substringAfterLast("/"), filename, false, 0, java.util.Date()))
+                            val isAbsolute = filename.startsWith("/") || (filename.length > 2 && filename[1] == ':')
+                            
+                            if (isLikelyFile && isAbsolute) {
+                                Log.d("FilesViewModel", "Attempting to load absolute path for AI_FILE: $filename")
+                                loadFileByPath(filename)
+                                mainViewModel.setPendingNavigationPath(null)
+                            } else if (isLikelyFile) {
+                                // Try one last attempt: if we have an active workspace, join them
+                                val selectedPid = signalRClient.selectedPid.value
+                                val workspace = signalRClient.aiWorkspaces.value[selectedPid]
+                                if (workspace != null) {
+                                    val separator = if (workspace.contains("/")) "/" else "\\"
+                                    val fullPath = if (workspace.endsWith(separator)) workspace + filename else workspace + separator + filename
+                                    Log.d("FilesViewModel", "Trying workspace-joined path: $fullPath")
+                                    loadFileByPath(fullPath)
+                                    mainViewModel.setPendingNavigationPath(null)
+                                } else {
+                                    Log.w("FilesViewModel", "Could not resolve AI_FILE: $filename (No workspace)")
+                                    mainViewModel.addLog("Link error: No workspace context", com.omni.sync.ui.screen.LogType.ERROR)
+                                    mainViewModel.setPendingNavigationPath(null)
+                                }
+                            } else {
+                                Log.w("FilesViewModel", "Could not find file for AI_FILE: $filename")
+                                mainViewModel.addLog("File not found: $filename", com.omni.sync.ui.screen.LogType.ERROR)
                                 mainViewModel.setPendingNavigationPath(null)
                             }
                         }

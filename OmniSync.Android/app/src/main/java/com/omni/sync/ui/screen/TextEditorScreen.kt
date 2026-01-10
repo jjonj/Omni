@@ -640,24 +640,13 @@ fun TextEditorScreen(
     var fontSize by remember { mutableFloatStateOf(14f) }
     var forceMarkdown by remember { mutableStateOf(false) }
     
-    val verticalScrollState = rememberScrollState()
-    var scrollRestored by remember(editingFile?.path) { mutableStateOf(false) }
-    
-    // Restore scroll position
-    LaunchedEffect(editingFile?.path, editingContent.isNotEmpty()) {
-        if (!scrollRestored && editingContent.isNotEmpty()) {
-            editingFile?.path?.let { path ->
-                val savedPos = scrollPositions[path] ?: 0
-                if (savedPos > 0) {
-                    delay(100) // Give UI time to layout
-                    verticalScrollState.scrollTo(savedPos)
-                    scrollRestored = true
-                } else {
-                    scrollRestored = true
-                }
-            }
-        }
+    val verticalScrollState = remember(editingFile?.path) { 
+        val savedPos = editingFile?.path?.let { scrollPositions[it] } ?: 0
+        ScrollState(initial = savedPos)
     }
+    var scrollRestored by remember(editingFile?.path) { mutableStateOf(true) } // Already restored by initial state
+    
+    // Restore scroll position - logic removed as it's handled by ScrollState(initial = ...)
 
     // Save scroll position
     LaunchedEffect(verticalScrollState.value) {

@@ -78,9 +78,9 @@ namespace OmniSync.Hub.Infrastructure.Services
         {
             if (_settings.Hotkeys.Count == 0)
             {
-                _settings.Hotkeys.Add(new HotkeyConfig { Name = "Send clipboard to TFT must include and solve for level+1", Key = "", Action = "TFT_CLIPBOARD_MUST_INCLUDE_SOLVE_NEXT" });
-                _settings.Hotkeys.Add(new HotkeyConfig { Name = "Send Clipboard to TFT current team", Key = "", Action = "TFT_CLIPBOARD_CURRENT_TEAM" });
-                _settings.Hotkeys.Add(new HotkeyConfig { Name = "Copy solution [1,2,3,4,5] team code to clipboard", Key = "", Action = "TFT_COPY_SOLUTION_CODE" });
+                _settings.Hotkeys.Add(new HotkeyConfig { Name = "TFT: Clipboard to Must Include", Key = "Ctrl+Alt+I", Action = "TFT_CLIPBOARD_MUST_INCLUDE_SOLVE_NEXT" });
+                _settings.Hotkeys.Add(new HotkeyConfig { Name = "TFT: Clipboard to Current Team", Key = "Ctrl+Alt+T", Action = "TFT_CLIPBOARD_CURRENT_TEAM" });
+                _settings.Hotkeys.Add(new HotkeyConfig { Name = "TFT: Copy Team Code", Key = "Ctrl+Alt+C", Action = "TFT_COPY_SOLUTION_CODE" });
                 _settings.Hotkeys.Add(new HotkeyConfig { Name = "Open Hub Window", Key = "Ctrl+Alt+H", Action = "OPEN_HUB_WINDOW" });
                 SaveSettings();
             }
@@ -137,6 +137,24 @@ namespace OmniSync.Hub.Infrastructure.Services
             {
                 SaveSettings();
             }
+        }
+
+        public void AddHotkey(HotkeyConfig hotkey)
+        {
+            _settings.Hotkeys.Add(hotkey);
+            SaveSettings();
+        }
+
+        public void RemoveHotkey(string name)
+        {
+            _settings.Hotkeys.RemoveAll(h => h.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
+            SaveSettings();
+        }
+
+        public void UpdateHotkeys(List<HotkeyConfig> hotkeys)
+        {
+            _settings.Hotkeys = hotkeys;
+            SaveSettings();
         }
 
         public string? GetPath(string key)

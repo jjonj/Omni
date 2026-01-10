@@ -1,5 +1,10 @@
-Keep bottom navigation bar visible when opening files (VideoPlayer, ImageViewer).
+feat(mega): final fixes and WPF Hub Hotkey UI improvements
 
-- Moved VideoPlayerScreen and ImageViewerScreen inside the main Scaffold.
-- Added parentPadding support to VideoPlayerScreen and ImageViewerScreen to respect bottom navigation bar.
-- Updated MainActivity to include these screens in MainScreenContent.
+- Fix 'Switching session...' hang by preferring leaf node processes in Gemini discovery.
+- Implement full Global Hotkey Management in WPF Hub (Add/Delete/Record/Action Dropdown).
+- Pre-populate default hotkeys with key combinations (Ctrl+Alt+I/T/C/H).
+- Remove redundant AI message logging on Android to reduce log noise.
+- Relocate 'Hub settings' shortcut to the main Android Settings screen.
+- Improve AI file link handling with better path resolution and extensive logging.
+- Fix session duplication by filtering out parent processes during discovery.
+- Refine Text Editor scroll restoration to eliminate frame-flicker.

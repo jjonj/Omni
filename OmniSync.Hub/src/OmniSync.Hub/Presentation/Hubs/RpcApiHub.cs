@@ -1051,8 +1051,15 @@ namespace OmniSync.Hub.Presentation.Hubs
                 await Clients.All.SendAsync("SwitchAiSession", pid);
 
                 // Switch in Hub
-                await _aiCliService.SetTargetPidAsync(pid);
-                await _aiCliService.GetHistoryAsync(pid);
+                bool success = await _aiCliService.SetTargetPidAsync(pid);
+                if (success)
+                {
+                    await _aiCliService.GetHistoryAsync(pid);
+                }
+                else
+                {
+                    await Clients.Caller.SendAsync("ReceiveAiStatus", "Failed to connect", pid);
+                }
             }
         }
 

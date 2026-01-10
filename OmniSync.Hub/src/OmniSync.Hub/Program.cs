@@ -195,7 +195,20 @@ builder.Services.AddSingleton<HubEventSender>(provider =>
 
     return new HubEventSender(logger, hubContext, processService, inputService, shutdownService, commandDispatcher, fileService, aiCliService, settingsService, monitorService);
 });
-builder.Services.AddHostedService<TrayIconManager>();
+builder.Services.AddSingleton<TrayIconManager>(provider =>
+{
+    var appLifetime = provider.GetRequiredService<IHostApplicationLifetime>();
+    var hubMonitorService = provider.GetRequiredService<HubMonitorService>();
+    var inputService = provider.GetRequiredService<InputService>();
+    var shutdownService = provider.GetRequiredService<ShutdownService>();
+    var registryService = provider.GetRequiredService<RegistryService>();
+    var settingsService = provider.GetRequiredService<HubSettingsService>();
+    var hotkeyService = provider.GetRequiredService<GlobalHotkeyService>();
+    var keyboardHook = provider.GetRequiredService<KeyboardHook>();
+    var logger = provider.GetRequiredService<ILogger<TrayIconManager>>();
+    return new TrayIconManager(appLifetime, hubMonitorService, inputService, shutdownService, registryService, settingsService, hotkeyService, keyboardHook, logger);
+});
+builder.Services.AddHostedService<TrayIconManager>(provider => provider.GetRequiredService<TrayIconManager>());
 builder.Services.AddHostedService<GlobalHotkeyService>();
 builder.Services.AddHostedService<HubStartupService>(); // Auto-launch AI components
 builder.Services.AddHostedService<ScreenshotHostedService>();
