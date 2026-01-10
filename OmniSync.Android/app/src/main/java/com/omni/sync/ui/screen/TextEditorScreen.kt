@@ -3,6 +3,7 @@ package com.omni.sync.ui.screen
 import androidx.compose.foundation.*
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -575,11 +576,12 @@ fun CustomTextSelectionMenu(toolbar: CustomTextToolbar) {
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class, ExperimentalLayoutApi::class)
 @Composable
 fun TextEditorScreen(
     filesViewModel: FilesViewModel,
     signalRClient: SignalRClient,
+    mainViewModel: com.omni.sync.viewmodel.MainViewModel,
     onBack: () -> Unit,
     parentPadding: PaddingValues = PaddingValues(0.dp)
 ) {
@@ -592,13 +594,27 @@ fun TextEditorScreen(
     val hasUnsavedChanges by filesViewModel.hasUnsavedChanges.collectAsState()
     val autoSaveEnabled by filesViewModel.autoSaveEnabled.collectAsState()
     val recentFiles by filesViewModel.recentFiles.collectAsState()
+    val scrollPositions by filesViewModel.fileScrollPositions.collectAsState()
+    val cursorPositions by filesViewModel.fileCursorPositions.collectAsState()
     
-    var textFieldValue by remember { mutableStateOf(TextFieldValue(editingContent)) }
+    var textFieldValue by remember { 
+        val initialSelection = editingFile?.path?.let { cursorPositions[it] } ?: TextRange.Zero
+        mutableStateOf(TextFieldValue(editingContent, initialSelection)) 
+    }
     
     // Sync external changes to internal state
     LaunchedEffect(editingContent) {
         if (editingContent != textFieldValue.text) {
             textFieldValue = textFieldValue.copy(text = editingContent)
+        }
+    }
+
+    // Sync cursor position to ViewModel
+    LaunchedEffect(textFieldValue.selection) {
+        editingFile?.path?.let { path ->
+            if (cursorPositions[path] != textFieldValue.selection) {
+                filesViewModel.updateCursorPosition(path, textFieldValue.selection)
+            }
         }
     }
 
@@ -623,10 +639,37 @@ fun TextEditorScreen(
     var replaceQuery by remember { mutableStateOf("") }
     var fontSize by remember { mutableFloatStateOf(14f) }
     var forceMarkdown by remember { mutableStateOf(false) }
-    var currentTextLayoutResult by remember { mutableStateOf<androidx.compose.ui.text.TextLayoutResult?>(null) }
-    var lastText by remember { mutableStateOf(textFieldValue.text) }
     
     val verticalScrollState = rememberScrollState()
+    var scrollRestored by remember(editingFile?.path) { mutableStateOf(false) }
+    
+    // Restore scroll position
+    LaunchedEffect(editingFile?.path, editingContent.isNotEmpty()) {
+        if (!scrollRestored && editingContent.isNotEmpty()) {
+            editingFile?.path?.let { path ->
+                val savedPos = scrollPositions[path] ?: 0
+                if (savedPos > 0) {
+                    delay(100) // Give UI time to layout
+                    verticalScrollState.scrollTo(savedPos)
+                    scrollRestored = true
+                } else {
+                    scrollRestored = true
+                }
+            }
+        }
+    }
+
+    // Save scroll position
+    LaunchedEffect(verticalScrollState.value) {
+        if (scrollRestored) {
+            editingFile?.path?.let { path ->
+                if (scrollPositions[path] != verticalScrollState.value) {
+                    filesViewModel.updateScrollPosition(path, verticalScrollState.value)
+                }
+            }
+        }
+    }
+
     val horizontalScrollState = rememberScrollState()
     val colorScheme = MaterialTheme.colorScheme
     val isMarkdown = (editingFile?.name?.endsWith(".md") == true) || forceMarkdown
@@ -636,6 +679,9 @@ fun TextEditorScreen(
     val context = androidx.compose.ui.platform.LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     val density = androidx.compose.ui.platform.LocalDensity.current
+    
+    var currentTextLayoutResult by remember { mutableStateOf<androidx.compose.ui.text.TextLayoutResult?>(null) }
+    var lastText by remember { mutableStateOf(editingContent) }
 
     val customTextToolbar = remember {
         CustomTextToolbar(

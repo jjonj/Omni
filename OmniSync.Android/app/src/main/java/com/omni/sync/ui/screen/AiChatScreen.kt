@@ -48,12 +48,19 @@ import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.KeyboardReturn
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
+import com.omni.sync.viewmodel.AppScreen
+import androidx.compose.ui.draw.clip
+import androidx.compose.material.icons.filled.Adjust
+import androidx.compose.material.icons.filled.List
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.SmartToy
 import androidx.compose.material.icons.filled.SettingsSuggest
 import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.Code
+import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.filled.CenterFocusStrong
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import com.omni.sync.utils.WindowsKeyCodes.VK_CONTROL
@@ -87,6 +94,8 @@ fun AiChatScreen(
     var selectedWorkspace by remember { mutableStateOf<String?>(null) }
     var showWorkspaceMenu by remember { mutableStateOf(false) }
     var showDirectoryPicker by remember { mutableStateOf(false) }
+    var browseMode by remember { mutableStateOf("new") }
+    val context = LocalContext.current
     
     val listState = rememberLazyListState()
     val isAiThinking = aiStatus?.contains("Thinking", ignoreCase = true) == true
@@ -222,7 +231,15 @@ fun AiChatScreen(
                             
                             HorizontalDivider()
                             DropdownMenuItem(
-                                text = { Text("Reset All Sessions", color = MaterialTheme.colorScheme.error) },
+                                text = { Text("Reload All Sessions (Debug)") },
+                                onClick = {
+                                    signalRClient.reloadAiSessions()
+                                    showSessionMenu = false
+                                },
+                                leadingIcon = { Icon(Icons.Default.Cached, contentDescription = null) }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Nuke All Sessions", color = MaterialTheme.colorScheme.error) },
                                 onClick = {
                                     signalRClient.resetAiSessions()
                                     showSessionMenu = false
@@ -233,6 +250,11 @@ fun AiChatScreen(
                     }
                 },
                 actions = {
+                    if (selectedPid != -1) {
+                        IconButton(onClick = { signalRClient.focusAiSession(selectedPid) }, enabled = isConnected) {
+                            Icon(imageVector = Icons.Default.SettingsSuggest, contentDescription = "Focus Window")
+                        }
+                    }
                     Box {
                         IconButton(onClick = { showWorkspaceMenu = true }, enabled = isConnected) {
                             Icon(Icons.Default.Folder, contentDescription = "AI Actions")
@@ -289,14 +311,23 @@ fun AiChatScreen(
                                 )
                             }
                             
-                            HorizontalDivider()
                             DropdownMenuItem(
-                                text = { Text("Browse...") },
+                                text = { Text("Browse for New Session...") },
                                 onClick = {
+                                    browseMode = "new"
                                     showDirectoryPicker = true
                                     showWorkspaceMenu = false
                                 },
-                                leadingIcon = { Icon(Icons.Default.Cached, null) }
+                                leadingIcon = { Icon(Icons.Default.Add, null) }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Browse to Add Context...") },
+                                onClick = {
+                                    browseMode = "add"
+                                    showDirectoryPicker = true
+                                    showWorkspaceMenu = false
+                                },
+                                leadingIcon = { Icon(Icons.AutoMirrored.Filled.ArrowForward, null) }
                             )
                         }
                     }
@@ -393,6 +424,69 @@ fun AiChatScreen(
                         enabled = isConnected
                     )
                     Spacer(Modifier.width(8.dp))
+                    
+                    val presets by signalRClient.aiPresets.collectAsState()
+                    var showPresetsMenu by remember { mutableStateOf(false) }
+                    
+                    Box {
+                        Box(
+                            modifier = Modifier
+                                .size(48.dp)
+                                .clip(CircleShape)
+                                .combinedClickable(
+                                    onClick = { 
+                                        signalRClient.getAiPresets()
+                                        showPresetsMenu = true 
+                                    },
+                                    onLongClick = {
+                                        if (inputText.isNotBlank()) {
+                                            signalRClient.addAiPreset(inputText)
+                                            Toast.makeText(context, "Preset saved!", Toast.LENGTH_SHORT).show()
+                                        }
+                                    }
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.List, 
+                                contentDescription = "Presets",
+                                tint = if (isConnected) MaterialTheme.colorScheme.onSurface else Color.Gray
+                            )
+                        }
+                        
+                        DropdownMenu(
+                            expanded = showPresetsMenu,
+                            onDismissRequest = { showPresetsMenu = false }
+                        ) {
+                            if (presets.isEmpty()) {
+                                DropdownMenuItem(
+                                    text = { Text("No presets") },
+                                    onClick = { showPresetsMenu = false },
+                                    enabled = false
+                                )
+                            }
+                            presets.forEach { preset ->
+                                DropdownMenuItem(
+                                    text = { 
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Text(preset, modifier = Modifier.weight(1f))
+                                            IconButton(onClick = { 
+                                                signalRClient.removeAiPreset(preset)
+                                            }) {
+                                                Icon(Icons.Default.Close, contentDescription = "Delete", modifier = Modifier.size(18.dp))
+                                            }
+                                        }
+                                    },
+                                    onClick = {
+                                        signalRClient.updateAiInputText(preset)
+                                        showPresetsMenu = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(Modifier.width(8.dp))
                     IconButton(
                         onClick = {
                             if (inputText.isNotBlank()) {
@@ -479,8 +573,12 @@ fun AiChatScreen(
                 onDismiss = { showDirectoryPicker = false },
                 onConfirm = { path ->
                     showDirectoryPicker = false
-                    selectedWorkspace = path
-                    signalRClient.sendAiMessage("/dir add \"$path\"")
+                    if (browseMode == "new") {
+                        signalRClient.startNewAiSession(path)
+                    } else {
+                        selectedWorkspace = path
+                        signalRClient.sendAiMessage("/dir add \"$path\"")
+                    }
                 }
             )
         }
@@ -1008,7 +1106,8 @@ fun RenderTextWithStyles(
                     val fullPath = if (workspace.isEmpty()) filename 
                                    else if (workspace.endsWith(separator)) workspace + filename
                                    else workspace + separator + filename
-                    mainViewModel.handleOpenFile(fullPath)
+                    mainViewModel.setPendingNavigationPath("AI_FILE:$fullPath")
+                    mainViewModel.navigateTo(AppScreen.EDITOR)
                 }
         }
     )

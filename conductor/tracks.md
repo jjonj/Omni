@@ -16,3 +16,8 @@
 
 ## [~] Track: Improving Hydrology Height Generation
 *Link: [./conductor/tracks/hydrology_height_improvement_20260105/](./conductor/tracks/hydrology_height_improvement_20260105/)*
+
+---
+
+## [~] Track: Megasession Jan 10
+*Link: [./conductor/tracks/megasession_jan10_20260110/](./conductor/tracks/megasession_jan10_20260110/)*

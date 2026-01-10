@@ -21,7 +21,6 @@ Only work on subtasks if told to do so or if told explicitly to do a Megasession
 
 ## For the hub
 
-### Hub window
 
 ## in OmniSync.Android
 ### General
@@ -30,15 +29,13 @@ Only work on subtasks if told to do so or if told explicitly to do a Megasession
 
 ## General
 
+
 ### Remote Control Screen
 
 
 #### Macro screen
 
 ### Files & Video Screen
-
-
-when a text file is open and i switch screen and then switch back to file screen then the file is now closed and i see folders. don't auto close file like that. 
 
 ### Browser control screen
 
@@ -51,6 +48,6 @@ when a text file is open and i switch screen and then switch back to file screen
 
 ### AI screen
 
+After all other tasks are done, talk to user using aispeak and ask them to give you access to cli repo for the yolo and choice render issue, then end your turn 
 
 ### Settings screen
-

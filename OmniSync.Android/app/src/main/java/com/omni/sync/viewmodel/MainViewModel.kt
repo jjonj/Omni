@@ -463,7 +463,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     val localPacket = DatagramPacket(bytes, bytes.size, localAddress, port)
                     socket.send(localPacket)
                 } catch (e: Exception) {
-                    addLog("Local WOL Failed: ${e.message}", LogType.WARNING)
+                    addLog("Subnet WOL Failed: ${e.message}", LogType.WARNING)
+                }
+
+                // 1b. Send Global Local Broadcast (255.255.255.255)
+                try {
+                    val globalAddress = InetAddress.getByName("255.255.255.255")
+                    val globalPacket = DatagramPacket(bytes, bytes.size, globalAddress, port)
+                    socket.setBroadcast(true)
+                    socket.send(globalPacket)
+                } catch (e: Exception) {
+                    addLog("Global WOL Failed: ${e.message}", LogType.WARNING)
                 }
                 
                 // 2. Send Remote Unicast (target WAN IP, router should forward to broadcast)

@@ -167,9 +167,15 @@ class MainActivity : ComponentActivity() {
                     LaunchedEffect(pagerState) {
                         snapshotFlow { pagerState.currentPage }.collect { page ->
                             val screen = swipeableScreens[page]
-                            if (mainViewModel.currentScreen.value != screen) {
+                            val prevScreen = mainViewModel.currentScreen.value
+                            if (prevScreen != screen) {
                                 if (screen == AppScreen.FILES && filesViewModel.editingFile.value != null) {
-                                    mainViewModel.navigateTo(AppScreen.EDITOR)
+                                    // Only auto-redirect to EDITOR if we are NOT coming from EDITOR
+                                    if (prevScreen != AppScreen.EDITOR) {
+                                        mainViewModel.navigateTo(AppScreen.EDITOR)
+                                    } else {
+                                        mainViewModel.navigateTo(screen)
+                                    }
                                 } else {
                                     mainViewModel.navigateTo(screen)
                                 }
@@ -184,8 +190,16 @@ class MainActivity : ComponentActivity() {
                             OmniBottomNavigation(
                                 currentScreen = currentScreen,
                                 onNavigate = { screen -> 
-                                    if (screen == AppScreen.FILES && filesViewModel.editingFile.value != null) {
-                                        mainViewModel.navigateTo(AppScreen.EDITOR)
+                                    if (screen == AppScreen.FILES) {
+                                        if (filesViewModel.editingFile.value != null) {
+                                            if (currentScreen == AppScreen.EDITOR) {
+                                                mainViewModel.navigateTo(AppScreen.FILES)
+                                            } else {
+                                                mainViewModel.navigateTo(AppScreen.EDITOR)
+                                            }
+                                        } else {
+                                            mainViewModel.navigateTo(AppScreen.FILES)
+                                        }
                                     } else {
                                         mainViewModel.navigateTo(screen)
                                     }
@@ -239,28 +253,7 @@ class MainActivity : ComponentActivity() {
                 }
 
                 // Global Alarm Dismiss Overlay
-                if (isAlarmRinging) {
-                    val context = LocalContext.current
-                    AlertDialog(
-                        onDismissRequest = { /* Prevent dismissal by clicking outside */ },
-                        icon = { Icon(Icons.Default.AlarmOff, null, modifier = Modifier.size(48.dp)) },
-                        title = { Text("Alarm Ringing!", style = MaterialTheme.typography.headlineMedium) },
-                        text = { 
-                            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
-                                Text("Wake up!", style = MaterialTheme.typography.bodyLarge) 
-                            }
-                        },
-                        confirmButton = {
-                            Button(
-                                onClick = { AlarmService.stopAlarm(context) },
-                                modifier = Modifier.fillMaxWidth().padding(8.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
-                            ) {
-                                Text("DISMISS", style = MaterialTheme.typography.titleLarge)
-                            }
-                        }
-                    )
-                }
+                // ... (rest of code)
             }
         }
     }
@@ -349,7 +342,8 @@ class MainActivity : ComponentActivity() {
             AppScreen.EDITOR -> com.omni.sync.ui.screen.TextEditorScreen(
                 filesViewModel = filesViewModel,
                 signalRClient = signalRClient,
-                onBack = { filesViewModel.exitEditor() },
+                mainViewModel = mainViewModel,
+                onBack = { mainViewModel.navigateTo(AppScreen.FILES) },
                 parentPadding = paddingValues
             )
             AppScreen.SETTINGS -> com.omni.sync.ui.screen.SettingsScreen(

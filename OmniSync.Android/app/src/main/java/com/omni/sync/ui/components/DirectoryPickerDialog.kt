@@ -14,26 +14,40 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.omni.sync.data.model.FileSystemEntry
-import com.omni.sync.viewmodel.FilesViewModel
+import com.omni.sync.data.repository.SignalRClient
+import io.reactivex.rxjava3.android.schedulers.AndroidSchedulers
+import io.reactivex.rxjava3.schedulers.Schedulers
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DirectoryPickerDialog(
-    filesViewModel: FilesViewModel,
+    signalRClient: SignalRClient,
+    isConnected: Boolean,
     onDismiss: () -> Unit,
     onConfirm: (String) -> Unit
 ) {
     var currentPath by remember { mutableStateOf("") }
-    val entries by filesViewModel.fileSystemEntries.collectAsState()
-    val isLoading by filesViewModel.isLoading.collectAsState()
+    var entries by remember { mutableStateOf<List<FileSystemEntry>>(emptyList()) }
+    var isLoading by remember { mutableStateOf(false) }
 
-    LaunchedEffect(currentPath) {
-        filesViewModel.loadDirectory(currentPath)
+    LaunchedEffect(currentPath, isConnected) {
+        if (!isConnected) return@LaunchedEffect
+        
+        isLoading = true
+        signalRClient.listDirectory(currentPath)
+            ?.subscribeOn(Schedulers.io())
+            ?.observeOn(AndroidSchedulers.mainThread())
+            ?.subscribe({ result ->
+                entries = result
+                isLoading = false
+            }, {
+                isLoading = false
+            })
     }
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Select Folder") },
+        title = { Text("Select Destination Folder") },
         text = {
             Column(modifier = Modifier.fillMaxWidth().height(400.dp)) {
                 Text(
@@ -90,7 +104,7 @@ fun DirectoryPickerDialog(
         confirmButton = {
             Button(
                 onClick = { onConfirm(currentPath) },
-                enabled = currentPath.isNotEmpty() // Usually don't want to add root as a workspace
+                enabled = currentPath.isNotEmpty() || entries.isNotEmpty() // Allow selecting root if we can see it
             ) {
                 Text("Select Current")
             }

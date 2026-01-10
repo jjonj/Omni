@@ -93,7 +93,7 @@ fun OmniBottomNavigation(
         ) {
             // Main navigation items
             navigationItems.forEach { item ->
-                val isSelected = currentScreen == item.screen
+                val isSelected = currentScreen == item.screen || (item.screen == AppScreen.FILES && currentScreen == AppScreen.EDITOR)
                 
                 NavigationBarItem(
                     selected = isSelected,

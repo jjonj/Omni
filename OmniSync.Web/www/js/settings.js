@@ -48,15 +48,45 @@ function renderHotkeys() {
         row.className = "hotkey-row";
         
         row.innerHTML = `
-            <div class="hotkey-name">${hk.name}</div>
+            <div class="hotkey-name" onclick="editHotkeyInfo(${index})" style="cursor: pointer; text-decoration: underline;">${hk.name}</div>
             <input type="text" class="hotkey-input" id="hk-${index}" 
                 value="${hk.key || 'Click to set'}" readonly 
                 onclick="startRecording(${index})"
                 onblur="setTimeout(stopRecording, 200)">
-            <button class="btn danger" onclick="clearHotkey(${index})">Clear</button>
+            <button class="btn danger" onclick="removeHotkey(${index})">Delete</button>
         `;
         list.appendChild(row);
     });
+}
+
+function addNewHotkey() {
+    const name = prompt("Enter hotkey name (e.g., 'Sleep PC'):");
+    if (!name) return;
+    const action = prompt("Enter command action (e.g., 'SLEEP_PC', 'TOGGLE_MUTE', or full command):");
+    if (!action) return;
+    
+    currentHotkeys.push({
+        name: name,
+        action: action,
+        key: ""
+    });
+    renderHotkeys();
+}
+
+function removeHotkey(index) {
+    if (confirm(`Delete hotkey '${currentHotkeys[index].name}'?`)) {
+        currentHotkeys.splice(index, 1);
+        renderHotkeys();
+    }
+}
+
+function editHotkeyInfo(index) {
+    const hk = currentHotkeys[index];
+    const newName = prompt("Edit hotkey name:", hk.name);
+    if (newName) hk.name = newName;
+    const newAction = prompt("Edit hotkey action:", hk.action);
+    if (newAction) hk.action = newAction;
+    renderHotkeys();
 }
 
 function renderExeMappings(mappings) {

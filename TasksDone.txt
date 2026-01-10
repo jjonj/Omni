@@ -3,10 +3,13 @@
 ## General
 
 ✅ need poc for persistent pcg changes, change 07 diff saved and compared by pcg node using 2d position hash, allow exclusion or modification.
+✅ Wake on lan sending while on local network is broken, it used to work. (Added 255.255.255.255 broadcast for better reliability)
 
 ## For the hub
 
 ### Hub window
+
+✅ The settings page is missing setup for hotkeys, read the existing hotkey management code and ask user to settle anything unclear using aispeak (Added hotkey management to Settings.html and expanded Hub logic to handle more actions)
 
 ## in OmniSync.Android
 
@@ -62,9 +65,10 @@
 ✅ Improve markdown rendering by hiding formatting, e.g. "###" and the * symbols in **bold text** similar to how the obsidian app does it. Those symbols are only visible when the cursor is on the line that contain them.
 ✅ plus button to create text file does not work (Fixed by correctly adding new file to open files list in ViewModel)
 ✅ long press for files and folders should have copy to and move to options, reuse browse popup from Ai screen
-✅ when a text file is open and i switch screen and then switch back to file screen then the file is now closed and i see folders. don't auto close file like that.
+✅ when a text file is open and i switch screen and then switch back to file screen then the file is now closed and i see folders. don't auto close file like that. (Fixed by removing auto-loadDirectory on FilesScreen init and preserving ViewModel state)
 ✅ when i first open a text file and tap to place cursor, it auto scrolls, but it should not do this because the place i tappped is by definition in view. auto scrolling is for when typing while out of view of cursor.
 ✅ When keyboard is up there is a black blank box above the keyboard with the height of the navigation bar. this started after i requested that the navigation bar not be hidden in text editor.
+✅ When i have a text for open and then switch to another screen and then back to file screen then file is still open which is good but it has reset the scroll distance and cursor position (Fixed by ensuring scrollRestored flag and proper restoration in TextEditorScreen)
 
 ### Browser control screen
 
@@ -96,6 +100,14 @@
 ✅ Code functionality of Ai screen recently broke, i cant send messages to sessions anymore (Fixed by correctly handling nullable sessionId in SignalR calls)
 ✅ the new folder icon button when using s bookmark does not work right (Improved workspace menu behavior and added arrow sub-buttons for /dir add)
 ✅ when rendering a filename, i think it uses this format `my.file` turn that into a link that i can click and it will find the file in the workspace of the ai session and item it in file view
+✅ auto scroll to bottom of chat when a new message comes in and the current scroll is already at bottom. pretty sure almost all other chat windows in other apps work like that (Implemented in LaunchedEffect in AiChatScreen)
+✅ replace reset all sessions button with a reload all sessions button. this feature indicates the user was experiencing issues so it should create a detailed report log file in all caps in root of omni containing list of old displayed sessions on android AND what sessions the hub knows about and compare, their name id active time etc, then analyze the status of those old sessions, do they still live? why were they not cleared automatically? then reload by force checking for active sessions, log what is now detected etc (Implemented ReloadAiSessions in Hub and Android)
+✅ sometimes when sending a message to AI, the chat window shows my message to the AI as expected but it also shows my message a second time, but as if the AI sent it to me. this is almost certainly caused by the cli displaying my message and informing the hub that this new message is displayed and the hub misinterprets this as it being a message from the AI instead of the users message that should be ignored because it's already displayed on android when sent (Fixed by using _sentPrompts in Hub and improved filtering)
+✅ the browse option in the dropdown will always call /dir add, should be possible to choose wether we want to dir add or start new session there (Added browse options for both to dropdown)
+✅ add a button to Focus, which will have windows focus the windows bringing it to front (Added Focus action to TopAppBar)
+✅ when sending input keys like esc or enter or yolo make sure to focus the windowbfirst so the right chat receives it (Added FocusSessionAsync calls before sending keys in RpcApiHub)
+✅ clicking file links in chat jumps to file screen as expected but it does not find and open the file, instead it seems to try to find a folder with that name and errors (Fixed with AI_FILE: prefix and search logic in FilesViewModel)
+✅ add a button that opens a dropdown with preset messages and commands to put into the input text box, the user can persistently add more by entering text into the input box and then long pressing this new button. start with these default 4 options /model /conductor:newTrack /conductor:implement Please run any final scripts and commit all changes (Implemented Presets button with long-press save and Hub-side persistence)
 
 ### Alarm screen
 

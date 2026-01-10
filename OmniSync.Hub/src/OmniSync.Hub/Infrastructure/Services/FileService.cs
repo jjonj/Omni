@@ -247,6 +247,40 @@ namespace OmniSync.Hub.Infrastructure.Services
             return results;
         }
 
+        public FileSystemEntry GetFileInfo(string path)
+        {
+            string targetPath = string.IsNullOrEmpty(_browseRootPath) ? path : SanitizeAndGetBrowseFullPath(path);
+
+            if (File.Exists(targetPath))
+            {
+                var fileInfo = new FileInfo(targetPath);
+                return new FileSystemEntry
+                {
+                    Name = fileInfo.Name,
+                    Path = fileInfo.FullName,
+                    IsDirectory = false,
+                    EntryType = "File",
+                    Size = fileInfo.Length,
+                    LastModified = fileInfo.LastWriteTime
+                };
+            }
+            else if (Directory.Exists(targetPath))
+            {
+                var dirInfo = new DirectoryInfo(targetPath);
+                return new FileSystemEntry
+                {
+                    Name = dirInfo.Name,
+                    Path = dirInfo.FullName,
+                    IsDirectory = true,
+                    EntryType = "Directory",
+                    Size = 0,
+                    LastModified = dirInfo.LastWriteTime
+                };
+            }
+            
+            throw new FileNotFoundException($"File or directory not found: {targetPath}");
+        }
+
         private void SearchRecursive(string directory, string query, List<FileSystemEntry> results, int maxResults)
         {
             if (results.Count >= maxResults) return;

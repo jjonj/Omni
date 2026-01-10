@@ -101,9 +101,17 @@ namespace OmniSync.Hub.Logic.Services
                 return;
             }
 
-            // For other actions, dispatch through CommandDispatcher if appropriate
-            // Note: CommandDispatcher expects JsonElement payload, we might need a simpler way for hotkeys
-            _logger.LogWarning($"Hotkey action not yet fully implemented for dispatch: {action}");
+            try
+            {
+                // Dispatch through CommandDispatcher
+                // We create a minimal JSON object: {}
+                using var doc = System.Text.Json.JsonDocument.Parse("{}");
+                _commandDispatcher.Dispatch(action, doc.RootElement);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Error executing hotkey action: {action}");
+            }
         }
 
         public void Dispose()

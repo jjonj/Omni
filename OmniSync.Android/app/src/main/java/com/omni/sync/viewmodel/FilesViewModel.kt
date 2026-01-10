@@ -102,6 +102,20 @@ class FilesViewModel(
     private val _editingContent = MutableStateFlow("")
     val editingContent: StateFlow<String> = _editingContent
 
+    private val _fileScrollPositions = MutableStateFlow<Map<String, Int>>(emptyMap())
+    val fileScrollPositions: StateFlow<Map<String, Int>> = _fileScrollPositions
+
+    private val _fileCursorPositions = MutableStateFlow<Map<String, androidx.compose.ui.text.TextRange>>(emptyMap())
+    val fileCursorPositions: StateFlow<Map<String, androidx.compose.ui.text.TextRange>> = _fileCursorPositions
+
+    fun updateScrollPosition(path: String, position: Int) {
+        _fileScrollPositions.value = _fileScrollPositions.value + (path to position)
+    }
+
+    fun updateCursorPosition(path: String, selection: androidx.compose.ui.text.TextRange) {
+        _fileCursorPositions.value = _fileCursorPositions.value + (path to selection)
+    }
+
     private val _isSaving = MutableStateFlow(false)
     val isSaving: StateFlow<Boolean> = _isSaving
 
@@ -167,8 +181,29 @@ class FilesViewModel(
         viewModelScope.launch {
             mainViewModel.pendingNavigationPath.collect { path ->
                 if (path != null) {
-                    loadDirectory(path)
-                    mainViewModel.setPendingNavigationPath(null) // Consume it
+                    if (path.startsWith("AI_FILE:")) {
+                        val filename = path.removePrefix("AI_FILE:")
+                        // Logic to find file in workspace... for now let's assume direct path or search
+                        // For simplicity, we'll try to find an entry with this name in our current or cached lists
+                        val entry = findEntryByFilename(filename)
+                        if (entry != null) {
+                            openForEditing(entry)
+                            mainViewModel.setPendingNavigationPath(null)
+                        } else {
+                            // If not found in current list, maybe it's a full path already
+                            val isLikelyFile = filename.contains(".") && !filename.endsWith("/") && !filename.endsWith("\\")
+                            if (isLikelyFile) {
+                                openForEditing(FileSystemEntry(filename.substringAfterLast("\\").substringAfterLast("/"), filename, false, 0, java.util.Date()))
+                                mainViewModel.setPendingNavigationPath(null)
+                            }
+                        }
+                    } else {
+                        val isLikelyFile = path.contains(".") && !path.endsWith("/") && !path.endsWith("\\")
+                        if (!isLikelyFile) {
+                            loadDirectory(path)
+                            mainViewModel.setPendingNavigationPath(null) // Consume it
+                        }
+                    }
                 }
             }
         }
@@ -186,6 +221,14 @@ class FilesViewModel(
                 saveToCache("", entries)
             }
         }
+    }
+
+    private fun findEntryByFilename(filename: String): FileSystemEntry? {
+        // Search in current entries
+        _fileSystemEntries.value.find { it.name.equals(filename, ignoreCase = true) }?.let { return it }
+        // Search in bookmarks
+        _bookmarks.value.find { it.name.equals(filename, ignoreCase = true) }?.let { return it }
+        return null
     }
 
     private fun loadBookmarks() {
@@ -687,6 +730,28 @@ class FilesViewModel(
         mainViewModel.addLog("Opening CLI at: ${entry.path}", com.omni.sync.ui.screen.LogType.INFO)
         signalRClient.startCliAtWorkspace(entry.path)
         mainViewModel.navigateTo(AppScreen.AI_CHAT)
+    }
+
+    fun loadFileByPath(path: String) {
+        if (!mainViewModel.isConnected.value) {
+            _errorMessage.value = "Cannot load remote file: Not connected."
+            return
+        }
+
+        _isLoading.value = true
+        signalRClient.getFileInfo(path)
+            ?.subscribeOn(Schedulers.io())
+            ?.observeOn(AndroidSchedulers.mainThread())
+            ?.subscribe(
+                { entry ->
+                    openForEditing(entry)
+                },
+                { error ->
+                    _isLoading.value = false
+                    _errorMessage.value = "Error getting file info: ${error.message}"
+                    Log.e("FilesViewModel", "Error getting file info for $path", error)
+                }
+            )
     }
 
     fun openForEditing(entry: FileSystemEntry) {

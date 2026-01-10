@@ -1031,7 +1031,8 @@ namespace OmniSync.Hub.Infrastructure.Services
         private StreamWriter? _writer;
         private CancellationTokenSource? _cts;
         private readonly StringBuilder _currentResponse = new();
-        private readonly HashSet<string> _sentMessages = new();
+        private readonly HashSet<string> _recentlyBroadcastMessages = new();
+        private readonly HashSet<string> _sentPrompts = new();
         private readonly SemaphoreSlim _writeLock = new(1, 1);
         private Process? _shellProcess;
 
@@ -1126,7 +1127,14 @@ namespace OmniSync.Hub.Infrastructure.Services
                                 var payload = JsonSerializer.Serialize(payloadObj);
                                 Console.WriteLine($"[GeminiPipe WRITE] PID {_pid}: {payload}");
                                 _logger.LogInformation($"[GeminiSession] Sending to PID {_pid}: {payload}");
-                await _writer.WriteLineAsync(payload);
+
+                                // Add to sent prompts to prevent echo ghosting
+                                if (command == "prompt" && !string.IsNullOrEmpty(text))
+                                {
+                                    _sentPrompts.Add(text);
+                                }
+
+                                await _writer.WriteLineAsync(payload);
                 await _writer.FlushAsync();
                 return true;
             }
@@ -1175,7 +1183,8 @@ namespace OmniSync.Hub.Infrastructure.Services
                                 if (text.Contains("[HISTORY_START]"))
                                 {
                                     _logger.LogInformation($"[GeminiSession] Received history from PID {_pid}");
-                                    _sentMessages.Clear(); // Clear baseline on history load
+                                    _recentlyBroadcastMessages.Clear(); 
+                                    _sentPrompts.Clear();
                                     int startIdx = text.IndexOf("[HISTORY_START]") + "[HISTORY_START]".Length;
                                     int endIdx = text.IndexOf("[HISTORY_END]", startIdx);
                                     if (endIdx != -1)
@@ -1187,7 +1196,8 @@ namespace OmniSync.Hub.Infrastructure.Services
                                 else if (text == "[TURN_FINISHED]")
                                 {
                                     _logger.LogInformation($"[GeminiSession] Turn finished for PID {_pid}");
-                                    _sentMessages.Clear(); // Clear for next turn
+                                    _recentlyBroadcastMessages.Clear(); 
+                                    _sentPrompts.Clear();
                                     _onResponse(_pid, string.Empty, true, false, false);
                                 }
                                 else if (text == "[Command Handled]")
@@ -1196,7 +1206,14 @@ namespace OmniSync.Hub.Infrastructure.Services
                                 }
                                 else
                                 {
-                                    if (_sentMessages.Add(text))
+                                    // Ghost echo protection: if this matches a prompt we just sent, ignore it
+                                    if (_sentPrompts.Contains(text))
+                                    {
+                                        _logger.LogDebug($"[GeminiSession] Ignoring echoed prompt: {text.Take(30)}...");
+                                        continue;
+                                    }
+
+                                    if (_recentlyBroadcastMessages.Add(text))
                                     {
                                         _onResponse(_pid, text, false, false, false);
                                     }
@@ -1204,7 +1221,7 @@ namespace OmniSync.Hub.Infrastructure.Services
                             }
                             else if (typeStr == "thought")
                             {
-                                if (_sentMessages.Add($"thought_{text}"))
+                                if (_recentlyBroadcastMessages.Add($"thought_{text}"))
                                 {
                                     _logger.LogDebug($"[GeminiSession] Received thought from PID {_pid}: {text}");
                                     _onResponse(_pid, $"Thinking: {text}", false, false, false);
@@ -1212,7 +1229,7 @@ namespace OmniSync.Hub.Infrastructure.Services
                             }
                             else if (typeStr == "codeDiff")
                             {
-                                if (text != null && _sentMessages.Add($"diff_{text}"))
+                                if (text != null && _recentlyBroadcastMessages.Add($"diff_{text}"))
                                 {
                                     _logger.LogInformation($"[GeminiSession] Received codeDiff from PID {_pid}");
                                     _onResponse(_pid, text, false, false, true);
@@ -1220,7 +1237,7 @@ namespace OmniSync.Hub.Infrastructure.Services
                             }
                             else if (typeStr == "toolCall")
                             {
-                                if (text != null && _sentMessages.Add($"tool_{text}"))
+                                if (text != null && _recentlyBroadcastMessages.Add($"tool_{text}"))
                                 {
                                     _logger.LogInformation($"[GeminiSession] Received toolCall from PID {_pid}");
                                     _onResponse(_pid, text, false, false, false);

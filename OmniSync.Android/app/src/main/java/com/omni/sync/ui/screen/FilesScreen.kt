@@ -48,6 +48,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.ui.graphics.Color
 import androidx.compose.material.icons.filled.Add
 import androidx.activity.compose.BackHandler
+import com.omni.sync.ui.components.DirectoryPickerDialog
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
@@ -80,12 +81,20 @@ fun FilesScreen(
     var passwordTargetEntry by remember { mutableStateOf<FileSystemEntry?>(null) }
     var passwordAction by remember { mutableStateOf<(() -> Unit)?>(null) }
 
+    var showCopyDialog by remember { mutableStateOf(false) }
+    var showMoveDialog by remember { mutableStateOf(false) }
+    var sourceEntry by remember { mutableStateOf<FileSystemEntry?>(null) }
+
     // Handle back press to navigate up or close panels
-    BackHandler(enabled = (currentPath.isNotEmpty() && currentPath != "/") || showBookmarksList || showCachesList) {
+    BackHandler(enabled = (currentPath.isNotEmpty() && currentPath != "/") || showBookmarksList || showCachesList || showCopyDialog || showMoveDialog) {
         if (showBookmarksList) {
             showBookmarksList = false
         } else if (showCachesList) {
             showCachesList = false
+        } else if (showCopyDialog) {
+            showCopyDialog = false
+        } else if (showMoveDialog) {
+            showMoveDialog = false
         } else {
             filesViewModel.loadDirectory(getParentPath(currentPath))
         }
@@ -112,12 +121,6 @@ fun FilesScreen(
     DisposableEffect(currentPath) {
         onDispose {
             filesViewModel.saveScrollPosition(currentPath, listState.firstVisibleItemIndex, listState.firstVisibleItemScrollOffset)
-        }
-    }
-
-    LaunchedEffect(Unit) {
-        if (fileSystemEntries.isEmpty()) {
-            filesViewModel.loadDirectory("")
         }
     }
 
@@ -442,7 +445,15 @@ fun FilesScreen(
                                 }
                             },
                             onDeleteByPath = { filesViewModel.deleteByPath(it) },
-                            onDeleteAllEncrypted = { filesViewModel.deleteAllEncrypted() }
+                            onDeleteAllEncrypted = { filesViewModel.deleteAllEncrypted() },
+                            onCopyTo = { entry ->
+                                sourceEntry = entry
+                                showCopyDialog = true
+                            },
+                            onMoveTo = { entry ->
+                                sourceEntry = entry
+                                showMoveDialog = true
+                            }
                         )
                     }
                 }
@@ -629,6 +640,40 @@ fun FilesScreen(
             }
         )
     }
+
+    if (showCopyDialog && sourceEntry != null) {
+        val isConnectedState by filesViewModel.mainViewModel.isConnected.collectAsState()
+        DirectoryPickerDialog(
+            signalRClient = filesViewModel.signalRClient,
+            isConnected = isConnectedState,
+            onDismiss = { showCopyDialog = false },
+            onConfirm = { destDir: String ->
+                showCopyDialog = false
+                val separator = if (destDir.contains("/")) "/" else "\\"
+                val entryName = sourceEntry?.name ?: ""
+                val destPath = if (destDir.endsWith(separator)) "${destDir}${entryName}" else "${destDir}${separator}${entryName}"
+                filesViewModel.copyFile(sourceEntry!!.path, destPath)
+                sourceEntry = null
+            }
+        )
+    }
+
+    if (showMoveDialog && sourceEntry != null) {
+        val isConnectedState by filesViewModel.mainViewModel.isConnected.collectAsState()
+        DirectoryPickerDialog(
+            signalRClient = filesViewModel.signalRClient,
+            isConnected = isConnectedState,
+            onDismiss = { showMoveDialog = false },
+            onConfirm = { destDir: String ->
+                showMoveDialog = false
+                val separator = if (destDir.contains("/")) "/" else "\\"
+                val entryName = sourceEntry?.name ?: ""
+                val destPath = if (destDir.endsWith(separator)) "${destDir}${entryName}" else "${destDir}${separator}${entryName}"
+                filesViewModel.moveFile(sourceEntry!!.path, destPath)
+                sourceEntry = null
+            }
+        )
+    }
 }
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -653,7 +698,9 @@ fun FileSystemEntryItem(
     onCacheFolderRecursive: (FileSystemEntry) -> Unit = {},
     onDownloadVideo: (FileSystemEntry, Boolean) -> Unit = { _, _ -> },
     onDeleteByPath: (String) -> Unit = {},
-    onDeleteAllEncrypted: () -> Unit = {}
+    onDeleteAllEncrypted: () -> Unit = {},
+    onCopyTo: (FileSystemEntry) -> Unit = {},
+    onMoveTo: (FileSystemEntry) -> Unit = {}
 ) {
     var showMenu by remember { mutableStateOf(false) }
     var showDownloadDialog by remember { mutableStateOf(false) }
@@ -745,6 +792,23 @@ fun FileSystemEntryItem(
                         showDeleteConfirmation = true
                     }
                 )
+                
+                if (!entry.path.contains("downloaded_videos")) {
+                    DropdownMenuItem(
+                        text = { Text("Copy to...") },
+                        onClick = {
+                            showMenu = false
+                            onCopyTo(entry)
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Move to...") },
+                        onClick = {
+                            showMenu = false
+                            onMoveTo(entry)
+                        }
+                    )
+                }
             }
 
             val isLocal = entry.path.contains("downloaded_videos")

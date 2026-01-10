@@ -141,6 +141,9 @@ class SignalRClient(
     private val _aiWorkspaces = MutableStateFlow<Map<Int, String>>(emptyMap())
     val aiWorkspaces: StateFlow<Map<Int, String>> = _aiWorkspaces
 
+    private val _aiPresets = MutableStateFlow<List<String>>(emptyList())
+    val aiPresets: StateFlow<List<String>> = _aiPresets
+
     private val _aiInputText = MutableStateFlow("")
     val aiInputText: StateFlow<String> = _aiInputText
 
@@ -386,6 +389,10 @@ class SignalRClient(
                         }
                     }
                 }, String::class.java, Int::class.java)
+
+                hubConnection?.on("ReceiveAiPresets", { presets: List<String> ->
+                    _aiPresets.value = presets
+                }, List::class.java)
         
                 hubConnection?.on("ReceiveNewAiSessionPid", { pid: Int ->
                     mainViewModel.addLog("[Hub] New session created: PID $pid", com.omni.sync.ui.screen.LogType.INFO)
@@ -731,6 +738,47 @@ class SignalRClient(
             }
         }
 
+        fun reloadAiSessions() {
+            if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {       
+                mainViewModel.addLog("[AI] Requesting session reload and debug report...", com.omni.sync.ui.screen.LogType.INFO)
+                
+                // Construct the list of current sessions to send to Hub
+                val currentSessions = _aiSessions.value.map { (pid, name) ->
+                    mapOf(
+                        "pid" to pid,
+                        "name" to name,
+                        "workspace" to (_aiWorkspaces.value[pid] ?: "")
+                    )
+                }
+                
+                hubConnection?.send("ReloadAiSessions", currentSessions)
+            }
+        }
+
+        fun focusAiSession(pid: Int) {
+            if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {       
+                hubConnection?.send("FocusAiSession", pid)
+            }
+        }
+
+        fun getAiPresets() {
+            if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {       
+                hubConnection?.send("GetAiPresets")
+            }
+        }
+
+        fun addAiPreset(preset: String) {
+            if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {       
+                hubConnection?.send("AddAiPreset", preset)
+            }
+        }
+
+        fun removeAiPreset(preset: String) {
+            if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {       
+                hubConnection?.send("RemoveAiPreset", preset)
+            }
+        }
+
         fun resetAiSessions() {
             if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
                 mainViewModel.addLog("[AI] Requesting session reset (Nuke all)...", com.omni.sync.ui.screen.LogType.WARNING)
@@ -882,14 +930,21 @@ class SignalRClient(
         }
     }
 
-    fun listDirectory(relativePath: String): Single<List<FileSystemEntry>>? {       
+    fun listDirectory(path: String): Single<List<FileSystemEntry>>? {
         if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
-            return hubConnection?.invoke(List::class.java, "ListDirectory", relativePath)
+            return hubConnection?.invoke(List::class.java, "ListDirectory", path)
                 ?.map { rawList ->
                     val jsonElement = gson.toJsonTree(rawList)
                     val listType = object : TypeToken<List<FileSystemEntry>>() {}.type
                     gson.fromJson(jsonElement, listType)
                 } as? Single<List<FileSystemEntry>>
+        }
+        return null
+    }
+
+    fun getFileInfo(path: String): Single<FileSystemEntry>? {
+        if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
+            return hubConnection?.invoke(FileSystemEntry::class.java, "GetFileInfo", path)
         }
         return null
     }

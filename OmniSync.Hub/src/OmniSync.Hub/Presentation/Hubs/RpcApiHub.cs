@@ -442,30 +442,33 @@ namespace OmniSync.Hub.Presentation.Hubs
             }
         }
 
-        public async Task<IEnumerable<FileSystemEntry>> SearchFiles(string path, string query)
+        public IEnumerable<FileSystemEntry> SearchFiles(string path, string query)
         {
-            try
+            if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
             {
-                if (!Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) || !(bool)isAuthenticated)
-                {
-                    throw new HubException("Unauthorized");
-                }
-
-                AnyCommandReceived?.Invoke(this, $"SearchFiles in {path}: {query}");
-
-                var contents = _fileService.SearchFiles(path, query);
-
-                // Reuse ReceiveDirectoryContents for search results
-                await Clients.All.SendAsync("ReceiveDirectoryContents", contents);
-                
-                return contents;
+                AnyCommandReceived?.Invoke(this, $"SearchFiles: {path} (Query: {query})");
+                return _fileService.SearchFiles(path, query);
             }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, $"Error searching directory '{path}'");
-                throw new HubException($"Error searching: {ex.Message}");
-            }
+            return new List<FileSystemEntry>();
         }
+
+        public FileSystemEntry? GetFileInfo(string path)
+        {
+            if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
+            {
+                AnyCommandReceived?.Invoke(this, $"GetFileInfo: {path}");
+                try
+                {
+                    return _fileService.GetFileInfo(path);
+                }
+                catch
+                {
+                    return null;
+                }
+            }
+            return null;
+        }
+
 
         public async Task<byte[]> GetFileChunk(string filePath, long offset, int chunkSize)
         {
@@ -683,7 +686,7 @@ namespace OmniSync.Hub.Presentation.Hubs
                 if (targetPid == -1) return;
 
                 _logger.LogInformation($"[RpcApiHub] SendAiSpecialKey: {key} to PID {targetPid}");
-                _processService.WinActivatePid(targetPid);
+                await _aiCliService.FocusSessionAsync(targetPid);
                 await Task.Delay(150); // Give OS time to focus
 
                 switch (key.ToLower())
@@ -726,6 +729,8 @@ namespace OmniSync.Hub.Presentation.Hubs
                 if (targetPid == -1) return;
 
                 _logger.LogInformation($"[RpcApiHub] SendAiDialogResponse: {response} to PID {targetPid}");
+                await _aiCliService.FocusSessionAsync(targetPid);
+                await Task.Delay(150);
                 await _aiCliService.SendDialogResponseAsync(response, targetPid);
             }
         }
@@ -738,7 +743,7 @@ namespace OmniSync.Hub.Presentation.Hubs
                 if (targetPid == -1) return;
 
                 _logger.LogInformation($"[RpcApiHub] Sending YOLO to PID {targetPid}");
-                _processService.WinActivatePid(targetPid);
+                await _aiCliService.FocusSessionAsync(targetPid);
                 await Task.Delay(150); // Give OS time to focus
 
                 _inputService.KeyDown(0x11); // VK_CONTROL
