@@ -87,6 +87,7 @@ fun AiChatScreen(
     val messages by signalRClient.aiMessages.collectAsState()
     val aiStatus by signalRClient.aiStatus.collectAsState()
     val aiThought by signalRClient.aiThought.collectAsState()
+    val aiDialog by signalRClient.aiDialog.collectAsState()
     val sessions by signalRClient.aiSessions.collectAsState()
     val inputText by signalRClient.aiInputText.collectAsState()
     var showSessionMenu by remember { mutableStateOf(false) }
@@ -412,6 +413,12 @@ fun AiChatScreen(
                         if (aiThought != null) {
                             item(key = "thought_bubble") {
                                 ThoughtBubble(aiThought!!)
+                            }
+                        }
+
+                        if (aiDialog != null) {
+                            item(key = "dialog_bubble") {
+                                AiDialogBubble(aiDialog!!, signalRClient, selectedPid)
                             }
                         }
 
@@ -1229,6 +1236,78 @@ fun DiffText(diffJson: String) {
                     ),
                     modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
                 )
+            }
+        }
+    }
+}
+
+@Composable
+fun AiDialogBubble(
+    dialog: SignalRClient.AiDialog,
+    signalRClient: SignalRClient,
+    selectedPid: Int
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Surface(
+            color = MaterialTheme.colorScheme.tertiaryContainer,
+            shape = RoundedCornerShape(12.dp),
+            modifier = Modifier.widthIn(max = 350.dp),
+            border = androidx.compose.foundation.BorderStroke(2.dp, MaterialTheme.colorScheme.tertiary)
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text(
+                    text = "Choice Required",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onTertiaryContainer
+                )
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    text = dialog.prompt,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onTertiaryContainer
+                )
+                Spacer(Modifier.height(16.dp))
+                
+                if (dialog.options != null && dialog.options.isNotEmpty()) {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        dialog.options.forEach { option ->
+                            Button(
+                                onClick = { signalRClient.sendAiDialogResponse(option, selectedPid) },
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = MaterialTheme.colorScheme.tertiary
+                                )
+                            ) {
+                                Text(option)
+                            }
+                        }
+                    }
+                } else {
+                    // Default to Yes/No if no options provided
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Button(
+                            onClick = { signalRClient.sendAiDialogResponse("yes", selectedPid) },
+                            modifier = Modifier.weight(1f),
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.tertiary)
+                        ) {
+                            Text("Yes")
+                        }
+                        Button(
+                            onClick = { signalRClient.sendAiDialogResponse("no", selectedPid) },
+                            modifier = Modifier.weight(1f),
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                        ) {
+                            Text("No")
+                        }
+                    }
+                }
             }
         }
     }

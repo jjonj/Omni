@@ -120,9 +120,12 @@ class SignalRClient(
     private val _availableDrivesReceived = MutableSharedFlow<List<String>>(extraBufferCapacity = 1)
     val availableDrivesReceived: SharedFlow<List<String>> = _availableDrivesReceived.asSharedFlow()
 
+    data class AiDialog(val type: String, val prompt: String, val options: List<String>?)
+
     private val _aiMessagesMap = MutableStateFlow<Map<Int, List<AiMessage>>>(emptyMap())
     private val _aiStatusMap = MutableStateFlow<Map<Int, String?>>(emptyMap())
     private val _aiThoughtMap = MutableStateFlow<Map<Int, String?>>(emptyMap())
+    private val _aiDialogMap = MutableStateFlow<Map<Int, AiDialog?>>(emptyMap())
     private val _selectedPid = MutableStateFlow(-1)
 
     val selectedPid: StateFlow<Int> = _selectedPid
@@ -135,6 +138,9 @@ class SignalRClient(
 
     private val _aiThought = MutableStateFlow<String?>(null)
     val aiThought: StateFlow<String?> = _aiThought
+
+    private val _aiDialog = MutableStateFlow<AiDialog?>(null)
+    val aiDialog: StateFlow<AiDialog?> = _aiDialog
 
     private val _aiSessions = MutableStateFlow<Map<Int, String>>(emptyMap())
     val aiSessions: StateFlow<Map<Int, String>> = _aiSessions
@@ -353,252 +359,269 @@ class SignalRClient(
             }
         }, Any::class.java)
 
-                hubConnection?.on("ReceiveTabToPhone", { url: String ->
-                    mainViewModel.openUrlOnPhone(url)
-                }, String::class.java)
-        
-                hubConnection?.on("ReceiveAiMessage", { senderId: String, message: String, pid: Int ->
-                    val senderName = if (senderId == hubConnection?.connectionId) "Me" else "User"
-                    updateSessionMessages(pid) { it + AiMessage(senderName, message) }
-                }, String::class.java, String::class.java, Int::class.java)
-        
-                hubConnection?.on("ReceiveAiResponse", { response: String, pid: Int ->
-                    Log.d("SignalRClient", "ReceiveAiResponse: pid=$pid, text=${response.take(20)}...")
-                    handleAiResponse(response, pid)
-                }, String::class.java, Int::class.java)
+        hubConnection?.on("ReceiveTabToPhone", { url: String ->
+            mainViewModel.openUrlOnPhone(url)
+        }, String::class.java)
 
-                hubConnection?.on("ReceiveAiThought", { thought: String, pid: Int ->
-                    Log.d("SignalRClient", "ReceiveAiThought: pid=$pid")
-                    updateSessionThought(pid, thought)
-                }, String::class.java, Int::class.java)
+        hubConnection?.on("ReceiveAiMessage", { senderId: String, message: String, pid: Int ->
+            val senderName = if (senderId == hubConnection?.connectionId) "Me" else "User"
+            updateSessionMessages(pid) { it + AiMessage(senderName, message) }
+        }, String::class.java, String::class.java, Int::class.java)
 
-                hubConnection?.on("ReceiveAiCodeDiff", { diff: String, pid: Int ->
-                    Log.d("SignalRClient", "ReceiveAiCodeDiff: pid=$pid")
-                    handleAiCodeDiff(diff, pid)
-                }, String::class.java, Int::class.java)
-        
-                hubConnection?.on("ReceiveAiStatus", { status: String?, pid: Int ->
-                    if (status == "FINISHED" || status == "DONE" || status == null || status.isBlank()) {
-                        updateSessionStatus(pid, null)
-                        updateSessionThought(pid, null)
-                        isNextResponseNewBubble = true
-                        // Clear queued status from all messages in this session
-                        updateSessionMessages(pid) { messages ->
-                            messages.map { it.copy(isQueued = false) }
+        hubConnection?.on("ReceiveAiResponse", { response: String, pid: Int ->
+            Log.d("SignalRClient", "ReceiveAiResponse: pid=$pid, text=${response.take(20)}...")
+            handleAiResponse(response, pid)
+        }, String::class.java, Int::class.java)
+
+        hubConnection?.on("ReceiveAiThought", { thought: String, pid: Int ->
+            Log.d("SignalRClient", "ReceiveAiThought: pid=$pid")
+            updateSessionThought(pid, thought)
+        }, String::class.java, Int::class.java)
+
+        hubConnection?.on("ReceiveAiCodeDiff", { diff: String, pid: Int ->
+            Log.d("SignalRClient", "ReceiveAiCodeDiff: pid=$pid")
+            handleAiCodeDiff(diff, pid)
+        }, String::class.java, Int::class.java)
+
+        hubConnection?.on("ReceiveAiStatus", { status: String?, pid: Int ->
+            if (status == "FINISHED" || status == "DONE" || status == null || status.isBlank()) {
+                updateSessionStatus(pid, null)
+                updateSessionThought(pid, null)
+                isNextResponseNewBubble = true
+                // Clear queued status from all messages in this session
+                updateSessionMessages(pid) { messages ->
+                    messages.map { it.copy(isQueued = false) }
+                }
+            } else if (status == "QUEUED") {
+                updateSessionStatus(pid, "Queued (AI busy)")
+                // Mark the latest message from "Me" as queued
+                updateSessionMessages(pid) { messages ->
+                    val lastMeIndex = messages.indexOfLast { it.sender == "Me" }
+                    if (lastMeIndex != -1) {
+                        messages.toMutableList().also {
+                            it[lastMeIndex] = it[lastMeIndex].copy(isQueued = true)
                         }
-                    } else if (status == "QUEUED") {
-                        updateSessionStatus(pid, "Queued (AI busy)")
-                        // Mark the latest message from "Me" as queued
-                        updateSessionMessages(pid) { messages ->
-                            val lastMeIndex = messages.indexOfLast { it.sender == "Me" }
-                            if (lastMeIndex != -1) {
-                                messages.toMutableList().also {
-                                    it[lastMeIndex] = it[lastMeIndex].copy(isQueued = true)
-                                }
-                            } else messages
+                    } else messages
+                }
+            } else {
+                updateSessionStatus(pid, status)
+                if (status == "AI Thinking...") {
+                    isNextResponseNewBubble = true
+                }
+                // Clear queued status when AI starts responding or thinking
+                updateSessionMessages(pid) { messages ->
+                    messages.map { it.copy(isQueued = false) }
+                }
+            }
+        }, String::class.java, Int::class.java)
+
+        hubConnection?.on("ReceiveAiPresets", { presets: List<String> ->
+            _aiPresets.value = presets
+        }, List::class.java)
+
+        hubConnection?.on("ReceiveNewAiSessionPid", { pid: Int ->
+            Log.d("SignalRClient", "New session created: PID $pid")
+            getAiSessions()
+            val wasStartingOurOwn = _isStartingSession
+            _isStartingSession = false
+            isStartingSessionFlow.value = false
+            updateSessionStatus(pid, null)
+            
+            if (wasStartingOurOwn) {
+                setSelectedPid(pid)
+            }
+            
+            coroutineScope.launch { lastCreatedSessionPid.emit(pid) }
+
+            // Flush queue
+            messageQueue.forEach { msg ->
+                sendAiMessage(msg, pid)
+            }
+            messageQueue.clear()
+
+            // Clear the temporary -1 session messages
+            _aiMessagesMap.value = _aiMessagesMap.value - (-1)
+        }, Int::class.java)
+
+        hubConnection?.on("ReceiveCortexActivity", { name: String, type: String ->
+            mainViewModel.onCortexActivityChanged(name, type)
+        }, String::class.java, String::class.java)
+
+        hubConnection?.on("ReceiveAiSessions", { sessionsData: List<Any> ->
+            try {
+                val jsonStr = gson.toJson(sessionsData)
+                val type = object : TypeToken<List<Map<String, Any>>>() {}.type
+                val sessionsList: List<Map<String, Any>> = gson.fromJson(jsonStr, type)
+                
+                // Maintain order from Hub (sorted by start time)
+                val sessionsMap = LinkedHashMap<Int, String>()
+                val workspacesMap = mutableMapOf<Int, String>()
+                sessionsList.forEach { session ->
+                    val pidRaw = session["pid"] ?: session["Pid"]
+                    val pid = when (pidRaw) {
+                        is Double -> pidRaw.toInt()
+                        is Int -> pidRaw
+                        is Long -> pidRaw.toInt()
+                        is Float -> pidRaw.toInt()
+                        is String -> pidRaw.toIntOrNull() ?: 0
+                        else -> 0
+                    }
+                    val name = (session["name"] ?: session["Name"]) as? String ?: "Session $pid"
+                    val workspace = (session["workspace"] ?: session["Workspace"]) as? String ?: ""
+                    Log.d("SignalRClient", "Parsed Session: PID=$pid, Name=$name, Workspace=$workspace")
+                    if (pid != 0) {
+                        sessionsMap[pid] = name
+                        workspacesMap[pid] = workspace
+                    }
+                }
+
+                _aiSessions.value = sessionsMap
+                _aiWorkspaces.value = workspacesMap
+                
+                // Clean up statuses for sessions that no longer exist
+                val currentStatusMap = _aiStatusMap.value
+                val keysToRemove = currentStatusMap.keys.filter { it != -1 && !sessionsMap.containsKey(it) }
+                if (keysToRemove.isNotEmpty()) {
+                    _aiStatusMap.value = currentStatusMap - keysToRemove.toSet()
+                }
+
+                // If current selectedPid is not in sessions anymore, pick a new one
+                if (_selectedPid.value != -1 && !sessionsMap.containsKey(_selectedPid.value)) {
+                    if (sessionsMap.isNotEmpty()) setSelectedPid(sessionsMap.keys.first())
+                    else setSelectedPid(-1)
+                } else if (_selectedPid.value == -1 && sessionsMap.isNotEmpty() && !_isStartingSession) {
+                    setSelectedPid(sessionsMap.keys.first())
+                }
+            } catch (e: Exception) {
+                Log.e("SignalRClient", "Error parsing AI sessions", e)
+            }
+        }, List::class.java)
+
+        hubConnection?.on("ReceiveAiHistory", { historyJson: String, pid: Int ->
+            try {
+                val type = object : TypeToken<List<Map<String, String>>>() {}.type
+                val history: List<Map<String, String>> = gson.fromJson(historyJson, type)
+                val mappedHistory = history.map { 
+                    val sender = it["sender"] ?: "Unknown"
+                    val text = it["text"] ?: ""
+                    
+                    // Map existing sender to our new categories if it's from AI/System/Unknown
+                    val mappedSender = if (sender == "AI" || sender == "System" || sender == "Unknown") {
+                        when {
+                            text.startsWith("Error:") -> "Error"
+                            text.contains("A new version of Gemini CLI is available") || 
+                            text.startsWith("System:") || 
+                            text.startsWith("Info:") ||
+                            text.startsWith("Replacement") ||
+                            text.startsWith("Read") ||
+                            text.startsWith("Tool Call") ||
+                            text.startsWith("Thinking") ||
+                            text.startsWith("Executing") -> "System"
+                            else -> "AI"
                         }
                     } else {
-                        updateSessionStatus(pid, status)
-                        if (status == "AI Thinking...") {
-                            isNextResponseNewBubble = true
-                        }
-                        // Clear queued status when AI starts responding or thinking
-                        updateSessionMessages(pid) { messages ->
-                            messages.map { it.copy(isQueued = false) }
-                        }
+                        sender // Keeps 'CodeDiff', 'Me', etc.
                     }
-                }, String::class.java, Int::class.java)
-
-                hubConnection?.on("ReceiveAiPresets", { presets: List<String> ->
-                    _aiPresets.value = presets
-                }, List::class.java)
-        
-                hubConnection?.on("ReceiveNewAiSessionPid", { pid: Int ->
-                    Log.d("SignalRClient", "New session created: PID $pid")
-                    getAiSessions()
-                    val wasStartingOurOwn = _isStartingSession
-                    _isStartingSession = false
-                    isStartingSessionFlow.value = false
-                    updateSessionStatus(pid, null)
-                    
-                    if (wasStartingOurOwn) {
-                        setSelectedPid(pid)
-                    }
-                    
-                    coroutineScope.launch { lastCreatedSessionPid.emit(pid) }
-        
-                    // Flush queue
-                    messageQueue.forEach { msg ->
-                        sendAiMessage(msg, pid)
-                    }
-                    messageQueue.clear()
-
-                    // Clear the temporary -1 session messages
-                    _aiMessagesMap.value = _aiMessagesMap.value - (-1)
-                }, Int::class.java)
-        
-                hubConnection?.on("ReceiveCortexActivity", { name: String, type: String ->
-                    mainViewModel.onCortexActivityChanged(name, type)
-                }, String::class.java, String::class.java)
-        
-                hubConnection?.on("ReceiveAiSessions", { sessionsData: List<Any> ->
-                    try {
-                        val jsonStr = gson.toJson(sessionsData)
-                        val type = object : TypeToken<List<Map<String, Any>>>() {}.type
-                        val sessionsList: List<Map<String, Any>> = gson.fromJson(jsonStr, type)
-                        
-                        // Maintain order from Hub (sorted by start time)
-                        val sessionsMap = LinkedHashMap<Int, String>()
-                        val workspacesMap = mutableMapOf<Int, String>()
-                        sessionsList.forEach { session ->
-                            val pidRaw = session["pid"] ?: session["Pid"]
-                            val pid = when (pidRaw) {
-                                is Double -> pidRaw.toInt()
-                                is Int -> pidRaw
-                                is Long -> pidRaw.toInt()
-                                is Float -> pidRaw.toInt()
-                                is String -> pidRaw.toIntOrNull() ?: 0
-                                else -> 0
-                            }
-                            val name = (session["name"] ?: session["Name"]) as? String ?: "Session $pid"
-                            val workspace = (session["workspace"] ?: session["Workspace"]) as? String ?: ""
-                            Log.d("SignalRClient", "Parsed Session: PID=$pid, Name=$name, Workspace=$workspace")
-                            if (pid != 0) {
-                                sessionsMap[pid] = name
-                                workspacesMap[pid] = workspace
-                            }
-                        }
-
-                        _aiSessions.value = sessionsMap
-                        _aiWorkspaces.value = workspacesMap
-                        
-                        // Clean up statuses for sessions that no longer exist
-                        val currentStatusMap = _aiStatusMap.value
-                        val keysToRemove = currentStatusMap.keys.filter { it != -1 && !sessionsMap.containsKey(it) }
-                        if (keysToRemove.isNotEmpty()) {
-                            _aiStatusMap.value = currentStatusMap - keysToRemove.toSet()
-                        }
-
-                        // If current selectedPid is not in sessions anymore, pick a new one
-                        if (_selectedPid.value != -1 && !sessionsMap.containsKey(_selectedPid.value)) {
-                            if (sessionsMap.isNotEmpty()) setSelectedPid(sessionsMap.keys.first())
-                            else setSelectedPid(-1)
-                        } else if (_selectedPid.value == -1 && sessionsMap.isNotEmpty() && !_isStartingSession) {
-                            setSelectedPid(sessionsMap.keys.first())
-                        }
-                    } catch (e: Exception) {
-                        Log.e("SignalRClient", "Error parsing AI sessions", e)
-                    }
-                }, List::class.java)
-        
-                hubConnection?.on("ReceiveAiHistory", { historyJson: String, pid: Int ->
-                    try {
-                        val type = object : TypeToken<List<Map<String, String>>>() {}.type
-                        val history: List<Map<String, String>> = gson.fromJson(historyJson, type)
-                        val mappedHistory = history.map { 
-                            val sender = it["sender"] ?: "Unknown"
-                            val text = it["text"] ?: ""
-                            
-                            // Map existing sender to our new categories if it's from AI/System/Unknown
-                            val mappedSender = if (sender == "AI" || sender == "System" || sender == "Unknown") {
-                                when {
-                                    text.startsWith("Error:") -> "Error"
-                                    text.contains("A new version of Gemini CLI is available") || 
-                                    text.startsWith("System:") || 
-                                    text.startsWith("Info:") ||
-                                    text.startsWith("Replacement") ||
-                                    text.startsWith("Read") ||
-                                    text.startsWith("Tool Call") ||
-                                    text.startsWith("Thinking") ||
-                                    text.startsWith("Executing") -> "System"
-                                    else -> "AI"
-                                }
-                            } else {
-                                sender // Keeps 'CodeDiff', 'Me', etc.
-                            }
-                            AiMessage(mappedSender, text)
-                        }
-                        
-                        _aiMessagesMap.value = _aiMessagesMap.value + (pid to mappedHistory)
-                        updateSessionStatus(pid, null)
-                        isNextResponseNewBubble = true
-                        updateActiveView()
-                    } catch (e: Exception) {
-                        Log.e("SignalRClient", "Error parsing AI history", e)
-                    }
-                }, String::class.java, Int::class.java)
-        
-                hubConnection?.on("ReceivePayload", { payloadData: Any ->
-                    try {
-                        val jsonStr = gson.toJson(payloadData)
-                        Log.d("SignalRClient", "Raw ReceivePayload JSON: $jsonStr")
-        
-                        val type = object : TypeToken<Map<String, Any>>() {}.type
-                        val map: Map<String, Any> = gson.fromJson(jsonStr, type)
-        
-                        val command = (map["Command"] ?: map["command"]) as? String
-                        val target = (map["Target"] ?: map["target"]) as? String
-                        val payloadObj = (map["Payload"] ?: map["payload"]) as? Map<String, Any>
-        
-                        mainViewModel.addLog("Received Payload: $command", com.omni.sync.ui.screen.LogType.INFO)  
-        
-                        if ((target == "Android" || target == "android") && command != null && payloadObj != null) {
-                            when (command) {
-                                "OPEN_FILE" -> {
-                                    val path = (payloadObj["Path"] ?: payloadObj["path"]) as? String
-                                    if (path != null) mainViewModel.handleOpenFile(path)
-                                }
-                                "OPEN_FOLDER" -> {
-                                    val path = (payloadObj["Path"] ?: payloadObj["path"]) as? String
-                                    if (path != null) mainViewModel.handleOpenFolder(path)
-                                }
-                            }
-                        }
-                    } catch (e: Exception) {
-                        Log.e("SignalRClient", "Error parsing ReceivePayload", e)
-                        mainViewModel.addLog("Error parsing payload: ${e.message}", com.omni.sync.ui.screen.LogType.ERROR)
-                    }
-                }, Any::class.java)
-            }
-        
-            private fun updateSessionMessages(pid: Int, block: (List<AiMessage>) -> List<AiMessage>) {
-                val currentMap = _aiMessagesMap.value
-                val sessionMessages = currentMap[pid] ?: emptyList()
-                val newMessages = block(sessionMessages)
-                _aiMessagesMap.value = currentMap + (pid to newMessages)
-                if (pid == _selectedPid.value) {
-                    updateActiveView()
+                    AiMessage(mappedSender, text)
                 }
+                
+                _aiMessagesMap.value = _aiMessagesMap.value + (pid to mappedHistory)
+                updateSessionStatus(pid, null)
+                isNextResponseNewBubble = true
+                updateActiveView()
+            } catch (e: Exception) {
+                Log.e("SignalRClient", "Error parsing AI history", e)
             }
-        
-            private fun updateSessionStatus(pid: Int, status: String?) {
-                val currentMap = _aiStatusMap.value
-                _aiStatusMap.value = currentMap + (pid to status)
-                if (pid == _selectedPid.value) {
-                    updateActiveView()
-                }
-            }
+        }, String::class.java, Int::class.java)
 
-            private fun updateSessionThought(pid: Int, thought: String?) {
-                val currentMap = _aiThoughtMap.value
-                _aiThoughtMap.value = currentMap + (pid to thought)
-                if (pid == _selectedPid.value) {
-                    updateActiveView()
+        hubConnection?.on("ReceiveAiDialog", { pid: Int, type: String, prompt: String, options: List<String>? ->
+            Log.d("SignalRClient", "ReceiveAiDialog from PID $pid: $type - $prompt")
+            updateSessionDialog(pid, AiDialog(type, prompt, options))
+        }, Int::class.java, String::class.java, String::class.java, List::class.java)
+
+        hubConnection?.on("ReceivePayload", { payloadData: Any ->
+            try {
+                val jsonStr = gson.toJson(payloadData)
+                Log.d("SignalRClient", "Raw ReceivePayload JSON: $jsonStr")
+
+                val type = object : TypeToken<Map<String, Any>>() {}.type
+                val map: Map<String, Any> = gson.fromJson(jsonStr, type)
+
+                val command = (map["Command"] ?: map["command"]) as? String
+                val target = (map["Target"] ?: map["target"]) as? String
+                val payloadObj = (map["Payload"] ?: map["payload"]) as? Map<String, Any>
+
+                mainViewModel.addLog("Received Payload: $command", com.omni.sync.ui.screen.LogType.INFO)  
+
+                if ((target == "Android" || target == "android") && command != null && payloadObj != null) {
+                    when (command) {
+                        "OPEN_FILE" -> {
+                            val path = (payloadObj["Path"] ?: payloadObj["path"]) as? String
+                            if (path != null) mainViewModel.handleOpenFile(path)
+                        }
+                        "OPEN_FOLDER" -> {
+                            val path = (payloadObj["Path"] ?: payloadObj["path"]) as? String
+                            if (path != null) mainViewModel.handleOpenFolder(path)
+                        }
+                    }
                 }
+            } catch (e: Exception) {
+                Log.e("SignalRClient", "Error parsing ReceivePayload", e)
+                mainViewModel.addLog("Error parsing payload: ${e.message}", com.omni.sync.ui.screen.LogType.ERROR)
             }
-        
-            private fun updateActiveView() {
-                val pid = _selectedPid.value
-                _aiMessages.value = _aiMessagesMap.value[pid] ?: emptyList()
-                _aiStatus.value = _aiStatusMap.value[pid]
-                _aiThought.value = _aiThoughtMap.value[pid]
-            }
-        
-                            fun setSelectedPid(pid: Int) {
-                                mainViewModel.addLog("[AI] Selected PID set to: $pid", com.omni.sync.ui.screen.LogType.INFO)
-                                _selectedPid.value = pid
-                                updateActiveView()
-                            }            fun sendTabToPhone(url: String) {        if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
+        }, Any::class.java)
+    }
+
+    private fun updateSessionMessages(pid: Int, block: (List<AiMessage>) -> List<AiMessage>) {
+        val currentMap = _aiMessagesMap.value
+        val sessionMessages = currentMap[pid] ?: emptyList()
+        val newMessages = block(sessionMessages)
+        _aiMessagesMap.value = currentMap + (pid to newMessages)
+        if (pid == _selectedPid.value) {
+            updateActiveView()
+        }
+    }
+
+    private fun updateSessionStatus(pid: Int, status: String?) {
+        val currentMap = _aiStatusMap.value
+        _aiStatusMap.value = currentMap + (pid to status)
+        if (pid == _selectedPid.value) {
+            updateActiveView()
+        }
+    }
+
+    private fun updateSessionThought(pid: Int, thought: String?) {
+        val currentMap = _aiThoughtMap.value
+        _aiThoughtMap.value = currentMap + (pid to thought)
+        if (pid == _selectedPid.value) {
+            updateActiveView()
+        }
+    }
+
+    private fun updateSessionDialog(pid: Int, dialog: AiDialog?) {
+        val currentMap = _aiDialogMap.value
+        _aiDialogMap.value = currentMap + (pid to dialog)
+        if (pid == _selectedPid.value) {
+            updateActiveView()
+        }
+    }
+
+    private fun updateActiveView() {
+        val pid = _selectedPid.value
+        _aiMessages.value = _aiMessagesMap.value[pid] ?: emptyList()
+        _aiStatus.value = _aiStatusMap.value[pid]
+        _aiThought.value = _aiThoughtMap.value[pid]
+        _aiDialog.value = _aiDialogMap.value[pid]
+    }
+
+    fun setSelectedPid(pid: Int) {
+        mainViewModel.addLog("[AI] Selected PID set to: $pid", com.omni.sync.ui.screen.LogType.INFO)
+        _selectedPid.value = pid
+        updateActiveView()
+    }
+
+    fun sendTabToPhone(url: String) {
+        if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
             hubConnection?.send("SendTabToPhone", url)
         }
     }
@@ -609,209 +632,183 @@ class SignalRClient(
         }
     }
 
-        fun sendCortexTemplates(templatesJson: String) {
-            if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
-                hubConnection?.send("SetCortexTemplates", templatesJson)
-            }
+    fun sendCortexTemplates(templatesJson: String) {
+        if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
+            hubConnection?.send("SetCortexTemplates", templatesJson)
         }
-    
-            fun sendAiSpecialKey(key: String, pid: Int? = null) {
-                if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
-                    val targetPid = pid ?: _selectedPid.value
-                    hubConnection?.send("SendAiSpecialKey", key, targetPid)
-                }
+    }
+
+    fun sendAiSpecialKey(key: String, pid: Int? = null) {
+        if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
+            val targetPid = pid ?: _selectedPid.value
+            hubConnection?.send("SendAiSpecialKey", key, targetPid)
+        }
+    }
+
+    fun sendAiYolo(pid: Int? = null) {
+        if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
+            val targetPid = pid ?: _selectedPid.value
+            hubConnection?.send("SendAiYolo", targetPid)
+        }
+    }    
+
+    fun sendAiDialogResponse(response: String, pid: Int? = null) {
+        if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
+            val targetPid = pid ?: _selectedPid.value
+            hubConnection?.send("SendAiDialogResponse", response, targetPid)
+            // Clear local dialog after responding
+            updateSessionDialog(targetPid, null)
+        }
+    }
+
+    fun sendAiMessage(message: String, pid: Int? = null) {
+        if (_isStartingSession) {
+            messageQueue.add(message)
+            // Immediate feedback for queued messages
+            updateSessionMessages(-1) { it + AiMessage("Me", message) }
+            return
+        }
+
+        if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {       
+            val targetPid = pid ?: _selectedPid.value
+            
+            if (targetPid == -1 && !message.startsWith("/")) {
+                // Auto-create session
+                startNewAiSession()
+                messageQueue.add(message)
+                updateSessionMessages(-1) { it + AiMessage("Me", message) }
+                return
             }
-        
-            fun sendAiYolo(pid: Int? = null) {
-                if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
-                    val targetPid = pid ?: _selectedPid.value
-                    hubConnection?.send("SendAiYolo", targetPid)
-                }
-            }    
-            fun sendAiMessage(message: String, pid: Int? = null) {
-    
-                if (_isStartingSession) {
-    
-                    messageQueue.add(message)
-    
-                    // Immediate feedback for queued messages
-    
-                    updateSessionMessages(-1) { it + AiMessage("Me", message) }
-    
-                    return
-    
-                }
-    
-        
-    
-                if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {       
-    
-                    val targetPid = pid ?: _selectedPid.value
-    
-                    
-    
-                    if (targetPid == -1 && !message.startsWith("/")) {
-    
-                        // Auto-create session
-    
-                        startNewAiSession()
-    
-                        messageQueue.add(message)
-    
-                        updateSessionMessages(-1) { it + AiMessage("Me", message) }
-    
-                        return
-    
-                    }
-    
-        
-    
-                                        if (!message.startsWith("/")) {
-    
-        
-    
-                                            updateSessionStatus(targetPid, "AI Thinking...")
-    
-        
-    
-                                        }
-    
-        
-    
-                                        
-    
-        
-    
-                                        val hubPid = if (targetPid == -1) null else targetPid
-    
-        
-    
-                                        hubConnection?.send("SendAiMessage", message, hubPid)
-    
-        
-    
-                                    }
-    
-        
-    
-                                }
+
+            if (!message.startsWith("/")) {
+                updateSessionStatus(targetPid, "AI Thinking...")
+            }
+            
+            val hubPid = if (targetPid == -1) null else targetPid
+            hubConnection?.send("SendAiMessage", message, hubPid)
+        }
+    }
+
     fun getAiSessions() {
         if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
             hubConnection?.send("GetAiSessions")
         }
     }
 
-        fun requestAiHistory() {
-            if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {       
-                val pid = _selectedPid.value
-                // Clear current messages to show it's reloading
-                _aiMessagesMap.value = _aiMessagesMap.value + (pid to emptyList())
-                updateActiveView()
-                
-                updateSessionStatus(pid, "Reloading history...")
-                val hubPid = if (pid == -1) null else pid
-                hubConnection?.send("RequestAiHistory", hubPid)
-            }
+    fun requestAiHistory() {
+        if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {       
+            val pid = _selectedPid.value
+            // Clear current messages to show it's reloading
+            _aiMessagesMap.value = _aiMessagesMap.value + (pid to emptyList())
+            updateActiveView()
+            
+            updateSessionStatus(pid, "Reloading history...")
+            val hubPid = if (pid == -1) null else pid
+            hubConnection?.send("RequestAiHistory", hubPid)
         }
-    
-        fun switchAiSession(pid: Int) {
-            if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {       
-                _isStartingSession = false
-                isStartingSessionFlow.value = false
-                messageQueue.clear()
+    }
 
-                mainViewModel.addLog("[AI] Switching to session PID $pid (Request)", com.omni.sync.ui.screen.LogType.INFO)
-                setSelectedPid(pid)
-                updateSessionStatus(pid, "Switching session...")
-                hubConnection?.send("SwitchAiSession", pid)
-            }
-        }
-        fun startNewAiSession(workspace: String? = null) {
-            if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {       
-                _isStartingSession = true
-                isStartingSessionFlow.value = true
-                messageQueue.clear()
+    fun switchAiSession(pid: Int) {
+        if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {       
+            _isStartingSession = false
+            isStartingSessionFlow.value = false
+            messageQueue.clear()
 
-                // Ensure -1 session is clean and switch to it immediately
-                _aiMessagesMap.value = _aiMessagesMap.value + (-1 to emptyList())
-                setSelectedPid(-1)
-                updateSessionStatus(-1, "Starting new session...")
+            mainViewModel.addLog("[AI] Switching to session PID $pid (Request)", com.omni.sync.ui.screen.LogType.INFO)
+            setSelectedPid(pid)
+            updateSessionStatus(pid, "Switching session...")
+            hubConnection?.send("SwitchAiSession", pid)
+        }
+    }
 
-                hubConnection?.send("StartNewAiSession", workspace)
-            }
-        }
-    
-        fun stopAiSession(pid: Int) {
-            if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {       
-                updateSessionStatus(pid, "Closing session...")
-                hubConnection?.send("StopAiSession", pid)
-            }
-        }
-    
-        fun renameAiSession(pid: Int, name: String) {
-            if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {       
-                hubConnection?.send("RenameAiSession", pid, name)
-            }
-        }
+    fun startNewAiSession(workspace: String? = null) {
+        if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {       
+            _isStartingSession = true
+            isStartingSessionFlow.value = true
+            messageQueue.clear()
 
-        fun clearSessions() {
-            _aiSessions.value = emptyMap()
-            _aiWorkspaces.value = emptyMap()
-        }
+            // Ensure -1 session is clean and switch to it immediately
+            _aiMessagesMap.value = _aiMessagesMap.value + (-1 to emptyList())
+            setSelectedPid(-1)
+            updateSessionStatus(-1, "Starting new session...")
 
-        fun reloadAiSessions() {
-            if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {       
-                mainViewModel.addLog("[AI] Requesting session reload and debug report...", com.omni.sync.ui.screen.LogType.INFO)
-                
-                // Construct the list of current sessions to send to Hub
-                val currentSessions = _aiSessions.value.map { (pid, name) ->
-                    mapOf(
-                        "pid" to pid,
-                        "name" to name,
-                        "workspace" to (_aiWorkspaces.value[pid] ?: "")
-                    )
-                }
-                
-                hubConnection?.send("ReloadAiSessions", currentSessions)
-            }
+            hubConnection?.send("StartNewAiSession", workspace)
         }
+    }
 
-        fun focusAiSession(pid: Int) {
-            if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {       
-                hubConnection?.send("FocusAiSession", pid)
-            }
+    fun stopAiSession(pid: Int) {
+        if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {       
+            updateSessionStatus(pid, "Closing session...")
+            hubConnection?.send("StopAiSession", pid)
         }
+    }
 
-        fun getAiPresets() {
-            if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {       
-                hubConnection?.send("GetAiPresets")
-            }
+    fun renameAiSession(pid: Int, name: String) {
+        if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {       
+            hubConnection?.send("RenameAiSession", pid, name)
         }
+    }
 
-        fun addAiPreset(preset: String) {
-            if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {       
-                hubConnection?.send("AddAiPreset", preset)
-            }
-        }
+    fun clearSessions() {
+        _aiSessions.value = emptyMap()
+        _aiWorkspaces.value = emptyMap()
+    }
 
-        fun removeAiPreset(preset: String) {
-            if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {       
-                hubConnection?.send("RemoveAiPreset", preset)
+    fun reloadAiSessions() {
+        if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {       
+            mainViewModel.addLog("[AI] Requesting session reload and debug report...", com.omni.sync.ui.screen.LogType.INFO)
+            
+            // Construct the list of current sessions to send to Hub
+            val currentSessions = _aiSessions.value.map { (pid, name) ->
+                mapOf(
+                    "pid" to pid,
+                    "name" to name,
+                    "workspace" to (_aiWorkspaces.value[pid] ?: "")
+                )
             }
+            
+            hubConnection?.send("ReloadAiSessions", currentSessions)
         }
+    }
 
-        fun resetAiSessions() {
-            if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
-                mainViewModel.addLog("[AI] Requesting session reset (Nuke all)...", com.omni.sync.ui.screen.LogType.WARNING)
-                hubConnection?.send("ResetAiSessions")
-                // Clear local state
-                _aiMessagesMap.value = emptyMap()
-                _aiStatusMap.value = emptyMap()
-                _aiThoughtMap.value = emptyMap()
-                setSelectedPid(-1)
-                updateActiveView()
-            }
+    fun focusAiSession(pid: Int) {
+        if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {       
+            hubConnection?.send("FocusAiSession", pid)
         }
+    }
+
+    fun getAiPresets() {
+        if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {       
+            hubConnection?.send("GetAiPresets")
+        }
+    }
+
+    fun addAiPreset(preset: String) {
+        if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {       
+            hubConnection?.send("AddAiPreset", preset)
+        }
+    }
+
+    fun removeAiPreset(preset: String) {
+        if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {       
+            hubConnection?.send("RemoveAiPreset", preset)
+        }
+    }
+
+    fun resetAiSessions() {
+        if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
+            mainViewModel.addLog("[AI] Requesting session reset (Nuke all)...", com.omni.sync.ui.screen.LogType.WARNING)
+            hubConnection?.send("ResetAiSessions")
+            // Clear local state
+            _aiMessagesMap.value = emptyMap()
+            _aiStatusMap.value = emptyMap()
+            _aiThoughtMap.value = emptyMap()
+            _aiDialogMap.value = emptyMap()
+            setSelectedPid(-1)
+            updateActiveView()
+        }
+    }
+
     fun setAiZoom(pid: Int, level: Double) {
         if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
             hubConnection?.send("SetAiZoom", pid, level)
@@ -825,47 +822,31 @@ class SignalRClient(
         }
     }
 
-        fun clearAiMessages(pid: Int? = null) {
-
-            val targetPid = pid ?: _selectedPid.value
-
-            if (hubConnection != null && hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED && aiSessions.value.isNotEmpty()) {
-
-                hubConnection?.send("SendAiMessage", "/clear", targetPid)
-
-            }
-
-    
-
-            // Insta-clear local view
-
-            _aiMessagesMap.value = _aiMessagesMap.value.toMutableMap().apply {
-
-                remove(targetPid)
-
-            }
-
-            updateActiveView()
-
-    
-
-            // Repopulate (request history from Hub which should now be empty or have a system message)
-
-            requestAiHistory()
-
+    fun clearAiMessages(pid: Int? = null) {
+        val targetPid = pid ?: _selectedPid.value
+        if (hubConnection != null && hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED && aiSessions.value.isNotEmpty()) {
+            hubConnection?.send("SendAiMessage", "/clear", targetPid)
         }
 
-    
-
-        fun stopConnection() {
-            reconnectJob?.cancel()
-            reconnectJob = null
-            isReconnecting.set(false)
-            removeHubHandlers()
-            hubConnection?.stop()
-            _connectionState.value = "Disconnected"
-            mainViewModel.setConnected(false)
+        // Insta-clear local view
+        _aiMessagesMap.value = _aiMessagesMap.value.toMutableMap().apply {
+            remove(targetPid)
         }
+        updateActiveView()
+
+        // Repopulate (request history from Hub which should now be empty or have a system message)
+        requestAiHistory()
+    }
+
+    fun stopConnection() {
+        reconnectJob?.cancel()
+        reconnectJob = null
+        isReconnecting.set(false)
+        removeHubHandlers()
+        hubConnection?.stop()
+        _connectionState.value = "Disconnected"
+        mainViewModel.setConnected(false)
+    }
 
     fun manualReconnect() {
         coroutineScope.launch {
@@ -1257,6 +1238,7 @@ class SignalRClient(
         hub.remove("ReceiveCortexActivity")
         hub.remove("ReceiveAiSessions")
         hub.remove("ReceiveAiHistory")
+        hub.remove("ReceiveAiDialog")
         hub.remove("ReceivePayload")
     }
 }
