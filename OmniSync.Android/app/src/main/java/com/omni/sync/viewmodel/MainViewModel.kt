@@ -481,6 +481,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     val localAddress = InetAddress.getByName(broadcastIp)
                     val localPacket = DatagramPacket(bytes, bytes.size, localAddress, port)
                     socket.send(localPacket)
+                    addLog("Subnet WOL sent to $broadcastIp", LogType.SUCCESS)
                 } catch (e: Exception) {
                     addLog("Subnet WOL Failed: ${e.message}", LogType.WARNING)
                 }
@@ -491,6 +492,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     val globalPacket = DatagramPacket(bytes, bytes.size, globalAddress, port)
                     socket.setBroadcast(true)
                     socket.send(globalPacket)
+                    addLog("Global WOL sent to 255.255.255.255", LogType.SUCCESS)
                 } catch (e: Exception) {
                     addLog("Global WOL Failed: ${e.message}", LogType.WARNING)
                 }
@@ -500,12 +502,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     val remoteAddress = InetAddress.getByName(wanIp)
                     val remotePacket = DatagramPacket(bytes, bytes.size, remoteAddress, port)
                     socket.send(remotePacket)
+                    addLog("Remote WOL sent to $wanIp", LogType.SUCCESS)
                 } catch (e: Exception) {
                     addLog("Remote WOL Failed: ${e.message}", LogType.WARNING)
                 }
 
                 socket.close()
-                addLog("WOL packets sent!", LogType.SUCCESS)
+                addLog("All WOL packets processed.", LogType.INFO)
             } catch (e: Exception) {
                 addLog("Failed to send WOL: ${e.message}", LogType.ERROR)
             }

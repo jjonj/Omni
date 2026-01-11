@@ -208,7 +208,7 @@ class SignalRClient(
                 buildAndStartConnection(remoteUrl) { remoteError ->
                     _connectionState.value = "Disconnected (All attempts failed)"
                     mainViewModel.setConnected(false)
-                    mainViewModel.addLog("All connection attempts failed.", com.omni.sync.ui.screen.LogType.ERROR)
+                    mainViewModel.addLog("All connection attempts failed. Local: ${localError.message}, Remote: ${remoteError.message}", com.omni.sync.ui.screen.LogType.ERROR)
                 }
             }
         } else {
@@ -216,14 +216,18 @@ class SignalRClient(
             buildAndStartConnection(remoteUrl) { remoteError ->
                 _connectionState.value = "Disconnected (Remote failed, no WiFi)"
                 mainViewModel.setConnected(false)
-                mainViewModel.addLog("Remote connection failed and WiFi is unavailable.", com.omni.sync.ui.screen.LogType.ERROR)
+                mainViewModel.addLog("Remote connection failed and WiFi is unavailable: ${remoteError.message}", com.omni.sync.ui.screen.LogType.ERROR)
             }
         }
     }
 
     private fun buildAndStartConnection(url: String, onFailure: (Throwable) -> Unit) {
-        stopConnection()
-        hubConnection = HubConnectionBuilder.create(url).build()
+        // Stop any current connection attempt
+        hubConnection?.stop()
+        handlersRegistered = false
+        
+        hubConnection = HubConnectionBuilder.create(url)
+            .build()
 
         hubConnection?.onClosed { error ->
             val reason = error?.message ?: "Unknown reason"
@@ -237,11 +241,11 @@ class SignalRClient(
             if (isReconnecting.compareAndSet(false, true)) {
                 mainViewModel.addLog("Connection closed. Reason: $reason. Starting auto-reconnect...", com.omni.sync.ui.screen.LogType.WARNING)
                 reconnectJob = coroutineScope.launch {
-                    while (true) {
+                    while (isReconnecting.get()) {
                         delay(10000)
-                        mainViewModel.addLog("Attempting to reconnect (Local First)...", com.omni.sync.ui.screen.LogType.INFO)
-                        // Just call startConnection again which does the local-then-remote logic
+                        mainViewModel.addLog("Attempting to reconnect...", com.omni.sync.ui.screen.LogType.INFO)
                         startConnection()
+                        // startConnection handles the retry logic, so we break here and let it start a new cycle if needed
                         break 
                     }
                 }
@@ -258,7 +262,7 @@ class SignalRClient(
                 mainViewModel.addLog("Connected successfully to: $url", com.omni.sync.ui.screen.LogType.SUCCESS)
             }
             ?.doOnError { error ->
-                mainViewModel.addLog("Failed to connect to $url: ${error.message}", com.omni.sync.ui.screen.LogType.ERROR)
+                mainViewModel.addLog("Attempt failed for $url: ${error.message}", com.omni.sync.ui.screen.LogType.INFO)
                 onFailure(error)
             }
             ?.subscribe({
