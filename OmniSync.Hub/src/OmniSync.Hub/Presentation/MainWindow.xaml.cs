@@ -8,15 +8,23 @@ using System; // For Environment.NewLine
 using System.Linq;
 using OmniSync.Hub.Infrastructure.Services; // Add this using directive
 using OmniSync.Hub.Logic.Services;
+using OmniSync.Hub.Logic;
 using Microsoft.Win32; // Added for Registry access
 using System.Collections.Generic; // For KeyValuePair
 using System.Windows.Controls; // For Button
 using System.Windows.Input; // Added for MouseButtonEventArgs
+using System.Runtime.InteropServices;
+using System.Windows.Interop;
 
 namespace OmniSync.Hub.Presentation
 {
     public partial class MainWindow : Window
     {
+        [DllImport("dwmapi.dll")]
+        private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int attrValue, int attrSize);
+
+        private const int DWMWA_USE_IMMERSIVE_DARK_MODE = 20;
+
         private readonly HubMonitorService _hubMonitorService;
         private readonly RegistryService _registryService;
         private readonly HubSettingsService _settingsService;
@@ -24,15 +32,16 @@ namespace OmniSync.Hub.Presentation
 
         public bool IsInternalClosing { get; set; } = false;
 
-        public MainWindow(HubMonitorService hubMonitorService, InputService inputService, ShutdownService shutdownService, RegistryService registryService, HubSettingsService settingsService, KeyboardHook keyboardHook)
+        public MainWindow(HubMonitorService hubMonitorService, InputService inputService, ShutdownService shutdownService, RegistryService registryService, HubSettingsService settingsService, KeyboardHook keyboardHook, AiCliService aiCliService, LayoutCaptureService layoutCaptureService, ProjectLauncherService projectLauncherService)
         {
             InitializeComponent();
+            EnableDarkModeTitleBar();
             
             _hubMonitorService = hubMonitorService;
             _registryService = registryService;
             _settingsService = settingsService;
 
-            _viewModel = new MainViewModel(hubMonitorService, inputService, shutdownService, registryService, settingsService, keyboardHook);
+            _viewModel = new MainViewModel(hubMonitorService, inputService, shutdownService, registryService, settingsService, keyboardHook, aiCliService, layoutCaptureService, projectLauncherService);
             DataContext = _viewModel;
 
             // Hook up event handlers (now in ViewModel)
@@ -81,5 +90,23 @@ namespace OmniSync.Hub.Presentation
         // Long press for shutdown button remains in code-behind to handle MouseDown/Up events properly
         private void ShutdownButton_MouseDown(object sender, MouseButtonEventArgs e) => _viewModel.StartLongPressTimer();
         private void ShutdownButton_MouseUp(object sender, MouseButtonEventArgs e) => _viewModel.StopLongPressTimer();
+
+        private void TextBox_GotFocus(object sender, RoutedEventArgs e)
+        {
+            if (sender is System.Windows.Controls.TextBox textBox)
+            {
+                textBox.SelectAll();
+            }
+        }
+
+        private void EnableDarkModeTitleBar()
+        {
+            var helper = new WindowInteropHelper(this);
+            helper.EnsureHandle();
+            if (helper.Handle == IntPtr.Zero) return;
+            
+            int useImmersiveDarkMode = 1;
+            DwmSetWindowAttribute(helper.Handle, DWMWA_USE_IMMERSIVE_DARK_MODE, ref useImmersiveDarkMode, sizeof(int));
+        }
     }
 }

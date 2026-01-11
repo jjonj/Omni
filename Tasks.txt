@@ -20,7 +20,6 @@ Only work on subtasks if told to do so or if told explicitly to do a Megasession
 
 
 ## For the hub
-Add mapping button in settings doesn't work, nothing happens. 
 
 
 ## in OmniSync.Android
@@ -48,6 +47,12 @@ Add mapping button in settings doesn't work, nothing happens.
 
 
 ### AI screen
+
+adding a message while the ai is busy will in the cli window queue the message but in android it looks like it got instantly sent, can you find a way to figure out when it's queued and then displsy it differently
+
+allow me to select and copy text in the chat
+
+the right side scroll bar is not grabbable not does it accurately display current scroll level, same on file screen 
 
 After all other tasks are done, talk to user using aispeak and ask them to give you access to cli repo for the yolo and choice render issue, then end your turn 
 

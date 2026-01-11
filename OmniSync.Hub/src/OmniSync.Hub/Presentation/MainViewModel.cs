@@ -9,6 +9,7 @@ using WpfApp = System.Windows.Application;
 using OmniSync.Hub.Infrastructure.Services;
 using OmniSync.Hub.Logic.Monitoring;
 using OmniSync.Hub.Logic.Services; // Ensure Logic.Services is included for ShutdownMode
+using OmniSync.Hub.Logic;
 using System.Windows.Forms; // For MessageBox
 using System.Windows.Input;
 using OmniSync.Hub.Infrastructure;
@@ -23,8 +24,10 @@ namespace OmniSync.Hub.Presentation
         private readonly RegistryService _registryService;
         private readonly HubSettingsService _settingsService;
         private readonly KeyboardHook _keyboardHook;
-
-        private DispatcherTimer _uiUpdateTimer;
+        private readonly AiCliService _aiCliService;
+        private readonly LayoutCaptureService _layoutCaptureService;
+        private readonly ProjectLauncherService _projectLauncherService;
+        private readonly DispatcherTimer _uiUpdateTimer;
         private DispatcherTimer _longPressTimer;
         private bool _isLongPress;
 
@@ -37,136 +40,186 @@ namespace OmniSync.Hub.Presentation
         public ICommand DeleteHotkeyCommand { get; }
         public ICommand ScheduleShutdownCommand { get; }
         public ICommand ToggleShutdownModeCommand { get; }
+        public ICommand FocusAiSessionsCommand { get; }
+
+        public ICommand AddProjectCommand { get; }
+        public ICommand DeleteProjectCommand { get; }
+        public ICommand EditProjectCommand { get; }
+        public ICommand SaveProjectCommand { get; }
+        public ICommand AddProjectActionCommand { get; }
+        public ICommand DeleteProjectActionCommand { get; }
+        public ICommand CaptureLayoutCommand { get; }
+        public ICommand LaunchProjectCommand { get; }
 
         // --- Properties bound in XAML ---
         public ObservableCollection<string> ActiveConnections { get; }
         public ObservableCollection<string> LogMessages { get; }
         public string LogMessagesText => string.Join(Environment.NewLine, LogMessages);
 
-        private string _lastIncomingCommand = "";
-        public string LastIncomingCommand
+        public ObservableCollection<Project> Projects { get; }
+        
+        public List<string> AvailableActions
         {
-            get => _lastIncomingCommand;
-            set
+            get
             {
-                if (_lastIncomingCommand != value)
+                var actions = new List<string>
                 {
-                    _lastIncomingCommand = value;
-                    OnPropertyChanged();
-                }
-            }
-        }
+                    "OPEN_HUB_WINDOW",
+                    "TOGGLE_MUTE",
+                    "VOL_UP",
+                    "VOL_DOWN",
+                    "SLEEP_PC",
+                    "SHUTDOWN_PC",
+                    "TFT_CLIPBOARD_MUST_INCLUDE_SOLVE_NEXT",
+                    "TFT_CLIPBOARD_CURRENT_TEAM",
+                    "TFT_COPY_SOLUTION_CODE",
+                    "SCREENSHOT"
+                };
 
-        private bool _isRunOnStartupEnabled;
-        public bool IsRunOnStartupEnabled
-        {
-            get => _isRunOnStartupEnabled;
-            set
-            {
-                if (_isRunOnStartupEnabled != value)
+                if (Projects != null)
                 {
-                    _isRunOnStartupEnabled = value;
-                    _registryService.SetRunOnStartup(value); // Update registry
-                    OnPropertyChanged();
-                }
-            }
-        }
+                    foreach (var p in Projects)
+                    {
+                        actions.Add($"LAUNCH_PROJECT_{p.Id}");
+                    }
+                                }
+                                return actions;
+                            }
+                        }
+                
+                        private Project? _currentEditingProject;
+                        public Project? CurrentEditingProject
+                        {
+                            get => _currentEditingProject;
+                            set { _currentEditingProject = value; OnPropertyChanged(); OnPropertyChanged(nameof(IsEditingProject)); }
+                        }
+                        public bool IsEditingProject => CurrentEditingProject != null;
+                
+                        private string _lastIncomingCommand = "";
+                        public string LastIncomingCommand
+                        {
+                            get => _lastIncomingCommand;
+                            set
+                            {
+                                if (_lastIncomingCommand != value)
+                                {
+                                    _lastIncomingCommand = value;
+                                    OnPropertyChanged();
+                                }
+                            }
+                        }
+                
+                        private bool _isRunOnStartupEnabled;
+                        public bool IsRunOnStartupEnabled
+                        {
+                            get => _isRunOnStartupEnabled;
+                            set
+                            {
+                                if (_isRunOnStartupEnabled != value)
+                                {
+                                    _isRunOnStartupEnabled = value;
+                                    _registryService.SetRunOnStartup(value); // Update registry
+                                    OnPropertyChanged();
+                                }
+                            }
+                        }
 
-        private string _scheduledShutdownTimeLabel = "None";
-        public string ScheduledShutdownTimeLabel
-        {
-            get => _scheduledShutdownTimeLabel;
-            set
-            {
-                if (_scheduledShutdownTimeLabel != value)
-                {
-                    _scheduledShutdownTimeLabel = value;
-                    OnPropertyChanged();
-                }
-            }
-        }
-
-        private string _shutdownModeLabel = "Shutdown";
-        public string ShutdownModeLabel
-        {
-            get => _shutdownModeLabel;
-            set
-            {
-                if (_shutdownModeLabel != value)
-                {
-                    _shutdownModeLabel = value;
-                    OnPropertyChanged();
-                }
-            }
-        }
-
-        private string _newMappingKey = "";
-        public string NewMappingKey
-        {
-            get => _newMappingKey;
-            set
-            {
-                if (_newMappingKey != value)
-                {
-                    _newMappingKey = value;
-                    OnPropertyChanged();
-                }
-            }
-        }
-
-        private string _newMappingPath = "";
-        public string NewMappingPath
-        {
-            get => _newMappingPath;
-            set
-            {
-                if (_newMappingPath != value)
-                {
-                    _newMappingPath = value;
-                    OnPropertyChanged();
-                }
-            }
-        }
-
-        private string _newHotkeyName = "";
-        public string NewHotkeyName
-        {
-            get => _newHotkeyName;
-            set { if (_newHotkeyName != value) { _newHotkeyName = value; OnPropertyChanged(); } }
-        }
-
-        private string _newHotkeyAction = "";
-        public string NewHotkeyAction
-        {
-            get => _newHotkeyAction;
-            set { if (_newHotkeyAction != value) { _newHotkeyAction = value; OnPropertyChanged(); } }
-        }
-
-        private string _newHotkeyValue = "";
-        public string NewHotkeyValue
-        {
-            get => _newHotkeyValue;
-            set { if (_newHotkeyValue != value) { _newHotkeyValue = value; OnPropertyChanged(); } }
-        }
-
-        public ObservableCollection<KeyValuePair<string, string>> ExeMappings { get; }
-        public ObservableCollection<HotkeyConfig> Hotkeys { get; }
-
-        public List<string> AvailableActions { get; } = new()
-        {
-            "OPEN_HUB_WINDOW",
-            "TOGGLE_MUTE",
-            "VOL_UP",
-            "VOL_DOWN",
-            "SLEEP_PC",
-            "SHUTDOWN_PC",
-            "TFT_CLIPBOARD_MUST_INCLUDE_SOLVE_NEXT",
-            "TFT_CLIPBOARD_CURRENT_TEAM",
-            "TFT_COPY_SOLUTION_CODE",
-            "SCREENSHOT"
-        };
-
-        private bool _isRecordingHotkey;
+                        public bool UseOneCommander
+                        {
+                            get => _settingsService.Settings.UseOneCommander;
+                            set
+                            {
+                                if (_settingsService.Settings.UseOneCommander != value)
+                                {
+                                    _settingsService.Settings.UseOneCommander = value;
+                                    _settingsService.SaveSettings();
+                                    OnPropertyChanged();
+                                }
+                            }
+                        }
+                
+                        private string _scheduledShutdownTimeLabel = "None";
+                        public string ScheduledShutdownTimeLabel
+                        {
+                            get => _scheduledShutdownTimeLabel;
+                            set
+                            {
+                                if (_scheduledShutdownTimeLabel != value)
+                                {
+                                    _scheduledShutdownTimeLabel = value;
+                                    OnPropertyChanged();
+                                }
+                            }
+                        }
+                
+                        private string _shutdownModeLabel = "Shutdown";
+                        public string ShutdownModeLabel
+                        {
+                            get => _shutdownModeLabel;
+                            set
+                            {
+                                if (_shutdownModeLabel != value)
+                                {
+                                    _shutdownModeLabel = value;
+                                    OnPropertyChanged();
+                                }
+                            }
+                        }
+                
+                        private string _newMappingKey = "";
+                        public string NewMappingKey
+                        {
+                            get => _newMappingKey;
+                            set
+                            {
+                                if (_newMappingKey != value)
+                                {
+                                    _newMappingKey = value;
+                                    OnPropertyChanged();
+                                }
+                            }
+                        }
+                
+                        private string _newMappingPath = "";
+                        public string NewMappingPath
+                        {
+                            get => _newMappingPath;
+                            set
+                            {
+                                if (_newMappingPath != value)
+                                {
+                                    _newMappingPath = value;
+                                    OnPropertyChanged();
+                                }
+                            }
+                        }
+                
+                        private string _newHotkeyName = "";
+                        public string NewHotkeyName
+                        {
+                            get => _newHotkeyName;
+                            set { if (_newHotkeyName != value) { _newHotkeyName = value; OnPropertyChanged(); } }
+                        }
+                
+                        private string _newHotkeyAction = "";
+                        public string NewHotkeyAction
+                        {
+                            get => _newHotkeyAction;
+                            set { if (_newHotkeyAction != value) { _newHotkeyAction = value; OnPropertyChanged(); } }
+                        }
+                
+                        private string _newHotkeyValue = "";
+                        public string NewHotkeyValue
+                        {
+                            get => _newHotkeyValue;
+                            set { if (_newHotkeyValue != value) { _newHotkeyValue = value; OnPropertyChanged(); } }
+                        }
+                
+                        public ObservableCollection<KeyValuePair<string, string>> ExeMappings { get; }
+                        public ObservableCollection<HotkeyConfig> Hotkeys { get; }
+                
+                        private bool _isRecordingHotkey;
+                
         public bool IsRecordingHotkey
         {
             get => _isRecordingHotkey;
@@ -195,6 +248,7 @@ namespace OmniSync.Hub.Presentation
             LogMessages = new ObservableCollection<string>();
             ExeMappings = new ObservableCollection<KeyValuePair<string, string>>();
             Hotkeys = new ObservableCollection<HotkeyConfig>();
+            Projects = new ObservableCollection<Project>();
 
             ClearLogCommand = new RelayCommand(_ => { });
             AddMappingCommand = new RelayCommand(_ => { });
@@ -204,6 +258,15 @@ namespace OmniSync.Hub.Presentation
             DeleteHotkeyCommand = new RelayCommand(_ => { });
             ScheduleShutdownCommand = new RelayCommand(_ => { });
             ToggleShutdownModeCommand = new RelayCommand(_ => { });
+            FocusAiSessionsCommand = new RelayCommand(_ => { });
+
+            AddProjectCommand = new RelayCommand(_ => { });
+            DeleteProjectCommand = new RelayCommand(_ => { });
+            EditProjectCommand = new RelayCommand(_ => { });
+            SaveProjectCommand = new RelayCommand(_ => { });
+            AddProjectActionCommand = new RelayCommand(_ => { });
+            DeleteProjectActionCommand = new RelayCommand(_ => { });
+            CaptureLayoutCommand = new RelayCommand(_ => { });
         }
 
         // Modifier Key States
@@ -228,7 +291,7 @@ namespace OmniSync.Hub.Presentation
             set { _isAltPressed = value; OnPropertyChanged(); }
         }
 
-        public MainViewModel(HubMonitorService hubMonitorService, InputService inputService, ShutdownService shutdownService, RegistryService registryService, HubSettingsService settingsService, KeyboardHook keyboardHook)
+        public MainViewModel(HubMonitorService hubMonitorService, InputService inputService, ShutdownService shutdownService, RegistryService registryService, HubSettingsService settingsService, KeyboardHook keyboardHook, AiCliService aiCliService, LayoutCaptureService layoutCaptureService, ProjectLauncherService projectLauncherService)
         {
             _hubMonitorService = hubMonitorService;
             _inputService = inputService;
@@ -236,6 +299,9 @@ namespace OmniSync.Hub.Presentation
             _registryService = registryService;
             _settingsService = settingsService;
             _keyboardHook = keyboardHook;
+            _aiCliService = aiCliService;
+            _layoutCaptureService = layoutCaptureService;
+            _projectLauncherService = projectLauncherService;
 
             // Initialize collections
             ActiveConnections = _hubMonitorService.ActiveConnections;
@@ -243,6 +309,7 @@ namespace OmniSync.Hub.Presentation
             LogMessages.CollectionChanged += (s, e) => OnPropertyChanged(nameof(LogMessagesText));
             ExeMappings = new ObservableCollection<KeyValuePair<string, string>>(_settingsService.Settings.ExeMappings.ToList());
             Hotkeys = new ObservableCollection<HotkeyConfig>(_settingsService.Settings.Hotkeys);
+            Projects = new ObservableCollection<Project>(_settingsService.Settings.Projects);
 
             // Hook up event handlers
             _hubMonitorService.PropertyChanged += (s, e) =>
@@ -270,6 +337,12 @@ namespace OmniSync.Hub.Presentation
                     {
                         Hotkeys.Add(hk);
                     }
+
+                    Projects.Clear();
+                    foreach (var p in _settingsService.Settings.Projects)
+                    {
+                        Projects.Add(p);
+                    }
                 }));
             };
 
@@ -282,6 +355,16 @@ namespace OmniSync.Hub.Presentation
             DeleteHotkeyCommand = new RelayCommand(p => ExecuteDeleteHotkey(p as string));
             ScheduleShutdownCommand = new RelayCommand(_ => ExecuteScheduleShutdown());
             ToggleShutdownModeCommand = new RelayCommand(_ => ExecuteToggleShutdownMode());
+            FocusAiSessionsCommand = new RelayCommand(async _ => await ExecuteFocusAiSessions());
+
+            AddProjectCommand = new RelayCommand(_ => ExecuteAddProject());
+            DeleteProjectCommand = new RelayCommand(p => ExecuteDeleteProject(p as Project));
+            EditProjectCommand = new RelayCommand(p => ExecuteEditProject(p as Project));
+            SaveProjectCommand = new RelayCommand(_ => ExecuteSaveProject());
+            AddProjectActionCommand = new RelayCommand(_ => ExecuteAddProjectAction());
+            DeleteProjectActionCommand = new RelayCommand(p => ExecuteDeleteProjectAction(p as ProjectAction));
+            CaptureLayoutCommand = new RelayCommand(_ => ExecuteCaptureLayout());
+            LaunchProjectCommand = new RelayCommand(async p => await ExecuteLaunchProject(p as Project));
 
             // Initialize timers
             _uiUpdateTimer = new DispatcherTimer();
@@ -302,6 +385,23 @@ namespace OmniSync.Hub.Presentation
 
 
         // --- Command Implementations ---
+        private async Task ExecuteFocusAiSessions()
+        {
+            var sessions = _aiCliService.GetActiveSessions();
+            if (sessions.Count == 0)
+            {
+                _hubMonitorService.AddLogMessage("[FocusAiSessions] No active sessions found.");
+                return;
+            }
+
+            foreach (var session in sessions)
+            {
+                _hubMonitorService.AddLogMessage($"[FocusAiSessions] Focusing session PID: {session.Pid} ({session.Name})");
+                await _aiCliService.FocusSessionAsync(session.Pid);
+                await Task.Delay(500); // Small delay to visualize the loop
+            }
+        }
+
         private void ExecuteAddMapping()
         {
             if (string.IsNullOrEmpty(NewMappingKey) || string.IsNullOrEmpty(NewMappingPath))
@@ -309,10 +409,16 @@ namespace OmniSync.Hub.Presentation
                 MessageBox.Show("Please enter both a key and a full path.", "Missing Data", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
+            
+            _hubMonitorService.AddLogMessage($"[Settings] Adding mapping: {NewMappingKey} -> {NewMappingPath}");
             _settingsService.AddMapping(NewMappingKey, NewMappingPath);
+            
             NewMappingKey = "";
             NewMappingPath = "";
-            RefreshMappingsGrid();
+            
+            WpfApp.Current?.Dispatcher.BeginInvoke(new Action(() => {
+                RefreshMappingsGrid();
+            }));
         }
 
         private void ExecuteDeleteMapping(string? key)
@@ -536,6 +642,107 @@ namespace OmniSync.Hub.Presentation
             {
                 Hotkeys.Add(hk);
             }
+        }
+
+        private void ExecuteAddProject()
+        {
+            var newProject = new Project { Name = "New Project" };
+            _settingsService.AddProject(newProject);
+            // SettingsChanged event will refresh the Projects collection
+            CurrentEditingProject = CloneProject(newProject);
+        }
+
+        private void ExecuteDeleteProject(Project? project)
+        {
+            if (project == null) return;
+
+            var result = MessageBox.Show($"Are you sure you want to delete the project '{project.Name}'?", "Confirm Delete", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
+            if (result == DialogResult.Yes)
+            {
+                _settingsService.RemoveProject(project.Id);
+                if (CurrentEditingProject?.Id == project.Id)
+                {
+                    CurrentEditingProject = null;
+                }
+            }
+        }
+
+        private void ExecuteEditProject(Project? project)
+        {
+            if (project == null) return;
+            CurrentEditingProject = CloneProject(project);
+        }
+
+        private void ExecuteSaveProject()
+        {
+            if (CurrentEditingProject == null) return;
+            _settingsService.UpdateProject(CurrentEditingProject);
+            _hubMonitorService.AddLogMessage($"[Settings] Saved project: {CurrentEditingProject.Name}");
+            OnPropertyChanged(nameof(AvailableActions));
+        }
+
+        private void ExecuteAddProjectAction()
+        {
+            if (CurrentEditingProject == null) return;
+            CurrentEditingProject.Actions.Add(new ProjectAction { 
+                Type = ProjectActionType.OpenFolder,
+                Path = "C:\\",
+                Layout = new WindowLayout()
+            });
+            // To notify UI that Actions collection changed if it's not Observable
+            // If it's a List, we might need to refresh the property
+            OnPropertyChanged(nameof(CurrentEditingProject));
+        }
+
+        private void ExecuteDeleteProjectAction(ProjectAction? action)
+        {
+            if (CurrentEditingProject == null || action == null) return;
+
+            var result = MessageBox.Show("Delete this action?", "Confirm Delete", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+            if (result == DialogResult.Yes)
+            {
+                CurrentEditingProject.Actions.Remove(action);
+                OnPropertyChanged(nameof(CurrentEditingProject));
+            }
+        }
+
+        private void ExecuteCaptureLayout()
+        {
+            if (CurrentEditingProject == null) return;
+
+            var captured = _layoutCaptureService.CaptureCurrentLayout();
+            if (captured.Count == 0)
+            {
+                MessageBox.Show("No suitable windows found to capture.", "Capture Empty", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            if (MessageBox.Show($"Found {captured.Count} windows. Add them to '{CurrentEditingProject.Name}'?", "Confirm Capture", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes)
+            {
+                foreach (var win in captured)
+                {
+                    CurrentEditingProject.Actions.Add(new ProjectAction
+                    {
+                        Type = win.Type,
+                        Path = win.Path,
+                        Layout = win.Layout
+                    });
+                }
+                OnPropertyChanged(nameof(CurrentEditingProject));
+            }
+        }
+
+        private async Task ExecuteLaunchProject(Project? project)
+        {
+            if (project == null) return;
+            _hubMonitorService.AddLogMessage($"[Launcher] Launching project: {project.Name}");
+            await _projectLauncherService.LaunchProject(project);
+        }
+
+        private Project CloneProject(Project source)
+        {
+            var json = System.Text.Json.JsonSerializer.Serialize(source);
+            return System.Text.Json.JsonSerializer.Deserialize<Project>(json) ?? new Project();
         }
 
         public event PropertyChangedEventHandler? PropertyChanged;

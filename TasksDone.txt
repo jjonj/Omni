@@ -10,6 +10,7 @@
 ### Hub window
 
 ✅ The settings page is missing setup for hotkeys, read the existing hotkey management code and ask user to settle anything unclear using aispeak (Added hotkey management to Settings.html and expanded Hub logic to handle more actions)
+✅ Add mapping button in settings doesn't work, nothing happens. (Fixed by ensuring UI collection refresh on the UI thread and adding logging)
 
 ## in OmniSync.Android
 
