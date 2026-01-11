@@ -48,6 +48,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.ui.graphics.Color
 import androidx.compose.material.icons.filled.Add
 import androidx.activity.compose.BackHandler
+import com.omni.sync.ui.components.VerticalScrollbar
 import com.omni.sync.ui.components.DirectoryPickerDialog
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
@@ -350,118 +351,117 @@ fun FilesScreen(
                     Text("No files found.")
                 }
             } else {
-                LazyColumn(
-                    state = listState,
-                    modifier = Modifier.weight(1f).fillMaxWidth(),
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
-                ) {
-                    items(fileSystemEntries) { entry ->
-                        val hasPendingEdit = !entry.isDirectory && pendingEditPaths.contains(entry.path)
-                        val isRecentlyChanged = recentlyChangedPaths.contains(entry.path)
-                        FileSystemEntryItem(
-                            entry = entry,
-                            activeSessionName = activeSessionName,
-                            isSearching = searchQuery.isNotEmpty(),
-                            isBookmarked = filesViewModel.isBookmarked(entry.path),
-                            hasPendingEdit = hasPendingEdit,
-                            isRecentlyChanged = isRecentlyChanged,
-                            formatFileSize = { filesViewModel.formatFileSize(it) },
-                            onBookmarkToggle = { filesViewModel.toggleBookmark(it) },
-                            onAddToSession = { entry, name ->
-                                filesViewModel.signalRClient.sendAiMessage("/dir add \"${entry.path}\"")
-                                Toast.makeText(context, "Added to $name", Toast.LENGTH_SHORT).show()
-                            },
-                            onClick = { clickedEntry ->
-                                if (clickedEntry.isDirectory) {
-                                    if (clickedEntry.path == "VIRTUAL_ENCRYPTED") {
-                                        if (filesViewModel.isGlobalPasswordSet()) {
-                                            passwordAction = { filesViewModel.loadDirectory(clickedEntry.path) }
+                Box(modifier = Modifier.weight(1f)) {
+                    LazyColumn(
+                        state = listState,
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                    ) {
+                        items(fileSystemEntries) { entry ->
+                            val hasPendingEdit = !entry.isDirectory && pendingEditPaths.contains(entry.path)
+                            val isRecentlyChanged = recentlyChangedPaths.contains(entry.path)
+                            FileSystemEntryItem(
+                                entry = entry,
+                                activeSessionName = activeSessionName,
+                                isSearching = searchQuery.isNotEmpty(),
+                                isBookmarked = filesViewModel.isBookmarked(entry.path),
+                                hasPendingEdit = hasPendingEdit,
+                                isRecentlyChanged = isRecentlyChanged,
+                                formatFileSize = { filesViewModel.formatFileSize(it) },
+                                onBookmarkToggle = { filesViewModel.toggleBookmark(it) },
+                                onAddToSession = { entry, name ->
+                                    filesViewModel.signalRClient.sendAiMessage("/dir add \"${entry.path}\"")
+                                    Toast.makeText(context, "Added to $name", Toast.LENGTH_SHORT).show()
+                                },
+                                onClick = { clickedEntry ->
+                                    if (clickedEntry.isDirectory) {
+                                        if (clickedEntry.path == "VIRTUAL_ENCRYPTED") {
+                                            if (filesViewModel.isGlobalPasswordSet()) {
+                                                passwordAction = { filesViewModel.loadDirectory(clickedEntry.path) }
+                                                showPasswordDialog = true
+                                            } else {
+                                                // First time setup handled in dialog
+                                                passwordTargetEntry = clickedEntry
+                                                showPasswordDialog = true
+                                            }
+                                        } else {
+                                            filesViewModel.loadDirectory(clickedEntry.path)
+                                        }
+                                    } else {
+                                        when {
+                                            clickedEntry.name.lowercase().endsWith(".flv") -> {
+                                                Toast.makeText(context, "FLV format not supported by player", Toast.LENGTH_SHORT).show()
+                                            }
+                                            isVideoFile(clickedEntry.name) -> {
+                                                val playlist = fileSystemEntries.filter { isVideoFile(it.name) }.map { it.path }
+                                                filesViewModel.mainViewModel.playVideo(clickedEntry.path, playlist)
+                                            }
+                                            isImageFile(clickedEntry.name) -> {
+                                                val playlist = fileSystemEntries.filter { isImageFile(it.name) }.map { it.path }
+                                                filesViewModel.mainViewModel.viewImages(clickedEntry.path, playlist)
+                                            }
+                                            isPdfFile(clickedEntry.name) || isAudioFile(clickedEntry.name) -> {
+                                                filesViewModel.handleFileOpen(clickedEntry)
+                                            }
+                                            else -> {
+                                                filesViewModel.openForEditing(clickedEntry)
+                                            }
+                                        }
+                                    }
+                                },
+                                onLongClick = { clickedEntry ->
+                                    filesViewModel.openFileOnPC(clickedEntry)
+                                    Toast.makeText(context, "Opening ${clickedEntry.name} on PC", Toast.LENGTH_SHORT).show()
+                                },
+                                onDownloadAndOpen = { clickedEntry ->
+                                    filesViewModel.handleFileOpen(clickedEntry)
+                                },
+                                onOpenFolder = { path ->
+                                    filesViewModel.loadDirectory(path)
+                                },
+                                onOpenInAiChat = { entry ->
+                                    filesViewModel.mainViewModel.navigateTo(com.omni.sync.viewmodel.AppScreen.AI_CHAT)
+                                    filesViewModel.signalRClient.sendAiMessage("/dir add \"${entry.path}\"")
+                                },
+                                onDuplicate = { entry ->
+                                    filesViewModel.duplicateFile(entry)
+                                },
+                                onCliHere = { entry ->
+                                    filesViewModel.openCliHere(entry)
+                                },
+                                onCacheFolderRecursive = { entry ->
+                                    filesViewModel.cacheFolderRecursive(entry)
+                                },
+                                onDownloadVideo = { entry, isEncrypted ->
+                                    if (isEncrypted) {
+                                        val cachedPassword = filesViewModel.getVerifiedPassword()
+                                        if (cachedPassword != null) {
+                                            filesViewModel.downloadVideoWithGlobalPassword(entry, cachedPassword, true)
+                                        } else if (filesViewModel.isGlobalPasswordSet()) {
+                                            passwordAction = { 
+                                                filesViewModel.downloadVideoWithGlobalPassword(entry, filesViewModel.getVerifiedPassword(), true)
+                                            }
+                                            passwordTargetEntry = entry
                                             showPasswordDialog = true
                                         } else {
                                             // First time setup handled in dialog
-                                            passwordTargetEntry = clickedEntry
+                                            passwordTargetEntry = entry
                                             showPasswordDialog = true
                                         }
                                     } else {
-                                        filesViewModel.loadDirectory(clickedEntry.path)
-                                    }
-                                } else {
-                                    when {
-                                        clickedEntry.name.lowercase().endsWith(".flv") -> {
-                                            Toast.makeText(context, "FLV format not supported by player", Toast.LENGTH_SHORT).show()
-                                        }
-                                        isVideoFile(clickedEntry.name) -> {
-                                            val playlist = fileSystemEntries.filter { isVideoFile(it.name) }.map { it.path }
-                                            filesViewModel.mainViewModel.playVideo(clickedEntry.path, playlist)
-                                        }
-                                        isImageFile(clickedEntry.name) -> {
-                                            val playlist = fileSystemEntries.filter { isImageFile(it.name) }.map { it.path }
-                                            filesViewModel.mainViewModel.viewImages(clickedEntry.path, playlist)
-                                        }
-                                        isPdfFile(clickedEntry.name) || isAudioFile(clickedEntry.name) -> {
-                                            filesViewModel.handleFileOpen(clickedEntry)
-                                        }
-                                        else -> {
-                                            filesViewModel.openForEditing(clickedEntry)
-                                        }
+                                        filesViewModel.downloadVideoWithGlobalPassword(entry, null, false)
                                     }
                                 }
-                            },
-                            onLongClick = { clickedEntry ->
-                                filesViewModel.openFileOnPC(clickedEntry)
-                                Toast.makeText(context, "Opening ${clickedEntry.name} on PC", Toast.LENGTH_SHORT).show()
-                            },
-                            onDownloadAndOpen = { clickedEntry ->
-                                filesViewModel.handleFileOpen(clickedEntry)
-                            },
-                            onOpenFolder = { path ->
-                                filesViewModel.loadDirectory(path)
-                            },
-                            onOpenInAiChat = { entry ->
-                                filesViewModel.mainViewModel.navigateTo(com.omni.sync.viewmodel.AppScreen.AI_CHAT)
-                                filesViewModel.signalRClient.sendAiMessage("/dir add \"${entry.path}\"")
-                            },
-                            onDuplicate = { entry ->
-                                filesViewModel.duplicateFile(entry)
-                            },
-                            onCliHere = { entry ->
-                                filesViewModel.openCliHere(entry)
-                            },
-                            onCacheFolderRecursive = { entry ->
-                                filesViewModel.cacheFolderRecursive(entry)
-                            },
-                            onDownloadVideo = { entry, isEncrypted ->
-                                if (isEncrypted) {
-                                    val cachedPassword = filesViewModel.getVerifiedPassword()
-                                    if (cachedPassword != null) {
-                                        filesViewModel.downloadVideoWithGlobalPassword(entry, cachedPassword, true)
-                                    } else if (filesViewModel.isGlobalPasswordSet()) {
-                                        passwordAction = { 
-                                            filesViewModel.downloadVideoWithGlobalPassword(entry, filesViewModel.getVerifiedPassword(), true)
-                                        }
-                                        passwordTargetEntry = entry
-                                        showPasswordDialog = true
-                                    } else {
-                                        // First time setup handled in dialog
-                                        passwordTargetEntry = entry
-                                        showPasswordDialog = true
-                                    }
-                                } else {
-                                    filesViewModel.downloadVideoWithGlobalPassword(entry, null, false)
-                                }
-                            },
-                            onDeleteByPath = { filesViewModel.deleteByPath(it) },
-                            onDeleteAllEncrypted = { filesViewModel.deleteAllEncrypted() },
-                            onCopyTo = { entry ->
-                                sourceEntry = entry
-                                showCopyDialog = true
-                            },
-                            onMoveTo = { entry ->
-                                sourceEntry = entry
-                                showMoveDialog = true
-                            }
-                        )
+                            )
+                        }
                     }
+                    
+                    VerticalScrollbar(
+                        state = listState,
+                        modifier = Modifier
+                            .align(Alignment.CenterEnd)
+                            .padding(end = 2.dp, top = 4.dp, bottom = 4.dp)
+                    )
                 }
             }
 

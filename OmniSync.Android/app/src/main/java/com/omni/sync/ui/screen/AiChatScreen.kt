@@ -34,9 +34,11 @@ import androidx.compose.ui.unit.sp
 import com.omni.sync.data.repository.SignalRClient
 import com.omni.sync.viewmodel.MainViewModel
 import com.omni.sync.ui.components.ActionKeyButton
+import com.omni.sync.ui.components.VerticalScrollbar
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.text.selection.SelectionContainer
 import android.content.ClipboardManager
 import android.content.ClipData
 import android.content.Context
@@ -391,39 +393,47 @@ fun AiChatScreen(
                     }
                 }
 
-                LazyColumn(
-                    state = listState,
-                    reverseLayout = true,
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxWidth()
-                        .padding(horizontal = 8.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                    contentPadding = PaddingValues(top = 8.dp, bottom = 8.dp)
-                ) {
-                    if (isAiThinking) {
-                        item(key = "typing_indicator") {
-                            AiTypingIndicator()
+                Box(modifier = Modifier.weight(1f)) {
+                    LazyColumn(
+                        state = listState,
+                        reverseLayout = true,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(horizontal = 8.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                        contentPadding = PaddingValues(top = 8.dp, bottom = 8.dp)
+                    ) {
+                        if (isAiThinking) {
+                            item(key = "typing_indicator") {
+                                AiTypingIndicator()
+                            }
+                        }
+
+                        if (aiThought != null) {
+                            item(key = "thought_bubble") {
+                                ThoughtBubble(aiThought!!)
+                            }
+                        }
+
+                        items(
+                            items = filteredMessages.reversed(),
+                            key = { it.id }
+                        ) { message ->
+                            ChatBubble(
+                                message = message, 
+                                signalRClient = signalRClient, 
+                                mainViewModel = mainViewModel,
+                                selectedPid = selectedPid
+                            )
                         }
                     }
-
-                    if (aiThought != null) {
-                        item(key = "thought_bubble") {
-                            ThoughtBubble(aiThought!!)
-                        }
-                    }
-
-                    items(
-                        items = filteredMessages.reversed(),
-                        key = { it.id }
-                    ) { message ->
-                        ChatBubble(
-                            message = message, 
-                            signalRClient = signalRClient, 
-                            mainViewModel = mainViewModel,
-                            selectedPid = selectedPid
-                        )
-                    }
+                    
+                    VerticalScrollbar(
+                        state = listState,
+                        modifier = Modifier
+                            .align(Alignment.CenterEnd)
+                            .padding(end = 2.dp, top = 8.dp, bottom = 8.dp)
+                    )
                 }
 
                 Row(
@@ -892,6 +902,15 @@ fun ChatBubble(
                     fontWeight = FontWeight.Bold
                 )
                 if (isMe) {
+                    if (message.isQueued) {
+                        Text(
+                            text = "Queued",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontStyle = FontStyle.Italic,
+                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f),
+                            modifier = Modifier.padding(end = 4.dp)
+                        )
+                    }
                     Spacer(Modifier.width(4.dp))
                     Icon(icon, null, modifier = Modifier.size(12.dp), tint = MaterialTheme.colorScheme.primary)
                 }
@@ -920,26 +939,28 @@ fun ChatBubble(
                     }
                 )
         ) {
-            Column {
-                if (isCodeDiff) {
-                    DiffText(content)
-                } else {
-                    MarkdownText(
-                        text = content,
-                        textColor = textColor,
-                        textAlign = if (isSystem || isError) TextAlign.Center else TextAlign.Start,
-                        signalRClient = signalRClient,
-                        mainViewModel = mainViewModel,
-                        selectedPid = selectedPid
+            SelectionContainer {
+                Column {
+                    if (isCodeDiff) {
+                        DiffText(content)
+                    } else {
+                        MarkdownText(
+                            text = content,
+                            textColor = textColor,
+                            textAlign = if (isSystem || isError) TextAlign.Center else TextAlign.Start,
+                            signalRClient = signalRClient,
+                            mainViewModel = mainViewModel,
+                            selectedPid = selectedPid
+                        )
+                    }
+                    
+                    Text(
+                        text = timestamp,
+                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.sp),
+                        color = textColor.copy(alpha = 0.5f),
+                        modifier = Modifier.align(Alignment.End).padding(end = 8.dp, bottom = 4.dp)
                     )
                 }
-                
-                Text(
-                    text = timestamp,
-                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.sp),
-                    color = textColor.copy(alpha = 0.5f),
-                    modifier = Modifier.align(Alignment.End).padding(end = 8.dp, bottom = 4.dp)
-                )
             }
         }
     }

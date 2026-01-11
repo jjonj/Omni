@@ -152,6 +152,51 @@ namespace OmniSync.Hub.Presentation.Hubs
             }
         }
 
+        public void UpdateProjects(List<Project> projects)
+        {
+            if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
+            {
+                var settingsService = Context.GetHttpContext()?.RequestServices.GetService(typeof(HubSettingsService)) as HubSettingsService;
+                if (settingsService != null)
+                {
+                    settingsService.Settings.Projects = projects;
+                    settingsService.SaveSettings();
+                    _hubMonitorService.AddLogMessage("Projects updated via web interface.");
+                }
+            }
+            else
+            {
+                throw new UnauthorizedAccessException();
+            }
+        }
+
+        public void AddProject(Project project)
+        {
+            if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
+            {
+                var settingsService = Context.GetHttpContext()?.RequestServices.GetService(typeof(HubSettingsService)) as HubSettingsService;
+                settingsService?.AddProject(project);
+            }
+        }
+
+        public void UpdateProject(Project project)
+        {
+            if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
+            {
+                var settingsService = Context.GetHttpContext()?.RequestServices.GetService(typeof(HubSettingsService)) as HubSettingsService;
+                settingsService?.UpdateProject(project);
+            }
+        }
+
+        public void RemoveProject(Guid id)
+        {
+            if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
+            {
+                var settingsService = Context.GetHttpContext()?.RequestServices.GetService(typeof(HubSettingsService)) as HubSettingsService;
+                settingsService?.RemoveProject(id);
+            }
+        }
+
         public object GetHubStatus()
         {
             if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
@@ -663,6 +708,12 @@ namespace OmniSync.Hub.Presentation.Hubs
                 {
                     try
                     {
+                        if (_aiCliService.IsBusy)
+                        {
+                            _logger.LogInformation($"[RpcApiHub] AI is busy, notifying client that message is QUEUED (PID: {targetPid})");
+                            await Clients.Caller.SendAsync("ReceiveAiStatus", "QUEUED", targetPid);
+                        }
+
                         if (targetPid != -1)
                         {
                             _logger.LogInformation($"[RpcApiHub] Attempting auto-rename for PID {targetPid}...");

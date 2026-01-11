@@ -60,6 +60,8 @@ namespace OmniSync.Hub.Infrastructure.Services
         private int _targetPid = -1;
         private readonly SemaphoreSlim _sessionLock = new(1, 1);
 
+        public bool IsBusy => _sessionLock.CurrentCount == 0;
+
         public event EventHandler<GeminiResponseEventArgs>? ResponseReceived;
         public event EventHandler<GeminiDialogEventArgs>? DialogReceived;
 

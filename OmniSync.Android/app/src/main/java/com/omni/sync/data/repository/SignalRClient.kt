@@ -62,7 +62,8 @@ data class ReceivePayload(
 data class AiMessage(
     val sender: String,
     val text: String,
-    val id: String = java.util.UUID.randomUUID().toString()
+    val id: String = java.util.UUID.randomUUID().toString(),
+    val isQueued: Boolean = false
 )
 
 class SignalRClient(
@@ -377,10 +378,29 @@ class SignalRClient(
                         updateSessionStatus(pid, null)
                         updateSessionThought(pid, null)
                         isNextResponseNewBubble = true
+                        // Clear queued status from all messages in this session
+                        updateSessionMessages(pid) { messages ->
+                            messages.map { it.copy(isQueued = false) }
+                        }
+                    } else if (status == "QUEUED") {
+                        updateSessionStatus(pid, "Queued (AI busy)")
+                        // Mark the latest message from "Me" as queued
+                        updateSessionMessages(pid) { messages ->
+                            val lastMeIndex = messages.indexOfLast { it.sender == "Me" }
+                            if (lastMeIndex != -1) {
+                                messages.toMutableList().also {
+                                    it[lastMeIndex] = it[lastMeIndex].copy(isQueued = true)
+                                }
+                            } else messages
+                        }
                     } else {
                         updateSessionStatus(pid, status)
                         if (status == "AI Thinking...") {
                             isNextResponseNewBubble = true
+                        }
+                        // Clear queued status when AI starts responding or thinking
+                        updateSessionMessages(pid) { messages ->
+                            messages.map { it.copy(isQueued = false) }
                         }
                     }
                 }, String::class.java, Int::class.java)

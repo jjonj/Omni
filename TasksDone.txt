@@ -70,6 +70,7 @@
 ✅ when i first open a text file and tap to place cursor, it auto scrolls, but it should not do this because the place i tappped is by definition in view. auto scrolling is for when typing while out of view of cursor.
 ✅ When keyboard is up there is a black blank box above the keyboard with the height of the navigation bar. this started after i requested that the navigation bar not be hidden in text editor.
 ✅ When i have a text for open and then switch to another screen and then back to file screen then file is still open which is good but it has reset the scroll distance and cursor position (Fixed by ensuring scrollRestored flag and proper restoration in TextEditorScreen)
+✅ the right side scroll bar is not grabbable not does it accurately display current scroll level, same on file screen (Implemented custom VerticalScrollbar in SharedComponents and applied to both screens)
 
 ### Browser control screen
 
@@ -109,6 +110,8 @@
 ✅ when sending input keys like esc or enter or yolo make sure to focus the windowbfirst so the right chat receives it (Added FocusSessionAsync calls before sending keys in RpcApiHub)
 ✅ clicking file links in chat jumps to file screen as expected but it does not find and open the file, instead it seems to try to find a folder with that name and errors (Fixed with AI_FILE: prefix and search logic in FilesViewModel)
 ✅ add a button that opens a dropdown with preset messages and commands to put into the input text box, the user can persistently add more by entering text into the input box and then long pressing this new button. start with these default 4 options /model /conductor:newTrack /conductor:implement Please run any final scripts and commit all changes (Implemented Presets button with long-press save and Hub-side persistence)
+✅ adding a message while the ai is busy will in the cli window queue the message but in android it looks like it got instantly sent, can you find a way to figure out when it's queued and then displsy it differently (Implemented QUEUED status in Hub and Android with 'isQueued' flag on AiMessage)
+✅ allow me to select and copy text in the chat (Enabled SelectionContainer in ChatBubble)
 
 ### Alarm screen
 
