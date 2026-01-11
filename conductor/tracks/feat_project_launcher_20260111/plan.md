@@ -2,7 +2,7 @@
 
 This plan outlines the implementation of the "Project Environment Launcher" feature for OmniHub, enabling automated workspace preparation.
 
-## Phase 1: Prototyping & Research
+## Phase 1: Prototyping & Research [checkpoint: 5a50594]
 - [x] Task: Research Windows Explorer Tab Logic (Shell COM/UI Automation)
 - [x] Task: Research OneCommander Tab Logic (CLI/API)
 - [x] Task: Implement Prototype script for Explorer/OneCommander tab opening
