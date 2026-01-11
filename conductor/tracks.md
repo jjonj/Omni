@@ -21,3 +21,8 @@
 
 ## [~] Track: Megasession Jan 10
 *Link: [./conductor/tracks/megasession_jan10_20260110/](./conductor/tracks/megasession_jan10_20260110/)*
+
+---
+
+## [~] Track: Project Environment Launcher
+*Link: [./conductor/tracks/feat_project_launcher_20260111/](./conductor/tracks/feat_project_launcher_20260111/)*
