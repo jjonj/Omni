@@ -805,6 +805,43 @@ class FilesViewModel(
         mainViewModel.navigateTo(AppScreen.AI_CHAT)
     }
 
+    fun startCliHookin() {
+        val entry = _editingFile.value ?: return
+        val content = _editingContent.value
+        
+        if (!mainViewModel.isConnected.value) {
+            _errorMessage.value = "Not connected to OmniSync Hub."
+            return
+        }
+
+        mainViewModel.addLog("Starting AI Hookin for: ${entry.name}", com.omni.sync.ui.screen.LogType.INFO)
+        
+        // 1. Start CLI at the file's parent workspace
+        val parent = getParentPath(entry.path)
+        signalRClient.startCliAtWorkspace(parent)
+        
+        // 2. Navigate to AI Chat
+        mainViewModel.navigateTo(AppScreen.AI_CHAT)
+        
+        // 3. Send the file content as context with a helper prompt
+        val prompt = """
+            I am currently editing the file: `${entry.path}`
+            
+            Here is the current content:
+            ```
+            $content
+            ```
+            
+            Please help me with this file. You can suggest edits, add new code, or explain parts of it.
+        """.trimIndent()
+        
+        viewModelScope.launch {
+            // Wait a bit for the session to be reported before sending message
+            delay(1000) 
+            signalRClient.sendAiMessage(prompt)
+        }
+    }
+
     fun loadFileByPath(path: String) {
         if (!mainViewModel.isConnected.value) {
             _errorMessage.value = "Cannot load remote file: Not connected."

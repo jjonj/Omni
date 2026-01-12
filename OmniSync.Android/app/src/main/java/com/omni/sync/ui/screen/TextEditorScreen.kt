@@ -1010,6 +1010,14 @@ fun TextEditorScreen(
                                     }
                                 )
                                 DropdownMenuItem(
+                                    text = { Text("AI Hookin") },
+                                    onClick = { 
+                                        filesViewModel.startCliHookin()
+                                        showMenu = false 
+                                    },
+                                    leadingIcon = { Icon(Icons.Default.SmartToy, null) }
+                                )
+                                DropdownMenuItem(
                                     text = { Text(if (showDebugPanel) "Hide Debug Panel" else "Show Debug Panel") },
                                     onClick = { 
                                         showDebugPanel = !showDebugPanel

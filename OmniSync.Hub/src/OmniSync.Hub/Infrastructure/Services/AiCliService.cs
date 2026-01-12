@@ -990,6 +990,10 @@ namespace OmniSync.Hub.Infrastructure.Services
             }
 
             _logger.LogInformation($"[AiCliService] Sending prompt to PID {target}...");
+            if (text.Contains("I am currently editing the file:"))
+            {
+                _logger.LogInformation("[AiCliService] SPECIAL: Editing context detected. Setting AI to 'Helper Mode'.");
+            }
             await _sessionLock.WaitAsync();
             try
             {

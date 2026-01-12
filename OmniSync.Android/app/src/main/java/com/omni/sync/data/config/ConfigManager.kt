@@ -77,6 +77,7 @@ class ConfigManager(private val context: Context) {
             NotificationAction("pre-2", "Sleep PC", "B:\\GDrive\\Tools\\05 Automation\\sleep.bat"),
             NotificationAction("pre-3", "Toggle TV", "B:\\GDrive\\Tools\\05 Automation\\TVActive3\\tv_toggle.bat"),
             NotificationAction("pre-4", "WOL PC", "", isWol = true, macAddress = "10FFE0379DAC"),
+            NotificationAction("pre-smart-ai", "Smart AI (Clipboard)", "SMART_AI"),
             NotificationAction("pre-alarm-830", "Alarm 8h30m", "ALARM:510"),
             NotificationAction("pre-alarm-845", "Alarm 8h45m", "ALARM:525"),
             NotificationAction("pre-alarm-900", "Alarm 9h", "ALARM:540"),

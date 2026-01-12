@@ -17,6 +17,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.omni.sync.viewmodel.MainViewModel
+import com.omni.sync.viewmodel.AppScreen
 import android.content.Context
 import android.content.Intent
 import com.omni.sync.service.ForegroundService
@@ -97,6 +98,66 @@ fun SettingsScreen(
                 .padding(16.dp)
                 .verticalScroll(rememberScrollState())
         ) {
+            Card(
+                modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.3f))
+            ) {
+                Column(modifier = Modifier.padding(12.dp)) {
+                    Text("Quick Actions", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(8.dp))
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(
+                            onClick = { signalRClient.executeCommand("B:\\GDrive\\Tools\\05 Automation\\shutdown.bat") },
+                            modifier = Modifier.weight(1f),
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                        ) {
+                            Text("Shutdown", fontSize = 10.sp)
+                        }
+                        Button(
+                            onClick = { signalRClient.executeCommand("B:\\GDrive\\Tools\\05 Automation\\sleep.bat") },
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text("Sleep", fontSize = 10.sp)
+                        }
+                        Button(
+                            onClick = { 
+                                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                                val clipData = clipboard.primaryClip
+                                if (clipData != null && clipData.itemCount > 0) {
+                                    val text = clipData.getItemAt(0).text?.toString()
+                                    if (!text.isNullOrBlank()) {
+                                        signalRClient.sendAiMessage("Summarize and analyze:\n\n$text")
+                                        mainViewModel.navigateTo(AppScreen.AI_CHAT)
+                                    }
+                                }
+                            },
+                            modifier = Modifier.weight(1f),
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.tertiary)
+                        ) {
+                            Text("AI Scan", fontSize = 10.sp)
+                        }
+                    }
+                }
+            }
+
+            Text("Global Settings", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+            
+            var maxCacheSize by remember { mutableStateOf(appConfig.maxCacheFileSize / (1024 * 1024)) }
+            OutlinedTextField(
+                value = maxCacheSize.toString(),
+                onValueChange = { 
+                    val newValue = it.toLongOrNull() ?: 0
+                    maxCacheSize = newValue
+                    appConfig.maxCacheFileSize = newValue * 1024 * 1024
+                    mainViewModel.saveAppConfig()
+                },
+                label = { Text("Max Cache File Size (MB)") },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            Spacer(modifier = Modifier.height(24.dp))
+
             Text("Hub Connection", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
             Spacer(modifier = Modifier.height(8.dp))
             
@@ -617,7 +678,6 @@ fun SettingsScreen(
             Spacer(modifier = Modifier.height(24.dp))
             HorizontalDivider()
             Spacer(modifier = Modifier.height(24.dp))
-            
             Text("Hub Connection", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
             Spacer(modifier = Modifier.height(8.dp))
             

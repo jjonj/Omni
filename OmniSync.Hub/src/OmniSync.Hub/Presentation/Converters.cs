@@ -1,0 +1,73 @@
+using System;
+using System.Globalization;
+using System.Windows;
+using System.Windows.Data;
+using System.Collections.Generic;
+using System.Linq;
+using OmniSync.Hub.Infrastructure.Services;
+
+namespace OmniSync.Hub.Presentation
+{
+    public class ActionNameConverter : IMultiValueConverter
+    {
+        public object Convert(object[] values, Type targetType, object parameter, CultureInfo culture)
+        {
+            if (values.Length < 1 || !(values[0] is string action)) return "";
+            
+            if (action.StartsWith("LAUNCH_PROJECT_"))
+            {
+                var idStr = action.Substring("LAUNCH_PROJECT_".Length);
+                if (Guid.TryParse(idStr, out var id) && values.Length > 1 && values[1] is IEnumerable<Project> projects)
+                {
+                    var project = projects.FirstOrDefault(p => p.Id == id);
+                    if (project != null)
+                    {
+                        return $"Launch Project: {project.Name}";
+                    }
+                }
+                return $"Launch Project: {idStr}";
+            }
+            return action;
+        }
+
+        public object[] ConvertBack(object value, Type[] targetTypes, object parameter, CultureInfo culture)
+        {
+            throw new NotImplementedException();
+        }
+    }
+
+    public class InverseBooleanToVisibilityConverter : IValueConverter
+    {
+        public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+        {
+            if (value is bool b)
+            {
+                if (parameter?.ToString() == "Inverse")
+                    return b ? Visibility.Collapsed : Visibility.Visible;
+                return b ? Visibility.Visible : Visibility.Collapsed;
+            }
+            return Visibility.Visible;
+        }
+
+        public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        {
+            throw new NotImplementedException();
+        }
+    }
+
+    public class EnumToVisibilityConverter : IValueConverter
+    {
+        public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+        {
+            if (value == null || parameter == null) return Visibility.Collapsed;
+            string checkValue = value.ToString() ?? "";
+            string targetValue = parameter.ToString() ?? "";
+            return checkValue.Equals(targetValue, StringComparison.OrdinalIgnoreCase) ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        {
+            throw new NotImplementedException();
+        }
+    }
+}

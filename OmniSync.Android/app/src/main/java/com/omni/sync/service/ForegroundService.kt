@@ -3,6 +3,7 @@ package com.omni.sync.service
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.content.ClipboardManager
 import android.app.Service
 import android.content.Intent
 import android.os.Build
@@ -49,6 +50,7 @@ class ForegroundService : Service() {
 
     companion object {
         const val ACTION_TRIGGER_NOTIFICATION_ACTION = "com.omni.sync.TRIGGER_ACTION"
+        const val ACTION_TRIGGER_SMART_AI = "com.omni.sync.TRIGGER_SMART_AI"
         const val EXTRA_ACTION_ID = "extra_action_id"
         const val ACTION_REFRESH_NOTIFICATION = "com.omni.sync.REFRESH_NOTIFICATION"
         const val EXTRA_STATUS_MESSAGE = "extra_status_message"
@@ -94,6 +96,9 @@ class ForegroundService : Service() {
                     handleNotificationAction(actionId)
                 }
             }
+            ACTION_TRIGGER_SMART_AI -> {
+                handleSmartAiAction()
+            }
             ACTION_REFRESH_NOTIFICATION -> {
                 statusMessage = intent.getStringExtra(EXTRA_STATUS_MESSAGE)
                 updateNotification()
@@ -113,6 +118,39 @@ class ForegroundService : Service() {
         startForeground(1, notification)
 
         return START_STICKY
+    }
+
+    private fun handleSmartAiAction() {
+        val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        val clipData = clipboard.primaryClip
+        if (clipData != null && clipData.itemCount > 0) {
+            val text = clipData.getItemAt(0).text?.toString()
+            if (!text.isNullOrBlank()) {
+                val app = application as OmniSyncApplication
+                val signalRClient = app.signalRClient
+                val mainViewModel = app.mainViewModel
+                
+                mainViewModel.addLog("Triggering Smart AI Analysis...", com.omni.sync.ui.screen.LogType.INFO)
+                
+                val prompt = "Summarize and analyze the following content from my clipboard:\n\n$text"
+                
+                // Ensure we are connected and maybe auto-launch session if needed
+                signalRClient.sendAiMessage(prompt)
+                
+                // Show a toast for feedback
+                val handler = android.os.Handler(android.os.Looper.getMainLooper())
+                handler.post {
+                    android.widget.Toast.makeText(this, "Sent to AI for analysis", android.widget.Toast.LENGTH_SHORT).show()
+                }
+                
+                // Optionally navigate to AI screen
+                val intent = Intent(this, MainActivity::class.java).apply {
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+                    putExtra("OPEN_SCREEN", "AI_CHAT")
+                }
+                startActivity(intent)
+            }
+        }
     }
 
     private fun handleNotificationAction(actionId: String) {

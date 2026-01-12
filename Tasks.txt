@@ -10,7 +10,7 @@ When finishing a subtask and BEFORE moving on the to the next subtask in here, A
 1. Build to check for errors.
 2. Move the line to TasksDone.txt
 3. git commit (use a txt file called commitmsg.txt for the message, overwrite if exists)
-Do not do batch moving or batch committing, do it between each.
+Do not do batch moving or batch committing, do it between each.     
 If told to do a megasession then fix/implement as many issues of the ones below as possible without user intervention and move them to TasksDone.txt as they are completed.
 If necessary you may use AISpeak to ask the user for help/clarifications.
 Only work on subtasks if told to do so or if told explicitly to do a Megasession. Did the user say megasession?
@@ -42,12 +42,14 @@ Only work on subtasks if told to do so or if told explicitly to do a Megasession
 
 ### Android Home screen launcher widgets
 
-
 ### Settings screen (accessed by button on dashboard, not bottom panel)
-
 
 ### AI screen
 
-After all other tasks are done, talk to user using aispeak and ask them to give you access to cli repo for the yolo and choice render issue, then end your turn 
+### Embedded web screen
 
 ### Settings screen
+
+## Omni Web
+
+### Omni web tft

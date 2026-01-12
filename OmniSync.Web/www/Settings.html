@@ -147,6 +147,7 @@
             <div class="settings-tabs">
                 <div class="settings-tab active" onclick="switchTab('general')">General</div>
                 <div class="settings-tab" onclick="switchTab('hotkeys')">Hotkeys</div>
+                <div class="settings-tab" onclick="switchTab('projects')">Projects</div>
             </div>
 
             <div class="settings-content">
@@ -187,6 +188,28 @@
                         
                         <div class="save-bar">
                             <button class="modern-btn primary" onclick="saveHotkeys()">Save Hotkey Configuration</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Projects Panel -->
+                <div id="projects" class="tab-panel">
+                    <div class="hub-box">
+                        <h2>Project Environment Launcher</h2>
+                        <p style="font-size: 12px; color: var(--text-dim); margin-bottom: 20px;">
+                            Define sets of folders and programs to open simultaneously for different development projects.
+                        </p>
+                        
+                        <div id="projects-list" style="display: flex; flex-direction: column; gap: 16px;">
+                            <!-- Populated by JS -->
+                        </div>
+                        
+                        <div style="margin-top: 20px; border-top: 1px solid var(--border); padding-top: 20px;">
+                            <button class="modern-btn" onclick="addNewProject()">+ Add New Project</button>
+                        </div>
+                        
+                        <div class="save-bar">
+                            <button class="modern-btn primary" onclick="saveProjects()">Save Project Configuration</button>
                         </div>
                     </div>
                 </div>

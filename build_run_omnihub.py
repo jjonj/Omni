@@ -182,7 +182,29 @@ def main():
         )
         print(f"OmniSync.Hub started with PID: {hub_process.pid}")
         
-        time.sleep(5)
+        # Wait a few seconds and check if it's still running
+        time.sleep(3)
+        
+        # Check if it exited
+        if hub_process.poll() is not None:
+            print(f"ERROR: OmniSync.Hub crashed immediately after starting with exit code {hub_process.returncode}.")
+            print(f"Check hub_output.log for details.")
+            sys.exit(1)
+            
+        # Check if crash log was updated recently (in case it's stuck on a popup)
+        crash_log = os.path.join(SCRIPT_DIR, "hub_crash_log.log")
+        if os.path.exists(crash_log):
+            mtime = os.path.getmtime(crash_log)
+            if time.time() - mtime < 10: # Updated in last 10 seconds
+                print(f"ERROR: OmniSync.Hub seems to have crashed (crash log updated).")
+                with open(crash_log, "r") as f:
+                    print("Last crash log entry:")
+                    print(f.read().split("--- CRASH DETECTED")[-1])
+                # Kill it if it's stuck on a popup
+                hub_process.kill()
+                sys.exit(1)
+
+        print("OmniSync.Hub is still running after 3 seconds.")
         
     finally:
         if hub_process:

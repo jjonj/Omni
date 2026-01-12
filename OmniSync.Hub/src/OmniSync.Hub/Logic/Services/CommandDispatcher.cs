@@ -17,21 +17,23 @@ namespace OmniSync.Hub.Logic.Services
         private readonly HubSettingsService _settingsService;
         private readonly PcgPersistentService _pcgService;
         private readonly NodeRedService _nodeRedService;
+        private readonly ProjectLauncherService _projectLauncherService;
         private readonly IHostApplicationLifetime _appLifetime;
         private readonly Dictionary<string, Action<JsonElement>> _commandMap;
 
         public event EventHandler<string>? AddCleanupPatternRequested;
 
-        public CommandDispatcher(InputService inputService, FileService fileService, AudioService audioService, ProcessService processService, ShutdownService shutdownService, HubSettingsService settingsService, PcgPersistentService pcgService, NodeRedService nodeRedService, IHostApplicationLifetime appLifetime) // Add AudioService and ProcessService to constructor
+        public CommandDispatcher(InputService inputService, FileService fileService, AudioService audioService, ProcessService processService, ShutdownService shutdownService, HubSettingsService settingsService, PcgPersistentService pcgService, NodeRedService nodeRedService, ProjectLauncherService projectLauncherService, IHostApplicationLifetime appLifetime)
         {
             _inputService = inputService;
             _fileService = fileService;
-            _audioService = audioService; // Assign AudioService
-            _processService = processService; // Assign ProcessService
+            _audioService = audioService;
+            _processService = processService;
             _shutdownService = shutdownService;
             _settingsService = settingsService;
             _pcgService = pcgService;
             _nodeRedService = nodeRedService;
+            _projectLauncherService = projectLauncherService;
             _appLifetime = appLifetime;
             _commandMap = new Dictionary<string, Action<JsonElement>>
             {
@@ -49,6 +51,16 @@ namespace OmniSync.Hub.Logic.Services
                 { "VOLUME_CONTROL", payload => _inputService.SendVolumeKey(payload.GetProperty("KeyCode").GetUInt16()) },
                 { "SET_VOLUME", payload => _audioService.SetMasterVolume(payload.GetProperty("VolumePercentage").GetSingle()) },
                 { "TOGGLE_MUTE", payload => _audioService.ToggleMute() },
+                { "LAUNCH_PROJECT", payload => {
+                    if (payload.TryGetProperty("Id", out var idProp)) {
+                        if (Guid.TryParse(idProp.GetString(), out var projectId)) {
+                            var project = _settingsService.Settings.Projects.FirstOrDefault(p => p.Id == projectId);
+                            if (project != null) {
+                                _ = _projectLauncherService.LaunchProject(project);
+                            }
+                        }
+                    }
+                }},
                 { "APPEND_NOTE", payload => _fileService.AppendToFile(payload.GetProperty("filename").GetString(), payload.GetProperty("content").GetString()) },
                 { "SAVE_FILE", payload => _fileService.WriteBrowseFile(payload.GetProperty("Path").GetString(), payload.GetProperty("Content").GetString()) },
                 { "COPY_FILE", payload => _fileService.CopyEntry(payload.GetProperty("Source").GetString(), payload.GetProperty("Dest").GetString()) },

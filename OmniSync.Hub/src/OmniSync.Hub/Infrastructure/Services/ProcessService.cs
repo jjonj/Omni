@@ -22,14 +22,34 @@ namespace OmniSync.Hub.Infrastructure.Services
         [DllImport("user32.dll")]
         private static extern bool IsIconic(IntPtr hWnd);
 
+        [DllImport("user32.dll", SetLastError = true)]
+        public static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        public static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct RECT
+        {
+            public int Left;
+            public int Top;
+            public int Right;
+            public int Bottom;
+        }
+
+        public const uint SWP_NOZORDER = 0x0004;
+        public const uint SWP_SHOWWINDOW = 0x0040;
+
         private const int SW_RESTORE = 9;
 
         private readonly HubSettingsService _settingsService;
+        private readonly Logic.Monitoring.HubMonitorService _monitorService;
         public event EventHandler<string> CommandOutputReceived;
 
-        public ProcessService(HubSettingsService settingsService)
+        public ProcessService(HubSettingsService settingsService, Logic.Monitoring.HubMonitorService monitorService)
         {
             _settingsService = settingsService;
+            _monitorService = monitorService;
         }
 
         public async Task ExecuteCommand(string command)
@@ -161,8 +181,8 @@ foreach ($p in $procs) {{
 $targetPid = {pid}
 $wshell = New-Object -ComObject WScript.Shell
 
-function Try-Activate($pId) {{
-    $p = Get-Process -Id $pId -ErrorAction SilentlyContinue
+function Try-Activate($targetId) {{
+    $p = Get-Process -Id $targetId -ErrorAction SilentlyContinue
     if ($null -eq $p) {{ return $false }}
     if ($wshell.AppActivate($p.Id)) {{ return $true }}
     return $false
@@ -234,6 +254,13 @@ foreach ($p in $procs) {{
     }}
 }}
 ");
+        }
+
+        public void MoveWindow(IntPtr hWnd, int x, int y, int width, int height)
+        {
+            if (hWnd == IntPtr.Zero) return;
+            if (IsIconic(hWnd)) ShowWindow(hWnd, SW_RESTORE);
+            SetWindowPos(hWnd, IntPtr.Zero, x, y, width, height, SWP_NOZORDER | SWP_SHOWWINDOW);
         }
 
         public void WinHide(string target)
@@ -431,6 +458,7 @@ Add-Type -MemberDefinition $code -Name Win32 -Namespace Native
                     if (!string.IsNullOrEmpty(error))
                     {
                         Console.WriteLine($"[PS ERROR] {error}");
+                        _monitorService.AddLogMessage($"[PS ERROR] {error}");
                     }
                     return output;
                 }

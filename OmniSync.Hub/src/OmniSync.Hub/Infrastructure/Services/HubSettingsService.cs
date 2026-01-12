@@ -13,13 +13,52 @@ namespace OmniSync.Hub.Infrastructure.Services
         public string Action { get; set; } = string.Empty;
     }
 
+    public enum ProjectActionType
+    {
+        OpenFolder,
+        RunProgram
+    }
+
+    public class WindowLayout
+    {
+        public bool UseRatio { get; set; } = true;
+        // Absolute
+        public double X { get; set; }
+        public double Y { get; set; }
+        public double Width { get; set; } = 800;
+        public double Height { get; set; } = 600;
+        // Ratio (0.0 to 1.0)
+        public double RatioX { get; set; } = 0.25;
+        public double RatioY { get; set; } = 0.25;
+        public double RatioWidth { get; set; } = 0.5;
+        public double RatioHeight { get; set; } = 0.5;
+    }
+
+    public class ProjectAction
+    {
+        public ProjectActionType Type { get; set; }
+        public string Path { get; set; } = string.Empty;
+        public string Arguments { get; set; } = string.Empty;
+        public WindowLayout? Layout { get; set; }
+    }
+
+    public class Project
+    {
+        public Guid Id { get; set; } = Guid.NewGuid();
+        public string Name { get; set; } = "";
+        public string HotkeyName { get; set; } = "";
+        public System.Collections.ObjectModel.ObservableCollection<ProjectAction> Actions { get; set; } = new();
+    }
+
     public class HubSettings
     {
+        public bool UseOneCommander { get; set; } = false;
         public Dictionary<string, string> ExeMappings { get; set; } = new();
         public List<HotkeyConfig> Hotkeys { get; set; } = new();
         public Dictionary<string, string> AiSessionNames { get; set; } = new();
         public List<string> AutoApprovePatterns { get; set; } = new();
         public List<string> AiPresets { get; set; } = new();
+        public List<Project> Projects { get; set; } = new();
     }
 
     public class HubSettingsService
@@ -48,6 +87,12 @@ namespace OmniSync.Hub.Infrastructure.Services
             InitializeDefaultHotkeys();
             InitializeDefaultAutoApprovals();
             InitializeDefaultPresets();
+            InitializeDefaultProjects();
+        }
+
+        private void InitializeDefaultProjects()
+        {
+            if (_settings.Projects == null) _settings.Projects = new();
         }
 
         private void InitializeDefaultPresets()
@@ -185,6 +230,12 @@ namespace OmniSync.Hub.Infrastructure.Services
             return null;
         }
 
+        public void SetPath(string key, string path)
+        {
+            _settings.ExeMappings[key] = path;
+            SaveSettings();
+        }
+
         public void SetAiSessionName(string key, string name)
         {
             _settings.AiSessionNames[key] = name;
@@ -223,6 +274,32 @@ namespace OmniSync.Hub.Infrastructure.Services
         {
             if (_settings.AiPresets != null && _settings.AiPresets.Remove(preset))
             {
+                SaveSettings();
+            }
+        }
+
+        public void AddProject(Project project)
+        {
+            if (_settings.Projects == null) _settings.Projects = new();
+            _settings.Projects.Add(project);
+            SaveSettings();
+        }
+
+        public void RemoveProject(Guid id)
+        {
+            if (_settings.Projects != null && _settings.Projects.RemoveAll(p => p.Id == id) > 0)
+            {
+                SaveSettings();
+            }
+        }
+
+        public void UpdateProject(Project project)
+        {
+            if (_settings.Projects == null) return;
+            var index = _settings.Projects.FindIndex(p => p.Id == project.Id);
+            if (index != -1)
+            {
+                _settings.Projects[index] = project;
                 SaveSettings();
             }
         }

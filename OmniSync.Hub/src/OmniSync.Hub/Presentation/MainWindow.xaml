@@ -4,26 +4,108 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:vm="clr-namespace:OmniSync.Hub.Presentation"
+        xmlns:infra="clr-namespace:OmniSync.Hub.Infrastructure.Services"
         mc:Ignorable="d"
         Title="OmniSync Hub Control" Height="650" Width="1000"
         Background="#1E1E1E" Foreground="#D4D4D4">
     <Window.Resources>
         <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
+        <vm:InverseBooleanToVisibilityConverter x:Key="InverseBooleanToVisibilityConverter" />
+        <vm:EnumToVisibilityConverter x:Key="EnumToVisibilityConverter" />
+        <vm:ActionNameConverter x:Key="ActionNameConverter" />
         <Style TargetType="TabControl">
             <Setter Property="Background" Value="#252526"/>
             <Setter Property="BorderBrush" Value="#333337"/>
+            <Setter Property="Padding" Value="0"/>
         </Style>
         <Style TargetType="TabItem">
             <Setter Property="Background" Value="#2D2D30"/>
             <Setter Property="Foreground" Value="#D4D4D4"/>
-            <Setter Property="Padding" Value="10,5"/>
-            <Style.Triggers>
-                <Trigger Property="IsSelected" Value="True">
-                    <Setter Property="Background" Value="#1E1E1E"/>
-                    <Setter Property="FontWeight" Value="Bold"/>
-                </Trigger>
-            </Style.Triggers>
+            <Setter Property="Padding" Value="15,8"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TabItem">
+                        <Border Name="Border" Background="{TemplateBinding Background}" BorderThickness="0,0,0,2" BorderBrush="Transparent">
+                            <ContentPresenter x:Name="ContentSite" VerticalAlignment="Center" HorizontalAlignment="Center" ContentSource="Header" Margin="{TemplateBinding Padding}"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="Border" Property="Background" Value="#3E3E42"/>
+                                <Setter TargetName="Border" Property="BorderBrush" Value="#007ACC"/>
+                                <Setter Property="Foreground" Value="White"/>
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Border" Property="Background" Value="#333337"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
         </Style>
+        <Style TargetType="ComboBox">
+            <Setter Property="Background" Value="#3E3E42"/>
+            <Setter Property="Foreground" Value="#D4D4D4"/>
+            <Setter Property="BorderBrush" Value="#333337"/>
+            <Setter Property="Padding" Value="5"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ComboBox">
+                        <Grid>
+                            <ToggleButton Name="ToggleButton" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" Foreground="{TemplateBinding Foreground}" Grid.ColumnSpan="2" Focusable="false" IsChecked="{Binding Path=IsDropDownOpen,Mode=TwoWay,RelativeSource={RelativeSource TemplatedParent}}">
+                                <ToggleButton.Template>
+                                    <ControlTemplate TargetType="ToggleButton">
+                                        <Border Name="Border" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1">
+                                            <Grid HorizontalAlignment="Right">
+                                                <Path Name="Arrow" Fill="{TemplateBinding Foreground}" Data="M 0 0 L 4 4 L 8 0 Z" Margin="5,0,5,0" VerticalAlignment="Center"/>
+                                            </Grid>
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="true">
+                                                <Setter TargetName="Border" Property="Background" Value="#4E4E52" />
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </ToggleButton.Template>
+                            </ToggleButton>
+                            <ContentPresenter Name="ContentSite" IsHitTestVisible="False"  Content="{TemplateBinding SelectionBoxItem}" ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}" ContentTemplateSelector="{TemplateBinding ItemTemplateSelector}" Margin="3,3,23,3" VerticalAlignment="Center" HorizontalAlignment="Left" />
+                            <Popup Name="Popup" Placement="Bottom" IsOpen="{TemplateBinding IsDropDownOpen}" AllowsTransparency="True"  Focusable="False" PopupAnimation="Slide">
+                                <Grid Name="DropDown" SnapsToDevicePixels="True" MinWidth="{TemplateBinding ActualWidth}" MaxHeight="{TemplateBinding MaxDropDownHeight}">
+                                    <Border Name="DropDownBorder" Background="#2D2D30" BorderThickness="1" BorderBrush="#333337"/>
+                                    <ScrollViewer Margin="4,6,4,6" SnapsToDevicePixels="True">
+                                        <ItemsPresenter KeyboardNavigation.DirectionalNavigation="Contained" />
+                                    </ScrollViewer>
+                                </Grid>
+                            </Popup>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style TargetType="ComboBoxItem">
+            <Setter Property="Padding" Value="5"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Foreground" Value="#D4D4D4"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ComboBoxItem">
+                        <Border Name="Border" Padding="{TemplateBinding Padding}" Background="{TemplateBinding Background}">
+                            <ContentPresenter />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Border" Property="Background" Value="#007ACC"/>
+                                <Setter Property="Foreground" Value="White"/>
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="Border" Property="Background" Value="#3E3E42"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <Style TargetType="Border">
             <Setter Property="BorderBrush" Value="#333337"/>
             <Setter Property="BorderThickness" Value="1"/>
@@ -45,6 +127,7 @@
             <Setter Property="BorderBrush" Value="#333337"/>
             <Setter Property="Padding" Value="2"/>
             <Setter Property="FontFamily" Value="Consolas"/>
+            <EventSetter Event="GotFocus" Handler="TextBox_GotFocus"/>
             <Style.Triggers>
                 <Trigger Property="IsFocused" Value="True">
                     <Setter Property="BorderBrush" Value="#007ACC"/>
@@ -62,6 +145,85 @@
                     <Setter Property="Background" Value="#4E4E52"/>
                 </Trigger>
             </Style.Triggers>
+        </Style>
+
+        <!-- DataGrid Dark Styles -->
+        <Style TargetType="DataGrid">
+            <Setter Property="Background" Value="#1E1E1E"/>
+            <Setter Property="Foreground" Value="#D4D4D4"/>
+            <Setter Property="BorderBrush" Value="#333337"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="RowBackground" Value="#1E1E1E"/>
+            <Setter Property="AlternatingRowBackground" Value="#252526"/>
+            <Setter Property="GridLinesVisibility" Value="None"/>
+            <Setter Property="HeadersVisibility" Value="Column"/>
+        </Style>
+
+        <Style TargetType="DataGridColumnHeader">
+            <Setter Property="Background" Value="#2D2D30"/>
+            <Setter Property="Foreground" Value="#D4D4D4"/>
+            <Setter Property="BorderBrush" Value="#333337"/>
+            <Setter Property="BorderThickness" Value="0,0,1,1"/>
+            <Setter Property="Padding" Value="10,5"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+        </Style>
+
+        <Style TargetType="DataGridCell">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Style.Triggers>
+                <Trigger Property="IsSelected" Value="True">
+                    <Setter Property="Background" Value="#3E3E42"/>
+                    <Setter Property="Foreground" Value="#007ACC"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style TargetType="DataGridRow">
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="#333337"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+        <Style x:Key="ToggleSwitchStyle" TargetType="CheckBox">
+            <Setter Property="Foreground" Value="#D4D4D4"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="CheckBox">
+                        <StackPanel Orientation="Horizontal">
+                            <Grid x:Name="Switch" Width="40" Height="20" Cursor="Hand">
+                                <Border x:Name="Background" Background="#3E3E42" CornerRadius="10" BorderThickness="1" BorderBrush="#333337"/>
+                                <Border x:Name="Dot" HorizontalAlignment="Left" Width="16" Height="16" Margin="2" Background="#D4D4D4" CornerRadius="8">
+                                    <Border.RenderTransform>
+                                        <TranslateTransform X="0"/>
+                                    </Border.RenderTransform>
+                                </Border>
+                            </Grid>
+                            <ContentPresenter Margin="10,0,0,0" VerticalAlignment="Center"/>
+                        </StackPanel>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Background" Property="Background" Value="#007ACC"/>
+                                <Trigger.EnterActions>
+                                    <BeginStoryboard>
+                                        <Storyboard>
+                                            <DoubleAnimation Storyboard.TargetName="Dot" Storyboard.TargetProperty="(UIElement.RenderTransform).(TranslateTransform.X)" To="20" Duration="0:0:0.1"/>
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </Trigger.EnterActions>
+                                <Trigger.ExitActions>
+                                    <BeginStoryboard>
+                                        <Storyboard>
+                                            <DoubleAnimation Storyboard.TargetName="Dot" Storyboard.TargetProperty="(UIElement.RenderTransform).(TranslateTransform.X)" To="0" Duration="0:0:0.1"/>
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </Trigger.ExitActions>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
         </Style>
     </Window.Resources>
     <Grid Margin="15">
@@ -110,6 +272,9 @@
                                            FontStyle="Italic" Opacity="0.8"/>
                             </StackPanel>
                             <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                <Button Content="Focus AI Sessions" 
+                                        Command="{Binding FocusAiSessionsCommand}"
+                                        MinWidth="120"/>
                                 <Button x:Name="ShutdownButton" 
                                         Content="{Binding ScheduledShutdownTimeLabel}" 
                                         Command="{Binding ScheduleShutdownCommand}"
@@ -192,7 +357,20 @@
                                     <StackPanel Margin="0,0,10,0">
                                         <TextBlock Text="Action" Margin="0,0,0,2" FontSize="12" Opacity="0.7"/>
                                         <ComboBox ItemsSource="{Binding AvailableActions}" SelectedValue="{Binding NewHotkeyAction}" Width="200" Padding="5" 
-                                                  Background="#1E1E1E" Foreground="#D4D4D4" BorderBrush="#333337"/>
+                                                  Background="#1E1E1E" Foreground="#D4D4D4" BorderBrush="#333337">
+                                            <ComboBox.ItemTemplate>
+                                                <DataTemplate>
+                                                    <TextBlock>
+                                                        <TextBlock.Text>
+                                                            <MultiBinding Converter="{StaticResource ActionNameConverter}">
+                                                                <Binding Path="." />
+                                                                <Binding RelativeSource="{RelativeSource AncestorType=Window}" Path="DataContext.Projects" />
+                                                            </MultiBinding>
+                                                        </TextBlock.Text>
+                                                    </TextBlock>
+                                                </DataTemplate>
+                                            </ComboBox.ItemTemplate>
+                                        </ComboBox>
                                     </StackPanel>
                                     <StackPanel Margin="0,0,10,0">
                                         <TextBlock Text="Key Combo" Margin="0,0,0,2" FontSize="12" Opacity="0.7"/>
@@ -216,14 +394,34 @@
                                                 <DataGridTemplateColumn Header="Action" Width="200">
                                                     <DataGridTemplateColumn.CellTemplate>
                                                         <DataTemplate>
-                                                            <TextBlock Text="{Binding Action}" VerticalAlignment="Center" Margin="5,0"/>
+                                                            <TextBlock VerticalAlignment="Center" Margin="5,0">
+                                                                <TextBlock.Text>
+                                                                    <MultiBinding Converter="{StaticResource ActionNameConverter}">
+                                                                        <Binding Path="Action" />
+                                                                        <Binding RelativeSource="{RelativeSource AncestorType=Window}" Path="DataContext.Projects" />
+                                                                    </MultiBinding>
+                                                                </TextBlock.Text>
+                                                            </TextBlock>
                                                         </DataTemplate>
                                                     </DataGridTemplateColumn.CellTemplate>
                                                     <DataGridTemplateColumn.CellEditingTemplate>
                                                         <DataTemplate>
                                                             <ComboBox ItemsSource="{Binding RelativeSource={RelativeSource AncestorType=Window}, Path=DataContext.AvailableActions}" 
                                                                       SelectedValue="{Binding Action}" 
-                                                                      Background="#1E1E1E" Foreground="#D4D4D4"/>
+                                                                      Background="#1E1E1E" Foreground="#D4D4D4">
+                                                                <ComboBox.ItemTemplate>
+                                                                    <DataTemplate>
+                                                                        <TextBlock>
+                                                                            <TextBlock.Text>
+                                                                                <MultiBinding Converter="{StaticResource ActionNameConverter}">
+                                                                                    <Binding Path="." />
+                                                                                    <Binding RelativeSource="{RelativeSource AncestorType=Window}" Path="DataContext.Projects" />
+                                                                                </MultiBinding>
+                                                                            </TextBlock.Text>
+                                                                        </TextBlock>
+                                                                    </DataTemplate>
+                                                                </ComboBox.ItemTemplate>
+                                                            </ComboBox>
                                                         </DataTemplate>
                                                     </DataGridTemplateColumn.CellEditingTemplate>
                                                 </DataGridTemplateColumn>
@@ -263,6 +461,144 @@
                                     </Border>
                                 </Grid>
                             </DockPanel>
+                        </Grid>
+                    </TabItem>
+                    <TabItem Header="Projects">
+                        <Grid Margin="15">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="300"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+
+                            <StackPanel Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="2" Orientation="Horizontal" Margin="0,0,0,15">
+                                <TextBlock Text="Project Environment Launcher" FontSize="18" FontWeight="Bold" VerticalAlignment="Center"/>
+                                <Separator Width="20" Background="Transparent"/>
+                                <CheckBox Style="{StaticResource ToggleSwitchStyle}" Content="Use OneCommander" IsChecked="{Binding UseOneCommander}" VerticalAlignment="Center"/>
+                            </StackPanel>
+
+                            <!-- Project List -->
+                            <DockPanel Grid.Row="1" Grid.Column="0" Margin="0,0,10,0">
+                                <Button DockPanel.Dock="Top" Content="Add New Project" Command="{Binding AddProjectCommand}" HorizontalAlignment="Left" Margin="0,0,0,10"/>
+                                <Border>
+                                    <ListBox ItemsSource="{Binding Projects}" SelectedItem="{Binding Path=DataContext.CurrentEditingProject, RelativeSource={RelativeSource AncestorType=Window}, Mode=TwoWay}">
+                                        <ListBox.ItemTemplate>
+                                            <DataTemplate>
+                                                <Grid Margin="5">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*"/>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <TextBlock Text="{Binding Name}" VerticalAlignment="Center" FontWeight="Bold"/>
+                                                    <Button Grid.Column="1" Content="Launch" Command="{Binding DataContext.LaunchProjectCommand, RelativeSource={RelativeSource AncestorType=Window}}" 
+                                                            CommandParameter="{Binding}" Background="#007ACC" FontSize="10" Padding="8,2"/>
+                                                    <Button Grid.Column="2" Content="Delete" Command="{Binding DataContext.DeleteProjectCommand, RelativeSource={RelativeSource AncestorType=Window}}" 
+                                                            CommandParameter="{Binding}" Background="#603030" FontSize="10" Padding="5,2"/>
+                                                </Grid>
+                                            </DataTemplate>
+                                        </ListBox.ItemTemplate>
+                                    </ListBox>
+                                </Border>
+                            </DockPanel>
+
+                            <!-- Edit Panel -->
+                            <Border Grid.Row="1" Grid.Column="1" Visibility="{Binding IsEditingProject, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                    <StackPanel Margin="15">
+                                        <TextBlock Text="Edit Project" FontSize="16" FontWeight="Bold" Margin="0,0,0,15"/>
+                                        
+                                        <TextBlock Text="Project Name" Margin="0,0,0,5" Opacity="0.7"/>
+                                        <TextBox Text="{Binding CurrentEditingProject.Name, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,15"/>
+
+                                        <TextBlock Text="Actions" FontSize="14" FontWeight="Bold" Margin="0,10,0,10"/>
+                                        <ItemsControl ItemsSource="{Binding CurrentEditingProject.Actions}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Border Margin="0,0,0,10" Padding="10" Background="#2D2D30">
+                                                        <StackPanel>
+                                                            <Grid>
+                                                                <Grid.ColumnDefinitions>
+                                                                    <ColumnDefinition Width="Auto"/>
+                                                                    <ColumnDefinition Width="*"/>
+                                                                    <ColumnDefinition Width="Auto"/>
+                                                                </Grid.ColumnDefinitions>
+                                                                <ComboBox Grid.Column="0" SelectedValue="{Binding Type}" Width="120" Margin="0,0,10,0">
+                                                                    <infra:ProjectActionType>OpenFolder</infra:ProjectActionType>
+                                                                    <infra:ProjectActionType>RunProgram</infra:ProjectActionType>
+                                                                </ComboBox>
+                                                                <TextBox Grid.Column="1" Text="{Binding Path, UpdateSourceTrigger=PropertyChanged}" />
+                                                                <Button Grid.Column="2" Content="X" Command="{Binding DataContext.DeleteProjectActionCommand, RelativeSource={RelativeSource AncestorType=Window}}" 
+                                                                        CommandParameter="{Binding}" Background="#603030" Margin="5,0,0,0" Width="25"/>
+                                                            </Grid>
+                                                            <StackPanel Visibility="{Binding Type, Converter={StaticResource EnumToVisibilityConverter}, ConverterParameter=RunProgram}" Margin="0,5,0,0">
+                                                                <TextBlock Text="Arguments" FontSize="10" Opacity="0.5"/>
+                                                                <TextBox Text="{Binding Arguments, UpdateSourceTrigger=PropertyChanged}" />
+                                                            </StackPanel>
+
+                                                            <!-- Layout Editor -->
+                                                            <StackPanel Margin="0,10,0,0">
+                                                                <CheckBox Content="Use Screen Ratio" IsChecked="{Binding Layout.UseRatio}" Foreground="#D4D4D4" FontSize="11"/>
+                                                                
+                                                                <!-- Ratio Inputs -->
+                                                                <UniformGrid Columns="4" Margin="0,5,0,0" Visibility="{Binding Layout.UseRatio, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                                    <StackPanel Margin="0,0,5,0">
+                                                                        <TextBlock Text="Ratio X" FontSize="9" Opacity="0.5"/>
+                                                                        <TextBox Text="{Binding Layout.RatioX}" />
+                                                                    </StackPanel>
+                                                                    <StackPanel Margin="0,0,5,0">
+                                                                        <TextBlock Text="Ratio Y" FontSize="9" Opacity="0.5"/>
+                                                                        <TextBox Text="{Binding Layout.RatioY}" />
+                                                                    </StackPanel>
+                                                                    <StackPanel Margin="0,0,5,0">
+                                                                        <TextBlock Text="Ratio W" FontSize="9" Opacity="0.5"/>
+                                                                        <TextBox Text="{Binding Layout.RatioWidth}" />
+                                                                    </StackPanel>
+                                                                    <StackPanel>
+                                                                        <TextBlock Text="Ratio H" FontSize="9" Opacity="0.5"/>
+                                                                        <TextBox Text="{Binding Layout.RatioHeight}" />
+                                                                    </StackPanel>
+                                                                </UniformGrid>
+
+                                                                <!-- Absolute Inputs -->
+                                                                <UniformGrid Columns="4" Margin="0,5,0,0" Visibility="{Binding Layout.UseRatio, Converter={StaticResource InverseBooleanToVisibilityConverter}, ConverterParameter=Inverse}">
+                                                                    <StackPanel Margin="0,0,5,0">
+                                                                        <TextBlock Text="Abs X" FontSize="9" Opacity="0.5"/>
+                                                                        <TextBox Text="{Binding Layout.X}" />
+                                                                    </StackPanel>
+                                                                    <StackPanel Margin="0,0,5,0">
+                                                                        <TextBlock Text="Abs Y" FontSize="9" Opacity="0.5"/>
+                                                                        <TextBox Text="{Binding Layout.Y}" />
+                                                                    </StackPanel>
+                                                                    <StackPanel Margin="0,0,5,0">
+                                                                        <TextBlock Text="Abs W" FontSize="9" Opacity="0.5"/>
+                                                                        <TextBox Text="{Binding Layout.Width}" />
+                                                                    </StackPanel>
+                                                                    <StackPanel>
+                                                                        <TextBlock Text="Abs H" FontSize="9" Opacity="0.5"/>
+                                                                        <TextBox Text="{Binding Layout.Height}" />
+                                                                    </StackPanel>
+                                                                </UniformGrid>
+                                                            </StackPanel>
+                                                        </StackPanel>
+                                                    </Border>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+
+                                        <Button Content="+ Add Action" Command="{Binding AddProjectActionCommand}" HorizontalAlignment="Left" Margin="0,0,0,20"/>
+                                        
+                                        <Button Content="Save Project" Command="{Binding SaveProjectCommand}" Background="#007ACC" FontWeight="Bold" Height="40" Margin="0,10,0,0"/>
+                                    </StackPanel>
+                                </ScrollViewer>
+                            </Border>
+
+                            <TextBlock Grid.Row="1" Grid.Column="1" Text="Select a project to edit or create a new one." 
+                                       VerticalAlignment="Center" HorizontalAlignment="Center" Opacity="0.5"
+                                       Visibility="{Binding IsEditingProject, Converter={StaticResource InverseBooleanToVisibilityConverter}, ConverterParameter=Inverse}"/>
                         </Grid>
                     </TabItem>
                 </TabControl>

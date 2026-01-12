@@ -4,6 +4,8 @@
 
 ✅ need poc for persistent pcg changes, change 07 diff saved and compared by pcg node using 2d position hash, allow exclusion or modification.
 ✅ Wake on lan sending while on local network is broken, it used to work. (Added 255.255.255.255 broadcast for better reliability)
+✅ Implement Local First, WAN Fallback strategy for Android connection.
+✅ Implement Dual-Target WOL (Local Broadcast + WAN Unicast).
 
 ## For the hub
 
@@ -22,7 +24,7 @@
 ✅ Prominently display the time the user has been asleep, guess from the latest time when an alarm was set, the app opened, phone connected to battery or the app has been disconnected from hub and display on dash and notification when not connected in minutes and hours, this needs to persistent between app restarts and needs to detect last disconnect time even with app in background
 ✅ on app startup it doesn't connect to hub, it like connects and disconnected twice before finally connecting, very odd. add to logging disconnect reason
 ✅ Add option to fetch hub log and display that instead of activity hub, and option to go back to activity log
-✅ i can select one message in the activity log but i can't select multiple, they are like separate elements. i want to be able to select all log, and add a copy all to clipboard button (simple icon button)
+✅ i can select one message in the activity log but i can't select multiple, they are like separate elements. i want to be able to select all log, and copy all to clipboard button (simple icon button)
 
 ### Remote Control Screen
 
@@ -48,7 +50,7 @@
 
 ### Files & Video Screen
 
-✅ when a file is open the navigation bar gets hidden, change that
+✅ when a file is open the navigation bar gets hidden, change that 
 ✅ the automatic merge feature does not work well, seems everything is marked as conflict, run some unit tests
 ✅ When any ai session is active, add "AI: Add dir to [SessionName]"  option to long press folder which will send "/dir add X" to the active session
 ✅ The header at the top showing current path should allow long pressing it (to give folder context actions)
@@ -71,6 +73,7 @@
 ✅ When keyboard is up there is a black blank box above the keyboard with the height of the navigation bar. this started after i requested that the navigation bar not be hidden in text editor.
 ✅ When i have a text for open and then switch to another screen and then back to file screen then file is still open which is good but it has reset the scroll distance and cursor position (Fixed by ensuring scrollRestored flag and proper restoration in TextEditorScreen)
 ✅ the right side scroll bar is not grabbable not does it accurately display current scroll level, same on file screen (Implemented custom VerticalScrollbar in SharedComponents and applied to both screens)
+✅ Add a cool CLI hookin feature, where i can be editing a text file and then have an AI asssistant help me (it works by opening a new CLI session like the AI screen does and will in a smart way send the text of the file to the AI and let the AI edit/insert into the file). Make it really cool and helpful.
 
 ### Browser control screen
 
@@ -78,6 +81,7 @@
 ✅ Custom patterns added to the browser cleaning do not persist across reinstalls of app like other settings do. Same goes for bookmarks it seems.
 ✅ The bookmarks can be reordered with arrow buttons, instead make that a draggable marker so i can drag to reorder.
 ✅ The whole screen has some padding on the left and right and top and bottom edges wasting pixels, please reduce that padding to just 2 pixels or so. Other screens waste less space.
+✅ Write a unit test that does a bunch of stuff to the browser in sequence (without messing with existing non-cleanuppable tabs) and use it to verify browser control works.
 
 ### Notification panel
 
@@ -86,11 +90,13 @@
 ### Android Home screen launcher widgets
 
 ✅ Use better widget icons somehow, either let user choose or be smart
+✅ Add a super cool feature for this please. (Implemented Smart AI Clipboard action)
 
 ### Settings screen (accessed by button on dashboard, not bottom panel)
 
 ✅ Add settings to configure Cortex web, need to be able to adjust wake time (currently hardcoded to reset to 7am adjustable for the day but not enough) and block definitions
 ✅ add more quick action options, including but not limited to, set alarm 8h45m, browser functionality like send youtube history video to chrome etc and double check at can use macros as quick actions
+✅ Add more customization and quick actions. (Added Quick Actions card at top and new streaming/global config options)
 
 ### AI screen
 
@@ -112,11 +118,13 @@
 ✅ add a button that opens a dropdown with preset messages and commands to put into the input text box, the user can persistently add more by entering text into the input box and then long pressing this new button. start with these default 4 options /model /conductor:newTrack /conductor:implement Please run any final scripts and commit all changes (Implemented Presets button with long-press save and Hub-side persistence)
 ✅ adding a message while the ai is busy will in the cli window queue the message but in android it looks like it got instantly sent, can you find a way to figure out when it's queued and then displsy it differently (Implemented QUEUED status in Hub and Android with 'isQueued' flag on AiMessage)
 ✅ allow me to select and copy text in the chat (Enabled SelectionContainer in ChatBubble)
+✅ support displaying and interacting with AI choice dialogs on Android.
 
 ### Alarm screen
 
 ✅ support activating a macro when alarm begins ringing OR when alarm is dismissed
 
-### Omni web screen
+### Omni web screen (Embedded Web Server)
 
-✅ omni web is just a blank screen, the embedded browser is not working. maybe try a hello world instead (Added TopAppBar with URL and Refresh button, and improved WebView settings)
+✅ Does not work, simply black (Fixed by improving WebView settings and adding diagnostic logging)
+✅ Add a "more" button that switched the button panel to exactly the same panel as in control screen AND shows a mini trackpad like browser control. Only difference is that there's a back button somewhere (Implemented 'More Mode' with controls and mini trackpad)

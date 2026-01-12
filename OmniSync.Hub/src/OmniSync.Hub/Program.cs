@@ -7,6 +7,7 @@ using OmniSync.Hub.Logic.Services;
 using OmniSync.Hub.Infrastructure.Services;
 using OmniSync.Hub.Presentation.Hubs;
 using OmniSync.Hub.Presentation;
+using OmniSync.Hub.Logic;
 using OmniSync.Hub.Logic.Monitoring; // For the new monitoring service
 using System;
 using System.IO; // Added for Path.Combine and Directory.GetCurrentDirectory()
@@ -143,19 +144,13 @@ builder.Services.AddSingleton<FileService>(provider =>
     return new FileService(noteRootPath, browseRootPath);
 });
 builder.Services.AddSingleton<ClipboardService>();
-builder.Services.AddSingleton<CommandDispatcher>(provider => {
-    var inputService = provider.GetRequiredService<InputService>();
-    var fileService = provider.GetRequiredService<FileService>();
-    var audioService = provider.GetRequiredService<AudioService>();
-    var processService = provider.GetRequiredService<ProcessService>();
-    var shutdownService = provider.GetRequiredService<ShutdownService>();
+builder.Services.AddSingleton<ProcessService>(provider =>
+{
     var settingsService = provider.GetRequiredService<HubSettingsService>();
-    var pcgService = provider.GetRequiredService<PcgPersistentService>();
-    var nodeRedService = provider.GetRequiredService<NodeRedService>();
-    var appLifetime = provider.GetRequiredService<IHostApplicationLifetime>();
-    return new CommandDispatcher(inputService, fileService, audioService, processService, shutdownService, settingsService, pcgService, nodeRedService, appLifetime);
+    var monitorService = provider.GetRequiredService<HubMonitorService>();
+    return new ProcessService(settingsService, monitorService);
 });
-builder.Services.AddSingleton<ProcessService>();
+builder.Services.AddSingleton<ProjectLauncherService>();
 builder.Services.AddSingleton<AiCliService>();
 builder.Services.AddSingleton<InputService>(provider =>
 {
@@ -165,6 +160,19 @@ builder.Services.AddSingleton<InputService>(provider =>
 });
 builder.Services.AddSingleton<AudioService>();
 builder.Services.AddSingleton<HubSettingsService>();
+builder.Services.AddSingleton<CommandDispatcher>(provider => {
+    var inputService = provider.GetRequiredService<InputService>();
+    var fileService = provider.GetRequiredService<FileService>();
+    var audioService = provider.GetRequiredService<AudioService>();
+    var processService = provider.GetRequiredService<ProcessService>();
+    var shutdownService = provider.GetRequiredService<ShutdownService>();
+    var settingsService = provider.GetRequiredService<HubSettingsService>();
+    var pcgService = provider.GetRequiredService<PcgPersistentService>();
+    var nodeRedService = provider.GetRequiredService<NodeRedService>();
+    var projectLauncherService = provider.GetRequiredService<ProjectLauncherService>();
+    var appLifetime = provider.GetRequiredService<IHostApplicationLifetime>();
+    return new CommandDispatcher(inputService, fileService, audioService, processService, shutdownService, settingsService, pcgService, nodeRedService, projectLauncherService, appLifetime);
+});
 builder.Services.AddSingleton<GlobalHotkeyService>();
 builder.Services.AddHostedService<GlobalHotkeyService>(p => p.GetRequiredService<GlobalHotkeyService>());
 
@@ -178,6 +186,7 @@ builder.Services.AddSingleton<ShutdownService>(provider =>
 });
 builder.Services.AddSingleton<RegistryService>();
 builder.Services.AddSingleton<ScreenshotService>();
+builder.Services.AddSingleton<LayoutCaptureService>();
 builder.Services.AddSingleton<PcgPersistentService>();
 builder.Services.AddSingleton<NodeRedService>();
 builder.Services.AddSingleton<HubMonitorService>();
@@ -207,8 +216,11 @@ builder.Services.AddSingleton<TrayIconManager>(provider =>
     var settingsService = provider.GetRequiredService<HubSettingsService>();
     var hotkeyService = provider.GetRequiredService<GlobalHotkeyService>();
     var keyboardHook = provider.GetRequiredService<KeyboardHook>();
+    var aiCliService = provider.GetRequiredService<AiCliService>();
+    var layoutCaptureService = provider.GetRequiredService<LayoutCaptureService>();
+    var projectLauncherService = provider.GetRequiredService<ProjectLauncherService>();
     var logger = provider.GetRequiredService<ILogger<TrayIconManager>>();
-    return new TrayIconManager(appLifetime, hubMonitorService, inputService, shutdownService, registryService, settingsService, hotkeyService, keyboardHook, logger);
+    return new TrayIconManager(appLifetime, hubMonitorService, inputService, shutdownService, registryService, settingsService, hotkeyService, keyboardHook, aiCliService, layoutCaptureService, projectLauncherService, logger);
 });
 builder.Services.AddHostedService<TrayIconManager>(provider => provider.GetRequiredService<TrayIconManager>());
 

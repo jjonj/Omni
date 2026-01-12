@@ -127,10 +127,21 @@ namespace OmniSync.Hub.Logic.Services
 
             try
             {
-                // Dispatch through CommandDispatcher
-                // We create a minimal JSON object: {}
-                using var doc = System.Text.Json.JsonDocument.Parse("{}");
-                _commandDispatcher.Dispatch(action, doc.RootElement);
+                if (action.StartsWith("LAUNCH_PROJECT_"))
+                {
+                    var idStr = action.Substring("LAUNCH_PROJECT_".Length);
+                    var payload = new { Id = idStr };
+                    var json = System.Text.Json.JsonSerializer.Serialize(payload);
+                    using var doc = System.Text.Json.JsonDocument.Parse(json);
+                    _commandDispatcher.Dispatch("LAUNCH_PROJECT", doc.RootElement);
+                }
+                else
+                {
+                    // Dispatch through CommandDispatcher
+                    // We create a minimal JSON object: {}
+                    using var doc = System.Text.Json.JsonDocument.Parse("{}");
+                    _commandDispatcher.Dispatch(action, doc.RootElement);
+                }
             }
             catch (Exception ex)
             {

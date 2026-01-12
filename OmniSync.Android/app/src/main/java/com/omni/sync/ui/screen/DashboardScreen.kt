@@ -16,6 +16,10 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import android.content.Context
+import android.content.ClipboardManager
+import androidx.compose.material.icons.filled.SmartToy
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.omni.sync.data.repository.SignalRClient
@@ -37,6 +41,7 @@ enum class ConnectionStatus {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DashboardScreen(modifier: Modifier = Modifier, signalRClient: SignalRClient, mainViewModel: MainViewModel) {
+    val context = LocalContext.current
     val appConfig = mainViewModel.appConfig
     // Collect connection states
     val connectionStateString by signalRClient.connectionState.collectAsState()
@@ -135,19 +140,45 @@ fun DashboardScreen(modifier: Modifier = Modifier, signalRClient: SignalRClient,
                             Text("Shutdown")
                         }
                         
-                        Button(
-                            onClick = {
-                                mainViewModel.addLog("Triggering Sleep...", LogType.INFO)
-                                signalRClient.executeCommand("B:\\GDrive\\Tools\\05 Automation\\sleep.bat")
-                            },
-                            modifier = Modifier.weight(1f).padding(start = 4.dp)
-                        ) {
-                            Text("Sleep")
-                        }
-                    }
-                    
-                    Spacer(modifier = Modifier.height(8.dp))
-                    
+                                                Button(
+                                                    onClick = {
+                                                        mainViewModel.addLog("Triggering Sleep...", LogType.INFO)
+                                                        signalRClient.executeCommand("B:\\GDrive\\Tools\\05 Automation\\sleep.bat")
+                                                    },
+                                                    modifier = Modifier.weight(1f).padding(start = 4.dp)
+                                                ) {
+                                                    Text("Sleep")
+                                                }
+                                            }
+                        
+                                            Spacer(modifier = Modifier.height(8.dp))
+                        
+                                            Button(
+                                                onClick = {
+                                                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                                                    val clipData = clipboard.primaryClip
+                                                    if (clipData != null && clipData.itemCount > 0) {
+                                                        val text = clipData.getItemAt(0).text?.toString()
+                                                        if (!text.isNullOrBlank()) {
+                                                            val prompt = "Summarize and analyze the following content from my clipboard:\n\n$text"
+                                                            signalRClient.sendAiMessage(prompt)
+                                                            mainViewModel.navigateTo(com.omni.sync.viewmodel.AppScreen.AI_CHAT)
+                                                        } else {
+                                                            android.widget.Toast.makeText(context, "Clipboard is empty", android.widget.Toast.LENGTH_SHORT).show()
+                                                        }
+                                                    } else {
+                                                        android.widget.Toast.makeText(context, "Clipboard is empty", android.widget.Toast.LENGTH_SHORT).show()
+                                                    }
+                                                },
+                                                modifier = Modifier.fillMaxWidth(),
+                                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
+                                            ) {
+                                                Icon(Icons.Default.SmartToy, null, modifier = Modifier.size(18.dp))
+                                                Spacer(Modifier.width(8.dp))
+                                                Text("Smart AI (Clipboard)")
+                                            }
+                        
+                                            Spacer(modifier = Modifier.height(8.dp))                    
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
                         Button(
                             onClick = {

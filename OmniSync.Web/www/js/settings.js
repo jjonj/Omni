@@ -1,5 +1,6 @@
 let hubConnection = null;
 let currentHotkeys = [];
+let currentProjects = [];
 let recordingHotkeyIndex = -1;
 
 async function init() {
@@ -28,7 +29,9 @@ async function loadSettings() {
     try {
         const settings = await hubConnection.invoke("GetSettings");
         currentHotkeys = settings.hotkeys;
+        currentProjects = settings.projects || [];
         renderHotkeys();
+        renderProjects();
         renderExeMappings(settings.exeMappings);
         
         const status = await hubConnection.invoke("GetHubStatus");
@@ -37,6 +40,93 @@ async function loadSettings() {
     } catch (err) {
         console.error("Error loading settings:", err);
     }
+}
+
+function renderProjects() {
+    const list = document.getElementById("projects-list");
+    if (!list) return;
+    list.innerHTML = "";
+    
+    if (currentProjects.length === 0) {
+        list.innerHTML = '<div class="text-dim" style="font-size: 12px;">No projects defined yet.</div>';
+        return;
+    }
+
+    currentProjects.forEach((proj, index) => {
+        const row = document.createElement("div");
+        row.className = "hub-box";
+        row.style.background = "var(--bg)";
+        row.style.padding = "12px";
+        
+        const actionsSummary = proj.actions ? `${proj.actions.length} action(s)` : "No actions";
+        
+        row.innerHTML = `
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <div style="font-weight: bold; color: var(--accent);">${proj.name}</div>
+                <div>
+                    <button class="btn" onclick="editProject(${index})">Edit</button>
+                    <button class="btn danger" onclick="removeProject(${index})">Delete</button>
+                </div>
+            </div>
+            <div class="text-dim" style="font-size: 11px;">${actionsSummary}</div>
+        `;
+        list.appendChild(row);
+    });
+}
+
+function addNewProject() {
+    const name = prompt("Enter project name:");
+    if (!name) return;
+    
+    currentProjects.push({
+        id: generateGuid(),
+        name: name,
+        actions: [],
+        hotkeyName: ""
+    });
+    renderProjects();
+}
+
+function removeProject(index) {
+    if (confirm(`Delete project '${currentProjects[index].name}'?`)) {
+        currentProjects.splice(index, 1);
+        renderProjects();
+    }
+}
+
+function editProject(index) {
+    const proj = currentProjects[index];
+    const newName = prompt("Edit project name:", proj.name);
+    if (newName) proj.name = newName;
+    
+    // For now, simple editing. In a full implementation, 
+    // we'd open a modal to manage project actions.
+    // The C# side has a full editor, this is a web placeholder.
+    renderProjects();
+}
+
+async function saveProjects() {
+    try {
+        await hubConnection.invoke("UpdateProjects", currentProjects);
+        const btn = event.currentTarget;
+        const originalText = btn.innerText;
+        btn.innerText = "SAVED!";
+        btn.classList.add("success");
+        setTimeout(() => {
+            btn.innerText = originalText;
+            btn.classList.remove("success");
+        }, 2000);
+    } catch (err) {
+        console.error("Error saving projects:", err);
+        alert("Failed to save projects.");
+    }
+}
+
+function generateGuid() {
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+        var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
+        return v.toString(16);
+    });
 }
 
 function renderHotkeys() {

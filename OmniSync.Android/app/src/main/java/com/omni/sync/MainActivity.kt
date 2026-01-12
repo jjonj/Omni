@@ -245,7 +245,7 @@ class MainActivity : ComponentActivity() {
                                         userScrollEnabled = true 
                                     ) { page ->
                                         val screenAtPage = swipeableScreens[page]
-                                        val pageModifier = if (screenAtPage == AppScreen.REMOTECONTROL || screenAtPage == AppScreen.FILES || screenAtPage == AppScreen.AI_CHAT) Modifier else Modifier.padding(innerPadding)
+                                        val pageModifier = if (screenAtPage == AppScreen.REMOTECONTROL || screenAtPage == AppScreen.FILES || screenAtPage == AppScreen.AI_CHAT || screenAtPage == AppScreen.WEB_SERVER) Modifier else Modifier.padding(innerPadding)
                                         Box(modifier = pageModifier) {
                                             MainScreenContent(screenAtPage, signalRClient, browserViewModel, filesViewModel, mainViewModel, innerPadding)
                                         }
@@ -374,7 +374,10 @@ class MainActivity : ComponentActivity() {
                 mainViewModel = mainViewModel,
                 onBack = { mainViewModel.goBack() }
             )
-            AppScreen.WEB_SERVER -> com.omni.sync.ui.screen.WebServerScreen()
+            AppScreen.WEB_SERVER -> com.omni.sync.ui.screen.WebServerScreen(
+                signalRClient = signalRClient,
+                mainViewModel = mainViewModel
+            )
             AppScreen.VIDEOPLAYER -> {
                 val videoUrl by mainViewModel.currentVideoUrl.collectAsState()
                 val playlist by mainViewModel.videoPlaylist.collectAsState()

@@ -71,26 +71,39 @@ class OmniWidgetProvider : AppWidgetProvider() {
                 action.command.startsWith("NAV:REMOTECONTROL") -> R.drawable.ic_remote
                 action.command.startsWith("NAV:DASHBOARD") -> R.drawable.ic_dashboard
                 action.command.startsWith("BOOKMARK:") -> R.drawable.ic_browser
+                action.command == "SMART_AI" -> R.drawable.ic_ai
                 else -> R.drawable.ic_notification
             }
             views.setImageViewResource(R.id.widget_icon, iconRes)
 
             if (action != null) {
-                // Direct call to ForegroundService for better reliability
-                val serviceIntent = Intent(context, ForegroundService::class.java).apply {
-                    this.action = ForegroundService.ACTION_TRIGGER_NOTIFICATION_ACTION
-                    putExtra(ForegroundService.EXTRA_ACTION_ID, action.id)
-                    // Use data to make intent unique for system even with same extras/action
-                    data = android.net.Uri.parse("omni://widget/$appWidgetId")
+                // Handle special smart actions
+                if (action.command == "SMART_AI") {
+                    val serviceIntent = Intent(context, ForegroundService::class.java).apply {
+                        this.action = ForegroundService.ACTION_TRIGGER_SMART_AI
+                        data = android.net.Uri.parse("omni://widget/smart_ai/$appWidgetId")
+                    }
+                    val pendingIntent = PendingIntent.getForegroundService(
+                        context, appWidgetId, serviceIntent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+                    )
+                    views.setOnClickPendingIntent(R.id.widget_container, pendingIntent)
+                } else {
+                    // Direct call to ForegroundService for better reliability
+                    val serviceIntent = Intent(context, ForegroundService::class.java).apply {
+                        this.action = ForegroundService.ACTION_TRIGGER_NOTIFICATION_ACTION
+                        putExtra(ForegroundService.EXTRA_ACTION_ID, action.id)
+                        // Use data to make intent unique for system even with same extras/action
+                        data = android.net.Uri.parse("omni://widget/$appWidgetId")
+                    }
+                    
+                    val pendingIntent = PendingIntent.getForegroundService(
+                        context, 
+                        appWidgetId, 
+                        serviceIntent, 
+                        PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+                    )
+                    views.setOnClickPendingIntent(R.id.widget_container, pendingIntent)
                 }
-                
-                val pendingIntent = PendingIntent.getForegroundService(
-                    context, 
-                    appWidgetId, 
-                    serviceIntent, 
-                    PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-                )
-                views.setOnClickPendingIntent(R.id.widget_container, pendingIntent)
             } else {
                 // Open app if no action configured
                 val mainIntent = Intent(context, com.omni.sync.MainActivity::class.java)

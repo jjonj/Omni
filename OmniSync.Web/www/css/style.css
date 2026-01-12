@@ -1266,3 +1266,4 @@ button.danger:hover,
     color: var(--c-work) !important;
 
 }
+`n/* TFT Emblem Pool Enhancements */`n.pool-subheader { width: 100%; font-size: 9px; text-transform: uppercase; color: var(--text-dim); margin: 8px 0 4px 4px; font-weight: bold; border-bottom: 1px solid var(--border-light); padding-bottom: 2px; }`n.selected-in-pool { border: 1px solid var(--accent); background: rgba(10, 132, 255, 0.1); border-radius: 4px; }`n.selected-in-pool .item-icon { box-shadow: 0 0 8px var(--accent); }

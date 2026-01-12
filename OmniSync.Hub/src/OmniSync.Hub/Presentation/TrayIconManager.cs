@@ -11,6 +11,7 @@ using System.Windows; // For WPF Window and Application
 using OmniSync.Hub.Logic.Monitoring; // For HubMonitorService
 using OmniSync.Hub.Infrastructure.Services; // Add this using directive
 using OmniSync.Hub.Logic.Services;
+using OmniSync.Hub.Logic;
 using Microsoft.Extensions.Logging;
 
 namespace OmniSync.Hub.Presentation
@@ -25,20 +26,26 @@ namespace OmniSync.Hub.Presentation
         private readonly HubSettingsService _settingsService;
         private readonly GlobalHotkeyService _hotkeyService;
         private readonly KeyboardHook _keyboardHook;
+        private readonly AiCliService _aiCliService;
+        private readonly LayoutCaptureService _layoutCaptureService;
+        private readonly ProjectLauncherService _projectLauncherService;
         private readonly ILogger<TrayIconManager> _logger;
         private TrayApplicationContext _applicationContext;
         private Thread _trayThread;
 
-        public TrayIconManager(IHostApplicationLifetime appLifetime, HubMonitorService hubMonitorService, InputService inputService, ShutdownService shutdownService, RegistryService registryService, HubSettingsService settingsService, GlobalHotkeyService hotkeyService, KeyboardHook keyboardHook, ILogger<TrayIconManager> logger) // Add logger to constructor
+        public TrayIconManager(IHostApplicationLifetime appLifetime, HubMonitorService hubMonitorService, InputService inputService, ShutdownService shutdownService, RegistryService registryService, HubSettingsService settingsService, GlobalHotkeyService hotkeyService, KeyboardHook keyboardHook, AiCliService aiCliService, LayoutCaptureService layoutCaptureService, ProjectLauncherService projectLauncherService, ILogger<TrayIconManager> logger)
         {
             _appLifetime = appLifetime;
-            _hubMonitorService = hubMonitorService; // Assign the injected service
-            _inputService = inputService; // Assign the injected service
+            _hubMonitorService = hubMonitorService;
+            _inputService = inputService;
             _shutdownService = shutdownService;
             _registryService = registryService;
             _settingsService = settingsService;
             _hotkeyService = hotkeyService;
             _keyboardHook = keyboardHook;
+            _aiCliService = aiCliService;
+            _layoutCaptureService = layoutCaptureService;
+            _projectLauncherService = projectLauncherService;
             _logger = logger;
         }
 
@@ -75,7 +82,7 @@ namespace OmniSync.Hub.Presentation
                 WinFormsApp.SetCompatibleTextRenderingDefault(false); // For WinForms interop
 
                                 _logger.LogInformation("TrayIconManager: Creating TrayApplicationContext.");
-                                _applicationContext = new TrayApplicationContext(_appLifetime, app, _hubMonitorService, _inputService, _shutdownService, _registryService, _settingsService, _hotkeyService, _keyboardHook, _logger); // Pass logger
+                                _applicationContext = new TrayApplicationContext(_appLifetime, app, _hubMonitorService, _inputService, _shutdownService, _registryService, _settingsService, _hotkeyService, _keyboardHook, _aiCliService, _layoutCaptureService, _projectLauncherService, _logger); // Pass logger
                 
                                 // Add message filter to route messages to WPF's ComponentDispatcher
                                 WinFormsApp.AddMessageFilter(new WpfMessageFilter());
@@ -129,10 +136,13 @@ namespace OmniSync.Hub.Presentation
             private readonly HubSettingsService _settingsService;
             private readonly GlobalHotkeyService _hotkeyService;
             private readonly KeyboardHook _keyboardHook;
+            private readonly AiCliService _aiCliService;
+            private readonly LayoutCaptureService _layoutCaptureService;
+            private readonly ProjectLauncherService _projectLauncherService;
             private readonly ILogger _logger;
             private MainWindow _mainWindow;
 
-            public TrayApplicationContext(IHostApplicationLifetime appLifetime, WpfApp wpfApplication, HubMonitorService hubMonitorService, InputService inputService, ShutdownService shutdownService, RegistryService registryService, HubSettingsService settingsService, GlobalHotkeyService hotkeyService, KeyboardHook keyboardHook, ILogger logger) // Add logger  
+            public TrayApplicationContext(IHostApplicationLifetime appLifetime, WpfApp wpfApplication, HubMonitorService hubMonitorService, InputService inputService, ShutdownService shutdownService, RegistryService registryService, HubSettingsService settingsService, GlobalHotkeyService hotkeyService, KeyboardHook keyboardHook, AiCliService aiCliService, LayoutCaptureService layoutCaptureService, ProjectLauncherService projectLauncherService, ILogger logger)
             {
                 _appLifetime = appLifetime;
                 _wpfApplication = wpfApplication; // Store reference to the WPF Application instance
@@ -143,6 +153,9 @@ namespace OmniSync.Hub.Presentation
                 _settingsService = settingsService;
                 _hotkeyService = hotkeyService;
                 _keyboardHook = keyboardHook;
+                _aiCliService = aiCliService;
+                _layoutCaptureService = layoutCaptureService;
+                _projectLauncherService = projectLauncherService;
                 _logger = logger;
                 InitializeComponent();
             }
@@ -170,7 +183,7 @@ namespace OmniSync.Hub.Presentation
 
                     _logger.LogInformation("TrayApplicationContext: Creating MainWindow.");
                     // Create and store the WPF main window, passing the HubMonitorService
-                    _mainWindow = new MainWindow(_hubMonitorService, _inputService, _shutdownService, _registryService, _settingsService, _keyboardHook);
+                    _mainWindow = new MainWindow(_hubMonitorService, _inputService, _shutdownService, _registryService, _settingsService, _keyboardHook, _aiCliService, _layoutCaptureService, _projectLauncherService);
                     _logger.LogInformation("TrayApplicationContext: MainWindow created.");
 
                     // Create Context Menu
