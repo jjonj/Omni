@@ -7,12 +7,11 @@ import win32com.client
 
 def open_onecommander_tab(path):
     print(f"Opening OneCommander tab: {path}")
-    # Assuming onecommander.exe is in PATH or a common location
-    # In a real app, we'd find the executable path from settings
+    oc_path = r"E:\Program Files\OneCommander\OneCommander.exe"
     try:
-        subprocess.run(['onecommander.exe', '-o', path, '-newtab'], check=True)
-    except FileNotFoundError:
-        print("OneCommander executable not found in PATH.")
+        subprocess.run([oc_path, '-o', path, '-newtab'], check=True)
+    except Exception as e:
+        print(f"Error opening OneCommander: {e}")
 
 def open_explorer_tab(path):
     print(f"Opening Explorer tab: {path}")
@@ -54,10 +53,13 @@ def open_explorer_tab(path):
     shell.SendKeys("{ENTER}")
 
 if __name__ == "__main__":
-    test_path = os.getcwd()
+    test_path_1 = os.getcwd()
+    test_path_2 = r"C:\Windows"
     
-    print("Testing Explorer Tab Opening...")
-    open_explorer_tab(test_path)
+    # print("Testing Explorer Tab Opening...")
+    # open_explorer_tab(test_path_1)
     
-    # print("\nTesting OneCommander Tab Opening...")
-    # open_onecommander_tab(test_path)
+    print("\nTesting OneCommander Tab Opening...")
+    open_onecommander_tab(test_path_1)
+    time.sleep(1)
+    open_onecommander_tab(test_path_2)

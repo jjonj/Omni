@@ -25,6 +25,7 @@
 ✅ on app startup it doesn't connect to hub, it like connects and disconnected twice before finally connecting, very odd. add to logging disconnect reason
 ✅ Add option to fetch hub log and display that instead of activity hub, and option to go back to activity log
 ✅ i can select one message in the activity log but i can't select multiple, they are like separate elements. i want to be able to select all log, and copy all to clipboard button (simple icon button)
+✅ Settings screen (accessed by button on dashboard, not bottom panel) - Added prominent Settings button to Quick Actions card.
 
 ### Remote Control Screen
 
@@ -74,6 +75,8 @@
 ✅ When i have a text for open and then switch to another screen and then back to file screen then file is still open which is good but it has reset the scroll distance and cursor position (Fixed by ensuring scrollRestored flag and proper restoration in TextEditorScreen)
 ✅ the right side scroll bar is not grabbable not does it accurately display current scroll level, same on file screen (Implemented custom VerticalScrollbar in SharedComponents and applied to both screens)
 ✅ Add a cool CLI hookin feature, where i can be editing a text file and then have an AI asssistant help me (it works by opening a new CLI session like the AI screen does and will in a smart way send the text of the file to the AI and let the AI edit/insert into the file). Make it really cool and helpful.
+✅ The back button when a file is open is buggy, it makes likst a swipe animation to go back to folder view but only makes it half way before stopping. Removed jumpy animations by using Overlay strategy in MainActivity.
+✅ The file screen used to have a + button in folder view to create text file, that was apparently removed for no reason. Added FAB for file creation.
 
 ### Browser control screen
 
@@ -91,6 +94,7 @@
 
 ✅ Use better widget icons somehow, either let user choose or be smart
 ✅ Add a super cool feature for this please. (Implemented Smart AI Clipboard action)
+✅ Added Macros to widget configuration selector.
 
 ### Settings screen (accessed by button on dashboard, not bottom panel)
 
@@ -128,3 +132,9 @@
 
 ✅ Does not work, simply black (Fixed by improving WebView settings and adding diagnostic logging)
 ✅ Add a "more" button that switched the button panel to exactly the same panel as in control screen AND shows a mini trackpad like browser control. Only difference is that there's a back button somewhere (Implemented 'More Mode' with controls and mini trackpad)
+
+## Omni Web
+
+### Omni web tft
+
+✅ Top Units Suggestion feature in TFT results - Implemented next unit suggestions with score boost and trait impact tooltips.

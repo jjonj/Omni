@@ -4,7 +4,7 @@ try {
   console.error(e);
 }
 
-const HUB_URL = "http://127.0.0.1:5000/signalrhub";
+const HUB_URL = "http://10.0.0.37:5000/signalrhub";
 const API_KEY = "test_api_key";
 
 // Custom cleanup patterns stored in chrome.storage
@@ -138,9 +138,15 @@ function shouldCleanTab(tabUrl) {
 
 // Handle Commands from Android
 connection.on("ReceiveBrowserCommand", async (command, url, newTab) => {
-    console.log(`Command: ${command}, URL: ${url}, NewTab: ${newTab}`);
+    try {
+        console.log(`SignalR: Received command: ${command}, URL: ${url}, NewTab: ${newTab}`);
+        
+        if (command === "Ping") {
+            connection.invoke("SendTabInfo", "Pong", "Extension Alive");
+            return;
+        }
 
-    if (command === "Navigate") {
+        if (command === "Navigate" || command === "OpenTab") {
         if (newTab) {
             chrome.tabs.create({ url: url, active: true });
         } else {
@@ -311,6 +317,10 @@ connection.on("ReceiveBrowserCommand", async (command, url, newTab) => {
                 }
             });
         }
+    }
+    } catch (err) {
+        console.error("SignalR: Error processing browser command:", err);
+        connection.invoke("SendTabInfo", "Error", err.toString());
     }
 });
 

@@ -216,17 +216,27 @@ fun DashboardScreen(modifier: Modifier = Modifier, signalRClient: SignalRClient,
                     
                     Spacer(modifier = Modifier.height(8.dp))
                     
-                    Button(
-                        onClick = {
-                            mainViewModel.clearLogs() 
-                            mainViewModel.addLog("Logs cleared", LogType.INFO)
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = MaterialTheme.colorScheme.secondary
-                        )
-                    ) {
-                        Text("Clear Logs")
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                        Button(
+                            onClick = {
+                                mainViewModel.clearLogs() 
+                                mainViewModel.addLog("Logs cleared", LogType.INFO)
+                            },
+                            modifier = Modifier.weight(1f).padding(end = 4.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
+                        ) {
+                            Text("Clear Logs")
+                        }
+
+                        Button(
+                            onClick = { mainViewModel.navigateTo(AppScreen.SETTINGS) },
+                            modifier = Modifier.weight(1f).padding(start = 4.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primaryContainer, contentColor = MaterialTheme.colorScheme.onPrimaryContainer)
+                        ) {
+                            Icon(Icons.Default.Settings, null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text("Settings")
+                        }
                     }
                 }
             }

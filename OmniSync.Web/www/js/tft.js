@@ -432,6 +432,7 @@ async function loadTFTData() {
         setActiveZone('current-team');
         renderSavedComps();
         initHubConnection();
+        loadTFTSelection();
     } catch (err) {
         console.error("Failed to load TFT data:", err);
     }
@@ -699,8 +700,8 @@ function renderEmblemPool() {
     const classPool = document.getElementById('emblem-pool-classes');
     if (!originPool || !classPool) return;
     
-    originPool.innerHTML = '';
-    classPool.innerHTML = '';
+    originPool.innerHTML = '<div class="pool-subheader">Origins</div>';
+    classPool.innerHTML = '<div class="pool-subheader">Classes</div>';
     
     const emblems = tftData.items.filter(i => {
         if (!i.is_emblem) return false;
@@ -712,12 +713,18 @@ function renderEmblemPool() {
         const displayName = e.name.replace(" Emblem", "");
         const item = createDraggableItem(displayName, e.icon_url, 'emblem', null, e.trait);
         
+        // Add active state if already selected
+        if (selectedEmblems.find(se => se.name === e.name) || selectedMustInclude.find(mi => mi.name === e.name)) {
+            item.classList.add('selected-in-pool');
+        }
+
         item.addEventListener('click', (ev) => {
              if (activeDropZone === 'must-include') {
                  addToMustIncludeEmblem(e);
              } else {
                  addToSelectedEmblems(e);
              }
+             renderEmblemPool(); // Refresh to update highlights
         });
 
         item.addEventListener('contextmenu', (ev) => {
@@ -990,6 +997,8 @@ function renderSelectionZones() {
     if (unitSortMode === 'smart') {
         renderUnitPools();
     }
+
+    saveTFTSelection();
 }
 
 function clearCurrentTeam() {
@@ -1486,13 +1495,73 @@ function renderResults(results, container, level) {
                 } else if (isActive) { textColor = 'var(--text-bright)'; }
             }
 
-            traitItem.style.color = textColor;
-            if (isActive || hasEmblem) traitItem.style.fontWeight = '600';
-            const iconUrl = `assets/tft/${currentConfig.current_set}/traits/${trait.replace(/ /g, '')}.svg`;
-            traitItem.innerHTML = `<img src="${iconUrl}" style="width: 16px; height: 16px; filter: ${filter}" title="${trait}" onerror="this.style.display='none'"><span title="${trait}">${count}</span>`;
-            traitsList.appendChild(traitItem);
-        });
+                        traitItem.style.color = textColor;
+                        if (isActive || hasEmblem) traitItem.style.fontWeight = '600';
+                        const iconUrl = `assets/tft/${currentConfig.current_set}/traits/${trait.replace(/ /g, '')}.svg`;
+                        
+                        // Find units on board that have this trait
+                        const contributors = displayBoard.filter(u => u.traits.includes(trait)).map(u => u.name);
+                        const tooltip = `${trait} (${count}): ${contributors.join(', ')}`;
+                        
+                        traitItem.innerHTML = `<img src="${iconUrl}" style="width: 16px; height: 16px; filter: ${filter}" title="${tooltip}" onerror="this.style.display='none'"><span title="${tooltip}">${count}</span>`; 
+                        traitsList.appendChild(traitItem);
+                });
         card.appendChild(traitsList);
+
+        // Next Unit Suggestions Section
+        const nextUnits = optimizer.getBestNextUnits(res.board, tftData.units.filter(u => !activeDisabledUnits.includes(u.name)), selectedEmblems.map(e => e.trait), solverMode, mustIncludeTraits, mustIncludeNames, 3);
+        if (nextUnits.length > 0) {
+            const suggestionsDiv = document.createElement('div');
+            suggestionsDiv.className = 'next-suggestions';
+            suggestionsDiv.style.marginTop = '12px';
+            suggestionsDiv.style.paddingTop = '8px';
+            suggestionsDiv.style.borderTop = '1px dashed var(--border-light)';
+            
+            const suggestTitle = document.createElement('div');
+            suggestTitle.style.fontSize = '9px';
+            suggestTitle.style.color = 'var(--accent)';
+            suggestTitle.style.fontWeight = 'bold';
+            suggestTitle.style.marginBottom = '6px';
+            suggestTitle.style.textTransform = 'uppercase';
+            suggestTitle.innerText = 'Best Next Units (Level Up)';
+            suggestionsDiv.appendChild(suggestTitle);
+
+            const suggestList = document.createElement('div');
+            suggestList.style.display = 'flex';
+            suggestList.style.gap = '8px';
+            
+            nextUnits.forEach(s => {
+                const item = document.createElement('div');
+                item.style.position = 'relative';
+                item.style.width = '32px';
+                item.style.cursor = 'help';
+                
+                const costColors = { 1: '#808080', 2: '#11b288', 3: '#207ac7', 4: '#c440da', 5: '#ffb93b' };
+                const borderColor = costColors[s.unit.cost] || '#ccc';
+                
+                // Calculate which traits are improved
+                const improvedTraits = Object.entries(s.counts)
+                    .filter(([t, c]) => {
+                        const prevC = res.counts[t] || 0;
+                        if (c <= prevC) return false;
+                        const meta = tftData.trait_metadata[t];
+                        if (!meta) return false;
+                        return meta.breakpoints.some(b => b > prevC && b <= c);
+                    })
+                    .map(([t, c]) => t);
+
+                const tooltip = `+ ${s.unit.name} (${s.unit.cost}g)\nScore Boost: ${s.scoreBoost}\n${improvedTraits.length > 0 ? 'Powers Up: ' + improvedTraits.join(', ') : 'No new breakpoints'}`;
+                
+                item.innerHTML = `
+                    <img src="${s.unit.icon_url}" style="width: 32px; height: 32px; border: 1px solid ${borderColor}; border-radius: 4px;" title="${tooltip}">
+                    <div style="position: absolute; top: -4px; right: -4px; background: #32d74b; color: black; border-radius: 50%; width: 12px; height: 12px; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: bold; border: 1px solid #121212;">+</div>
+                `;
+                suggestList.appendChild(item);
+            });
+            suggestionsDiv.appendChild(suggestList);
+            card.appendChild(suggestionsDiv);
+        }
+
         container.appendChild(card);
     });
 }
@@ -2490,5 +2559,30 @@ function copyCardBoard(card, btn) {
         }
     } catch (err) {
         alert('Failed to copy: ' + err.message);
+    }
+}
+
+function saveTFTSelection() {
+    const data = {
+        currentTeam: selectedCurrentTeam,
+        mustInclude: selectedMustInclude,
+        emblems: selectedEmblems
+    };
+    localStorage.setItem('tft_selection_state', JSON.stringify(data));
+}
+
+function loadTFTSelection() {
+    const data = localStorage.getItem('tft_selection_state');
+    if (data) {
+        try {
+            const parsed = JSON.parse(data);
+            selectedCurrentTeam = parsed.currentTeam || [];
+            selectedMustInclude = parsed.mustInclude || [];
+            selectedEmblems = parsed.emblems || [];
+            renderSelectionZones();
+            renderEmblemPool();
+        } catch(e) {
+            console.error('Failed to load TFT state', e);
+        }
     }
 }

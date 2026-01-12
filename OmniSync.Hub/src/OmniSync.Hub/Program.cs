@@ -240,7 +240,9 @@ builder.Services.AddCors(options =>
         });
 });
 
-builder.Services.AddSignalR();
+builder.Services.AddSignalR(options => {
+    options.MaximumReceiveMessageSize = 1024 * 1024; // 1MB
+});
 builder.Services.AddControllers();
 
 var app = builder.Build();

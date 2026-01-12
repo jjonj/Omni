@@ -839,7 +839,7 @@ namespace OmniSync.Hub.Presentation.Hubs
             {
                 _logger.LogDebug("[RpcApiHub] SendAiResponse received");
                 AnyCommandReceived?.Invoke(this, "AI Response Received");
-                await Clients.All.SendAsync("ReceiveAiResponse", response);
+                await Clients.All.SendAsync("ReceiveAiResponse", response, _aiCliService.GetTargetPid());
             }
         }
 
@@ -848,7 +848,7 @@ namespace OmniSync.Hub.Presentation.Hubs
             if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
             {
                 _logger.LogDebug($"[RpcApiHub] SendAiStatus: {status}");
-                await Clients.All.SendAsync("ReceiveAiStatus", status);
+                await Clients.All.SendAsync("ReceiveAiStatus", status, -1);
             }
         }
 
@@ -955,8 +955,8 @@ namespace OmniSync.Hub.Presentation.Hubs
                 {
                     _logger.LogInformation($"[RpcApiHub] StartNewAiSession requested (Workspace: {workspace}). Broadcasting status...");
                     AnyCommandReceived?.Invoke(this, $"StartNewAiSession requested (Workspace: {workspace})");
-                    await Clients.All.SendAsync("ReceiveAiHistory", "[]");
-                    await Clients.All.SendAsync("ReceiveAiStatus", "Starting session...");
+                    await Clients.All.SendAsync("ReceiveAiHistory", "[]", -1);
+                    await Clients.All.SendAsync("ReceiveAiStatus", "Starting session...", -1);
                     
                     _logger.LogInformation("[RpcApiHub] Calling AiCliService.LaunchSessionAsync...");
                     
@@ -972,12 +972,12 @@ namespace OmniSync.Hub.Presentation.Hubs
                         AnyCommandReceived?.Invoke(this, $"AI Launch Success: PID {result.Value}");
                         await Clients.All.SendAsync("ReceiveNewAiSessionPid", result.Value);
                         // Clear the status on client side
-                        await Clients.All.SendAsync("ReceiveAiStatus", "FINISHED");
+                        await Clients.All.SendAsync("ReceiveAiStatus", "FINISHED", result.Value);
                     }
                     else
                     {
                         AnyCommandReceived?.Invoke(this, "AI Launch Failed");
-                        await Clients.All.SendAsync("ReceiveAiStatus", "Failed to start session");
+                        await Clients.All.SendAsync("ReceiveAiStatus", "Failed to start session", -1);
                     }
                     return result;
                 }
@@ -985,7 +985,7 @@ namespace OmniSync.Hub.Presentation.Hubs
                 {
                      _logger.LogError(ex, "[RpcApiHub] Error in StartNewAiSession");
                      AnyCommandReceived?.Invoke(this, $"AI Launch Error: {ex.Message}");
-                     await Clients.All.SendAsync("ReceiveAiStatus", "Error starting session");
+                     await Clients.All.SendAsync("ReceiveAiStatus", "Error starting session", -1);
                      return null;
                 }
             }
@@ -998,15 +998,15 @@ namespace OmniSync.Hub.Presentation.Hubs
             {
                 _logger.LogInformation($"[RpcApiHub] StartCliAtWorkspace requested: {path}");
                 AnyCommandReceived?.Invoke(this, $"StartCliAtWorkspace: {path}");
-                await Clients.All.SendAsync("ReceiveAiHistory", "[]");
-                await Clients.All.SendAsync("ReceiveAiStatus", "Starting session...");
+                await Clients.All.SendAsync("ReceiveAiHistory", "[]", -1);
+                await Clients.All.SendAsync("ReceiveAiStatus", "Starting session...", -1);
                 var result = await _aiCliService.LaunchSessionAsync(path);
                 _logger.LogInformation($"[RpcApiHub] StartCliAtWorkspace result: {result}");
                 if (result.HasValue)
                 {
                     await Clients.All.SendAsync("ReceiveNewAiSessionPid", result.Value);
                     // Clear the status on client side
-                    await Clients.All.SendAsync("ReceiveAiStatus", "FINISHED");
+                    await Clients.All.SendAsync("ReceiveAiStatus", "FINISHED", result.Value);
                 }
                 return result;
             }

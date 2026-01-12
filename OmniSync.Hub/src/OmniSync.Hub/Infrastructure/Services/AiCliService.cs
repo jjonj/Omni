@@ -673,6 +673,10 @@ namespace OmniSync.Hub.Infrastructure.Services
                         if (string.IsNullOrEmpty(dirName)) dirName = "Root";
                         
                         await SetSessionNameAsync(launchedPid.Value, GetUniqueSessionName(dirName, launchedPid.Value));
+                        
+                        // SET TARGET PID to the new session
+                        _targetPid = launchedPid.Value;
+                        _logger.LogInformation($"[AiCliService] Set target PID to new session {launchedPid.Value}");
                     }
                     catch (Exception ex)
                     {

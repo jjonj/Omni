@@ -631,6 +631,31 @@ class TFTOptimizer {
             suggestions: unitSuggestions.slice(0, limit)
         };
     }
+
+    getBestNextUnits(currentBoard, pool, emblems, mode = 'default', mustIncludeTraits = {}, mustIncludeNames = [], limit = 5) {
+        let suggestions = [];
+        const boardNames = new Set(currentBoard.map(u => u.name));
+        const currentScore = this.scoreBoard(currentBoard, emblems, currentBoard.length, mode, mustIncludeTraits, mustIncludeNames).score;
+
+        for (const candidate of pool) {
+            if (boardNames.has(candidate.name)) continue;
+
+            const nextBoard = [...currentBoard, candidate];
+            const result = this.scoreBoard(nextBoard, emblems, nextBoard.length, mode, mustIncludeTraits, mustIncludeNames);
+            const scoreBoost = result.score - currentScore;
+
+            if (scoreBoost > -100000) { // Only consider non-penalized additions
+                suggestions.push({
+                    unit: candidate,
+                    scoreBoost: scoreBoost,
+                    counts: result.counts
+                });
+            }
+        }
+
+        suggestions.sort((a, b) => b.scoreBoost - a.scoreBoost);
+        return suggestions.slice(0, limit);
+    }
 }
 
 if (typeof module !== 'undefined' && module.exports) {

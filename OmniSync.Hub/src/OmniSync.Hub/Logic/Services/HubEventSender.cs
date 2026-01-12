@@ -90,21 +90,21 @@ namespace OmniSync.Hub.Logic.Services
 
         private async void OnAiCliResponseReceived(object? sender, GeminiResponseEventArgs e)
         {
+            int broadcastPid = e.Pid > 0 ? e.Pid : (_aiCliService.GetTargetPid() > 0 ? _aiCliService.GetTargetPid() : -1);
+
             if (e.IsHistory)
             {
-                Console.WriteLine($"[HubEventSender] Received History for PID {e.Pid}");
-                await _hubContext.Clients.All.SendAsync("ReceiveAiHistory", e.Text, e.Pid);
+                Console.WriteLine($"[HubEventSender] Received History for PID {broadcastPid}");
+                await _hubContext.Clients.All.SendAsync("ReceiveAiHistory", e.Text, broadcastPid);
             }
             else if (e.IsCodeDiff)
             {
-                int broadcastPid = e.Pid > 0 ? e.Pid : _aiCliService.GetTargetPid();
                 Console.WriteLine($"[HubEventSender] Broadcasting Code Diff for PID {broadcastPid}");
                 await _hubContext.Clients.All.SendAsync("ReceiveAiCodeDiff", e.Text, broadcastPid);
             }
             else if (e.Text.StartsWith("Thinking: "))
             {
                 string thought = e.Text.Substring("Thinking: ".Length);
-                int broadcastPid = e.Pid > 0 ? e.Pid : _aiCliService.GetTargetPid();
                 Console.WriteLine($"[HubEventSender] Broadcasting Thought for PID {broadcastPid}: {thought.Substring(0, Math.Min(thought.Length, 50))}...");
                 
                 await _hubContext.Clients.All.SendAsync("ReceiveAiThought", thought, broadcastPid);
@@ -115,14 +115,12 @@ namespace OmniSync.Hub.Logic.Services
                  if (!string.IsNullOrEmpty(e.Text))
                  {
                      string preview = e.Text.Length > 50 ? e.Text.Substring(0, 50) + "..." : e.Text;
-                     int broadcastPid = e.Pid > 0 ? e.Pid : _aiCliService.GetTargetPid();
                      Console.WriteLine($"[HubEventSender] Broadcasting Response for PID {broadcastPid}: {preview}");
                      await _hubContext.Clients.All.SendAsync("ReceiveAiResponse", e.Text, broadcastPid);
                  }
 
                  if (e.IsFinished)
                  {
-                     int broadcastPid = e.Pid > 0 ? e.Pid : _aiCliService.GetTargetPid();
                      Console.WriteLine($"[HubEventSender] Turn FINISHED for PID {broadcastPid}");
                      await _hubContext.Clients.All.SendAsync("ReceiveAiStatus", "FINISHED", broadcastPid);
                  }

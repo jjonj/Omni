@@ -204,11 +204,6 @@ fun FilesScreen(
                     }
                 },
                 actions = {
-                    if (currentPath.isNotEmpty()) {
-                        IconButton(onClick = { showCreateFileDialog = true }) {
-                            Icon(Icons.Default.Add, contentDescription = "Create File")
-                        }
-                    }
                     if (currentPath.isNotEmpty() && currentPath != "/") {
                         IconButton(onClick = { filesViewModel.bookmarkCurrentDirectory() }) {
                             Icon(
@@ -225,6 +220,17 @@ fun FilesScreen(
                     }
                 }
             )
+        },
+        floatingActionButton = {
+            if (currentPath.isNotEmpty()) {
+                FloatingActionButton(
+                    onClick = { showCreateFileDialog = true },
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = "Create New File")
+                }
+            }
         },
         bottomBar = {
             // --- Compact Bookmarks Area (Bottom, always visible) ---

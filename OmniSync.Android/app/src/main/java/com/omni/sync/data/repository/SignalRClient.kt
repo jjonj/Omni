@@ -168,7 +168,15 @@ class SignalRClient(
     private val messageQueue = mutableListOf<String>()
     val isStartingSessionFlow = MutableStateFlow(false)
 
-    private var isNextResponseNewBubble = true
+    private val _isNextBubbleMap = MutableStateFlow<Map<Int, Boolean>>(emptyMap())
+
+    private fun setIsNextBubble(pid: Int, isNew: Boolean) {
+        _isNextBubbleMap.value = _isNextBubbleMap.value + (pid to isNew)
+    }
+
+    private fun getIsNextBubble(pid: Int): Boolean {
+        return _isNextBubbleMap.value[pid] ?: true
+    }
 
     companion object {
         const val SHARED_PREFS_NAME = "OmniSyncPrefs"
@@ -389,7 +397,7 @@ class SignalRClient(
             if (status == "FINISHED" || status == "DONE" || status == null || status.isBlank()) {
                 updateSessionStatus(pid, null)
                 updateSessionThought(pid, null)
-                isNextResponseNewBubble = true
+                setIsNextBubble(pid, true)
                 // Clear queued status from all messages in this session
                 updateSessionMessages(pid) { messages ->
                     messages.map { it.copy(isQueued = false) }
@@ -408,7 +416,7 @@ class SignalRClient(
             } else {
                 updateSessionStatus(pid, status)
                 if (status == "AI Thinking...") {
-                    isNextResponseNewBubble = true
+                    setIsNextBubble(pid, true)
                 }
                 // Clear queued status when AI starts responding or thinking
                 updateSessionMessages(pid) { messages ->
@@ -432,7 +440,7 @@ class SignalRClient(
             
             if (wasStartingOurOwn) {
                 mainViewModel.addLog("[AI] Switching to our new session PID $pid", com.omni.sync.ui.screen.LogType.INFO)
-                setSelectedPid(pid)
+                switchAiSession(pid) // Notifies Hub AND updates local state
             }
             
             coroutineScope.launch { lastCreatedSessionPid.emit(pid) }
@@ -510,13 +518,16 @@ class SignalRClient(
 
         hubConnection?.on("ReceiveAiHistory", { historyJson: String, pid: Int ->
             try {
+                if (pid == -1 && (historyJson == "[]" || historyJson.isNullOrBlank())) {
+                    return@on
+                }
+
                 val type = object : TypeToken<List<Map<String, String>>>() {}.type
                 val history: List<Map<String, String>> = gson.fromJson(historyJson, type)
                 val mappedHistory = history.map { 
                     val sender = it["sender"] ?: "Unknown"
                     val text = it["text"] ?: ""
                     
-                    // Map existing sender to our new categories if it's from AI/System/Unknown
                     val mappedSender = if (sender == "AI" || sender == "System" || sender == "Unknown") {
                         when {
                             text.startsWith("Error:") -> "Error"
@@ -531,14 +542,14 @@ class SignalRClient(
                             else -> "AI"
                         }
                     } else {
-                        sender // Keeps 'CodeDiff', 'Me', etc.
+                        sender 
                     }
                     AiMessage(mappedSender, text)
                 }
                 
                 _aiMessagesMap.value = _aiMessagesMap.value + (pid to mappedHistory)
                 updateSessionStatus(pid, null)
-                isNextResponseNewBubble = true
+                setIsNextBubble(pid, true)
                 updateActiveView()
             } catch (e: Exception) {
                 Log.e("SignalRClient", "Error parsing AI history", e)
@@ -588,33 +599,25 @@ class SignalRClient(
         val sessionMessages = currentMap[pid] ?: emptyList()
         val newMessages = block(sessionMessages)
         _aiMessagesMap.value = currentMap + (pid to newMessages)
-        if (pid == _selectedPid.value) {
-            updateActiveView()
-        }
+        updateActiveView()
     }
 
     private fun updateSessionStatus(pid: Int, status: String?) {
         val currentMap = _aiStatusMap.value
         _aiStatusMap.value = currentMap + (pid to status)
-        if (pid == _selectedPid.value) {
-            updateActiveView()
-        }
+        updateActiveView()
     }
 
     private fun updateSessionThought(pid: Int, thought: String?) {
         val currentMap = _aiThoughtMap.value
         _aiThoughtMap.value = currentMap + (pid to thought)
-        if (pid == _selectedPid.value) {
-            updateActiveView()
-        }
+        updateActiveView()
     }
 
     private fun updateSessionDialog(pid: Int, dialog: AiDialog?) {
         val currentMap = _aiDialogMap.value
         _aiDialogMap.value = currentMap + (pid to dialog)
-        if (pid == _selectedPid.value) {
-            updateActiveView()
-        }
+        updateActiveView()
     }
 
     private fun updateActiveView() {
@@ -673,29 +676,26 @@ class SignalRClient(
     }
 
     fun sendAiMessage(message: String, pid: Int? = null) {
-        if (_isStartingSession) {
+        val targetPid = pid ?: _selectedPid.value
+        
+        if (targetPid == -1 || (_isStartingSession && pid == null)) {
             messageQueue.add(message)
             // Immediate feedback for queued messages
             updateSessionMessages(-1) { it + AiMessage("Me", message) }
-            return
-        }
-
-        if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {       
-            val targetPid = pid ?: _selectedPid.value
             
             if (targetPid == -1 && !message.startsWith("/")) {
                 // Auto-create session
                 startNewAiSession()
-                messageQueue.add(message)
-                updateSessionMessages(-1) { it + AiMessage("Me", message) }
-                return
             }
+            return
+        }
 
+        if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {       
             if (!message.startsWith("/")) {
                 updateSessionStatus(targetPid, "AI Thinking...")
             }
             
-            val hubPid = if (targetPid == -1) null else targetPid
+            val hubPid = if (targetPid <= 0) null else targetPid
             hubConnection?.send("SendAiMessage", message, hubPid)
         }
     }
@@ -1168,7 +1168,7 @@ class SignalRClient(
     private fun handleAiResponse(response: String, pid: Int) {
         if (response == "[TURN_FINISHED]") {
             updateSessionStatus(pid, null)
-            isNextResponseNewBubble = true
+            setIsNextBubble(pid, true)
             return
         }
 
@@ -1202,12 +1202,14 @@ class SignalRClient(
 
         updateSessionMessages(pid) { currentMessages ->
             val mutable = currentMessages.toMutableList()
-            if (!isNextResponseNewBubble && !isError && !isSystem && mutable.isNotEmpty() && mutable.last().sender == "AI") {
+            val isNextNew = getIsNextBubble(pid)
+            
+            if (!isNextNew && !isError && !isSystem && mutable.isNotEmpty() && mutable.last().sender == "AI") {
                 val lastMsg = mutable.last()
                 mutable[mutable.size - 1] = lastMsg.copy(text = lastMsg.text + response)
                 mutable
             } else {
-                if (!isError && !isSystem) isNextResponseNewBubble = false
+                if (!isError && !isSystem) setIsNextBubble(pid, false)
                 mutable + AiMessage(sender, response)
             }
         }
@@ -1225,7 +1227,7 @@ class SignalRClient(
         updateSessionMessages(pid) { currentMessages ->
             currentMessages + AiMessage("CodeDiff", diff)
         }
-        isNextResponseNewBubble = true
+        setIsNextBubble(pid, true)
     }
 
     private fun removeHubHandlers() {

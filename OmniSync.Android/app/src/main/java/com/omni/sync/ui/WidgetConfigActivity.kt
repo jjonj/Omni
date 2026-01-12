@@ -51,6 +51,9 @@ class WidgetConfigActivity : ComponentActivity() {
         val customActions = config.notificationActions
         val predefinedActions = configManager.getPredefinedActions()
         val bookmarkActions = configManager.getBookmarks()
+        val macroActions = config.macros.map { 
+            NotificationAction(java.util.UUID.randomUUID().toString(), it.name, "MACRO:${it.script}")
+        }
 
         setContent {
             OmniSyncTheme {
@@ -66,6 +69,18 @@ class WidgetConfigActivity : ComponentActivity() {
                         )
                         
                         LazyColumn {
+                            if (macroActions.isNotEmpty()) {
+                                item {
+                                    Text("Macros", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(vertical = 8.dp))
+                                }
+                                items(macroActions) { action ->
+                                    ActionItem(action) {
+                                        saveWidgetAction(appWidgetId, action)
+                                        finishWithSuccess()
+                                    }
+                                }
+                            }
+
                             if (customActions.isNotEmpty()) {
                                 item {
                                     Text("Custom Actions", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(vertical = 8.dp))

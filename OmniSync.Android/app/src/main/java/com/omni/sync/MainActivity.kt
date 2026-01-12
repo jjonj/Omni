@@ -217,39 +217,41 @@ class MainActivity : ComponentActivity() {
                             )
                         }
                     ) { innerPadding ->
-                        // Use a special modifier for RemoteControl to allow it to be truly full-screen
-                        // while others stay safely padded.
-                        val isRemote = currentScreen == AppScreen.REMOTECONTROL
+                        val isSwipeable = currentScreen in swipeableScreens
                         
                         Box(modifier = Modifier.fillMaxSize()) {
-                            if (currentScreen == AppScreen.EDITOR || currentScreen == AppScreen.SETTINGS || 
-                                currentScreen == AppScreen.DOWNLOADED_VIDEOS || 
-                                currentScreen == AppScreen.MACRO_MANAGER ||
-                                currentScreen == AppScreen.VIDEOPLAYER ||
-                                currentScreen == AppScreen.IMAGE_VIEWER) {
-                                MainScreenContent(currentScreen, signalRClient, browserViewModel, filesViewModel, mainViewModel, innerPadding)
-                            } else {
-                                // Custom touch slop to make paging less sensitive to diagonal swipes
-                                val viewConfig = androidx.compose.ui.platform.LocalViewConfiguration.current
-                                val customViewConfig = remember {
-                                    object : androidx.compose.ui.platform.ViewConfiguration by viewConfig {
-                                        override val touchSlop: Float get() = viewConfig.touchSlop * 2.5f
+                            // Always keep pager in composition to avoid state resets and jumpy animations
+                            // Custom touch slop to make paging less sensitive
+                            val viewConfig = androidx.compose.ui.platform.LocalViewConfiguration.current
+                            val customViewConfig = remember {
+                                object : androidx.compose.ui.platform.ViewConfiguration by viewConfig {
+                                    override val touchSlop: Float get() = viewConfig.touchSlop * 2.5f
+                                }
+                            }
+                            
+                            androidx.compose.runtime.CompositionLocalProvider(
+                                androidx.compose.ui.platform.LocalViewConfiguration provides customViewConfig
+                            ) {
+                                HorizontalPager(
+                                    state = pagerState,
+                                    modifier = Modifier.fillMaxSize(),
+                                    userScrollEnabled = isSwipeable // Only allow swiping on swipeable screens
+                                ) { page ->
+                                    val screenAtPage = swipeableScreens[page]
+                                    val pageModifier = if (screenAtPage == AppScreen.REMOTECONTROL || screenAtPage == AppScreen.FILES || screenAtPage == AppScreen.AI_CHAT || screenAtPage == AppScreen.WEB_SERVER) Modifier else Modifier.padding(innerPadding)
+                                    Box(modifier = pageModifier) {
+                                        MainScreenContent(screenAtPage, signalRClient, browserViewModel, filesViewModel, mainViewModel, innerPadding)
                                     }
                                 }
-                                androidx.compose.runtime.CompositionLocalProvider(
-                                    androidx.compose.ui.platform.LocalViewConfiguration provides customViewConfig
+                            }
+
+                            // Overlay non-swipeable screens on top when active
+                            if (!isSwipeable) {
+                                Surface(
+                                    modifier = Modifier.fillMaxSize(),
+                                    color = MaterialTheme.colorScheme.background
                                 ) {
-                                    HorizontalPager(
-                                        state = pagerState,
-                                        modifier = Modifier.fillMaxSize(),
-                                        userScrollEnabled = true 
-                                    ) { page ->
-                                        val screenAtPage = swipeableScreens[page]
-                                        val pageModifier = if (screenAtPage == AppScreen.REMOTECONTROL || screenAtPage == AppScreen.FILES || screenAtPage == AppScreen.AI_CHAT || screenAtPage == AppScreen.WEB_SERVER) Modifier else Modifier.padding(innerPadding)
-                                        Box(modifier = pageModifier) {
-                                            MainScreenContent(screenAtPage, signalRClient, browserViewModel, filesViewModel, mainViewModel, innerPadding)
-                                        }
-                                    }
+                                    MainScreenContent(currentScreen, signalRClient, browserViewModel, filesViewModel, mainViewModel, innerPadding)
                                 }
                             }
                         }
