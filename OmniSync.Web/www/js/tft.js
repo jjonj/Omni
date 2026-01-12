@@ -1528,7 +1528,7 @@ function renderImproveResults(suggestions, container, currentCounts) {
                         ${candidatesHtml}
                     </div>
                 </div>
-                <button class="icon-btn" onclick="copyImprovementCode(this)" title="Copy Improved Team Code" style="background: none; border: none; cursor: pointer; padding: 2px; display: flex; align-items: center; color: var(--text-dim); transition: color 0.2s;">
+                <button class="icon-btn" onclick="copyResultCode(this)" title="Copy Improved Team Code" style="background: none; border: none; cursor: pointer; padding: 2px; display: flex; align-items: center; color: var(--text-dim); transition: color 0.2s;">
                     <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
                 </button>
             </div>`;
@@ -1808,20 +1808,29 @@ function importTeamPlannerCode() {
     }
 }
 
-function copyResultCode(index) {
-    const cards = document.querySelectorAll('.result-card');
-    if (cards[index]) {
+function copyResultCode(target) {
+    let card;
+    if (typeof target === 'number') {
+        const cards = document.querySelectorAll('.result-card');
+        card = cards[target];
+    } else {
+        card = target.closest('.result-card');
+    }
+
+    if (card) {
         try {
-            const board = JSON.parse(cards[index].dataset.board);
+            const board = JSON.parse(card.dataset.board);
             const code = TeamPlannerCode.encode(board);
             
             if (hubConnection && hubConnection.state === signalR.HubConnectionState.Connected) {
                 hubConnection.invoke("UpdateClipboard", code);
                 // Visual feedback
-                const btn = cards[index].querySelector('.icon-btn');
-                const originalColor = btn.style.color;
-                btn.style.color = 'var(--accent)';
-                setTimeout(() => btn.style.color = originalColor, 1000);
+                const btn = card.querySelector('.icon-btn');
+                if (btn) {
+                    const originalColor = btn.style.color;
+                    btn.style.color = 'var(--accent)';
+                    setTimeout(() => btn.style.color = originalColor, 1000);
+                }
             } else {
                 const tempInput = document.createElement('input');
                 document.body.appendChild(tempInput);

@@ -179,33 +179,47 @@ fun AiChatScreen(
             .sorted()
     }
 
+    val isAtBottom by remember {
+        derivedStateOf { listState.firstVisibleItemIndex == 0 }
+    }
+
     Scaffold(
         topBar = {
             CenterAlignedTopAppBar(
                 title = {
                     Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                        TextButton(
-                            onClick = { 
-                                if (isConnected) {
-                                    signalRClient.getAiSessions()
-                                    showSessionMenu = true 
-                                }
-                            }, 
-                            enabled = isConnected,
-                            colors = ButtonDefaults.textButtonColors(
-                                containerColor = if (sessionButtonAnim.value > 0f) 
-                                    MaterialTheme.colorScheme.primaryContainer.copy(alpha = sessionButtonAnim.value * 0.5f)
-                                    else Color.Transparent
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            // Scrolled to bottom indicator
+                            Box(
+                                modifier = Modifier
+                                    .size(8.dp)
+                                    .background(if (isAtBottom) Color.Green else Color.Gray.copy(alpha = 0.5f), CircleShape)
                             )
-                        ) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                val currentName = if (!isConnected) "Disconnected" else if (isStartingSession) "Creating Session..." else (sessions[selectedPid] ?: "Select Session")
-                                Text(currentName, style = MaterialTheme.typography.titleMedium)
-                                if (isConnected) {
-                                    if (aiStatus != null) {
-                                        Text(aiStatus!!, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
-                                    } else {
-                                        Text("${sessions.size} sessions active", style = MaterialTheme.typography.labelSmall)
+                            Spacer(Modifier.width(8.dp))
+                            
+                            TextButton(
+                                onClick = { 
+                                    if (isConnected) {
+                                        signalRClient.getAiSessions()
+                                        showSessionMenu = true 
+                                    }
+                                }, 
+                                enabled = isConnected,
+                                colors = ButtonDefaults.textButtonColors(
+                                    containerColor = if (sessionButtonAnim.value > 0f) 
+                                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = sessionButtonAnim.value * 0.5f)
+                                        else Color.Transparent
+                                )
+                            ) {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    val currentName = if (!isConnected) "Disconnected" else if (isStartingSession) "Creating Session..." else (sessions[selectedPid] ?: "Select Session")
+                                    Text(currentName, style = MaterialTheme.typography.titleMedium)
+                                    if (isConnected) {
+                                        if (aiStatus != null) {
+                                            Text(aiStatus!!, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                                        } else {
+                                            Text("${sessions.size} sessions active", style = MaterialTheme.typography.labelSmall)
+                                        }
                                     }
                                 }
                             }
@@ -1258,8 +1272,9 @@ fun AiDialogBubble(
             border = androidx.compose.foundation.BorderStroke(2.dp, MaterialTheme.colorScheme.tertiary)
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
+                val isStatus = dialog.options != null && dialog.options.isEmpty()
                 Text(
-                    text = "Choice Required",
+                    text = if (isStatus) "Status" else "Choice Required",
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onTertiaryContainer
@@ -1270,41 +1285,44 @@ fun AiDialogBubble(
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onTertiaryContainer
                 )
-                Spacer(Modifier.height(16.dp))
                 
-                if (dialog.options != null && dialog.options.isNotEmpty()) {
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        dialog.options.forEach { option ->
-                            Button(
-                                onClick = { signalRClient.sendAiDialogResponse(option, selectedPid) },
-                                modifier = Modifier.fillMaxWidth(),
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = MaterialTheme.colorScheme.tertiary
-                                )
-                            ) {
-                                Text(option)
+                if (!isStatus) {
+                    Spacer(Modifier.height(16.dp))
+                    
+                    if (dialog.options != null) {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            dialog.options.forEach { option ->
+                                Button(
+                                    onClick = { signalRClient.sendAiDialogResponse(option, selectedPid) },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = MaterialTheme.colorScheme.tertiary
+                                    )
+                                ) {
+                                    Text(option)
+                                }
                             }
                         }
-                    }
-                } else {
-                    // Default to Yes/No if no options provided
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Button(
-                            onClick = { signalRClient.sendAiDialogResponse("yes", selectedPid) },
-                            modifier = Modifier.weight(1f),
-                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.tertiary)
+                    } else {
+                        // Default to Yes/No if options is null
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            Text("Yes")
-                        }
-                        Button(
-                            onClick = { signalRClient.sendAiDialogResponse("no", selectedPid) },
-                            modifier = Modifier.weight(1f),
-                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
-                        ) {
-                            Text("No")
+                            Button(
+                                onClick = { signalRClient.sendAiDialogResponse("yes", selectedPid) },
+                                modifier = Modifier.weight(1f),
+                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.tertiary)
+                            ) {
+                                Text("Yes")
+                            }
+                            Button(
+                                onClick = { signalRClient.sendAiDialogResponse("no", selectedPid) },
+                                modifier = Modifier.weight(1f),
+                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                            ) {
+                                Text("No")
+                            }
                         }
                     }
                 }

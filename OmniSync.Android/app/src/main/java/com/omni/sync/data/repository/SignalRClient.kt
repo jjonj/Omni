@@ -420,7 +420,8 @@ class SignalRClient(
         }, List::class.java)
 
         hubConnection?.on("ReceiveNewAiSessionPid", { pid: Int ->
-            Log.d("SignalRClient", "New session created: PID $pid")
+            Log.d("SignalRClient", "ReceiveNewAiSessionPid: $pid")
+            mainViewModel.addLog("[AI] New session reported by Hub: PID $pid", com.omni.sync.ui.screen.LogType.SUCCESS)
             getAiSessions()
             val wasStartingOurOwn = _isStartingSession
             _isStartingSession = false
@@ -428,16 +429,20 @@ class SignalRClient(
             updateSessionStatus(pid, null)
             
             if (wasStartingOurOwn) {
+                mainViewModel.addLog("[AI] Switching to our new session PID $pid", com.omni.sync.ui.screen.LogType.INFO)
                 setSelectedPid(pid)
             }
             
             coroutineScope.launch { lastCreatedSessionPid.emit(pid) }
 
             // Flush queue
-            messageQueue.forEach { msg ->
-                sendAiMessage(msg, pid)
+            if (messageQueue.isNotEmpty()) {
+                mainViewModel.addLog("[AI] Flushing ${messageQueue.size} queued messages to PID $pid", com.omni.sync.ui.screen.LogType.INFO)
+                messageQueue.forEach { msg ->
+                    sendAiMessage(msg, pid)
+                }
+                messageQueue.clear()
             }
-            messageQueue.clear()
 
             // Clear the temporary -1 session messages
             _aiMessagesMap.value = _aiMessagesMap.value - (-1)
@@ -468,13 +473,13 @@ class SignalRClient(
                     }
                     val name = (session["name"] ?: session["Name"]) as? String ?: "Session $pid"
                     val workspace = (session["workspace"] ?: session["Workspace"]) as? String ?: ""
-                    Log.d("SignalRClient", "Parsed Session: PID=$pid, Name=$name, Workspace=$workspace")
                     if (pid != 0) {
                         sessionsMap[pid] = name
                         workspacesMap[pid] = workspace
                     }
                 }
 
+                Log.d("SignalRClient", "ReceiveAiSessions: Found ${sessionsMap.size} sessions")
                 _aiSessions.value = sessionsMap
                 _aiWorkspaces.value = workspacesMap
                 
@@ -485,11 +490,15 @@ class SignalRClient(
                     _aiStatusMap.value = currentStatusMap - keysToRemove.toSet()
                 }
 
-                // If current selectedPid is not in sessions anymore, pick a new one
-                if (_selectedPid.value != -1 && !sessionsMap.containsKey(_selectedPid.value)) {
+                // Auto-selection logic
+                val currentPid = _selectedPid.value
+                if (currentPid != -1 && !sessionsMap.containsKey(currentPid)) {
+                    // Current session died
+                    mainViewModel.addLog("[AI] Current session PID $currentPid died.", com.omni.sync.ui.screen.LogType.WARNING)
                     if (sessionsMap.isNotEmpty()) setSelectedPid(sessionsMap.keys.first())
                     else setSelectedPid(-1)
-                } else if (_selectedPid.value == -1 && sessionsMap.isNotEmpty() && !_isStartingSession) {
+                } else if (currentPid == -1 && sessionsMap.isNotEmpty() && !_isStartingSession) {
+                    // We were on -1 (maybe initial state) and sessions exist, pick the first one
                     setSelectedPid(sessionsMap.keys.first())
                 }
             } catch (e: Exception) {
@@ -723,6 +732,11 @@ class SignalRClient(
 
     fun startNewAiSession(workspace: String? = null) {
         if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {       
+            if (_isStartingSession) {
+                Log.d("SignalRClient", "Already starting a session, ignoring request.")
+                return
+            }
+            
             _isStartingSession = true
             isStartingSessionFlow.value = true
             messageQueue.clear()

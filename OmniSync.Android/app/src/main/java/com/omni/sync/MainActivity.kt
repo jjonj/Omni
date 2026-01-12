@@ -167,11 +167,15 @@ class MainActivity : ComponentActivity() {
                     LaunchedEffect(pagerState) {
                         snapshotFlow { pagerState.currentPage }.collect { page ->
                             val screen = swipeableScreens[page]
-                            val prevScreen = mainViewModel.currentScreen.value
-                            if (prevScreen != screen) {
+                            val currentScreen = mainViewModel.currentScreen.value
+                            
+                            // Only allow pager to trigger navigation if we are currently on a swipeable screen
+                            if (currentScreen !in swipeableScreens) return@collect
+                            
+                            if (currentScreen != screen) {
                                 if (screen == AppScreen.FILES && filesViewModel.editingFile.value != null) {
                                     // Only auto-redirect to EDITOR if we are NOT coming from EDITOR
-                                    if (prevScreen != AppScreen.EDITOR) {
+                                    if (currentScreen != AppScreen.EDITOR) {
                                         mainViewModel.navigateTo(AppScreen.EDITOR)
                                     } else {
                                         mainViewModel.navigateTo(screen)

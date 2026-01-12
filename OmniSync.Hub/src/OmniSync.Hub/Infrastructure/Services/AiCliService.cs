@@ -58,9 +58,10 @@ namespace OmniSync.Hub.Infrastructure.Services
         private DateTime _lastWmiDiscovery = DateTime.MinValue;
         private List<int> _cachedWmiPids = new();
         private int _targetPid = -1;
+        private bool _isLaunching = false;
         private readonly SemaphoreSlim _sessionLock = new(1, 1);
 
-        public bool IsBusy => _sessionLock.CurrentCount == 0;
+        public bool IsBusy => _sessionLock.CurrentCount == 0 || _isLaunching;
 
         public event EventHandler<GeminiResponseEventArgs>? ResponseReceived;
         public event EventHandler<GeminiDialogEventArgs>? DialogReceived;
@@ -348,6 +349,26 @@ namespace OmniSync.Hub.Infrastructure.Services
                 }
             }
 
+            // Clean up stale names and workspaces for PIDs no longer present
+            foreach (var pid in _sessionNames.Keys.ToList())
+            {
+                if (!pids.Contains(pid))
+                {
+                    _sessionNames.TryRemove(pid, out _);
+                    _workspaces.TryRemove(pid, out _);
+                }
+            }
+
+            // Clean up stale session names and workspaces for PIDs no longer present
+            foreach (var pid in _sessionNames.Keys.ToList())
+            {
+                if (!pids.Contains(pid))
+                {
+                    _sessionNames.TryRemove(pid, out _);
+                    _workspaces.TryRemove(pid, out _);
+                }
+            }
+
             // Ensure we have sessions for all PIDs found
             var pidsToConnect = pids.Where(p => !_sessions.ContainsKey(p) || !_sessions[p].IsConnected).ToList();
             if (pidsToConnect.Any())
@@ -548,6 +569,14 @@ namespace OmniSync.Hub.Infrastructure.Services
 
         public async Task<int?> LaunchSessionAsync(string? workspace = null, Action<string>? onProgress = null)
         {
+            if (_isLaunching)
+            {
+                _logger.LogWarning("[AiCliService] Already launching a session. Ignoring request.");
+                onProgress?.Invoke("Already launching a session...");
+                return null;
+            }
+
+            _isLaunching = true;
             _logger.LogInformation($"[AiCliService] LaunchSessionAsync starting (workspace: {workspace ?? "default"})");
             onProgress?.Invoke("Initializing launch sequence...");
             try
@@ -680,6 +709,10 @@ namespace OmniSync.Hub.Infrastructure.Services
                 _logger.LogError(ex, "[AiCliService] Error launching Gemini CLI session");
                 onProgress?.Invoke($"Error launching session: {ex.Message}");
                 return null;
+            }
+            finally
+            {
+                _isLaunching = false;
             }
         }
 
