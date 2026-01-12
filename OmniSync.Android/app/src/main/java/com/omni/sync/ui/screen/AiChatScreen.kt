@@ -76,6 +76,8 @@ import com.omni.sync.utils.WindowsKeyCodes.VK_UP
 import com.omni.sync.utils.WindowsKeyCodes.VK_Y
 import com.omni.sync.ui.components.DirectoryPickerDialog
 
+import androidx.compose.foundation.interaction.DragInteraction
+
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun AiChatScreen(
@@ -111,19 +113,63 @@ fun AiChatScreen(
 
     var textFieldValue by remember { mutableStateOf(TextFieldValue(inputText)) }
     
-    // Sync external changes to internal state (e.g. clearing after send)
+    // Sync external changes to internal state
     LaunchedEffect(inputText) {
         if (inputText != textFieldValue.text) {
             textFieldValue = textFieldValue.copy(text = inputText)
         }
     }
 
-    // Filter messages to avoid empty/dangling bubbles
     val filteredMessages = remember(messages) {
         messages.filter { it.text.isNotBlank() }
     }
 
-    var lastMessageCount by remember { mutableIntStateOf(filteredMessages.size) }
+    // STRICT AUTO-SCROLL LOGIC
+    var isAutoScrollEnabled by remember { mutableStateOf(true) }
+
+    // 1. Detect User Drags (Interactions)
+    LaunchedEffect(listState) {
+        listState.interactionSource.interactions.collect { interaction ->
+            if (interaction is DragInteraction.Start) {
+                // User touched and started dragging -> Stop auto-scrolling
+                isAutoScrollEnabled = false
+            }
+        }
+    }
+
+    // 2. Re-enable if at bottom
+    // We use a derived state to prevent excessive recomposition, but check it frequently
+    val isAtBottom by remember {
+        derivedStateOf { 
+            listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset == 0 
+        }
+    }
+
+    LaunchedEffect(isAtBottom) {
+        if (isAtBottom) {
+            isAutoScrollEnabled = true
+        }
+    }
+
+    // 3. Force Auto-Scroll
+    LaunchedEffect(filteredMessages.size, isAiThinking, isAutoScrollEnabled) {
+        if (isAutoScrollEnabled && filteredMessages.isNotEmpty()) {
+            // If enabled, we scroll. No questions asked.
+            delay(50) // Small delay for layout calculation
+            listState.animateScrollToItem(0)
+        }
+    }
+    
+    // Handle history reload (force jump)
+    LaunchedEffect(aiStatus) {
+         val isReloading = aiStatus?.contains("Reloading", ignoreCase = true) == true || 
+                          aiStatus?.contains("Switching", ignoreCase = true) == true
+         if (isReloading) {
+             isAutoScrollEnabled = true
+             listState.scrollToItem(0)
+         }
+    }
+
 
     // Animation for session button flash
     val sessionButtonAnim = remember { Animatable(0f) }
@@ -140,37 +186,6 @@ fun AiChatScreen(
         signalRClient.getAiSessions()
     }
 
-    // Auto-scroll logic
-    LaunchedEffect(filteredMessages.size, isAiThinking) {
-        val countIncreased = filteredMessages.size > lastMessageCount
-        
-        if (filteredMessages.isNotEmpty()) {
-            val isReloading = aiStatus?.contains("Reloading", ignoreCase = true) == true || 
-                             aiStatus?.contains("Switching", ignoreCase = true) == true
-            
-            if (isReloading) {
-                // Jump instantly for history reloads/switches
-                mainViewModel.addLog("[UI] History reload/switch detected for PID $selectedPid. Scrolling to bottom.", com.omni.sync.ui.screen.LogType.INFO)
-                delay(100) // Small delay to let items render
-                listState.scrollToItem(0)
-            } else {
-                // Only auto-scroll if we are already at the bottom (index 0)
-                // We check first visible item index. In reverseLayout, 0 is bottom.
-                val isAtBottom = listState.firstVisibleItemIndex <= 1
-                val newestIsMe = filteredMessages.lastOrNull()?.sender == "Me"
-
-                if (isAtBottom || (countIncreased && newestIsMe)) {
-                    if (countIncreased) {
-                        mainViewModel.addLog("[UI] New message in PID $selectedPid. Auto-scrolling.", com.omni.sync.ui.screen.LogType.INFO)
-                    }
-                    delay(50) // Small delay to let Compose measure new items
-                    listState.animateScrollToItem(0)
-                }
-            }
-        }
-        lastMessageCount = filteredMessages.size
-    }
-
     // Jump between user messages
     val userMessageItemIndices = remember(filteredMessages) {
         val total = filteredMessages.size
@@ -179,21 +194,17 @@ fun AiChatScreen(
             .sorted()
     }
 
-    val isAtBottom by remember {
-        derivedStateOf { listState.firstVisibleItemIndex == 0 }
-    }
-
     Scaffold(
         topBar = {
             CenterAlignedTopAppBar(
                 title = {
                     Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            // Scrolled to bottom indicator
+                            // Auto-scroll active indicator
                             Box(
                                 modifier = Modifier
                                     .size(8.dp)
-                                    .background(if (isAtBottom) Color.Green else Color.Gray.copy(alpha = 0.5f), CircleShape)
+                                    .background(if (isAutoScrollEnabled) Color.Green else Color.Gray.copy(alpha = 0.5f), CircleShape)
                             )
                             Spacer(Modifier.width(8.dp))
                             

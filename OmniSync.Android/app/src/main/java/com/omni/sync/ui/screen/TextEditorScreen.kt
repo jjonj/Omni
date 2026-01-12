@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -55,6 +56,7 @@ import androidx.compose.ui.window.PopupProperties
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.foundation.lazy.items
 import kotlin.math.roundToInt
 
 class EditorVisualTransformation(
@@ -646,6 +648,19 @@ fun TextEditorScreen(
     }
     var scrollRestored by remember(editingFile?.path) { mutableStateOf(true) } // Already restored by initial state
     
+    val aiHookinPid by filesViewModel.aiHookinPid.collectAsState()
+    val aiMessagesMap by signalRClient.aiMessagesMap.collectAsState()
+    val aiMessages = remember(aiMessagesMap, aiHookinPid) {
+        if (aiHookinPid != null) {
+            aiMessagesMap[aiHookinPid!!]?.filter { it.text.isNotBlank() } ?: emptyList()
+        } else emptyList()
+    }
+    val aiStatusMap by signalRClient.aiStatusMap.collectAsState()
+    val aiStatus = remember(aiStatusMap, aiHookinPid) {
+        if (aiHookinPid != null) aiStatusMap[aiHookinPid!!] else null
+    }
+    var aiInputText by remember { mutableStateOf("") }
+
     // Restore scroll position - logic removed as it's handled by ScrollState(initial = ...)
 
     // Save scroll position
@@ -1458,91 +1473,196 @@ fun TextEditorScreen(
             // Note: Each page has its own scroll state and text field value for now
             // To make it fully robust, we'd need to store scroll state and TextFieldValue per-file in ViewModel
             
-            Box(modifier = Modifier
-                .fillMaxSize()
-                .imePadding()
-                .onGloballyPositioned { coordinates ->
-                    viewportHeight = coordinates.size.height.toFloat()
-                }
-                .verticalScroll(verticalScrollState)
-            ) {
-                // Render the custom menu if visible. 
-                // Being inside the Box makes coordinates local to the editor area.
-                CustomTextSelectionMenu(customTextToolbar)
-
-                Row(
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    // Line numbers column
-                    val lineNumbers = remember(textLayoutResult, textFieldValue.text) {
-                        if (textLayoutResult == null) {
-                            (1..(textFieldValue.text.count { it == '\n' } + 1)).joinToString("\n")
-                        } else {
-                            val layout = textLayoutResult!!
-                            val text = textFieldValue.text
-                            val sb = StringBuilder()
-                            var logicalLine = 1
-                            for (i in 0 until layout.lineCount) {
-                                val lineStart = layout.getLineStart(i)
-                                val isNewLogicalLine = i == 0 || (lineStart > 0 && lineStart <= text.length && text[lineStart - 1] == '\n')
-                                if (isNewLogicalLine) {
-                                    sb.append(logicalLine++)
-                                }
-                                sb.append("\n")
-                            }
-                            sb.toString().trimEnd('\n')
-                        }
+            Box(modifier = Modifier.fillMaxSize()) {
+                Box(modifier = Modifier
+                    .fillMaxSize()
+                    .imePadding()
+                    .onGloballyPositioned { coordinates ->
+                        viewportHeight = coordinates.size.height.toFloat()
                     }
-                    
-                    Text(
-                        text = lineNumbers,
-                        modifier = Modifier
-                            .width(44.dp)
-                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
-                            .padding(vertical = 16.dp, horizontal = 4.dp),
-                        style = TextStyle(
-                            fontFamily = FontFamily.Monospace,
-                            fontSize = fontSize.sp,
-                            color = MaterialTheme.colorScheme.secondary,
-                            textAlign = TextAlign.End
-                        ),
-                        lineHeight = (fontSize * 1.4).sp,
-                        softWrap = false
-                    )
+                    .verticalScroll(verticalScrollState)
+                ) {
+                    // Render the custom menu if visible. 
+                    // Being inside the Box makes coordinates local to the editor area.
+                    CustomTextSelectionMenu(customTextToolbar)
 
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .padding(vertical = 16.dp)
+                    Row(
+                        modifier = Modifier.fillMaxWidth()
                     ) {
-                        val currentTFV = if (editingFile?.path == fileAtPage.path) textFieldValue else TextFieldValue(contentAtPage)
-                        BasicTextField(
-                            value = currentTFV,
-                            onValueChange = { newValue -> 
-                                if (editingFile?.path == fileAtPage.path) {
-                                    textFieldValue = newValue
-                                    if (newValue.text != editingContent) {
-                                        filesViewModel.updateEditingContent(newValue.text)
+                        // Line numbers column
+                        val lineNumbers = remember(textLayoutResult, textFieldValue.text) {
+                            if (textLayoutResult == null) {
+                                (1..(textFieldValue.text.count { it == '\n' } + 1)).joinToString("\n")
+                            } else {
+                                val layout = textLayoutResult!!
+                                val text = textFieldValue.text
+                                val sb = StringBuilder()
+                                var logicalLine = 1
+                                for (i in 0 until layout.lineCount) {
+                                    val lineStart = layout.getLineStart(i)
+                                    val isNewLogicalLine = i == 0 || (lineStart > 0 && lineStart <= text.length && text[lineStart - 1] == '\n')
+                                    if (isNewLogicalLine) {
+                                        sb.append(logicalLine++)
                                     }
+                                    sb.append("\n")
                                 }
-                            },
-                            onTextLayout = { 
-                                textLayoutResult = it
-                                if (editingFile?.path == fileAtPage.path) {
-                                    currentTextLayoutResult = it
-                                }
-                            },
-                            modifier = Modifier.fillMaxWidth(),
-                            textStyle = TextStyle(
+                                sb.toString().trimEnd('\n')
+                            }
+                        }
+                        
+                        Text(
+                            text = lineNumbers,
+                            modifier = Modifier
+                                .width(44.dp)
+                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
+                                .padding(vertical = 16.dp, horizontal = 4.dp),
+                            style = TextStyle(
                                 fontFamily = FontFamily.Monospace,
                                 fontSize = fontSize.sp,
-                                lineHeight = (fontSize * 1.4).sp,
-                                color = MaterialTheme.colorScheme.onSurface
+                                color = MaterialTheme.colorScheme.secondary,
+                                textAlign = TextAlign.End
                             ),
-                            visualTransformation = visualTransformation,
-                            cursorBrush = androidx.compose.ui.graphics.SolidColor(MaterialTheme.colorScheme.primary)
+                            lineHeight = (fontSize * 1.4).sp,
+                            softWrap = false
                         )
+
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(vertical = 16.dp)
+                        ) {
+                            val currentTFV = if (editingFile?.path == fileAtPage.path) textFieldValue else TextFieldValue(contentAtPage)
+                            BasicTextField(
+                                value = currentTFV,
+                                onValueChange = { newValue -> 
+                                    if (editingFile?.path == fileAtPage.path) {
+                                        textFieldValue = newValue
+                                        if (newValue.text != editingContent) {
+                                            filesViewModel.updateEditingContent(newValue.text)
+                                        }
+                                    }
+                                },
+                                onTextLayout = { 
+                                    textLayoutResult = it
+                                    if (editingFile?.path == fileAtPage.path) {
+                                        currentTextLayoutResult = it
+                                    }
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                                textStyle = TextStyle(
+                                    fontFamily = FontFamily.Monospace,
+                                    fontSize = fontSize.sp,
+                                    lineHeight = (fontSize * 1.4).sp,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                ),
+                                visualTransformation = visualTransformation,
+                                cursorBrush = androidx.compose.ui.graphics.SolidColor(MaterialTheme.colorScheme.primary)
+                            )
+                        }
                     }
+                }
+
+                // AI Hookin Chat Window Overlay
+                if (aiHookinPid != null) {
+                    Surface(
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .fillMaxWidth()
+                            .fillMaxHeight(0.4f)
+                            .padding(8.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        tonalElevation = 8.dp,
+                        shadowElevation = 16.dp,
+                        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f))
+                    ) {
+                        Column(modifier = Modifier.fillMaxSize().padding(8.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                                Icon(Icons.Default.SmartToy, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(8.dp))
+                                Text("AI Assistant", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+                                IconButton(onClick = { filesViewModel.stopCliHookin() }, modifier = Modifier.size(24.dp)) {
+                                    Icon(Icons.Default.Close, null)
+                                }
+                            }
+                            
+                            val aiChatListState = androidx.compose.foundation.lazy.rememberLazyListState()
+                            
+                            androidx.compose.foundation.lazy.LazyColumn(
+                                state = aiChatListState,
+                                modifier = Modifier.weight(1f).fillMaxWidth(),
+                                reverseLayout = true
+                            ) {
+                                items(aiMessages.reversed()) { msg ->
+                                    val isMe = msg.sender == "Me"
+                                    Column(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalAlignment = if (isMe) Alignment.End else Alignment.Start
+                                    ) {
+                                        Surface(
+                                            color = if (isMe) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.secondaryContainer,
+                                            shape = RoundedCornerShape(8.dp),
+                                            modifier = Modifier.padding(vertical = 2.dp).widthIn(max = 250.dp)
+                                        ) {
+                                            Text(msg.text, modifier = Modifier.padding(8.dp), fontSize = 12.sp)
+                                        }
+                                    }
+                                }
+                            }
+                            
+                            // Auto-scroll AI chat
+                            LaunchedEffect(aiMessages.size) {
+                                if (aiMessages.isNotEmpty()) {
+                                    aiChatListState.animateScrollToItem(0)
+                                }
+                            }
+                            
+                            if (aiStatus != null) {
+                                Text(aiStatus!!, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                            }
+
+                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
+                                OutlinedTextField(
+                                    value = aiInputText,
+                                    onValueChange = { aiInputText = it },
+                                    modifier = Modifier.weight(1f),
+                                    placeholder = { Text("Ask AI...", fontSize = 12.sp) },
+                                    maxLines = 2,
+                                    textStyle = TextStyle(fontSize = 12.sp)
+                                )
+                                IconButton(onClick = {
+                                    if (aiInputText.isNotBlank() && aiHookinPid != null) {
+                                        signalRClient.sendAiMessage(aiInputText, aiHookinPid)
+                                        aiInputText = ""
+                                    }
+                                }) {
+                                    Icon(Icons.AutoMirrored.Filled.Send, null)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Logic to auto-apply AI edits
+        val latestAiMessage = aiMessages.lastOrNull { it.sender == "AI" }
+        LaunchedEffect(latestAiMessage) {
+            if (latestAiMessage != null && aiHookinPid != null) {
+                try {
+                    val text = latestAiMessage.text.trim()
+                    if (text.startsWith("{") && text.endsWith("}")) {
+                        val gson = com.google.gson.Gson()
+                        val type = object : com.google.gson.reflect.TypeToken<Map<String, String>>() {}.type
+                        val map: Map<String, String> = gson.fromJson(text, type)
+                        
+                        if (map["action"] == "edit" && map.containsKey("newContent")) {
+                            val newContent = map["newContent"] ?: ""
+                            filesViewModel.updateEditingContent(newContent)
+                            android.widget.Toast.makeText(context, "AI Edit Applied: ${map["explanation"]}", android.widget.Toast.LENGTH_LONG).show()
+                        }
+                    }
+                } catch (e: Exception) {
+                    // Not a JSON edit block or malformed, ignore
                 }
             }
         }

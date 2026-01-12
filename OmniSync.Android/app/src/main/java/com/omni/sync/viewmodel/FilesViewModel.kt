@@ -110,6 +110,9 @@ class FilesViewModel(
     private val _fileCursorPositions = MutableStateFlow<Map<String, androidx.compose.ui.text.TextRange>>(emptyMap())
     val fileCursorPositions: StateFlow<Map<String, androidx.compose.ui.text.TextRange>> = _fileCursorPositions
 
+    private val _aiHookinPid = MutableStateFlow<Int?>(null)
+    val aiHookinPid: StateFlow<Int?> = _aiHookinPid
+
     fun updateScrollPosition(path: String, position: Int) {
         _fileScrollPositions.value = _fileScrollPositions.value + (path to position)
     }
@@ -818,27 +821,46 @@ class FilesViewModel(
         
         // 1. Start CLI at the file's parent workspace
         val parent = getParentPath(entry.path)
-        signalRClient.startCliAtWorkspace(parent)
+        signalRClient.startNewAiSession(parent)
         
-        // 2. Navigate to AI Chat
-        mainViewModel.navigateTo(AppScreen.AI_CHAT)
-        
-        // 3. Send the file content as context with a helper prompt
-        val prompt = """
-            I am currently editing the file: `${entry.path}`
-            
-            Here is the current content:
-            ```
-            $content
-            ```
-            
-            Please help me with this file. You can suggest edits, add new code, or explain parts of it.
-        """.trimIndent()
-        
+        // 2. Wait for the new session and send message
         viewModelScope.launch {
-            // Wait a bit for the session to be reported before sending message
-            delay(1000) 
-            signalRClient.sendAiMessage(prompt)
+            signalRClient.lastCreatedSessionPid.collect { newPid ->
+                _aiHookinPid.value = newPid
+                
+                val prompt = """
+                    I am currently editing the file: `${entry.path}`
+                    
+                    CURRENT CONTENT:
+                    ```
+                    $content
+                    ```
+                    
+                    Please suggest improvements or additions. 
+                    IMPORTANT: You must return your suggested changes in the following JSON format:
+                    ```json
+                    {
+                      "action": "edit",
+                      "explanation": "Brief explanation of what was changed",
+                      "newContent": "The entire new content of the file"
+                    }
+                    ```
+                    Only return the JSON block. Do not return any other text.
+                """.trimIndent()
+                
+                signalRClient.sendAiMessage(prompt, newPid)
+                
+                // We only want to handle the FIRST new session created after the button press
+                return@collect 
+            }
+        }
+    }
+
+    fun stopCliHookin() {
+        val pid = _aiHookinPid.value
+        if (pid != null) {
+            signalRClient.stopAiSession(pid)
+            _aiHookinPid.value = null
         }
     }
 

@@ -123,7 +123,9 @@ class SignalRClient(
     data class AiDialog(val type: String, val prompt: String, val options: List<String>?)
 
     private val _aiMessagesMap = MutableStateFlow<Map<Int, List<AiMessage>>>(emptyMap())
+    val aiMessagesMap: StateFlow<Map<Int, List<AiMessage>>> = _aiMessagesMap
     private val _aiStatusMap = MutableStateFlow<Map<Int, String?>>(emptyMap())
+    val aiStatusMap: StateFlow<Map<Int, String?>> = _aiStatusMap
     private val _aiThoughtMap = MutableStateFlow<Map<Int, String?>>(emptyMap())
     private val _aiDialogMap = MutableStateFlow<Map<Int, AiDialog?>>(emptyMap())
     private val _selectedPid = MutableStateFlow(-1)
