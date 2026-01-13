@@ -86,6 +86,7 @@ import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Circle
+import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.foundation.shape.CircleShape
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
@@ -560,46 +561,37 @@ fun AiChatScreen(
                             expanded = showPresetsMenu,
                             onDismissRequest = { showPresetsMenu = false }
                         ) {
-                            // Quick Commands
-                            DropdownMenuItem(
-                                text = { Text("/auth") },
-                                onClick = {
-                                    val cmd = "/auth"
-                                    signalRClient.updateAiInputText(cmd)
-                                    textFieldValue = TextFieldValue(cmd, TextRange(cmd.length))
-                                    showPresetsMenu = false
-                                },
-                                leadingIcon = { Icon(imageVector = Icons.Default.Security, null, modifier = Modifier.size(18.dp)) }
-                            )
-                            DropdownMenuItem(
-                                text = { Text("/conductor:status") },
-                                onClick = {
-                                    val cmd = "/conductor:status"
-                                    signalRClient.updateAiInputText(cmd)
-                                    textFieldValue = TextFieldValue(cmd, TextRange(cmd.length))
-                                    showPresetsMenu = false
-                                },
-                                leadingIcon = { Icon(imageVector = Icons.Default.Info, null, modifier = Modifier.size(18.dp)) }
-                            )
-                            
-                            HorizontalDivider()
+                            // Unified list of all presets (hardcoded + user)
+                            val allPresets = remember(presets) {
+                                listOf("/auth", "/conductor:status") + presets
+                            }
 
-                            if (presets.isEmpty()) {
+                            if (allPresets.isEmpty()) {
                                 DropdownMenuItem(
                                     text = { Text("No presets") },
                                     onClick = { showPresetsMenu = false },
                                     enabled = false
                                 )
                             }
-                            presets.forEach { preset ->
+
+                            allPresets.forEach { preset ->
                                 DropdownMenuItem(
                                     text = { 
                                         Row(verticalAlignment = Alignment.CenterVertically) {
                                             Text(preset, modifier = Modifier.weight(1f))
                                             IconButton(onClick = { 
-                                                signalRClient.removeAiPreset(preset)
+                                                if (preset == "/auth" || preset == "/conductor:status") {
+                                                    Toast.makeText(context, "System presets cannot be deleted", Toast.LENGTH_SHORT).show()
+                                                } else {
+                                                    signalRClient.removeAiPreset(preset)
+                                                }
                                             }) {
-                                                Icon(Icons.Default.Close, contentDescription = "Delete", modifier = Modifier.size(18.dp))
+                                                Icon(
+                                                    imageVector = Icons.Default.Close, 
+                                                    contentDescription = "Delete", 
+                                                    modifier = Modifier.size(18.dp),
+                                                    tint = if (preset.startsWith("/")) Color.Gray.copy(alpha = 0.5f) else MaterialTheme.colorScheme.error
+                                                )
                                             }
                                         }
                                     },
@@ -607,9 +599,28 @@ fun AiChatScreen(
                                         signalRClient.updateAiInputText(preset)
                                         textFieldValue = TextFieldValue(preset, TextRange(preset.length))
                                         showPresetsMenu = false
+                                    },
+                                    leadingIcon = {
+                                        val icon = when(preset) {
+                                            "/auth" -> Icons.Default.Security
+                                            "/conductor:status" -> Icons.Default.Info
+                                            else -> Icons.Outlined.ChatBubbleOutline
+                                        }
+                                        Icon(imageVector = icon, null, modifier = Modifier.size(18.dp))
                                     }
                                 )
                             }
+                            
+                            HorizontalDivider()
+                            
+                            // Instructions
+                            Text(
+                                "To add: type message and long-press the presets button",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontStyle = FontStyle.Italic,
+                                modifier = Modifier.padding(12.dp),
+                                color = MaterialTheme.colorScheme.primary
+                            )
                         }
                     }
 

@@ -161,7 +161,15 @@ class ForegroundService : Service() {
         val signalRClient = app.signalRClient
         val mainViewModel = app.mainViewModel
 
-        if (action.isWol && action.macAddress != null) {
+        if (action.isTellPc) {
+            mainViewModel.addLog("Notification: Triggering Tell PC...", com.omni.sync.ui.screen.LogType.INFO)
+            signalRClient.triggerTellPc()
+            val intent = Intent(this, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+                putExtra("OPEN_SCREEN", "AI_CHAT")
+            }
+            startActivity(intent)
+        } else if (action.isWol && action.macAddress != null) {
             mainViewModel.sendWakeOnLan(action.macAddress)
         } else if (action.command.startsWith("NAV:")) {
             val screenName = action.command.substring(4)

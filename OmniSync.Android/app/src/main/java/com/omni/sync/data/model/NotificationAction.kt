@@ -7,5 +7,6 @@ data class NotificationAction(
     @SerializedName("label") val label: String,
     @SerializedName("command") val command: String,
     @SerializedName("isWol") val isWol: Boolean = false,
-    @SerializedName("macAddress") val macAddress: String? = null
+    @SerializedName("macAddress") val macAddress: String? = null,
+    @SerializedName("isTellPc") val isTellPc: Boolean = false
 )

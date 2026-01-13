@@ -20,8 +20,10 @@ import androidx.compose.ui.platform.LocalContext
 import android.content.Context
 import android.content.ClipboardManager
 import androidx.compose.material.icons.filled.SmartToy
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.omni.sync.data.repository.SignalRClient
 import com.omni.sync.viewmodel.MainViewModel
 import com.omni.sync.viewmodel.AppScreen
@@ -153,29 +155,45 @@ fun DashboardScreen(modifier: Modifier = Modifier, signalRClient: SignalRClient,
                         
                                             Spacer(modifier = Modifier.height(8.dp))
                         
-                                            Button(
-                                                onClick = {
-                                                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-                                                    val clipData = clipboard.primaryClip
-                                                    if (clipData != null && clipData.itemCount > 0) {
-                                                        val text = clipData.getItemAt(0).text?.toString()
-                                                        if (!text.isNullOrBlank()) {
-                                                            val prompt = "Summarize and analyze the following content from my clipboard:\n\n$text"
-                                                            signalRClient.sendAiMessage(prompt)
-                                                            mainViewModel.navigateTo(com.omni.sync.viewmodel.AppScreen.AI_CHAT)
+                                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                                Button(
+                                                    onClick = {
+                                                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                                                        val clipData = clipboard.primaryClip
+                                                        if (clipData != null && clipData.itemCount > 0) {
+                                                            val text = clipData.getItemAt(0).text?.toString()
+                                                            if (!text.isNullOrBlank()) {
+                                                                val prompt = "Summarize and analyze the following content from my clipboard:\n\n$text"
+                                                                signalRClient.sendAiMessage(prompt)
+                                                                mainViewModel.navigateTo(com.omni.sync.viewmodel.AppScreen.AI_CHAT)
+                                                            } else {
+                                                                android.widget.Toast.makeText(context, "Clipboard is empty", android.widget.Toast.LENGTH_SHORT).show()
+                                                            }
                                                         } else {
                                                             android.widget.Toast.makeText(context, "Clipboard is empty", android.widget.Toast.LENGTH_SHORT).show()
                                                         }
-                                                    } else {
-                                                        android.widget.Toast.makeText(context, "Clipboard is empty", android.widget.Toast.LENGTH_SHORT).show()
-                                                    }
-                                                },
-                                                modifier = Modifier.fillMaxWidth(),
-                                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
-                                            ) {
-                                                Icon(Icons.Default.SmartToy, null, modifier = Modifier.size(18.dp))
-                                                Spacer(Modifier.width(8.dp))
-                                                Text("Smart AI (Clipboard)")
+                                                    },
+                                                    modifier = Modifier.weight(1f),
+                                                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
+                                                ) {
+                                                    Icon(Icons.Default.SmartToy, null, modifier = Modifier.size(18.dp))
+                                                    Spacer(Modifier.width(8.dp))
+                                                    Text("AI Clip", fontSize = 12.sp)
+                                                }
+
+                                                Button(
+                                                    onClick = {
+                                                        signalRClient.triggerTellPc()
+                                                        mainViewModel.addLog("Tell PC Triggered...", LogType.INFO)
+                                                        mainViewModel.navigateTo(AppScreen.AI_CHAT)
+                                                    },
+                                                    modifier = Modifier.weight(1f),
+                                                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                                                ) {
+                                                    Icon(Icons.Default.Mic, null, modifier = Modifier.size(18.dp))
+                                                    Spacer(Modifier.width(8.dp))
+                                                    Text("Tell PC", fontSize = 12.sp)
+                                                }
                                             }
                         
                                             Spacer(modifier = Modifier.height(8.dp))                    
