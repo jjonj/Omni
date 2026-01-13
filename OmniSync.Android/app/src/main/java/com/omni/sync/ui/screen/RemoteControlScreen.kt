@@ -62,6 +62,7 @@ import com.omni.sync.utils.WindowsKeyCodes.VK_RIGHT
 import com.omni.sync.utils.WindowsKeyCodes.VK_SHIFT
 import com.omni.sync.utils.WindowsKeyCodes.VK_TAB
 import com.omni.sync.utils.WindowsKeyCodes.VK_UP
+import com.omni.sync.utils.WindowsKeyCodes.VK_LWIN
 import com.omni.sync.ui.components.ActionKeyButton
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
@@ -101,8 +102,8 @@ fun RemoteControlScreen(
             val results = data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
             if (!results.isNullOrEmpty()) {
                 val spokenText = results[0]
-                // Send to AI
-                signalRClient.sendAiMessage(spokenText, if (selectedPid != -1) selectedPid else null)
+                // Send as keyboard input to PC
+                signalRClient.sendText(spokenText)
             }
         }
     }
@@ -691,6 +692,7 @@ fun ButtonPanel(
     val isShiftPressed by mainViewModel.isShiftPressed.collectAsState()
     val isCtrlPressed by mainViewModel.isCtrlPressed.collectAsState()
     val isAltPressed by mainViewModel.isAltPressed.collectAsState()
+    val isWinPressed by mainViewModel.isWinPressed.collectAsState()
     val scheduledShutdownTime by mainViewModel.scheduledShutdownTime.collectAsState()
     val shutdownMode by mainViewModel.shutdownMode.collectAsState()
 
@@ -764,16 +766,6 @@ fun ButtonPanel(
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
             // Grid 1
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                ModifierKeyButton("Shift", isShiftPressed, Modifier.weight(1f), onToggle = { 
-                    if (it) signalRClient.sendKeyEvent("INPUT_KEY_DOWN", VK_SHIFT)
-                    else signalRClient.sendKeyEvent("INPUT_KEY_UP", VK_SHIFT)
-                    mainViewModel.setShiftPressed(it)
-                }, onDoubleClick = {
-                    signalRClient.sendKeyEvent("INPUT_KEY_DOWN", VK_SHIFT)
-                    signalRClient.sendMouseClick("Left")
-                    signalRClient.sendKeyEvent("INPUT_KEY_UP", VK_SHIFT)
-                    mainViewModel.setShiftPressed(false)
-                })
                 ModifierKeyButton("Ctrl", isCtrlPressed, Modifier.weight(1f), onToggle = { 
                     if (it) signalRClient.sendKeyEvent("INPUT_KEY_DOWN", VK_CONTROL)
                     else signalRClient.sendKeyEvent("INPUT_KEY_UP", VK_CONTROL)
@@ -794,7 +786,22 @@ fun ButtonPanel(
                     signalRClient.sendKeyEvent("INPUT_KEY_UP", VK_MENU)
                     mainViewModel.setAltPressed(false)
                 })
-                ActionKeyButton(text = "Tab", modifier = Modifier.weight(1f)) {
+                ModifierKeyButton("Win", isWinPressed, Modifier.weight(1f), onToggle = { 
+                    // Single tap: Send full press
+                    signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_LWIN)
+                }, onDoubleClick = {
+                    // Double click: not needed for win but could be win-d or something
+                }, onLongPress = {
+                    // Long press: toggle hold
+                    val newState = !isWinPressed
+                    if (newState) signalRClient.sendKeyEvent("INPUT_KEY_DOWN", VK_LWIN)
+                    else signalRClient.sendKeyEvent("INPUT_KEY_UP", VK_LWIN)
+                    mainViewModel.setWinPressed(newState)
+                })
+                ActionKeyButton(text = "Tab", modifier = Modifier.weight(1f), onLongClick = {
+                    // Toggle Tab hold? Tab usually isnt held alone, but could be useful
+                    signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_TAB)
+                }) {
                     signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_TAB)
                 }
             }
@@ -804,6 +811,16 @@ fun ButtonPanel(
                 ActionKeyButton(text = "Esc", modifier = Modifier.weight(1f)) {
                     signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_ESCAPE)
                 }
+                ModifierKeyButton("Shift", isShiftPressed, Modifier.weight(1f), onToggle = { 
+                    if (it) signalRClient.sendKeyEvent("INPUT_KEY_DOWN", VK_SHIFT)
+                    else signalRClient.sendKeyEvent("INPUT_KEY_UP", VK_SHIFT)
+                    mainViewModel.setShiftPressed(it)
+                }, onDoubleClick = {
+                    signalRClient.sendKeyEvent("INPUT_KEY_DOWN", VK_SHIFT)
+                    signalRClient.sendMouseClick("Left")
+                    signalRClient.sendKeyEvent("INPUT_KEY_UP", VK_SHIFT)
+                    mainViewModel.setShiftPressed(false)
+                })
                 ActionKeyButton(icon = Icons.AutoMirrored.Filled.ArrowBack, modifier = Modifier.weight(1f)) {
                     signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_LEFT)
                 }
@@ -912,7 +929,8 @@ fun ModifierKeyButton(
     isToggled: Boolean,
     modifier: Modifier = Modifier,
     onToggle: (Boolean) -> Unit,
-    onDoubleClick: () -> Unit
+    onDoubleClick: () -> Unit,
+    onLongPress: (() -> Unit)? = null
 ) {
     val containerColor = if (isToggled) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainer
     val contentColor = if (isToggled) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
@@ -929,6 +947,9 @@ fun ModifierKeyButton(
                     },
                     onTap = {
                          onToggle(!isToggled)
+                    },
+                    onLongPress = {
+                        onLongPress?.invoke()
                     }
                 )
             },

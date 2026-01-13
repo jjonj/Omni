@@ -52,7 +52,9 @@ The AI returns JSON but the scaffolding does not use that json to actually chang
 The AI should be able to both replace the entire file with one json type but also do surgical changes with a diff style, scaffolding needs to handle both and actually change the document. 
 Automatically disable auto saving of the file when the AI hookin feature is activated, but reenabled it, IF it was enabled before, after exiting the file, closing the AI hookin, or sleeping the app. 
 
-✅ on all other screens i can swipe left and right to navigate screens but i can't from text editor screen. This should only work when line wrapping is enabled.
+ on all other screens i can swipe left and right to navigate screens but i can't from text editor screen. This should only work when line wrapping is enabled.
+
+The plus button for new files is blocking part of the cache and bookmarks management windows, make it behind those. 
 
 ### Browser control screen
 
@@ -61,6 +63,13 @@ Automatically disable auto saving of the file when the AI hookin feature is acti
 ### Settings screen (accessed by button on dashboard, not bottom panel)
 
 ### AI screen
+
+
+
+Improve rendering of tool calls, here is what i see in the yellow boxes, not very readable. the file diffs and other things render much nicer 
+Tool Call: replace({"expected_replacements":6,"new_string":"      useGeminiStream(\n        new MockedGeminiClientClass(mockConfig),\n        [],\n        mockAddItem,\n        mockConfig,\n        mockLoadedSettings,\n        () => {}, // onRemoteEvent\n        mockHandleSlashCommand,\n","old_string":"      useGeminiStream(\n        new MockedGeminiClientClass(mockConfig),\n        [],\n        mockAddItem,\n        mockConfig,\n        mockLoadedSettings,\n        mockHandleSlashCommand,\n","instruction":"Add missing 'onRemoteEvent' argument to useGeminiStream in remaining tests.","file_path":"D:\\SSDProjects\\Tools\\gemini-cli\\packages\\cli\\src\\ui\\hooks\\useGeminiStream.test.tsx"})
+example two 
+Tool Call: Edit(pac...\...\useGeminiStream.test.tsx:     renderHook(() =>... =>     renderHook(() =>...) [SUCCESS] 
 
 ### Embedded web screen
 

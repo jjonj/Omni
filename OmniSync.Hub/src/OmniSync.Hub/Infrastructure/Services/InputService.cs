@@ -94,6 +94,7 @@ namespace OmniSync.Hub.Infrastructure.Services
         private bool _isShiftPressed;
         private bool _isCtrlPressed;
         private bool _isAltPressed;
+        private bool _isWinPressed;
 
         // Public Properties for Modifier Key States
         public bool IsShiftPressed
@@ -132,6 +133,18 @@ namespace OmniSync.Hub.Infrastructure.Services
                 }
             }
         }
+        public bool IsWinPressed
+        {
+            get => _isWinPressed;
+            private set
+            {
+                if (_isWinPressed != value)
+                {
+                    _isWinPressed = value;
+                    ModifierStateChanged?.Invoke(this, new ModifierStateEventArgs(ModifierKey.Win, value));
+                }
+            }
+        }
 
         // Event for notifying about modifier state changes
         public event EventHandler<ModifierStateEventArgs>? ModifierStateChanged;
@@ -160,8 +173,9 @@ namespace OmniSync.Hub.Infrastructure.Services
             IsShiftPressed = e.Shift;
             IsCtrlPressed = e.Control;
             IsAltPressed = e.Alt;
+            IsWinPressed = e.Win;
 
-            _logger.LogDebug($"Modifier states from hook: Shift={IsShiftPressed}, Ctrl={IsCtrlPressed}, Alt={IsAltPressed}");
+            _logger.LogDebug($"Modifier states from hook: Shift={IsShiftPressed}, Ctrl={IsCtrlPressed}, Alt={IsAltPressed}, Win={IsWinPressed}");
         }
         public void LeftClick()
         {
@@ -436,7 +450,8 @@ namespace OmniSync.Hub.Infrastructure.Services
     {
         Shift,
         Ctrl,
-        Alt
+        Alt,
+        Win
     }
 
     public class ModifierStateEventArgs : EventArgs

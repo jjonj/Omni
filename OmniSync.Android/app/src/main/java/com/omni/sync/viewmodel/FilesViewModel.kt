@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import io.reactivex.rxjava3.android.schedulers.AndroidSchedulers
@@ -112,6 +113,7 @@ class FilesViewModel(
 
     private val _aiHookinPid = MutableStateFlow<Int?>(null)
     val aiHookinPid: StateFlow<Int?> = _aiHookinPid
+    private var _wasAutoSaveEnabledBeforeHookin = false
 
     fun updateScrollPosition(path: String, position: Int) {
         _fileScrollPositions.value = _fileScrollPositions.value + (path to position)
@@ -819,43 +821,55 @@ class FilesViewModel(
 
         mainViewModel.addLog("Starting AI Hookin for: ${entry.name}", com.omni.sync.ui.screen.LogType.INFO)
         
+        // Disable Autosave temporarily
+        _wasAutoSaveEnabledBeforeHookin = autoSaveEnabled.value
+        if (_wasAutoSaveEnabledBeforeHookin) {
+            setAutoSaveEnabled(false)
+            mainViewModel.addLog("Autosave paused during AI Hookin", com.omni.sync.ui.screen.LogType.INFO)
+        }
+        
         // 1. Start CLI at the file's parent workspace
         val parent = getParentPath(entry.path)
         signalRClient.startNewAiSession(parent)
         
         // 2. Wait for the new session and send message
         viewModelScope.launch {
-            signalRClient.lastCreatedSessionPid.collect { newPid ->
-                _aiHookinPid.value = newPid
-                
-                val prompt = """
-                    I am currently editing the file: `${entry.path}`
+            try {
+                // Use first() to wait for the next emission and then stop listening
+                // Add a timeout to prevent hanging forever if session creation fails
+                kotlinx.coroutines.withTimeout(30000) {
+                    val newPid = signalRClient.lastCreatedSessionPid.first()
+                    _aiHookinPid.value = newPid
                     
-                    CURRENT CONTENT:
-                    ```
-                    $content
-                    ```
+                    val prompt = """
+                        I am currently editing the file: `${entry.path}`
+                        
+                        CURRENT CONTENT:
+                        ```
+                        $content
+                        ```
+                        
+                        I may ask you to suggest improvements or additions to this file. 
+                        
+                        INSTRUCTIONS FOR FILE CHANGES:
+                        If and ONLY IF I ask you to modify or improve the file, you must return your suggested changes in the following JSON format:
+                        ```json
+                        {
+                          "action": "edit",
+                          "explanation": "Brief explanation of what was changed",
+                          "newContent": "The entire new content of the file"
+                        }
+                        ```
+                        When returning JSON, do not return any other text.
+                        
+                        For now, simply acknowledge that you have the file context and reply with: "Ready to help!"
+                    """.trimIndent()
                     
-                    I may ask you to suggest improvements or additions to this file. 
-                    
-                    INSTRUCTIONS FOR FILE CHANGES:
-                    If and ONLY IF I ask you to modify or improve the file, you must return your suggested changes in the following JSON format:
-                    ```json
-                    {
-                      "action": "edit",
-                      "explanation": "Brief explanation of what was changed",
-                      "newContent": "The entire new content of the file"
-                    }
-                    ```
-                    When returning JSON, do not return any other text.
-                    
-                    For now, simply acknowledge that you have the file context and reply with: "Ready to help!"
-                """.trimIndent()
-                
-                signalRClient.sendAiMessage(prompt, newPid)
-                
-                // We only want to handle the FIRST new session created after the button press
-                return@collect 
+                    signalRClient.sendAiMessage(prompt, newPid)
+                }
+            } catch (e: Exception) {
+                mainViewModel.addLog("AI Hookin timed out or failed: ${e.message}", com.omni.sync.ui.screen.LogType.ERROR)
+                stopCliHookin() // Cleanup if failed
             }
         }
     }
@@ -865,6 +879,12 @@ class FilesViewModel(
         if (pid != null) {
             signalRClient.stopAiSession(pid)
             _aiHookinPid.value = null
+            
+            // Restore Autosave
+            if (_wasAutoSaveEnabledBeforeHookin) {
+                setAutoSaveEnabled(true)
+                mainViewModel.addLog("Autosave restored", com.omni.sync.ui.screen.LogType.INFO)
+            }
         }
     }
 

@@ -84,6 +84,7 @@ namespace OmniSync.Hub.Presentation.Hubs
             await Clients.Caller.SendAsync("ModifierStateUpdated", "Shift", _inputService.IsShiftPressed);
             await Clients.Caller.SendAsync("ModifierStateUpdated", "Ctrl", _inputService.IsCtrlPressed);
             await Clients.Caller.SendAsync("ModifierStateUpdated", "Alt", _inputService.IsAltPressed);
+            await Clients.Caller.SendAsync("ModifierStateUpdated", "Win", _inputService.IsWinPressed);
             await Clients.Caller.SendAsync("ShutdownScheduled", _shutdownService.GetScheduledTime());
             await Clients.Caller.SendAsync("ShutdownModeUpdated", _shutdownService.GetCurrentMode().ToString());
             await Clients.Caller.SendAsync("UpdateRunOnStartup", _registryService.IsRunOnStartupEnabled());
@@ -230,6 +231,24 @@ namespace OmniSync.Hub.Presentation.Hubs
             {
                 _settingsService.UpdateTellPcSettings(workspace, systemContext, soundEnabled);
                 _hubMonitorService.AddLogMessage("Tell PC settings updated via web interface.");
+            }
+        }
+
+        public void AddMapping(string key, string path)
+        {
+            if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
+            {
+                _settingsService.AddMapping(key, path);
+                _hubMonitorService.AddLogMessage($"Exe mapping added: {key} -> {path}");
+            }
+        }
+
+        public void RemoveMapping(string key)
+        {
+            if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
+            {
+                _settingsService.RemoveMapping(key);
+                _hubMonitorService.AddLogMessage($"Exe mapping removed: {key}");
             }
         }
 

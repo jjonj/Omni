@@ -66,6 +66,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _isAltPressed = MutableStateFlow(false)
     val isAltPressed: StateFlow<Boolean> = _isAltPressed
 
+    private val _isWinPressed = MutableStateFlow(false)
+    val isWinPressed: StateFlow<Boolean> = _isWinPressed
+
     private val _scheduledShutdownTime = MutableStateFlow<String?>(null)
     val scheduledShutdownTime: StateFlow<String?> = _scheduledShutdownTime
 
@@ -365,6 +368,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setAltPressed(isPressed: Boolean) {
         _isAltPressed.value = isPressed
+    }
+
+    fun setWinPressed(isPressed: Boolean) {
+        _isWinPressed.value = isPressed
     }
 
     fun setScheduledShutdownTime(time: String?) {

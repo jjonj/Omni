@@ -1622,6 +1622,7 @@ fun TextEditorScreen(
                             .align(Alignment.BottomCenter)
                             .fillMaxWidth()
                             .height(aiWindowHeight)
+                            .imePadding()
                             .padding(8.dp),
                         shape = RoundedCornerShape(12.dp),
                         tonalElevation = 8.dp,
@@ -1718,15 +1719,37 @@ fun TextEditorScreen(
             if (latestAiMessage != null && aiHookinPid != null) {
                 try {
                     val text = latestAiMessage.text.trim()
-                    if (text.startsWith("{") && text.endsWith("}")) {
+                    // Extract JSON block if embedded in text
+                    val jsonStart = text.indexOf('{')
+                    val jsonEnd = text.lastIndexOf('}')
+                    
+                    if (jsonStart != -1 && jsonEnd != -1 && jsonEnd > jsonStart) {
+                        val jsonStr = text.substring(jsonStart, jsonEnd + 1)
                         val gson = com.google.gson.Gson()
-                        val type = object : com.google.gson.reflect.TypeToken<Map<String, String>>() {}.type
-                        val map: Map<String, String> = gson.fromJson(text, type)
+                        val type = object : com.google.gson.reflect.TypeToken<Map<String, Any>>() {}.type
+                        val map: Map<String, Any> = gson.fromJson(jsonStr, type)
                         
-                        if (map["action"] == "edit" && map.containsKey("newContent")) {
-                            val newContent = map["newContent"] ?: ""
-                            filesViewModel.updateEditingContent(newContent)
-                            android.widget.Toast.makeText(context, "AI Edit Applied: ${map["explanation"]}", android.widget.Toast.LENGTH_LONG).show()
+                        val action = map["action"] as? String
+                        
+                        if (action == "edit" || action == "overwrite") {
+                            val newContent = map["newContent"] as? String
+                            if (newContent != null) {
+                                filesViewModel.updateEditingContent(newContent)
+                                android.widget.Toast.makeText(context, "AI Overwrite Applied", android.widget.Toast.LENGTH_SHORT).show()
+                            }
+                        } else if (action == "patch" || action == "replace") {
+                            val find = map["find"] as? String
+                            val replace = map["replace"] as? String
+                            if (find != null && replace != null) {
+                                val currentContent = textFieldValue.text
+                                if (currentContent.contains(find)) {
+                                    val newContent = currentContent.replace(find, replace)
+                                    filesViewModel.updateEditingContent(newContent)
+                                    android.widget.Toast.makeText(context, "AI Patch Applied", android.widget.Toast.LENGTH_SHORT).show()
+                                } else {
+                                    android.widget.Toast.makeText(context, "AI Patch Failed: Text not found", android.widget.Toast.LENGTH_SHORT).show()
+                                }
+                            }
                         }
                     }
                 } catch (e: Exception) {

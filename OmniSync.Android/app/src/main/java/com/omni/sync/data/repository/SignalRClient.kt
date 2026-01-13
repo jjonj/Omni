@@ -317,6 +317,7 @@ class SignalRClient(
                 "Shift" -> mainViewModel.setShiftPressed(isPressed)
                 "Ctrl" -> mainViewModel.setCtrlPressed(isPressed)
                 "Alt" -> mainViewModel.setAltPressed(isPressed)
+                "Win" -> mainViewModel.setWinPressed(isPressed)
             }
         }, String::class.java, Boolean::class.java)
 

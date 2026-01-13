@@ -1,1 +1,9 @@
-Fix session cross-talk, add dashboard settings button, and implement TFT unit suggestions
+feat(android): Improve Remote Control and AI Hookin
+
+- Added Windows (Win) key to Remote Control with hold/release support.
+- Fixed modifier key synchronization between PC and Android.
+- Implemented voice dictation as text input to the Hub.
+- Fixed AI Hookin chat window positioning (imePadding).
+- Improved AI Hookin JSON parsing for full-file and surgical edits.
+- Automated disabling/restoring of autosave during AI Hookin sessions.
+- Added Add/Remove/Test functionality for Exe mappings in Hub settings.

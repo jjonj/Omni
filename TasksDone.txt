@@ -143,3 +143,9 @@
 ✅ Settings screen: Created a new quick action for "Tell PC", which starts voice dictation with a blip sound on the Hub, launches a new AI session in the configured workspace (default B:\GDrive\Tools), and prefixes the message with a configurable system context.
 ✅ Hub Settings: Added "AI / Tell PC" configuration tab to manage Tell PC workspace, system context, and sound options.
 ✅ Hub Settings: Added "Test" button to Exe mappings table to allow verification of mapped paths.
+✅ Remote Control: Added Windows (Win) key to special keys, supporting both quick tap and hold/release modes (matching Tab/Ctrl/Alt).
+✅ Input Sync: Fixed issue where modifier keys (Shift, Ctrl, Alt, Win) would stay highlighted on Android after being released on the PC.
+✅ Voice Dictation: Implemented sending recognized text directly to the Hub as keyboard input from all mic icons.
+✅ AI Hookin: Fixed chat window positioning to respond to the Android keyboard (imePadding).
+✅ AI Hookin: Enhanced edit application logic to handle both full-file replacements and surgical diffs/patches from JSON.
+✅ AI Hookin: Automated autosave management, disabling it during active Hookin sessions and restoring it afterwards.
