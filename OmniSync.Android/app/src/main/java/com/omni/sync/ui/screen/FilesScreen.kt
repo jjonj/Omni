@@ -250,7 +250,7 @@ fun FilesScreen(
             )
         },
         floatingActionButton = {
-            if (currentPath.isNotEmpty()) {
+            if (currentPath.isNotEmpty() && !showBookmarksList && !showCachesList) {
                 FloatingActionButton(
                     onClick = { showCreateFileDialog = true },
                     containerColor = MaterialTheme.colorScheme.primary,

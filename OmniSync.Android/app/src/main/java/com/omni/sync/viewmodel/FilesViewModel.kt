@@ -115,6 +115,13 @@ class FilesViewModel(
     val aiHookinPid: StateFlow<Int?> = _aiHookinPid
     private var _wasAutoSaveEnabledBeforeHookin = false
 
+    private val _wordWrap = MutableStateFlow(true)
+    val wordWrap: StateFlow<Boolean> = _wordWrap.asStateFlow()
+
+    fun setWordWrap(enabled: Boolean) {
+        _wordWrap.value = enabled
+    }
+
     fun updateScrollPosition(path: String, position: Int) {
         _fileScrollPositions.value = _fileScrollPositions.value + (path to position)
     }

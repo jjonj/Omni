@@ -31,7 +31,7 @@ fun WebServerScreen(
     signalRClient: SignalRClient,
     mainViewModel: MainViewModel = viewModel()
 ) {
-    val url = mainViewModel.getWebServerUrl()
+    val url = "https://www.google.com" // Debugging: use google instead of hub url
     var webView by remember { mutableStateOf<WebView?>(null) }
     var isMoreMode by remember { mutableStateOf(false) }
 

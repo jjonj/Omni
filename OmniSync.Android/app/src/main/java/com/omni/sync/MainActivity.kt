@@ -218,6 +218,11 @@ class MainActivity : ComponentActivity() {
                         }
                     ) { innerPadding ->
                         val isSwipeable = currentScreen in swipeableScreens
+                        val wordWrap by filesViewModel.wordWrap.collectAsState()
+                        val canSwipe = when (currentScreen) {
+                            AppScreen.EDITOR -> wordWrap
+                            else -> isSwipeable
+                        }
                         
                         Box(modifier = Modifier.fillMaxSize()) {
                             // Always keep pager in composition to avoid state resets and jumpy animations
@@ -235,7 +240,7 @@ class MainActivity : ComponentActivity() {
                                 HorizontalPager(
                                     state = pagerState,
                                     modifier = Modifier.fillMaxSize(),
-                                    userScrollEnabled = isSwipeable // Only allow swiping on swipeable screens
+                                    userScrollEnabled = canSwipe // Only allow swiping on swipeable screens and editor with word wrap
                                 ) { page ->
                                     val screenAtPage = swipeableScreens[page]
                                     val pageModifier = if (screenAtPage == AppScreen.REMOTECONTROL || screenAtPage == AppScreen.FILES || screenAtPage == AppScreen.AI_CHAT || screenAtPage == AppScreen.WEB_SERVER) Modifier else Modifier.padding(innerPadding)

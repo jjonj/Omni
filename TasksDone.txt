@@ -149,3 +149,7 @@
 ✅ AI Hookin: Fixed chat window positioning to respond to the Android keyboard (imePadding).
 ✅ AI Hookin: Enhanced edit application logic to handle both full-file replacements and surgical diffs/patches from JSON.
 ✅ AI Hookin: Automated autosave management, disabling it during active Hookin sessions and restoring it afterwards.
+✅ Navigation: Enabled horizontal swipe navigation in the Text Editor screen, but only when Word Wrap is ON (to avoid conflicts with horizontal scrolling).
+✅ Files Screen: Fixed FloatingActionButton (plus button) blocking the Bookmark and Cache management windows by hiding it when they are open.
+✅ AI Chat: Improved rendering of Tool Calls with a dedicated, formatted UI instead of raw JSON strings.
+✅ Embedded Web: Changed default URL to google.com as a debugging step to investigate connectivity issues.

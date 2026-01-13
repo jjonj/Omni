@@ -951,6 +951,52 @@ fun Dot(alpha: Float) {
     )
 }
 
+@Composable
+fun ToolCallBubble(content: String) {
+    val toolData = remember(content) {
+        val jsonStr = content.removePrefix("Tool Call:").trim()
+        try {
+            if (jsonStr.contains("(")) {
+                val toolName = jsonStr.substringBefore("(").trim()
+                val argsStr = jsonStr.substringAfter("(").substringBeforeLast(")")
+                toolName to argsStr
+            } else {
+                "Tool" to jsonStr
+            }
+        } catch (e: Exception) {
+            "Tool" to jsonStr
+        }
+    }
+
+    Column(
+        modifier = Modifier.padding(8.dp).fillMaxWidth()
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Default.Tune, null, modifier = Modifier.size(16.dp), tint = Color(0xFF558B2F))
+            Spacer(Modifier.width(4.dp))
+            Text(
+                text = "Tool Call: ${toolData.first}",
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.Bold,
+                color = Color(0xFF2E7D32)
+            )
+        }
+        Spacer(Modifier.height(4.dp))
+        Surface(
+            color = Color.White.copy(alpha = 0.5f),
+            shape = RoundedCornerShape(4.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text(
+                text = toolData.second,
+                modifier = Modifier.padding(6.dp),
+                style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                color = Color(0xFF333333)
+            )
+        }
+    }
+}
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun ChatBubble(
@@ -964,8 +1010,9 @@ fun ChatBubble(
     val isMe = sender == "Me"
     val isAi = sender == "AI"
     val isCodeDiff = sender == "CodeDiff"
+    val isToolCall = sender == "System" && content.startsWith("Tool Call:")
     val isError = sender == "Error" || content.startsWith("Error:")
-    val isSystem = sender == "System" || (!isMe && !isAi && !isError && !isCodeDiff)
+    val isSystem = sender == "System" && !isToolCall || (!isMe && !isAi && !isError && !isCodeDiff && !isToolCall)
     
     val context = LocalContext.current
     val timestamp = remember { 
@@ -973,7 +1020,7 @@ fun ChatBubble(
     }
 
     val alignment = when {
-        isError || isSystem || isCodeDiff -> Alignment.CenterHorizontally
+        isError || isSystem || isCodeDiff || isToolCall -> Alignment.CenterHorizontally
         isMe -> Alignment.End
         else -> Alignment.Start
     }
@@ -981,6 +1028,7 @@ fun ChatBubble(
     val bgColor = when {
         isError -> MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.8f)
         isSystem -> Color(0xFFFFF176).copy(alpha = 0.7f) // Yellow for system
+        isToolCall -> Color(0xFFC8E6C9).copy(alpha = 0.9f) // Light green for tool calls
         isCodeDiff -> Color.Black.copy(alpha = 0.9f)
         isMe -> MaterialTheme.colorScheme.primaryContainer
         isAi -> MaterialTheme.colorScheme.secondaryContainer
@@ -990,6 +1038,7 @@ fun ChatBubble(
     val textColor = when {
         isError -> MaterialTheme.colorScheme.onErrorContainer
         isSystem -> Color(0xFF333333) // Dark text for yellow
+        isToolCall -> Color(0xFF1B5E20) // Dark green for tool call text
         isCodeDiff -> Color.White
         else -> MaterialTheme.colorScheme.onSurface
     }
@@ -998,6 +1047,7 @@ fun ChatBubble(
         isMe -> Icons.Default.Person
         isAi -> Icons.Default.SmartToy
         isCodeDiff -> Icons.Default.Code
+        isToolCall -> Icons.Default.Tune
         isError -> Icons.Default.Error
         else -> Icons.Default.SettingsSuggest
     }
@@ -1006,7 +1056,7 @@ fun ChatBubble(
         modifier = Modifier.fillMaxWidth(),
         horizontalAlignment = alignment
     ) {
-        if (!isSystem && !isError && !isCodeDiff) {
+        if (!isSystem && !isError && !isCodeDiff && !isToolCall) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.padding(horizontal = 4.dp)
@@ -1034,12 +1084,17 @@ fun ChatBubble(
                     Icon(icon, null, modifier = Modifier.size(12.dp), tint = MaterialTheme.colorScheme.primary)
                 }
             }
-        } else if (isCodeDiff || isError || isSystem) {
+        } else if (isCodeDiff || isError || isSystem || isToolCall) {
              Icon(
                  icon, 
                  null, 
                  modifier = Modifier.size(16.dp).padding(bottom = 2.dp), 
-                 tint = if (isError) MaterialTheme.colorScheme.error else if (isSystem) Color(0xFF666600) else Color.White
+                 tint = when {
+                     isError -> MaterialTheme.colorScheme.error
+                     isToolCall -> Color(0xFF2E7D32)
+                     isSystem -> Color(0xFF666600)
+                     else -> Color.White
+                 }
              )
         }
 
@@ -1047,7 +1102,7 @@ fun ChatBubble(
             color = bgColor,
             shape = RoundedCornerShape(12.dp),
             modifier = Modifier
-                .widthIn(max = if (isSystem || isError || isCodeDiff) 380.dp else 300.dp)
+                .widthIn(max = if (isSystem || isError || isCodeDiff || isToolCall) 380.dp else 300.dp)
                 .combinedClickable(
                     onClick = { },
                     onLongClick = {
@@ -1060,10 +1115,10 @@ fun ChatBubble(
         ) {
             SelectionContainer {
                 Column {
-                    if (isCodeDiff) {
-                        DiffText(content)
-                    } else {
-                        MarkdownText(
+                    when {
+                        isCodeDiff -> DiffText(content)
+                        isToolCall -> ToolCallBubble(content)
+                        else -> MarkdownText(
                             text = content,
                             textColor = textColor,
                             textAlign = if (isSystem || isError) TextAlign.Center else TextAlign.Start,

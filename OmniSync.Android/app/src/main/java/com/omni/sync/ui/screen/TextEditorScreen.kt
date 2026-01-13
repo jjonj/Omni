@@ -677,7 +677,7 @@ fun TextEditorScreen(
     var viewportHeight by remember { mutableFloatStateOf(0f) }
     
     // Editor features state
-    var wordWrap by remember { mutableStateOf(true) }
+    val wordWrap by filesViewModel.wordWrap.collectAsState()
     var showSearch by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
     var replaceQuery by remember { mutableStateOf("") }
@@ -1031,7 +1031,7 @@ fun TextEditorScreen(
                                     leadingIcon = { Icon(Icons.Default.ContentCopy, null) }
                                 )
                                 DropdownMenuItem(
-                                    text = { Text("Go to Line") },
+                                    text = { Text("Go To Line") },
                                     onClick = {
                                         showGoToLineDialog = true
                                         showMenu = false
@@ -1040,7 +1040,7 @@ fun TextEditorScreen(
                                 )
                                 DropdownMenuItem(
                                     text = { Text(if (wordWrap) "Disable Word Wrap" else "Enable Word Wrap") },
-                                    onClick = { wordWrap = !wordWrap; showMenu = false },
+                                    onClick = { filesViewModel.setWordWrap(!wordWrap); showMenu = false },
                                     leadingIcon = { Icon(if (wordWrap) Icons.Default.WrapText else Icons.Default.FormatAlignLeft, null) }
                                 )
                                 DropdownMenuItem(
