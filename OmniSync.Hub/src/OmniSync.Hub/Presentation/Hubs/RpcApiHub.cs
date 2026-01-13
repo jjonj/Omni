@@ -224,6 +224,15 @@ namespace OmniSync.Hub.Presentation.Hubs
             }
         }
 
+        public void UpdateTellPcSettings(string workspace, string systemContext, bool soundEnabled)
+        {
+            if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
+            {
+                _settingsService.UpdateTellPcSettings(workspace, systemContext, soundEnabled);
+                _hubMonitorService.AddLogMessage("Tell PC settings updated via web interface.");
+            }
+        }
+
         public float GetVolume()
         {
             if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
@@ -636,6 +645,25 @@ namespace OmniSync.Hub.Presentation.Hubs
             {
                 AnyCommandReceived?.Invoke(this, $"Browser: {command} -> {url}");
                 
+                // Logic to ensure browser is running if no extension is connected
+                // Note: We don't have a direct way to check 'extension connected' easily here without tracking connection types,
+                // but we can check if vivaldi is running at all as a heuristic.
+                if (!_processService.IsProcessRunning("vivaldi"))
+                {
+                    _logger.LogInformation("[RpcApiHub] Vivaldi not running. Attempting to launch via Win+2.");
+                    _hubMonitorService.AddLogMessage("Vivaldi not running. Triggering Win+2 launch.");
+                    
+                    const ushort VK_LWIN = 0x5B;
+                    const ushort VK_2 = 0x32;
+                    
+                    _inputService.KeyDown(VK_LWIN);
+                    _inputService.SendKeyPress(VK_2);
+                    _inputService.KeyUp(VK_LWIN);
+                    
+                    // Give it some time to start before sending the command
+                    await Task.Delay(2000);
+                }
+
                 // Broadcast to all clients (The Chrome extension will pick this up)
                 await Clients.All.SendAsync("ReceiveBrowserCommand", command, url, newTab);
             }
@@ -1262,6 +1290,40 @@ namespace OmniSync.Hub.Presentation.Hubs
             {
                 AnyCommandReceived?.Invoke(this, "ExecuteMacro");
                 await _processService.ExecuteMacro(commands, _inputService, _clipboardService);
+            }
+        }
+
+        public async Task TriggerTellPc()
+        {
+            if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
+            {
+                _logger.LogInformation("[RpcApiHub] TriggerTellPc requested.");
+                AnyCommandReceived?.Invoke(this, "TriggerTellPc");
+
+                if (_settingsService.Settings.TellPcSoundEnabled)
+                {
+                    _audioService.PlayBlip();
+                }
+
+                string workspace = _settingsService.Settings.TellPcWorkspace;
+                string systemContext = _settingsService.Settings.TellPcSystemContext;
+
+                await Clients.All.SendAsync("ReceiveAiStatus", "Tell PC: Starting Session...", -1);
+
+                _logger.LogInformation($"[RpcApiHub] Launching Tell PC session in workspace: {workspace}");
+                var pid = await _aiCliService.LaunchSessionAsync(workspace);
+
+                if (pid.HasValue)
+                {
+                    _logger.LogInformation($"[RpcApiHub] Tell PC session started with PID {pid.Value}. Setting context.");
+                    _aiCliService.SetTellPcContext(pid.Value, systemContext);
+                    await Clients.All.SendAsync("ReceiveAiStatus", "READY_TO_LISTEN", pid.Value);
+                }
+                else
+                {
+                    _logger.LogWarning("[RpcApiHub] Failed to start Tell PC session.");
+                    await Clients.All.SendAsync("ReceiveAiStatus", "FAILED_TO_START_TELL_PC", -1);
+                }
             }
         }
 

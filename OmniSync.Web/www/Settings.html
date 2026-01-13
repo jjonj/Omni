@@ -147,6 +147,7 @@
             <!-- Secondary Navigation Tabs -->
             <div class="settings-tabs">
                 <div class="settings-tab active" onclick="switchTab('general')">General</div>
+                <div class="settings-tab" onclick="switchTab('ai')">AI / Tell PC</div>
                 <div class="settings-tab" onclick="switchTab('hotkeys')">Hotkeys</div>
                 <div class="settings-tab" onclick="switchTab('projects')">Projects</div>
             </div>
@@ -168,6 +169,37 @@
                                     <!-- Populated by JS -->
                                 </div>
                             </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- AI / Tell PC Panel -->
+                <div id="ai" class="tab-panel">
+                    <div class="hub-box">
+                        <h2>Tell PC Configuration</h2>
+                        <p style="font-size: 12px; color: var(--text-dim); margin-bottom: 20px;">
+                            Configure the "Tell PC" feature triggered from the remote.
+                        </p>
+                        
+                        <div style="display: flex; flex-direction: column; gap: 16px;">
+                            <div class="row">
+                                <label style="width: 180px; font-size: 13px;">Default Workspace</label>
+                                <input type="text" id="tell-pc-workspace" style="flex: 1;" placeholder="e.g. B:\GDrive\Tools">
+                            </div>
+                            
+                            <div class="row" style="align-items: flex-start;">
+                                <label style="width: 180px; font-size: 13px;">System Context</label>
+                                <textarea id="tell-pc-context" style="flex: 1; height: 100px; background: var(--bg); border: 1px solid var(--border); color: var(--text-bright); padding: 8px; border-radius: 4px; font-family: inherit; font-size: 12px;"></textarea>
+                            </div>
+
+                            <label class="hub-status-label" style="display: flex; align-items: center; gap: 12px; cursor: pointer; text-transform: none; font-size: 14px;">
+                                <input type="checkbox" id="tell-pc-sound">
+                                Play confirmation sound (blip) on Hub
+                            </label>
+                        </div>
+
+                        <div class="save-bar">
+                            <button class="modern-btn primary" onclick="saveAiSettings()">Save AI Configuration</button>
                         </div>
                     </div>
                 </div>

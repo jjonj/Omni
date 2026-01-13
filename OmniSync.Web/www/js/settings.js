@@ -34,11 +34,40 @@ async function loadSettings() {
         renderProjects();
         renderExeMappings(settings.exeMappings);
         
+        // Load Tell PC settings
+        const wsInput = document.getElementById("tell-pc-workspace");
+        const ctxInput = document.getElementById("tell-pc-context");
+        const soundCb = document.getElementById("tell-pc-sound");
+        if (wsInput) wsInput.value = settings.tellPcWorkspace || "";
+        if (ctxInput) ctxInput.value = settings.tellPcSystemContext || "";
+        if (soundCb) soundCb.checked = settings.tellPcSoundEnabled !== false;
+
         const status = await hubConnection.invoke("GetHubStatus");
         const cb = document.getElementById("run-on-startup");
         if (cb) cb.checked = status.isRunOnStartupEnabled;
     } catch (err) {
         console.error("Error loading settings:", err);
+    }
+}
+
+async function saveAiSettings() {
+    const workspace = document.getElementById("tell-pc-workspace").value;
+    const context = document.getElementById("tell-pc-context").value;
+    const soundEnabled = document.getElementById("tell-pc-sound").checked;
+
+    try {
+        await hubConnection.invoke("UpdateTellPcSettings", workspace, context, soundEnabled);
+        const btn = event.currentTarget;
+        const originalText = btn.innerText;
+        btn.innerText = "SAVED!";
+        btn.classList.add("success");
+        setTimeout(() => {
+            btn.innerText = originalText;
+            btn.classList.remove("success");
+        }, 2000);
+    } catch (err) {
+        console.error("Error saving AI settings:", err);
+        alert("Failed to save AI settings.");
     }
 }
 

@@ -39,20 +39,70 @@ namespace OmniSync.Hub.Infrastructure.Services
 
         public void PlaySound(string filePath)
         {
-            try
+            if (!System.IO.File.Exists(filePath)) return;
+
+            Task.Run(() =>
             {
-                if (System.IO.File.Exists(filePath))
+                try
                 {
-                    using (var player = new System.Media.SoundPlayer(filePath))
+                    if (filePath.EndsWith(".wav", StringComparison.OrdinalIgnoreCase))
                     {
-                        player.PlaySync();
+                        using (var player = new System.Media.SoundPlayer(filePath))
+                        {
+                            player.Play();
+                        }
+                    }
+                    else
+                    {
+                        using (var audioFile = new NAudio.Wave.AudioFileReader(filePath))
+                        using (var outputDevice = new NAudio.Wave.WaveOutEvent())
+                        {
+                            outputDevice.Init(audioFile);
+                            outputDevice.Play();
+                            while (outputDevice.PlaybackState == NAudio.Wave.PlaybackState.Playing)
+                            {
+                                System.Threading.Thread.Sleep(100);
+                            }
+                        }
                     }
                 }
-            }
-            catch (Exception ex)
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Error playing sound {filePath}: {ex.Message}");
+                }
+            });
+        }
+
+        public void PlayBlip()
+        {
+            string rootPath = AppContext.BaseDirectory;
+            // Search for Resources folder up the tree
+            string? resourcesPath = null;
+            var current = new System.IO.DirectoryInfo(rootPath);
+            while (current != null)
             {
-                // Log error or handle silently for now as requested for high privilege personal ecosystem
-                Console.WriteLine($"Error playing sound {filePath}: {ex.Message}");
+                var potential = System.IO.Path.Combine(current.FullName, "Resources");
+                if (System.IO.Directory.Exists(potential))
+                {
+                    resourcesPath = potential;
+                    break;
+                }
+                current = current.Parent;
+            }
+
+            if (resourcesPath != null)
+            {
+                // Try chime.mp3 first, then shut1min.wav as fallback
+                string chime = System.IO.Path.Combine(resourcesPath, "Alarms", "chime.mp3");
+                if (System.IO.File.Exists(chime))
+                {
+                    PlaySound(chime);
+                }
+                else
+                {
+                    string fallback = System.IO.Path.Combine(resourcesPath, "shut1min.wav");
+                    PlaySound(fallback);
+                }
             }
         }
 

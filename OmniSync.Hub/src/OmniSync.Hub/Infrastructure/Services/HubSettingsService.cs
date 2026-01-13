@@ -59,6 +59,11 @@ namespace OmniSync.Hub.Infrastructure.Services
         public List<string> AutoApprovePatterns { get; set; } = new();
         public List<string> AiPresets { get; set; } = new();
         public List<Project> Projects { get; set; } = new();
+
+        // Tell PC Settings
+        public string TellPcWorkspace { get; set; } = @"B:\GDrive\Tools";
+        public string TellPcSystemContext { get; set; } = "You are to help the user execute commands and tools on this windows PC. You are an expert assistant with full system access. Be concise and efficient.";
+        public bool TellPcSoundEnabled { get; set; } = true;
     }
 
     public class HubSettingsService
@@ -88,6 +93,23 @@ namespace OmniSync.Hub.Infrastructure.Services
             InitializeDefaultAutoApprovals();
             InitializeDefaultPresets();
             InitializeDefaultProjects();
+            InitializeTellPcSettings();
+        }
+
+        private void InitializeTellPcSettings()
+        {
+            bool changed = false;
+            if (string.IsNullOrEmpty(_settings.TellPcWorkspace))
+            {
+                _settings.TellPcWorkspace = @"B:\GDrive\Tools";
+                changed = true;
+            }
+            if (string.IsNullOrEmpty(_settings.TellPcSystemContext))
+            {
+                _settings.TellPcSystemContext = "You are to help the user execute commands and tools on this windows PC. You are an expert assistant with full system access. Be concise and efficient.";
+                changed = true;
+            }
+            if (changed) SaveSettings();
         }
 
         private void InitializeDefaultProjects()
@@ -218,6 +240,14 @@ namespace OmniSync.Hub.Infrastructure.Services
         public void UpdateHotkeys(List<HotkeyConfig> hotkeys)
         {
             _settings.Hotkeys = hotkeys;
+            SaveSettings();
+        }
+
+        public void UpdateTellPcSettings(string workspace, string systemContext, bool soundEnabled)
+        {
+            _settings.TellPcWorkspace = workspace;
+            _settings.TellPcSystemContext = systemContext;
+            _settings.TellPcSoundEnabled = soundEnabled;
             SaveSettings();
         }
 

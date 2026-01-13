@@ -138,3 +138,11 @@
 ### Omni web tft
 
 ✅ Top Units Suggestion feature in TFT results - Implemented next unit suggestions with score boost and trait impact tooltips.
+✅ Add mic icon to button panel in Remote Control Screen that activates voice dictation.
+✅ Files & Video Screen: The context menu when selecting text is now intelligently positioned to stay near but not overlap selected text.
+✅ Add mic icon to quick action bar in Files & Video Screen that activates voice dictation (injects at cursor if file open).
+✅ Browser control screen: If attempting to run any browser command and there is no connection to the browser extension, check if vivaldi.exe is running, if not then send keyboard input win-2 which will start browser.
+✅ AI screen quick insert messages dropdown: added /auth and /conductor:status.
+✅ Add mic icon to AI screen input bar that activates voice dictation.
+✅ Settings screen: Created a new quick action for "Tell PC", which starts voice dictation with a blip sound on the Hub, launches a new AI session in the configured workspace (default B:\GDrive\Tools), and prefixes the message with a configurable system context.
+✅ Hub Settings: Added "AI / Tell PC" configuration tab to manage Tell PC workspace, system context, and sound options.

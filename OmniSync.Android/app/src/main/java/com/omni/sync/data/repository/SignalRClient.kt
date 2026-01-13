@@ -759,6 +759,12 @@ class SignalRClient(
         }
     }
 
+    fun triggerTellPc() {
+        if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
+            hubConnection?.send("TriggerTellPc")
+        }
+    }
+
     fun renameAiSession(pid: Int, name: String) {
         if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {       
             hubConnection?.send("RenameAiSession", pid, name)

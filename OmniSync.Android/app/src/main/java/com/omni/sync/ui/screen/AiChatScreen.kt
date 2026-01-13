@@ -77,6 +77,16 @@ import com.omni.sync.utils.WindowsKeyCodes.VK_Y
 import com.omni.sync.ui.components.DirectoryPickerDialog
 
 import androidx.compose.foundation.interaction.DragInteraction
+import android.speech.RecognizerIntent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import android.app.Activity
+import android.content.Intent
+import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.Security
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Circle
+import androidx.compose.foundation.shape.CircleShape
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
@@ -105,6 +115,35 @@ fun AiChatScreen(
     var browseMode by remember { mutableStateOf("new") }
     val context = LocalContext.current
     
+    val voiceLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            val data = result.data
+            val results = data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
+            if (!results.isNullOrEmpty()) {
+                val spokenText = results[0]
+                // Send to current AI session
+                signalRClient.sendAiMessage(spokenText, if (selectedPid != -1) selectedPid else null)
+            }
+        }
+    }
+
+    fun startVoiceRecognition() {
+        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            putExtra(RecognizerIntent.EXTRA_PROMPT, "Listening...")
+        }
+        voiceLauncher.launch(intent)
+    }
+
+    // Auto-trigger voice recognition on Hub status
+    LaunchedEffect(aiStatus) {
+        if (aiStatus == "READY_TO_LISTEN") {
+            startVoiceRecognition()
+        }
+    }
+
     val listState = rememberLazyListState()
     val isAiThinking = aiStatus?.contains("Thinking", ignoreCase = true) == true
     val coroutineScope = rememberCoroutineScope()
@@ -227,7 +266,8 @@ fun AiChatScreen(
                                     Text(currentName, style = MaterialTheme.typography.titleMedium)
                                     if (isConnected) {
                                         if (aiStatus != null) {
-                                            Text(aiStatus!!, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                                            val displayStatus = if (aiStatus == "READY_TO_LISTEN") "Ready to listen" else aiStatus!!
+                                            Text(displayStatus, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
                                         } else {
                                             Text("${sessions.size} sessions active", style = MaterialTheme.typography.labelSmall)
                                         }
@@ -520,6 +560,30 @@ fun AiChatScreen(
                             expanded = showPresetsMenu,
                             onDismissRequest = { showPresetsMenu = false }
                         ) {
+                            // Quick Commands
+                            DropdownMenuItem(
+                                text = { Text("/auth") },
+                                onClick = {
+                                    val cmd = "/auth"
+                                    signalRClient.updateAiInputText(cmd)
+                                    textFieldValue = TextFieldValue(cmd, TextRange(cmd.length))
+                                    showPresetsMenu = false
+                                },
+                                leadingIcon = { Icon(imageVector = Icons.Default.Security, null, modifier = Modifier.size(18.dp)) }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("/conductor:status") },
+                                onClick = {
+                                    val cmd = "/conductor:status"
+                                    signalRClient.updateAiInputText(cmd)
+                                    textFieldValue = TextFieldValue(cmd, TextRange(cmd.length))
+                                    showPresetsMenu = false
+                                },
+                                leadingIcon = { Icon(imageVector = Icons.Default.Info, null, modifier = Modifier.size(18.dp)) }
+                            )
+                            
+                            HorizontalDivider()
+
                             if (presets.isEmpty()) {
                                 DropdownMenuItem(
                                     text = { Text("No presets") },
@@ -547,6 +611,18 @@ fun AiChatScreen(
                                 )
                             }
                         }
+                    }
+
+                    Spacer(Modifier.width(8.dp))
+                    IconButton(
+                        onClick = { startVoiceRecognition() },
+                        enabled = isConnected
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Mic,
+                            contentDescription = "Voice Input",
+                            tint = if (isConnected) MaterialTheme.colorScheme.primary else Color.Gray
+                        )
                     }
 
                     Spacer(Modifier.width(8.dp))

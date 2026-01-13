@@ -66,6 +66,11 @@ import com.omni.sync.ui.components.ActionKeyButton
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import androidx.compose.ui.layout.ContentScale
+import android.speech.RecognizerIntent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import android.app.Activity
+import android.content.Intent
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -85,6 +90,30 @@ fun RemoteControlScreen(
     var monitorOffset by remember { mutableStateOf(Offset.Zero) }
     var showMacroGrid by remember { mutableStateOf(false) }
     var showMoreButtons by remember { mutableStateOf(false) }
+
+    val selectedPid by signalRClient.selectedPid.collectAsState()
+
+    val voiceLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            val data = result.data
+            val results = data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
+            if (!results.isNullOrEmpty()) {
+                val spokenText = results[0]
+                // Send to AI
+                signalRClient.sendAiMessage(spokenText, if (selectedPid != -1) selectedPid else null)
+            }
+        }
+    }
+
+    fun startVoiceRecognition() {
+        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            putExtra(RecognizerIntent.EXTRA_PROMPT, "Listening...")
+        }
+        voiceLauncher.launch(intent)
+    }
 
     // Handle back press
     androidx.activity.compose.BackHandler(enabled = showMacroGrid || showMoreButtons) {
@@ -156,7 +185,8 @@ fun RemoteControlScreen(
                         monitorOffset = Offset.Zero
                     }
                 },
-                onToggleMacros = { showMacroGrid = !showMacroGrid }
+                onToggleMacros = { showMacroGrid = !showMacroGrid },
+                onStartVoice = { startVoiceRecognition() }
             )
         }
     }
@@ -654,7 +684,8 @@ fun ButtonPanel(
     showMoreButtons: Boolean,
     onToggleMore: (Boolean) -> Unit,
     onToggleMonitor: (Boolean) -> Unit,
-    onToggleMacros: () -> Unit
+    onToggleMacros: () -> Unit,
+    onStartVoice: () -> Unit = {}
 ) {
     val coroutineScope = rememberCoroutineScope()
     val isShiftPressed by mainViewModel.isShiftPressed.collectAsState()
@@ -809,8 +840,8 @@ fun ButtonPanel(
                     ActionKeyButton(icon = Icons.Default.AutoFixHigh, modifier = Modifier.weight(1f)) {
                         onToggleMacros()
                     }
-                    ActionKeyButton(text = "Space", modifier = Modifier.weight(1f)) {
-                        signalRClient.sendText(" ")
+                    ActionKeyButton(icon = Icons.Default.Mic, modifier = Modifier.weight(1f)) {
+                        onStartVoice()
                     }
                     ActionKeyButton(icon = Icons.AutoMirrored.Filled.KeyboardReturn, modifier = Modifier.weight(1f)) {
                         signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_RETURN)

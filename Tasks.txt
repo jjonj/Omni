@@ -32,20 +32,11 @@ Only work on subtasks if told to do so or if told explicitly to do a Megasession
 
 ### Remote Control Screen
 
-add mic icon to button panel that actives voice dictation 
-
 #### Macro screen
 
 ### Files & Video Screen
 
-the context menu when selecting text is currently always showing at the top of the screen, it should intelligently stay near but not overlap selected text 
-
-add mic icon to quick action bar that actives voice dictation at cursor pos
-
 ### Browser control screen
-
-if attempting to run any browser command and there is no connection to the browser extension, check if vivaldi.exe is running,if not then send keyboard input win-2 which will start browser 
-
 
 ### Android Home screen launcher widgets
 
@@ -53,15 +44,9 @@ if attempting to run any browser command and there is no connection to the brows
 
 ### AI screen
 
-add to the list of quick insert messages dropdown: /auth and /conductor:status
-
-add mic icon to input bar that actives voice dictation
-
 ### Embedded web screen
 
 ### Settings screen
-
-create a new quick action for "Tell PC", this will instantly start a voice dictation with a sound indicating being ready 
 
 
 ## Omni Web

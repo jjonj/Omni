@@ -46,8 +46,13 @@ import com.omni.sync.utils.isVideoFile
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.platform.LocalTextToolbar
 import androidx.compose.ui.platform.LocalConfiguration
+import android.speech.RecognizerIntent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import android.app.Activity
+import android.content.Intent
+import androidx.compose.ui.platform.LocalTextToolbar
 import androidx.compose.ui.platform.TextToolbar
 import androidx.compose.ui.platform.TextToolbarStatus
 import androidx.compose.ui.geometry.Rect
@@ -473,17 +478,28 @@ fun CustomTextSelectionMenu(toolbar: CustomTextToolbar) {
         val rect = toolbar.currentRect!!
         
         // Calculate position
-        // The rect provided by BasicTextField is usually local to its bounds.
-        // If we render the Popup inside the same container as BasicTextField,
-        // the offset should match.
+        val density = LocalDensity.current
+        val screenWidth = LocalConfiguration.current.screenWidthDp.dp
         
-        val showBelow = rect.top < 150 // If too close to top, show below
-        val offsetX = rect.center.x - 150 // Try to center horizontally (approx width 300)
-        val offsetY = if (showBelow) rect.bottom + 10 else rect.top - 120 
+        // The rect provided by BasicTextField is usually local to its bounds.
+        // We want to show it above the selection if possible, otherwise below.
+        
+        val menuHeight = 60.dp
+        val menuWidth = 320.dp // Approximate
+        
+        val offsetX = (rect.center.x - with(density) { (menuWidth / 2).toPx() })
+            .coerceIn(0f, with(density) { screenWidth.toPx() } - with(density) { menuWidth.toPx() })
+            
+        val showBelow = rect.top < with(density) { (menuHeight + 20.dp).toPx() }
+        val offsetY = if (showBelow) {
+            rect.bottom + with(density) { 10.dp.toPx() }
+        } else {
+            rect.top - with(density) { (menuHeight + 10.dp).toPx() }
+        }
         
         Popup(
             alignment = Alignment.TopStart,
-            offset = IntOffset(offsetX.roundToInt().coerceAtLeast(0), offsetY.roundToInt()),
+            offset = IntOffset(offsetX.roundToInt(), offsetY.roundToInt()),
             onDismissRequest = { toolbar.hide() },
             properties = PopupProperties(
                 focusable = false, 
@@ -602,6 +618,32 @@ fun TextEditorScreen(
     var textFieldValue by remember { 
         val initialSelection = editingFile?.path?.let { cursorPositions[it] } ?: TextRange.Zero
         mutableStateOf(TextFieldValue(editingContent, initialSelection)) 
+    }
+
+    val voiceLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            val data = result.data
+            val results = data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
+            if (!results.isNullOrEmpty()) {
+                val spokenText = results[0]
+                val text = textFieldValue.text
+                val sel = textFieldValue.selection
+                val newText = text.replaceRange(sel.start, sel.end, spokenText)
+                filesViewModel.updateEditingContent(newText)
+                val newCursorPos = sel.start + spokenText.length
+                textFieldValue = textFieldValue.copy(text = newText, selection = TextRange(newCursorPos, newCursorPos))
+            }
+        }
+    }
+
+    fun startVoiceRecognition() {
+        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            putExtra(RecognizerIntent.EXTRA_PROMPT, "Listening...")
+        }
+        voiceLauncher.launch(intent)
     }
     
     // Sync external changes to internal state
@@ -1387,6 +1429,10 @@ fun TextEditorScreen(
                         }
                     }, modifier = btnModifier) {
                         Icon(Icons.Default.ContentPaste, "Paste", modifier = iconModifier)
+                    }
+
+                    IconButton(onClick = { startVoiceRecognition() }, modifier = btnModifier) {
+                        Icon(Icons.Default.Mic, "Voice Input", modifier = iconModifier, tint = MaterialTheme.colorScheme.primary)
                     }
                     
                     IconButton(onClick = {

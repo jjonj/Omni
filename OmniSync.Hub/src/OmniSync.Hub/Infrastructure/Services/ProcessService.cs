@@ -504,6 +504,19 @@ Add-Type -MemberDefinition $code -Name Win32 -Namespace Native
                 return false;
             }
         }
+
+        public bool IsProcessRunning(string processName)
+        {
+            try
+            {
+                var procs = Process.GetProcessesByName(processName);
+                return procs != null && procs.Length > 0;
+            }
+            catch
+            {
+                return false;
+            }
+        }
     }
 
     public class ProcessInfo

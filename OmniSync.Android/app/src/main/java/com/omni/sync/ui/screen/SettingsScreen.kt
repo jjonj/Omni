@@ -24,7 +24,11 @@ import com.omni.sync.service.ForegroundService
 import com.omni.sync.data.model.NotificationAction
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
-
+import android.speech.RecognizerIntent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import android.app.Activity
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.MoreVert
 
@@ -39,6 +43,28 @@ fun SettingsScreen(
     val appConfig = mainViewModel.appConfig
     val gson = remember { Gson() }
     
+    val voiceLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            val data = result.data
+            val results = data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
+            if (!results.isNullOrEmpty()) {
+                val spokenText = results[0]
+                // Send to AI
+                signalRClient.sendAiMessage(spokenText)
+            }
+        }
+    }
+
+    fun startVoiceRecognition() {
+        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            putExtra(RecognizerIntent.EXTRA_PROMPT, "Listening...")
+        }
+        voiceLauncher.launch(intent)
+    }
+
     var videoSkipInterval by remember { mutableIntStateOf(appConfig.videoSkipInterval) }
     var videoPlaylistRandom by remember { mutableStateOf(appConfig.videoPlaylistRandom) }
                 var cortexNotificationsEnabled by remember { mutableStateOf(appConfig.cortexNotificationsEnabled) }
@@ -135,6 +161,19 @@ fun SettingsScreen(
                             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.tertiary)
                         ) {
                             Text("AI Scan", fontSize = 10.sp)
+                        }
+                        Button(
+                            onClick = {
+                                signalRClient.triggerTellPc()
+                                mainViewModel.addLog("Tell PC Triggered...", LogType.INFO)
+                                mainViewModel.navigateTo(AppScreen.AI_CHAT)
+                            },
+                            modifier = Modifier.weight(1f),
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                        ) {
+                            Icon(Icons.Default.Mic, null, modifier = Modifier.size(14.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text("Tell PC", fontSize = 10.sp)
                         }
                     }
                 }

@@ -54,6 +54,7 @@ namespace OmniSync.Hub.Infrastructure.Services
         private readonly ConcurrentDictionary<int, GeminiSession> _sessions = new();
         private readonly ConcurrentDictionary<int, string> _sessionNames = new();
         private readonly ConcurrentDictionary<int, string> _workspaces = new();
+        private readonly ConcurrentDictionary<int, string> _tellPcContexts = new();
         private readonly ConcurrentDictionary<int, (DateTime LastAttempt, int FailCount)> _failedPids = new();
         private readonly ConcurrentQueue<(string Text, int Pid)> _pendingPrompts = new();
         private DateTime _lastWmiDiscovery = DateTime.MinValue;
@@ -124,6 +125,11 @@ namespace OmniSync.Hub.Infrastructure.Services
             }
 
             return Task.CompletedTask;
+        }
+
+        public void SetTellPcContext(int pid, string context)
+        {
+            _tellPcContexts[pid] = context;
         }
 
         public void TryAutoRenameSession(int pid, string firstMessage)
@@ -1041,6 +1047,14 @@ namespace OmniSync.Hub.Infrastructure.Services
             }
 
             _logger.LogInformation($"[AiCliService] Sending prompt to PID {target}...");
+
+            string finalPrompt = text;
+            if (_tellPcContexts.TryRemove(target, out var context))
+            {
+                _logger.LogInformation($"[AiCliService] Applying Tell PC context to PID {target}");
+                finalPrompt = $"[SYSTEM_CONTEXT: {context}]\n\nUser Request: {text}";
+            }
+
             if (text.Contains("I am currently editing the file:"))
             {
                 _logger.LogInformation("[AiCliService] SPECIAL: Editing context detected. Setting AI to 'Helper Mode'.");
@@ -1050,7 +1064,7 @@ namespace OmniSync.Hub.Infrastructure.Services
             {
                 if (_sessions.TryGetValue(target, out var session))
                 {
-                    bool result = await session.SendPromptAsync(text);
+                    bool result = await session.SendPromptAsync(finalPrompt);
                     _logger.LogInformation($"[AiCliService] SendPromptAsync result for PID {target}: {result}");
                     return result;
                 }

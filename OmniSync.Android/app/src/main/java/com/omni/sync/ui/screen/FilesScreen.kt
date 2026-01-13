@@ -47,6 +47,12 @@ import java.util.Locale
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.ui.graphics.Color
 import androidx.compose.material.icons.filled.Add
+import android.speech.RecognizerIntent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import android.app.Activity
+import android.content.Intent
+import androidx.compose.material.icons.filled.Mic
 import androidx.activity.compose.BackHandler
 import com.omni.sync.ui.components.VerticalScrollbar
 import com.omni.sync.ui.components.DirectoryPickerDialog
@@ -109,6 +115,28 @@ fun FilesScreen(
     val downloadErrorMessage by filesViewModel.downloadErrorMessage.collectAsState()
 
     val context = LocalContext.current // Get context for Toast
+
+    val voiceLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            val data = result.data
+            val results = data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
+            if (!results.isNullOrEmpty()) {
+                val spokenText = results[0]
+                // Send to current AI session
+                filesViewModel.signalRClient.sendAiMessage(spokenText, if (selectedPid != -1) selectedPid else null)
+            }
+        }
+    }
+
+    fun startVoiceRecognition() {
+        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            putExtra(RecognizerIntent.EXTRA_PROMPT, "Listening...")
+        }
+        voiceLauncher.launch(intent)
+    }
 
     val listState = rememberLazyListState()
     
@@ -228,7 +256,7 @@ fun FilesScreen(
                     containerColor = MaterialTheme.colorScheme.primary,
                     contentColor = MaterialTheme.colorScheme.onPrimary
                 ) {
-                    Icon(Icons.Default.Add, contentDescription = "Create New File")
+                    Icon(imageVector = Icons.Default.Add, contentDescription = "Create New File")
                 }
             }
         },
@@ -255,6 +283,9 @@ fun FilesScreen(
                             if (showCachesList) showBookmarksList = false
                         }) {
                             Icon(if (showCachesList) Icons.Default.Close else Icons.Default.Storage, contentDescription = "Manage Caches")
+                        }
+                        IconButton(onClick = { startVoiceRecognition() }) {
+                            Icon(Icons.Default.Mic, contentDescription = "Voice Input (AI)", tint = MaterialTheme.colorScheme.primary)
                         }
                         if (bookmarks.isEmpty()) {
                             Text(
