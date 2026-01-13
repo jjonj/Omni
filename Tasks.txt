@@ -32,9 +32,27 @@ Only work on subtasks if told to do so or if told explicitly to do a Megasession
 
 ### Remote Control Screen
 
+Add windows key to special keys like tab and ctrl etc, should be holdable like those.
+When quick tapping specifically windows and tab keys it should just send a normal single input command, only switch to the hold release mode when the tap is slightly longer than a quick tap
+
+If im on the remote control screen on my phone while im on the hub c at the same time. If i press Alt, ctrl, tab etc on the PC it will sync to the control screen and show it highlighted, but it stays highlighted after i release the button on pc until i press another button. Investigate if this is a purely visual issue or actual implementation issue
+
+The voice dictation mic icon pops up a helpful google voice recorder but after recording nothing happens. I expect the input to get sent to the hub to be added as input, exactly like e.g. the paste button does.
+
+
 #### Macro screen
 
+The macro editor has a "Chrome" quickaction
+
 ### Files & Video Screen
+
+The AI hookin is a great starting point, but it needs some features and fixes. 
+The embedded chat window does not move up when the android keyboard comes up, resulting in it being not visible while typing
+The AI returns JSON but the scaffolding does not use that json to actually change the document
+The AI should be able to both replace the entire file with one json type but also do surgical changes with a diff style, scaffolding needs to handle both and actually change the document. 
+Automatically disable auto saving of the file when the AI hookin feature is activated, but reenabled it, IF it was enabled before, after exiting the file, closing the AI hookin, or sleeping the app. 
+
+✅ on all other screens i can swipe left and right to navigate screens but i can't from text editor screen. This should only work when line wrapping is enabled.
 
 ### Browser control screen
 
@@ -45,6 +63,8 @@ Only work on subtasks if told to do so or if told explicitly to do a Megasession
 ### AI screen
 
 ### Embedded web screen
+
+Does not work, as a debugging step, change it to show google.com instead of 10...37
 
 ### Settings screen
 

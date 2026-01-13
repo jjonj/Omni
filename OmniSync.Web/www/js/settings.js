@@ -220,11 +220,23 @@ function renderExeMappings(mappings) {
     for (const [key, path] of Object.entries(mappings)) {
         const row = document.createElement("div");
         row.className = "row";
+        row.style.gap = "8px";
         row.innerHTML = `
-            <label style="width: 120px; font-family: var(--font-mono); font-size: 12px;">${key}</label>
-            <input type="text" value="${path}" style="flex: 1; font-size: 11px;" readonly>
+            <label style="width: 120px; font-family: var(--font-mono); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${key}</label>
+            <input type="text" value="${path}" style="flex: 1; font-size: 11px;" readonly title="${path}">
+            <button class="btn" onclick="testMapping('${key}')">Test</button>
         `;
         list.appendChild(row);
+    }
+}
+
+async function testMapping(key) {
+    try {
+        await hubConnection.invoke("ExecuteCommand", key);
+        console.log(`Test command sent for: ${key}`);
+    } catch (err) {
+        console.error("Error testing mapping:", err);
+        alert("Failed to test mapping.");
     }
 }
 

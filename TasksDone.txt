@@ -38,7 +38,7 @@
 ✅ Process macro on hub after saving, first processing step will be to look for pathless run commands, e.g. "run truecrypt.exe", first check if truecrypt.exe exists as a mapping in hub settings. If not, search the whole system for it, find it at "E:\Program Files\TrueCrypt\TrueCrypt.exe" and send a message back to app and app will update the macro automatically to replace truecrypt.exe with E:\Program Files\TrueCrypt\TrueCrypt.exe
 ✅ Ensure run commands support having spaces in the path of the program
 ✅ Winactivate command should be intelligent about finding the process to activate, either by executable name or partial string of window should work.
-✅ Add windows key to special key and tab
+✅ 
 ✅ Use normal brackets () instead of {} for special keys
 ✅ Add more easy insert buttons (e.g. the sleep run exe etc), including a dropdown for special keys
 ✅ At the bottom of the help screen add 10 different examples of correct scripts, and also use them as templates that can be inserted in the current edit window.
@@ -105,7 +105,7 @@
 ### AI screen
 
 ✅ add a new button that let's me /dir addmypath with a button press and then navigating the file system in a popup to select the folder to add
-✅ on all other screens i can swipe left and right to navigate screens but i can't from ai
+
 ✅ When not scrolled to bottom of history i experience the scroll amount jumping when new messages are added at the bottom, i dont want it to move what I'm looking at. it would only auto scroll if I'm scrolled to bottom already or if i send a message myself
 ✅ merge the + and foldericon buttons. when pasting prompt user with the folder bookmarks list and add browse option that opens a popup
 ✅ sessions are named according to the first message sent to ai with fallback to session id. change that to primarily use the workspace folder name (not full path), append with number if multiple with same workspaces
@@ -119,10 +119,6 @@
 ✅ add a button to Focus, which will have windows focus the windows bringing it to front (Added Focus action to TopAppBar)
 ✅ when sending input keys like esc or enter or yolo make sure to focus the windowbfirst so the right chat receives it (Added FocusSessionAsync calls before sending keys in RpcApiHub)
 ✅ clicking file links in chat jumps to file screen as expected but it does not find and open the file, instead it seems to try to find a folder with that name and errors (Fixed with AI_FILE: prefix and search logic in FilesViewModel)
-✅ add a button that opens a dropdown with preset messages and commands to put into the input text box, the user can persistently add more by entering text into the input box and then long pressing this new button. start with these default 4 options /model /conductor:newTrack /conductor:implement Please run any final scripts and commit all changes (Implemented Presets button with long-press save and Hub-side persistence)
-✅ adding a message while the ai is busy will in the cli window queue the message but in android it looks like it got instantly sent, can you find a way to figure out when it's queued and then displsy it differently (Implemented QUEUED status in Hub and Android with 'isQueued' flag on AiMessage)
-✅ allow me to select and copy text in the chat (Enabled SelectionContainer in ChatBubble)
-✅ support displaying and interacting with AI choice dialogs on Android.
 
 ### Alarm screen
 
@@ -146,3 +142,4 @@
 ✅ Add mic icon to AI screen input bar that activates voice dictation.
 ✅ Settings screen: Created a new quick action for "Tell PC", which starts voice dictation with a blip sound on the Hub, launches a new AI session in the configured workspace (default B:\GDrive\Tools), and prefixes the message with a configurable system context.
 ✅ Hub Settings: Added "AI / Tell PC" configuration tab to manage Tell PC workspace, system context, and sound options.
+✅ Hub Settings: Added "Test" button to Exe mappings table to allow verification of mapped paths.
