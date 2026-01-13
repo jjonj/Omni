@@ -936,17 +936,21 @@ namespace OmniSync.Hub.Infrastructure.Services
             {
                 if (OperatingSystem.IsWindows())
                 {
-                    string query = "SELECT ProcessId, CommandLine FROM Win32_Process WHERE Name LIKE 'node%'";
+                    string query = "SELECT ProcessId, CommandLine, ParentProcessId FROM Win32_Process WHERE Name LIKE 'node%'";
                     using var searcher = new ManagementObjectSearcher(query);
                     using var collection = searcher.Get();
+
+                    var rawGeminiProcesses = new List<(int Pid, string Cmd, int Parent)>();
 
                     foreach (var process in collection)
                     {
                         var commandLine = process["CommandLine"]?.ToString();
                         var pidObj = process["ProcessId"];
+                        var parentObj = process["ParentProcessId"];
                         if (commandLine != null && pidObj != null)
                         {
                             int foundPid = Convert.ToInt32(pidObj);
+                            int parentPid = parentObj != null ? Convert.ToInt32(parentObj) : 0;
                             string cmdLower = commandLine.ToLower();
                             bool isGemini = (cmdLower.Contains("bundle/gemini.js") || 
                                              cmdLower.Contains("omni_gemini") || 
@@ -954,9 +958,19 @@ namespace OmniSync.Hub.Infrastructure.Services
 
                             if (isGemini)
                             {
-                                pids.Add(foundPid);
+                                rawGeminiProcesses.Add((foundPid, commandLine, parentPid));
                             }
                         }
+                    }
+
+                    // Deduplicate: If a process has a child that is ALSO a Gemini process, skip the parent.
+                    foreach (var gp in rawGeminiProcesses)
+                    {
+                        if (rawGeminiProcesses.Any(other => other.Parent == gp.Pid))
+                        {
+                            continue;
+                        }
+                        pids.Add(gp.Pid);
                     }
                 }
             }
