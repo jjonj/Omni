@@ -1,0 +1,6 @@
+REMINDER:
+Whenever you modify features in the Web UI (Hotkeys, Exe Mappings, Projects, etc.),
+you MUST also update the corresponding WPF UI in OmniSync.Hub project.
+
+The WPF version is the primary interface used by the user.
+Keep them in sync!

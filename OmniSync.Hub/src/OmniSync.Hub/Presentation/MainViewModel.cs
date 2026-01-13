@@ -20,6 +20,7 @@ namespace OmniSync.Hub.Presentation
     {
         private readonly HubMonitorService _hubMonitorService;
         private readonly InputService _inputService;
+        private readonly ProcessService _processService;
         private readonly ShutdownService _shutdownService;
         private readonly RegistryService _registryService;
         private readonly HubSettingsService _settingsService;
@@ -35,6 +36,7 @@ namespace OmniSync.Hub.Presentation
         public ICommand ClearLogCommand { get; }
         public ICommand AddMappingCommand { get; }
         public ICommand DeleteMappingCommand { get; }
+        public ICommand TestMappingCommand { get; }
         public ICommand StartRecordingHotkeyCommand { get; }
         public ICommand AddHotkeyCommand { get; }
         public ICommand DeleteHotkeyCommand { get; }
@@ -291,10 +293,11 @@ namespace OmniSync.Hub.Presentation
             set { _isAltPressed = value; OnPropertyChanged(); }
         }
 
-        public MainViewModel(HubMonitorService hubMonitorService, InputService inputService, ShutdownService shutdownService, RegistryService registryService, HubSettingsService settingsService, KeyboardHook keyboardHook, AiCliService aiCliService, LayoutCaptureService layoutCaptureService, ProjectLauncherService projectLauncherService)
+        public MainViewModel(HubMonitorService hubMonitorService, InputService inputService, ProcessService processService, ShutdownService shutdownService, RegistryService registryService, HubSettingsService settingsService, KeyboardHook keyboardHook, AiCliService aiCliService, LayoutCaptureService layoutCaptureService, ProjectLauncherService projectLauncherService)
         {
             _hubMonitorService = hubMonitorService;
             _inputService = inputService;
+            _processService = processService;
             _shutdownService = shutdownService;
             _registryService = registryService;
             _settingsService = settingsService;
@@ -350,6 +353,7 @@ namespace OmniSync.Hub.Presentation
             ClearLogCommand = new RelayCommand(_ => _hubMonitorService.ClearLog());
             AddMappingCommand = new RelayCommand(_ => ExecuteAddMapping());
             DeleteMappingCommand = new RelayCommand(p => ExecuteDeleteMapping(p as string));
+            TestMappingCommand = new RelayCommand(p => ExecuteTestMapping(p as string));
             StartRecordingHotkeyCommand = new RelayCommand(p => ExecuteStartRecording(p as HotkeyConfig));
             AddHotkeyCommand = new RelayCommand(_ => ExecuteAddHotkey());
             DeleteHotkeyCommand = new RelayCommand(p => ExecuteDeleteHotkey(p as string));
@@ -426,6 +430,13 @@ namespace OmniSync.Hub.Presentation
             if (key == null) return;
             _settingsService.RemoveMapping(key);
             RefreshMappingsGrid();
+        }
+
+        private void ExecuteTestMapping(string? key)
+        {
+            if (key == null) return;
+            _hubMonitorService.AddLogMessage($"[Settings] Testing mapping: {key}");
+            _ = _processService.ExecuteCommand(key);
         }
 
         private void ExecuteStartRecording(HotkeyConfig? target)

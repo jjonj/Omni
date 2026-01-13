@@ -153,3 +153,5 @@
 ✅ Files Screen: Fixed FloatingActionButton (plus button) blocking the Bookmark and Cache management windows by hiding it when they are open.
 ✅ AI Chat: Improved rendering of Tool Calls with a dedicated, formatted UI instead of raw JSON strings.
 ✅ Embedded Web: Changed default URL to google.com as a debugging step to investigate connectivity issues.
+✅ Tell PC: Fixed the feature to correctly trigger Android voice recognition and send text to AI without switching screens.
+✅ Tell PC: Removed the blip sound playing on the Hub.

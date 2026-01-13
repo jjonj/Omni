@@ -21,6 +21,7 @@ namespace OmniSync.Hub.Presentation
         private readonly IHostApplicationLifetime _appLifetime;
         private readonly HubMonitorService _hubMonitorService; // New: Reference to HubMonitorService
         private readonly InputService _inputService; // Add InputService
+        private readonly ProcessService _processService;
         private readonly ShutdownService _shutdownService;
         private readonly RegistryService _registryService;
         private readonly HubSettingsService _settingsService;
@@ -33,11 +34,12 @@ namespace OmniSync.Hub.Presentation
         private TrayApplicationContext _applicationContext;
         private Thread _trayThread;
 
-        public TrayIconManager(IHostApplicationLifetime appLifetime, HubMonitorService hubMonitorService, InputService inputService, ShutdownService shutdownService, RegistryService registryService, HubSettingsService settingsService, GlobalHotkeyService hotkeyService, KeyboardHook keyboardHook, AiCliService aiCliService, LayoutCaptureService layoutCaptureService, ProjectLauncherService projectLauncherService, ILogger<TrayIconManager> logger)
+        public TrayIconManager(IHostApplicationLifetime appLifetime, HubMonitorService hubMonitorService, InputService inputService, ProcessService processService, ShutdownService shutdownService, RegistryService registryService, HubSettingsService settingsService, GlobalHotkeyService hotkeyService, KeyboardHook keyboardHook, AiCliService aiCliService, LayoutCaptureService layoutCaptureService, ProjectLauncherService projectLauncherService, ILogger<TrayIconManager> logger)
         {
             _appLifetime = appLifetime;
             _hubMonitorService = hubMonitorService;
             _inputService = inputService;
+            _processService = processService;
             _shutdownService = shutdownService;
             _registryService = registryService;
             _settingsService = settingsService;
@@ -82,7 +84,7 @@ namespace OmniSync.Hub.Presentation
                 WinFormsApp.SetCompatibleTextRenderingDefault(false); // For WinForms interop
 
                                 _logger.LogInformation("TrayIconManager: Creating TrayApplicationContext.");
-                                _applicationContext = new TrayApplicationContext(_appLifetime, app, _hubMonitorService, _inputService, _shutdownService, _registryService, _settingsService, _hotkeyService, _keyboardHook, _aiCliService, _layoutCaptureService, _projectLauncherService, _logger); // Pass logger
+                                _applicationContext = new TrayApplicationContext(_appLifetime, app, _hubMonitorService, _inputService, _processService, _shutdownService, _registryService, _settingsService, _hotkeyService, _keyboardHook, _aiCliService, _layoutCaptureService, _projectLauncherService, _logger); // Pass logger
                 
                                 // Add message filter to route messages to WPF's ComponentDispatcher
                                 WinFormsApp.AddMessageFilter(new WpfMessageFilter());
@@ -131,6 +133,7 @@ namespace OmniSync.Hub.Presentation
             private readonly WpfApp _wpfApplication;
             private readonly HubMonitorService _hubMonitorService; // New: Reference to HubMonitorService
             private readonly InputService _inputService; // Add InputService
+            private readonly ProcessService _processService;
             private readonly ShutdownService _shutdownService;
             private readonly RegistryService _registryService;
             private readonly HubSettingsService _settingsService;
@@ -142,12 +145,13 @@ namespace OmniSync.Hub.Presentation
             private readonly ILogger _logger;
             private MainWindow _mainWindow;
 
-            public TrayApplicationContext(IHostApplicationLifetime appLifetime, WpfApp wpfApplication, HubMonitorService hubMonitorService, InputService inputService, ShutdownService shutdownService, RegistryService registryService, HubSettingsService settingsService, GlobalHotkeyService hotkeyService, KeyboardHook keyboardHook, AiCliService aiCliService, LayoutCaptureService layoutCaptureService, ProjectLauncherService projectLauncherService, ILogger logger)
+            public TrayApplicationContext(IHostApplicationLifetime appLifetime, WpfApp wpfApplication, HubMonitorService hubMonitorService, InputService inputService, ProcessService processService, ShutdownService shutdownService, RegistryService registryService, HubSettingsService settingsService, GlobalHotkeyService hotkeyService, KeyboardHook keyboardHook, AiCliService aiCliService, LayoutCaptureService layoutCaptureService, ProjectLauncherService projectLauncherService, ILogger logger)
             {
                 _appLifetime = appLifetime;
                 _wpfApplication = wpfApplication; // Store reference to the WPF Application instance
                 _hubMonitorService = hubMonitorService; // Assign the injected service
                 _inputService = inputService; // Assign the injected service
+                _processService = processService;
                 _shutdownService = shutdownService;
                 _registryService = registryService;
                 _settingsService = settingsService;
@@ -183,7 +187,7 @@ namespace OmniSync.Hub.Presentation
 
                     _logger.LogInformation("TrayApplicationContext: Creating MainWindow.");
                     // Create and store the WPF main window, passing the HubMonitorService
-                    _mainWindow = new MainWindow(_hubMonitorService, _inputService, _shutdownService, _registryService, _settingsService, _keyboardHook, _aiCliService, _layoutCaptureService, _projectLauncherService);
+                    _mainWindow = new MainWindow(_hubMonitorService, _inputService, _processService, _shutdownService, _registryService, _settingsService, _keyboardHook, _aiCliService, _layoutCaptureService, _projectLauncherService);
                     _logger.LogInformation("TrayApplicationContext: MainWindow created.");
 
                     // Create Context Menu

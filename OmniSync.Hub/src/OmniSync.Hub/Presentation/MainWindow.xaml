@@ -324,12 +324,17 @@
                                         <DataGrid.Columns>
                                             <DataGridTextColumn Header="Key" Binding="{Binding Key}" Width="150" IsReadOnly="True" />
                                             <DataGridTextColumn Header="Path" Binding="{Binding Value}" Width="*" IsReadOnly="True" />
-                                            <DataGridTemplateColumn Width="80">
+                                            <DataGridTemplateColumn Width="150">
                                                 <DataGridTemplateColumn.CellTemplate>
                                                     <DataTemplate>
-                                                        <Button Content="Delete" Command="{Binding ElementName=ExeMappingsGrid, Path=DataContext.DeleteMappingCommand}" 
-                                                                CommandParameter="{Binding Key}"
-                                                                Padding="2" Margin="2" FontSize="10" Background="#603030"/>
+                                                        <StackPanel Orientation="Horizontal">
+                                                            <Button Content="Test" Command="{Binding ElementName=ExeMappingsGrid, Path=DataContext.TestMappingCommand}" 
+                                                                    CommandParameter="{Binding Key}"
+                                                                    Padding="10,2" Margin="2" FontSize="10" Background="#007ACC"/>
+                                                            <Button Content="Delete" Command="{Binding ElementName=ExeMappingsGrid, Path=DataContext.DeleteMappingCommand}" 
+                                                                    CommandParameter="{Binding Key}"
+                                                                    Padding="10,2" Margin="2" FontSize="10" Background="#603030"/>
+                                                        </StackPanel>
                                                     </DataTemplate>
                                                 </DataGridTemplateColumn.CellTemplate>
                                             </DataGridTemplateColumn>

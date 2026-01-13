@@ -1,6 +1,7 @@
-feat(android): Improve Navigation, UI and Tool Call rendering
+feat(android): Fix and improve 'Tell PC' feature
 
-- Enabled horizontal swipe navigation in Text Editor when Word Wrap is ON.
-- Fixed FAB overlapping management windows in Files Screen.
-- Implemented formatted Tool Call rendering in AI Chat.
-- Changed Embedded Web default URL to google.com for debugging.
+- Implemented centralized voice recognition in MainActivity triggered by 'isTriggeringTellPc' flow.
+- Recognized text is sent directly to the Hub's active AI session.
+- Removed automatic navigation to AI Chat screen when triggering Tell PC.
+- Removed confirmation blip sound from Hub's TriggerTellPc.
+- Added developer reminders to keep WPF and Web UIs in sync.

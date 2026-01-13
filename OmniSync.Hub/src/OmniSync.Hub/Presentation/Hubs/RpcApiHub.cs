@@ -1319,11 +1319,6 @@ namespace OmniSync.Hub.Presentation.Hubs
                 _logger.LogInformation("[RpcApiHub] TriggerTellPc requested.");
                 AnyCommandReceived?.Invoke(this, "TriggerTellPc");
 
-                if (_settingsService.Settings.TellPcSoundEnabled)
-                {
-                    _audioService.PlayBlip();
-                }
-
                 string workspace = _settingsService.Settings.TellPcWorkspace;
                 string systemContext = _settingsService.Settings.TellPcSystemContext;
 
@@ -1336,7 +1331,7 @@ namespace OmniSync.Hub.Presentation.Hubs
                 {
                     _logger.LogInformation($"[RpcApiHub] Tell PC session started with PID {pid.Value}. Setting context.");
                     _aiCliService.SetTellPcContext(pid.Value, systemContext);
-                    await Clients.All.SendAsync("ReceiveAiStatus", "READY_TO_LISTEN", pid.Value);
+                    // READY_TO_LISTEN is now handled by Android side flow emission
                 }
                 else
                 {

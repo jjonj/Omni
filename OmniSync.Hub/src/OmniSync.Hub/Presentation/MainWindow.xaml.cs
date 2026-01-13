@@ -32,7 +32,7 @@ namespace OmniSync.Hub.Presentation
 
         public bool IsInternalClosing { get; set; } = false;
 
-        public MainWindow(HubMonitorService hubMonitorService, InputService inputService, ShutdownService shutdownService, RegistryService registryService, HubSettingsService settingsService, KeyboardHook keyboardHook, AiCliService aiCliService, LayoutCaptureService layoutCaptureService, ProjectLauncherService projectLauncherService)
+        public MainWindow(HubMonitorService hubMonitorService, InputService inputService, ProcessService processService, ShutdownService shutdownService, RegistryService registryService, HubSettingsService settingsService, KeyboardHook keyboardHook, AiCliService aiCliService, LayoutCaptureService layoutCaptureService, ProjectLauncherService projectLauncherService)
         {
             InitializeComponent();
             EnableDarkModeTitleBar();
@@ -41,7 +41,7 @@ namespace OmniSync.Hub.Presentation
             _registryService = registryService;
             _settingsService = settingsService;
 
-            _viewModel = new MainViewModel(hubMonitorService, inputService, shutdownService, registryService, settingsService, keyboardHook, aiCliService, layoutCaptureService, projectLauncherService);
+            _viewModel = new MainViewModel(hubMonitorService, inputService, processService, shutdownService, registryService, settingsService, keyboardHook, aiCliService, layoutCaptureService, projectLauncherService);
             DataContext = _viewModel;
 
             // Hook up event handlers (now in ViewModel)

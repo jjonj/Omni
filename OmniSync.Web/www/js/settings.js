@@ -224,7 +224,7 @@ function renderExeMappings(mappings) {
         row.innerHTML = `
             <label style="width: 120px; font-family: var(--font-mono); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${key}</label>
             <input type="text" value="${path}" style="flex: 1; font-size: 11px;" readonly title="${path}">
-            <button class="btn" onclick="testMapping('${key}')">Test</button>
+            <button class="btn primary" onclick="testMapping('${key}')">Test</button>
             <button class="btn danger" onclick="removeMapping('${key}')">Delete</button>
         `;
         list.appendChild(row);

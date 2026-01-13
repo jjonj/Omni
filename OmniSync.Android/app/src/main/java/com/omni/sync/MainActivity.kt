@@ -65,7 +65,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.LocalContext
 
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.getValue
 import kotlinx.coroutines.launch
+import android.speech.RecognizerIntent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import android.app.Activity
 
 class MainActivity : ComponentActivity() {
     private lateinit var mainViewModel: MainViewModel
@@ -156,6 +163,40 @@ class MainActivity : ComponentActivity() {
 
                     val configuration = LocalConfiguration.current
                     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+
+                    // Centralized Voice Recognition Launcher
+                    var voiceTargetPid by remember { mutableStateOf<Int?>(null) }
+                    val speechRecognizerLauncher = rememberLauncherForActivityResult(
+                        contract = ActivityResultContracts.StartActivityForResult()
+                    ) { result ->
+                        if (result.resultCode == Activity.RESULT_OK) {
+                            val spokenText = result.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.get(0)
+                            if (spokenText != null) {
+                                mainViewModel.addLog("[Voice] Sending to Hub: $spokenText", com.omni.sync.ui.screen.LogType.INFO)
+                                signalRClient.sendAiMessage(spokenText, voiceTargetPid)
+                            }
+                        }
+                        voiceTargetPid = null
+                    }
+
+                    fun startGlobalVoiceRecognition(pid: Int? = null) {
+                        voiceTargetPid = pid
+                        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                            putExtra(RecognizerIntent.EXTRA_PROMPT, "Tell PC...")
+                        }
+                        try {
+                            speechRecognizerLauncher.launch(intent)
+                        } catch (e: Exception) {
+                            mainViewModel.addLog("Voice recognition not supported", com.omni.sync.ui.screen.LogType.ERROR)
+                        }
+                    }
+
+                    LaunchedEffect(Unit) {
+                        signalRClient.isTriggeringTellPc.collect {
+                            startGlobalVoiceRecognition()
+                        }
+                    }
 
                     LaunchedEffect(currentScreen) {
                         val index = swipeableScreens.indexOf(currentScreen)

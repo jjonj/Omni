@@ -167,6 +167,8 @@ class SignalRClient(
     private var _isStartingSession = false
     private val messageQueue = mutableListOf<String>()
     val isStartingSessionFlow = MutableStateFlow(false)
+    private val _isTriggeringTellPc = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    val isTriggeringTellPc = _isTriggeringTellPc.asSharedFlow()
 
     private val _isNextBubbleMap = MutableStateFlow<Map<Int, Boolean>>(emptyMap())
 
@@ -762,6 +764,7 @@ class SignalRClient(
 
     fun triggerTellPc() {
         if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
+            coroutineScope.launch { _isTriggeringTellPc.emit(Unit) }
             hubConnection?.send("TriggerTellPc")
         }
     }
