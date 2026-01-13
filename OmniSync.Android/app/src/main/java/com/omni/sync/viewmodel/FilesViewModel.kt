@@ -836,8 +836,10 @@ class FilesViewModel(
                     $content
                     ```
                     
-                    Please suggest improvements or additions. 
-                    IMPORTANT: You must return your suggested changes in the following JSON format:
+                    I may ask you to suggest improvements or additions to this file. 
+                    
+                    INSTRUCTIONS FOR FILE CHANGES:
+                    If and ONLY IF I ask you to modify or improve the file, you must return your suggested changes in the following JSON format:
                     ```json
                     {
                       "action": "edit",
@@ -845,7 +847,9 @@ class FilesViewModel(
                       "newContent": "The entire new content of the file"
                     }
                     ```
-                    Only return the JSON block. Do not return any other text.
+                    When returning JSON, do not return any other text.
+                    
+                    For now, simply acknowledge that you have the file context and reply with: "Ready to help!"
                 """.trimIndent()
                 
                 signalRClient.sendAiMessage(prompt, newPid)

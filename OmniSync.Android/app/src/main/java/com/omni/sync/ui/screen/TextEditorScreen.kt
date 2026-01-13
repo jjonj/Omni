@@ -660,6 +660,7 @@ fun TextEditorScreen(
         if (aiHookinPid != null) aiStatusMap[aiHookinPid!!] else null
     }
     var aiInputText by remember { mutableStateOf("") }
+    var aiWindowState by remember { mutableStateOf("NORMAL") } // "MINIMIZED", "NORMAL", "MAXIMIZED"
 
     // Restore scroll position - logic removed as it's handled by ScrollState(initial = ...)
 
@@ -1564,11 +1565,17 @@ fun TextEditorScreen(
 
                 // AI Hookin Chat Window Overlay
                 if (aiHookinPid != null) {
+                    val aiWindowHeight = when(aiWindowState) {
+                        "MINIMIZED" -> 60.dp
+                        "MAXIMIZED" -> with(LocalDensity.current) { (viewportHeight * 0.8f).toDp() }
+                        else -> with(LocalDensity.current) { (viewportHeight * 0.4f).toDp() }
+                    }
+
                     Surface(
                         modifier = Modifier
                             .align(Alignment.BottomCenter)
                             .fillMaxWidth()
-                            .fillMaxHeight(0.4f)
+                            .height(aiWindowHeight)
                             .padding(8.dp),
                         shape = RoundedCornerShape(12.dp),
                         tonalElevation = 8.dp,
@@ -1580,62 +1587,77 @@ fun TextEditorScreen(
                                 Icon(Icons.Default.SmartToy, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
                                 Spacer(Modifier.width(8.dp))
                                 Text("AI Assistant", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+                                
+                                IconButton(onClick = { 
+                                    aiWindowState = if (aiWindowState == "MINIMIZED") "NORMAL" else "MINIMIZED"
+                                }, modifier = Modifier.size(24.dp)) {
+                                    Icon(if (aiWindowState == "MINIMIZED") Icons.Default.ExpandLess else Icons.Default.ExpandMore, null)
+                                }
+
+                                IconButton(onClick = { 
+                                    aiWindowState = if (aiWindowState == "MAXIMIZED") "NORMAL" else "MAXIMIZED"
+                                }, modifier = Modifier.size(24.dp)) {
+                                    Icon(if (aiWindowState == "MAXIMIZED") Icons.Default.FullscreenExit else Icons.Default.Fullscreen, null)
+                                }
+
                                 IconButton(onClick = { filesViewModel.stopCliHookin() }, modifier = Modifier.size(24.dp)) {
                                     Icon(Icons.Default.Close, null)
                                 }
                             }
                             
-                            val aiChatListState = androidx.compose.foundation.lazy.rememberLazyListState()
-                            
-                            androidx.compose.foundation.lazy.LazyColumn(
-                                state = aiChatListState,
-                                modifier = Modifier.weight(1f).fillMaxWidth(),
-                                reverseLayout = true
-                            ) {
-                                items(aiMessages.reversed()) { msg ->
-                                    val isMe = msg.sender == "Me"
-                                    Column(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalAlignment = if (isMe) Alignment.End else Alignment.Start
-                                    ) {
-                                        Surface(
-                                            color = if (isMe) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.secondaryContainer,
-                                            shape = RoundedCornerShape(8.dp),
-                                            modifier = Modifier.padding(vertical = 2.dp).widthIn(max = 250.dp)
+                            if (aiWindowState != "MINIMIZED") {
+                                val aiChatListState = androidx.compose.foundation.lazy.rememberLazyListState()
+                                
+                                androidx.compose.foundation.lazy.LazyColumn(
+                                    state = aiChatListState,
+                                    modifier = Modifier.weight(1f).fillMaxWidth(),
+                                    reverseLayout = true
+                                ) {
+                                    items(aiMessages.reversed()) { msg ->
+                                        val isMe = msg.sender == "Me"
+                                        Column(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalAlignment = if (isMe) Alignment.End else Alignment.Start
                                         ) {
-                                            Text(msg.text, modifier = Modifier.padding(8.dp), fontSize = 12.sp)
+                                            Surface(
+                                                color = if (isMe) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.secondaryContainer,
+                                                shape = RoundedCornerShape(8.dp),
+                                                modifier = Modifier.padding(vertical = 2.dp).widthIn(max = 250.dp)
+                                            ) {
+                                                Text(msg.text, modifier = Modifier.padding(8.dp), fontSize = 12.sp)
+                                            }
                                         }
                                     }
                                 }
-                            }
-                            
-                            // Auto-scroll AI chat
-                            LaunchedEffect(aiMessages.size) {
-                                if (aiMessages.isNotEmpty()) {
-                                    aiChatListState.animateScrollToItem(0)
-                                }
-                            }
-                            
-                            if (aiStatus != null) {
-                                Text(aiStatus!!, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
-                            }
-
-                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
-                                OutlinedTextField(
-                                    value = aiInputText,
-                                    onValueChange = { aiInputText = it },
-                                    modifier = Modifier.weight(1f),
-                                    placeholder = { Text("Ask AI...", fontSize = 12.sp) },
-                                    maxLines = 2,
-                                    textStyle = TextStyle(fontSize = 12.sp)
-                                )
-                                IconButton(onClick = {
-                                    if (aiInputText.isNotBlank() && aiHookinPid != null) {
-                                        signalRClient.sendAiMessage(aiInputText, aiHookinPid)
-                                        aiInputText = ""
+                                
+                                // Auto-scroll AI chat
+                                LaunchedEffect(aiMessages.size) {
+                                    if (aiMessages.isNotEmpty()) {
+                                        aiChatListState.animateScrollToItem(0)
                                     }
-                                }) {
-                                    Icon(Icons.AutoMirrored.Filled.Send, null)
+                                }
+                                
+                                if (aiStatus != null) {
+                                    Text(aiStatus!!, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                                }
+
+                                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
+                                    OutlinedTextField(
+                                        value = aiInputText,
+                                        onValueChange = { aiInputText = it },
+                                        modifier = Modifier.weight(1f),
+                                        placeholder = { Text("Ask AI...", fontSize = 12.sp) },
+                                        maxLines = 2,
+                                        textStyle = TextStyle(fontSize = 12.sp)
+                                    )
+                                    IconButton(onClick = {
+                                        if (aiInputText.isNotBlank() && aiHookinPid != null) {
+                                            signalRClient.sendAiMessage(aiInputText, aiHookinPid)
+                                            aiInputText = ""
+                                        }
+                                    }) {
+                                        Icon(Icons.AutoMirrored.Filled.Send, null)
+                                    }
                                 }
                             }
                         }

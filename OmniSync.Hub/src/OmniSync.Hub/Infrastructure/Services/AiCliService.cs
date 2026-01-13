@@ -55,6 +55,7 @@ namespace OmniSync.Hub.Infrastructure.Services
         private readonly ConcurrentDictionary<int, string> _sessionNames = new();
         private readonly ConcurrentDictionary<int, string> _workspaces = new();
         private readonly ConcurrentDictionary<int, (DateTime LastAttempt, int FailCount)> _failedPids = new();
+        private readonly ConcurrentQueue<(string Text, int Pid)> _pendingPrompts = new();
         private DateTime _lastWmiDiscovery = DateTime.MinValue;
         private List<int> _cachedWmiPids = new();
         private int _targetPid = -1;
@@ -685,6 +686,30 @@ namespace OmniSync.Hub.Infrastructure.Services
 
                     string msg = $"Successfully connected to new session PID {launchedPid.Value}.";
                     onProgress?.Invoke(msg);
+
+                    // Give the CLI a moment to settle (e.g. complete initial auth checks) before dumping the queue
+                    // This prevents prompts from being swallowed if the CLI is in an early startup state
+                    await Task.Delay(2000);
+
+                    // Process pending prompts if any
+                    _logger.LogInformation($"[AiCliService] Processing {_pendingPrompts.Count} pending prompts for PID {launchedPid.Value}...");
+                    while (_pendingPrompts.TryDequeue(out var pending))
+                    {
+                        await _sessionLock.WaitAsync();
+                        try 
+                        {
+                            if (_sessions.TryGetValue(launchedPid.Value, out var session))
+                            {
+                                _logger.LogInformation($"[AiCliService] Sending pending prompt directly to PID {launchedPid.Value}: {pending.Text.Take(30)}...");
+                                await session.SendPromptAsync(pending.Text);
+                            }
+                        }
+                        finally
+                        {
+                            _sessionLock.Release();
+                        }
+                    }
+
                     return launchedPid.Value;
                 }
 
@@ -945,6 +970,14 @@ namespace OmniSync.Hub.Infrastructure.Services
         public async Task<bool> SendPromptAsync(string text, int pid = -1)
         {
             _logger.LogInformation($"[AiCliService] SendPromptAsync: pid={pid}, _targetPid={_targetPid}, text='{(text.Length > 20 ? text.Substring(0, 20) + "..." : text)}'");
+            
+            if (_isLaunching)
+            {
+                _logger.LogInformation("[AiCliService] Launch in progress. Queuing prompt.");
+                _pendingPrompts.Enqueue((text, pid));
+                return true; 
+            }
+
             int target = pid;
 
             if (target == -1) target = _targetPid;

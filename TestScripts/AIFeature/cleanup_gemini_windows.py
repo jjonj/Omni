@@ -65,6 +65,9 @@ def cleanup_gemini_windows():
             count += 1
 
     print(f"Total target windows found: {count}")
+    if count > 0:
+        import time
+        time.sleep(2) # Give OS time to cleanup sockets/pipes
 
 if __name__ == "__main__":
     cleanup_gemini_windows()
