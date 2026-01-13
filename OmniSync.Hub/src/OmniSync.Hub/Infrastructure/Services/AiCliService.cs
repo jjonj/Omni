@@ -55,6 +55,8 @@ namespace OmniSync.Hub.Infrastructure.Services
         private readonly ConcurrentDictionary<int, string> _sessionNames = new();
         private readonly ConcurrentDictionary<int, string> _workspaces = new();
         private readonly ConcurrentDictionary<int, string> _tellPcContexts = new();
+        private bool _isTriggeringTellPcFromHub = false;
+        private string? _pendingTellPcContext = null;
         private readonly ConcurrentDictionary<int, (DateTime LastAttempt, int FailCount)> _failedPids = new();
         private readonly ConcurrentQueue<(string Text, int Pid)> _pendingPrompts = new();
         private DateTime _lastWmiDiscovery = DateTime.MinValue;
@@ -129,7 +131,15 @@ namespace OmniSync.Hub.Infrastructure.Services
 
         public void SetTellPcContext(int pid, string context)
         {
-            _tellPcContexts[pid] = context;
+            if (pid == -1)
+            {
+                _isTriggeringTellPcFromHub = true;
+                _pendingTellPcContext = context;
+            }
+            else
+            {
+                _tellPcContexts[pid] = context;
+            }
         }
 
         public void TryAutoRenameSession(int pid, string firstMessage)
@@ -706,8 +716,17 @@ namespace OmniSync.Hub.Infrastructure.Services
                         {
                             if (_sessions.TryGetValue(launchedPid.Value, out var session))
                             {
-                                _logger.LogInformation($"[AiCliService] Sending pending prompt directly to PID {launchedPid.Value}: {pending.Text.Take(30)}...");
-                                await session.SendPromptAsync(pending.Text);
+                                string textToSend = pending.Text;
+                                if (_isTriggeringTellPcFromHub && _pendingTellPcContext != null)
+                                {
+                                    _logger.LogInformation($"[AiCliService] Applying PENDING Tell PC context to queued prompt for PID {launchedPid.Value}");
+                                    textToSend = $"[SYSTEM_CONTEXT: {_pendingTellPcContext}]\n\nUser Request: {pending.Text}";
+                                    _isTriggeringTellPcFromHub = false;
+                                    _pendingTellPcContext = null;
+                                }
+
+                                _logger.LogInformation($"[AiCliService] Sending pending prompt directly to PID {launchedPid.Value}: {textToSend.Take(30)}...");
+                                await session.SendPromptAsync(textToSend);
                             }
                         }
                         finally
@@ -1002,6 +1021,10 @@ namespace OmniSync.Hub.Infrastructure.Services
 
             if (target == -1) target = _targetPid;
 
+            // If target is STILL -1 or session not found, we might have a race condition where the session just finished launching
+            // but isn't in the dictionary yet. However, _isLaunching should have caught that.
+            // One possibility: if pid was -1, but _targetPid is still -1.
+            
             if (target == -1 || !_sessions.TryGetValue(target, out var targetSession) || !targetSession.IsConnected)
             {
                 _logger.LogInformation($"[AiCliService] Target session {target} invalid or disconnected. Refreshing discovery...");
@@ -1053,6 +1076,14 @@ namespace OmniSync.Hub.Infrastructure.Services
             {
                 _logger.LogInformation($"[AiCliService] Applying Tell PC context to PID {target}");
                 finalPrompt = $"[SYSTEM_CONTEXT: {context}]\n\nUser Request: {text}";
+            }
+            else if (_isTriggeringTellPcFromHub && _pendingTellPcContext != null)
+            {
+                // This handles the case where the message arrives before the PID was known during Tell PC flow
+                _logger.LogInformation($"[AiCliService] Applying PENDING Tell PC context to PID {target}");
+                finalPrompt = $"[SYSTEM_CONTEXT: {_pendingTellPcContext}]\n\nUser Request: {text}";
+                _isTriggeringTellPcFromHub = false;
+                _pendingTellPcContext = null;
             }
 
             if (text.Contains("I am currently editing the file:"))

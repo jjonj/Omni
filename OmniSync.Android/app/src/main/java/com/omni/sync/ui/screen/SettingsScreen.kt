@@ -166,7 +166,6 @@ fun SettingsScreen(
                             onClick = {
                                 signalRClient.triggerTellPc()
                                 mainViewModel.addLog("Tell PC Triggered...", LogType.INFO)
-                                mainViewModel.navigateTo(AppScreen.AI_CHAT)
                             },
                             modifier = Modifier.weight(1f),
                             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)

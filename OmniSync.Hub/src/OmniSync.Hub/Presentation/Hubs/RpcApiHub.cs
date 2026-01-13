@@ -1325,12 +1325,15 @@ namespace OmniSync.Hub.Presentation.Hubs
                 await Clients.All.SendAsync("ReceiveAiStatus", "Tell PC: Starting Session...", -1);
 
                 _logger.LogInformation($"[RpcApiHub] Launching Tell PC session in workspace: {workspace}");
+                _aiCliService.SetTellPcContext(-1, systemContext); // Mark as pending Tell PC context
                 var pid = await _aiCliService.LaunchSessionAsync(workspace);
 
                 if (pid.HasValue)
                 {
                     _logger.LogInformation($"[RpcApiHub] Tell PC session started with PID {pid.Value}. Setting context.");
                     _aiCliService.SetTellPcContext(pid.Value, systemContext);
+                    await Clients.All.SendAsync("ReceiveNewAiSessionPid", pid.Value);
+                    await Clients.All.SendAsync("ReceiveAiStatus", "FINISHED", pid.Value);
                     // READY_TO_LISTEN is now handled by Android side flow emission
                 }
                 else

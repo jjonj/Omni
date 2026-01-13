@@ -183,7 +183,7 @@ class MainActivity : ComponentActivity() {
                         voiceTargetPid = pid
                         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
                             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-                            putExtra(RecognizerIntent.EXTRA_PROMPT, "Tell PC...")
+                            putExtra(RecognizerIntent.EXTRA_PROMPT, if (pid == -1) "Tell PC..." else "Speak...")
                         }
                         try {
                             speechRecognizerLauncher.launch(intent)
@@ -194,7 +194,7 @@ class MainActivity : ComponentActivity() {
 
                     LaunchedEffect(Unit) {
                         signalRClient.isTriggeringTellPc.collect {
-                            startGlobalVoiceRecognition()
+                            startGlobalVoiceRecognition(-1) // -1 signifies newest/TellPC session
                         }
                     }
 

@@ -155,3 +155,5 @@
 ✅ Embedded Web: Changed default URL to google.com as a debugging step to investigate connectivity issues.
 ✅ Tell PC: Fixed the feature to correctly trigger Android voice recognition and send text to AI without switching screens.
 ✅ Tell PC: Removed the blip sound playing on the Hub.
+✅ Tell PC: Fixed issue where multiple sessions were launched and messages were lost by implementing a local trigger flag and ensuring proper PID broadcasting.
+✅ Hub Settings: Added "Test" button to Exe Mappings table in the WPF Hub window.

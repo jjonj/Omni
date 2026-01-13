@@ -1,7 +1,7 @@
-feat(android): Fix and improve 'Tell PC' feature
+fix(ai): Fix 'Tell PC' multiple session launch and routing
 
-- Implemented centralized voice recognition in MainActivity triggered by 'isTriggeringTellPc' flow.
-- Recognized text is sent directly to the Hub's active AI session.
-- Removed automatic navigation to AI Chat screen when triggering Tell PC.
-- Removed confirmation blip sound from Hub's TriggerTellPc.
+- Implemented a local trigger flag in SignalRClient to prevent double session launches.
+- Added missing ReceiveNewAiSessionPid broadcast to TriggerTellPc in Hub.
+- Verified fix with a new Python integration test (test_tell_pc_flow.py).
+- Added 'Test' button to WPF Hub Exe Mappings.
 - Added developer reminders to keep WPF and Web UIs in sync.

@@ -166,7 +166,6 @@ class ForegroundService : Service() {
             signalRClient.triggerTellPc()
             val intent = Intent(this, MainActivity::class.java).apply {
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
-                putExtra("OPEN_SCREEN", "AI_CHAT")
             }
             startActivity(intent)
         } else if (action.isWol && action.macAddress != null) {

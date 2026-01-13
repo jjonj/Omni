@@ -167,6 +167,7 @@ class SignalRClient(
     private var _isStartingSession = false
     private val messageQueue = mutableListOf<String>()
     val isStartingSessionFlow = MutableStateFlow(false)
+    private var _isTriggeringTellPcLocal = false
     private val _isTriggeringTellPc = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
     val isTriggeringTellPc = _isTriggeringTellPc.asSharedFlow()
 
@@ -432,15 +433,15 @@ class SignalRClient(
             _aiPresets.value = presets
         }, List::class.java)
 
-        hubConnection?.on("ReceiveNewAiSessionPid", { pid: Int ->
-            Log.d("SignalRClient", "ReceiveNewAiSessionPid: $pid")
-            mainViewModel.addLog("[AI] New session reported by Hub: PID $pid", com.omni.sync.ui.screen.LogType.SUCCESS)
-            getAiSessions()
-            val wasStartingOurOwn = _isStartingSession
-            _isStartingSession = false
-            isStartingSessionFlow.value = false
-            updateSessionStatus(pid, null)
-            
+                  hubConnection?.on("ReceiveNewAiSessionPid", { pid: Int ->
+                      Log.d("SignalRClient", "ReceiveNewAiSessionPid: $pid")
+                      mainViewModel.addLog("[AI] New session reported by Hub: PID $pid", com.omni.sync.ui.screen.LogType.SUCCESS)
+                      getAiSessions()
+                      val wasStartingOurOwn = _isStartingSession
+                      _isStartingSession = false
+                      isStartingSessionFlow.value = false
+                      _isTriggeringTellPcLocal = false
+                      updateSessionStatus(pid, null)            
             if (wasStartingOurOwn) {
                 mainViewModel.addLog("[AI] Switching to our new session PID $pid", com.omni.sync.ui.screen.LogType.INFO)
                 switchAiSession(pid) // Notifies Hub AND updates local state
@@ -764,6 +765,8 @@ class SignalRClient(
 
     fun triggerTellPc() {
         if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
+            if (_isTriggeringTellPcLocal) return
+            _isTriggeringTellPcLocal = true
             coroutineScope.launch { _isTriggeringTellPc.emit(Unit) }
             hubConnection?.send("TriggerTellPc")
         }
