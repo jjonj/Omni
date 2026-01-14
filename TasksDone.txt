@@ -104,7 +104,7 @@
 
 ### AI screen
 
-✅ add a new button that let's me /dir addmypath with a button press and then navigating the file system in a popup to select the folder to add
+✅ When i send a message to AI, always scroll to bottom. careful not to break the auto scroll to bottom feature when you do this (Implemented by forcing isAutoScrollEnabled = true on all user send actions)
 
 ✅ When not scrolled to bottom of history i experience the scroll amount jumping when new messages are added at the bottom, i dont want it to move what I'm looking at. it would only auto scroll if I'm scrolled to bottom already or if i send a message myself
 ✅ merge the + and foldericon buttons. when pasting prompt user with the folder bookmarks list and add browse option that opens a popup

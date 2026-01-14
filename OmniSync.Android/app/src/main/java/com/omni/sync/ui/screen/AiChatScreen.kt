@@ -116,6 +116,9 @@ fun AiChatScreen(
     var browseMode by remember { mutableStateOf("new") }
     val context = LocalContext.current
     
+    // STRICT AUTO-SCROLL LOGIC
+    var isAutoScrollEnabled by remember { mutableStateOf(true) }
+
     val voiceLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
     ) { result ->
@@ -135,6 +138,7 @@ fun AiChatScreen(
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             putExtra(RecognizerIntent.EXTRA_PROMPT, "Listening...")
         }
+        isAutoScrollEnabled = true
         voiceLauncher.launch(intent)
     }
 
@@ -163,9 +167,6 @@ fun AiChatScreen(
     val filteredMessages = remember(messages) {
         messages.filter { it.text.isNotBlank() }
     }
-
-    // STRICT AUTO-SCROLL LOGIC
-    var isAutoScrollEnabled by remember { mutableStateOf(true) }
 
     // 1. Detect User Drags (Interactions)
     LaunchedEffect(listState) {
@@ -530,6 +531,7 @@ fun AiChatScreen(
                     
                     IconButton(
                         onClick = {
+                            isAutoScrollEnabled = true
                             if (inputText.isNotBlank()) {
                                 signalRClient.sendAiMessage(inputText, if (selectedPid != -1) selectedPid else null)
                                 signalRClient.updateAiInputText("")
@@ -577,7 +579,8 @@ fun AiChatScreen(
                         filteredMessages.size,
                         textFieldValue,
                         onTextFieldValueChange = { textFieldValue = it },
-                        onVoiceTrigger = { startVoiceRecognition() }
+                        onVoiceTrigger = { startVoiceRecognition() },
+                        onMessageSent = { isAutoScrollEnabled = true }
                     )
                 }
             }
@@ -640,7 +643,8 @@ fun QuickActionPanel(
     totalMessages: Int,
     textFieldValue: TextFieldValue,
     onTextFieldValueChange: (TextFieldValue) -> Unit,
-    onVoiceTrigger: () -> Unit
+    onVoiceTrigger: () -> Unit,
+    onMessageSent: () -> Unit
 ) {
     var isZoomed by remember { mutableStateOf(false) }
     val presets by signalRClient.aiPresets.collectAsState()
@@ -774,7 +778,10 @@ fun QuickActionPanel(
                 text = "Trigger",
                 icon = Icons.Default.Cached, // Use Cached as refresh icon
                 modifier = Modifier.weight(1f).height(33.dp),
-                onClick = { signalRClient.sendAiMessage("-", if (selectedPid != -1) selectedPid else null) }
+                onClick = { 
+                    onMessageSent()
+                    signalRClient.sendAiMessage("-", if (selectedPid != -1) selectedPid else null) 
+                }
             )
         }
 
