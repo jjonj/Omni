@@ -686,12 +686,12 @@ class SignalRClient(
     fun sendAiMessage(message: String, pid: Int? = null) {
         val targetPid = pid ?: _selectedPid.value
         
-        if (targetPid == -1 || (_isStartingSession && pid == null)) {
+        if (targetPid == -1 || (_isStartingSession && pid == null) || (_isTriggeringTellPcLocal && targetPid == -1)) {
             messageQueue.add(message)
             // Immediate feedback for queued messages
             updateSessionMessages(-1) { it + AiMessage("Me", message) }
             
-            if (targetPid == -1 && !message.startsWith("/")) {
+            if (targetPid == -1 && !message.startsWith("/") && !_isTriggeringTellPcLocal) {
                 // Auto-create session
                 startNewAiSession()
             }
