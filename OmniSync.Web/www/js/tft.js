@@ -2612,11 +2612,12 @@ function loadTFTSelection() {
 function openTreeExplorer(btn) {
     const card = btn.closest('.result-card');
     const board = JSON.parse(card.dataset.board);
+    document.getElementById('evolution-zone').classList.add('active');
     renderTreeExplorer(board);
 }
 
 function closeTreeExplorer() {
-    document.getElementById('tree-explorer-modal').style.display = 'none';
+    document.getElementById('evolution-zone').classList.remove('active');
 }
 
 function getBestNeighbor(board, targetLevel, direction, emblems, mustIncludeTraits, mustIncludeNames, solverMode) {
@@ -2624,52 +2625,87 @@ function getBestNeighbor(board, targetLevel, direction, emblems, mustIncludeTrai
     let bestScore = -Infinity;
 
     const mustSet = new Set(mustIncludeNames);
+    const boardNames = new Set(board.map(u => u.name));
+    
+    // Base pool filtered by cost rules for the target level
+    const globalPool = tftData.units.filter(u => {
+        if (activeDisabledUnits.includes(u.name)) return false;
+        if (!mustSet.has(u.name)) {
+            if (targetLevel < 7 && u.cost >= 4) return false;
+            if (targetLevel < 8 && u.cost === 5) return false;
+        }
+        return true;
+    });
+
+    function optimizeBoard(startBoard, swapsRemaining) {
+        let currentBest = { 
+            board: startBoard, 
+            score: optimizer.scoreBoard(startBoard, emblems, targetLevel, solverMode, mustIncludeTraits, mustIncludeNames).score 
+        };
+
+        if (swapsRemaining <= 0) return currentBest;
+
+        // Try swapping each unit (one at a time, recursively)
+        for (let i = 0; i < startBoard.length; i++) {
+            const originalUnit = startBoard[i];
+            if (mustSet.has(originalUnit.name)) continue;
+
+            const currentBoardNames = new Set(startBoard.map(u => u.name));
+            
+            for (const candidate of globalPool) {
+                if (currentBoardNames.has(candidate.name)) continue;
+
+                const testBoard = [...startBoard];
+                testBoard[i] = candidate;
+                
+                const scoreObj = optimizer.scoreBoard(testBoard, emblems, targetLevel, solverMode, mustIncludeTraits, mustIncludeNames);
+                if (scoreObj.score > currentBest.score) {
+                    currentBest = { board: testBoard, score: scoreObj.score };
+                    // If we found a better board, try swapping another unit from THIS new best board
+                    const further = optimizeBoard(testBoard, swapsRemaining - 1);
+                    if (further.score > currentBest.score) {
+                        currentBest = further;
+                    }
+                }
+            }
+        }
+        return currentBest;
+    }
 
     if (direction === 'down') {
-        // Try removing each unit
+        // Step 1: Find best subset of size targetLevel
         for (let i = 0; i < board.length; i++) {
-            const candidate = [...board];
-            candidate.splice(i, 1);
+            const subset = [...board];
+            subset.splice(i, 1);
             
-            // Strict cost filtering for the target level
-            const validCandidate = candidate.filter(u => {
+            // Filter out invalid units from the subset first
+            const validSubset = subset.filter(u => {
                 if (mustSet.has(u.name)) return true;
                 if (targetLevel < 7 && u.cost >= 4) return false;
                 if (targetLevel < 8 && u.cost === 5) return false;
                 return true;
             });
 
-            // If filtering removed units, we might not be at targetLevel anymore
-            // but for 'down' we just want the best board that fits the size.
-            // If the filtered board is smaller than targetLevel, it's invalid for this specific slot check
-            if (validCandidate.length !== targetLevel) continue;
+            if (validSubset.length !== targetLevel) continue;
 
-            const scoreObj = optimizer.scoreBoard(validCandidate, emblems, targetLevel, solverMode, mustIncludeTraits, mustIncludeNames);
-            if (scoreObj.score > bestScore) {
-                bestScore = scoreObj.score;
-                bestBoard = validCandidate;
+            // Step 2: For each subset, allow up to 2 swaps to improve it
+            const optimized = optimizeBoard(validSubset, 2);
+            if (optimized.score > bestScore) {
+                bestScore = optimized.score;
+                bestBoard = optimized.board;
             }
         }
     } else {
-        // Try adding each unit from pool
-        const boardNames = new Set(board.map(u => u.name));
-        const pool = tftData.units.filter(u => {
-            if (boardNames.has(u.name)) return false;
-            if (activeDisabledUnits.includes(u.name)) return false;
-            // Strict cost filtering for addition
-            if (!mustSet.has(u.name)) {
-                if (targetLevel < 7 && u.cost >= 4) return false;
-                if (targetLevel < 8 && u.cost === 5) return false;
-            }
-            return true;
-        });
-        
-        for (const unit of pool) {
-            const candidate = [...board, unit];
-            const scoreObj = optimizer.scoreBoard(candidate, emblems, targetLevel, solverMode, mustIncludeTraits, mustIncludeNames);
-            if (scoreObj.score > bestScore) {
-                bestScore = scoreObj.score;
-                bestBoard = candidate;
+        // Step 1: Try adding each valid unit
+        for (const unit of globalPool) {
+            if (boardNames.has(unit.name)) continue;
+            const expanded = [...board, unit];
+            
+            // Step 2: Allow up to 2 swaps to improve the new board
+            const optimized = optimizeBoard(expanded, 2);
+            if (optimized.score > bestScore) {
+                bestScore = optimized.score;
+                bestBoard = optimized.board;
             }
         }
     }
@@ -2680,10 +2716,8 @@ function getBestNeighbor(board, targetLevel, direction, emblems, mustIncludeTrai
 }
 
 async function renderTreeExplorer(baseBoard) {
-    const modal = document.getElementById('tree-explorer-modal');
     const content = document.getElementById('tree-explorer-content');
-    content.innerHTML = '<div style="color: var(--text-dim); padding: 20px; text-align: center; font-size: 14px;">Calculating comp evolution tree...</div>';
-    modal.style.display = 'flex';
+    content.innerHTML = '<div style="color: var(--text-dim); padding: 20px; text-align: center; font-size: 11px;">Calculating evolution...</div>';
 
     // Delay to let the "Calculating" text show
     await new Promise(r => setTimeout(r, 10));
@@ -2752,7 +2786,6 @@ async function renderTreeExplorer(baseBoard) {
 
         const cardContainer = document.createElement('div');
         cardContainer.style.width = '100%';
-        cardContainer.style.maxWidth = '800px';
         
         renderSingleResult(tree[l], cardContainer, l, solverMode, l === currentLevel);
         
