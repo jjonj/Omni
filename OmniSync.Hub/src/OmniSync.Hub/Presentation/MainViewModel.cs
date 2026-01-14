@@ -43,6 +43,7 @@ namespace OmniSync.Hub.Presentation
         public ICommand ScheduleShutdownCommand { get; }
         public ICommand ToggleShutdownModeCommand { get; }
         public ICommand FocusAiSessionsCommand { get; }
+        public ICommand ResetAiSessionsCommand { get; }
 
         public ICommand AddProjectCommand { get; }
         public ICommand DeleteProjectCommand { get; }
@@ -134,6 +135,20 @@ namespace OmniSync.Hub.Presentation
                                 if (_settingsService.Settings.UseOneCommander != value)
                                 {
                                     _settingsService.Settings.UseOneCommander = value;
+                                    _settingsService.SaveSettings();
+                                    OnPropertyChanged();
+                                }
+                            }
+                        }
+
+                        public bool AiDebugMode
+                        {
+                            get => _settingsService.Settings.AiDebugMode;
+                            set
+                            {
+                                if (_settingsService.Settings.AiDebugMode != value)
+                                {
+                                    _settingsService.Settings.AiDebugMode = value;
                                     _settingsService.SaveSettings();
                                     OnPropertyChanged();
                                 }
@@ -261,6 +276,7 @@ namespace OmniSync.Hub.Presentation
             ScheduleShutdownCommand = new RelayCommand(_ => { });
             ToggleShutdownModeCommand = new RelayCommand(_ => { });
             FocusAiSessionsCommand = new RelayCommand(_ => { });
+            ResetAiSessionsCommand = new RelayCommand(_ => { });
 
             AddProjectCommand = new RelayCommand(_ => { });
             DeleteProjectCommand = new RelayCommand(_ => { });
@@ -360,6 +376,11 @@ namespace OmniSync.Hub.Presentation
             ScheduleShutdownCommand = new RelayCommand(_ => ExecuteScheduleShutdown());
             ToggleShutdownModeCommand = new RelayCommand(_ => ExecuteToggleShutdownMode());
             FocusAiSessionsCommand = new RelayCommand(async _ => await ExecuteFocusAiSessions());
+            ResetAiSessionsCommand = new RelayCommand(async _ => {
+                _hubMonitorService.AddLogMessage("[AI] User requested manual reset of all AI sessions.");
+                _aiCliService.KillAllGeminiProcesses();
+                await _aiCliService.DiscoverSessionsAsync();
+            });
 
             AddProjectCommand = new RelayCommand(_ => ExecuteAddProject());
             DeleteProjectCommand = new RelayCommand(p => ExecuteDeleteProject(p as Project));

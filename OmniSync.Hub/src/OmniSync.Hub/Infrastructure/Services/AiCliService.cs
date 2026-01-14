@@ -52,7 +52,7 @@ namespace OmniSync.Hub.Infrastructure.Services
         private readonly ILogger<AiCliService> _logger;
         private readonly HubSettingsService _settingsService;
         private readonly ProcessService _processService;
-        private readonly bool _debugMode;
+        private bool _debugMode;
         private readonly ConcurrentDictionary<int, GeminiSession> _sessions = new();
         private readonly ConcurrentDictionary<int, string> _sessionNames = new();
         private readonly ConcurrentDictionary<int, string> _workspaces = new();
@@ -68,6 +68,7 @@ namespace OmniSync.Hub.Infrastructure.Services
         private readonly SemaphoreSlim _sessionLock = new(1, 1);
 
         public bool IsBusy => _sessionLock.CurrentCount == 0 || _isLaunching;
+        public bool IsDebugModeEnabled => _debugMode;
 
         public event EventHandler<GeminiResponseEventArgs>? ResponseReceived;
         public event EventHandler<GeminiDialogEventArgs>? DialogReceived;
@@ -77,7 +78,12 @@ namespace OmniSync.Hub.Infrastructure.Services
             _logger = logger;
             _settingsService = settingsService;
             _processService = processService;
-            _debugMode = configuration.GetValue<bool>("AiSettings:DebugMode");
+            _debugMode = _settingsService.Settings.AiDebugMode;
+
+            _settingsService.SettingsChanged += (s, e) =>
+            {
+                _debugMode = _settingsService.Settings.AiDebugMode;
+            };
             
             // Trigger initial discovery in background
             _ = Task.Run(async () => {
