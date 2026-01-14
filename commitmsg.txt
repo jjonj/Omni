@@ -1,7 +1,9 @@
-fix(ai): Fix 'Tell PC' multiple session launch and routing
+feat(tft): enhance evolution rules and sidebar integration
 
-- Implemented a local trigger flag in SignalRClient to prevent double session launches.
-- Added missing ReceiveNewAiSessionPid broadcast to TriggerTellPc in Hub.
-- Verified fix with a new Python integration test (test_tell_pc_flow.py).
-- Added 'Test' button to WPF Hub Exe Mappings.
-- Added developer reminders to keep WPF and Web UIs in sync.
+- Compact evolution tree UI with inlined level headers.
+- Wider evolution sidebar (40% increase).
+- Strict enforcement of level-based cost rules in evolution.
+- Persistent trait requirements (Void/SI) for lower-level tiers.
+- Exclusion override logic for Void, SI, Bilgewater, and Zaun.
+- Dynamic layout allocation for the evolution pane.
+- Add 'tft_evolution_test.js' for rule verification.

@@ -1772,6 +1772,22 @@ async function runLogicTests() {
             resultsDiv.appendChild(errEl);
         }
     }
+
+    // Run custom evolution rules test
+    if (typeof window.runEvolutionTest === 'function') {
+        const evoStatus = document.createElement('div');
+        evoStatus.style.color = "#aaa";
+        evoStatus.innerText = "[WAIT] Running Evolution Rules Test...";
+        resultsDiv.appendChild(evoStatus);
+        try {
+            await window.runEvolutionTest();
+            evoStatus.style.color = "#32d74b";
+            evoStatus.innerText = "[PASS] Evolution Rules Test (See Console for details)";
+        } catch (e) {
+            evoStatus.style.color = "#ff453a";
+            evoStatus.innerText = `[FAIL] Evolution Rules Test: ${e.message}`;
+        }
+    }
 }
 
 loadTFTData();
