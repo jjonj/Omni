@@ -880,22 +880,24 @@ namespace OmniSync.Hub.Presentation.Hubs
             }
         }
 
-        public async Task SendAiResponse(string response)
+        public async Task SendAiResponse(string response, int? pid = null)
         {
             if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
             {
-                _logger.LogDebug("[RpcApiHub] SendAiResponse received");
+                int targetPid = pid ?? _aiCliService.GetTargetPid();
+                _logger.LogDebug($"[RpcApiHub] SendAiResponse received for PID {targetPid}");
                 AnyCommandReceived?.Invoke(this, "AI Response Received");
-                await Clients.All.SendAsync("ReceiveAiResponse", response, _aiCliService.GetTargetPid());
+                await Clients.All.SendAsync("ReceiveAiResponse", response, targetPid);
             }
         }
 
-        public async Task SendAiStatus(string status)
+        public async Task SendAiStatus(string status, int? pid = null)
         {
             if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
             {
-                _logger.LogDebug($"[RpcApiHub] SendAiStatus: {status}");
-                await Clients.All.SendAsync("ReceiveAiStatus", status, -1);
+                int targetPid = pid ?? _aiCliService.GetTargetPid();
+                _logger.LogDebug($"[RpcApiHub] SendAiStatus: {status} for PID {targetPid}");
+                await Clients.All.SendAsync("ReceiveAiStatus", status, targetPid);
             }
         }
 

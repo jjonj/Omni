@@ -90,7 +90,13 @@ namespace OmniSync.Hub.Logic.Services
 
         private async void OnAiCliResponseReceived(object? sender, GeminiResponseEventArgs e)
         {
-            int broadcastPid = e.Pid > 0 ? e.Pid : (_aiCliService.GetTargetPid() > 0 ? _aiCliService.GetTargetPid() : -1);
+            int broadcastPid = e.Pid;
+            if (broadcastPid <= 0)
+            {
+                broadcastPid = _aiCliService.GetTargetPid();
+                if (broadcastPid <= 0) broadcastPid = -1;
+                _logger.LogWarning($"[HubEventSender] AI response received with invalid PID {e.Pid}. Falling back to target PID {broadcastPid}. Text: {e.Text.Take(20)}...");
+            }
 
             if (e.IsHistory)
             {
