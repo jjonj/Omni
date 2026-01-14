@@ -168,6 +168,8 @@ class SignalRClient(
     private val messageQueue = mutableListOf<String>()
     val isStartingSessionFlow = MutableStateFlow(false)
     private var _isTriggeringTellPcLocal = false
+    private var _latestTellPcPid: Int? = null
+    private var _latestTellPcTime: Long = 0
     private val _isTriggeringTellPc = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
     val isTriggeringTellPc = _isTriggeringTellPc.asSharedFlow()
 
@@ -439,12 +441,19 @@ class SignalRClient(
                       mainViewModel.addLog("[AI] New session reported by Hub: PID $pid", com.omni.sync.ui.screen.LogType.SUCCESS)
                       getAiSessions()
                       val wasStartingOurOwn = _isStartingSession
+                      val wasTellPc = _isTriggeringTellPcLocal
+                      
+                      if (wasTellPc) {
+                          _latestTellPcPid = pid
+                          _latestTellPcTime = System.currentTimeMillis()
+                      }
+
                       _isStartingSession = false
                       isStartingSessionFlow.value = false
                       _isTriggeringTellPcLocal = false
                       updateSessionStatus(pid, null)            
-            if (wasStartingOurOwn) {
-                mainViewModel.addLog("[AI] Switching to our new session PID $pid", com.omni.sync.ui.screen.LogType.INFO)
+            if (wasStartingOurOwn || wasTellPc) {
+                mainViewModel.addLog("[AI] Switching to new session PID $pid", com.omni.sync.ui.screen.LogType.INFO)
                 switchAiSession(pid) // Notifies Hub AND updates local state
             }
             
@@ -684,7 +693,16 @@ class SignalRClient(
     }
 
     fun sendAiMessage(message: String, pid: Int? = null) {
-        val targetPid = pid ?: _selectedPid.value
+        var targetPid = pid ?: _selectedPid.value
+
+        // Resolve pending Tell PC PID if target is -1
+        if (targetPid == -1 && _latestTellPcPid != null) {
+            val delta = System.currentTimeMillis() - _latestTellPcTime
+            if (delta < 10000) { // 10 seconds validity
+                 targetPid = _latestTellPcPid!!
+                 mainViewModel.addLog("[AI] Resolved -1 to recent Tell PC PID $targetPid", com.omni.sync.ui.screen.LogType.INFO)
+            }
+        }
         
         if (targetPid == -1 || (_isStartingSession && pid == null) || (_isTriggeringTellPcLocal && targetPid == -1)) {
             messageQueue.add(message)
