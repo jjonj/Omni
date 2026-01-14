@@ -1214,8 +1214,16 @@ async function runOptimization() {
             resultsContainer.appendChild(levelList);
 
             const currentBoardUnits = selectedCurrentTeam.map(u => tftData.units.find(du => du.name === u.name));
+            
+            // Calculate exclusion overrides for global solver
+            // Based on mustInclude or currentTeam active traits
+            const baseForOverrides = mustIncludeNames.length > 0 ? selectedMustInclude.filter(i => i.type === 'unit').map(u => tftData.units.find(du => du.name === u.name)) : currentBoardUnits;
+            const exclusionOverrides = getExclusionOverrides(baseForOverrides, emblems);
+
             const pool = tftData.units.filter(u => {
-                if (activeDisabledUnits.includes(u.name)) return false;
+                if (activeDisabledUnits.includes(u.name)) {
+                    if (!u.traits.some(t => exclusionOverrides.includes(t))) return false;
+                }
                 if (mustIncludeNames.includes(u.name)) return true;
                 if (excludeFiveCosts && u.cost === 5) return false;
                 return true;
@@ -1244,10 +1252,18 @@ async function runOptimization() {
                 levelList.innerHTML = ''; 
                 resultsContainer.appendChild(levelList);
 
+                // Calculate exclusion overrides for this level's solver
+                const baseForOverrides = mustIncludeNames.length > 0 ? selectedMustInclude.filter(i => i.type === 'unit').map(u => tftData.units.find(du => du.name === u.name)) : currentBoardUnits;
+                const exclusionOverrides = getExclusionOverrides(baseForOverrides, emblems);
+
                 const pool = tftData.units.filter(u => {
-                    if (activeDisabledUnits.includes(u.name)) return false;
+                    if (activeDisabledUnits.includes(u.name)) {
+                        if (!u.traits.some(t => exclusionOverrides.includes(t))) return false;
+                    }
                     if (mustIncludeNames.includes(u.name)) return true;
                     if (excludeFiveCosts && u.cost === 5) return false;
+                    
+                    // Cost and Level rules
                     if (level <= 6 && u.cost > 3) return false;
                     if (u.name === "Kennen" && level < 6) return false;
                     if (u.name.includes("Kobuko") && level < 7) return false;
@@ -2617,6 +2633,22 @@ function loadTFTSelection() {
     }
 }
 
+function getExclusionOverrides(board, emblems) {
+    const specialTraits = ["Void", "Shadow Isles", "Bilgewater", "Zaun"];
+    const overrides = [];
+    
+    const counts = {};
+    board.forEach(u => u.traits.forEach(t => counts[t] = (counts[t] || 0) + 1));
+    emblems.forEach(e => counts[e] = (counts[e] || 0) + 1);
+
+    specialTraits.forEach(t => {
+        const meta = tftData.trait_metadata[t];
+        const isActive = meta && meta.breakpoints.some(b => b <= (counts[t] || 0));
+        if (isActive) overrides.push(t);
+    });
+    return overrides;
+}
+
 function openTreeExplorer(btn) {
     const card = btn.closest('.result-card');
     const board = JSON.parse(card.dataset.board);
@@ -2628,46 +2660,58 @@ function closeTreeExplorer() {
     document.querySelector('.optimizer-layout').classList.remove('has-evolution');
 }
 
-function getBestNeighbor(board, targetLevel, direction, emblems, mustIncludeTraits, mustIncludeNames, solverMode, persistentTraitRequirements) {
+function getBestNeighbor(board, targetLevel, direction, emblems, mustIncludeTraits, mustIncludeNames, solverMode, persistentTraitRequirements, exclusionOverrides) {
     let bestBoard = null;
     let bestScore = -Infinity;
 
     const mustSet = new Set(mustIncludeNames);
     
-    // Cost rules from compRules
     const costLimits = compRules?.general?.cost_level_limits || [];
     function isUnitAllowedAtLevel(unit, level) {
         if (mustSet.has(unit.name)) return true;
+        
+        // General Cost Limits
         for (const limit of costLimits) {
             if (level < limit.below_level && unit.cost > limit.max_cost) return false;
         }
-        // Strict global rule: Level 5 -> max 1 cost (if offset is -4)
-        if (compRules?.evolution?.new_unit_cost_offset !== undefined) {
-            const maxCost = level + compRules.evolution.new_unit_cost_offset;
-            if (unit.cost > maxCost) return false;
+        
+        // Strict Level Enforcement (e.g. no 4-cost at level 5)
+        if (level <= 5 && unit.cost >= 2) {
+             if (compRules?.evolution?.new_unit_cost_offset !== undefined) {
+                 const maxAllowed = level + compRules.evolution.new_unit_cost_offset;
+                 if (unit.cost > maxAllowed) return false;
+             }
         }
+        if (level === 6 && unit.cost >= 4) return false;
+        if (level === 7 && unit.cost >= 5) return false;
+
         return true;
     }
 
     const globalPool = tftData.units.filter(u => {
-        if (activeDisabledUnits.includes(u.name)) return false;
+        const isExcluded = activeDisabledUnits.includes(u.name);
+        if (isExcluded) {
+            const hasOverride = u.traits.some(t => exclusionOverrides.includes(t));
+            if (!hasOverride) return false;
+        }
         return isUnitAllowedAtLevel(u, targetLevel);
     });
 
     function validateBoard(testBoard, level) {
-        // Apply all general rules
+        for (const u of testBoard) {
+            if (!isUnitAllowedAtLevel(u, level)) return false;
+        }
+
         if (compRules?.general?.unit_level_requirements) {
             for (const req of compRules.general.unit_level_requirements) {
                 if (testBoard.some(u => u.name === req.name) && level < req.min_level) return false;
             }
         }
 
-        // Persistent trait requirements (Void/Shadow Isles)
         if (persistentTraitRequirements) {
             const counts = {};
             testBoard.forEach(u => u.traits.forEach(t => counts[t] = (counts[t] || 0) + 1));
             emblems.forEach(e => counts[e] = (counts[e] || 0) + 1);
-            
             for (const req of persistentTraitRequirements) {
                 if ((counts[req.trait] || 0) < req.min_count) return false;
             }
@@ -2691,20 +2735,15 @@ function getBestNeighbor(board, targetLevel, direction, emblems, mustIncludeTrai
             if (mustSet.has(originalUnit.name)) continue;
 
             const currentBoardNames = new Set(startBoard.map(u => u.name));
-            
             for (const candidate of globalPool) {
                 if (currentBoardNames.has(candidate.name)) continue;
-
                 const testBoard = [...startBoard];
                 testBoard[i] = candidate;
-                
                 const result = validateBoard(testBoard, targetLevel);
                 if (result && result.score > currentBest.score) {
                     currentBest = { board: testBoard, score: result.score };
                     const further = optimizeBoard(testBoard, swapsRemaining - 1);
-                    if (further.score > currentBest.score) {
-                        currentBest = further;
-                    }
+                    if (further.score > currentBest.score) currentBest = further;
                 }
             }
         }
@@ -2715,12 +2754,8 @@ function getBestNeighbor(board, targetLevel, direction, emblems, mustIncludeTrai
         for (let i = 0; i < board.length; i++) {
             const subset = [...board];
             subset.splice(i, 1);
-            
-            // Initial filter for subset: must only contain units valid for targetLevel
-            const validSubset = subset.filter(u => isUnitAllowedAtLevel(u, targetLevel));
-            if (validSubset.length !== targetLevel) continue;
-
-            const optimized = optimizeBoard(validSubset, compRules?.evolution?.max_swaps_down || 2);
+            if (subset.length !== targetLevel) continue;
+            const optimized = optimizeBoard(subset, compRules?.evolution?.max_swaps_down || 2);
             if (optimized.score > bestScore) {
                 bestScore = optimized.score;
                 bestBoard = optimized.board;
@@ -2731,7 +2766,6 @@ function getBestNeighbor(board, targetLevel, direction, emblems, mustIncludeTrai
         for (const unit of globalPool) {
             if (currentBoardNames.has(unit.name)) continue;
             const expanded = [...board, unit];
-            
             const optimized = optimizeBoard(expanded, compRules?.evolution?.max_swaps_up || 2);
             if (optimized.score > bestScore) {
                 bestScore = optimized.score;
@@ -2769,15 +2803,18 @@ async function renderTreeExplorer(baseBoard) {
     const solverModeEl = document.querySelector('input[name="solver-mode"]:checked');
     const solverMode = solverModeEl ? solverModeEl.value : 'default';
 
-    // Calculate persistent trait requirements
     const baseCounts = {};
     baseBoard.forEach(u => u.traits.forEach(t => baseCounts[t] = (baseCounts[t] || 0) + 1));
     emblems.forEach(e => baseCounts[e] = (baseCounts[e] || 0) + 1);
     
+    const exclusionOverrides = getExclusionOverrides(baseBoard, emblems);
+
     const persistentTraits = [];
     if (compRules?.evolution?.persistent_traits) {
         for (const req of compRules.evolution.persistent_traits) {
-            if ((baseCounts[req.trait] || 0) >= req.min_count) {
+            const meta = tftData.trait_metadata[req.trait];
+            const isActive = meta && meta.breakpoints.some(b => b <= (baseCounts[req.trait] || 0));
+            if (isActive && baseCounts[req.trait] >= req.min_count) {
                 persistentTraits.push(req);
             }
         }
@@ -2787,20 +2824,18 @@ async function renderTreeExplorer(baseBoard) {
     const baseScoreObj = optimizer.scoreBoard(baseBoard, emblems, currentLevel, solverMode, mustIncludeTraits, mustIncludeNames);
     tree[currentLevel] = { board: baseBoard, score: baseScoreObj.score, counts: baseScoreObj.counts };
 
-    // Tiers Above (Lower levels)
     let lastBoard = baseBoard;
-    for (let l = currentLevel - 1; l >= 5; l--) {
-        const best = getBestNeighbor(lastBoard, l, 'down', emblems, mustIncludeTraits, mustIncludeNames, solverMode, persistentTraits);
+    for (let l = currentLevel - 1; l >= 4; l--) {
+        const best = getBestNeighbor(lastBoard, l, 'down', emblems, mustIncludeTraits, mustIncludeNames, solverMode, persistentTraits, exclusionOverrides);
         if (best) {
             tree[l] = best;
             lastBoard = best.board;
         }
     }
 
-    // Tiers Below (Higher levels)
     lastBoard = baseBoard;
     for (let l = currentLevel + 1; l <= 9; l++) {
-        const best = getBestNeighbor(lastBoard, l, 'up', emblems, mustIncludeTraits, mustIncludeNames, solverMode, persistentTraits);
+        const best = getBestNeighbor(lastBoard, l, 'up', emblems, mustIncludeTraits, mustIncludeNames, solverMode, persistentTraits, exclusionOverrides);
         if (best) {
             tree[l] = best;
             lastBoard = best.board;
@@ -2811,38 +2846,98 @@ async function renderTreeExplorer(baseBoard) {
     const sortedLevels = Object.keys(tree).map(Number).sort((a, b) => a - b);
 
     sortedLevels.forEach(l => {
-        const tierDiv = document.createElement('div');
-        tierDiv.style.width = '100%';
-        tierDiv.style.display = 'flex';
-        tierDiv.style.flexDirection = 'column';
-        tierDiv.style.alignItems = 'center';
-        tierDiv.style.gap = '4px';
-        
-        const label = document.createElement('div');
-        label.style.fontSize = '9px';
-        label.style.fontWeight = '900';
-        label.style.letterSpacing = '1px';
-        label.style.color = l === currentLevel ? 'var(--accent)' : 'var(--text-dimmer)';
-        label.style.textTransform = 'uppercase';
-        label.innerText = `LEVEL ${l}`;
-        tierDiv.appendChild(label);
-
         const cardContainer = document.createElement('div');
         cardContainer.style.width = '100%';
-        
         renderSingleResult(tree[l], cardContainer, l, solverMode, l === currentLevel);
-        
-        tierDiv.appendChild(cardContainer);
-        content.appendChild(tierDiv);
+        content.appendChild(cardContainer);
 
         if (l < sortedLevels[sortedLevels.length - 1]) {
             const arrow = document.createElement('div');
-            arrow.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="opacity: 0.2;"><path d="M7 13l5 5 5-5"/></svg>';
+            arrow.innerHTML = '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" style="opacity: 0.15;"><path d="M7 13l5 5 5-5"/></svg>';
             arrow.style.color = 'var(--text-dimmer)';
-            arrow.style.margin = '-2px 0';
+            arrow.style.margin = '1px 0';
             content.appendChild(arrow);
         }
     });
+}
+
+function renderSingleResult(res, container, level, solverMode, isHighlighted = false) {
+    const card = document.createElement('div');
+    card.className = 'result-card';
+    card.style.padding = '4px 8px';
+    card.style.marginBottom = '0';
+    card.style.position = 'relative';
+    card.style.display = 'flex';
+    card.style.flexDirection = 'column';
+    card.style.gap = '2px';
+
+    if (isHighlighted) {
+        card.style.borderColor = 'var(--accent)';
+        card.style.boxShadow = '0 0 10px rgba(10, 132, 255, 0.1)';
+        card.style.background = 'rgba(255,255,255,0.03)';
+    }
+    
+    card.dataset.board = JSON.stringify(res.board);
+
+    // Header Row with Level and Score
+    const header = document.createElement('div');
+    header.style.display = 'flex';
+    header.style.justifyContent = 'space-between';
+    header.style.alignItems = 'center';
+    header.innerHTML = `
+        <div style="display: flex; align-items: center; gap: 4px;">
+            <div style="font-size: 7px; font-weight: 900; color: ${isHighlighted ? 'white' : 'var(--text-dimmer)'}; background: ${isHighlighted ? 'var(--accent)' : 'rgba(255,255,255,0.05)'}; padding: 0px 3px; border-radius: 2px; border: 1px solid ${isHighlighted ? 'var(--accent)' : 'var(--border)'};">L${level}</div>
+            <button class="icon-btn" onclick="copyCardBoard(this.closest('.result-card'), this)" title="Copy Team Code" style="background: none; border: none; cursor: pointer; padding: 1px; display: flex; align-items: center; color: var(--text-dimer); transition: color 0.2s;">
+                <svg xmlns="http://www.w3.org/2000/svg" width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+            </button>
+        </div>
+        <span style="font-size: 8px; color: var(--text-dimmer); font-weight: 600;">${Math.floor(res.score)}</span>
+    `;
+    card.appendChild(header);
+    
+    const list = document.createElement('div');
+    list.className = 'unit-list';
+    list.style.marginTop = '0';
+    list.style.gap = '2px';
+    const sortedBoard = [...res.board].sort((a, b) => a.cost - b.cost || a.name.localeCompare(b.name));
+    sortedBoard.forEach((u) => {
+        const unitItem = document.createElement('div');
+        unitItem.className = 'unit-item';
+        unitItem.style.width = '28px';
+        const costColors = { 1: '#808080', 2: '#11b288', 3: '#207ac7', 4: '#c440da', 5: '#ffb93b' };
+        const borderColor = costColors[u.cost] || '#ccc';
+        unitItem.innerHTML = `<img src="${u.icon_url}" class="unit-icon" style="width: 24px; height: 24px; border-color: ${borderColor};" onerror="this.src='data:image/svg+xml;base64,PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHdpZHRoPSczNicgaGVpZ2h0PSczNicgc3R5bGU9J2JhY2tncm91bmQ6IzIyMjsnPjx0ZXh0IHg9JzUwJScgeT0nNTAlJyBkb20tYmFzZWxpbmU9J21pZGRsZScgdGV4dC1hbmNob3I9J21pZGRsZScgZmlsbD0nI2ZmZicgZm9udC1zaXplPSc4Jz4/IDwvdGV4dD48L3N2Zz4='">
+            <div class="unit-name" style="font-size: 5px;">${u.name}</div>`;
+        list.appendChild(unitItem);
+    });
+    card.appendChild(list);
+
+    const traitsList = document.createElement('div');
+    traitsList.className = 'trait-summary';
+    traitsList.style.display = 'flex';
+    traitsList.style.flexWrap = 'wrap';
+    traitsList.style.gap = '3px';
+    traitsList.style.marginTop = '2px';
+    traitsList.style.paddingTop = '2px';
+    traitsList.style.borderTop = '1px solid var(--border-light)';
+    
+    const sortedTraits = Object.entries(res.counts).sort((a, b) => b[1] - a[1]);
+    sortedTraits.forEach(([trait, count]) => {
+        const traitInfo = (tftData.trait_metadata && tftData.trait_metadata[trait]) ? tftData.trait_metadata[trait] : null;
+        const breakpoints = traitInfo ? traitInfo.breakpoints : null;
+        const isActive = (breakpoints && breakpoints.some(b => b <= count)) || (trait === 'Targon' && count >= 1);
+        if (!isActive && trait !== 'Targon') return;
+        const traitItem = document.createElement('div');
+        traitItem.style.display = 'flex';
+        traitItem.style.alignItems = 'center';
+        traitItem.style.gap = '1px';
+        traitItem.style.fontSize = '7px';
+        const iconUrl = `assets/tft/${currentConfig.current_set}/traits/${trait.replace(/ /g, '')}.svg`;
+        traitItem.innerHTML = `<img src="${iconUrl}" style="width: 8px; height: 8px;" title="${trait}" onerror="this.style.display='none'"><span>${count}</span>`;
+        traitsList.appendChild(traitItem);
+    });
+    card.appendChild(traitsList);
+    container.appendChild(card);
 }
 
 function renderSingleResult(res, container, level, solverMode, isHighlighted = false) {
