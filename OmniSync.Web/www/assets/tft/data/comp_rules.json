@@ -1,0 +1,30 @@
+{
+  "general": {
+    "max_trait_count": 7,
+    "forbidden_traits": {
+      "Shurima": 3
+    },
+    "sylas_forbidden_names": ["Jarvan IV", "Lux", "Garen"],
+    "unit_level_requirements": [
+      { "name": "Kennen", "min_level": 6 },
+      { "name": "Kobuko", "min_level": 7 }
+    ],
+    "cost_level_limits": [
+      { "max_cost": 3, "below_level": 7 },
+      { "max_cost": 4, "below_level": 8 }
+    ],
+    "auto_include": [
+      { "unit": "Annie", "include": "Tibbers" },
+      { "unit": "Tibbers", "include": "Annie" }
+    ]
+  },
+  "evolution": {
+    "max_swaps_down": 2,
+    "max_swaps_up": 2,
+    "new_unit_cost_offset": -4,
+    "persistent_traits": [
+      { "trait": "Void", "min_count": 2 },
+      { "trait": "Shadow Isles", "min_count": 2 }
+    ]
+  }
+}

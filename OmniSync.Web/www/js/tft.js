@@ -1,5 +1,6 @@
 let tftData = null;
 let currentConfig = null;
+let compRules = null;
 let optimizer = null;
 
 let selectedMustInclude = []; 
@@ -404,6 +405,13 @@ async function loadTFTData() {
         
         const dataResp = await fetch(`assets/tft/data/${currentConfig.current_set}.json`);
         tftData = await dataResp.json();
+
+        try {
+            const rulesResp = await fetch('assets/tft/data/comp_rules.json');
+            compRules = await rulesResp.json();
+        } catch (e) {
+            console.warn("Failed to load comp rules, using defaults", e);
+        }
 
         // Load unit ID mapping for Team Planner
         const mappingResp = await fetch('assets/tft/data/unit_id_map.json');
@@ -2612,40 +2620,72 @@ function loadTFTSelection() {
 function openTreeExplorer(btn) {
     const card = btn.closest('.result-card');
     const board = JSON.parse(card.dataset.board);
-    document.getElementById('evolution-zone').classList.add('active');
+    document.querySelector('.optimizer-layout').classList.add('has-evolution');
     renderTreeExplorer(board);
 }
 
 function closeTreeExplorer() {
-    document.getElementById('evolution-zone').classList.remove('active');
+    document.querySelector('.optimizer-layout').classList.remove('has-evolution');
 }
 
-function getBestNeighbor(board, targetLevel, direction, emblems, mustIncludeTraits, mustIncludeNames, solverMode) {
+function getBestNeighbor(board, targetLevel, direction, emblems, mustIncludeTraits, mustIncludeNames, solverMode, persistentTraitRequirements) {
     let bestBoard = null;
     let bestScore = -Infinity;
 
     const mustSet = new Set(mustIncludeNames);
-    const boardNames = new Set(board.map(u => u.name));
     
-    // Base pool filtered by cost rules for the target level
-    const globalPool = tftData.units.filter(u => {
-        if (activeDisabledUnits.includes(u.name)) return false;
-        if (!mustSet.has(u.name)) {
-            if (targetLevel < 7 && u.cost >= 4) return false;
-            if (targetLevel < 8 && u.cost === 5) return false;
+    // Cost rules from compRules
+    const costLimits = compRules?.general?.cost_level_limits || [];
+    function isUnitAllowedAtLevel(unit, level) {
+        if (mustSet.has(unit.name)) return true;
+        for (const limit of costLimits) {
+            if (level < limit.below_level && unit.cost > limit.max_cost) return false;
+        }
+        // Strict global rule: Level 5 -> max 1 cost (if offset is -4)
+        if (compRules?.evolution?.new_unit_cost_offset !== undefined) {
+            const maxCost = level + compRules.evolution.new_unit_cost_offset;
+            if (unit.cost > maxCost) return false;
         }
         return true;
+    }
+
+    const globalPool = tftData.units.filter(u => {
+        if (activeDisabledUnits.includes(u.name)) return false;
+        return isUnitAllowedAtLevel(u, targetLevel);
     });
 
+    function validateBoard(testBoard, level) {
+        // Apply all general rules
+        if (compRules?.general?.unit_level_requirements) {
+            for (const req of compRules.general.unit_level_requirements) {
+                if (testBoard.some(u => u.name === req.name) && level < req.min_level) return false;
+            }
+        }
+
+        // Persistent trait requirements (Void/Shadow Isles)
+        if (persistentTraitRequirements) {
+            const counts = {};
+            testBoard.forEach(u => u.traits.forEach(t => counts[t] = (counts[t] || 0) + 1));
+            emblems.forEach(e => counts[e] = (counts[e] || 0) + 1);
+            
+            for (const req of persistentTraitRequirements) {
+                if ((counts[req.trait] || 0) < req.min_count) return false;
+            }
+        }
+
+        const scoreObj = optimizer.scoreBoard(testBoard, emblems, level, solverMode, mustIncludeTraits, mustIncludeNames);
+        return scoreObj.score > -1000000 ? scoreObj : null;
+    }
+
     function optimizeBoard(startBoard, swapsRemaining) {
+        const startResult = validateBoard(startBoard, targetLevel);
         let currentBest = { 
             board: startBoard, 
-            score: optimizer.scoreBoard(startBoard, emblems, targetLevel, solverMode, mustIncludeTraits, mustIncludeNames).score 
+            score: startResult ? startResult.score : -Infinity
         };
 
         if (swapsRemaining <= 0) return currentBest;
 
-        // Try swapping each unit (one at a time, recursively)
         for (let i = 0; i < startBoard.length; i++) {
             const originalUnit = startBoard[i];
             if (mustSet.has(originalUnit.name)) continue;
@@ -2658,10 +2698,9 @@ function getBestNeighbor(board, targetLevel, direction, emblems, mustIncludeTrai
                 const testBoard = [...startBoard];
                 testBoard[i] = candidate;
                 
-                const scoreObj = optimizer.scoreBoard(testBoard, emblems, targetLevel, solverMode, mustIncludeTraits, mustIncludeNames);
-                if (scoreObj.score > currentBest.score) {
-                    currentBest = { board: testBoard, score: scoreObj.score };
-                    // If we found a better board, try swapping another unit from THIS new best board
+                const result = validateBoard(testBoard, targetLevel);
+                if (result && result.score > currentBest.score) {
+                    currentBest = { board: testBoard, score: result.score };
                     const further = optimizeBoard(testBoard, swapsRemaining - 1);
                     if (further.score > currentBest.score) {
                         currentBest = further;
@@ -2673,36 +2712,27 @@ function getBestNeighbor(board, targetLevel, direction, emblems, mustIncludeTrai
     }
 
     if (direction === 'down') {
-        // Step 1: Find best subset of size targetLevel
         for (let i = 0; i < board.length; i++) {
             const subset = [...board];
             subset.splice(i, 1);
             
-            // Filter out invalid units from the subset first
-            const validSubset = subset.filter(u => {
-                if (mustSet.has(u.name)) return true;
-                if (targetLevel < 7 && u.cost >= 4) return false;
-                if (targetLevel < 8 && u.cost === 5) return false;
-                return true;
-            });
-
+            // Initial filter for subset: must only contain units valid for targetLevel
+            const validSubset = subset.filter(u => isUnitAllowedAtLevel(u, targetLevel));
             if (validSubset.length !== targetLevel) continue;
 
-            // Step 2: For each subset, allow up to 2 swaps to improve it
-            const optimized = optimizeBoard(validSubset, 2);
+            const optimized = optimizeBoard(validSubset, compRules?.evolution?.max_swaps_down || 2);
             if (optimized.score > bestScore) {
                 bestScore = optimized.score;
                 bestBoard = optimized.board;
             }
         }
     } else {
-        // Step 1: Try adding each valid unit
+        const currentBoardNames = new Set(board.map(u => u.name));
         for (const unit of globalPool) {
-            if (boardNames.has(unit.name)) continue;
+            if (currentBoardNames.has(unit.name)) continue;
             const expanded = [...board, unit];
             
-            // Step 2: Allow up to 2 swaps to improve the new board
-            const optimized = optimizeBoard(expanded, 2);
+            const optimized = optimizeBoard(expanded, compRules?.evolution?.max_swaps_up || 2);
             if (optimized.score > bestScore) {
                 bestScore = optimized.score;
                 bestBoard = optimized.board;
@@ -2711,15 +2741,14 @@ function getBestNeighbor(board, targetLevel, direction, emblems, mustIncludeTrai
     }
 
     if (!bestBoard) return null;
-    const finalScoreObj = optimizer.scoreBoard(bestBoard, emblems, targetLevel, solverMode, mustIncludeTraits, mustIncludeNames);
-    return { board: bestBoard, score: finalScoreObj.score, counts: finalScoreObj.counts };
+    const finalResult = validateBoard(bestBoard, targetLevel);
+    return finalResult ? { board: bestBoard, score: finalResult.score, counts: finalResult.counts } : null;
 }
 
 async function renderTreeExplorer(baseBoard) {
     const content = document.getElementById('tree-explorer-content');
     content.innerHTML = '<div style="color: var(--text-dim); padding: 20px; text-align: center; font-size: 11px;">Calculating evolution...</div>';
 
-    // Delay to let the "Calculating" text show
     await new Promise(r => setTimeout(r, 10));
 
     const currentLevel = baseBoard.reduce((acc, u) => acc + (u.slots || 1), 0);
@@ -2740,6 +2769,20 @@ async function renderTreeExplorer(baseBoard) {
     const solverModeEl = document.querySelector('input[name="solver-mode"]:checked');
     const solverMode = solverModeEl ? solverModeEl.value : 'default';
 
+    // Calculate persistent trait requirements
+    const baseCounts = {};
+    baseBoard.forEach(u => u.traits.forEach(t => baseCounts[t] = (baseCounts[t] || 0) + 1));
+    emblems.forEach(e => baseCounts[e] = (baseCounts[e] || 0) + 1);
+    
+    const persistentTraits = [];
+    if (compRules?.evolution?.persistent_traits) {
+        for (const req of compRules.evolution.persistent_traits) {
+            if ((baseCounts[req.trait] || 0) >= req.min_count) {
+                persistentTraits.push(req);
+            }
+        }
+    }
+
     const tree = {};
     const baseScoreObj = optimizer.scoreBoard(baseBoard, emblems, currentLevel, solverMode, mustIncludeTraits, mustIncludeNames);
     tree[currentLevel] = { board: baseBoard, score: baseScoreObj.score, counts: baseScoreObj.counts };
@@ -2747,7 +2790,7 @@ async function renderTreeExplorer(baseBoard) {
     // Tiers Above (Lower levels)
     let lastBoard = baseBoard;
     for (let l = currentLevel - 1; l >= 5; l--) {
-        const best = getBestNeighbor(lastBoard, l, 'down', emblems, mustIncludeTraits, mustIncludeNames, solverMode);
+        const best = getBestNeighbor(lastBoard, l, 'down', emblems, mustIncludeTraits, mustIncludeNames, solverMode, persistentTraits);
         if (best) {
             tree[l] = best;
             lastBoard = best.board;
@@ -2757,7 +2800,7 @@ async function renderTreeExplorer(baseBoard) {
     // Tiers Below (Higher levels)
     lastBoard = baseBoard;
     for (let l = currentLevel + 1; l <= 9; l++) {
-        const best = getBestNeighbor(lastBoard, l, 'up', emblems, mustIncludeTraits, mustIncludeNames, solverMode);
+        const best = getBestNeighbor(lastBoard, l, 'up', emblems, mustIncludeTraits, mustIncludeNames, solverMode, persistentTraits);
         if (best) {
             tree[l] = best;
             lastBoard = best.board;
@@ -2765,7 +2808,7 @@ async function renderTreeExplorer(baseBoard) {
     }
 
     content.innerHTML = '';
-    const sortedLevels = Object.keys(tree).map(Number).sort((a, b) => a - b); // 5 to 9
+    const sortedLevels = Object.keys(tree).map(Number).sort((a, b) => a - b);
 
     sortedLevels.forEach(l => {
         const tierDiv = document.createElement('div');
