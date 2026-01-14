@@ -11,7 +11,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>OmniSync - Settings</title>
     <link rel="icon" type="image/png" href="favicon.png">
-    <link rel="stylesheet" href="css/style.css?v=2026.01.14.14.27">
+    <link rel="stylesheet" href="css/style.css?v=2026.01.14.15.32">
     <style>
         .settings-container {
             display: flex;
@@ -146,7 +146,8 @@
             <a href="Test.html" class="nav-item">Test</a>
             <a href="Settings.html" class="nav-item active">Settings</a>
             <a href="IslandGenerator/index.html" class="nav-item">Island</a>
-            <button id="toggle-dev-console" class="nav-item" style="margin-left: auto; font-size: 10px; background: transparent; border: 1px solid var(--border);">Console</button>
+            <span class="nav-version" style="margin-left: auto; font-size: 10px; color: var(--text-dimmer); font-family: var(--font-mono); padding: 0 10px; align-self: center;">2026.01.14.15.32</span>
+            <button id="toggle-dev-console" class="nav-item" style="font-size: 10px; background: transparent; border: 1px solid var(--border);">Console</button>
         </nav>
 
         <div class="settings-container">
@@ -259,10 +260,10 @@
         </div>
     </div>
 
-    <script src="js/signalr.min.js?v=2026.01.14.14.27"></script>
-    <script src="js/config.js?v=2026.01.14.14.27"></script>
+    <script src="js/signalr.min.js?v=2026.01.14.15.32"></script>
+    <script src="js/config.js?v=2026.01.14.15.32"></script>
     <script>
-        document.write('<script src="js/settings.js?v=2026.01.14.14.27' + Date.now() + '"><\/script>');
+        document.write('<script src="js/settings.js?v=2026.01.14.15.32' + Date.now() + '"><\/script>');
     </script>
     <div id="dev-console" class="hidden">
             <div class="dev-console-header">
@@ -271,7 +272,7 @@
             </div>
             <div id="console-output"></div>
         </div>
-        <script src="js/dev-console.js?v=2026.01.14.14.27"></script>
+        <script src="js/dev-console.js?v=2026.01.14.15.32"></script>
     </body>
     </html>
     

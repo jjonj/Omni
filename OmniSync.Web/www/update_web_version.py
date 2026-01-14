@@ -18,33 +18,25 @@ def update_web_version():
                 content = f.read()
 
             # 1. Update Version in Script and Link tags
-            # Only targets local files (doesn't start with http/https)
-            # Pattern matches .js or .css followed by an optional existing ?v=...
-            # We use a negative lookbehind to ensure we don't match http:// or https://
             def replace_tag(match):
                 prefix = match.group(1) # src=" or href="
                 path = match.group(2)   # the actual path
                 ext = match.group(3)    # .js or .css
                 
-                # Skip CDN/External links
                 if path.startswith('http') or path.startswith('//'):
                     return match.group(0)
                 
                 return f'{prefix}{path}{ext}?v={timestamp}'
 
-            # Regex breakdown:
-            # (src=\"|href=\") : The attribute
-            # ([^"']+) : The path (everything until the extension)
-            # (\.js|\.css) : The extension
-            # (?:\?v=[\d\.]*)? : Optional existing version param
-            pattern = r'(src=\"|href=\")([^"\\]+?)(\.js|\.css)(?:\?v=[\d\.]*)?'
+            pattern = r'(src="|href=")([^"\\]+?)(\.js|\.css)(?:\?v=[\d\.]*)?'
             new_content = re.sub(pattern, replace_tag, content)
 
-            # 2. Update Timestamp in title if present (optional but nice)
-            # Looks for any version string in title tags
-            title_pattern = r'(<title>.*?)(?:\d{4}\.\d{2}\.\d{2}\.\d{2}\.\d{2})(.*?</title>)'
-            if re.search(title_pattern, new_content):
-                new_content = re.sub(title_pattern, f'\\1{timestamp}\\2', new_content)
+            # 2. Update Version in Navigation Bar
+            # Look for class="nav-version" and update its text content
+            # Regex: Group 1 is everything before the version, Group 2 is the current version, Group 3 is the closing tag
+            nav_version_pattern = r'(<span[^>]*class="nav-version"[^>]*>)(.*?)(</span>)'
+            if re.search(nav_version_pattern, new_content):
+                new_content = re.sub(nav_version_pattern, r'\g<1>' + timestamp + r'\g<3>', new_content)
 
             if new_content != content:
                 with open(file_path, 'w', encoding='utf-8') as f:

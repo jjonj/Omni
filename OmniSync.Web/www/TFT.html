@@ -8,7 +8,7 @@
     <meta http-equiv="Expires" content="0">
     <title>OmniSync - TFT Helper</title>
     <link rel="icon" type="image/png" href="favicon.png">
-    <link rel="stylesheet" href="css/style.css?v=2026.01.14.15.26">
+    <link rel="stylesheet" href="css/style.css?v=2026.01.14.15.32">
     <style>
         .tft-container {
             display: flex;
@@ -654,7 +654,8 @@
             <a href="Test.html" class="nav-item">Test</a>
             <a href="Settings.html" class="nav-item">Settings</a>
             <a href="IslandGenerator/index.html" class="nav-item">Island</a>
-            <button id="toggle-dev-console" class="nav-item" style="margin-left: auto; font-size: 10px; background: transparent; border: 1px solid var(--border);">Console</button>
+            <span class="nav-version" style="margin-left: auto; font-size: 10px; color: var(--text-dimmer); font-family: var(--font-mono); padding: 0 10px; align-self: center;">2026.01.14.15.32</span>
+            <button id="toggle-dev-console" class="nav-item" style="font-size: 10px; background: transparent; border: 1px solid var(--border);">Console</button>
         </nav>
 
         <div class="tft-container">
@@ -1037,9 +1038,9 @@
         </div>
     </div>
 
-    <script src="js/signalr.min.js?v=2026.01.14.15.26"></script>
-    <script src="js/drag_drop_touch.js?v=2026.01.14.15.26"></script>
-    <script src="js/config.js?v=2026.01.14.15.26"></script>
+    <script src="js/signalr.min.js?v=2026.01.14.15.32"></script>
+    <script src="js/drag_drop_touch.js?v=2026.01.14.15.32"></script>
+    <script src="js/config.js?v=2026.01.14.15.32"></script>
     <script>
         function hardRefresh() {
             if (confirm("This will clear local settings (except persistent quiz progress) and force a full reload. Continue?")) {
@@ -1056,11 +1057,11 @@
             }
         }
     </script>
-    <script src="js/tft_optimizer.js?v=2026.01.14.15.26"></script>
-    <script src="js/TeamPlannerCode.js?v=2026.01.14.15.26"></script>
-        <script src="js/tft_tests.js?v=2026.01.14.15.26"></script>
-        <script src="js/tft_filter_test.js?v=2026.01.14.15.26"></script>
-        <script src="js/tft.js?v=2026.01.14.15.26"></script>
+    <script src="js/tft_optimizer.js?v=2026.01.14.15.32"></script>
+    <script src="js/TeamPlannerCode.js?v=2026.01.14.15.32"></script>
+        <script src="js/tft_tests.js?v=2026.01.14.15.32"></script>
+        <script src="js/tft_filter_test.js?v=2026.01.14.15.32"></script>
+        <script src="js/tft.js?v=2026.01.14.15.32"></script>
     
         <div id="dev-console" class="hidden">
             <div class="dev-console-header">
@@ -1069,7 +1070,7 @@
             </div>
             <div id="console-output"></div>
         </div>
-        <script src="js/dev-console.js?v=2026.01.14.15.26"></script>
+        <script src="js/dev-console.js?v=2026.01.14.15.32"></script>
     </body>
     </html>
     
