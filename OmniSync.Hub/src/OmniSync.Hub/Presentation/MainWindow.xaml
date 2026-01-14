@@ -352,6 +352,34 @@
                             </DockPanel>
                         </Grid>
                     </TabItem>
+                    <TabItem Header="AI / Tell PC">
+                        <Grid Margin="15">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+
+                            <TextBlock Grid.Row="0" Text="Tell PC Configuration" FontSize="18" FontWeight="Bold" Margin="0,0,0,5"/>
+                            <TextBlock Grid.Row="1" Text="Configure the 'Tell PC' feature triggered from the remote." FontSize="12" Opacity="0.7" Margin="0,0,0,20"/>
+
+                            <StackPanel Grid.Row="2" Margin="0,0,0,20">
+                                <TextBlock Text="Default Workspace" Margin="0,0,0,5" Opacity="0.7"/>
+                                <TextBox Text="{Binding TellPcWorkspace}" Padding="5"/>
+                                
+                                <TextBlock Text="System Context" Margin="0,15,0,5" Opacity="0.7"/>
+                                <TextBox Text="{Binding TellPcSystemContext}" Height="100" TextWrapping="Wrap" AcceptsReturn="True" VerticalScrollBarVisibility="Auto" Padding="5"/>
+                                
+                                <CheckBox IsChecked="{Binding TellPcSoundEnabled}" Content="Play confirmation sound (blip) on Hub" 
+                                          Foreground="#D4D4D4" Margin="0,15,0,0" FontSize="14"/>
+                            </StackPanel>
+
+                            <Button Grid.Row="3" Content="Save AI Configuration" Command="{Binding SaveAiSettingsCommand}" 
+                                    HorizontalAlignment="Right" Background="#007ACC" FontWeight="Bold" Height="35" Padding="20,0"/>
+                        </Grid>
+                    </TabItem>
                     <TabItem Header="Hotkeys">
                         <Grid Margin="15">
                             <Grid.RowDefinitions>

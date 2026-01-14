@@ -44,6 +44,7 @@ namespace OmniSync.Hub.Presentation
         public ICommand ToggleShutdownModeCommand { get; }
         public ICommand FocusAiSessionsCommand { get; }
         public ICommand ResetAiSessionsCommand { get; }
+        public ICommand SaveAiSettingsCommand { get; }
 
         public ICommand AddProjectCommand { get; }
         public ICommand DeleteProjectCommand { get; }
@@ -150,6 +151,46 @@ namespace OmniSync.Hub.Presentation
                                 {
                                     _settingsService.Settings.AiDebugMode = value;
                                     _settingsService.SaveSettings();
+                                    OnPropertyChanged();
+                                }
+                            }
+                        }
+
+                        // --- Tell PC Settings ---
+                        public string TellPcWorkspace
+                        {
+                            get => _settingsService.Settings.TellPcWorkspace;
+                            set
+                            {
+                                if (_settingsService.Settings.TellPcWorkspace != value)
+                                {
+                                    _settingsService.Settings.TellPcWorkspace = value;
+                                    OnPropertyChanged();
+                                }
+                            }
+                        }
+
+                        public string TellPcSystemContext
+                        {
+                            get => _settingsService.Settings.TellPcSystemContext;
+                            set
+                            {
+                                if (_settingsService.Settings.TellPcSystemContext != value)
+                                {
+                                    _settingsService.Settings.TellPcSystemContext = value;
+                                    OnPropertyChanged();
+                                }
+                            }
+                        }
+
+                        public bool TellPcSoundEnabled
+                        {
+                            get => _settingsService.Settings.TellPcSoundEnabled;
+                            set
+                            {
+                                if (_settingsService.Settings.TellPcSoundEnabled != value)
+                                {
+                                    _settingsService.Settings.TellPcSoundEnabled = value;
                                     OnPropertyChanged();
                                 }
                             }
@@ -277,6 +318,7 @@ namespace OmniSync.Hub.Presentation
             ToggleShutdownModeCommand = new RelayCommand(_ => { });
             FocusAiSessionsCommand = new RelayCommand(_ => { });
             ResetAiSessionsCommand = new RelayCommand(_ => { });
+            SaveAiSettingsCommand = new RelayCommand(_ => { });
 
             AddProjectCommand = new RelayCommand(_ => { });
             DeleteProjectCommand = new RelayCommand(_ => { });
@@ -380,6 +422,12 @@ namespace OmniSync.Hub.Presentation
                 _hubMonitorService.AddLogMessage("[AI] User requested manual reset of all AI sessions.");
                 _aiCliService.KillAllGeminiProcesses();
                 await _aiCliService.DiscoverSessionsAsync();
+            });
+
+            SaveAiSettingsCommand = new RelayCommand(_ => {
+                _settingsService.SaveSettings();
+                _hubMonitorService.AddLogMessage("[Settings] Saved Tell PC Configuration.");
+                MessageBox.Show("AI Configuration Saved.", "Settings", MessageBoxButtons.OK, MessageBoxIcon.Information);
             });
 
             AddProjectCommand = new RelayCommand(_ => ExecuteAddProject());

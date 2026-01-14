@@ -227,10 +227,22 @@ namespace OmniSync.Hub.Presentation.Hubs
 
         public void UpdateTellPcSettings(string workspace, string systemContext, bool soundEnabled)
         {
-            if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
+            try
             {
-                _settingsService.UpdateTellPcSettings(workspace, systemContext, soundEnabled);
-                _hubMonitorService.AddLogMessage("Tell PC settings updated via web interface.");
+                if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
+                {
+                    _settingsService.UpdateTellPcSettings(workspace, systemContext, soundEnabled);
+                    _hubMonitorService.AddLogMessage("Tell PC settings updated via web interface.");
+                }
+                else
+                {
+                    throw new HubException("Not authenticated.");
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error updating Tell PC settings.");
+                throw new HubException($"Server error: {ex.Message}");
             }
         }
 
