@@ -10,6 +10,20 @@
     "contextMenus",
     "alarms"
   ],
+  "action": {
+    "default_icon": {
+      "16": "icons/omni.png",
+      "32": "icons/omni.png",
+      "48": "icons/omni.png",
+      "128": "icons/omni.png"
+    }
+  },
+  "icons": {
+    "16": "icons/omni.png",
+    "32": "icons/omni.png",
+    "48": "icons/omni.png",
+    "128": "icons/omni.png"
+  },
   "background": {
     "service_worker": "background.js"
   },

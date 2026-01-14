@@ -52,8 +52,6 @@ Only work on subtasks if told to do so or if told explicitly to do a Megasession
 
 ## Chrome extension
 
-Add to extension right click menu option to clean tabs from within chrome. The icon in the extensions bar is now a weird black figure instead the omni icon we use everywhere
-
 ## Omni Web
 
 ### Omni web tft

@@ -351,6 +351,12 @@ chrome.runtime.onInstalled.addListener(() => {
         contexts: ["action", "page"]
     });
 
+    chrome.contextMenus.create({
+        id: "cleanTabs",
+        title: "Clean Tabs",
+        contexts: ["action", "page"]
+    });
+
     start();
 });
 
@@ -371,6 +377,12 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
             if (results && results.length > 0) {
                 chrome.tabs.create({ url: results[0].url, active: true });
             }
+        });
+    } else if (info.menuItemId === "cleanTabs") {
+        chrome.tabs.query({}, (tabs) => {
+            const tabsToClose = tabs.filter(tab => shouldCleanTab(tab.url));
+            console.log(`Cleaning ${tabsToClose.length} tabs via context menu`);
+            tabsToClose.forEach(tab => chrome.tabs.remove(tab.id));
         });
     }
 });
