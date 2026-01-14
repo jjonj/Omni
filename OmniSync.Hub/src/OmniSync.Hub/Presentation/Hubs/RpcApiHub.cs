@@ -1021,7 +1021,7 @@ namespace OmniSync.Hub.Presentation.Hubs
                         AnyCommandReceived?.Invoke(this, $"AI Launch Success: PID {result.Value}");
                         await Clients.All.SendAsync("ReceiveNewAiSessionPid", result.Value);
                         // Clear the status on client side
-                        await Clients.All.SendAsync("ReceiveAiStatus", "FINISHED", result.Value);
+                        await SendAiStatus("FINISHED", result.Value);
                     }
                     else
                     {
@@ -1055,7 +1055,7 @@ namespace OmniSync.Hub.Presentation.Hubs
                 {
                     await Clients.All.SendAsync("ReceiveNewAiSessionPid", result.Value);
                     // Clear the status on client side
-                    await Clients.All.SendAsync("ReceiveAiStatus", "FINISHED", result.Value);
+                    await SendAiStatus("FINISHED", result.Value);
                 }
                 return result;
             }

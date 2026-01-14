@@ -401,6 +401,7 @@ class SignalRClient(
             if (status == "FINISHED" || status == "DONE" || status == null || status.isBlank()) {
                 updateSessionStatus(pid, null)
                 updateSessionThought(pid, null)
+                updateSessionDialog(pid, null)
                 setIsNextBubble(pid, true)
                 // Clear queued status from all messages in this session
                 updateSessionMessages(pid) { messages ->
@@ -458,8 +459,11 @@ class SignalRClient(
                 messageQueue.clear()
             }
 
-            // Clear the temporary -1 session messages
+            // Clear the temporary -1 session state
             _aiMessagesMap.value = _aiMessagesMap.value - (-1)
+            _aiStatusMap.value = _aiStatusMap.value - (-1)
+            _aiThoughtMap.value = _aiThoughtMap.value - (-1)
+            _aiDialogMap.value = _aiDialogMap.value - (-1)
         }, Int::class.java)
 
         hubConnection?.on("ReceiveCortexActivity", { name: String, type: String ->
