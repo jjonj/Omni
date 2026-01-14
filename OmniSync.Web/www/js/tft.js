@@ -2623,21 +2623,46 @@ function getBestNeighbor(board, targetLevel, direction, emblems, mustIncludeTrai
     let bestBoard = null;
     let bestScore = -Infinity;
 
+    const mustSet = new Set(mustIncludeNames);
+
     if (direction === 'down') {
         // Try removing each unit
         for (let i = 0; i < board.length; i++) {
             const candidate = [...board];
             candidate.splice(i, 1);
-            const scoreObj = optimizer.scoreBoard(candidate, emblems, targetLevel, solverMode, mustIncludeTraits, mustIncludeNames);
+            
+            // Strict cost filtering for the target level
+            const validCandidate = candidate.filter(u => {
+                if (mustSet.has(u.name)) return true;
+                if (targetLevel < 7 && u.cost >= 4) return false;
+                if (targetLevel < 8 && u.cost === 5) return false;
+                return true;
+            });
+
+            // If filtering removed units, we might not be at targetLevel anymore
+            // but for 'down' we just want the best board that fits the size.
+            // If the filtered board is smaller than targetLevel, it's invalid for this specific slot check
+            if (validCandidate.length !== targetLevel) continue;
+
+            const scoreObj = optimizer.scoreBoard(validCandidate, emblems, targetLevel, solverMode, mustIncludeTraits, mustIncludeNames);
             if (scoreObj.score > bestScore) {
                 bestScore = scoreObj.score;
-                bestBoard = candidate;
+                bestBoard = validCandidate;
             }
         }
     } else {
         // Try adding each unit from pool
         const boardNames = new Set(board.map(u => u.name));
-        const pool = tftData.units.filter(u => !boardNames.has(u.name) && !activeDisabledUnits.includes(u.name));
+        const pool = tftData.units.filter(u => {
+            if (boardNames.has(u.name)) return false;
+            if (activeDisabledUnits.includes(u.name)) return false;
+            // Strict cost filtering for addition
+            if (!mustSet.has(u.name)) {
+                if (targetLevel < 7 && u.cost >= 4) return false;
+                if (targetLevel < 8 && u.cost === 5) return false;
+            }
+            return true;
+        });
         
         for (const unit of pool) {
             const candidate = [...board, unit];
@@ -2657,7 +2682,7 @@ function getBestNeighbor(board, targetLevel, direction, emblems, mustIncludeTrai
 async function renderTreeExplorer(baseBoard) {
     const modal = document.getElementById('tree-explorer-modal');
     const content = document.getElementById('tree-explorer-content');
-    content.innerHTML = '<div style="color: var(--text-dim); padding: 40px; text-align: center; font-size: 14px;">Calculating comp evolution tree...</div>';
+    content.innerHTML = '<div style="color: var(--text-dim); padding: 20px; text-align: center; font-size: 14px;">Calculating comp evolution tree...</div>';
     modal.style.display = 'flex';
 
     // Delay to let the "Calculating" text show
@@ -2714,32 +2739,31 @@ async function renderTreeExplorer(baseBoard) {
         tierDiv.style.display = 'flex';
         tierDiv.style.flexDirection = 'column';
         tierDiv.style.alignItems = 'center';
-        tierDiv.style.gap = '12px';
+        tierDiv.style.gap = '4px';
         
         const label = document.createElement('div');
-        label.style.fontSize = '11px';
-        label.style.fontWeight = '800';
+        label.style.fontSize = '9px';
+        label.style.fontWeight = '900';
         label.style.letterSpacing = '1px';
-        label.style.color = l === currentLevel ? 'var(--accent)' : 'var(--text-dim)';
-        label.style.background = l === currentLevel ? 'rgba(10, 132, 255, 0.1)' : 'transparent';
-        label.style.padding = '4px 12px';
-        label.style.borderRadius = '12px';
+        label.style.color = l === currentLevel ? 'var(--accent)' : 'var(--text-dimmer)';
+        label.style.textTransform = 'uppercase';
         label.innerText = `LEVEL ${l}`;
         tierDiv.appendChild(label);
 
         const cardContainer = document.createElement('div');
         cardContainer.style.width = '100%';
-        cardContainer.style.maxWidth = '700px';
+        cardContainer.style.maxWidth = '800px';
         
         renderSingleResult(tree[l], cardContainer, l, solverMode, l === currentLevel);
         
         tierDiv.appendChild(cardContainer);
         content.appendChild(tierDiv);
 
-        if (l < 9 && tree[l+1]) {
+        if (l < sortedLevels[sortedLevels.length - 1]) {
             const arrow = document.createElement('div');
-            arrow.innerHTML = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="opacity: 0.3;"><path d="M7 13l5 5 5-5M7 6l5 5 5-5"/></svg>';
+            arrow.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="opacity: 0.2;"><path d="M7 13l5 5 5-5"/></svg>';
             arrow.style.color = 'var(--text-dimmer)';
+            arrow.style.margin = '-2px 0';
             content.appendChild(arrow);
         }
     });
@@ -2749,36 +2773,39 @@ function renderSingleResult(res, container, level, solverMode, isHighlighted = f
     const emblemTraits = selectedEmblems.map(e => e.trait);
     const card = document.createElement('div');
     card.className = 'result-card';
+    card.style.padding = '8px 12px';
+    card.style.marginBottom = '0';
     if (isHighlighted) {
         card.style.borderColor = 'var(--accent)';
-        card.style.boxShadow = '0 0 20px rgba(10, 132, 255, 0.15)';
+        card.style.boxShadow = '0 0 15px rgba(10, 132, 255, 0.1)';
         card.style.background = 'rgba(255,255,255,0.03)';
     }
     
     // Store board for copy support
     card.dataset.board = JSON.stringify(res.board);
 
-    card.innerHTML = `<div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+    card.innerHTML = `<div style="display: flex; justify-content: space-between; margin-bottom: 4px; align-items: center;">
             <div style="display: flex; align-items: center; gap: 8px;">
-                <strong>Level ${level} Composition</strong>
-                <button class="icon-btn" onclick="copyCardBoard(this.closest('.result-card'), this)" title="Copy Team Code" style="background: none; border: none; cursor: pointer; padding: 2px; display: flex; align-items: center; color: var(--text-dim); transition: color 0.2s;">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                <button class="icon-btn" onclick="copyCardBoard(this.closest('.result-card'), this)" title="Copy Team Code" style="background: none; border: none; cursor: pointer; padding: 2px; display: flex; align-items: center; color: var(--text-dimer); transition: color 0.2s;">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
                 </button>
+                <span style="font-size: 10px; color: var(--text-dim); font-weight: 600;">Score: ${Math.floor(res.score)}</span>
             </div>
-            <span style="color: var(--accent); font-weight: 600;">${Math.floor(res.score)}</span>
         </div>`;
     
     const list = document.createElement('div');
     list.className = 'unit-list';
+    list.style.marginTop = '0';
     list.style.gap = '4px';
     const sortedBoard = [...res.board].sort((a, b) => a.cost - b.cost || a.name.localeCompare(b.name));
     sortedBoard.forEach((u) => {
         const unitItem = document.createElement('div');
         unitItem.className = 'unit-item';
+        unitItem.style.width = '36px';
         const costColors = { 1: '#808080', 2: '#11b288', 3: '#207ac7', 4: '#c440da', 5: '#ffb93b' };
         const borderColor = costColors[u.cost] || '#ccc';
-        unitItem.innerHTML = `<img src="${u.icon_url}" class="unit-icon" style="border-color: ${borderColor};" onerror="this.src='data:image/svg+xml;base64,PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHdpZHRoPSczNicgaGVpZ2h0PSczNicgc3R5bGU9J2JhY2tncm91bmQ6IzIyMjsnPjx0ZXh0IHg9JzUwJScgeT0nNTAlJyBkb20tYmFzZWxpbmU9J21pZGRsZScgdGV4dC1hbmNob3I9J21pZGRsZScgZmlsbD0nI2ZmZicgZm9udC1zaXplPSc4Jz4/IDwvdGV4dD48L3N2Zz4='">
-            <div class="unit-name">${u.name}</div>`;
+        unitItem.innerHTML = `<img src="${u.icon_url}" class="unit-icon" style="width: 32px; height: 32px; border-color: ${borderColor};" onerror="this.src='data:image/svg+xml;base64,PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHdpZHRoPSczNicgaGVpZ2h0PSczNicgc3R5bGU9J2JhY2tncm91bmQ6IzIyMjsnPjx0ZXh0IHg9JzUwJScgeT0nNTAlJyBkb20tYmFzZWxpbmU9J21pZGRsZScgdGV4dC1hbmNob3I9J21pZGRsZScgZmlsbD0nI2ZmZicgZm9udC1zaXplPSc4Jz4/IDwvdGV4dD48L3N2Zz4='">
+            <div class="unit-name" style="font-size: 7px;">${u.name}</div>`;
         list.appendChild(unitItem);
     });
     card.appendChild(list);
@@ -2787,9 +2814,9 @@ function renderSingleResult(res, container, level, solverMode, isHighlighted = f
     traitsList.className = 'trait-summary';
     traitsList.style.display = 'flex';
     traitsList.style.flexWrap = 'wrap';
-    traitsList.style.gap = '10px';
-    traitsList.style.marginTop = '10px';
-    traitsList.style.paddingTop = '8px';
+    traitsList.style.gap = '6px';
+    traitsList.style.marginTop = '6px';
+    traitsList.style.paddingTop = '4px';
     traitsList.style.borderTop = '1px solid var(--border-light)';
     
     const sortedTraits = Object.entries(res.counts).sort((a, b) => b[1] - a[1]);
@@ -2803,11 +2830,11 @@ function renderSingleResult(res, container, level, solverMode, isHighlighted = f
         const traitItem = document.createElement('div');
         traitItem.style.display = 'flex';
         traitItem.style.alignItems = 'center';
-        traitItem.style.gap = '4px';
-        traitItem.style.fontSize = '11px';
+        traitItem.style.gap = '2px';
+        traitItem.style.fontSize = '9px';
         
         const iconUrl = `assets/tft/${currentConfig.current_set}/traits/${trait.replace(/ /g, '')}.svg`;
-        traitItem.innerHTML = `<img src="${iconUrl}" style="width: 16px; height: 16px;" title="${trait}" onerror="this.style.display='none'"><span>${count}</span>`;
+        traitItem.innerHTML = `<img src="${iconUrl}" style="width: 12px; height: 12px;" title="${trait}" onerror="this.style.display='none'"><span>${count}</span>`;
         traitsList.appendChild(traitItem);
     });
     card.appendChild(traitsList);
