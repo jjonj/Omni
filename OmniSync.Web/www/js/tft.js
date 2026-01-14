@@ -1356,14 +1356,27 @@ function renderResults(results, container, level) {
     const solverModeEl = document.querySelector('input[name="solver-mode"]:checked');
     const solverMode = solverModeEl ? solverModeEl.value : 'default';
 
+    const mustIncludeNames = selectedMustInclude.filter(i => i.type === 'unit').map(u => u.name);
+    const mustIncludeTraits = {};
+    selectedMustInclude.filter(i => i.type === 'emblem').forEach(item => {
+        const meta = tftData.trait_metadata[item.trait];
+        if (meta) {
+            if (item.targetBreakpointIndex === -1) {
+                mustIncludeTraits[item.trait] = meta.breakpoints[0];
+            } else {
+                mustIncludeTraits[item.trait] = meta.breakpoints[item.targetBreakpointIndex];
+            }
+        }
+    });
+
     results.forEach((res, index) => {
         const card = document.createElement('div');
         card.className = 'result-card';
         card.style.marginBottom = '10px';
-        let displayBoard = [...res.board];
+        let displayBoard = res.board.map((u, i) => ({ ...u, originalIdx: i }));
         if (displayBoard.find(u => u.name === "Annie") && !displayBoard.find(u => u.name === "Tibbers")) {
             const tibbers = tftData.units.find(u => u.name === "Tibbers");
-            if (tibbers) displayBoard.push(tibbers);
+            if (tibbers) displayBoard.push({ ...tibbers, originalIdx: -1 });
         }
         
         // Data-driven auto-include (e.g. Neeko auto-includes Nidalee if Ixtal is active)
@@ -1375,7 +1388,7 @@ function renderResults(results, container, level) {
                 
                 if (hasTraitActive) {
                     const extraUnit = tftData.units.find(du => du.name === u.auto_include);
-                    if (extraUnit) displayBoard.push(extraUnit);
+                    if (extraUnit) displayBoard.push({ ...extraUnit, originalIdx: -1 });
                 }
             }
         });
@@ -1396,6 +1409,9 @@ function renderResults(results, container, level) {
                     <button class="icon-btn" onclick="copyResultCode(this)" title="Copy Team Code" style="background: none; border: none; cursor: pointer; padding: 2px; display: flex; align-items: center; color: var(--text-dim); transition: color 0.2s;">
                         <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
                     </button>
+                    <button class="icon-btn" onclick="openTreeExplorer(this)" title="Open Tree Explorer" style="background: none; border: none; cursor: pointer; padding: 2px; display: flex; align-items: center; color: var(--text-dim); transition: color 0.2s;">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6"></path><path d="M9 21H3v-6"></path><path d="M21 3l-7 7"></path><path d="M3 21l7-7"></path></svg>
+                    </button>
                 </div>
                 <span style="color: var(--accent); font-weight: 600;">${res.score}</span>
             </div>`;
@@ -1407,10 +1423,10 @@ function renderResults(results, container, level) {
         list.className = 'unit-list';
         list.style.gap = '4px';
         const sortedBoard = displayBoard.sort((a, b) => a.cost - b.cost || a.name.localeCompare(b.name));
-        sortedBoard.forEach((u, uIdx) => {
+        sortedBoard.forEach((u) => {
             const activeTraits = Object.keys(res.counts).filter(t => (tftData.trait_metadata && tftData.trait_metadata[t] && tftData.trait_metadata[t].breakpoints.some(b => b <= res.counts[t])));
             const contributedTraits = u.traits.filter(t => activeTraits.includes(t));
-            const isFlex = contributedTraits.length === 1;
+            const isFlex = contributedTraits.length === 1 && u.originalIdx !== -1;
             const unitItem = document.createElement('div');
             unitItem.className = 'unit-item';
             const costColors = { 1: '#808080', 2: '#11b288', 3: '#207ac7', 4: '#c440da', 5: '#ffb93b' };
@@ -1441,7 +1457,13 @@ function renderResults(results, container, level) {
                         const opt = document.createElement('div');
                         opt.className = 'replacement-option';
                         opt.innerHTML = `<img src="${rep.icon_url}" onerror="this.style.background='#333'"> <span>${rep.name} (${rep.cost})</span>`;
-                        opt.onclick = (e) => { e.stopPropagation(); res.board[uIdx] = rep; renderResults(results, container, level); };
+                        opt.onclick = (e) => { 
+                            e.stopPropagation(); 
+                            if (u.originalIdx !== -1) {
+                                res.board[u.originalIdx] = rep; 
+                                renderResults(results, container, level); 
+                            }
+                        };
                         repList.appendChild(opt);
                     });
                 }
@@ -2585,4 +2607,209 @@ function loadTFTSelection() {
             console.error('Failed to load TFT state', e);
         }
     }
+}
+
+function openTreeExplorer(btn) {
+    const card = btn.closest('.result-card');
+    const board = JSON.parse(card.dataset.board);
+    renderTreeExplorer(board);
+}
+
+function closeTreeExplorer() {
+    document.getElementById('tree-explorer-modal').style.display = 'none';
+}
+
+function getBestNeighbor(board, targetLevel, direction, emblems, mustIncludeTraits, mustIncludeNames, solverMode) {
+    let bestBoard = null;
+    let bestScore = -Infinity;
+
+    if (direction === 'down') {
+        // Try removing each unit
+        for (let i = 0; i < board.length; i++) {
+            const candidate = [...board];
+            candidate.splice(i, 1);
+            const scoreObj = optimizer.scoreBoard(candidate, emblems, targetLevel, solverMode, mustIncludeTraits, mustIncludeNames);
+            if (scoreObj.score > bestScore) {
+                bestScore = scoreObj.score;
+                bestBoard = candidate;
+            }
+        }
+    } else {
+        // Try adding each unit from pool
+        const boardNames = new Set(board.map(u => u.name));
+        const pool = tftData.units.filter(u => !boardNames.has(u.name) && !activeDisabledUnits.includes(u.name));
+        
+        for (const unit of pool) {
+            const candidate = [...board, unit];
+            const scoreObj = optimizer.scoreBoard(candidate, emblems, targetLevel, solverMode, mustIncludeTraits, mustIncludeNames);
+            if (scoreObj.score > bestScore) {
+                bestScore = scoreObj.score;
+                bestBoard = candidate;
+            }
+        }
+    }
+
+    if (!bestBoard) return null;
+    const finalScoreObj = optimizer.scoreBoard(bestBoard, emblems, targetLevel, solverMode, mustIncludeTraits, mustIncludeNames);
+    return { board: bestBoard, score: finalScoreObj.score, counts: finalScoreObj.counts };
+}
+
+async function renderTreeExplorer(baseBoard) {
+    const modal = document.getElementById('tree-explorer-modal');
+    const content = document.getElementById('tree-explorer-content');
+    content.innerHTML = '<div style="color: var(--text-dim); padding: 40px; text-align: center; font-size: 14px;">Calculating comp evolution tree...</div>';
+    modal.style.display = 'flex';
+
+    // Delay to let the "Calculating" text show
+    await new Promise(r => setTimeout(r, 10));
+
+    const currentLevel = baseBoard.reduce((acc, u) => acc + (u.slots || 1), 0);
+    const emblems = selectedEmblems.map(e => e.trait);
+    const mustIncludeNames = selectedMustInclude.filter(i => i.type === 'unit').map(u => u.name);
+    const mustIncludeTraits = {};
+    selectedMustInclude.filter(i => i.type === 'emblem').forEach(item => {
+        const meta = tftData.trait_metadata[item.trait];
+        if (meta) {
+            if (item.targetBreakpointIndex === -1) {
+                mustIncludeTraits[item.trait] = meta.breakpoints[0];
+            } else {
+                mustIncludeTraits[item.trait] = meta.breakpoints[item.targetBreakpointIndex];
+            }
+        }
+    });
+    
+    const solverModeEl = document.querySelector('input[name="solver-mode"]:checked');
+    const solverMode = solverModeEl ? solverModeEl.value : 'default';
+
+    const tree = {};
+    const baseScoreObj = optimizer.scoreBoard(baseBoard, emblems, currentLevel, solverMode, mustIncludeTraits, mustIncludeNames);
+    tree[currentLevel] = { board: baseBoard, score: baseScoreObj.score, counts: baseScoreObj.counts };
+
+    // Tiers Above (Lower levels)
+    let lastBoard = baseBoard;
+    for (let l = currentLevel - 1; l >= 5; l--) {
+        const best = getBestNeighbor(lastBoard, l, 'down', emblems, mustIncludeTraits, mustIncludeNames, solverMode);
+        if (best) {
+            tree[l] = best;
+            lastBoard = best.board;
+        }
+    }
+
+    // Tiers Below (Higher levels)
+    lastBoard = baseBoard;
+    for (let l = currentLevel + 1; l <= 9; l++) {
+        const best = getBestNeighbor(lastBoard, l, 'up', emblems, mustIncludeTraits, mustIncludeNames, solverMode);
+        if (best) {
+            tree[l] = best;
+            lastBoard = best.board;
+        }
+    }
+
+    content.innerHTML = '';
+    const sortedLevels = Object.keys(tree).map(Number).sort((a, b) => a - b); // 5 to 9
+
+    sortedLevels.forEach(l => {
+        const tierDiv = document.createElement('div');
+        tierDiv.style.width = '100%';
+        tierDiv.style.display = 'flex';
+        tierDiv.style.flexDirection = 'column';
+        tierDiv.style.alignItems = 'center';
+        tierDiv.style.gap = '12px';
+        
+        const label = document.createElement('div');
+        label.style.fontSize = '11px';
+        label.style.fontWeight = '800';
+        label.style.letterSpacing = '1px';
+        label.style.color = l === currentLevel ? 'var(--accent)' : 'var(--text-dim)';
+        label.style.background = l === currentLevel ? 'rgba(10, 132, 255, 0.1)' : 'transparent';
+        label.style.padding = '4px 12px';
+        label.style.borderRadius = '12px';
+        label.innerText = `LEVEL ${l}`;
+        tierDiv.appendChild(label);
+
+        const cardContainer = document.createElement('div');
+        cardContainer.style.width = '100%';
+        cardContainer.style.maxWidth = '700px';
+        
+        renderSingleResult(tree[l], cardContainer, l, solverMode, l === currentLevel);
+        
+        tierDiv.appendChild(cardContainer);
+        content.appendChild(tierDiv);
+
+        if (l < 9 && tree[l+1]) {
+            const arrow = document.createElement('div');
+            arrow.innerHTML = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="opacity: 0.3;"><path d="M7 13l5 5 5-5M7 6l5 5 5-5"/></svg>';
+            arrow.style.color = 'var(--text-dimmer)';
+            content.appendChild(arrow);
+        }
+    });
+}
+
+function renderSingleResult(res, container, level, solverMode, isHighlighted = false) {
+    const emblemTraits = selectedEmblems.map(e => e.trait);
+    const card = document.createElement('div');
+    card.className = 'result-card';
+    if (isHighlighted) {
+        card.style.borderColor = 'var(--accent)';
+        card.style.boxShadow = '0 0 20px rgba(10, 132, 255, 0.15)';
+        card.style.background = 'rgba(255,255,255,0.03)';
+    }
+    
+    // Store board for copy support
+    card.dataset.board = JSON.stringify(res.board);
+
+    card.innerHTML = `<div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <strong>Level ${level} Composition</strong>
+                <button class="icon-btn" onclick="copyCardBoard(this.closest('.result-card'), this)" title="Copy Team Code" style="background: none; border: none; cursor: pointer; padding: 2px; display: flex; align-items: center; color: var(--text-dim); transition: color 0.2s;">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                </button>
+            </div>
+            <span style="color: var(--accent); font-weight: 600;">${Math.floor(res.score)}</span>
+        </div>`;
+    
+    const list = document.createElement('div');
+    list.className = 'unit-list';
+    list.style.gap = '4px';
+    const sortedBoard = [...res.board].sort((a, b) => a.cost - b.cost || a.name.localeCompare(b.name));
+    sortedBoard.forEach((u) => {
+        const unitItem = document.createElement('div');
+        unitItem.className = 'unit-item';
+        const costColors = { 1: '#808080', 2: '#11b288', 3: '#207ac7', 4: '#c440da', 5: '#ffb93b' };
+        const borderColor = costColors[u.cost] || '#ccc';
+        unitItem.innerHTML = `<img src="${u.icon_url}" class="unit-icon" style="border-color: ${borderColor};" onerror="this.src='data:image/svg+xml;base64,PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHdpZHRoPSczNicgaGVpZ2h0PSczNicgc3R5bGU9J2JhY2tncm91bmQ6IzIyMjsnPjx0ZXh0IHg9JzUwJScgeT0nNTAlJyBkb20tYmFzZWxpbmU9J21pZGRsZScgdGV4dC1hbmNob3I9J21pZGRsZScgZmlsbD0nI2ZmZicgZm9udC1zaXplPSc4Jz4/IDwvdGV4dD48L3N2Zz4='">
+            <div class="unit-name">${u.name}</div>`;
+        list.appendChild(unitItem);
+    });
+    card.appendChild(list);
+
+    const traitsList = document.createElement('div');
+    traitsList.className = 'trait-summary';
+    traitsList.style.display = 'flex';
+    traitsList.style.flexWrap = 'wrap';
+    traitsList.style.gap = '10px';
+    traitsList.style.marginTop = '10px';
+    traitsList.style.paddingTop = '8px';
+    traitsList.style.borderTop = '1px solid var(--border-light)';
+    
+    const sortedTraits = Object.entries(res.counts).sort((a, b) => b[1] - a[1]);
+    sortedTraits.forEach(([trait, count]) => {
+        const traitInfo = (tftData.trait_metadata && tftData.trait_metadata[trait]) ? tftData.trait_metadata[trait] : null;
+        const breakpoints = traitInfo ? traitInfo.breakpoints : null;
+        const isActive = (breakpoints && breakpoints.some(b => b <= count)) || (trait === 'Targon' && count >= 1);
+        
+        if (!isActive && trait !== 'Targon') return;
+
+        const traitItem = document.createElement('div');
+        traitItem.style.display = 'flex';
+        traitItem.style.alignItems = 'center';
+        traitItem.style.gap = '4px';
+        traitItem.style.fontSize = '11px';
+        
+        const iconUrl = `assets/tft/${currentConfig.current_set}/traits/${trait.replace(/ /g, '')}.svg`;
+        traitItem.innerHTML = `<img src="${iconUrl}" style="width: 16px; height: 16px;" title="${trait}" onerror="this.style.display='none'"><span>${count}</span>`;
+        traitsList.appendChild(traitItem);
+    });
+    card.appendChild(traitsList);
+    container.appendChild(card);
 }
