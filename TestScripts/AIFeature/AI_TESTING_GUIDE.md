@@ -65,4 +65,17 @@ async def wait_for_idle(self, timeout=120, silence_duration=10):
     return False # Timeout
 ```
 
+## 9. AI Debug Mode (Hub)
+For deep troubleshooting of Hub-to-CLI communication, you can enable `DebugMode` in the Hub's `appsettings.json`.
+
+- **Effect:** The Hub will log every raw JSON line received from any Gemini CLI session's named pipe to the Hub log (`hub_log.txt`) with the prefix `[GeminiPipe DEBUG]`.
+- **Configuration:**
+  ```json
+  "AiSettings": {
+    "AutoStartComponents": true,
+    "DebugMode": true
+  }
+  ```
+- **Usage:** Use this when you suspect messages are being mangled, ignored, or incorrectly typed by the Hub's `GeminiSession` read loop.
+
 ```

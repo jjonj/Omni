@@ -11,6 +11,7 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Configuration;
 
 namespace OmniSync.Hub.Infrastructure.Services
 {
@@ -51,6 +52,7 @@ namespace OmniSync.Hub.Infrastructure.Services
         private readonly ILogger<AiCliService> _logger;
         private readonly HubSettingsService _settingsService;
         private readonly ProcessService _processService;
+        private readonly bool _debugMode;
         private readonly ConcurrentDictionary<int, GeminiSession> _sessions = new();
         private readonly ConcurrentDictionary<int, string> _sessionNames = new();
         private readonly ConcurrentDictionary<int, string> _workspaces = new();
@@ -70,11 +72,12 @@ namespace OmniSync.Hub.Infrastructure.Services
         public event EventHandler<GeminiResponseEventArgs>? ResponseReceived;
         public event EventHandler<GeminiDialogEventArgs>? DialogReceived;
 
-        public AiCliService(ILogger<AiCliService> logger, HubSettingsService settingsService, ProcessService processService)
+        public AiCliService(ILogger<AiCliService> logger, HubSettingsService settingsService, ProcessService processService, IConfiguration configuration)
         {
             _logger = logger;
             _settingsService = settingsService;
             _processService = processService;
+            _debugMode = configuration.GetValue<bool>("AiSettings:DebugMode");
             
             // Trigger initial discovery in background
             _ = Task.Run(async () => {
@@ -868,7 +871,7 @@ namespace OmniSync.Hub.Infrastructure.Services
                 _logger.LogDebug($"Could not get start time for process {pid}: {ex.Message}");
             }
 
-            var session = new GeminiSession(pid, startTime, _logger, (p, text, finished, history, isCodeDiff) =>
+            var session = new GeminiSession(pid, startTime, _logger, _debugMode, (p, text, finished, history, isCodeDiff) =>
             {
                 ResponseReceived?.Invoke(this, new GeminiResponseEventArgs
                 {
@@ -1191,6 +1194,7 @@ namespace OmniSync.Hub.Infrastructure.Services
         private readonly int _pid;
         private readonly DateTime _startTime;
         private readonly ILogger _logger;
+        private readonly bool _debugMode;
         private readonly Action<int, string, bool, bool, bool> _onResponse;
         private readonly Action<int, string, string, List<string>?> _onDialog;
         private NamedPipeClientStream? _pipeClient;
@@ -1200,6 +1204,7 @@ namespace OmniSync.Hub.Infrastructure.Services
         private readonly HashSet<string> _recentlyBroadcastMessages = new();
         private readonly HashSet<string> _sentPrompts = new();
         private readonly SemaphoreSlim _writeLock = new(1, 1);
+        private string? _lastDialogType;
         private Process? _shellProcess;
 
         public bool IsConnected => _pipeClient?.IsConnected ?? false;
@@ -1207,11 +1212,12 @@ namespace OmniSync.Hub.Infrastructure.Services
         public DateTime StartTime => _startTime;
         public Process? ShellProcess => _shellProcess;
 
-        public GeminiSession(int pid, DateTime startTime, ILogger logger, Action<int, string, bool, bool, bool> onResponse, Action<int, string, string, List<string>?> onDialog)
+        public GeminiSession(int pid, DateTime startTime, ILogger logger, bool debugMode, Action<int, string, bool, bool, bool> onResponse, Action<int, string, string, List<string>?> onDialog)
         {
             _pid = pid;
             _startTime = startTime;
             _logger = logger;
+            _debugMode = debugMode;
             _onResponse = onResponse;
             _onDialog = onDialog;
         }
@@ -1334,6 +1340,11 @@ namespace OmniSync.Hub.Infrastructure.Services
                         break;
                     }
 
+                    if (_debugMode)
+                    {
+                        _logger.LogInformation($"[GeminiPipe DEBUG] PID {_pid} RAW: {line}");
+                    }
+
                     Console.WriteLine($"[GeminiPipe RAW] PID {_pid}: {line}");
                     _logger.LogDebug($"[GeminiSession] Received from PID {_pid}: {line}");
                     try
@@ -1343,6 +1354,18 @@ namespace OmniSync.Hub.Infrastructure.Services
                         {
                             var typeStr = type.GetString();
                             var text = msg.RootElement.TryGetProperty("text", out var textProp) ? textProp.GetString() : null;
+
+                            // Auto-clear transient status messages like "Authentication in progress..."
+                            // when we receive the first real activity after it.
+                            if (typeStr == "response" || typeStr == "thought" || typeStr == "codeDiff" || typeStr == "toolCall")
+                            {
+                                if (_lastDialogType == "auth_in_progress")
+                                {
+                                    _logger.LogInformation($"[GeminiSession] Activity received after auth. Clearing auth status for PID {_pid}");
+                                    _onResponse(_pid, string.Empty, true, false, false); // Sends FINISHED status
+                                    _lastDialogType = null;
+                                }
+                            }
 
                             if (typeStr == "response")
                             {
@@ -1366,6 +1389,7 @@ namespace OmniSync.Hub.Infrastructure.Services
                                     _logger.LogInformation($"[GeminiSession] Turn finished for PID {_pid}");
                                     _recentlyBroadcastMessages.Clear(); 
                                     _sentPrompts.Clear();
+                                    _lastDialogType = null;
                                     _onResponse(_pid, string.Empty, true, false, false);
                                 }
                                 else if (text == "[Command Handled]")
@@ -1426,6 +1450,7 @@ namespace OmniSync.Hub.Infrastructure.Services
                                     JsonSerializer.Deserialize<List<string>>(op.GetRawText()) : null;
 
                                 _logger.LogInformation($"[GeminiSession] Received dialog from PID {_pid}: {dialogType}");
+                                _lastDialogType = dialogType;
                                 _onDialog(_pid, dialogType ?? "unknown", prompt ?? "", options);
                             }
                         }
