@@ -443,7 +443,7 @@ fun AiChatScreen(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(bottom = currentBottomPadding + 180.dp) // Leave room for floating panel (increased from 160)
+                    .padding(bottom = currentBottomPadding + 160.dp) // Leave room for floating panel (restored to 160)
             ) {
                 if (!isConnected) {
                     Surface(
@@ -658,26 +658,26 @@ fun QuickActionPanel(
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             ActionKeyButton(
                 text = "Esc",
-                modifier = Modifier.weight(1f).height(32.dp),
+                modifier = Modifier.weight(1f).height(33.dp),
                 onClick = { signalRClient.sendAiSpecialKey("escape", selectedPid) }
             )
 
             ActionKeyButton(
                 icon = Icons.Default.KeyboardArrowUp,
-                modifier = Modifier.weight(1f).height(32.dp),
+                modifier = Modifier.weight(1f).height(33.dp),
                 onClick = { signalRClient.sendAiSpecialKey("up", selectedPid) }
             )
 
             ActionKeyButton(
                 icon = Icons.Default.KeyboardArrowDown,
-                modifier = Modifier.weight(1f).height(32.dp),
+                modifier = Modifier.weight(1f).height(33.dp),
                 onClick = { signalRClient.sendAiSpecialKey("down", selectedPid) }
             )
 
             ActionKeyButton(
                 text = "Enter",
                 icon = Icons.AutoMirrored.Filled.KeyboardReturn,
-                modifier = Modifier.weight(1f).height(32.dp),
+                modifier = Modifier.weight(1f).height(33.dp),
                 onClick = { signalRClient.sendAiSpecialKey("enter", selectedPid) }
             )
         }
@@ -687,7 +687,7 @@ fun QuickActionPanel(
             ActionKeyButton(
                 icon = Icons.Default.KeyboardDoubleArrowUp,
                 text = "Prev",
-                modifier = Modifier.weight(1f).height(32.dp),
+                modifier = Modifier.weight(1f).height(33.dp),
                 onClick = { 
                     coroutineScope.launch {
                         if (userMessageItemIndices.isEmpty()) return@launch
@@ -705,7 +705,7 @@ fun QuickActionPanel(
             ActionKeyButton(
                 icon = Icons.Default.KeyboardDoubleArrowDown,
                 text = "Next",
-                modifier = Modifier.weight(1f).height(32.dp),
+                modifier = Modifier.weight(1f).height(33.dp),
                 onClick = { 
                     coroutineScope.launch {
                         if (userMessageItemIndices.isEmpty()) return@launch
@@ -722,7 +722,7 @@ fun QuickActionPanel(
 
             ActionKeyButton(
                 text = "Yolo",
-                modifier = Modifier.weight(1f).height(32.dp),
+                modifier = Modifier.weight(1f).height(33.dp),
                 onClick = { 
                     coroutineScope.launch {
                         signalRClient.sendAiYolo(selectedPid)
@@ -733,7 +733,7 @@ fun QuickActionPanel(
             ActionKeyButton(
                 text = "Focus",
                 icon = Icons.Default.Adjust,
-                modifier = Modifier.weight(1f).height(32.dp),
+                modifier = Modifier.weight(1f).height(33.dp),
                 onClick = { 
                     if (selectedPid != -1) {
                         signalRClient.focusAiSession(selectedPid)
@@ -746,7 +746,7 @@ fun QuickActionPanel(
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             ActionKeyButton(
                 text = if (isZoomed) "Unzoom" else "Zoom",
-                modifier = Modifier.weight(1f).height(32.dp),
+                modifier = Modifier.weight(1f).height(33.dp),
                 onClick = { 
                     if (selectedPid != -1) {
                         val newLevel = if (!isZoomed) 1.5 else 1.0
@@ -759,21 +759,21 @@ fun QuickActionPanel(
             ActionKeyButton(
                 text = "Clear",
                 icon = Icons.Default.Delete,
-                modifier = Modifier.weight(1f).height(32.dp),
+                modifier = Modifier.weight(1f).height(33.dp),
                 onClick = { if (selectedPid != -1) signalRClient.clearAiMessages(selectedPid) } 
             )            
             
             ActionKeyButton(
                 text = "History",
                 icon = Icons.Default.Cached,
-                modifier = Modifier.weight(1f).height(32.dp),
+                modifier = Modifier.weight(1f).height(33.dp),
                 onClick = { signalRClient.requestAiHistory() }
             )
 
             ActionKeyButton(
                 text = "Trigger",
                 icon = Icons.Default.Cached, // Use Cached as refresh icon
-                modifier = Modifier.weight(1f).height(32.dp),
+                modifier = Modifier.weight(1f).height(33.dp),
                 onClick = { signalRClient.sendAiMessage("-", if (selectedPid != -1) selectedPid else null) }
             )
         }
@@ -784,7 +784,7 @@ fun QuickActionPanel(
                 ActionKeyButton(
                     text = "Presets",
                     icon = Icons.Default.List,
-                    modifier = Modifier.fillMaxWidth().height(32.dp),
+                    modifier = Modifier.fillMaxWidth().height(33.dp),
                     onLongClick = {
                         if (inputText.isNotBlank()) {
                             signalRClient.addAiPreset(inputText)
@@ -855,7 +855,7 @@ fun QuickActionPanel(
             ActionKeyButton(
                 text = "Voice",
                 icon = Icons.Default.Mic,
-                modifier = Modifier.weight(1f).height(32.dp),
+                modifier = Modifier.weight(1f).height(33.dp),
                 onClick = { onVoiceTrigger() }
             )
             
