@@ -443,7 +443,7 @@ fun AiChatScreen(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(bottom = currentBottomPadding + 160.dp) // Leave room for floating panel (increased from 115)
+                    .padding(bottom = currentBottomPadding + 180.dp) // Leave room for floating panel (increased from 160)
             ) {
                 if (!isConnected) {
                     Surface(
@@ -528,115 +528,6 @@ fun AiChatScreen(
                     )
                     Spacer(Modifier.width(8.dp))
                     
-                    val presets by signalRClient.aiPresets.collectAsState()
-                    var showPresetsMenu by remember { mutableStateOf(false) }
-                    
-                    Box {
-                        Box(
-                            modifier = Modifier
-                                .size(48.dp)
-                                .clip(CircleShape)
-                                .combinedClickable(
-                                    onClick = { 
-                                        signalRClient.getAiPresets()
-                                        showPresetsMenu = true 
-                                    },
-                                    onLongClick = {
-                                        if (inputText.isNotBlank()) {
-                                            signalRClient.addAiPreset(inputText)
-                                            Toast.makeText(context, "Preset saved!", Toast.LENGTH_SHORT).show()
-                                        }
-                                    }
-                                ),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.List, 
-                                contentDescription = "Presets",
-                                tint = if (isConnected) MaterialTheme.colorScheme.onSurface else Color.Gray
-                            )
-                        }
-                        
-                        DropdownMenu(
-                            expanded = showPresetsMenu,
-                            onDismissRequest = { showPresetsMenu = false }
-                        ) {
-                            // Unified list of all presets (hardcoded + user)
-                            val allPresets = remember(presets) {
-                                listOf("/auth", "/conductor:status") + presets
-                            }
-
-                            if (allPresets.isEmpty()) {
-                                DropdownMenuItem(
-                                    text = { Text("No presets") },
-                                    onClick = { showPresetsMenu = false },
-                                    enabled = false
-                                )
-                            }
-
-                            allPresets.forEach { preset ->
-                                DropdownMenuItem(
-                                    text = { 
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Text(preset, modifier = Modifier.weight(1f))
-                                            IconButton(onClick = { 
-                                                if (preset == "/auth" || preset == "/conductor:status") {
-                                                    Toast.makeText(context, "System presets cannot be deleted", Toast.LENGTH_SHORT).show()
-                                                } else {
-                                                    signalRClient.removeAiPreset(preset)
-                                                }
-                                            }) {
-                                                Icon(
-                                                    imageVector = Icons.Default.Close, 
-                                                    contentDescription = "Delete", 
-                                                    modifier = Modifier.size(18.dp),
-                                                    tint = if (preset.startsWith("/")) Color.Gray.copy(alpha = 0.5f) else MaterialTheme.colorScheme.error
-                                                )
-                                            }
-                                        }
-                                    },
-                                    onClick = {
-                                        signalRClient.updateAiInputText(preset)
-                                        textFieldValue = TextFieldValue(preset, TextRange(preset.length))
-                                        showPresetsMenu = false
-                                    },
-                                    leadingIcon = {
-                                        val icon = when(preset) {
-                                            "/auth" -> Icons.Default.Security
-                                            "/conductor:status" -> Icons.Default.Info
-                                            else -> Icons.Outlined.ChatBubbleOutline
-                                        }
-                                        Icon(imageVector = icon, null, modifier = Modifier.size(18.dp))
-                                    }
-                                )
-                            }
-                            
-                            HorizontalDivider()
-                            
-                            // Instructions
-                            Text(
-                                "To add: type message and long-press the presets button",
-                                style = MaterialTheme.typography.labelSmall,
-                                fontStyle = FontStyle.Italic,
-                                modifier = Modifier.padding(12.dp),
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                        }
-                    }
-
-                    Spacer(Modifier.width(8.dp))
-                    IconButton(
-                        onClick = { startVoiceRecognition() },
-                        enabled = isConnected
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Mic,
-                            contentDescription = "Voice Input",
-                            tint = if (isConnected) MaterialTheme.colorScheme.primary else Color.Gray
-                        )
-                    }
-
-                    Spacer(Modifier.width(8.dp))
                     IconButton(
                         onClick = {
                             if (inputText.isNotBlank()) {
@@ -683,7 +574,10 @@ fun AiChatScreen(
                         isConnected, 
                         listState, 
                         userMessageItemIndices,
-                        filteredMessages.size
+                        filteredMessages.size,
+                        textFieldValue,
+                        onTextFieldValueChange = { textFieldValue = it },
+                        onVoiceTrigger = { startVoiceRecognition() }
                     )
                 }
             }
@@ -743,48 +637,57 @@ fun QuickActionPanel(
     isConnected: Boolean,
     listState: androidx.compose.foundation.lazy.LazyListState,
     userMessageItemIndices: List<Int>,
-    totalMessages: Int
+    totalMessages: Int,
+    textFieldValue: TextFieldValue,
+    onTextFieldValueChange: (TextFieldValue) -> Unit,
+    onVoiceTrigger: () -> Unit
 ) {
     var isZoomed by remember { mutableStateOf(false) }
+    val presets by signalRClient.aiPresets.collectAsState()
+    var showPresetsMenu by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    val inputText by signalRClient.aiInputText.collectAsState()
 
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
+            .padding(4.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        // Row 1: Core navigation/keys
+        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             ActionKeyButton(
                 text = "Esc",
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.weight(1f).height(32.dp),
                 onClick = { signalRClient.sendAiSpecialKey("escape", selectedPid) }
             )
 
             ActionKeyButton(
                 icon = Icons.Default.KeyboardArrowUp,
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.weight(1f).height(32.dp),
                 onClick = { signalRClient.sendAiSpecialKey("up", selectedPid) }
             )
 
             ActionKeyButton(
                 icon = Icons.Default.KeyboardArrowDown,
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.weight(1f).height(32.dp),
                 onClick = { signalRClient.sendAiSpecialKey("down", selectedPid) }
             )
 
             ActionKeyButton(
                 text = "Enter",
                 icon = Icons.AutoMirrored.Filled.KeyboardReturn,
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.weight(1f).height(32.dp),
                 onClick = { signalRClient.sendAiSpecialKey("enter", selectedPid) }
             )
         }
 
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        // Row 2: Message navigation & Yolo
+        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             ActionKeyButton(
                 icon = Icons.Default.KeyboardDoubleArrowUp,
-                text = "Prev Msg",
-                modifier = Modifier.weight(1f),
+                text = "Prev",
+                modifier = Modifier.weight(1f).height(32.dp),
                 onClick = { 
                     coroutineScope.launch {
                         if (userMessageItemIndices.isEmpty()) return@launch
@@ -793,7 +696,6 @@ fun QuickActionPanel(
                         if (targetIndex != null) {
                             listState.animateScrollToItem(targetIndex)
                         } else {
-                            // Wrap around to the "oldest" message (highest index in reverse layout)
                             listState.animateScrollToItem(userMessageItemIndices.maxOrNull() ?: 0)
                         }
                     }
@@ -802,18 +704,16 @@ fun QuickActionPanel(
 
             ActionKeyButton(
                 icon = Icons.Default.KeyboardDoubleArrowDown,
-                text = "Next Msg",
-                modifier = Modifier.weight(1f),
+                text = "Next",
+                modifier = Modifier.weight(1f).height(32.dp),
                 onClick = { 
                     coroutineScope.launch {
                         if (userMessageItemIndices.isEmpty()) return@launch
                         val currentFirstVisibleItem = listState.firstVisibleItemIndex
-                        // Find the largest index that is smaller than current view (newer message)
                         val targetIndex = userMessageItemIndices.filter { it < currentFirstVisibleItem }.maxOrNull()
                         if (targetIndex != null) {
                             listState.animateScrollToItem(targetIndex)
                         } else {
-                            // If already at the newest user message, jump to the absolute bottom (index 0)
                             listState.animateScrollToItem(0)
                         }
                     }
@@ -822,7 +722,7 @@ fun QuickActionPanel(
 
             ActionKeyButton(
                 text = "Yolo",
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.weight(1f).height(32.dp),
                 onClick = { 
                     coroutineScope.launch {
                         signalRClient.sendAiYolo(selectedPid)
@@ -833,7 +733,7 @@ fun QuickActionPanel(
             ActionKeyButton(
                 text = "Focus",
                 icon = Icons.Default.Adjust,
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.weight(1f).height(32.dp),
                 onClick = { 
                     if (selectedPid != -1) {
                         signalRClient.focusAiSession(selectedPid)
@@ -842,10 +742,11 @@ fun QuickActionPanel(
             )
         }
 
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        // Row 3: UI Controls & Trigger
+        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             ActionKeyButton(
-                text = if (isZoomed) "Unzoom" else "Zoom 1.5x",
-                modifier = Modifier.weight(1f),
+                text = if (isZoomed) "Unzoom" else "Zoom",
+                modifier = Modifier.weight(1f).height(32.dp),
                 onClick = { 
                     if (selectedPid != -1) {
                         val newLevel = if (!isZoomed) 1.5 else 1.0
@@ -858,15 +759,108 @@ fun QuickActionPanel(
             ActionKeyButton(
                 text = "Clear",
                 icon = Icons.Default.Delete,
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.weight(1f).height(32.dp),
                 onClick = { if (selectedPid != -1) signalRClient.clearAiMessages(selectedPid) } 
             )            
+            
             ActionKeyButton(
                 text = "History",
                 icon = Icons.Default.Cached,
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.weight(1f).height(32.dp),
                 onClick = { signalRClient.requestAiHistory() }
             )
+
+            ActionKeyButton(
+                text = "Trigger",
+                icon = Icons.Default.Cached, // Use Cached as refresh icon
+                modifier = Modifier.weight(1f).height(32.dp),
+                onClick = { signalRClient.sendAiMessage("-", if (selectedPid != -1) selectedPid else null) }
+            )
+        }
+
+        // Row 4: Presets & Voice
+        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            Box(modifier = Modifier.weight(1f)) {
+                ActionKeyButton(
+                    text = "Presets",
+                    icon = Icons.Default.List,
+                    modifier = Modifier.fillMaxWidth().height(32.dp),
+                    onLongClick = {
+                        if (inputText.isNotBlank()) {
+                            signalRClient.addAiPreset(inputText)
+                            Toast.makeText(context, "Preset saved!", Toast.LENGTH_SHORT).show()
+                        }
+                    },
+                    onClick = {
+                        signalRClient.getAiPresets()
+                        showPresetsMenu = true
+                    }
+                )
+
+                DropdownMenu(
+                    expanded = showPresetsMenu,
+                    onDismissRequest = { showPresetsMenu = false }
+                ) {
+                    val allPresets = remember(presets) {
+                        listOf("/auth", "/conductor:status") + presets
+                    }
+
+                    if (allPresets.isEmpty()) {
+                        DropdownMenuItem(
+                            text = { Text("No presets") },
+                            onClick = { showPresetsMenu = false },
+                            enabled = false
+                        )
+                    }
+
+                    allPresets.forEach { preset ->
+                        DropdownMenuItem(
+                            text = { 
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(preset, modifier = Modifier.weight(1f))
+                                    IconButton(onClick = { 
+                                        if (preset == "/auth" || preset == "/conductor:status") {
+                                            Toast.makeText(context, "System presets cannot be deleted", Toast.LENGTH_SHORT).show()
+                                        } else {
+                                            signalRClient.removeAiPreset(preset)
+                                        }
+                                    }) {
+                                        Icon(
+                                            imageVector = Icons.Default.Close, 
+                                            contentDescription = "Delete", 
+                                            modifier = Modifier.size(18.dp),
+                                            tint = if (preset.startsWith("/")) Color.Gray.copy(alpha = 0.5f) else MaterialTheme.colorScheme.error
+                                        )
+                                    }
+                                }
+                            },
+                            onClick = {
+                                signalRClient.updateAiInputText(preset)
+                                onTextFieldValueChange(TextFieldValue(preset, TextRange(preset.length)))
+                                showPresetsMenu = false
+                            },
+                            leadingIcon = {
+                                val icon = when(preset) {
+                                    "/auth" -> Icons.Default.Security
+                                    "/conductor:status" -> Icons.Default.Info
+                                    else -> Icons.Outlined.ChatBubbleOutline
+                                }
+                                Icon(imageVector = icon, null, modifier = Modifier.size(18.dp))
+                            }
+                        )
+                    }
+                }
+            }
+
+            ActionKeyButton(
+                text = "Voice",
+                icon = Icons.Default.Mic,
+                modifier = Modifier.weight(1f).height(32.dp),
+                onClick = { onVoiceTrigger() }
+            )
+            
+            // Fill remaining space if any, or just weight them equally
+            Spacer(modifier = Modifier.weight(2f))
         }
     }
 }
@@ -972,13 +966,13 @@ fun ToolCallBubble(content: String) {
         modifier = Modifier.padding(8.dp).fillMaxWidth()
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Default.Tune, null, modifier = Modifier.size(16.dp), tint = Color(0xFF558B2F))
+            Icon(Icons.Default.Tune, null, modifier = Modifier.size(16.dp), tint = Color(0xFF666600))
             Spacer(Modifier.width(4.dp))
             Text(
                 text = "Tool Call: ${toolData.first}",
                 style = MaterialTheme.typography.labelMedium,
                 fontWeight = FontWeight.Bold,
-                color = Color(0xFF2E7D32)
+                color = Color(0xFF666600)
             )
         }
         Spacer(Modifier.height(4.dp))
@@ -1028,7 +1022,7 @@ fun ChatBubble(
     val bgColor = when {
         isError -> MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.8f)
         isSystem -> Color(0xFFFFF176).copy(alpha = 0.7f) // Yellow for system
-        isToolCall -> Color(0xFFC8E6C9).copy(alpha = 0.9f) // Light green for tool calls
+        isToolCall -> Color(0xFFFFF176).copy(alpha = 0.9f) // Dull yellow for tool calls
         isCodeDiff -> Color.Black.copy(alpha = 0.9f)
         isMe -> MaterialTheme.colorScheme.primaryContainer
         isAi -> MaterialTheme.colorScheme.secondaryContainer
@@ -1038,7 +1032,7 @@ fun ChatBubble(
     val textColor = when {
         isError -> MaterialTheme.colorScheme.onErrorContainer
         isSystem -> Color(0xFF333333) // Dark text for yellow
-        isToolCall -> Color(0xFF1B5E20) // Dark green for tool call text
+        isToolCall -> Color(0xFF666600) // Dark yellowish for tool call text
         isCodeDiff -> Color.White
         else -> MaterialTheme.colorScheme.onSurface
     }
@@ -1091,7 +1085,7 @@ fun ChatBubble(
                  modifier = Modifier.size(16.dp).padding(bottom = 2.dp), 
                  tint = when {
                      isError -> MaterialTheme.colorScheme.error
-                     isToolCall -> Color(0xFF2E7D32)
+                     isToolCall -> Color(0xFF666600)
                      isSystem -> Color(0xFF666600)
                      else -> Color.White
                  }
