@@ -1,0 +1,8 @@
+{
+  "track_id": "feat_android_ai_ux_20260115",
+  "type": "feature",
+  "status": "new",
+  "created_at": "2026-01-15T17:25:00Z",
+  "updated_at": "2026-01-15T17:25:00Z",
+  "description": "Improve Android AI Chat UX: Auto-scroll, dialog alerts, status visibility, and un-minimize on focus."
+}

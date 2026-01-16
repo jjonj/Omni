@@ -1,8 +1,0 @@
-feat(android/hub): support real-time thought streaming and improve UI
-
-- Android: Added ReceiveAiThought handler to SignalRClient.
-- Android: Updated AiChatScreen to display AI reasoning in the typing indicator.
-- Android: Enhanced MarkdownText to properly render bullet points.
-- Hub: Explicitly broadcast thoughts to Android via ReceiveAiThought.
-- Hub: Implemented conditional PID broadcasting for SignalR robustness.
-- Tests: Updated all AIFeature test scripts to support new SignalR argument format.
