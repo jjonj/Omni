@@ -122,10 +122,10 @@ namespace OmniSync.Hub.Infrastructure.Services
                     var state = isKeyDown ? KeyState.Down : KeyState.Up;
                     
                     _logger.LogDebug($"Key {state}: {key}, Shift: {isShiftPressed}, Ctrl: {isCtrlPressed}, Alt: {isAltPressed}, Win: {isWinPressed}");
-                    KeyActionOccurred?.Invoke(this, new KeyHookEventArgs(key, state, isShiftPressed, isCtrlPressed, isAltPressed, isWinPressed));
+                    var args = new KeyHookEventArgs(key, state, isShiftPressed, isCtrlPressed, isAltPressed, isWinPressed);
+                    KeyActionOccurred?.Invoke(this, args);
 
-                    // If we are recording, consume the key so Windows doesn't handle it (e.g. Win+D)
-                    if (IsRecording)
+                    if (args.Handled || IsRecording)
                     {
                         return 1; // Handled
                     }
@@ -156,6 +156,7 @@ namespace OmniSync.Hub.Infrastructure.Services
         public bool Control { get; private set; }
         public bool Alt { get; private set; }
         public bool Win { get; private set; }
+        public bool Handled { get; set; }
 
         public KeyHookEventArgs(Keys key, KeyState state, bool shift, bool control, bool alt, bool win = false)
         {

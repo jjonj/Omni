@@ -50,6 +50,12 @@ namespace OmniSync.Hub.Logic.Services
             _shutdownService.ShutdownScheduled += OnShutdownScheduled;
             _shutdownService.ModeChanged += OnShutdownModeChanged;
             _commandDispatcher.AddCleanupPatternRequested += OnAddCleanupPatternRequested;
+            _commandDispatcher.ExternalCommandDispatched += (s, e) => {
+                if (e.Command.StartsWith("TFT_"))
+                {
+                    _ = _hubContext.Clients.All.SendAsync("ReceiveTftCommand", e.Command, e.Payload);
+                }
+            };
             // Subscribe to FileService events
             _fileService.FileWritten += OnFileWritten;
             _fileService.BrowseFileWritten += OnBrowseFileWritten;

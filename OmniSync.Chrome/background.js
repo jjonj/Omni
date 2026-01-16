@@ -58,11 +58,60 @@ async function authenticate() {
         try {
             const success = await connection.invoke("Authenticate", API_KEY);
             console.log("SignalR: Authentication result:", success);
+            checkActiveTab(); // Check immediately after auth
         } catch (e) {
             console.error("SignalR: Authentication failed:", e);
         }
     }
 }
+
+// --- Active Tab Tracking for TFT ---
+let lastTftStatus = false;
+
+function checkActiveTab() {
+    chrome.windows.getLastFocused({ populate: false }, (window) => {
+        // If no window is focused or browser is not active
+        if (!window || !window.focused) {
+            reportTftStatus(false);
+            return;
+        }
+        
+        chrome.tabs.query({ active: true, windowId: window.id }, (tabs) => {
+            if (tabs && tabs.length > 0) {
+                const url = tabs[0].url || "";
+                const isTft = url.includes("TFT.html") || (url.includes("localhost") && url.includes("/TFT"));
+                reportTftStatus(isTft);
+            } else {
+                reportTftStatus(false);
+            }
+        });
+    });
+}
+
+function reportTftStatus(isActive) {
+    if (isActive !== lastTftStatus) {
+        lastTftStatus = isActive;
+        console.log("Reporting TFT Active Status:", isActive);
+        if (connection.state === signalR.HubConnectionState.Connected) {
+            connection.invoke("ReportTftStatus", isActive).catch(err => console.error("Failed to report TFT status", err));
+        }
+    }
+}
+
+chrome.tabs.onActivated.addListener(checkActiveTab);
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+    if (changeInfo.status === 'complete' || changeInfo.url) {
+        checkActiveTab();
+    }
+});
+chrome.tabs.onRemoved.addListener(checkActiveTab);
+chrome.windows.onFocusChanged.addListener((windowId) => {
+    if (windowId === chrome.windows.WINDOW_ID_NONE) {
+        reportTftStatus(false);
+    } else {
+        checkActiveTab();
+    }
+});
 
 connection.onclose(async (error) => {
     console.log("SignalR: Connection closed.", error || "");

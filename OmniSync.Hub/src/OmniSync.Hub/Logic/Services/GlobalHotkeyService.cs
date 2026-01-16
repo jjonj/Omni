@@ -21,6 +21,7 @@ namespace OmniSync.Hub.Logic.Services
         private readonly KeyboardHook _keyboardHook;
 
         private readonly HashSet<Keys> _pressedKeys = new();
+        private bool _tftAddModeActive = false;
 
         public event EventHandler? OpenHubWindowRequested;
 
@@ -65,17 +66,129 @@ namespace OmniSync.Hub.Logic.Services
             // Don't trigger if we are in recording mode (MainViewModel handles that)
             if (_keyboardHook.IsRecording) return;
 
+            // Check if TFT is active
+            bool isTftActive = _hubMonitorService.IsTftActive;
+
+            // Check if this key combo is the toggle for Add Mode
+            var addModeHotkey = _settingsService.Settings.Hotkeys.FirstOrDefault(h => h.Action == "TFT_ENTER_ADD_MODE");
+            bool isToggleKey = addModeHotkey != null && MatchHotkey(addModeHotkey.Key, e);
+
+            if (isToggleKey)
+            {
+                // Only allow toggling Add Mode if TFT is active
+                if (!isTftActive)
+                {
+                    return; 
+                }
+
+                _tftAddModeActive = !_tftAddModeActive;
+                _hubMonitorService.AddLogMessage($"[TFT] Active Mode Toggle: {_tftAddModeActive}");
+                ExecuteHotkeyAction("TFT_ENTER_ADD_MODE");
+                // User requested NOT to consume the key
+                e.Handled = false; 
+                return;
+            }
+
+            // If Add Mode is active
+            if (_tftAddModeActive)
+            {
+                // Safety: If TFT became inactive, force disable Add Mode immediately and let key pass
+                if (!isTftActive)
+                {
+                    _tftAddModeActive = false;
+                    _hubMonitorService.AddLogMessage("[TFT] Active Mode disabled (Tab lost focus).");
+                    ExecuteHotkeyAction("TFT_ENTER_ADD_MODE"); // Signal exit to UI
+                    return; // Let key pass through
+                }
+
+                // Check registered hotkeys first (e.g., Alt+Return, Tab)
+                var tftHotkeys = _settingsService.Settings.Hotkeys.Where(h => h.Action.StartsWith("TFT_")).ToList();
+                // _hubMonitorService.AddLogMessage($"[TFT-Debug] Checking {tftHotkeys.Count} TFT hotkeys...");
+
+                foreach (var hotkey in tftHotkeys)
+                {
+                    if (string.IsNullOrEmpty(hotkey.Key)) continue;
+
+                    if (MatchHotkey(hotkey.Key, e))
+                    {
+                        _hubMonitorService.AddLogMessage($"[TFT] Hotkey Triggered: {hotkey.Name}");
+                        ExecuteHotkeyAction(hotkey.Action);
+                        
+                        // Per user request: Do NOT consume the keys, just detect them.
+                        // This allows the hotkey to reach the active application as well.
+                        e.Handled = false; 
+                        
+                        // If it was Ctrl+Tab, we manually set Handled to true because we don't want browser to switch tabs
+                        if (e.Control && e.Key == Keys.Tab) e.Handled = true;
+                        
+                        return;
+                    }
+                }
+
+                // Fallback to typing capture - ONLY if no modifiers (except Shift) are pressed
+                // We check both the hook flags AND our tracked keys for safety
+                bool hasCtrl = e.Control || _pressedKeys.Any(k => k == Keys.ControlKey || k == Keys.LControlKey || k == Keys.RControlKey);
+                bool hasAlt = e.Alt || _pressedKeys.Any(k => k == Keys.Menu || k == Keys.LMenu || k == Keys.RMenu);
+                bool hasWin = e.Win || _pressedKeys.Any(k => k == Keys.LWin || k == Keys.RWin);
+
+                if (!hasCtrl && !hasAlt && !hasWin && IsTypingKey(e.Key))
+                {
+                    string keyStr = GetKeyString(e);
+                    if (!string.IsNullOrEmpty(keyStr))
+                    {
+                        var payload = new { Key = keyStr };
+                        var json = System.Text.Json.JsonSerializer.Serialize(payload);
+                        using var doc = System.Text.Json.JsonDocument.Parse(json);
+                        _commandDispatcher.Dispatch("TFT_INPUT", doc.RootElement);
+                        e.Handled = true;
+                        return;
+                    }
+                }
+                else if (e.Key == Keys.Escape)
+                {
+                    // Safety escape
+                    _tftAddModeActive = false;
+                    ExecuteHotkeyAction("TFT_ENTER_ADD_MODE"); // Signal exit
+                    e.Handled = true;
+                    return;
+                }
+            }
+
+            // If NOT in Add Mode, we only allow standard Hub hotkeys (non-TFT)
             foreach (var hotkey in _settingsService.Settings.Hotkeys)
             {
                 if (string.IsNullOrEmpty(hotkey.Key)) continue;
+                if (hotkey.Action.StartsWith("TFT_")) continue; // Skip TFT hotkeys if not in Add Mode
 
                 if (MatchHotkey(hotkey.Key, e))
                 {
-                    _logger.LogInformation($"[GlobalHotkeyService] Triggered: {hotkey.Name} ({hotkey.Key})");
-                    _hubMonitorService.AddLogMessage($"Hotkey triggered: {hotkey.Name}");
+                    _hubMonitorService.AddLogMessage($"[Hub] Hotkey Triggered: {hotkey.Name}");
                     ExecuteHotkeyAction(hotkey.Action);
                 }
             }
+        }
+
+        private bool IsTypingKey(Keys k)
+        {
+            // A-Z, 0-9, Backspace, Enter, Tab
+            return (k >= Keys.A && k <= Keys.Z) || 
+                   (k >= Keys.D0 && k <= Keys.D9) || 
+                   (k >= Keys.NumPad0 && k <= Keys.NumPad9) ||
+                   k == Keys.Back || k == Keys.Return || k == Keys.Enter || k == Keys.Tab;
+        }
+
+        private string GetKeyString(KeyHookEventArgs e)
+        {
+            if (e.Key == Keys.Back) return "Backspace";
+            if (e.Key == Keys.Return || e.Key == Keys.Enter) return "Enter";
+            if (e.Key == Keys.Tab) return "Tab";
+            
+            string s = e.Key.ToString();
+            if (s.Length == 1) return s;
+            if (s.StartsWith("D") && s.Length == 2 && char.IsDigit(s[1])) return s.Substring(1);
+            if (s.StartsWith("NumPad") && s.Length == 7 && char.IsDigit(s[6])) return s.Substring(6);
+            
+            return "";
         }
 
         private bool MatchHotkey(string hotkeyStr, KeyHookEventArgs e)
@@ -83,29 +196,38 @@ namespace OmniSync.Hub.Logic.Services
             var parts = hotkeyStr.Split('+').Select(p => p.Trim().ToUpper()).ToList();
             
             // Required modifiers from the config string
-            bool ctrlReq = parts.Contains("CTRL");
+            bool ctrlReq = parts.Contains("CTRL") || parts.Contains("CONTROL");
             bool altReq = parts.Contains("ALT");
             bool shiftReq = parts.Contains("SHIFT");
             bool winReq = parts.Contains("WIN");
 
-            // Current modifier state (use tracked keys for reliability)
-            bool isCtrl = _pressedKeys.Any(k => k == Keys.ControlKey || k == Keys.LControlKey || k == Keys.RControlKey);
-            bool isAlt = _pressedKeys.Any(k => k == Keys.Menu || k == Keys.LMenu || k == Keys.RMenu);
-            bool isShift = _pressedKeys.Any(k => k == Keys.ShiftKey || k == Keys.LShiftKey || k == Keys.RShiftKey);
-            bool isWin = _pressedKeys.Any(k => k == Keys.LWin || k == Keys.RWin);
-
-            if (ctrlReq != isCtrl || altReq != isAlt || shiftReq != isShift || winReq != isWin) return false;
+            // Check modifier states using both hook flags AND tracked keys for maximum reliability
+            bool isCtrl = e.Control || _pressedKeys.Any(k => k == Keys.ControlKey || k == Keys.LControlKey || k == Keys.RControlKey);
+            bool isAlt = e.Alt || _pressedKeys.Any(k => k == Keys.Menu || k == Keys.LMenu || k == Keys.RMenu);
+            bool isShift = e.Shift || _pressedKeys.Any(k => k == Keys.ShiftKey || k == Keys.LShiftKey || k == Keys.RShiftKey);
+            bool isWin = e.Win || _pressedKeys.Any(k => k == Keys.LWin || k == Keys.RWin);
 
             string targetKeyName = parts.Last();
             string pressedKeyName = e.Key.ToString().ToUpper();
 
+            // Match logic
+            bool modifiersMatch = (ctrlReq == isCtrl && altReq == isAlt && shiftReq == isShift && winReq == isWin);
+            bool keyMatch = false;
+
             // Special cases
-            if (targetKeyName == "SPACE" && e.Key == Keys.Space) return true;
+            if (targetKeyName == "SPACE" && e.Key == Keys.Space) keyMatch = true;
+            else if (targetKeyName == "RETURN" && e.Key == Keys.Return) keyMatch = true;
+            else if (targetKeyName == "ENTER" && e.Key == Keys.Enter) keyMatch = true;
+            else if (targetKeyName == "TAB" && e.Key == Keys.Tab) keyMatch = true;
+            else if (targetKeyName.Length == 1 && char.IsDigit(targetKeyName[0]) && (pressedKeyName == "D" + targetKeyName || pressedKeyName == "NUMPAD" + targetKeyName)) keyMatch = true;
+            else if (targetKeyName == pressedKeyName) keyMatch = true;
+            
+            if (!modifiersMatch) return false;
             
             // If the pressed key IS a modifier, we don't trigger (Wait for the actual key)
             if (IsModifier(e.Key)) return false;
 
-            return targetKeyName == pressedKeyName;
+            return keyMatch;
         }
 
         private bool IsModifier(Keys k)

@@ -146,11 +146,35 @@ namespace OmniSync.Hub.Infrastructure.Services
         {
             var defaults = new List<HotkeyConfig>
             {
-                new HotkeyConfig { Name = "TFT: Clipboard to Must Include", Key = "Ctrl+Alt+I", Action = "TFT_CLIPBOARD_MUST_INCLUDE_SOLVE_NEXT" },
-                new HotkeyConfig { Name = "TFT: Clipboard to Current Team", Key = "Ctrl+Alt+T", Action = "TFT_CLIPBOARD_CURRENT_TEAM" },
-                new HotkeyConfig { Name = "TFT: Copy Team Code", Key = "Ctrl+Alt+C", Action = "TFT_COPY_SOLUTION_CODE" },
-                new HotkeyConfig { Name = "Open Hub Window", Key = "Ctrl+Alt+H", Action = "OPEN_HUB_WINDOW" }
-            };
+                                new HotkeyConfig { Name = "TFT: Activate Current Team", Key = "Ctrl+1", Action = "TFT_ACTIVATE_CURRENT_TEAM" },
+                                new HotkeyConfig { Name = "TFT: Activate Must Include", Key = "Ctrl+2", Action = "TFT_ACTIVATE_MUST_INCLUDE" },
+                                                                                new HotkeyConfig { Name = "TFT: Enter Active Mode", Key = "Ctrl+A", Action = "TFT_ENTER_ADD_MODE" },
+                                                                                                                new HotkeyConfig { Name = "TFT: Run Optimization", Key = "Alt+S", Action = "TFT_RUN_OPTIMIZATION" },
+                                                                                                                new HotkeyConfig { Name = "TFT: Toggle Smart Sort", Key = "Ctrl+M", Action = "TFT_TOGGLE_SMART_SORT" },
+                                                                                                                new HotkeyConfig { Name = "TFT: Clear All", Key = "Alt+X", Action = "TFT_CLEAR_ALL" },
+                                                                                                                new HotkeyConfig { Name = "TFT: Save Comp", Key = "Alt+G", Action = "TFT_SAVE_COMP" }, 
+                                                                                                                new HotkeyConfig { Name = "TFT: Tab Solver", Key = "Alt+B", Action = "TFT_SWITCH_TAB_SOLVER" },
+                                                                                                                new HotkeyConfig { Name = "TFT: Tab Quiz", Key = "Alt+Q", Action = "TFT_SWITCH_TAB_QUIZ" },
+                                                                                                                new HotkeyConfig { Name = "TFT: Tab Config", Key = "Alt+K", Action = "TFT_SWITCH_TAB_CONFIG" },
+                                                                                                                new HotkeyConfig { Name = "TFT: Tab Director", Key = "Alt+D", Action = "TFT_SWITCH_TAB_DIRECTOR" },
+                                                                                                                new HotkeyConfig { Name = "TFT: Copy Active", Key = "Alt+C", Action = "TFT_COPY_ACTIVE" },
+                                                                                                                new HotkeyConfig { Name = "TFT: Paste Active", Key = "Alt+V", Action = "TFT_PASTE_ACTIVE" },                                                                                new HotkeyConfig { Name = "TFT: Clear Active", Key = "Shift+X", Action = "TFT_CLEAR_ACTIVE" },
+                                                                                new HotkeyConfig { Name = "TFT: Cycle Highlights", Key = "Ctrl+Tab", Action = "TFT_CYCLE_UNIT_HIGHLIGHT" },
+                                                                                new HotkeyConfig { Name = "TFT: Next Result", Key = "Tab", Action = "TFT_CYCLE_RESULT_NEXT" },
+                                                                new HotkeyConfig { Name = "TFT: Toggle Cost 1", Key = "Alt+1", Action = "TFT_TOGGLE_COST_1" },
+                                new HotkeyConfig { Name = "TFT: Toggle Cost 2", Key = "Alt+2", Action = "TFT_TOGGLE_COST_2" },
+                                new HotkeyConfig { Name = "TFT: Toggle Cost 3", Key = "Alt+3", Action = "TFT_TOGGLE_COST_3" },
+                                new HotkeyConfig { Name = "TFT: Toggle Cost 4", Key = "Alt+4", Action = "TFT_TOGGLE_COST_4" },
+                                new HotkeyConfig { Name = "TFT: Toggle Cost 5", Key = "Alt+5", Action = "TFT_TOGGLE_COST_5" },
+                                new HotkeyConfig { Name = "TFT: Toggle Level 4", Key = "Shift+4", Action = "TFT_TOGGLE_LEVEL_4" },
+                                new HotkeyConfig { Name = "TFT: Toggle Level 5", Key = "Shift+5", Action = "TFT_TOGGLE_LEVEL_5" },
+                                new HotkeyConfig { Name = "TFT: Toggle Level 6", Key = "Shift+6", Action = "TFT_TOGGLE_LEVEL_6" },
+                                new HotkeyConfig { Name = "TFT: Toggle Level 7", Key = "Shift+7", Action = "TFT_TOGGLE_LEVEL_7" },
+                                new HotkeyConfig { Name = "TFT: Toggle Level 8", Key = "Shift+8", Action = "TFT_TOGGLE_LEVEL_8" },
+                                new HotkeyConfig { Name = "TFT: Toggle Level 9", Key = "Shift+9", Action = "TFT_TOGGLE_LEVEL_9" },
+                                new HotkeyConfig { Name = "TFT: Toggle Level 10", Key = "Shift+0", Action = "TFT_TOGGLE_LEVEL_10" },
+                                new HotkeyConfig { Name = "TFT: POC", Key = "Ctrl+Alt+P", Action = "TFT_POC" },
+                                new HotkeyConfig { Name = "Open Hub Window", Key = "Ctrl+Alt+H", Action = "OPEN_HUB_WINDOW" }            };
 
             bool changed = false;
             if (_settings.Hotkeys == null) _settings.Hotkeys = new List<HotkeyConfig>();
@@ -161,6 +185,13 @@ namespace OmniSync.Hub.Infrastructure.Services
                 if (existing == null)
                 {
                     _settings.Hotkeys.Add(def);
+                    changed = true;
+                }
+                else if (def.Action.StartsWith("TFT_") && existing.Key != def.Key)
+                {
+                    // FORCE update TFT hotkeys to new defaults
+                    _logger.LogInformation($"Updating TFT hotkey {def.Action} from {existing.Key} to {def.Key}");
+                    existing.Key = def.Key;
                     changed = true;
                 }
                 else if (string.IsNullOrEmpty(existing.Key))

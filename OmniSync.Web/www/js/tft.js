@@ -6,7 +6,7 @@ let optimizer = null;
 let selectedMustInclude = []; 
 let selectedCurrentTeam = [];
 let selectedEmblems = [];
-let activeDropZone = 'current-team';
+let activeDropZone = 'must-include';
 let unitFilter = 'all';
 let unitAlphaFilter = null;
 let alphaFilterTimeout = null;
@@ -20,6 +20,390 @@ let activeDisabledUnits = [];
 
 let hubConnection = null;
 let lastReceivedClipboard = "";
+
+// Add Mode State
+let isAddMode = false;
+let addModeBuffer = "";
+let addModeIndicator = null;
+let addedItemsHistory = []; // History of { name, type, zone } for undo
+let highlightedUnitIndex = -1;
+
+function cycleUnitHighlight() {
+    const activeZoneId = activeDropZone === 'current-team' ? 'current-team-zone' : 'must-include-zone';
+    const zone = document.getElementById(activeZoneId);
+    if (!zone) return;
+
+    const units = zone.querySelectorAll('.draggable-item');
+    if (units.length === 0) {
+        highlightedUnitIndex = -1;
+        return;
+    }
+
+    // Remove old highlight
+    if (highlightedUnitIndex >= 0 && highlightedUnitIndex < units.length) {
+        units[highlightedUnitIndex].classList.remove('unit-highlight-active');
+    }
+
+    highlightedUnitIndex++;
+    if (highlightedUnitIndex >= units.length) highlightedUnitIndex = 0;
+
+    // Add new highlight
+    units[highlightedUnitIndex].classList.add('unit-highlight-active');
+    
+    // Inject style if not present
+    if (!document.getElementById('unit-highlight-style')) {
+        const style = document.createElement('style');
+        style.id = 'unit-highlight-style';
+        style.innerHTML = `
+            .draggable-item.unit-highlight-active {
+                outline: 3px solid white !important;
+                transform: scale(1.1);
+                z-index: 100;
+                transition: all 0.1s ease;
+            }
+        `;
+        document.head.appendChild(style);
+    }
+}
+let selectedResultIndex = -1;
+
+function toggleLevelCheckbox(lvl) {
+    const cb = document.querySelector(`.lvl-cb[value="${lvl}"]`);
+    if (cb) {
+        cb.checked = !cb.checked;
+        cb.dispatchEvent(new Event('change'));
+    }
+}
+
+function cycleResults(direction) {
+    const cards = document.querySelectorAll('.result-card');
+    if (cards.length === 0) return;
+
+    // Remove old highlight
+    if (selectedResultIndex >= 0 && selectedResultIndex < cards.length) {
+        cards[selectedResultIndex].classList.remove('result-highlighted');
+    }
+
+    selectedResultIndex += direction;
+    
+    // Wrap around
+    if (selectedResultIndex >= cards.length) selectedResultIndex = 0;
+    if (selectedResultIndex < 0) selectedResultIndex = cards.length - 1;
+
+    // Add new highlight and scroll into view
+    const targetCard = cards[selectedResultIndex];
+    targetCard.classList.add('result-highlighted');
+    targetCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+    // Inject temporary style for result highlight if not present
+    if (!document.getElementById('result-highlight-style')) {
+        const style = document.createElement('style');
+        style.id = 'result-highlight-style';
+        style.innerHTML = `
+            .result-card.result-highlighted {
+                border-color: var(--accent) !important;
+                box-shadow: 0 0 15px rgba(10, 132, 255, 0.4) !important;
+                background: rgba(10, 132, 255, 0.05) !important;
+                transform: scale(1.02);
+                transition: all 0.2s ease;
+            }
+        `;
+        document.head.appendChild(style);
+    }
+}
+
+function enterAddMode() {
+    if (isAddMode) {
+        exitAddMode();
+        return;
+    }
+    
+    // Resume audio context if needed
+    if (typeof CortexAudio !== 'undefined') CortexAudio.init();
+
+    isAddMode = true;
+    addModeBuffer = "";
+    showAddModeIndicator();
+    
+    // We only need local listener if we're focused and NOT using global hub input
+    // But for simplicity, we'll keep it and just ensure it doesn't double-fire if hub is also sending
+    // Actually, hub input is better for "no focus".
+    document.addEventListener('keydown', handleAddModeKeydown);
+    
+    // Add orange glow to active zone
+    const activeZoneId = activeDropZone === 'current-team' ? 'current-team-zone' : 'must-include-zone';
+    const activeZone = document.getElementById(activeZoneId);
+    if (activeZone) {
+        activeZone.classList.add('add-mode-active');
+        // Inject temporary style if not present
+        if (!document.getElementById('add-mode-style')) {
+            const style = document.createElement('style');
+            style.id = 'add-mode-style';
+            style.innerHTML = `
+                .drop-zone.add-mode-active {
+                    border-color: #ff9500 !important;
+                    background: rgba(255, 149, 0, 0.1) !important;
+                    box-shadow: 0 0 20px rgba(255, 149, 0, 0.4) !important;
+                    transition: all 0.2s ease;
+                }
+                .add-mode-active .placeholder-text {
+                    color: #ff9500 !important;
+                }
+                .add-mode-match {
+                    animation: add-mode-flash 0.5s ease;
+                }
+                @keyframes add-mode-flash {
+                    0% { background: #32d74b; transform: scale(1); }
+                    50% { background: #32d74b; transform: scale(1.1); }
+                    100% { background: #ff9500; transform: scale(1); }
+                }
+                .add-mode-error {
+                    animation: add-mode-shake 0.3s ease;
+                    background: #ff453a !important;
+                }
+                @keyframes add-mode-shake {
+                    0%, 100% { transform: translateX(0); }
+                    25% { transform: translateX(-5px); }
+                    75% { transform: translateX(5px); }
+                }
+            `;
+            document.head.appendChild(style);
+        }
+    }
+    console.log("TFT: Entered Add Mode");
+}
+
+function handleTftGlobalInput(key) {
+    if (!isAddMode) return;
+
+    if (key === "Tab") {
+        cycleActiveZone();
+    } else if (key === "Backspace") {
+        if (addModeBuffer.length > 0) {
+            addModeBuffer = addModeBuffer.slice(0, -1);
+        } else {
+            // Check if we have a highlighted unit first
+            const activeZoneId = activeDropZone === 'current-team' ? 'current-team-zone' : 'must-include-zone';
+            const zone = document.getElementById(activeZoneId);
+            const items = zone ? zone.querySelectorAll('.draggable-item') : [];
+            
+            if (highlightedUnitIndex >= 0 && highlightedUnitIndex < items.length) {
+                const item = items[highlightedUnitIndex];
+                const name = item.dataset.name;
+                const type = item.dataset.type;
+                removeItem(name, type, activeDropZone);
+                highlightedUnitIndex = -1;
+            } else if (addedItemsHistory.length > 0) {
+                const lastItem = addedItemsHistory.pop();
+                removeItem(lastItem.name, lastItem.type, lastItem.zone);
+            }
+        }
+    } else if (key === "Enter") {
+        addModeBuffer = "";
+    } else if (key.length === 1) {
+        addModeBuffer += key.toLowerCase();
+        if (addModeBuffer.length === 3) {
+            processAddModeBuffer();
+            addModeBuffer = "";
+        }
+    }
+    updateAddModeIndicator();
+}
+
+function exitAddMode() {
+    isAddMode = false;
+    addModeBuffer = "";
+    hideAddModeIndicator();
+    document.removeEventListener('keydown', handleAddModeKeydown);
+    
+    // Remove orange glow from all zones
+    document.querySelectorAll('.drop-zone').forEach(el => {
+        el.classList.remove('add-mode-active');
+    });
+    console.log("TFT: Exited Add Mode");
+}
+
+function showAddModeIndicator() {
+    if (!addModeIndicator) {
+        addModeIndicator = document.createElement('div');
+        addModeIndicator.id = 'add-mode-indicator';
+        addModeIndicator.style.position = 'absolute';
+        addModeIndicator.style.padding = '8px 12px';
+        addModeIndicator.style.background = '#ff9500';
+        addModeIndicator.style.color = 'black';
+        addModeIndicator.style.borderRadius = '6px';
+        addModeIndicator.style.boxShadow = '0 4px 12px rgba(0,0,0,0.4)';
+        addModeIndicator.style.zIndex = '9999';
+        addModeIndicator.style.fontWeight = 'bold';
+        addModeIndicator.style.fontFamily = 'var(--font-mono)';
+        addModeIndicator.style.display = 'flex';
+        addModeIndicator.style.flexDirection = 'column';
+        addModeIndicator.style.gap = '2px';
+        addModeIndicator.style.pointerEvents = 'none'; // Don't block clicks
+        
+        // Append to the pools zone for relative positioning
+        const poolsZone = document.querySelector('.pools-zone');
+        if (poolsZone) {
+            poolsZone.style.position = 'relative'; // Ensure context
+            poolsZone.appendChild(addModeIndicator);
+            // Position top-left of pools zone
+            addModeIndicator.style.top = '10px';
+            addModeIndicator.style.left = '10px';
+        } else {
+            document.body.appendChild(addModeIndicator);
+            addModeIndicator.style.position = 'fixed';
+            addModeIndicator.style.top = '100px';
+            addModeIndicator.style.left = '50%';
+        }
+    }
+    addModeIndicator.style.display = 'flex';
+    updateAddModeIndicator();
+}
+
+function hideAddModeIndicator() {
+    if (addModeIndicator) addModeIndicator.style.display = 'none';
+}
+
+function updateAddModeIndicator() {
+    if (addModeIndicator) {
+        addModeIndicator.innerHTML = `
+            <div style="font-size: 9px; opacity: 0.9; text-transform: uppercase;">ACTIVE MODE</div>
+            <div style="font-size: 16px; white-space: nowrap;">${addModeBuffer || 'Type name...'}</div>
+        `;
+    }
+}
+
+function cycleActiveZone() {
+    const next = activeDropZone === 'current-team' ? 'must-include' : 'current-team';
+    setActiveZone(next);
+}
+
+function handleAddModeKeydown(e) {
+    // Only handle local keys if we are focused and the event isn't coming from the Hub
+    // Actually, if the Hub is active, it consumes the key globally, so the browser won't see it anyway.
+    // This listener is only a fallback for when Hub isn't running or for some reason not capturing.
+    
+    if (e.key === 'Tab') {
+        e.preventDefault();
+        if (e.ctrlKey) {
+            cycleUnitHighlight();
+        } else {
+            cycleActiveZone();
+        }
+        return;
+    }
+
+    if (e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey) {
+        e.preventDefault();
+        addModeBuffer += e.key.toLowerCase();
+        
+        if (addModeBuffer.length === 3) {
+            processAddModeBuffer();
+            addModeBuffer = "";
+        }
+        updateAddModeIndicator();
+    } else if (e.key === 'Backspace') {
+        e.preventDefault();
+        if (addModeBuffer.length > 0) {
+            addModeBuffer = addModeBuffer.slice(0, -1);
+        } else {
+            // Check if we have a highlighted unit first
+            const activeZoneId = activeDropZone === 'current-team' ? 'current-team-zone' : 'must-include-zone';
+            const zone = document.getElementById(activeZoneId);
+            const items = zone ? zone.querySelectorAll('.draggable-item') : [];
+            
+            if (highlightedUnitIndex >= 0 && highlightedUnitIndex < items.length) {
+                const item = items[highlightedUnitIndex];
+                const name = item.dataset.name;
+                const type = item.dataset.type;
+                removeItem(name, type, activeDropZone);
+                highlightedUnitIndex = -1; // Reset highlight
+            } else if (addedItemsHistory.length > 0) {
+                // Multi-step undo
+                const lastItem = addedItemsHistory.pop();
+                removeItem(lastItem.name, lastItem.type, lastItem.zone);
+            }
+        }
+        updateAddModeIndicator();
+    } else if (e.key === 'Enter') {
+        e.preventDefault();
+        addModeBuffer = "";
+        updateAddModeIndicator();
+    }
+}
+
+function processAddModeBuffer() {
+    if (!tftData) return;
+    
+    const query = addModeBuffer.toLowerCase();
+    let matchedItem = null;
+    
+    // Priority 1: Exact Start Matches (Unit OR Emblem)
+    // We prefer Units for short prefixes like "Ani" -> Anivia over Arcanist
+    
+    let unit = tftData.units.find(u => u.name.toLowerCase().startsWith(query) && u.name !== "Tibbers");
+    if (unit) {
+        if (activeDropZone === 'must-include') {
+            addToMustInclude(unit);
+            matchedItem = { name: unit.name, type: 'unit', zone: 'must-include' };
+        } else {
+            addToCurrentTeam(unit);
+            matchedItem = { name: unit.name, type: 'unit', zone: 'current-team' };
+        }
+    } else {
+        // Priority 2: Emblem Starts With
+        const emblem = tftData.items.find(i => i.is_emblem && i.trait.toLowerCase().startsWith(query));
+        if (emblem) {
+            addToSelectedEmblems(emblem);
+            matchedItem = { name: emblem.name, type: 'emblem', zone: 'emblems' };
+        } else {
+            // Priority 3: Contains (Unit)
+            unit = tftData.units.find(u => u.name.toLowerCase().includes(query) && u.name !== "Tibbers");
+            if (unit) {
+                if (activeDropZone === 'must-include') {
+                    addToMustInclude(unit);
+                    matchedItem = { name: unit.name, type: 'unit', zone: 'must-include' };
+                } else {
+                    addToCurrentTeam(unit);
+                    matchedItem = { name: unit.name, type: 'unit', zone: 'current-team' };
+                }
+            } else {
+                // Priority 4: Contains (Emblem)
+                const emblemContains = tftData.items.find(i => i.is_emblem && i.trait.toLowerCase().includes(query));
+                if (emblemContains) {
+                    addToSelectedEmblems(emblemContains);
+                    matchedItem = { name: emblemContains.name, type: 'emblem', zone: 'emblems' };
+                }
+            }
+        }
+    }
+
+    if (matchedItem) {
+        addedItemsHistory.push(matchedItem);
+        if (addedItemsHistory.length > 10) addedItemsHistory.shift(); // Keep last 10 steps
+        
+        if (typeof CortexAudio !== 'undefined') CortexAudio.playTone('work');
+        
+        // Success flash
+        if (addModeIndicator) {
+            addModeIndicator.classList.remove('add-mode-match');
+            void addModeIndicator.offsetWidth;
+            addModeIndicator.classList.add('add-mode-match');
+        }
+        console.log(`TFT AddMode: Added ${matchedItem.type}`, matchedItem.name);
+    } else {
+        if (typeof CortexAudio !== 'undefined') CortexAudio.playTone('chaos');
+        
+        // Error shake
+        if (addModeIndicator) {
+            addModeIndicator.classList.remove('add-mode-error');
+            void addModeIndicator.offsetWidth;
+            addModeIndicator.classList.add('add-mode-error');
+            setTimeout(() => addModeIndicator.classList.remove('add-mode-error'), 300);
+        }
+        console.log("TFT AddMode: No match for", query);
+    }
+}
 
 // Migrate old quiz progress keys to persistent ones
 [
@@ -328,20 +712,32 @@ function calculateBoardCounts(units, emblems) {
 }
 
 function setActiveZone(zoneId) {
+    if (zoneId === 'emblems') return; // Cannot activate emblems zone
+
     activeDropZone = zoneId;
-    document.querySelectorAll('.drop-zone').forEach(el => el.classList.remove('active-zone'));
+    document.querySelectorAll('.drop-zone').forEach(el => {
+        el.classList.remove('active-zone');
+        el.classList.remove('add-mode-active');
+    });
     
     const zoneMap = {
         'current-team': 'current-team-zone',
-        'must-include': 'must-include-zone',
-        'emblems': 'emblem-drop-zone'
+        'must-include': 'must-include-zone'
     };
     
     const elId = zoneMap[zoneId];
     if (elId) {
         const el = document.getElementById(elId);
-        if (el) el.classList.add('active-zone');
+        if (el) {
+            el.classList.add('active-zone');
+            if (isAddMode) {
+                el.classList.add('add-mode-active');
+            }
+        }
     }
+    
+    // Reset unit highlight when switching zones
+    highlightedUnitIndex = -1;
 }
 
 async function initHubConnection() {
@@ -351,17 +747,199 @@ async function initHubConnection() {
         .build();
 
     try {
-        await hubConnection.start();
-        console.log("TFT Hub Connected");
-        
         hubConnection.on("ClipboardUpdated", (text) => {
             lastReceivedClipboard = text;
         });
 
+        hubConnection.on("ReceiveTftCommand", (command, payload) => {
+            console.log("TFT Hotkey Received:", command);
+            handleTftHotkey(command, payload);
+        });
+
+        await hubConnection.start();
+        console.log("TFT Hub Connected");
+        
         await hubConnection.invoke("Authenticate", API_KEY);
     } catch (err) {
         console.error("TFT Hub Connection Error:", err);
         setTimeout(initHubConnection, 5000);
+    }
+}
+
+function toggleActiveDisableUnitByCost(cost) {
+    if (!tftData) return;
+    const unitsOfCost = tftData.units.filter(u => u.cost === cost && u.name !== "Tibbers");
+    const allDisabled = unitsOfCost.every(u => activeDisabledUnits.includes(u.name));
+    
+    if (allDisabled) {
+        // Enable all of this cost
+        activeDisabledUnits = activeDisabledUnits.filter(name => !unitsOfCost.find(u => u.name === name));
+    } else {
+        // Disable all of this cost
+        unitsOfCost.forEach(u => {
+            if (!activeDisabledUnits.includes(u.name)) activeDisabledUnits.push(u.name);
+        });
+    }
+    renderUnitPools();
+}
+
+function cycleSelectedLevels() {
+    const checkBoxes = Array.from(document.querySelectorAll('.lvl-cb'));
+    if (checkBoxes.length === 0) return;
+    
+    // Find highest currently checked level
+    const checked = checkBoxes.filter(cb => cb.checked).map(cb => parseInt(cb.value));
+    const maxChecked = checked.length > 0 ? Math.max(...checked) : 3;
+    
+    // Uncheck everything
+    checkBoxes.forEach(cb => cb.checked = false);
+    
+    // Cycle: 6&8 -> 8 -> 9 -> 10 -> 4 -> 5 -> 6 -> 7 -> 6&8
+    let nextLevels = [6, 8];
+    if (checked.length === 2 && checked.includes(6) && checked.includes(8)) nextLevels = [8];
+    else if (maxChecked === 8) nextLevels = [9];
+    else if (maxChecked === 9) nextLevels = [10];
+    else if (maxChecked === 10) nextLevels = [4];
+    else if (maxChecked === 4) nextLevels = [5];
+    else if (maxChecked === 5) nextLevels = [6];
+    else if (maxChecked === 6) nextLevels = [7];
+    else if (maxChecked === 7) nextLevels = [6, 8];
+    
+    checkBoxes.forEach(cb => {
+        if (nextLevels.includes(parseInt(cb.value))) cb.checked = true;
+    });
+}
+
+function cycleHeuristics() {
+    const radios = Array.from(document.querySelectorAll('input[name="heuristic-mode"]'));
+    if (radios.length === 0) return;
+    
+    const currentIndex = radios.findIndex(r => r.checked);
+    const nextIndex = (currentIndex + 1) % radios.length;
+    radios[nextIndex].checked = true;
+    
+    // Trigger change event if needed
+    radios[nextIndex].dispatchEvent(new Event('change'));
+}
+
+function toggleSmartSortHotkey() {
+    const toggle = document.getElementById('smart-sort-toggle');
+    if (toggle) {
+        toggle.checked = !toggle.checked;
+        toggleUnitSortMode(toggle.checked);
+    }
+}
+
+function toggleExclude5CostsHotkey() {
+    const cb = document.getElementById('exclude-five-costs');
+    if (cb) {
+        cb.checked = !cb.checked;
+    }
+}
+
+function toggleImproveModeHotkey() {
+    const cb = document.getElementById('improve-mode');
+    if (cb) {
+        cb.checked = !cb.checked;
+    }
+}
+
+async function handleTftHotkey(command, payload) {
+    switch (command) {
+        case "TFT_ACTIVATE_CURRENT_TEAM":
+            setActiveZone('current-team');
+            break;
+        case "TFT_ACTIVATE_MUST_INCLUDE":
+            setActiveZone('must-include');
+            break;
+        case "TFT_ENTER_ADD_MODE":
+            if (isAddMode) exitAddMode();
+            else enterAddMode();
+            break;
+        case "TFT_INPUT":
+            if (payload && payload.Key) {
+                handleTftGlobalInput(payload.Key);
+            }
+            break;
+        case "TFT_CLIPBOARD_MUST_INCLUDE_SOLVE_NEXT":
+            await pasteToZone('must-include');
+            runOptimization();
+            break;
+        case "TFT_CLIPBOARD_CURRENT_TEAM":
+            await pasteToZone('current-team');
+            break;
+        case "TFT_CYCLE_RESULT_NEXT":
+            cycleResults(1);
+            break;
+        case "TFT_CYCLE_RESULT_PREV":
+            cycleResults(-1);
+            break;
+        case "TFT_DEBUG_SOLVE_1":
+        case "TFT_DEBUG_SOLVE_2":
+        case "TFT_DEBUG_SOLVE_3":
+        case "TFT_RUN_OPTIMIZATION":
+            runOptimization();
+            break;
+        case "TFT_DEBUG_COPY_1":
+        case "TFT_COPY_ACTIVE":
+            if (selectedResultIndex >= 0) {
+                copyResultCode(selectedResultIndex);
+            } else if (activeDropZone === 'current-team') {
+                copyZoneCode('current-team');
+            } else if (activeDropZone === 'must-include') {
+                copyZoneCode('must-include');
+            }
+            break;
+        case "TFT_DEBUG_PASTE_1":
+        case "TFT_PASTE_ACTIVE":
+            await pasteToZone(activeDropZone);
+            break;
+        case "TFT_CLEAR_ALL":
+            resetAll();
+            break;
+        case "TFT_SAVE_COMP":
+            handleSaveComp();
+            break;
+        case "TFT_SWITCH_TAB_SOLVER":
+            switchTab('solver');
+            break;
+        case "TFT_SWITCH_TAB_QUIZ":
+            switchTab('quiz');
+            break;
+        case "TFT_SWITCH_TAB_DIRECTOR":
+            switchTab('director');
+            break;
+        case "TFT_SWITCH_TAB_CONFIG":
+            switchTab('config');
+            break;
+        case "TFT_TOGGLE_COST_1":
+            toggleActiveDisableUnitByCost(1);
+            break;
+        case "TFT_TOGGLE_COST_2":
+            toggleActiveDisableUnitByCost(2);
+            break;
+        case "TFT_TOGGLE_COST_3":
+            toggleActiveDisableUnitByCost(3);
+            break;
+        case "TFT_TOGGLE_COST_4":
+            toggleActiveDisableUnitByCost(4);
+            break;
+        case "TFT_TOGGLE_COST_5":
+            toggleActiveDisableUnitByCost(5);
+            break;
+        case "TFT_TOGGLE_LEVEL_4": toggleLevelCheckbox(4); break;
+        case "TFT_TOGGLE_LEVEL_5": toggleLevelCheckbox(5); break;
+        case "TFT_TOGGLE_LEVEL_6": toggleLevelCheckbox(6); break;
+        case "TFT_TOGGLE_LEVEL_7": toggleLevelCheckbox(7); break;
+        case "TFT_TOGGLE_LEVEL_8": toggleLevelCheckbox(8); break;
+        case "TFT_TOGGLE_LEVEL_9": toggleLevelCheckbox(9); break;
+        case "TFT_TOGGLE_LEVEL_10": toggleLevelCheckbox(10); break;
+        case "TFT_CYCLE_HEURISTICS":
+            cycleHeuristics();
+            break;
+        case "TFT_POC":
+            alert("TFT Hotkey POC Successful!");
+            break;
     }
 }
 
@@ -504,6 +1082,81 @@ function updateUI() {
     renderAlphaFilter();
     renderEmblemPool();
     renderSelectionZones();
+    renderHotkeysButton();
+}
+
+function renderHotkeysButton() {
+    if (document.getElementById('hotkeys-btn')) return;
+    
+    const btn = document.createElement('div');
+    btn.id = 'hotkeys-btn';
+    btn.innerHTML = '?';
+    btn.style.position = 'fixed';
+    btn.style.bottom = '20px';
+    btn.style.left = '20px';
+    btn.style.width = '30px';
+    btn.style.height = '30px';
+    btn.style.background = 'var(--bg-elevated)';
+    btn.style.color = 'var(--text-dim)';
+    btn.style.border = '1px solid var(--border)';
+    btn.style.borderRadius = '50%';
+    btn.style.display = 'flex';
+    btn.style.alignItems = 'center';
+    btn.style.justifyContent = 'center';
+    btn.style.cursor = 'pointer';
+    btn.style.zIndex = '10000';
+    btn.style.fontSize = '14px';
+    btn.style.fontWeight = 'bold';
+    btn.style.boxShadow = '0 2px 8px rgba(0,0,0,0.2)';
+    
+    btn.onmouseenter = () => {
+        const tooltip = document.getElementById('hotkeys-tooltip');
+        if (tooltip) tooltip.style.display = 'block';
+    };
+    
+    btn.onmouseleave = () => {
+        const tooltip = document.getElementById('hotkeys-tooltip');
+        if (tooltip) tooltip.style.display = 'none';
+    };
+    
+    document.body.appendChild(btn);
+    
+    const tooltip = document.createElement('div');
+    tooltip.id = 'hotkeys-tooltip';
+    tooltip.style.display = 'none';
+    tooltip.style.position = 'fixed';
+    tooltip.style.bottom = '60px';
+    tooltip.style.left = '20px';
+    tooltip.style.background = 'var(--bg-elevated)';
+    tooltip.style.border = '1px solid var(--border)';
+    tooltip.style.borderRadius = '8px';
+    tooltip.style.padding = '12px';
+    tooltip.style.zIndex = '10000';
+    tooltip.style.boxShadow = '0 4px 12px rgba(0,0,0,0.4)';
+    tooltip.style.fontSize = '11px';
+    tooltip.style.width = '250px';
+    
+    tooltip.innerHTML = `
+        <h3 style="margin: 0 0 8px 0; color: var(--accent);">Global Hotkeys</h3>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px;">
+            <span style="color: var(--text-dim);">Active Mode</span> <span style="text-align: right; font-family: monospace;">Ctrl+A</span>
+            <span style="color: var(--text-dim);">Current Team</span> <span style="text-align: right; font-family: monospace;">Ctrl+1</span>
+            <span style="color: var(--text-dim);">Must Include</span> <span style="text-align: right; font-family: monospace;">Ctrl+2</span>
+            <span style="color: var(--text-dim);">Run Solver</span> <span style="text-align: right; font-family: monospace;">Alt+S</span>
+            <span style="color: var(--text-dim);">Smart Sort</span> <span style="text-align: right; font-family: monospace;">Ctrl+M</span>
+            <span style="color: var(--text-dim);">Clear All</span> <span style="text-align: right; font-family: monospace;">Alt+X</span>
+            <span style="color: var(--text-dim);">Clear Active</span> <span style="text-align: right; font-family: monospace;">Shift+X</span>
+            <span style="color: var(--text-dim);">Copy Active</span> <span style="text-align: right; font-family: monospace;">Alt+C</span>
+            <span style="color: var(--text-dim);">Paste Active</span> <span style="text-align: right; font-family: monospace;">Alt+V</span>
+            <span style="color: var(--text-dim);">Toggle Levels</span> <span style="text-align: right; font-family: monospace;">Shift+4-0</span>
+            <span style="color: var(--text-dim);">Cycle Heuristics</span> <span style="text-align: right; font-family: monospace;">Alt+H</span>
+            <span style="color: var(--text-dim);">Cycle Units</span> <span style="text-align: right; font-family: monospace;">Ctrl+Tab</span>
+            <span style="color: var(--text-dim);">Cycle Results</span> <span style="text-align: right; font-family: monospace;">Tab</span>
+            <span style="color: var(--text-dim);">Cost Filter</span> <span style="text-align: right; font-family: monospace;">Alt+1-5</span>
+        </div>
+    `;
+    
+    document.body.appendChild(tooltip);
 }
 
 function renderAlphaFilter() {
@@ -1004,6 +1657,18 @@ function renderSelectionZones() {
 
     if (unitSortMode === 'smart') {
         renderUnitPools();
+    }
+
+    // Re-apply highlight if needed
+    if (highlightedUnitIndex >= 0) {
+        const zoneId = activeDropZone === 'current-team' ? 'current-team-zone' : 'must-include-zone';
+        const zone = document.getElementById(zoneId);
+        const items = zone ? zone.querySelectorAll('.draggable-item') : [];
+        if (highlightedUnitIndex < items.length) {
+            items[highlightedUnitIndex].classList.add('unit-highlight-active');
+        } else {
+            highlightedUnitIndex = -1;
+        }
     }
 
     saveTFTSelection();

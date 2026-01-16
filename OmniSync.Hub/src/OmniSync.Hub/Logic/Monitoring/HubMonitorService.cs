@@ -34,6 +34,22 @@ namespace OmniSync.Hub.Logic.Monitoring
         // Data to be exposed to UI
         public ObservableCollection<string> ActiveConnections { get; } = new ObservableCollection<string>();
         public ObservableCollection<string> LogMessages { get; } = new ObservableCollection<string>();
+        
+        private bool _isTftActive;
+        public bool IsTftActive
+        {
+            get => _isTftActive;
+            set
+            {
+                if (_isTftActive != value)
+                {
+                    _isTftActive = value;
+                    OnPropertyChanged();
+                    AddLogMessage($"TFT Focus State Changed: {value}");
+                }
+            }
+        }
+
         private string _lastIncomingCommand = "None";
         public string LastIncomingCommand
         {

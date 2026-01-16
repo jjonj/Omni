@@ -161,7 +161,6 @@ namespace OmniSync.Hub.Infrastructure.Services
             _logger = logger;
             _keyboardHook = keyboardHook;
             _keyboardHook.KeyActionOccurred += OnKeyActionOccurred;
-            _keyboardHook.SetHook();
 
             // Start the timer to periodically update mouse position
             _mouseUpdateTimer = new System.Threading.Timer(MouseUpdateTimer_Tick, null, 0, _interpolationIntervalMs);

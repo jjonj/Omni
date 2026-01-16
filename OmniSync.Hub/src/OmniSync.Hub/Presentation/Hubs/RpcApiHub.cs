@@ -105,6 +105,14 @@ namespace OmniSync.Hub.Presentation.Hubs
             }
         }
 
+        public void ReportTftStatus(bool isActive)
+        {
+            if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
+            {
+                _hubMonitorService.IsTftActive = isActive;
+            }
+        }
+
         public bool Authenticate(string apiKey)
         {
             var ip = Context.GetHttpContext()?.Connection.RemoteIpAddress?.ToString();

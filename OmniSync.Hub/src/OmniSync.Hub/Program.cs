@@ -174,7 +174,7 @@ builder.Services.AddSingleton<CommandDispatcher>(provider => {
     return new CommandDispatcher(inputService, fileService, audioService, processService, shutdownService, settingsService, pcgService, nodeRedService, projectLauncherService, appLifetime);
 });
 builder.Services.AddSingleton<GlobalHotkeyService>();
-builder.Services.AddHostedService<GlobalHotkeyService>(p => p.GetRequiredService<GlobalHotkeyService>());
+builder.Services.AddHostedService(sp => sp.GetRequiredService<GlobalHotkeyService>());
 
 builder.Services.AddSingleton<ShutdownService>(provider =>
 {

@@ -22,6 +22,7 @@ namespace OmniSync.Hub.Logic.Services
         private readonly Dictionary<string, Action<JsonElement>> _commandMap;
 
         public event EventHandler<string>? AddCleanupPatternRequested;
+        public event EventHandler<(string Command, JsonElement Payload)>? ExternalCommandDispatched;
 
         public CommandDispatcher(InputService inputService, FileService fileService, AudioService audioService, ProcessService processService, ShutdownService shutdownService, HubSettingsService settingsService, PcgPersistentService pcgService, NodeRedService nodeRedService, ProjectLauncherService projectLauncherService, IHostApplicationLifetime appLifetime)
         {
@@ -134,7 +135,7 @@ namespace OmniSync.Hub.Logic.Services
                         }
                         else
                         {
-                            Console.WriteLine($"Unknown command: {command}");
+                            ExternalCommandDispatched?.Invoke(this, (command, payload));
                         }
                     }
 
