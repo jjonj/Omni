@@ -130,6 +130,11 @@ class SignalRClient(
     private val _aiDialogMap = MutableStateFlow<Map<Int, AiDialog?>>(emptyMap())
     private val _selectedPid = MutableStateFlow(-1)
 
+    private val _isWaitingForAiResponseMap = MutableStateFlow<Map<Int, Boolean>>(emptyMap())
+    val isWaitingForAiResponseMap: StateFlow<Map<Int, Boolean>> = _isWaitingForAiResponseMap
+
+    val aiDialogAlertEvent = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+
     val selectedPid: StateFlow<Int> = _selectedPid
 
     private val _aiMessages = MutableStateFlow<List<AiMessage>>(emptyList())
@@ -404,6 +409,7 @@ class SignalRClient(
                 updateSessionStatus(pid, null)
                 updateSessionThought(pid, null)
                 updateSessionDialog(pid, null)
+                _isWaitingForAiResponseMap.value = _isWaitingForAiResponseMap.value + (pid to false)
                 setIsNextBubble(pid, true)
                 // Clear queued status from all messages in this session
                 updateSessionMessages(pid) { messages ->
@@ -411,6 +417,7 @@ class SignalRClient(
                 }
             } else if (status == "QUEUED") {
                 updateSessionStatus(pid, "Queued (AI busy)")
+                _isWaitingForAiResponseMap.value = _isWaitingForAiResponseMap.value + (pid to false)
                 // Mark the latest message from "Me" as queued
                 updateSessionMessages(pid) { messages ->
                     val lastMeIndex = messages.indexOfLast { it.sender == "Me" }
@@ -422,6 +429,7 @@ class SignalRClient(
                 }
             } else {
                 updateSessionStatus(pid, status)
+                _isWaitingForAiResponseMap.value = _isWaitingForAiResponseMap.value + (pid to false)
                 if (status == "AI Thinking...") {
                     setIsNextBubble(pid, true)
                 }
@@ -576,6 +584,7 @@ class SignalRClient(
         hubConnection?.on("ReceiveAiDialog", { pid: Int, type: String, prompt: String, options: List<String>? ->
             Log.d("SignalRClient", "ReceiveAiDialog from PID $pid: $type - $prompt")
             updateSessionDialog(pid, AiDialog(type, prompt, options))
+            coroutineScope.launch { aiDialogAlertEvent.emit(Unit) }
         }, Int::class.java, String::class.java, String::class.java, List::class.java)
 
         hubConnection?.on("ReceivePayload", { payloadData: Any ->
@@ -719,6 +728,7 @@ class SignalRClient(
         if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {       
             if (!message.startsWith("/")) {
                 updateSessionStatus(targetPid, "AI Thinking...")
+                _isWaitingForAiResponseMap.value = _isWaitingForAiResponseMap.value + (targetPid to true)
             }
             
             val hubPid = if (targetPid <= 0) null else targetPid
@@ -1203,6 +1213,7 @@ class SignalRClient(
     private fun handleAiResponse(response: String, pid: Int) {
         if (response == "[TURN_FINISHED]") {
             updateSessionStatus(pid, null)
+            _isWaitingForAiResponseMap.value = _isWaitingForAiResponseMap.value + (pid to false)
             setIsNextBubble(pid, true)
             return
         }
@@ -1217,6 +1228,7 @@ class SignalRClient(
         if (currentStatus?.contains("Switching") == true || currentStatus?.contains("Reloading") == true || currentStatus?.contains("Thinking") == true) {
             updateSessionStatus(pid, null)
         }
+        _isWaitingForAiResponseMap.value = _isWaitingForAiResponseMap.value + (pid to false)
         updateSessionThought(pid, null)
 
         val isError = response.startsWith("Error:")

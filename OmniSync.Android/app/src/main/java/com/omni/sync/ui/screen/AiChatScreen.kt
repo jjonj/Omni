@@ -150,7 +150,9 @@ fun AiChatScreen(
     }
 
     val listState = rememberLazyListState()
-    val isAiThinking = aiStatus?.contains("Thinking", ignoreCase = true) == true
+    val isWaitingForAiMap by signalRClient.isWaitingForAiResponseMap.collectAsState()
+    val isWaitingForAi = isWaitingForAiMap[selectedPid] ?: false
+    val isAiThinking = isWaitingForAi || aiStatus?.contains("Thinking", ignoreCase = true) == true || aiStatus?.contains("Starting", ignoreCase = true) == true
     val coroutineScope = rememberCoroutineScope()
     val isStartingSession by signalRClient.isStartingSessionFlow.collectAsState()
     val isConnected by mainViewModel.isConnected.collectAsState()
@@ -182,7 +184,8 @@ fun AiChatScreen(
     // We use a derived state to prevent excessive recomposition, but check it frequently
     val isAtBottom by remember {
         derivedStateOf { 
-            listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset == 0 
+            // Allow a small threshold (e.g. 50 pixels) to make it easier to activate
+            listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset < 50 
         }
     }
 
@@ -258,9 +261,11 @@ fun AiChatScreen(
                                 }, 
                                 enabled = isConnected,
                                 colors = ButtonDefaults.textButtonColors(
-                                    containerColor = if (sessionButtonAnim.value > 0f) 
-                                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = sessionButtonAnim.value * 0.5f)
-                                        else Color.Transparent
+                                    containerColor = when {
+                                        aiDialog != null -> MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.8f)
+                                        sessionButtonAnim.value > 0f -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = sessionButtonAnim.value * 0.5f)
+                                        else -> Color.Transparent
+                                    }
                                 )
                             ) {
                                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -678,115 +683,6 @@ fun QuickActionPanel(
                 onClick = { signalRClient.sendAiSpecialKey("down", selectedPid) }
             )
 
-            ActionKeyButton(
-                text = "Enter",
-                icon = Icons.AutoMirrored.Filled.KeyboardReturn,
-                modifier = Modifier.weight(1f).height(33.dp),
-                onClick = { signalRClient.sendAiSpecialKey("enter", selectedPid) }
-            )
-        }
-
-        // Row 2: Message navigation & Yolo
-        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-            ActionKeyButton(
-                icon = Icons.Default.KeyboardDoubleArrowUp,
-                text = "Prev",
-                modifier = Modifier.weight(1f).height(33.dp),
-                onClick = { 
-                    coroutineScope.launch {
-                        if (userMessageItemIndices.isEmpty()) return@launch
-                        val currentFirstVisibleItem = listState.firstVisibleItemIndex
-                        val targetIndex = userMessageItemIndices.filter { it > currentFirstVisibleItem }.minOrNull()
-                        if (targetIndex != null) {
-                            listState.animateScrollToItem(targetIndex)
-                        } else {
-                            listState.animateScrollToItem(userMessageItemIndices.maxOrNull() ?: 0)
-                        }
-                    }
-                }
-            )
-
-            ActionKeyButton(
-                icon = Icons.Default.KeyboardDoubleArrowDown,
-                text = "Next",
-                modifier = Modifier.weight(1f).height(33.dp),
-                onClick = { 
-                    coroutineScope.launch {
-                        if (userMessageItemIndices.isEmpty()) return@launch
-                        val currentFirstVisibleItem = listState.firstVisibleItemIndex
-                        val targetIndex = userMessageItemIndices.filter { it < currentFirstVisibleItem }.maxOrNull()
-                        if (targetIndex != null) {
-                            listState.animateScrollToItem(targetIndex)
-                        } else {
-                            listState.animateScrollToItem(0)
-                        }
-                    }
-                }
-            )
-
-            ActionKeyButton(
-                text = "Yolo",
-                modifier = Modifier.weight(1f).height(33.dp),
-                onClick = { 
-                    coroutineScope.launch {
-                        signalRClient.sendAiYolo(selectedPid)
-                    }
-                }
-            )
-
-            ActionKeyButton(
-                text = "Focus",
-                icon = Icons.Default.Adjust,
-                modifier = Modifier.weight(1f).height(33.dp),
-                onClick = { 
-                    if (selectedPid != -1) {
-                        signalRClient.focusAiSession(selectedPid)
-                    }
-                }
-            )
-        }
-
-        // Row 3: UI Controls & Trigger
-        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-            ActionKeyButton(
-                text = if (isZoomed) "Unzoom" else "Zoom",
-                modifier = Modifier.weight(1f).height(33.dp),
-                onClick = { 
-                    if (selectedPid != -1) {
-                        val newLevel = if (!isZoomed) 1.5 else 1.0
-                        signalRClient.setAiZoom(selectedPid, newLevel)
-                        isZoomed = !isZoomed
-                    }
-                }
-            )
-
-            ActionKeyButton(
-                text = "Clear",
-                icon = Icons.Default.Delete,
-                modifier = Modifier.weight(1f).height(33.dp),
-                onClick = { if (selectedPid != -1) signalRClient.clearAiMessages(selectedPid) } 
-            )            
-            
-            ActionKeyButton(
-                text = "History",
-                icon = Icons.Default.Cached,
-                modifier = Modifier.weight(1f).height(33.dp),
-                onClick = { signalRClient.requestAiHistory() }
-            )
-
-            ActionKeyButton(
-                text = "Trigger",
-                icon = Icons.Default.Cached, // Use Cached as refresh icon
-                modifier = Modifier.weight(1f).height(33.dp),
-                onClick = { 
-                    onMessageSent()
-                    signalRClient.sendAiMessage("-", if (selectedPid != -1) selectedPid else null) 
-                }
-            )
-        }
-
-        // Row 4: Presets & Voice
-        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             Box(modifier = Modifier.weight(1f)) {
                 ActionKeyButton(
                     text = "Presets",
@@ -858,6 +754,115 @@ fun QuickActionPanel(
                     }
                 }
             }
+        }
+
+        // Row 2: Message navigation & Yolo
+        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            ActionKeyButton(
+                icon = Icons.Default.KeyboardDoubleArrowUp,
+                text = "Prev",
+                modifier = Modifier.weight(1f).height(33.dp),
+                onClick = { 
+                    coroutineScope.launch {
+                        if (userMessageItemIndices.isEmpty()) return@launch
+                        val currentFirstVisibleItem = listState.firstVisibleItemIndex
+                        val targetIndex = userMessageItemIndices.filter { it > currentFirstVisibleItem }.minOrNull()
+                        if (targetIndex != null) {
+                            listState.animateScrollToItem(targetIndex)
+                        } else {
+                            listState.animateScrollToItem(userMessageItemIndices.maxOrNull() ?: 0)
+                        }
+                    }
+                }
+            )
+
+            ActionKeyButton(
+                icon = Icons.Default.KeyboardDoubleArrowDown,
+                text = "Next",
+                modifier = Modifier.weight(1f).height(33.dp),
+                onClick = { 
+                    coroutineScope.launch {
+                        if (userMessageItemIndices.isEmpty()) return@launch
+                        val currentFirstVisibleItem = listState.firstVisibleItemIndex
+                        val targetIndex = userMessageItemIndices.filter { it < currentFirstVisibleItem }.maxOrNull()
+                        if (targetIndex != null) {
+                            listState.animateScrollToItem(targetIndex)
+                        } else {
+                            listState.animateScrollToItem(0)
+                        }
+                    }
+                }
+            )
+
+            ActionKeyButton(
+                text = "Yolo",
+                modifier = Modifier.weight(1f).height(33.dp),
+                onClick = { 
+                    coroutineScope.launch {
+                        signalRClient.sendAiYolo(selectedPid)
+                    }
+                }
+            )
+
+            ActionKeyButton(
+                text = "Enter",
+                icon = Icons.AutoMirrored.Filled.KeyboardReturn,
+                modifier = Modifier.weight(1f).height(33.dp),
+                onClick = { signalRClient.sendAiSpecialKey("enter", selectedPid) }
+            )
+        }
+
+        // Row 3: UI Controls & Trigger
+        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            ActionKeyButton(
+                text = if (isZoomed) "Unzoom" else "Zoom",
+                modifier = Modifier.weight(1f).height(33.dp),
+                onClick = { 
+                    if (selectedPid != -1) {
+                        val newLevel = if (!isZoomed) 1.5 else 1.0
+                        signalRClient.setAiZoom(selectedPid, newLevel)
+                        isZoomed = !isZoomed
+                    }
+                }
+            )
+
+            ActionKeyButton(
+                text = "Clear",
+                icon = Icons.Default.Delete,
+                modifier = Modifier.weight(1f).height(33.dp),
+                onClick = { if (selectedPid != -1) signalRClient.clearAiMessages(selectedPid) } 
+            )            
+            
+            ActionKeyButton(
+                text = "History",
+                icon = Icons.Default.Cached,
+                modifier = Modifier.weight(1f).height(33.dp),
+                onClick = { signalRClient.requestAiHistory() }
+            )
+
+            ActionKeyButton(
+                text = "Focus",
+                icon = Icons.Default.Adjust,
+                modifier = Modifier.weight(1f).height(33.dp),
+                onClick = { 
+                    if (selectedPid != -1) {
+                        signalRClient.focusAiSession(selectedPid)
+                    }
+                }
+            )
+        }
+
+        // Row 4: Presets & Voice
+        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            ActionKeyButton(
+                text = "Trigger",
+                icon = Icons.Default.Cached, // Use Cached as refresh icon
+                modifier = Modifier.weight(1f).height(33.dp),
+                onClick = { 
+                    onMessageSent()
+                    signalRClient.sendAiMessage("-", if (selectedPid != -1) selectedPid else null) 
+                }
+            )
 
             ActionKeyButton(
                 text = "Voice",

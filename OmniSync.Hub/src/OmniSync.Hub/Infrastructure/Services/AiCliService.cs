@@ -307,12 +307,13 @@ namespace OmniSync.Hub.Infrastructure.Services
                         // Deduplicate: If a process has a child that is ALSO a Gemini process, 
                         // then this process is likely a wrapper (e.g. cmd.exe or a node parent).
                         // We prefer the 'leaf' process which usually holds the pipe.
+                        var parentPids = new HashSet<int>();
                         foreach (var gp in rawGeminiProcesses)
                         {
                             // If this process is a PARENT of another gemini process in our list, skip it (prefer the leaf)
                             if (rawGeminiProcesses.Any(other => other.Parent == gp.Pid))
                             {
-                                _logger.LogDebug($"[AiCliService] Skipping parent Gemini process PID {gp.Pid} (Child PID {rawGeminiProcesses.First(o => o.Parent == gp.Pid).Pid} is leaf)");
+                                parentPids.Add(gp.Pid);
                                 continue;
                             }
 
@@ -339,6 +340,18 @@ namespace OmniSync.Hub.Infrastructure.Services
                             }
                         }
                         
+                        // Explicitly remove sessions that we now know are parents (wrappers)
+                        foreach (var parentPid in parentPids)
+                        {
+                            if (_sessions.TryRemove(parentPid, out var session))
+                            {
+                                _logger.LogInformation($"[AiCliService] Removing wrapper session PID {parentPid} (Leaf process discovered)");
+                                session.Dispose();
+                                _sessionNames.TryRemove(parentPid, out _);
+                                _workspaces.TryRemove(parentPid, out _);
+                            }
+                        }
+
                         _lastWmiDiscovery = now;
                         _cachedWmiPids = pids.ToList();
                     }
@@ -356,15 +369,15 @@ namespace OmniSync.Hub.Infrastructure.Services
             {
                 if (!pids.Contains(pid))
                 {
-                    bool isDead = true;
+                    bool shouldRemove = true;
                     try
                     {
                         var proc = Process.GetProcessById(pid);
-                        if (!proc.HasExited) isDead = false;
+                        if (!proc.HasExited) shouldRemove = false;
                     }
                     catch { }
 
-                    if (isDead)
+                    if (shouldRemove)
                     {
                         if (_sessions.TryRemove(pid, out var session))
                         {

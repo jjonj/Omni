@@ -1,9 +1,5 @@
-feat(tft): enhance evolution rules and sidebar integration
+Chrome Extension: Added 'Clean Tabs' context menu and fixed icon
 
-- Compact evolution tree UI with inlined level headers.
-- Wider evolution sidebar (40% increase).
-- Strict enforcement of level-based cost rules in evolution.
-- Persistent trait requirements (Void/SI) for lower-level tiers.
-- Exclusion override logic for Void, SI, Bilgewater, and Zaun.
-- Dynamic layout allocation for the evolution pane.
-- Add 'tft_evolution_test.js' for rule verification.
+- Added "Clean Tabs" option to extension right-click menu
+- Added icons and action sections to manifest.json to show Omni icon
+- Copied omni.png to extension icons folder

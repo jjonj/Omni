@@ -45,6 +45,8 @@ Only work on subtasks if told to do so or if told explicitly to do a Megasession
 
 ### AI screen
 
+unit test all of the above first 
+
 ### Embedded web screen
 
 ### Settings screen

@@ -119,6 +119,11 @@
 ✅ add a button to Focus, which will have windows focus the windows bringing it to front (Added Focus action to TopAppBar)
 ✅ when sending input keys like esc or enter or yolo make sure to focus the windowbfirst so the right chat receives it (Added FocusSessionAsync calls before sending keys in RpcApiHub)
 ✅ clicking file links in chat jumps to file screen as expected but it does not find and open the file, instead it seems to try to find a folder with that name and errors (Fixed with AI_FILE: prefix and search logic in FilesViewModel)
+✅ when sending a message, it doesn't scroll to bottom (Fixed in AiChatScreen.kt)
+✅ auto scroll to bottom can sometimes be hard to activate even though I'm already at bottom, sometimes i have scroll up and then back down to activate it which is annoying (Improved threshold in isAtBottom detection)
+✅ when a chat gets a dialog that needs users choice, play a subtle sound and highlight the session list button on android with a color (Implemented ToneGenerator alert and tertiaryContainer highlight)
+✅ On anddroid i cant see if a session has stopped or if it's waiting for server response, i can see if it's thinking but if it's not yet thinking on the cli window it will still show a spinner but nothing is shown on android. ideally we show the ai: ... animation we already have but which only shows when Ai is initially responding to a user msg (Implemented immediate thinking state in SignalRClient)
+✅ the focus button works if the window is behind other windows but not if the window is minimized. unminimize it first if it's minimized (Added SW_RESTORE logic to ProcessService.cs)
 
 ### Alarm screen
 

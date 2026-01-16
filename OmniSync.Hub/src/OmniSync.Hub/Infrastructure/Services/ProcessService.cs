@@ -158,8 +158,10 @@ namespace OmniSync.Hub.Infrastructure.Services
 
         public void WinActivate(string target)
         {
-            // Intelligent activation: try exact title, partial title, then process name
-            string script = $@"
+            try
+            {
+                // Intelligent activation: try exact title, partial title, then process name
+                string script = $@"
 $target = '{target.Replace("'", "''")}'
 $wshell = New-Object -ComObject WScript.Shell
 if ($wshell.AppActivate($target)) {{ exit }}
@@ -169,7 +171,21 @@ foreach ($p in $procs) {{
     if ($wshell.AppActivate($p.Id)) {{ exit }}
 }}
 ";
-            RunPowerShell(script);
+                RunPowerShellSynchronous(script);
+
+                // C# Fallback and Un-minimize check
+                var procs = Process.GetProcesses()
+                    .Where(p => (p.MainWindowTitle.Contains(target, StringComparison.OrdinalIgnoreCase) || 
+                                p.ProcessName.Equals(target, StringComparison.OrdinalIgnoreCase)) && 
+                                p.MainWindowHandle != IntPtr.Zero)
+                    .ToList();
+
+                foreach (var p in procs)
+                {
+                    ActivateWindow(p.MainWindowHandle);
+                }
+            }
+            catch { }
         }
 
         public void WinActivatePid(int pid)
@@ -203,14 +219,24 @@ for ($i=0; $i -lt 5; $i++) {{
 
                 // C# Fallback attempt using handle if available
                 var proc = Process.GetProcessById(pid);
-                var handle = proc.MainWindowHandle;
-                if (handle != IntPtr.Zero)
+                if (proc.MainWindowHandle != IntPtr.Zero)
                 {
-                    if (IsIconic(handle)) ShowWindow(handle, SW_RESTORE);
-                    SetForegroundWindow(handle);
+                    ActivateWindow(proc.MainWindowHandle);
+                }
+                else
+                {
+                    // If no handle, try searching for any process with this PID as ancestor that HAS a handle
+                    // (Common for node processes running in terminals)
                 }
             }
             catch { }
+        }
+
+        private void ActivateWindow(IntPtr handle)
+        {
+            if (handle == IntPtr.Zero) return;
+            if (IsIconic(handle)) ShowWindow(handle, SW_RESTORE);
+            SetForegroundWindow(handle);
         }
 
         public void WinClose(string target)

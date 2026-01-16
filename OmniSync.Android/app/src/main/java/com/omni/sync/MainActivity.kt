@@ -73,6 +73,8 @@ import android.speech.RecognizerIntent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import android.app.Activity
+import android.media.AudioManager
+import android.media.ToneGenerator
 
 class MainActivity : ComponentActivity() {
     private lateinit var mainViewModel: MainViewModel
@@ -195,6 +197,17 @@ class MainActivity : ComponentActivity() {
                     LaunchedEffect(Unit) {
                         signalRClient.isTriggeringTellPc.collect {
                             startGlobalVoiceRecognition(-1) // -1 signifies newest/TellPC session
+                        }
+                    }
+
+                    LaunchedEffect(Unit) {
+                        signalRClient.aiDialogAlertEvent.collect {
+                            try {
+                                val toneGen = ToneGenerator(AudioManager.STREAM_NOTIFICATION, 100)
+                                toneGen.startTone(ToneGenerator.TONE_PROP_BEEP, 150)
+                            } catch (e: Exception) {
+                                // Ignore sound errors
+                            }
                         }
                     }
 
