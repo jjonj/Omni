@@ -1,5 +1,4 @@
-feat(tft): show active/partial traits under Must Include zone
+fix(tft): resolve unit replacement feature failure in result cards
 
-- Extracted renderTraitsSummary into a reusable function.
-- Integrated renderTraitsSummary into renderSelectionZones to show real-time trait counts for the Must Include units.
-- This improves parity between selection zones and result cards.
+- Added container.innerHTML = '' to the top of renderResults to ensure UI refreshes correctly instead of appending.
+- Updated replacement onclick handler to re-calculate trait counts when a unit is swapped, ensuring accurate trait summary display.

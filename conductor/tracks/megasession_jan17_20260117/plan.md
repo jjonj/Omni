@@ -10,7 +10,7 @@
 - [x] Task: Add "Tibbers" to the TFT unit data/list
 - [x] Task: Add hotkey for toggling "Smart Sort" mode
 - [x] Task: Show active/partial traits under Must Include zone
-- [ ] Task: Fix unit replacement feature in result tiles
+- [x] Task: Fix unit replacement feature in result tiles
 - [ ] Task: Conductor - User Manual Verification 'Phase 1: Omni Web TFT Fixes' (Protocol in workflow.md)
 
 ## Phase 2: Android Dashboard & Sleep Tracker

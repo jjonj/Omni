@@ -58,4 +58,4 @@ unit test all of the above first
 
 ### Omni web tft
 
-	Repalce feature to hover and select another unit in results tiles is broken, i see the popup but nothing hgappens when i click other units
+## Chrome extension
