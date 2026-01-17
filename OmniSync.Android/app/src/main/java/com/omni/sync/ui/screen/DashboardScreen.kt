@@ -87,229 +87,230 @@ fun DashboardScreen(modifier: Modifier = Modifier, signalRClient: SignalRClient,
             }
         )
         
-        Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+        LazyColumn(
+            state = listState,
+            modifier = Modifier.fillMaxSize().padding(16.dp)
+        ) {
             // Connection Status Card
-            HubConnectionCard(
-                connectionStatus = connectionStatus,
-                connectionMessage = connectionStateString,
-                onReconnect = { signalRClient?.manualReconnect() },
-                onWake = { mainViewModel.sendWakeOnLan(appConfig.wakeOnLanMac) }
-            )
+            item {
+                HubConnectionCard(
+                    connectionStatus = connectionStatus,
+                    connectionMessage = connectionStateString,
+                    onReconnect = { signalRClient?.manualReconnect() },
+                    onWake = { mainViewModel.sendWakeOnLan(appConfig.wakeOnLanMac) }
+                )
+            }
 
-            SleepTrackingCard(
-                isSleeping = isSleeping,
-                duration = sleepDuration,
-                onStartSleep = { mainViewModel.startSleep() },
-                onWokeUp = { mainViewModel.resetSleep() }
-            )
+            item {
+                SleepTrackingCard(
+                    isSleeping = isSleeping,
+                    duration = sleepDuration,
+                    onStartSleep = { mainViewModel.startSleep() },
+                    onWokeUp = { mainViewModel.resetSleep() }
+                )
+            }
 
             if (!isConnected) {
-                Card(
-                    modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.5f))
-                ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Text("Remote Wake-on-LAN Help", fontWeight = FontWeight.Bold)
-                        Text(
-                            "To wake your PC from outside your home network, you must configure your router to forward UDP port 9 to your PC's IP address. Use MAC-IP binding (ARP reservation) for best results.",
-                            style = MaterialTheme.typography.bodySmall
-                        )
+                item {
+                    Card(
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.5f))
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Text("Remote Wake-on-LAN Help", fontWeight = FontWeight.Bold)
+                            Text(
+                                "To wake your PC from outside your home network, you must configure your router to forward UDP port 9 to your PC's IP address. Use MAC-IP binding (ARP reservation) for best results.",
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        }
                     }
                 }
             }
             
             // Test Buttons Section
-            Card(
-                modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp)
-            ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text(
-                        text = "Quick Actions",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(bottom = 8.dp)
-                    )
-                    
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                        Button(
-                            onClick = {
-                                mainViewModel.addLog("Triggering Shutdown...", LogType.WARNING)
-                                signalRClient.executeCommand("B:\\GDrive\\Tools\\05 Automation\\shutdown.bat")
-                            },
-                            modifier = Modifier.weight(1f).padding(end = 4.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
-                        ) {
-                            Text("Shutdown")
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp)
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text(
+                            text = "Quick Actions",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(bottom = 8.dp)
+                        )
+                        
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                            Button(
+                                onClick = {
+                                    mainViewModel.addLog("Triggering Shutdown...", LogType.WARNING)
+                                    signalRClient.executeCommand("B:\\GDrive\\Tools\\05 Automation\\shutdown.bat")
+                                },
+                                modifier = Modifier.weight(1f).padding(end = 4.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                            ) {
+                                Text("Shutdown")
+                            }
+                            
+                            Button(
+                                onClick = {
+                                    mainViewModel.addLog("Triggering Sleep...", LogType.INFO)
+                                    signalRClient.executeCommand("B:\\GDrive\\Tools\\05 Automation\\sleep.bat")
+                                },
+                                modifier = Modifier.weight(1f).padding(start = 4.dp)
+                            ) {
+                                Text("Sleep")
+                            }
                         }
-                        
-                                                Button(
-                                                    onClick = {
-                                                        mainViewModel.addLog("Triggering Sleep...", LogType.INFO)
-                                                        signalRClient.executeCommand("B:\\GDrive\\Tools\\05 Automation\\sleep.bat")
-                                                    },
-                                                    modifier = Modifier.weight(1f).padding(start = 4.dp)
-                                                ) {
-                                                    Text("Sleep")
-                                                }
-                                            }
-                        
-                                            Spacer(modifier = Modifier.height(8.dp))
-                        
-                                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                                Button(
-                                                    onClick = {
-                                                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-                                                        val clipData = clipboard.primaryClip
-                                                        if (clipData != null && clipData.itemCount > 0) {
-                                                            val text = clipData.getItemAt(0).text?.toString()
-                                                            if (!text.isNullOrBlank()) {
-                                                                val prompt = "Summarize and analyze the following content from my clipboard:\n\n$text"
-                                                                signalRClient.sendAiMessage(prompt)
-                                                                mainViewModel.navigateTo(com.omni.sync.viewmodel.AppScreen.AI_CHAT)
-                                                            } else {
-                                                                android.widget.Toast.makeText(context, "Clipboard is empty", android.widget.Toast.LENGTH_SHORT).show()
-                                                            }
-                                                        } else {
-                                                            android.widget.Toast.makeText(context, "Clipboard is empty", android.widget.Toast.LENGTH_SHORT).show()
-                                                        }
-                                                    },
-                                                    modifier = Modifier.weight(1f),
-                                                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
-                                                ) {
-                                                    Icon(Icons.Default.SmartToy, null, modifier = Modifier.size(18.dp))
-                                                    Spacer(Modifier.width(8.dp))
-                                                    Text("AI Clip", fontSize = 12.sp)
-                                                }
+    
+                        Spacer(modifier = Modifier.height(8.dp))
+    
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Button(
+                                onClick = {
+                                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                                    val clipData = clipboard.primaryClip
+                                    if (clipData != null && clipData.itemCount > 0) {
+                                        val text = clipData.getItemAt(0).text?.toString()
+                                        if (!text.isNullOrBlank()) {
+                                            val prompt = "Summarize and analyze the following content from my clipboard:\n\n$text"
+                                            signalRClient.sendAiMessage(prompt)
+                                            mainViewModel.navigateTo(com.omni.sync.viewmodel.AppScreen.AI_CHAT)
+                                        } else {
+                                            android.widget.Toast.makeText(context, "Clipboard is empty", android.widget.Toast.LENGTH_SHORT).show()
+                                        }
+                                    } else {
+                                        android.widget.Toast.makeText(context, "Clipboard is empty", android.widget.Toast.LENGTH_SHORT).show()
+                                    }
+                                },
+                                modifier = Modifier.weight(1f),
+                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
+                            ) {
+                                Icon(Icons.Default.SmartToy, null, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(8.dp))
+                                Text("AI Clip", fontSize = 12.sp)
+                            }
 
-                                                Button(
-                                                    onClick = {
-                                                        signalRClient.triggerTellPc()
-                                                        mainViewModel.addLog("Tell PC Triggered...", LogType.INFO)
-                                                    },
-                                                    modifier = Modifier.weight(1f),
-                                                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
-                                                ) {
-                                                    Icon(Icons.Default.Mic, null, modifier = Modifier.size(18.dp))
-                                                    Spacer(Modifier.width(8.dp))
-                                                    Text("Tell PC", fontSize = 12.sp)
-                                                }
-                                            }
-                        
-                                            Spacer(modifier = Modifier.height(8.dp))                    
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                        Button(
-                            onClick = {
-                                mainViewModel.addLog("Toggling TV...", LogType.INFO)
-                                signalRClient.executeCommand("B:\\GDrive\\Tools\\05 Automation\\TVActive3\\tv_toggle.bat")
-                            },
-                            modifier = Modifier.weight(1f).padding(end = 4.dp)
-                        ) {
-                            Text("TV")
+                            Button(
+                                onClick = {
+                                    signalRClient.triggerTellPc()
+                                    mainViewModel.addLog("Tell PC Triggered...", LogType.INFO)
+                                },
+                                modifier = Modifier.weight(1f),
+                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                            ) {
+                                Icon(Icons.Default.Mic, null, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(8.dp))
+                                Text("Tell PC", fontSize = 12.sp)
+                            }
                         }
-                        
-                        Button(
-                            onClick = {
-                                mainViewModel.sendWakeOnLan(appConfig.wakeOnLanMac)
-                            },
-                            modifier = Modifier.weight(1f).padding(start = 4.dp, end = 4.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.tertiary)
-                        ) {
-                            Text("WOL")
-                        }
+    
+                        Spacer(modifier = Modifier.height(8.dp))                    
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                            Button(
+                                onClick = {
+                                    mainViewModel.addLog("Toggling TV...", LogType.INFO)
+                                    signalRClient.executeCommand("B:\\GDrive\\Tools\\05 Automation\\TVActive3\\tv_toggle.bat")
+                                },
+                                modifier = Modifier.weight(1f).padding(end = 4.dp)
+                            ) {
+                                Text("TV")
+                            }
+                            
+                            Button(
+                                onClick = {
+                                    mainViewModel.sendWakeOnLan(appConfig.wakeOnLanMac)
+                                },
+                                modifier = Modifier.weight(1f).padding(start = 4.dp, end = 4.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.tertiary)
+                            ) {
+                                Text("WOL")
+                            }
 
-                        Button(
-                            onClick = {
-                                mainViewModel.addLog("Capturing ADB logs...", LogType.INFO)
-                                // We use the full path to extractcrash.py which is in the project root/OmniSync.Android
-                                val scriptPath = "D:\\SSDProjects\\Omni\\OmniSync.Android\\extractcrash.py"
-                                signalRClient.executeCommand("python \"$scriptPath\"")
-                            },
-                            modifier = Modifier.weight(1f).padding(start = 4.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
-                        ) {
-                            Text("ADB Log")
+                            Button(
+                                onClick = {
+                                    mainViewModel.addLog("Capturing ADB logs...", LogType.INFO)
+                                    val scriptPath = "D:\\SSDProjects\\Omni\\OmniSync.Android\\extractcrash.py"
+                                    signalRClient.executeCommand("python \"$scriptPath\"")
+                                },
+                                modifier = Modifier.weight(1f).padding(start = 4.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
+                            ) {
+                                Text("ADB Log")
+                            }
                         }
-                    }
-                    
-                    Spacer(modifier = Modifier.height(8.dp))
-                    
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                        Button(
-                            onClick = {
-                                mainViewModel.clearLogs() 
-                                mainViewModel.addLog("Logs cleared", LogType.INFO)
-                            },
-                            modifier = Modifier.weight(1f).padding(end = 4.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
-                        ) {
-                            Text("Clear Logs")
-                        }
+                        
+                        Spacer(modifier = Modifier.height(8.dp))
+                        
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                            Button(
+                                onClick = {
+                                    mainViewModel.clearLogs() 
+                                    mainViewModel.addLog("Logs cleared", LogType.INFO)
+                                },
+                                modifier = Modifier.weight(1f).padding(end = 4.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
+                            ) {
+                                Text("Clear Logs")
+                            }
 
-                        Button(
-                            onClick = { mainViewModel.navigateTo(AppScreen.SETTINGS) },
-                            modifier = Modifier.weight(1f).padding(start = 4.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primaryContainer, contentColor = MaterialTheme.colorScheme.onPrimaryContainer)
-                        ) {
-                            Icon(Icons.Default.Settings, null, modifier = Modifier.size(18.dp))
-                            Spacer(Modifier.width(8.dp))
-                            Text("Settings")
+                            Button(
+                                onClick = { mainViewModel.navigateTo(AppScreen.SETTINGS) },
+                                modifier = Modifier.weight(1f).padding(start = 4.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primaryContainer, contentColor = MaterialTheme.colorScheme.onPrimaryContainer)
+                            ) {
+                                Icon(Icons.Default.Settings, null, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(8.dp))
+                                Text("Settings")
+                            }
                         }
                     }
                 }
             }
             
-            // Logs Section
-            Card(
-                modifier = Modifier.fillMaxWidth().weight(1f)
-            ) {
-                Column(modifier = Modifier.padding(16.dp).fillMaxSize()) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = if (isShowingHubLogs) "Hub Log" else "Activity Log",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold
-                        )
-                        
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            IconButton(onClick = {
-                                val allLogs = displayLogs.joinToString("\n") { 
-                                    "[${java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date(it.timestamp))}] ${it.message}" 
-                                }
-                                clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(allLogs))
-                                mainViewModel.addLog("Logs copied to clipboard", LogType.SUCCESS)
-                            }) {
-                                Icon(Icons.Default.ContentCopy, contentDescription = "Copy All Logs")
-                            }
-
-                            Spacer(modifier = Modifier.width(8.dp))
-
-                            TextButton(onClick = { 
-                                if (!isShowingHubLogs) {
-                                    mainViewModel.fetchHubLogs(signalRClient)
-                                    mainViewModel.toggleLogSource()
-                                } else {
-                                    // Switch back to App logs
-                                    mainViewModel.toggleLogSource()
-                                }
-                            }) {
-                                Text(if (isShowingHubLogs) "Show App Log" else "Fetch Hub Log")
-                            }
-                        }
-                    }
+            // Logs Header
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = if (isShowingHubLogs) "Hub Log" else "Activity Log",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
                     
-                    LazyColumn(
-                        state = listState,
-                        modifier = Modifier.fillMaxSize()
-                    ) {
-                        items(displayLogs) { log ->
-                            LogItem(log)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(onClick = {
+                            val allLogs = displayLogs.joinToString("\n") { 
+                                "[${java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date(it.timestamp))}] ${it.message}" 
+                            }
+                            clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(allLogs))
+                            mainViewModel.addLog("Logs copied to clipboard", LogType.SUCCESS)
+                        }) {
+                            Icon(Icons.Default.ContentCopy, contentDescription = "Copy All Logs")
+                        }
+
+                        Spacer(modifier = Modifier.width(8.dp))
+
+                        TextButton(onClick = { 
+                            if (!isShowingHubLogs) {
+                                mainViewModel.fetchHubLogs(signalRClient)
+                                mainViewModel.toggleLogSource()
+                            } else {
+                                mainViewModel.toggleLogSource()
+                            }
+                        }) {
+                            Text(if (isShowingHubLogs) "Show App Log" else "Fetch Hub Log")
                         }
                     }
                 }
+            }
+
+            // Logs Section
+            items(displayLogs) { log ->
+                LogItem(log)
             }
         }
     }

@@ -1,8 +1,4 @@
-feat(tft): implement Smart Sort visibility and UI refinements
+fix(android): make Dashboard screen scrollable
 
-- Units already in selection zones are now hidden when Smart Sort is active.
-- Changed default active levels from [6, 8] to [7].
-- Added Tibbers to the unit pool.
-- Added Ctrl+M hotkey to toggle Smart Sort mode.
-- Handled TFT_TOGGLE_SMART_SORT hotkey from Hub.
-- Added browser-side test for Smart Sort visibility.
+- Refactored DashboardScreen to use a single LazyColumn for all sections (Connection, Sleep, Quick Actions, Logs).
+- This ensures the log area is accessible even when cards above it take up significant screen space.

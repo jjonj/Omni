@@ -12,7 +12,7 @@
 - [ ] Task: Conductor - User Manual Verification 'Phase 1: Omni Web TFT Fixes' (Protocol in workflow.md)
 
 ## Phase 2: Android Dashboard & Sleep Tracker
-- [ ] Task: Fix Android Dashboard scrolling/layout (ensure log area is accessible)
+- [x] Task: Fix Android Dashboard scrolling/layout (ensure log area is accessible)
 - [ ] Task: Fix Sleep Tracker persistence (handle app force-closes/restarts)
 - [ ] Task: TDD - Verify Sleep Tracker state restoration
 - [ ] Task: Conductor - User Manual Verification 'Phase 2: Android Dashboard & Sleep Tracker' (Protocol in workflow.md)
