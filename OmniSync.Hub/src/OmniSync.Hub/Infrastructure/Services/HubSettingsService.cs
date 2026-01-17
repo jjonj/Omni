@@ -174,6 +174,7 @@ namespace OmniSync.Hub.Infrastructure.Services
                                 new HotkeyConfig { Name = "TFT: Toggle Level 9", Key = "Shift+9", Action = "TFT_TOGGLE_LEVEL_9" },
                                 new HotkeyConfig { Name = "TFT: Toggle Level 10", Key = "Shift+0", Action = "TFT_TOGGLE_LEVEL_10" },
                                 new HotkeyConfig { Name = "TFT: POC", Key = "Ctrl+Alt+P", Action = "TFT_POC" },
+                                new HotkeyConfig { Name = "Chrome: Reload Extension", Key = "Ctrl+Shift+R", Action = "RELOAD_CHROME_EXTENSION" },
                                 new HotkeyConfig { Name = "Open Hub Window", Key = "Ctrl+Alt+H", Action = "OPEN_HUB_WINDOW" }            };
 
             bool changed = false;

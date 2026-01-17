@@ -20,5 +20,5 @@
 ## Phase 3: Chrome Extension & Hub Integration
 - [x] Task: Implement Extension-to-Hub error reporting mechanism
 - [x] Task: Update Hub to log Chrome errors to `CHROME_EXTENSION_ERROR.log`
-- [ ] Task: Research and implement Vivaldi extension reload command
+- [x] Task: Research and implement Vivaldi extension reload command
 - [ ] Task: Conductor - User Manual Verification 'Phase 3: Chrome Extension & Hub Integration' (Protocol in workflow.md)

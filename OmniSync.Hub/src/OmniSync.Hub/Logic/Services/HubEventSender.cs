@@ -55,6 +55,10 @@ namespace OmniSync.Hub.Logic.Services
                 {
                     _ = _hubContext.Clients.All.SendAsync("ReceiveTftCommand", e.Command, e.Payload);
                 }
+                else if (e.Command == "RELOAD_CHROME_EXTENSION")
+                {
+                    _ = _hubContext.Clients.All.SendAsync("ReceiveBrowserCommand", "ReloadExtension", "", false);
+                }
             };
             // Subscribe to FileService events
             _fileService.FileWritten += OnFileWritten;

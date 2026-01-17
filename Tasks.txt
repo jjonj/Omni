@@ -54,8 +54,6 @@ unit test all of the above first
 
 ## Chrome extension
 
-See if we can find a way to programatically reload the extension in vivaldi. (C:\Users\crovea\AppData\Local\Vivaldi\Application\vivaldi.exe)
-
 ## Omni Web
 
 ### Omni web tft

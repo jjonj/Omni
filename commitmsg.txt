@@ -1,5 +1,6 @@
-feat(chrome): implement extension error reporting to Hub
+feat(chrome): implement programmatic extension reload
 
-- Added global error and unhandled rejection listeners to Chrome extension background.js.
-- Added ReportChromeError method to SignalR Hub to log extension errors to CHROME_EXTENSION_ERROR.log in the project root.
-- This allows better visibility into extension failures from the Hub.
+- Added ReloadExtension command to background.js utilizing chrome.runtime.reload().
+- Exposed reload_chrome_extension command in RpcApiHub via ExecuteCommand.
+- Added Ctrl+Shift+R default hotkey in the Hub to trigger extension reload.
+- Updated HubEventSender to broadcast the reload command when received via hotkey/dispatcher.
