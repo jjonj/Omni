@@ -1,6 +1,3 @@
-feat(tft): fix Annie must-include bug and implement unit dependencies
+fix(tft): remove Node.js require calls from browser-side test script
 
-- Modified TFTOptimizer to automatically expand must-include list with dependencies (e.g., Annie requires Tibbers).
-- Added expandMustInclude helper method to handle hardcoded and data-driven (requires) dependencies.
-- Fixed unit test traits key from 'traits' to 'trait_metadata'.
-- Added reproduction test test_annie_bug.js.
+- Removed require('os') and require('path') from tft_evolution_test.js to fix "require is not defined" error in browser.

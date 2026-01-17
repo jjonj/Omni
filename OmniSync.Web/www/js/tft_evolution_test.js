@@ -9,9 +9,6 @@
  * 4. General cost rules (no 4-costs below L7).
  */
 
-const fs = require('os');
-const path = require('path');
-
 // Mocking some globals if needed for a headless node run, 
 // but since the logic is heavily tied to tft.js and tft_optimizer.js,
 // we will structure this to be runnable via the browser's Test.html or a dedicated runner.

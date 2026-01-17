@@ -6,7 +6,7 @@
 - [ ] Task: TDD - Write tests for "Smart Sort" unit visibility logic
 - [ ] Task: Implement "Smart Sort" visibility (hide already-added units)
 - [ ] Task: Update default active levels to [7] in TFT UI/Optimizer
-- [ ] Task: Fix `require is not defined` error in `tft_evolution_test.js`
+- [x] Task: Fix `require is not defined` error in `tft_evolution_test.js`
 - [ ] Task: Add "Tibbers" to the TFT unit data/list
 - [ ] Task: Add hotkey for toggling "Smart Sort" mode
 - [ ] Task: Conductor - User Manual Verification 'Phase 1: Omni Web TFT Fixes' (Protocol in workflow.md)
