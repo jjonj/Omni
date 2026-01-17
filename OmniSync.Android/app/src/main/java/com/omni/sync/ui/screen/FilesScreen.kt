@@ -74,6 +74,14 @@ fun FilesScreen(
     val recentlyChangedPaths by filesViewModel.recentlyChangedPaths.collectAsState()
     val cachedPaths by filesViewModel.cachedPaths.collectAsState()
 
+    val isGitRepo by filesViewModel.isGitRepo.collectAsState()
+    val gitLog by filesViewModel.gitLog.collectAsState()
+    val commitDiff by filesViewModel.commitDiff.collectAsState()
+    val isGitLoading by filesViewModel.isGitLoading.collectAsState()
+
+    var showGitDialog by remember { mutableStateOf(false) }
+    var showDiffDialog by remember { mutableStateOf(false) }
+
     val sessions by filesViewModel.signalRClient.aiSessions.collectAsState()
     val selectedPid by filesViewModel.signalRClient.selectedPid.collectAsState()
     val activeSessionName = sessions[selectedPid]
@@ -165,18 +173,39 @@ fun FilesScreen(
             TopAppBar(
                 title = { 
                     Box {
-                        Text(
-                            text = "Files: ${currentPath.ifEmpty { "/" }}",
-                            modifier = Modifier.combinedClickable(
-                                onClick = { },
-                                onLongClick = { showHeaderMenu = true }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = "Files: ${currentPath.ifEmpty { "/" }}",
+                                modifier = Modifier.combinedClickable(
+                                    onClick = { },
+                                    onLongClick = { showHeaderMenu = true }
+                                )
                             )
-                        )
+                            if (isGitRepo) {
+                                Spacer(Modifier.width(8.dp))
+                                IconButton(onClick = { showGitDialog = true }) {
+                                    Icon(
+                                        imageVector = Icons.Default.Menu, // Using Menu as placeholder for branch/git icon
+                                        contentDescription = "Git Log",
+                                        tint = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                            }
+                        }
                         DropdownMenu(
                             expanded = showHeaderMenu,
                             onDismissRequest = { showHeaderMenu = false }
                         ) {
                             if (currentPath.isNotEmpty() && currentPath != "/") {
+                                if (isGitRepo) {
+                                    DropdownMenuItem(
+                                        text = { Text("View Git Log") },
+                                        onClick = {
+                                            showHeaderMenu = false
+                                            showGitDialog = true
+                                        }
+                                    )
+                                }
                                 if (selectedPid != -1 && activeSessionName != null) {
                                      DropdownMenuItem(
                                         text = { Text("AI: Add dir to $activeSessionName") },
@@ -488,6 +517,24 @@ fun FilesScreen(
                                     } else {
                                         filesViewModel.downloadVideoWithGlobalPassword(entry, null, false)
                                     }
+                                },
+                                onDeleteByPath = { path ->
+                                    filesViewModel.deleteByPath(path)
+                                },
+                                onDeleteAllEncrypted = {
+                                    filesViewModel.deleteAllEncrypted()
+                                },
+                                onCopyTo = { entry ->
+                                    sourceEntry = entry
+                                    showCopyDialog = true
+                                },
+                                onMoveTo = { entry ->
+                                    sourceEntry = entry
+                                    showMoveDialog = true
+                                },
+                                onViewGitLog = { entry ->
+                                    filesViewModel.loadGitLog(entry.path)
+                                    showGitDialog = true
                                 }
                             )
                         }
@@ -717,6 +764,111 @@ fun FilesScreen(
             }
         )
     }
+
+    if (showGitDialog) {
+        AlertDialog(
+            onDismissRequest = { showGitDialog = false },
+            title = { Text("Git Log: ${currentPath.substringAfterLast("\\").substringAfterLast("/")}") },
+            text = {
+                Box(modifier = Modifier.fillMaxWidth().heightIn(max = 400.dp)) {
+                    if (isGitLoading) {
+                        CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+                    } else if (gitLog.isNullOrBlank()) {
+                        Text("No log available or error loading.")
+                    } else {
+                        val commits = gitLog!!.split("\n").filter { it.isNotBlank() }
+                        LazyColumn {
+                            items(commits) { commitLine ->
+                                // Format: "hash|author|relative_date|subject"
+                                val parts = commitLine.removeSurrounding("\"").split("|")
+                                if (parts.size >= 4) {
+                                    val hash = parts[0]
+                                    val author = parts[1]
+                                    val date = parts[2]
+                                    val subject = parts[3]
+                                    
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clickable { 
+                                                filesViewModel.loadCommitDiff(currentPath, hash)
+                                                showDiffDialog = true
+                                            }
+                                            .padding(vertical = 8.dp)
+                                    ) {
+                                        Text(subject, style = MaterialTheme.typography.bodyLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                        Row {
+                                            Text(author, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                                            Spacer(Modifier.width(8.dp))
+                                            Text(date, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
+                                        }
+                                        Text(hash.take(8), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+                                        HorizontalDivider(modifier = Modifier.padding(top = 8.dp))
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showGitDialog = false }) {
+                    Text("Close")
+                }
+            }
+        )
+    }
+
+    if (showDiffDialog) {
+        AlertDialog(
+            onDismissRequest = { showDiffDialog = false },
+            title = { Text("Commit Diff") },
+            text = {
+                Box(modifier = Modifier.fillMaxWidth().heightIn(max = 500.dp)) {
+                    if (isGitLoading) {
+                        CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+                    } else if (commitDiff.isNullOrBlank()) {
+                        Text("No diff available.")
+                    } else {
+                        LazyColumn {
+                            val lines = commitDiff!!.split("\n")
+                            items(lines) { line ->
+                                val color = when {
+                                    line.startsWith("+") && !line.startsWith("+++") -> Color(0xFFE6FFEC) // Light green
+                                    line.startsWith("-") && !line.startsWith("---") -> Color(0xFFFFEBEE) // Light red
+                                    line.startsWith("@@") -> Color(0xFFF1F8FF) // Light blue
+                                    else -> Color.Transparent
+                                }
+                                val textColor = when {
+                                    line.startsWith("+") && !line.startsWith("+++") -> Color(0xFF22863A)
+                                    line.startsWith("-") && !line.startsWith("---") -> Color(0xFFCB2431)
+                                    line.startsWith("@@") -> Color(0xFF0366D6)
+                                    else -> MaterialTheme.colorScheme.onSurface
+                                }
+                                
+                                Text(
+                                    text = line,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .background(color)
+                                        .padding(horizontal = 4.dp),
+                                    style = MaterialTheme.typography.bodySmall.copy(
+                                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+                                    ),
+                                    color = textColor
+                                )
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showDiffDialog = false }) {
+                    Text("Back")
+                }
+            }
+        )
+    }
 }
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -743,7 +895,8 @@ fun FileSystemEntryItem(
     onDeleteByPath: (String) -> Unit = {},
     onDeleteAllEncrypted: () -> Unit = {},
     onCopyTo: (FileSystemEntry) -> Unit = {},
-    onMoveTo: (FileSystemEntry) -> Unit = {}
+    onMoveTo: (FileSystemEntry) -> Unit = {},
+    onViewGitLog: (FileSystemEntry) -> Unit = {}
 ) {
     var showMenu by remember { mutableStateOf(false) }
     var showDownloadDialog by remember { mutableStateOf(false) }
@@ -935,6 +1088,13 @@ fun FileSystemEntryItem(
                     onClick = {
                         showMenu = false
                         onCacheFolderRecursive(entry)
+                    }
+                )
+                DropdownMenuItem(
+                    text = { Text("View Git Log") },
+                    onClick = {
+                        showMenu = false
+                        onViewGitLog(entry)
                     }
                 )
             }

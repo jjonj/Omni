@@ -110,6 +110,20 @@ string logFilePath = Path.Combine(AppContext.BaseDirectory, "hub_log.txt");
 // Try to log to solution root if running from bin
 string rootLogPath = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "..", "hub_log.txt");
 if (Directory.Exists(Path.GetDirectoryName(rootLogPath))) logFilePath = rootLogPath;
+
+// Clear the log file on startup if it exists
+try
+{
+    if (File.Exists(logFilePath))
+    {
+        File.WriteAllText(logFilePath, string.Empty);
+    }
+}
+catch (Exception ex)
+{
+    Console.WriteLine($"Warning: Could not clear log file at startup: {ex.Message}");
+}
+
 builder.Logging.AddProvider(new FileLoggerProvider(logFilePath));
 
 
@@ -143,6 +157,7 @@ builder.Services.AddSingleton<FileService>(provider =>
     
     return new FileService(noteRootPath, browseRootPath);
 });
+builder.Services.AddSingleton<GitService>();
 builder.Services.AddSingleton<ClipboardService>();
 builder.Services.AddSingleton<ProcessService>(provider =>
 {

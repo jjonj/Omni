@@ -8,7 +8,8 @@
     "storage",
     "history",
     "contextMenus",
-    "alarms"
+    "alarms",
+    "management"
   ],
   "action": {
     "default_icon": {

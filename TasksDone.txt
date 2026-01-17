@@ -26,6 +26,8 @@
 ✅ Add option to fetch hub log and display that instead of activity hub, and option to go back to activity log
 ✅ i can select one message in the activity log but i can't select multiple, they are like separate elements. i want to be able to select all log, and copy all to clipboard button (simple icon button)
 ✅ Settings screen (accessed by button on dashboard, not bottom panel) - Added prominent Settings button to Quick Actions card.
+✅ I cant scroll down anymore so the log area is below the screen (Refactored to LazyColumn)
+✅ The sleep tracker starts counting when i turn off my pc and go to bed but in the morning it says 'User active' and has stopped tracking... (Fixed persistence and accidental resets)
 
 ### Remote Control Screen
 
@@ -35,95 +37,92 @@
 ✅ Add 5 more icon options
 ✅ Add button on creation screen to test macro as is.
 ✅ Syntax error highlighting on all lines that doesnt have the cursor
-✅ Process macro on hub after saving, first processing step will be to look for pathless run commands, e.g. "run truecrypt.exe", first check if truecrypt.exe exists as a mapping in hub settings. If not, search the whole system for it, find it at "E:\Program Files\TrueCrypt\TrueCrypt.exe" and send a message back to app and app will update the macro automatically to replace truecrypt.exe with E:\Program Files\TrueCrypt\TrueCrypt.exe
+✅ Process macro on hub after saving, first processing step will be to look for pathless run commands...
 ✅ Ensure run commands support having spaces in the path of the program
-✅ Winactivate command should be intelligent about finding the process to activate, either by executable name or partial string of window should work.
-✅ 
+✅ Winactivate command should be intelligent about finding the process to activate...
 ✅ Use normal brackets () instead of {} for special keys
-✅ Add more easy insert buttons (e.g. the sleep run exe etc), including a dropdown for special keys
-✅ At the bottom of the help screen add 10 different examples of correct scripts, and also use them as templates that can be inserted in the current edit window.
-✅ some macros are sent to hub entirely and some are managed by android and sends commands one by one, display which side manages the macro on edit screen
-✅ analyze android back button behavior, does it return as user would expect? (Improved back button handling in FilesScreen and MacroManagerScreen)
-
-✅ Stream PC monitor, replacing background of the trackpad leaving the trackpad functioning still, options to toggle monitor, pinch to zoom, (advanced feature, do last)
-✅ Streaming pc monitor should have a on/off toggle button (default off) on page2 of button panel, and to settings for resolutioni and framerate. Default to full resolution 10fps
-✅ streaming desktop not working at all, the initial implementation of it worked but was flickering (Fixed flickering and added logging to diagnose 'not working')
+✅ Add more easy insert buttons, including a dropdown for special keys
+✅ At the bottom of the help screen add 10 different examples of correct scripts...
+✅ some macros are sent to hub entirely and some are managed by android...
+✅ analyze android back button behavior...
+✅ Stream PC monitor, replacing background of the trackpad...
+✅ Streaming pc monitor should have a on/off toggle button (default off)...
+✅ streaming desktop not working at all...
 
 ### Files & Video Screen
 
 ✅ when a file is open the navigation bar gets hidden, change that 
 ✅ the automatic merge feature does not work well, seems everything is marked as conflict, run some unit tests
-✅ When any ai session is active, add "AI: Add dir to [SessionName]"  option to long press folder which will send "/dir add X" to the active session
-✅ The header at the top showing current path should allow long pressing it (to give folder context actions)
-✅ + button to add files does not work in offline mode, it should be able to create a file that's cached from birth and will sync when connected
+✅ When any ai session is active, add "AI: Add dir to [SessionName]"...
+✅ The header at the top showing current path should allow long pressing it...
+✅ + button to add files does not work in offline mode...
 ✅ add logging in activity log for all cache related operations
-✅ allow caching a whole folder recursively but with a max size per file, files above that size are replaced by empty myfile.mp4.fake files. when a folder is cached this way do not list every single subitem in the cached list that already exists, just the selected folder with bold foldername. ask user for clarification. add max file size to settings
-✅ to settings screen add a way to exclude files and folders from automatic caching recursively, allowing patterns. e.g. "G:/*", "*porn*". This prevents automatic caching when visiting a folder and when using the above cache whole folder feature but does not prevent visiting those places manually when connected
-✅ When we have files edited offline and we connect and see that last saved time don't match cached save time on windows and we save as conflicted.txt then first try to resolve with a simple merge strategy going line by line and comparing. leave some tags like [MERGED] when doing this and be careful not to delete anything, better keep both versions of lines
+✅ allow caching a whole folder recursively but with a max size per file...
+✅ to settings screen add a way to exclude files and folders from automatic caching recursively...
+✅ When we have files edited offline and we connect and see that last saved time don't match cached save time on windows...
 ✅ if a certain ratio of lines mismatch then fall back to conflicted suffix
-✅ on image viewer screen the android back button seems to close app instead of going back to the containing folder
-✅ The jump/scroll to cursor when typng out of view is not working right, on the text editor screen, add a temporary panel that twice displays the currently visible line numbers, once accounting for keyboard and once not accounting for android keyboard as well as the current cursor line number, for debugging purposes and then only scroll/jump when typing and the cursor is outside the visible line numbers
-✅ On folder view, Recent changes made the bottom bar with bookmarks hover too far above the navigation bar. fix that
-✅ it also auto sceolls when placing the cursor but it should not as by definition the cursor place location is in view
-✅ On the small menu when long pressing without selecting that has paste, select all bold and itallic, add a button for adding common emoji like ✅ etc, make it a looong dropdown
-✅ Improve markdown rendering by hiding formatting, e.g. "###" and the * symbols in **bold text** similar to how the obsidian app does it. Those symbols are only visible when the cursor is on the line that contain them.
-✅ plus button to create text file does not work (Fixed by correctly adding new file to open files list in ViewModel)
-✅ long press for files and folders should have copy to and move to options, reuse browse popup from Ai screen
-✅ when a text file is open and i switch screen and then switch back to file screen then the file is now closed and i see folders. don't auto close file like that. (Fixed by removing auto-loadDirectory on FilesScreen init and preserving ViewModel state)
-✅ when i first open a text file and tap to place cursor, it auto scrolls, but it should not do this because the place i tappped is by definition in view. auto scrolling is for when typing while out of view of cursor.
-✅ When keyboard is up there is a black blank box above the keyboard with the height of the navigation bar. this started after i requested that the navigation bar not be hidden in text editor.
-✅ When i have a text for open and then switch to another screen and then back to file screen then file is still open which is good but it has reset the scroll distance and cursor position (Fixed by ensuring scrollRestored flag and proper restoration in TextEditorScreen)
-✅ the right side scroll bar is not grabbable not does it accurately display current scroll level, same on file screen (Implemented custom VerticalScrollbar in SharedComponents and applied to both screens)
-✅ Add a cool CLI hookin feature, where i can be editing a text file and then have an AI asssistant help me (it works by opening a new CLI session like the AI screen does and will in a smart way send the text of the file to the AI and let the AI edit/insert into the file). Make it really cool and helpful.
-✅ The back button when a file is open is buggy, it makes likst a swipe animation to go back to folder view but only makes it half way before stopping. Removed jumpy animations by using Overlay strategy in MainActivity.
-✅ The file screen used to have a + button in folder view to create text file, that was apparently removed for no reason. Added FAB for file creation.
+✅ on image viewer screen the android back button seems to close app instead of going back...
+✅ The jump/scroll to cursor when typng out of view is not working right...
+✅ On folder view, Recent changes made the bottom bar with bookmarks hover too far above...
+✅ it also auto sceolls when placing the cursor...
+✅ On the small menu when long pressing without selecting... add emoji button
+✅ Improve markdown rendering by hiding formatting...
+✅ plus button to create text file does not work
+✅ long press for files and folders should have copy to and move to options...
+✅ when a text file is open and i switch screen and then switch back to file screen then the file is now closed...
+✅ when i first open a text file and tap to place cursor, it auto scrolls...
+✅ When keyboard is up there is a black blank box above the keyboard...
+✅ When i have a text for open and then switch to another screen and then back to file screen then file is still open...
+✅ the right side scroll bar is not grabbable...
+✅ Add a cool CLI hookin feature...
+✅ The back button when a file is open is buggy...
+✅ The file screen used to have a + button in folder view to create text file...
 
 ### Browser control screen
 
-✅ Remove the "Advanced actions" and "Bookmarks" subheaders, its obvious.
-✅ Custom patterns added to the browser cleaning do not persist across reinstalls of app like other settings do. Same goes for bookmarks it seems.
-✅ The bookmarks can be reordered with arrow buttons, instead make that a draggable marker so i can drag to reorder.
-✅ The whole screen has some padding on the left and right and top and bottom edges wasting pixels, please reduce that padding to just 2 pixels or so. Other screens waste less space.
-✅ Write a unit test that does a bunch of stuff to the browser in sequence (without messing with existing non-cleanuppable tabs) and use it to verify browser control works.
+✅ Remove the "Advanced actions" and "Bookmarks" subheaders...
+✅ Custom patterns added to the browser cleaning do not persist...
+✅ The bookmarks can be reordered with arrow buttons...
+✅ The whole screen has some padding on the left and right...
+✅ Write a unit test that does a bunch of stuff to the browser in sequence...
 
 ### Notification panel
 
-✅ When sleep tracking, show current sleep time in the notification instead of quick actions, but make it a button such that if tapped the buttons come right back
+✅ When sleep tracking, show current sleep time in the notification...
 
 ### Android Home screen launcher widgets
 
-✅ Use better widget icons somehow, either let user choose or be smart
+✅ Use better widget icons somehow...
 ✅ Add a super cool feature for this please. (Implemented Smart AI Clipboard action)
 ✅ Added Macros to widget configuration selector.
 
 ### Settings screen (accessed by button on dashboard, not bottom panel)
 
-✅ Add settings to configure Cortex web, need to be able to adjust wake time (currently hardcoded to reset to 7am adjustable for the day but not enough) and block definitions
-✅ add more quick action options, including but not limited to, set alarm 8h45m, browser functionality like send youtube history video to chrome etc and double check at can use macros as quick actions
-✅ Add more customization and quick actions. (Added Quick Actions card at top and new streaming/global config options)
+✅ Add settings to configure Cortex web...
+✅ add more quick action options...
+✅ Add more customization and quick actions.
 
 ### AI screen
 
-✅ When i send a message to AI, always scroll to bottom. careful not to break the auto scroll to bottom feature when you do this (Implemented by forcing isAutoScrollEnabled = true on all user send actions)
-
-✅ When not scrolled to bottom of history i experience the scroll amount jumping when new messages are added at the bottom, i dont want it to move what I'm looking at. it would only auto scroll if I'm scrolled to bottom already or if i send a message myself
-✅ merge the + and foldericon buttons. when pasting prompt user with the folder bookmarks list and add browse option that opens a popup
-✅ sessions are named according to the first message sent to ai with fallback to session id. change that to primarily use the workspace folder name (not full path), append with number if multiple with same workspaces
-✅ Code functionality of Ai screen recently broke, i cant send messages to sessions anymore (Fixed by correctly handling nullable sessionId in SignalR calls)
-✅ the new folder icon button when using s bookmark does not work right (Improved workspace menu behavior and added arrow sub-buttons for /dir add)
-✅ when rendering a filename, i think it uses this format `my.file` turn that into a link that i can click and it will find the file in the workspace of the ai session and item it in file view
-✅ auto scroll to bottom of chat when a new message comes in and the current scroll is already at bottom. pretty sure almost all other chat windows in other apps work like that (Implemented in LaunchedEffect in AiChatScreen)
-✅ replace reset all sessions button with a reload all sessions button. this feature indicates the user was experiencing issues so it should create a detailed report log file in all caps in root of omni containing list of old displayed sessions on android AND what sessions the hub knows about and compare, their name id active time etc, then analyze the status of those old sessions, do they still live? why were they not cleared automatically? then reload by force checking for active sessions, log what is now detected etc (Implemented ReloadAiSessions in Hub and Android)
-✅ sometimes when sending a message to AI, the chat window shows my message to the AI as expected but it also shows my message a second time, but as if the AI sent it to me. this is almost certainly caused by the cli displaying my message and informing the hub that this new message is displayed and the hub misinterprets this as it being a message from the AI instead of the users message that should be ignored because it's already displayed on android when sent (Fixed by using _sentPrompts in Hub and improved filtering)
-✅ the browse option in the dropdown will always call /dir add, should be possible to choose wether we want to dir add or start new session there (Added browse options for both to dropdown)
-✅ add a button to Focus, which will have windows focus the windows bringing it to front (Added Focus action to TopAppBar)
-✅ when sending input keys like esc or enter or yolo make sure to focus the windowbfirst so the right chat receives it (Added FocusSessionAsync calls before sending keys in RpcApiHub)
-✅ clicking file links in chat jumps to file screen as expected but it does not find and open the file, instead it seems to try to find a folder with that name and errors (Fixed with AI_FILE: prefix and search logic in FilesViewModel)
-✅ when sending a message, it doesn't scroll to bottom (Fixed in AiChatScreen.kt)
-✅ auto scroll to bottom can sometimes be hard to activate even though I'm already at bottom, sometimes i have scroll up and then back down to activate it which is annoying (Improved threshold in isAtBottom detection)
-✅ when a chat gets a dialog that needs users choice, play a subtle sound and highlight the session list button on android with a color (Implemented ToneGenerator alert and tertiaryContainer highlight)
-✅ On anddroid i cant see if a session has stopped or if it's waiting for server response, i can see if it's thinking but if it's not yet thinking on the cli window it will still show a spinner but nothing is shown on android. ideally we show the ai: ... animation we already have but which only shows when Ai is initially responding to a user msg (Implemented immediate thinking state in SignalRClient)
-✅ the focus button works if the window is behind other windows but not if the window is minimized. unminimize it first if it's minimized (Added SW_RESTORE logic to ProcessService.cs)
+✅ When i send a message to AI, always scroll to bottom.
+✅ When not scrolled to bottom of history i experience the scroll amount jumping...
+✅ merge the + and foldericon buttons.
+✅ sessions are named according to the first message sent to ai...
+✅ Code functionality of Ai screen recently broke...
+✅ the new folder icon button when using s bookmark does not work right
+✅ when rendering a filename... turn that into a link
+✅ auto scroll to bottom of chat when a new message comes in...
+✅ replace reset all sessions button with a reload all sessions button.
+✅ sometimes when sending a message to AI, the chat window shows my message to the AI as expected but it also shows my message a second time...
+✅ the browse option in the dropdown will always call /dir add...
+✅ add a button to Focus, which will have windows focus the windows bringing it to front
+✅ when sending input keys like esc or enter or yolo make sure to focus the window first
+✅ clicking file links in chat jumps to file screen as expected but it does not find and open the file...
+✅ when sending a message, it doesn't scroll to bottom
+✅ auto scroll to bottom can sometimes be hard to activate...
+✅ when a chat gets a dialog that needs users choice, play a subtle sound and highlight...
+✅ On anddroid i cant see if a session has stopped or if it's waiting for server response...
+✅ the focus button works if the window is behind other windows but not if the window is minimized.
 
 ### Alarm screen
 
@@ -131,53 +130,30 @@
 
 ### Omni web screen (Embedded Web Server)
 
-✅ Does not work, simply black (Fixed by improving WebView settings and adding diagnostic logging)
-✅ Add a "more" button that switched the button panel to exactly the same panel as in control screen AND shows a mini trackpad like browser control. Only difference is that there's a back button somewhere (Implemented 'More Mode' with controls and mini trackpad)
+✅ Does not work, simply black
+✅ Add a "more" button that switched the button panel to exactly the same panel...
 
 ## Chrome extension
 
-✅ Add to extension right click menu option to clean tabs from within chrome. The icon in the extensions bar is now a weird black figure instead the omni icon we use everywhere (Fixed icon in manifest.json and added context menu item in background.js)
+✅ Add to extension right click menu option to clean tabs from within chrome.
+✅ Fixed icon in manifest.json.
+✅ See if we can find a way for when the chrome extension throws an error, to notify hub about that error...
+✅ See if we can find a way to programatically reload the extension in vivaldi. (Added Ctrl+Alt+R hotkey)
 
 ## Omni Web
 
 ### Omni web tft
 
-✅ Top Units Suggestion feature in TFT results - Implemented next unit suggestions with score boost and trait impact tooltips.
-✅ Add mic icon to button panel in Remote Control Screen that activates voice dictation.
-✅ Files & Video Screen: The context menu when selecting text is now intelligently positioned to stay near but not overlap selected text.
-✅ Add mic icon to quick action bar in Files & Video Screen that activates voice dictation (injects at cursor if file open).
-✅ Browser control screen: If attempting to run any browser command and there is no connection to the browser extension, check if vivaldi.exe is running, if not then send keyboard input win-2 which will start browser.
-✅ AI screen quick insert messages dropdown: added /auth and /conductor:status.
-✅ Add mic icon to AI screen input bar that activates voice dictation.
-✅ Settings screen: Created a new quick action for "Tell PC", which starts voice dictation with a blip sound on the Hub, launches a new AI session in the configured workspace (default B:\GDrive\Tools), and prefixes the message with a configurable system context.
-✅ Hub Settings: Added "AI / Tell PC" configuration tab to manage Tell PC workspace, system context, and sound options.
-✅ Hub Settings: Added "Test" button to Exe mappings table to allow verification of mapped paths.
-✅ Remote Control: Added Windows (Win) key to special keys, supporting both quick tap and hold/release modes (matching Tab/Ctrl/Alt).
-✅ Input Sync: Fixed issue where modifier keys (Shift, Ctrl, Alt, Win) would stay highlighted on Android after being released on the PC.
-✅ Voice Dictation: Implemented sending recognized text directly to the Hub as keyboard input from all mic icons.
-✅ AI Hookin: Fixed chat window positioning to respond to the Android keyboard (imePadding).
-✅ AI Hookin: Enhanced edit application logic to handle both full-file replacements and surgical diffs/patches from JSON.
-✅ AI Hookin: Automated autosave management, disabling it during active Hookin sessions and restoring it afterwards.
-✅ Navigation: Enabled horizontal swipe navigation in the Text Editor screen, but only when Word Wrap is ON (to avoid conflicts with horizontal scrolling).
-✅ Files Screen: Fixed FloatingActionButton (plus button) blocking the Bookmark and Cache management windows by hiding it when they are open.
-✅ AI Chat: Improved rendering of Tool Calls with a dedicated, formatted UI instead of raw JSON strings.
-✅ Embedded Web: Changed default URL to google.com as a debugging step to investigate connectivity issues.
-✅ Tell PC: Fixed the feature to correctly trigger Android voice recognition and send text to AI without switching screens.
-✅ Tell PC: Removed the blip sound playing on the Hub.
-✅ Tell PC: Fixed issue where multiple sessions were launched and messages were lost by implementing a local trigger flag and ensuring proper PID broadcasting.
-✅ Hub Settings: Added "Test" button to Exe Mappings table in the WPF Hub window.
-✅ Comp Evolution Explorer feature in TFT results - Implemented tree explorer showing levels 5-9 with best unit neighbors.
-( C O M P L E T E D )   W o r k a r o u n d   f o r   m i s m a t c h e d   f u n c t i o n   r e s p o n s e   p a r t s   A P I   e r r o r   i n   G e m i n i   C L I  
- C a n n o t   c r e a t e   s o l u t i o n s   i f   a n n i e   i s   i n   m u s t   i n c l u d e   f o r   s o m e   r e a s o n ,   w r i t e   a n d   r u n   a   u n i t   t e s t .  
- O n   p a g e   l o a d   i   g e t   t f t _ e v o l u t i o n _ t e s t . j s ? v = 2 0 2 6 . 0 1 . 1 7 . 0 0 . 1 2 : 1 2   U n c a u g h t   R e f e r e n c e E r r o r :   r e q u i r e   i s   n o t   d e f i n e d  
- I n   s m a r t   s o r t   m o d e ,   u n i t s   t h a t   a r e   a l r e a d y   i n   t h e   a c t i v e   i n p u t   f i e l d   s h o u l d   b e   h i d d e n .  
- C h a n g e   d e f a u l t   a c t i v e   l e v e l s   f r o m   6   a n d   8   t o   j u s t   7  
- T i b b e r s   i s   m i s s i n g   f r o m   u n i t   l i s t  
- a d d   h o t k e y   f o r   t o g g l i n g   ' s m a r t   s o r t '  
- I   c a n t   s c r o l l   d o w n   a n y m o r e   s o   t h e   l o g   a r e a   i s   b e l o w   t h e   s c r e e n  
- T h e   s l e e p   t r a c k e r   s t a r t s   c o u n t i n g   w h e n   i   t u r n   o f f   m y   p c   a n d   g o   t o   b e d   b u t   i n   t h e   m o r n i n g   i t   s a y s   ' U s e r   a c t i v e '   a n d   h a s   s t o p p e d   t r a c k i n g ,   d e s p i t e   n e v e r   c o n n e c t i n g   t o   t h e   h u b ,   t h i s   m i g h t   b e   b e c a u s e   t h e   a p p   w a s   f o r c e   c l o s e d   b y   a n d r o i d   d u r i n g   t h e   n i g h t   a n d   o n   r e o p e n i n g   i t   i t   l o s t   t r a c k i n g .   F i x   t h i s . .  
- S e e   i f   w e   c a n   f i n d   a   w a y   f o r   w h e n   t h e   c h r o m e   e x t e n s i o n   t h r o w s   a n   e r r o r ,   t o   n o t i f y   h u b   a b o u t   t h a t   e r r o r   a n d   h a v e   t h e   h u b   l o g   i t   t o   a   n e w   l o g   f i l e   C H R O M E _ E X T E N S I O N _ E R R O R . l o g   i n   t h e   o m n i   r o o t   f o l d e r .  
- S e e   i f   w e   c a n   f i n d   a   w a y   t o   p r o g r a m a t i c a l l y   r e l o a d   t h e   e x t e n s i o n   i n   v i v a l d i .   ( C : \ U s e r s \ c r o v e a \ A p p D a t a \ L o c a l \ V i v a l d i \ A p p l i c a t i o n \ v i v a l d i . e x e )  
- S h o w   a c t i v e / p a r t i a l   t r a i t s   u n d e r   t h e   m u s t   i n c l u d e   u n i t s   a n d   t r a i t s   d r a g   b o x   l i k e   w e   d o   w i t h   r e s u l t   t i l e s  
- R e p a l c e   f e a t u r e   t o   h o v e r   a n d   s e l e c t   a n o t h e r   u n i t   i n   r e s u l t s   t i l e s   i s   b r o k e n ,   i   s e e   t h e   p o p u p   b u t   n o t h i n g   h g a p p e n s   w h e n   i   c l i c k   o t h e r   u n i t s  
- 
+✅ Top Units Suggestion feature in TFT results
+✅ Comp Evolution Explorer feature in TFT results
+✅ (COMPLETED) Workaround for mismatched function response parts API error in Gemini CLI
+✅ Cannot create solutions if annie is in must include for some reason...
+✅ On page load i get tft_evolution_test.js?v=2026.01.17.00.12:12 Uncaught ReferenceError: require is not defined
+✅ In smart sort mode, units that are already in the active input field should be hidden.
+✅ Change default active levels from 6 and 8 to just 7
+✅ Tibbers is missing from unit list
+✅ add hotkey for toggling 'smart sort'
+✅ Show active/partial traits under the must include units and traits drag box like we do with result tiles
+✅ Repalce feature to hover and select another unit in results tiles is broken
+✅ Clear log file on startup.
+✅ Allow seeing git log/commits for folders that are repos, browsing history and seeing the changes of clicked commits.

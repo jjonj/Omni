@@ -1189,6 +1189,27 @@ class SignalRClient(
         return null
     }
 
+    fun isGitRepository(path: String): Single<Boolean>? {
+        if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
+            return hubConnection?.invoke(Boolean::class.java, "IsGitRepository", path)
+        }
+        return null
+    }
+
+    fun getGitLog(path: String, count: Int = 20): Single<String>? {
+        if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
+            return hubConnection?.invoke(String::class.java, "GetGitLog", path, count)
+        }
+        return null
+    }
+
+    fun getCommitDiff(path: String, commitHash: String): Single<String>? {
+        if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
+            return hubConnection?.invoke(String::class.java, "GetCommitDiff", path, commitHash)
+        }
+        return null
+    }
+
     fun executeMacroBatch(commands: List<com.omni.sync.logic.macro.MacroCommand>) {
         if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
             hubConnection?.send("ExecuteMacro", commands)

@@ -614,6 +614,9 @@ class FilesViewModel(
                     if (isPathInsideAnyBookmark(path)) {
                         saveToCache(path, entries)
                     }
+
+                    // Check for git repo
+                    checkGitRepo(path)
                 },
                 { error ->
                     _errorMessage.value = "Error loading directory: ${error.message}"
@@ -637,6 +640,7 @@ class FilesViewModel(
 
         if (directoryPath.isEmpty() || directoryPath == "/") {
             // Add virtual folders
+            clearGitState()
             if (newEntries.none { it.path == "VIRTUAL_DOWNLOADS" }) {
                 newEntries.add(FileSystemEntry(
                     name = "Downloads:/",
@@ -1667,6 +1671,73 @@ class FilesViewModel(
             bytesPerSecond >= 1_000 -> "${df.format(bytesPerSecond / 1_000)} KB/s"
             else -> "${df.format(bytesPerSecond)} B/s"
         }
+    }
+
+    private val _isGitRepo = MutableStateFlow(false)
+    val isGitRepo: StateFlow<Boolean> = _isGitRepo
+
+    private val _gitLog = MutableStateFlow<String?>(null)
+    val gitLog: StateFlow<String?> = _gitLog
+
+    private val _commitDiff = MutableStateFlow<String?>(null)
+    val commitDiff: StateFlow<String?> = _commitDiff
+
+    private val _isGitLoading = MutableStateFlow(false)
+    val isGitLoading: StateFlow<Boolean> = _isGitLoading
+
+    fun checkGitRepo(path: String) {
+        if (!mainViewModel.isConnected.value) return
+        _isGitRepo.value = false
+        _gitLog.value = null
+        _commitDiff.value = null
+        
+        signalRClient.isGitRepository(path)
+            ?.subscribeOn(Schedulers.io())
+            ?.observeOn(AndroidSchedulers.mainThread())
+            ?.subscribe({ isRepo ->
+                _isGitRepo.value = isRepo
+                if (isRepo) {
+                    loadGitLog(path)
+                }
+            }, { 
+                _isGitRepo.value = false
+            })
+    }
+
+    fun loadGitLog(path: String) {
+        if (!mainViewModel.isConnected.value) return
+        _isGitLoading.value = true
+        signalRClient.getGitLog(path)
+            ?.subscribeOn(Schedulers.io())
+            ?.observeOn(AndroidSchedulers.mainThread())
+            ?.subscribe({ log ->
+                _gitLog.value = log
+                _isGitLoading.value = false
+            }, { 
+                _isGitLoading.value = false
+                _gitLog.value = "Error loading git log: ${it.message}"
+            })
+    }
+
+    fun loadCommitDiff(path: String, hash: String) {
+        if (!mainViewModel.isConnected.value) return
+        _isGitLoading.value = true
+        signalRClient.getCommitDiff(path, hash)
+            ?.subscribeOn(Schedulers.io())
+            ?.observeOn(AndroidSchedulers.mainThread())
+            ?.subscribe({ diff ->
+                _commitDiff.value = diff
+                _isGitLoading.value = false
+            }, { 
+                _isGitLoading.value = false
+                _commitDiff.value = "Error loading diff: ${it.message}"
+            })
+    }
+
+    fun clearGitState() {
+        _isGitRepo.value = false
+        _gitLog.value = null
+        _commitDiff.value = null
     }
 
     fun formatFileSize(size: Long): String {

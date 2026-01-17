@@ -402,7 +402,7 @@ function tryProcessBuffer() {
     }
 
     // 2. Filter units and emblems that start with the query
-    const unitMatches = tftData.units.filter(u => u.name.toLowerCase().startsWith(query) && u.name !== "Tibbers");
+    const unitMatches = tftData.units.filter(u => u.name.toLowerCase().startsWith(query));
     const emblemMatches = tftData.items.filter(i => i.is_emblem && i.trait.toLowerCase().startsWith(query));
     
     const totalMatches = unitMatches.length + emblemMatches.length;
@@ -434,7 +434,7 @@ function processAddModeBuffer() {
     let matchedType = null;
     
     // 1. Starts With (Unit)
-    let unit = tftData.units.find(u => u.name.toLowerCase().startsWith(query) && u.name !== "Tibbers");
+    let unit = tftData.units.find(u => u.name.toLowerCase().startsWith(query));
     if (unit) {
         matchedItem = unit;
         matchedType = 'unit';
@@ -446,7 +446,7 @@ function processAddModeBuffer() {
             matchedType = 'emblem';
         } else {
             // 3. Contains (Unit)
-            unit = tftData.units.find(u => u.name.toLowerCase().includes(query) && u.name !== "Tibbers");
+            unit = tftData.units.find(u => u.name.toLowerCase().includes(query));
             if (unit) {
                 matchedItem = unit;
                 matchedType = 'unit';
@@ -839,7 +839,7 @@ async function initHubConnection() {
 
 function toggleActiveDisableUnitByCost(cost) {
     if (!tftData) return;
-    const unitsOfCost = tftData.units.filter(u => u.cost === cost && u.name !== "Tibbers");
+    const unitsOfCost = tftData.units.filter(u => u.cost === cost);
     const allDisabled = unitsOfCost.every(u => activeDisabledUnits.includes(u.name));
     
     if (allDisabled) {
@@ -1584,7 +1584,7 @@ function createDraggableItem(name, iconUrl, type, cost, trait, isSelected = fals
         if (!shortcut) {
             // Check if 2-char prefix is unique
             const prefix = name.substring(0, 2).toLowerCase();
-            const unitMatches = tftData.units.filter(u => u.name.toLowerCase().startsWith(prefix) && u.name !== "Tibbers");
+            const unitMatches = tftData.units.filter(u => u.name.toLowerCase().startsWith(prefix));
             const emblemMatches = tftData.items.filter(i => i.is_emblem && i.trait.toLowerCase().startsWith(prefix));
             if (unitMatches.length + emblemMatches.length === 1) {
                 shortcut = prefix;
@@ -1897,7 +1897,7 @@ function resetAll() {
     const defHeuristic = document.querySelector('input[name="heuristic-mode"][value="super"]');
     if (defHeuristic) defHeuristic.checked = true;
     document.querySelectorAll('.lvl-cb').forEach(cb => {
-        cb.checked = (cb.value === "6" || cb.value === "8");
+        cb.checked = (cb.value === "7");
     });
     const slider = document.getElementById('results-limit');
     if (slider) {

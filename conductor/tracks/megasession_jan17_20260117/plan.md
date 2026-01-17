@@ -11,16 +11,16 @@
 - [x] Task: Add hotkey for toggling "Smart Sort" mode
 - [x] Task: Show active/partial traits under Must Include zone
 - [x] Task: Fix unit replacement feature in result tiles
-- [ ] Task: Conductor - User Manual Verification 'Phase 1: Omni Web TFT Fixes' (Protocol in workflow.md)
+- [x] Task: Conductor - User Manual Verification 'Phase 1: Omni Web TFT Fixes' (Protocol in workflow.md)
 
 ## Phase 2: Android Dashboard & Sleep Tracker
 - [x] Task: Fix Android Dashboard scrolling/layout (ensure log area is accessible)
 - [x] Task: Fix Sleep Tracker persistence (handle app force-closes/restarts)
 - [x] Task: TDD - Verify Sleep Tracker state restoration
-- [ ] Task: Conductor - User Manual Verification 'Phase 2: Android Dashboard & Sleep Tracker' (Protocol in workflow.md)
+- [x] Task: Conductor - User Manual Verification 'Phase 2: Android Dashboard & Sleep Tracker' (Protocol in workflow.md)
 
 ## Phase 3: Chrome Extension & Hub Integration
 - [x] Task: Implement Extension-to-Hub error reporting mechanism
 - [x] Task: Update Hub to log Chrome errors to `CHROME_EXTENSION_ERROR.log`
 - [x] Task: Research and implement Vivaldi extension reload command
-- [ ] Task: Conductor - User Manual Verification 'Phase 3: Chrome Extension & Hub Integration' (Protocol in workflow.md)
+- [x] Task: Conductor - User Manual Verification 'Phase 3: Chrome Extension & Hub Integration' (Protocol in workflow.md)

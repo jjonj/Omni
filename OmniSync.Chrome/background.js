@@ -53,24 +53,8 @@ async function start() {
     }
 }
 
-// --- Error Reporting to Hub ---
-function reportErrorToHub(error, source = "General") {
-    console.error(`[${source} Error]`, error);
-    if (connection.state === signalR.HubConnectionState.Connected) {
-        connection.invoke("ReportChromeError", source, error?.toString() || "Unknown Error")
-            .catch(err => console.log("Failed to report error to hub", err));
-    }
-}
-
-self.addEventListener('error', (event) => {
-    reportErrorToHub(event.error || event.message, "ServiceWorker");
-});
-
-self.addEventListener('unhandledrejection', (event) => {
-    reportErrorToHub(event.reason, "PromiseRejection");
-});
-
-async function authenticate() {
+// Periodic check alarm to keep things alive and ensure we haven't stayed disconnected
+chrome.alarms.create("keep-alive-check", { periodInMinutes: 1 });
     if (connection.state === signalR.HubConnectionState.Connected) {
         try {
             const success = await connection.invoke("Authenticate", API_KEY);
@@ -385,7 +369,14 @@ connection.on("ReceiveBrowserCommand", async (command, url, newTab) => {
         }
     } else if (command === "ReloadExtension") {
         console.log("SignalR: Reloading extension as requested...");
-        chrome.runtime.reload();
+        console.clear();
+        // Clear storage to simulate a fresh install state
+        chrome.storage.local.clear(() => {
+            console.log("Storage cleared. Re-initializing extension...");
+            // There is no API to clear the red 'Errors' button in chrome://extensions
+            // but runtime.reload() is the closest we have to a full reinstall.
+            chrome.runtime.reload();
+        });
     }
     } catch (err) {
         console.error("SignalR: Error processing browser command:", err);

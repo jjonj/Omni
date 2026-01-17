@@ -57,6 +57,7 @@ namespace OmniSync.Hub.Logic.Services
                 }
                 else if (e.Command == "RELOAD_CHROME_EXTENSION")
                 {
+                    _monitorService.AddLogMessage("[Chrome] Reloading extension via hotkey.");
                     _ = _hubContext.Clients.All.SendAsync("ReceiveBrowserCommand", "ReloadExtension", "", false);
                 }
             };

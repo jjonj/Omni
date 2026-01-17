@@ -63,6 +63,9 @@ namespace OmniSync.Hub.Logic.Services
 
             if (e.State != KeyState.Down) return;
 
+            // Debug log every key press to monitor service
+            // _hubMonitorService.AddLogMessage($"DEBUG: KeyDown={e.Key}, S={e.Shift}, C={e.Control}, A={e.Alt}, W={e.Win}");
+
             // Don't trigger if we are in recording mode (MainViewModel handles that)
             if (_keyboardHook.IsRecording) return;
 

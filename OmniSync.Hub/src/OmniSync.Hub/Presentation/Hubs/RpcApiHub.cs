@@ -35,9 +35,10 @@ namespace OmniSync.Hub.Presentation.Hubs
         private readonly AiCliService _aiCliService;
         private readonly PcgPersistentService _pcgService;
         private readonly HubSettingsService _settingsService;
+        private readonly GitService _gitService;
         private readonly ILogger<RpcApiHub> _logger; // Added for logging
 
-        public RpcApiHub(AuthService authService, FileService fileService, ClipboardService clipboardService, CommandDispatcher commandDispatcher, ProcessService processService, HubEventSender hubEventSender, InputService inputService, AudioService audioService, ShutdownService shutdownService, RegistryService registryService, HubMonitorService hubMonitorService, AiCliService aiCliService, PcgPersistentService pcgService, HubSettingsService settingsService, ILogger<RpcApiHub> logger)
+        public RpcApiHub(AuthService authService, FileService fileService, ClipboardService clipboardService, CommandDispatcher commandDispatcher, ProcessService processService, HubEventSender hubEventSender, InputService inputService, AudioService audioService, ShutdownService shutdownService, RegistryService registryService, HubMonitorService hubMonitorService, AiCliService aiCliService, PcgPersistentService pcgService, HubSettingsService settingsService, GitService gitService, ILogger<RpcApiHub> logger)
         {
             _authService = authService;
             _fileService = fileService;
@@ -53,6 +54,7 @@ namespace OmniSync.Hub.Presentation.Hubs
             _aiCliService = aiCliService;
             _pcgService = pcgService;
             _settingsService = settingsService;
+            _gitService = gitService;
             _logger = logger;
         }
 
@@ -113,32 +115,31 @@ namespace OmniSync.Hub.Presentation.Hubs
             }
         }
 
-        public void ReportChromeError(string source, string message)
+        public async Task<string> GetGitLog(string path, int count = 20)
         {
             if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
             {
-                try
-                {
-                    // Log to a file in the root folder (relative to working directory)
-                    var logFileName = "CHROME_EXTENSION_ERROR.log";
-                    var timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
-                    var logEntry = $"[{timestamp}] [{source}] {message}{Environment.NewLine}";
-                    
-                    // We try to reach the root folder if we are in the build output
-                    var path = logFileName;
-                    if (!File.Exists("OmniSync.sln") && Directory.Exists("../../../.."))
-                    {
-                        path = Path.Combine("../../../..", logFileName);
-                    }
-
-                    File.AppendAllText(path, logEntry);
-                    _logger.LogWarning($"[Chrome Error] {source}: {message}");
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Failed to log Chrome error.");
-                }
+                return await _gitService.GetGitLog(path, count);
             }
+            return "Error: Unauthorized";
+        }
+
+        public async Task<string> GetCommitDiff(string path, string commitHash)
+        {
+            if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
+            {
+                return await _gitService.GetCommitDiff(path, commitHash);
+            }
+            return "Error: Unauthorized";
+        }
+
+        public bool IsGitRepository(string path)
+        {
+            if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
+            {
+                return _gitService.IsGitRepository(path);
+            }
+            return false;
         }
 
         public bool Authenticate(string apiKey)
