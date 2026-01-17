@@ -28,6 +28,21 @@ let addModeIndicator = null;
 let addedItemsHistory = []; // History of { name, type, zone } for undo
 let highlightedUnitIndex = -1;
 
+const CUSTOM_UNIT_SHORTCUTS = {
+    "an": "Anivia", "ai": "Annie", "br": "Briar", "bm": "Braum", "bk": "Brock",
+    "ko": "Kog'Maw", "kb": "Kobuko & Yuumi", "lu": "Lulu", "lx": "Lux",
+    "lc": "Lucian & Senna", "sh": "Shen", "sv": "Shyvana", "vg": "Viego",
+    "vi": "Vi", "oi": "Orianna", "or": "Ornn",
+    "si": "Sion", "sd": "Singed", "tr": "Tristana", "ty": "Tryndamere",
+    "yo": "Yorick", "ye": "Yone", "dm": "Dr. Mundo", "dr": "Draven",
+    "gp": "Gangplank", "ga": "Garen", "go": "Galio", "lb": "LeBlanc",
+    "le": "Leona", "mi": "Milio", "mf": "Miss Fortune", "na": "Nautilus",
+    "ns": "Nasus", "se": "Sejuani", "sp": "Seraphine", "st": "Sett",
+    "fi": "Fizz", "fs": "Fiddlesticks", "ks": "Kai'Sa", "ka": "Kalista",
+    "tc": "Taric", "tk": "Tahm Kench", "zi": "Ziggs", "zn": "Zilean",
+    "ba": "Bard", "bn": "Baron Naashor"
+};
+
 function cycleUnitHighlight() {
     const activeZoneId = activeDropZone === 'current-team' ? 'current-team-zone' : 'must-include-zone';
     const zone = document.getElementById(activeZoneId);
@@ -202,8 +217,7 @@ function handleTftGlobalInput(key) {
         addModeBuffer = "";
     } else if (key.length === 1) {
         addModeBuffer += key.toLowerCase();
-        if (addModeBuffer.length === 3) {
-            processAddModeBuffer();
+        if (tryProcessBuffer()) {
             addModeBuffer = "";
         }
     }
@@ -297,8 +311,7 @@ function handleAddModeKeydown(e) {
         e.preventDefault();
         addModeBuffer += e.key.toLowerCase();
         
-        if (addModeBuffer.length === 3) {
-            processAddModeBuffer();
+        if (tryProcessBuffer()) {
             addModeBuffer = "";
         }
         updateAddModeIndicator();
@@ -332,76 +345,126 @@ function handleAddModeKeydown(e) {
     }
 }
 
+function performAdd(item, type) {
+    if (type === 'emblem') {
+        addToSelectedEmblems(item);
+        const added = { name: item.name, type: 'emblem', zone: 'emblems' };
+        addedItemsHistory.push(added);
+    } else {
+        if (activeDropZone === 'must-include') {
+            addToMustInclude(item);
+            addedItemsHistory.push({ name: item.name, type: 'unit', zone: 'must-include' });
+        } else {
+            addToCurrentTeam(item);
+            addedItemsHistory.push({ name: item.name, type: 'unit', zone: 'current-team' });
+        }
+    }
+
+    if (addedItemsHistory.length > 10) addedItemsHistory.shift();
+    
+    if (typeof CortexAudio !== 'undefined') CortexAudio.playTone('work');
+    
+    if (addModeIndicator) {
+        addModeIndicator.classList.remove('add-mode-match');
+        void addModeIndicator.offsetWidth;
+        addModeIndicator.classList.add('add-mode-match');
+    }
+    console.log(`TFT ActiveMode: Added ${type}`, item.name);
+}
+
+function tryProcessBuffer() {
+    if (!tftData) return false;
+    const query = addModeBuffer.toLowerCase();
+    if (query.length < 2) return false;
+
+    // 1. Check Custom Shortcuts (2 chars)
+    if (query.length === 2 && CUSTOM_UNIT_SHORTCUTS[query]) {
+        const targetName = CUSTOM_UNIT_SHORTCUTS[query];
+        // Check if it's an emblem (some shortcuts might be traits)
+        const emblem = tftData.items.find(i => i.is_emblem && i.name === targetName);
+        if (emblem) {
+            performAdd(emblem, 'emblem');
+            return true;
+        }
+        const unit = tftData.units.find(u => u.name === targetName);
+        if (unit) {
+            performAdd(unit, 'unit');
+            return true;
+        }
+    }
+
+    // 2. Filter units and emblems that start with the query
+    const unitMatches = tftData.units.filter(u => u.name.toLowerCase().startsWith(query) && u.name !== "Tibbers");
+    const emblemMatches = tftData.items.filter(i => i.is_emblem && i.trait.toLowerCase().startsWith(query));
+    
+    const totalMatches = unitMatches.length + emblemMatches.length;
+
+    if (query.length === 2) {
+        if (totalMatches === 1) {
+            // Unique match at 2 characters!
+            const match = unitMatches.length > 0 ? unitMatches[0] : emblemMatches[0];
+            const type = unitMatches.length > 0 ? 'unit' : 'emblem';
+            performAdd(match, type);
+            return true;
+        }
+        return false; // Multiple matches or 0, wait for more input
+    }
+
+    if (query.length === 3) {
+        // Use full logic for 3 characters (Priority: StartsWith -> Contains)
+        processAddModeBuffer();
+        return true;
+    }
+    return false;
+}
+
 function processAddModeBuffer() {
     if (!tftData) return;
     
     const query = addModeBuffer.toLowerCase();
     let matchedItem = null;
+    let matchedType = null;
     
-    // Priority 1: Exact Start Matches (Unit OR Emblem)
-    // We prefer Units for short prefixes like "Ani" -> Anivia over Arcanist
-    
+    // 1. Starts With (Unit)
     let unit = tftData.units.find(u => u.name.toLowerCase().startsWith(query) && u.name !== "Tibbers");
     if (unit) {
-        if (activeDropZone === 'must-include') {
-            addToMustInclude(unit);
-            matchedItem = { name: unit.name, type: 'unit', zone: 'must-include' };
-        } else {
-            addToCurrentTeam(unit);
-            matchedItem = { name: unit.name, type: 'unit', zone: 'current-team' };
-        }
+        matchedItem = unit;
+        matchedType = 'unit';
     } else {
-        // Priority 2: Emblem Starts With
+        // 2. Starts With (Emblem)
         const emblem = tftData.items.find(i => i.is_emblem && i.trait.toLowerCase().startsWith(query));
         if (emblem) {
-            addToSelectedEmblems(emblem);
-            matchedItem = { name: emblem.name, type: 'emblem', zone: 'emblems' };
+            matchedItem = emblem;
+            matchedType = 'emblem';
         } else {
-            // Priority 3: Contains (Unit)
+            // 3. Contains (Unit)
             unit = tftData.units.find(u => u.name.toLowerCase().includes(query) && u.name !== "Tibbers");
             if (unit) {
-                if (activeDropZone === 'must-include') {
-                    addToMustInclude(unit);
-                    matchedItem = { name: unit.name, type: 'unit', zone: 'must-include' };
-                } else {
-                    addToCurrentTeam(unit);
-                    matchedItem = { name: unit.name, type: 'unit', zone: 'current-team' };
-                }
+                matchedItem = unit;
+                matchedType = 'unit';
             } else {
-                // Priority 4: Contains (Emblem)
+                // 4. Contains (Emblem)
                 const emblemContains = tftData.items.find(i => i.is_emblem && i.trait.toLowerCase().includes(query));
                 if (emblemContains) {
-                    addToSelectedEmblems(emblemContains);
-                    matchedItem = { name: emblemContains.name, type: 'emblem', zone: 'emblems' };
+                    matchedItem = emblemContains;
+                    matchedType = 'emblem';
                 }
             }
         }
     }
 
     if (matchedItem) {
-        addedItemsHistory.push(matchedItem);
-        if (addedItemsHistory.length > 10) addedItemsHistory.shift(); // Keep last 10 steps
-        
-        if (typeof CortexAudio !== 'undefined') CortexAudio.playTone('work');
-        
-        // Success flash
-        if (addModeIndicator) {
-            addModeIndicator.classList.remove('add-mode-match');
-            void addModeIndicator.offsetWidth;
-            addModeIndicator.classList.add('add-mode-match');
-        }
-        console.log(`TFT AddMode: Added ${matchedItem.type}`, matchedItem.name);
+        performAdd(matchedItem, matchedType);
     } else {
         if (typeof CortexAudio !== 'undefined') CortexAudio.playTone('chaos');
         
-        // Error shake
         if (addModeIndicator) {
             addModeIndicator.classList.remove('add-mode-error');
             void addModeIndicator.offsetWidth;
             addModeIndicator.classList.add('add-mode-error');
             setTimeout(() => addModeIndicator.classList.remove('add-mode-error'), 300);
         }
-        console.log("TFT AddMode: No match for", query);
+        console.log("TFT ActiveMode: No match for", query);
     }
 }
 
@@ -868,8 +931,16 @@ async function handleTftHotkey(command, payload) {
         case "TFT_CLIPBOARD_CURRENT_TEAM":
             await pasteToZone('current-team');
             break;
+        case "TFT_CYCLE_UNIT_HIGHLIGHT":
+            cycleUnitHighlight();
+            break;
         case "TFT_CYCLE_RESULT_NEXT":
-            cycleResults(1);
+            // Dual purpose Tab: if results exist, cycle them. Otherwise cycle boxes.
+            if (document.querySelectorAll('.result-card').length > 0) {
+                cycleResults(1);
+            } else {
+                cycleActiveZone();
+            }
             break;
         case "TFT_CYCLE_RESULT_PREV":
             cycleResults(-1);
@@ -1015,7 +1086,7 @@ async function loadTFTData() {
         optimizer = new TFTOptimizer(tftData.units, tftData.trait_metadata);
         setupSolverListeners();
         updateUI();
-        setActiveZone('current-team');
+        setActiveZone('must-include');
         renderSavedComps();
         initHubConnection();
         loadTFTSelection();
@@ -1481,13 +1552,30 @@ function createDraggableItem(name, iconUrl, type, cost, trait, isSelected = fals
             <img src="${iconUrl}" class="item-icon" style="border-color: ${borderColor}" 
                  onerror="this.src='data:image/svg+xml;base64,PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHdpZHRoPSc0OCcgaGVpZ2h0PSc0OCcgc3R5bGU9J2JhY2tncm91bmQ6IzIyMjsnPjx0ZXh0IHg9JzUwJScgeT0nNTAlJyBkb20tYmFzZWxpbmU9J21pZGRsZScgdGV4dC1hbmNob3I9J21pZGRsZScgZmlsbD0nI2ZmZicgZm9udC1zaXplPScxMic+PyA8L3RleHQ+PC9zdmc+'">
             ${(type === 'emblem' && isMustInclude) ? `<div style="position: absolute; bottom: 2px; right: 2px; background: rgba(0,0,0,0.7); color: white; padding: 1px 4px; border-radius: 3px; font-size: 10px; font-weight: bold; border: 1px solid ${borderColor}">${badgeText}</div>` : ''}
+            ${type === 'unit' ? `<div class="unit-shortcut-badge" id="shortcut-${name.replace(/\s+/g, '')}"></div>` : ''}
         </div>
         <div class="item-name">${name}</div>
     `;
 
     // Tooltip logic
-    if (type === 'unit' && traits && traits.length > 0) {
-        div.title = traits.join(', ');
+    if (type === 'unit') {
+        let shortcut = Object.keys(CUSTOM_UNIT_SHORTCUTS).find(key => CUSTOM_UNIT_SHORTCUTS[key] === name);
+        if (!shortcut) {
+            // Check if 2-char prefix is unique
+            const prefix = name.substring(0, 2).toLowerCase();
+            const unitMatches = tftData.units.filter(u => u.name.toLowerCase().startsWith(prefix) && u.name !== "Tibbers");
+            const emblemMatches = tftData.items.filter(i => i.is_emblem && i.trait.toLowerCase().startsWith(prefix));
+            if (unitMatches.length + emblemMatches.length === 1) {
+                shortcut = prefix;
+            } else {
+                shortcut = name.substring(0, 3).toLowerCase(); // Default to 3 chars
+            }
+        }
+        
+        const badge = div.querySelector('.unit-shortcut-badge');
+        if (badge) badge.innerText = shortcut;
+
+        div.title = `[${shortcut.toUpperCase()}] ${traits.join(', ')}`;
     } else if (type === 'emblem') {
         div.title = trait;
     }

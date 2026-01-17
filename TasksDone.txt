@@ -167,3 +167,5 @@
 ✅ Tell PC: Fixed issue where multiple sessions were launched and messages were lost by implementing a local trigger flag and ensuring proper PID broadcasting.
 ✅ Hub Settings: Added "Test" button to Exe Mappings table in the WPF Hub window.
 ✅ Comp Evolution Explorer feature in TFT results - Implemented tree explorer showing levels 5-9 with best unit neighbors.
+( C O M P L E T E D )   W o r k a r o u n d   f o r   m i s m a t c h e d   f u n c t i o n   r e s p o n s e   p a r t s   A P I   e r r o r   i n   G e m i n i   C L I  
+ 

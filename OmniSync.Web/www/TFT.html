@@ -574,6 +574,24 @@
             filter: grayscale(1);
         }
 
+        .unit-shortcut-badge {
+            position: absolute;
+            top: -4px;
+            left: -4px;
+            background: var(--bg-elevated);
+            color: var(--accent);
+            border: 1px solid var(--accent);
+            padding: 1px 3px;
+            border-radius: 4px;
+            font-size: 8px;
+            font-weight: 900;
+            text-transform: uppercase;
+            z-index: 5;
+            pointer-events: none;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+            font-family: var(--font-mono);
+        }
+
         /* Mobile Layout Adjustments */
         @media (max-width: 1024px) {
             .optimizer-layout {

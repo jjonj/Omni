@@ -27,6 +27,10 @@ Only work on subtasks if told to do so or if told explicitly to do a Megasession
 
 ### Dashboard
 
+I cant scroll down anymore so the log area is below the screen
+
+The sleep tracker starts counting when i turn off my pc and go to bed but in the morning it says "User active" and has stopped tracking, despite never connecting to the hub, this might be because the app was force closed by android during the night and on reopening it it lost tracking. Fix this..
+
 ## General
 
 
@@ -54,6 +58,19 @@ unit test all of the above first
 
 ## Chrome extension
 
+See if we can find a way for when the chrome extension throws an error, to notify hub about that error and have the hub log it to a new log file CHROME_EXTENSION_ERROR.log in the omni root folder.
+
 ## Omni Web
 
 ### Omni web tft
+
+In smart sort mode, units that are already in the active input field should be hidden. 
+Change default active levels from 6 and 8 to just 7
+
+On page load i get tft_evolution_test.js?v=2026.01.17.00.12:12 Uncaught ReferenceError: require is not defined
+    at tft_evolution_test.js?v=2026.01.17.00.12:12:12
+	
+	
+	Tibbers is missing from unit list
+	
+	Cannot create solutions if annie is in must include for some reason, write and run a unit test.

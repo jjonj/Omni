@@ -1,5 +1,10 @@
-Chrome Extension: Added 'Clean Tabs' context menu and fixed icon
+feat(tft): comprehensive "vim-level" hotkey system and active mode
 
-- Added "Clean Tabs" option to extension right-click menu
-- Added icons and action sections to manifest.json to show Omni icon
-- Copied omni.png to extension icons folder
+- Implemented "Active Mode" (Ctrl+A) to gate global TFT hotkeys.
+- Added non-consuming global hotkeys: Alt+S (Solve), Alt+C (Copy Code), Alt+V (Paste Code), Alt+G (Save), Alt+B (Tab Solver).
+- Integrated Chrome Extension tab detection to ensure hotkeys only trigger when TFT is active.
+- Added modal typing in Active Mode with improved matching logic (prioritizes unit name starts).
+- Implemented 10-step undo history (Backspace) and unit highlight cycling (Ctrl+Tab) in active zones.
+- Added visual hotkey cheat sheet and status indicator.
+- Fixed duplicate keyboard hook issue and refined modifier detection logic.
+- Set "Must Include" as the default active zone on page load.
