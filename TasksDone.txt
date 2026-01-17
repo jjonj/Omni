@@ -170,4 +170,8 @@
 ( C O M P L E T E D )   W o r k a r o u n d   f o r   m i s m a t c h e d   f u n c t i o n   r e s p o n s e   p a r t s   A P I   e r r o r   i n   G e m i n i   C L I  
  C a n n o t   c r e a t e   s o l u t i o n s   i f   a n n i e   i s   i n   m u s t   i n c l u d e   f o r   s o m e   r e a s o n ,   w r i t e   a n d   r u n   a   u n i t   t e s t .  
  O n   p a g e   l o a d   i   g e t   t f t _ e v o l u t i o n _ t e s t . j s ? v = 2 0 2 6 . 0 1 . 1 7 . 0 0 . 1 2 : 1 2   U n c a u g h t   R e f e r e n c e E r r o r :   r e q u i r e   i s   n o t   d e f i n e d  
+ I n   s m a r t   s o r t   m o d e ,   u n i t s   t h a t   a r e   a l r e a d y   i n   t h e   a c t i v e   i n p u t   f i e l d   s h o u l d   b e   h i d d e n .  
+ C h a n g e   d e f a u l t   a c t i v e   l e v e l s   f r o m   6   a n d   8   t o   j u s t   7  
+ T i b b e r s   i s   m i s s i n g   f r o m   u n i t   l i s t  
+ a d d   h o t k e y   f o r   t o g g l i n g   ' s m a r t   s o r t '  
  

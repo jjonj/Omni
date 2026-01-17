@@ -66,14 +66,6 @@ See if we can find a way to programatically reload the extension in vivaldi. (C:
 
 ### Omni web tft
 
-In smart sort mode, units that are already in the active input field should be hidden. 
-Change default active levels from 6 and 8 to just 7
-
-	Tibbers is missing from unit list
-	
-	
-	add hotkey for toggling "smart sort"
-	
 	Show active/partial traits under the must include units and traits drag box like we do with result tiles
 	
 	Repalce feature to hover and select another unit in results tiles is broken, i see the popup but nothing hgappens when i click other units

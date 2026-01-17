@@ -307,6 +307,14 @@ function handleAddModeKeydown(e) {
         return;
     }
 
+    if (e.key === 'm' && e.ctrlKey) {
+        e.preventDefault();
+        toggleUnitSortMode(unitSortMode !== 'smart');
+        const sortToggle = document.getElementById('smart-sort-toggle');
+        if (sortToggle) sortToggle.checked = (unitSortMode === 'smart');
+        return;
+    }
+
     if (e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey) {
         e.preventDefault();
         addModeBuffer += e.key.toLowerCase();
@@ -971,6 +979,11 @@ async function handleTftHotkey(command, payload) {
         case "TFT_SAVE_COMP":
             handleSaveComp();
             break;
+        case "TFT_TOGGLE_SMART_SORT":
+            toggleUnitSortMode(unitSortMode !== 'smart');
+            const sortToggle = document.getElementById('smart-sort-toggle');
+            if (sortToggle) sortToggle.checked = (unitSortMode === 'smart');
+            break;
         case "TFT_SWITCH_TAB_SOLVER":
             switchTab('solver');
             break;
@@ -1301,8 +1314,16 @@ function renderUnitPools() {
         pool.innerHTML = '';
         
         const units = tftData.units.filter(u => {
-            if (u.cost !== cost || u.name === "Tibbers") return false;
+            if (u.cost !== cost) return false;
             if (unitAlphaFilter && !u.name.toUpperCase().startsWith(unitAlphaFilter)) return false;
+            
+            // In smart sort mode, hide units already in the active input field (must include or current team)
+            if (unitSortMode === 'smart') {
+                const inMustInclude = selectedMustInclude.some(item => item.type === 'unit' && item.name === u.name);
+                const inCurrentTeam = selectedCurrentTeam.some(u_on_board => u_on_board.name === u.name);
+                if (inMustInclude || inCurrentTeam) return false;
+            }
+
             return true;
         })
             .sort((a, b) => {

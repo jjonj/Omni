@@ -1,3 +1,8 @@
-fix(tft): remove Node.js require calls from browser-side test script
+feat(tft): implement Smart Sort visibility and UI refinements
 
-- Removed require('os') and require('path') from tft_evolution_test.js to fix "require is not defined" error in browser.
+- Units already in selection zones are now hidden when Smart Sort is active.
+- Changed default active levels from [6, 8] to [7].
+- Added Tibbers to the unit pool.
+- Added Ctrl+M hotkey to toggle Smart Sort mode.
+- Handled TFT_TOGGLE_SMART_SORT hotkey from Hub.
+- Added browser-side test for Smart Sort visibility.

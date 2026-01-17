@@ -3,12 +3,12 @@
 ## Phase 1: Omni Web TFT Fixes
 - [x] Task: TDD - Reproduce "Annie in Must Include" bug with a unit test
 - [x] Task: Fix "Annie in Must Include" solution generation failure
-- [ ] Task: TDD - Write tests for "Smart Sort" unit visibility logic
-- [ ] Task: Implement "Smart Sort" visibility (hide already-added units)
-- [ ] Task: Update default active levels to [7] in TFT UI/Optimizer
+- [x] Task: TDD - Write tests for "Smart Sort" unit visibility logic
+- [x] Task: Implement "Smart Sort" visibility (hide already-added units)
+- [x] Task: Update default active levels to [7] in TFT UI/Optimizer
 - [x] Task: Fix `require is not defined` error in `tft_evolution_test.js`
-- [ ] Task: Add "Tibbers" to the TFT unit data/list
-- [ ] Task: Add hotkey for toggling "Smart Sort" mode
+- [x] Task: Add "Tibbers" to the TFT unit data/list
+- [x] Task: Add hotkey for toggling "Smart Sort" mode
 - [ ] Task: Conductor - User Manual Verification 'Phase 1: Omni Web TFT Fixes' (Protocol in workflow.md)
 
 ## Phase 2: Android Dashboard & Sleep Tracker
