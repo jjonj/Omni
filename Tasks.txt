@@ -58,6 +58,4 @@ unit test all of the above first
 
 ### Omni web tft
 
-	Show active/partial traits under the must include units and traits drag box like we do with result tiles
-	
 	Repalce feature to hover and select another unit in results tiles is broken, i see the popup but nothing hgappens when i click other units

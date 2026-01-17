@@ -1722,6 +1722,68 @@ function dropEmblem(e) {
     } catch(err) {}
 }
 
+function renderTraitsSummary(counts, displayBoard, container, mode = 'default') {
+    const traitsList = document.createElement('div');
+    traitsList.className = 'trait-summary';
+    traitsList.style.display = 'flex';
+    traitsList.style.flexWrap = 'wrap';
+    traitsList.style.gap = '8px';
+    traitsList.style.marginTop = '8px';
+    
+    const emblemTraits = selectedEmblems.map(e => e.trait);
+    const sortedTraits = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+    
+    sortedTraits.forEach(([trait, count]) => {
+        const traitInfo = (tftData.trait_metadata && tftData.trait_metadata[trait]) ? tftData.trait_metadata[trait] : null;
+        const breakpoints = traitInfo ? traitInfo.breakpoints : null;
+        const isActive = breakpoints && breakpoints.some(b => b <= count);
+        const isTargon = trait === 'Targon';
+        const hasEmblem = emblemTraits.includes(trait);
+        const isOrigin = traitInfo && traitInfo.type === 'origin';
+        
+        if (!breakpoints && !isTargon) return;
+        
+        const traitItem = document.createElement('div');
+        traitItem.style.display = 'flex';
+        traitItem.style.alignItems = 'center';
+        traitItem.style.gap = '3px';
+        traitItem.style.fontSize = '10px';
+        
+        let textColor = 'var(--text-dim)';
+        let filter = isActive ? '' : 'opacity: 0.5; filter: grayscale(1);';
+        
+        const greenFilter = 'invert(48%) sepia(79%) saturate(2476%) hue-rotate(86deg) brightness(118%) contrast(119%)';
+        const orangeFilter = 'invert(65%) sepia(91%) saturate(1831%) hue-rotate(3deg) brightness(103%) contrast(105%)';
+
+        if (mode === 'world-runes' || mode === 'ryze-unlock') {
+            if (isOrigin && isActive) {
+                textColor = '#32d74b';
+                filter = greenFilter;
+            } else if (isActive) {
+                textColor = 'var(--text-bright)';
+            }
+        } else {
+            if (hasEmblem) {
+                if (isActive) { textColor = '#32d74b'; filter = greenFilter; }
+                else { textColor = '#ff9500'; filter = orangeFilter; }
+            } else if (isActive) { textColor = 'var(--text-bright)'; }
+        }
+
+        traitItem.style.color = textColor;
+        if (isActive || hasEmblem) traitItem.style.fontWeight = '600';
+        
+        const iconUrl = `assets/tft/${currentConfig.current_set}/traits/${trait.replace(/ /g, '')}.svg`;
+        
+        const contributors = displayBoard.filter(u => u.traits.includes(trait)).map(u => u.name);
+        const tooltip = `${trait} (${count}): ${contributors.join(', ')}`;
+        
+        traitItem.innerHTML = `<img src="${iconUrl}" style="width: 14px; height: 14px; filter: ${filter}" title="${tooltip}" onerror="this.style.display='none'"><span title="${tooltip}">${count}</span>`; 
+        traitsList.appendChild(traitItem);
+    });
+    
+    container.appendChild(traitsList);
+}
+
 function renderSelectionZones() {
     const mustZone = document.getElementById('must-include-zone');
     const currentZone = document.getElementById('current-team-zone');
@@ -1752,6 +1814,34 @@ function renderSelectionZones() {
         });
     } else {
         mustZone.innerHTML = '<div class="placeholder-text">Units or Traits</div>';
+    }
+
+    // Calculate and render traits summary for Must Include
+    const mustCounts = {};
+    const mustBoard = [];
+    selectedMustInclude.forEach(item => {
+        if (item.type === 'unit') {
+            const unitData = tftData.units.find(du => du.name === item.name);
+            if (unitData) {
+                mustBoard.push(unitData);
+                unitData.traits.forEach(t => mustCounts[t] = (mustCounts[t] || 0) + 1);
+            }
+        }
+    });
+    // Add emblems
+    selectedEmblems.forEach(emb => {
+        mustCounts[emb.trait] = (mustCounts[emb.trait] || 0) + 1;
+    });
+    
+    if (mustBoard.length > 0) {
+        const solverModeEl = document.querySelector('input[name="solver-mode"]:checked');
+        const solverMode = solverModeEl ? solverModeEl.value : 'default';
+        const summaryContainer = document.createElement('div');
+        summaryContainer.style.borderTop = '1px dashed var(--border-light)';
+        summaryContainer.style.marginTop = '10px';
+        summaryContainer.style.paddingTop = '5px';
+        renderTraitsSummary(mustCounts, mustBoard, summaryContainer, solverMode);
+        mustZone.appendChild(summaryContainer);
     }
 
     emblemZone.innerHTML = '';
@@ -2146,6 +2236,7 @@ async function runOptimization() {
 }
 
 function renderResults(results, container, level) {
+    container.innerHTML = '';
     if (results.length === 0) {
         container.innerHTML = '<div style="color: var(--text-dim); font-size: 11px;">No valid compositions found.</div>';
         return;
@@ -2259,6 +2350,14 @@ function renderResults(results, container, level) {
                             e.stopPropagation(); 
                             if (u.originalIdx !== -1) {
                                 res.board[u.originalIdx] = rep; 
+                                // Re-calculate counts for accurate trait display after replacement
+                                const newCounts = {};
+                                res.board.forEach(unit => {
+                                    unit.traits.forEach(t => newCounts[t] = (newCounts[t] || 0) + 1);
+                                });
+                                selectedEmblems.forEach(emb => newCounts[emb.trait] = (newCounts[emb.trait] || 0) + 1);
+                                res.counts = newCounts;
+                                
                                 renderResults(results, container, level); 
                             }
                         };
@@ -2272,61 +2371,9 @@ function renderResults(results, container, level) {
             list.appendChild(unitItem);
         });
         card.appendChild(list);
-        const traitsList = document.createElement('div');
-        traitsList.className = 'trait-summary';
-        traitsList.style.display = 'flex';
-        traitsList.style.flexWrap = 'wrap';
-        traitsList.style.gap = '10px';
-        traitsList.style.marginTop = '10px';
-        traitsList.style.paddingTop = '8px';
-        traitsList.style.borderTop = '1px solid var(--border-light)';
-        const sortedTraits = Object.entries(res.counts).sort((a, b) => b[1] - a[1]);
-                sortedTraits.forEach(([trait, count]) => {
-                    const traitInfo = (tftData.trait_metadata && tftData.trait_metadata[trait]) ? tftData.trait_metadata[trait] : null;
-                    const breakpoints = traitInfo ? traitInfo.breakpoints : null;
-                    const isActive = breakpoints && breakpoints.some(b => b <= count);
-                    const isTargon = trait === 'Targon';
-                    const hasEmblem = emblemTraits.includes(trait);
-                    const isOrigin = traitInfo && traitInfo.type === 'origin';
-                    
-                    if (!breakpoints && !isTargon) return;
-            const traitItem = document.createElement('div');
-            traitItem.style.display = 'flex';
-            traitItem.style.alignItems = 'center';
-            traitItem.style.gap = '4px';
-            traitItem.style.fontSize = '11px';
-            let textColor = 'var(--text-dim)';
-            let filter = isActive ? '' : 'opacity: 0.5; filter: grayscale(1);';
-            
-            const greenFilter = 'invert(48%) sepia(79%) saturate(2476%) hue-rotate(86deg) brightness(118%) contrast(119%)';
-            const orangeFilter = 'invert(65%) sepia(91%) saturate(1831%) hue-rotate(3deg) brightness(103%) contrast(105%)';
-
-            if (solverMode === 'world-runes' || solverMode === 'ryze-unlock') {
-                if (isOrigin && isActive) {
-                    textColor = '#32d74b';
-                    filter = greenFilter;
-                } else if (isActive) {
-                    textColor = 'var(--text-bright)';
-                }
-            } else {
-                if (hasEmblem) {
-                    if (isActive) { textColor = '#32d74b'; filter = greenFilter; }
-                    else { textColor = '#ff9500'; filter = orangeFilter; }
-                } else if (isActive) { textColor = 'var(--text-bright)'; }
-            }
-
-                        traitItem.style.color = textColor;
-                        if (isActive || hasEmblem) traitItem.style.fontWeight = '600';
-                        const iconUrl = `assets/tft/${currentConfig.current_set}/traits/${trait.replace(/ /g, '')}.svg`;
-                        
-                        // Find units on board that have this trait
-                        const contributors = displayBoard.filter(u => u.traits.includes(trait)).map(u => u.name);
-                        const tooltip = `${trait} (${count}): ${contributors.join(', ')}`;
-                        
-                        traitItem.innerHTML = `<img src="${iconUrl}" style="width: 16px; height: 16px; filter: ${filter}" title="${tooltip}" onerror="this.style.display='none'"><span title="${tooltip}">${count}</span>`; 
-                        traitsList.appendChild(traitItem);
-                });
-        card.appendChild(traitsList);
+        
+        // Traits Section
+        renderTraitsSummary(res.counts, displayBoard, card, solverMode);
 
         // Next Unit Suggestions Section
         const nextUnits = optimizer.getBestNextUnits(res.board, tftData.units.filter(u => !activeDisabledUnits.includes(u.name)), selectedEmblems.map(e => e.trait), solverMode, mustIncludeTraits, mustIncludeNames, 3);

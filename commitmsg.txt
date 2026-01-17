@@ -1,6 +1,5 @@
-feat(chrome): implement programmatic extension reload
+feat(tft): show active/partial traits under Must Include zone
 
-- Added ReloadExtension command to background.js utilizing chrome.runtime.reload().
-- Exposed reload_chrome_extension command in RpcApiHub via ExecuteCommand.
-- Added Ctrl+Shift+R default hotkey in the Hub to trigger extension reload.
-- Updated HubEventSender to broadcast the reload command when received via hotkey/dispatcher.
+- Extracted renderTraitsSummary into a reusable function.
+- Integrated renderTraitsSummary into renderSelectionZones to show real-time trait counts for the Must Include units.
+- This improves parity between selection zones and result cards.
