@@ -14,11 +14,11 @@
 ## Phase 2: Android Dashboard & Sleep Tracker
 - [x] Task: Fix Android Dashboard scrolling/layout (ensure log area is accessible)
 - [x] Task: Fix Sleep Tracker persistence (handle app force-closes/restarts)
-- [ ] Task: TDD - Verify Sleep Tracker state restoration
+- [x] Task: TDD - Verify Sleep Tracker state restoration
 - [ ] Task: Conductor - User Manual Verification 'Phase 2: Android Dashboard & Sleep Tracker' (Protocol in workflow.md)
 
 ## Phase 3: Chrome Extension & Hub Integration
-- [ ] Task: Implement Extension-to-Hub error reporting mechanism
-- [ ] Task: Update Hub to log Chrome errors to `CHROME_EXTENSION_ERROR.log`
+- [x] Task: Implement Extension-to-Hub error reporting mechanism
+- [x] Task: Update Hub to log Chrome errors to `CHROME_EXTENSION_ERROR.log`
 - [ ] Task: Research and implement Vivaldi extension reload command
 - [ ] Task: Conductor - User Manual Verification 'Phase 3: Chrome Extension & Hub Integration' (Protocol in workflow.md)

@@ -53,6 +53,23 @@ async function start() {
     }
 }
 
+// --- Error Reporting to Hub ---
+function reportErrorToHub(error, source = "General") {
+    console.error(`[${source} Error]`, error);
+    if (connection.state === signalR.HubConnectionState.Connected) {
+        connection.invoke("ReportChromeError", source, error?.toString() || "Unknown Error")
+            .catch(err => console.log("Failed to report error to hub", err));
+    }
+}
+
+self.addEventListener('error', (event) => {
+    reportErrorToHub(event.error || event.message, "ServiceWorker");
+});
+
+self.addEventListener('unhandledrejection', (event) => {
+    reportErrorToHub(event.reason, "PromiseRejection");
+});
+
 async function authenticate() {
     if (connection.state === signalR.HubConnectionState.Connected) {
         try {
@@ -366,6 +383,9 @@ connection.on("ReceiveBrowserCommand", async (command, url, newTab) => {
                 }
             });
         }
+    } else if (command === "ReloadExtension") {
+        console.log("SignalR: Reloading extension as requested...");
+        chrome.runtime.reload();
     }
     } catch (err) {
         console.error("SignalR: Error processing browser command:", err);

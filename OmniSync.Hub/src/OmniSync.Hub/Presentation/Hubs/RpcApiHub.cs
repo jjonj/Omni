@@ -113,6 +113,34 @@ namespace OmniSync.Hub.Presentation.Hubs
             }
         }
 
+        public void ReportChromeError(string source, string message)
+        {
+            if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
+            {
+                try
+                {
+                    // Log to a file in the root folder (relative to working directory)
+                    var logFileName = "CHROME_EXTENSION_ERROR.log";
+                    var timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
+                    var logEntry = $"[{timestamp}] [{source}] {message}{Environment.NewLine}";
+                    
+                    // We try to reach the root folder if we are in the build output
+                    var path = logFileName;
+                    if (!File.Exists("OmniSync.sln") && Directory.Exists("../../../.."))
+                    {
+                        path = Path.Combine("../../../..", logFileName);
+                    }
+
+                    File.AppendAllText(path, logEntry);
+                    _logger.LogWarning($"[Chrome Error] {source}: {message}");
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Failed to log Chrome error.");
+                }
+            }
+        }
+
         public bool Authenticate(string apiKey)
         {
             var ip = Context.GetHttpContext()?.Connection.RemoteIpAddress?.ToString();
@@ -424,6 +452,10 @@ namespace OmniSync.Hub.Presentation.Hubs
                             fileNames.Add(Path.GetFileName(file));
                         }
                         await Clients.Caller.SendAsync("ReceiveCommandOutput", string.Join("\n", fileNames));
+                        break;
+                    case "reload_chrome_extension":
+                        await Clients.All.SendAsync("ReceiveBrowserCommand", "ReloadExtension", "", false);
+                        await Clients.Caller.SendAsync("ReceiveCommandOutput", "Reload command sent to Chrome Extension.");
                         break;
                     // Add other commands here
                     default:

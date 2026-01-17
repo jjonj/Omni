@@ -54,8 +54,6 @@ unit test all of the above first
 
 ## Chrome extension
 
-See if we can find a way for when the chrome extension throws an error, to notify hub about that error and have the hub log it to a new log file CHROME_EXTENSION_ERROR.log in the omni root folder.
-
 See if we can find a way to programatically reload the extension in vivaldi. (C:\Users\crovea\AppData\Local\Vivaldi\Application\vivaldi.exe)
 
 ## Omni Web

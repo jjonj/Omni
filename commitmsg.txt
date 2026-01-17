@@ -1,6 +1,5 @@
-fix(android): ensure sleep tracking persists through app restarts and non-user activity
+feat(chrome): implement extension error reporting to Hub
 
-- Refactored MainViewModel.recordActivity to update 'last active' timestamp without automatically resetting sleep state.
-- Added recordUserActivity for explicit manual activity that should reset sleep.
-- Removed recordActivity call from MainActivity.onCreate to prevent accidental sleep reset on app restart (especially background restarts).
-- This ensures sleep tracking continues until the user explicitly wakes up or significant activity is detected.
+- Added global error and unhandled rejection listeners to Chrome extension background.js.
+- Added ReportChromeError method to SignalR Hub to log extension errors to CHROME_EXTENSION_ERROR.log in the project root.
+- This allows better visibility into extension failures from the Hub.
