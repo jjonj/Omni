@@ -1,4 +1,6 @@
-fix(android): make Dashboard screen scrollable
+fix(android): ensure sleep tracking persists through app restarts and non-user activity
 
-- Refactored DashboardScreen to use a single LazyColumn for all sections (Connection, Sleep, Quick Actions, Logs).
-- This ensures the log area is accessible even when cards above it take up significant screen space.
+- Refactored MainViewModel.recordActivity to update 'last active' timestamp without automatically resetting sleep state.
+- Added recordUserActivity for explicit manual activity that should reset sleep.
+- Removed recordActivity call from MainActivity.onCreate to prevent accidental sleep reset on app restart (especially background restarts).
+- This ensures sleep tracking continues until the user explicitly wakes up or significant activity is detected.

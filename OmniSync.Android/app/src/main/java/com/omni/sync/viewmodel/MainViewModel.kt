@@ -141,10 +141,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun recordActivity() {
         sleepTracker.recordActivity()
+        // We no longer automatically reset sleep on every activity record.
+        // Sleep is only reset via resetSleep() which is called by the "Woke up" button
+        // or potentially a manual connection to the Hub if we want that.
+    }
+
+    fun recordUserActivity() {
+        sleepTracker.recordActivity()
         if (sleepTracker.isSleeping()) {
-            sleepTracker.resetSleep()
-            _isSleeping.value = false
-            _sleepDuration.value = sleepTracker.getFormattedSleepDuration()
+            // Only reset if we are sure it's a manual user action
+            resetSleep()
         }
     }
 

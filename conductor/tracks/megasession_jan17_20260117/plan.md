@@ -13,7 +13,7 @@
 
 ## Phase 2: Android Dashboard & Sleep Tracker
 - [x] Task: Fix Android Dashboard scrolling/layout (ensure log area is accessible)
-- [ ] Task: Fix Sleep Tracker persistence (handle app force-closes/restarts)
+- [x] Task: Fix Sleep Tracker persistence (handle app force-closes/restarts)
 - [ ] Task: TDD - Verify Sleep Tracker state restoration
 - [ ] Task: Conductor - User Manual Verification 'Phase 2: Android Dashboard & Sleep Tracker' (Protocol in workflow.md)
 

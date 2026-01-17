@@ -27,8 +27,6 @@ Only work on subtasks if told to do so or if told explicitly to do a Megasession
 
 ### Dashboard
 
-The sleep tracker starts counting when i turn off my pc and go to bed but in the morning it says "User active" and has stopped tracking, despite never connecting to the hub, this might be because the app was force closed by android during the night and on reopening it it lost tracking. Fix this..
-
 ## General
 
 
