@@ -52,6 +52,36 @@ class TFTOptimizer {
         this.isCancelled = true;
     }
 
+    expandMustInclude(names) {
+        if (!names) return [];
+        let namesArray = Array.isArray(names) ? [...names] : [names];
+        const expandedNames = new Set(namesArray);
+        let added;
+        do {
+            added = false;
+            for (let i = 0; i < this.UNITS.length; i++) {
+                const u = this.UNITS[i];
+                if (expandedNames.has(u.name)) {
+                    // Hardcoded Annie/Tibbers dependency
+                    if (u.name === "Annie" && !expandedNames.has("Tibbers")) {
+                        expandedNames.add("Tibbers");
+                        added = true;
+                    }
+                    if (u.name === "Tibbers" && !expandedNames.has("Annie")) {
+                        expandedNames.add("Annie");
+                        added = true;
+                    }
+                    // Data-driven dependency
+                    if (u.requires && !expandedNames.has(u.requires)) {
+                        expandedNames.add(u.requires);
+                        added = true;
+                    }
+                }
+            }
+        } while (added);
+        return Array.from(expandedNames);
+    }
+
     getActiveOrigins(counts) {
         return Object.keys(counts).filter(t => {
             const traitData = this.TRAITS_DATA[t];
@@ -300,8 +330,12 @@ class TFTOptimizer {
     getCandidates(pool, size, emblems, mustIncludeNames, mustIncludeTraits, heuristic, mode = 'default') {
         const targetSlots = size;
         let fixedUnits = [];
-        if (mustIncludeNames && mustIncludeNames.length > 0) {
-            fixedUnits = this.UNITS.filter(u => mustIncludeNames.includes(u.name));
+        
+        // Ensure mustIncludeNames is an array for processing
+        let namesArray = Array.isArray(mustIncludeNames) ? mustIncludeNames : (mustIncludeNames ? [mustIncludeNames] : []);
+        
+        if (namesArray.length > 0) {
+            fixedUnits = this.UNITS.filter(u => namesArray.includes(u.name));
         }
         const synergyBase = new Set([...emblems, ...this.BONUS_TRAITS]);
         fixedUnits.forEach(f => f.traits.forEach(t => synergyBase.add(t)));
@@ -394,15 +428,17 @@ class TFTOptimizer {
     async findBestBoards(pool, size, emblems, mustIncludeNames = [], mode = 'default', mustIncludeTraits = {}, limit = 3, onProgress = null, heuristic = 'standard') {
         this.isCancelled = false;
         
+        const expandedMustInclude = this.expandMustInclude(mustIncludeNames);
+
         if (mode === 'world-runes' || mode === 'ryze-unlock') {
-            return this.runeSearch(pool, size, emblems, mustIncludeNames, mode, mustIncludeTraits, limit, onProgress);
+            return this.runeSearch(pool, size, emblems, expandedMustInclude, mode, mustIncludeTraits, limit, onProgress);
         }
 
         if (heuristic === 'super') {
-            return this.beamSearch(pool, size, emblems, mustIncludeNames, mode, mustIncludeTraits, limit, onProgress);
+            return this.beamSearch(pool, size, emblems, expandedMustInclude, mode, mustIncludeTraits, limit, onProgress);
         }
 
-        const { candidates, neededSlots, fixedUnits } = this.getCandidates(pool, size, emblems, mustIncludeNames, mustIncludeTraits, heuristic, mode);
+        const { candidates, neededSlots, fixedUnits } = this.getCandidates(pool, size, emblems, expandedMustInclude, mustIncludeTraits, heuristic, mode);
         const targetSlots = size;
         
         const total = this.countTotalCombos(neededSlots, candidates);
@@ -424,7 +460,7 @@ class TFTOptimizer {
                 }
                 processed++;
                 const currentBoard = [...combo, ...fixedUnits];
-                const { score, counts } = this.scoreBoard(currentBoard, emblems, targetSlots, mode, mustIncludeTraits, mustIncludeNames);
+                const { score, counts } = this.scoreBoard(currentBoard, emblems, targetSlots, mode, mustIncludeTraits, expandedMustInclude);
                 if (score > -1000000) { 
                     results.push({ score, board: currentBoard, counts });
                 }

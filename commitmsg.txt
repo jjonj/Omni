@@ -1,10 +1,6 @@
-feat(tft): comprehensive "vim-level" hotkey system and active mode
+feat(tft): fix Annie must-include bug and implement unit dependencies
 
-- Implemented "Active Mode" (Ctrl+A) to gate global TFT hotkeys.
-- Added non-consuming global hotkeys: Alt+S (Solve), Alt+C (Copy Code), Alt+V (Paste Code), Alt+G (Save), Alt+B (Tab Solver).
-- Integrated Chrome Extension tab detection to ensure hotkeys only trigger when TFT is active.
-- Added modal typing in Active Mode with improved matching logic (prioritizes unit name starts).
-- Implemented 10-step undo history (Backspace) and unit highlight cycling (Ctrl+Tab) in active zones.
-- Added visual hotkey cheat sheet and status indicator.
-- Fixed duplicate keyboard hook issue and refined modifier detection logic.
-- Set "Must Include" as the default active zone on page load.
+- Modified TFTOptimizer to automatically expand must-include list with dependencies (e.g., Annie requires Tibbers).
+- Added expandMustInclude helper method to handle hardcoded and data-driven (requires) dependencies.
+- Fixed unit test traits key from 'traits' to 'trait_metadata'.
+- Added reproduction test test_annie_bug.js.

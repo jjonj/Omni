@@ -60,6 +60,8 @@ unit test all of the above first
 
 See if we can find a way for when the chrome extension throws an error, to notify hub about that error and have the hub log it to a new log file CHROME_EXTENSION_ERROR.log in the omni root folder.
 
+See if we can find a way to programatically reload the extension in vivaldi. (C:\Users\crovea\AppData\Local\Vivaldi\Application\vivaldi.exe)
+
 ## Omni Web
 
 ### Omni web tft
@@ -73,4 +75,9 @@ On page load i get tft_evolution_test.js?v=2026.01.17.00.12:12 Uncaught Referenc
 	
 	Tibbers is missing from unit list
 	
-	Cannot create solutions if annie is in must include for some reason, write and run a unit test.
+	
+	add hotkey for toggling "smart sort"
+	
+	Show active/partial traits under the must include units and traits drag box like we do with result tiles
+	
+	Repalce feature to hover and select another unit in results tiles is broken, i see the popup but nothing hgappens when i click other units

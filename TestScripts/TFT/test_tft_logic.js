@@ -10,7 +10,7 @@ const set16Data = JSON.parse(fs.readFileSync(set16Path, 'utf8'));
 
 console.log("Loaded Set 16 data:", set16Data.set_name);
 
-const optimizer = new TFTOptimizer(set16Data.units, set16Data.traits);
+const optimizer = new TFTOptimizer(set16Data.units, set16Data.trait_metadata);
 
 // Test Case 1: Level 6, Demacia Emblem
 console.log("\n--- Test Case 1: Level 6, Demacia Emblem, Must Include Garen ---");
