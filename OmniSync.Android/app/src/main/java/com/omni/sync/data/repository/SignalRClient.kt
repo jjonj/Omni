@@ -446,7 +446,7 @@ class SignalRClient(
 
                   hubConnection?.on("ReceiveNewAiSessionPid", { pid: Int ->
                       Log.d("SignalRClient", "ReceiveNewAiSessionPid: $pid")
-                      mainViewModel.addLog("[AI] New session reported by Hub: PID $pid", com.omni.sync.ui.screen.LogType.SUCCESS)
+                      // mainViewModel.addLog("[AI] New session reported by Hub: PID $pid", com.omni.sync.ui.screen.LogType.SUCCESS) // REMOVED redundant log
                       getAiSessions()
                       val wasStartingOurOwn = _isStartingSession
                       val wasTellPc = _isTriggeringTellPcLocal
@@ -461,7 +461,7 @@ class SignalRClient(
                       _isTriggeringTellPcLocal = false
                       updateSessionStatus(pid, null)            
             if (wasStartingOurOwn || wasTellPc) {
-                mainViewModel.addLog("[AI] Switching to new session PID $pid", com.omni.sync.ui.screen.LogType.INFO)
+                // mainViewModel.addLog("[AI] Switching to new session PID $pid", com.omni.sync.ui.screen.LogType.INFO) // REMOVED redundant log
                 switchAiSession(pid) // Notifies Hub AND updates local state
             }
             
@@ -761,7 +761,7 @@ class SignalRClient(
             isStartingSessionFlow.value = false
             messageQueue.clear()
 
-            mainViewModel.addLog("[AI] Switching to session PID $pid (Request)", com.omni.sync.ui.screen.LogType.INFO)
+            // mainViewModel.addLog("[AI] Switching to session PID $pid (Request)", com.omni.sync.ui.screen.LogType.INFO) // REMOVED redundant log
             setSelectedPid(pid)
             updateSessionStatus(pid, "Switching session...")
             hubConnection?.send("SwitchAiSession", pid)

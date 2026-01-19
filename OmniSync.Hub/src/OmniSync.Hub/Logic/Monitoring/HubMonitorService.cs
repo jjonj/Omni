@@ -64,6 +64,9 @@ namespace OmniSync.Hub.Logic.Monitoring
             }
         }
 
+        private readonly string _instanceId = Guid.NewGuid().ToString().Substring(0, 8);
+        private bool _isSubscribed = false;
+
         public HubMonitorService(
             IHostApplicationLifetime appLifetime,
             ILogger<HubMonitorService> logger)
@@ -110,39 +113,56 @@ namespace OmniSync.Hub.Logic.Monitoring
                 ConnectionRemoved?.Invoke(this, connectionId); // Now raises event
                 AddLogMessage($"Client Disconnected: {connectionId}");
             };
-
-            // Hook into RpcApiHub events
-            RpcApiHub.AnyCommandReceived += _anyCommandReceivedHandler;
-            RpcApiHub.ClientConnectedEvent += _clientConnectedHandler; // New
-            RpcApiHub.ClientDisconnectedEvent += _clientDisconnectedHandler; // New
             
-            _logger.LogInformation("HubMonitorService initialized.");
+            _logger.LogInformation($"HubMonitorService initialized (ID: {_instanceId}).");
         }
 
         public Task StartAsync(CancellationToken cancellationToken)
         {
-            _logger.LogInformation("HubMonitorService starting.");
-            LogEntryAdded?.Invoke(this, $"[{DateTime.Now:HH:mm:ss}] HubMonitorService started.");
+            _logger.LogInformation($"HubMonitorService starting (ID: {_instanceId}).");
+            
+            if (!_isSubscribed)
+            {
+                _logger.LogInformation($"HubMonitorService (ID: {_instanceId}) subscribing to RpcApiHub events.");
+                // Hook into RpcApiHub events
+                RpcApiHub.AnyCommandReceived += _anyCommandReceivedHandler;
+                RpcApiHub.ClientConnectedEvent += _clientConnectedHandler;
+                RpcApiHub.ClientDisconnectedEvent += _clientDisconnectedHandler;
+                _isSubscribed = true;
+            }
+            else
+            {
+                _logger.LogWarning($"HubMonitorService (ID: {_instanceId}) StartAsync called but already subscribed.");
+            }
+
+            LogEntryAdded?.Invoke(this, $"[{DateTime.Now:HH:mm:ss}] HubMonitorService started (ID: {_instanceId}).");
             return Task.CompletedTask;
         }
 
         public Task StopAsync(CancellationToken cancellationToken)
         {
-            _logger.LogInformation("HubMonitorService stopping.");
-            // Unsubscribe from events to prevent memory leaks
-            if (_anyCommandReceivedHandler != null)
+            _logger.LogInformation($"HubMonitorService stopping (ID: {_instanceId}).");
+            
+            if (_isSubscribed)
             {
-                RpcApiHub.AnyCommandReceived -= _anyCommandReceivedHandler;
+                _logger.LogInformation($"HubMonitorService (ID: {_instanceId}) unsubscribing from RpcApiHub events.");
+                // Unsubscribe from events to prevent memory leaks
+                if (_anyCommandReceivedHandler != null)
+                {
+                    RpcApiHub.AnyCommandReceived -= _anyCommandReceivedHandler;
+                }
+                if (_clientConnectedHandler != null) 
+                {
+                    RpcApiHub.ClientConnectedEvent -= _clientConnectedHandler;
+                }
+                if (_clientDisconnectedHandler != null) 
+                {
+                    RpcApiHub.ClientDisconnectedEvent -= _clientDisconnectedHandler;
+                }
+                _isSubscribed = false;
             }
-            if (_clientConnectedHandler != null) // New
-            {
-                RpcApiHub.ClientConnectedEvent -= _clientConnectedHandler;
-            }
-            if (_clientDisconnectedHandler != null) // New
-            {
-                RpcApiHub.ClientDisconnectedEvent -= _clientDisconnectedHandler;
-            }
-            LogEntryAdded?.Invoke(this, $"[{DateTime.Now:HH:mm:ss}] HubMonitorService stopped.");
+
+            LogEntryAdded?.Invoke(this, $"[{DateTime.Now:HH:mm:ss}] HubMonitorService stopped (ID: {_instanceId}).");
             return Task.CompletedTask;
         }
 
@@ -153,19 +173,19 @@ namespace OmniSync.Hub.Logic.Monitoring
 
         public void AddLogMessage(string message)
         {
-            var logEntry = $"[{DateTime.Now:HH:mm:ss}] {message}";
+            var logEntry = $"[{DateTime.Now:HH:mm:ss}] (ID: {_instanceId}) {message}";
             
             // WPF Compatibility: Ensure ObservableCollection is updated on the UI thread if we are in a WPF context
             if (System.Windows.Application.Current != null)
             {
                 System.Windows.Application.Current.Dispatcher.BeginInvoke(() =>
                 {
-                    LogMessages.Add(logEntry);
+                    LogMessages.Insert(0, logEntry);
                 });
             }
             else
             {
-                LogMessages.Add(logEntry);
+                LogMessages.Insert(0, logEntry);
             }
 
             LogEntryAdded?.Invoke(this, logEntry);

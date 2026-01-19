@@ -21,13 +21,16 @@ Only work on subtasks if told to do so or if told explicitly to do a Megasession
 
 ## For the hub
 
+If i try to run omni.exe again when its already running it tries to run a second instance and gives an error that it can't bind to port blabla. Can you make it just open the hub window instead of trying to open a second instance. Maybe the second instance does run but simply checks and sees omni is already running and therefore tells the existing omni to open its window and then terminates 
 
 ## in OmniSync.Android
 ### General
 
+
 ### Dashboard
 
-## General
+Sleep tracker should stop tracking/counting hours whenever connecting to hub. 
+When log entries come in, it auto scrolls to bottom. Dont do that for the dashboard.
 
 
 ### Remote Control Screen
@@ -40,23 +43,42 @@ Only work on subtasks if told to do so or if told explicitly to do a Megasession
 
 ### Browser control screen
 
+Allow adding cleanup patterns based on not just URL but also tab title. E.g. "title:LIVE Breaking news" (caps insensitive) which closes all tabs that has that as a substring
+
 ### Android Home screen launcher widgets
 
 ### Settings screen (accessed by button on dashboard, not bottom panel)
 
 ### AI screen
 
+tool call: replace and tool call: edit are rendered in yellow because they are tool calls but maybe they should use file diff rendering instead, maybe with some yellow somewhere
+
 unit test all of the above first 
 
 ### Embedded web screen
 
+
+### Alarm screen
+
+For alarm #2, allow setting it to a specific date in the future. 
+
 ### Settings screen
 
+Allow configuring a startup routine, a series of "quick actions" that can be scheduled to run whenever the hub first starts up ONCE per day only (if it restarts on the same day then dont rerun). 
+Add tab cleanup as a quickaction
 
 ## Chrome extension
 
 ## Omni Web
 
+Add a dropdown that lets me select one of 3 websites:
+google.com
+http://10.0.0.37:5000
+http://10.0.0.37:3333
+
+
 ### Omni web tft
+
+Ctrl-A hotkey is inconsistents, when tft page is open it sometimes doesnt activate the tft page but it still starts blocking input
 
 ## Chrome extension

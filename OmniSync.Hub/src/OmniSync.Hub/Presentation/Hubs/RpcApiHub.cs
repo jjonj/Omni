@@ -1049,10 +1049,13 @@ namespace OmniSync.Hub.Presentation.Hubs
             }
         }
 
+        private static readonly SemaphoreSlim _aiLaunchSemaphore = new(1, 1);
+
         public async Task<int?> StartNewAiSession(string? workspace = null)
         {
             if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
             {
+                await _aiLaunchSemaphore.WaitAsync();
                 try
                 {
                     _logger.LogInformation($"[RpcApiHub] StartNewAiSession requested (Workspace: {workspace}). Broadcasting status...");
@@ -1089,6 +1092,10 @@ namespace OmniSync.Hub.Presentation.Hubs
                      AnyCommandReceived?.Invoke(this, $"AI Launch Error: {ex.Message}");
                      await Clients.All.SendAsync("ReceiveAiStatus", "Error starting session", -1);
                      return null;
+                }
+                finally
+                {
+                    _aiLaunchSemaphore.Release();
                 }
             }
             return null;

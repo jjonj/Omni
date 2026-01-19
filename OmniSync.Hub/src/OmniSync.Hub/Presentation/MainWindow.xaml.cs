@@ -44,15 +44,9 @@ namespace OmniSync.Hub.Presentation
             _viewModel = new MainViewModel(hubMonitorService, inputService, processService, shutdownService, registryService, settingsService, keyboardHook, aiCliService, layoutCaptureService, projectLauncherService);
             DataContext = _viewModel;
 
-            // Hook up event handlers (now in ViewModel)
-            _hubMonitorService.LogEntryAdded += OnLogEntryAdded;
+            // Hook up event handlers (now in ViewModel where appropriate)
             _settingsService.SettingsChanged += OnSettingsChanged;
             inputService.ModifierStateChanged += OnModifierStateChanged;
-        }
-
-        private void OnLogEntryAdded(object? s, string msg)
-        {
-            Dispatcher?.Invoke(() => _viewModel.LogMessages.Add(msg));
         }
 
         private void OnSettingsChanged(object? s, EventArgs e)
@@ -70,7 +64,6 @@ namespace OmniSync.Hub.Presentation
             if (IsInternalClosing)
             {
                 // Cleanup to prevent memory leaks and crashes on exit
-                _hubMonitorService.LogEntryAdded -= OnLogEntryAdded;
                 _settingsService.SettingsChanged -= OnSettingsChanged;
                 // Note: ModifierStateChanged is on a singleton service, but we should still cleanup
                 

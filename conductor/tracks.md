@@ -26,3 +26,17 @@
 
 ## [~] Track: Project Environment Launcher
 *Link: [./conductor/tracks/feat_project_launcher_20260111/](./conductor/tracks/feat_project_launcher_20260111/)*
+
+---
+
+
+
+## [x] Track: Megasession Jan 17 (Omni Web TFT Priority)
+
+
+
+*Link: [./tracks/megasession_jan17_20260117/](./tracks/megasession_jan17_20260117/)*
+
+
+
+
