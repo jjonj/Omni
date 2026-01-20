@@ -1,9 +1,9 @@
 # Implementation Plan - Debug CLI Initialization Crash
 
 ## Phase 1: Instrumentation (Completed)
-- [x] Task: Add verbose file logging to `OmniSync.Hub` specifically around the `GeminiSession` initialization, SignalR connection events, and process spawning logic. [commit: Pending]
-- [x] Task: Add verbose file logging to `OmniSync.Cli` (`ai_listener.py` / `omni_cli_script.py`) to catch unhandled exceptions at startup and log them to a persistent file immediately. [commit: Pending]
-- [x] Task: Modify `launch_gemini_cli_hub.py` (or relevant launcher) and `AiCliService.cs` to capture and log the `stdout` and `stderr` of the spawned CLI process, preventing immediate window closure masking the error. [commit: Pending]
+- [x] Task: Add verbose file logging to `OmniSync.Hub` specifically around the `GeminiSession` initialization, SignalR connection events, and process spawning logic. [ef16e65]
+- [x] Task: Add verbose file logging to `OmniSync.Cli` (`ai_listener.py` / `omni_cli_script.py`) to catch unhandled exceptions at startup and log them to a persistent file immediately. [ef16e65]
+- [x] Task: Modify `launch_gemini_cli_hub.py` (or relevant launcher) and `AiCliService.cs` to capture and log the `stdout` and `stderr` of the spawned CLI process, preventing immediate window closure masking the error. [ef16e65]
 
 ## Phase 2: Observation & Trap Setting (Current)
 - [~] Task: Validate instrumentation with a roundtrip test.
