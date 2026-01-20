@@ -36,6 +36,8 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.ime
 import androidx.compose.ui.unit.dp
 import com.omni.sync.ui.components.OmniBottomNavigation
 
@@ -135,6 +137,7 @@ class MainActivity : ComponentActivity() {
                 val signalRClient = omniSyncApplication.signalRClient
                 
                 val context = LocalContext.current
+                val isKeyboardVisible = androidx.compose.foundation.layout.WindowInsets.ime.getBottom(androidx.compose.ui.platform.LocalDensity.current) > 0
 
                 LaunchedEffect(Unit) {
                     mainViewModel.toastMessage.collect { message ->
@@ -149,7 +152,7 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    BackHandler(enabled = true) {
+                    BackHandler(enabled = !isKeyboardVisible) {
                         mainViewModel.handleBackPress { finish() }
                     }
                     

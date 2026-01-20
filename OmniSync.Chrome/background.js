@@ -159,8 +159,8 @@ function urlMatchesPattern(url, pattern) {
     return regex.test(url);
 }
 
-// Helper function to check if a tab URL matches cleanup patterns
-function shouldCleanTab(tabUrl) {
+// Helper function to check if a tab URL or title matches cleanup patterns
+function shouldCleanTab(tabUrl, tabTitle) {
     if (!tabUrl) return false;
     
     // Twitch following directory
@@ -180,7 +180,12 @@ function shouldCleanTab(tabUrl) {
     
     // Check custom patterns
     for (const pattern of customCleanupPatterns) {
-        if (urlMatchesPattern(tabUrl, pattern)) return true;
+        if (pattern.toLowerCase().startsWith("title:")) {
+            const titlePattern = pattern.substring(6).toLowerCase();
+            if (tabTitle && tabTitle.toLowerCase().includes(titlePattern)) return true;
+        } else {
+            if (urlMatchesPattern(tabUrl, pattern)) return true;
+        }
     }
     
     return false;
@@ -238,7 +243,7 @@ connection.on("ReceiveBrowserCommand", async (command, url, newTab) => {
         }
     } else if (command === "CleanTabs") {
         chrome.tabs.query({}, (tabs) => {
-            const tabsToClose = tabs.filter(tab => shouldCleanTab(tab.url));
+            const tabsToClose = tabs.filter(tab => shouldCleanTab(tab.url, tab.title));
             console.log(`Cleaning ${tabsToClose.length} tabs`);
             tabsToClose.forEach(tab => chrome.tabs.remove(tab.id));
         });
@@ -440,7 +445,7 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
         });
     } else if (info.menuItemId === "cleanTabs") {
         chrome.tabs.query({}, (tabs) => {
-            const tabsToClose = tabs.filter(tab => shouldCleanTab(tab.url));
+            const tabsToClose = tabs.filter(tab => shouldCleanTab(tab.url, tab.title));
             console.log(`Cleaning ${tabsToClose.length} tabs via context menu`);
             tabsToClose.forEach(tab => chrome.tabs.remove(tab.id));
         });

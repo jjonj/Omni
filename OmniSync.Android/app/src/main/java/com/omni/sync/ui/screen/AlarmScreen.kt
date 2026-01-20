@@ -19,6 +19,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.Alarm
 import androidx.compose.material.icons.filled.AlarmOff
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Repeat
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material3.*
@@ -47,7 +48,8 @@ data class AlarmData(
     var useGradual: Boolean = true,
     var soundId: String = "gentle",
     var macroOnTrigger: String? = null,
-    var macroOnDismiss: String? = null
+    var macroOnDismiss: String? = null,
+    var scheduledDate: Long? = null // Optional specific date
 )
 
 data class GradualConfig(
@@ -93,6 +95,7 @@ fun AlarmScreen(
     }
 
     var showTimePicker by remember { mutableStateOf<Int?>(null) } 
+    var showDatePicker by remember { mutableStateOf<Int?>(null) }
     var showSoundPicker by remember { mutableStateOf<Int?>(null) }
     
     val mediaPlayer = remember { MediaPlayer() }
@@ -238,6 +241,7 @@ fun AlarmScreen(
                 availableSounds = availableAlarmSounds,
                 timeFormat = timeFormat,
                 onShowTimePicker = { showTimePicker = 2 },
+                onShowDatePicker = { showDatePicker = 2 },
                 onShowSoundPicker = { showSoundPicker = 2 },
                 hideOptionsWhenDisabled = true,
                 macros = appConfig.macros
@@ -353,6 +357,42 @@ fun AlarmScreen(
         )
     }
     
+    showDatePicker?.let { alarmNum ->
+        val currentAlarm = if (alarmNum == 1) alarm1 else alarm2
+        val cal = Calendar.getInstance()
+        if (currentAlarm.scheduledDate != null) cal.timeInMillis = currentAlarm.scheduledDate!!
+        
+        android.app.DatePickerDialog(
+            context,
+            { _, year, month, day ->
+                val newCal = Calendar.getInstance().apply {
+                    set(Calendar.YEAR, year)
+                    set(Calendar.MONTH, month)
+                    set(Calendar.DAY_OF_MONTH, day)
+                    // Keep existing time if possible, or default to alarm time
+                    set(Calendar.HOUR_OF_DAY, if (currentAlarm.isAM) (if (currentAlarm.hour == 12) 0 else currentAlarm.hour) else (if (currentAlarm.hour == 12) 12 else currentAlarm.hour + 12))
+                    set(Calendar.MINUTE, currentAlarm.minute)
+                    set(Calendar.SECOND, 0)
+                    set(Calendar.MILLISECOND, 0)
+                }
+                val updated = currentAlarm.copy(
+                    scheduledDate = newCal.timeInMillis,
+                    repeatDaily = false, // Auto-disable repeat if specific date set
+                    enabled = true
+                )
+                if (alarmNum == 1) { alarm1 = updated; updateSchedule(1, updated) }
+                else { alarm2 = updated; updateSchedule(2, updated) }
+                showDatePicker = null
+            },
+            cal.get(Calendar.YEAR),
+            cal.get(Calendar.MONTH),
+            cal.get(Calendar.DAY_OF_MONTH)
+        ).apply {
+            setOnDismissListener { showDatePicker = null }
+            show()
+        }
+    }
+    
     showSoundPicker?.let { alarmNum ->
         val currentAlarm = if (alarmNum == 1) alarm1 else alarm2
         AlertDialog(
@@ -400,6 +440,7 @@ fun AlarmCard(
     availableSounds: List<Pair<String, String>>,
     timeFormat: SimpleDateFormat,
     onShowTimePicker: () -> Unit,
+    onShowDatePicker: (() -> Unit)? = null,
     onShowSoundPicker: () -> Unit,
     hideOptionsWhenDisabled: Boolean,
     macros: List<com.omni.sync.data.model.Macro>
@@ -427,6 +468,29 @@ fun AlarmCard(
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     HorizontalDivider()
                     
+                    if (alarmNumber == 2 && onShowDatePicker != null) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("Specific Date")
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                TextButton(onClick = onShowDatePicker) {
+                                    val dateText = if (alarm.scheduledDate != null) {
+                                        SimpleDateFormat("MMM dd, yyyy", Locale.getDefault()).format(Date(alarm.scheduledDate!!))
+                                    } else "Not Set"
+                                    Text(dateText)
+                                }
+                                if (alarm.scheduledDate != null) {
+                                    IconButton(onClick = { onAlarmChange(alarm.copy(scheduledDate = null)) }) {
+                                        Icon(Icons.Default.Close, "Clear Date", modifier = Modifier.size(16.dp))
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     Button(
                         onClick = {
                             val newMode = (alarm.quickToggleMode + 1) % 4

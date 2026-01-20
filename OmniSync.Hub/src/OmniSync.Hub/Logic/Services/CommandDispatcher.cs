@@ -139,6 +139,13 @@ namespace OmniSync.Hub.Logic.Services
                         }
                     }
 
+                    public void Dispatch(string command, object payload)
+                    {
+                        var json = JsonSerializer.Serialize(payload);
+                        using var doc = JsonDocument.Parse(json);
+                        Dispatch(command, doc.RootElement);
+                    }
+
                     public IEnumerable<string> GetRegisteredCommands()
                     {
                         return _commandMap.Keys;

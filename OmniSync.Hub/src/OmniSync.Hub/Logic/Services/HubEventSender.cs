@@ -131,9 +131,17 @@ namespace OmniSync.Hub.Logic.Services
                  // Always send the text if present
                  if (!string.IsNullOrEmpty(e.Text))
                  {
-                     string preview = e.Text.Length > 50 ? e.Text.Substring(0, 50) + "..." : e.Text;
-                     Console.WriteLine($"[HubEventSender] Broadcasting Response for PID {broadcastPid}: {preview}");
-                     await _hubContext.Clients.All.SendAsync("ReceiveAiResponse", e.Text, broadcastPid);
+                     if (e.IsUser)
+                     {
+                         // Broadcast as a user message from CLI
+                         await _hubContext.Clients.All.SendAsync("ReceiveAiMessage", "CLI_USER", e.Text, broadcastPid);
+                     }
+                     else
+                     {
+                         string preview = e.Text.Length > 50 ? e.Text.Substring(0, 50) + "..." : e.Text;
+                         Console.WriteLine($"[HubEventSender] Broadcasting Response for PID {broadcastPid}: {preview}");
+                         await _hubContext.Clients.All.SendAsync("ReceiveAiResponse", e.Text, broadcastPid);
+                     }
                  }
 
                  if (e.IsFinished)

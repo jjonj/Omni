@@ -86,7 +86,7 @@ namespace OmniSync.Hub.Logic.Services
 
                 _tftAddModeActive = !_tftAddModeActive;
                 _hubMonitorService.AddLogMessage($"[TFT] Active Mode Toggle: {_tftAddModeActive}");
-                ExecuteHotkeyAction("TFT_ENTER_ADD_MODE");
+                ExecuteHotkeyAction("TFT_ENTER_ADD_MODE", new { Active = _tftAddModeActive });
                 // User requested NOT to consume the key
                 e.Handled = false; 
                 return;
@@ -100,7 +100,7 @@ namespace OmniSync.Hub.Logic.Services
                 {
                     _tftAddModeActive = false;
                     _hubMonitorService.AddLogMessage("[TFT] Active Mode disabled (Tab lost focus).");
-                    ExecuteHotkeyAction("TFT_ENTER_ADD_MODE"); // Signal exit to UI
+                    ExecuteHotkeyAction("TFT_ENTER_ADD_MODE", new { Active = false }); // Signal exit to UI
                     return; // Let key pass through
                 }
 
@@ -140,9 +140,7 @@ namespace OmniSync.Hub.Logic.Services
                     if (!string.IsNullOrEmpty(keyStr))
                     {
                         var payload = new { Key = keyStr };
-                        var json = System.Text.Json.JsonSerializer.Serialize(payload);
-                        using var doc = System.Text.Json.JsonDocument.Parse(json);
-                        _commandDispatcher.Dispatch("TFT_INPUT", doc.RootElement);
+                        _commandDispatcher.Dispatch("TFT_INPUT", payload);
                         e.Handled = true;
                         return;
                     }
@@ -151,7 +149,7 @@ namespace OmniSync.Hub.Logic.Services
                 {
                     // Safety escape
                     _tftAddModeActive = false;
-                    ExecuteHotkeyAction("TFT_ENTER_ADD_MODE"); // Signal exit
+                    ExecuteHotkeyAction("TFT_ENTER_ADD_MODE", new { Active = false }); // Signal exit
                     e.Handled = true;
                     return;
                 }
@@ -241,7 +239,7 @@ namespace OmniSync.Hub.Logic.Services
                    k == Keys.LWin || k == Keys.RWin;
         }
 
-        private void ExecuteHotkeyAction(string action)
+        private void ExecuteHotkeyAction(string action, object? extraPayload = null)
         {
             if (action == "OPEN_HUB_WINDOW")
             {
@@ -256,22 +254,23 @@ namespace OmniSync.Hub.Logic.Services
                 {
                     var idStr = action.Substring("LAUNCH_PROJECT_".Length);
                     var payload = new { Id = idStr };
-                    var json = System.Text.Json.JsonSerializer.Serialize(payload);
-                    using var doc = System.Text.Json.JsonDocument.Parse(json);
-                    _commandDispatcher.Dispatch("LAUNCH_PROJECT", doc.RootElement);
+                    _commandDispatcher.Dispatch("LAUNCH_PROJECT", payload);
                 }
                 else
                 {
                     // Dispatch through CommandDispatcher
-                    // We create a minimal JSON object: {}
-                    using var doc = System.Text.Json.JsonDocument.Parse("{}");
-                    _commandDispatcher.Dispatch(action, doc.RootElement);
+                    _commandDispatcher.Dispatch(action, extraPayload ?? new { });
                 }
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, $"Error executing hotkey action: {action}");
             }
+        }
+
+        public void RequestOpenWindow()
+        {
+            OpenHubWindowRequested?.Invoke(this, EventArgs.Empty);
         }
 
         public void Dispose()

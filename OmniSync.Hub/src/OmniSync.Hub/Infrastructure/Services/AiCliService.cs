@@ -22,6 +22,7 @@ namespace OmniSync.Hub.Infrastructure.Services
         public bool IsFinished { get; set; }
         public bool IsHistory { get; set; }
         public bool IsCodeDiff { get; set; }
+        public bool IsUser { get; set; }
     }
 
     public class GeminiDialogEventArgs : EventArgs
@@ -924,7 +925,7 @@ namespace OmniSync.Hub.Infrastructure.Services
                 _logger.LogDebug($"Could not get start time for process {pid}: {ex.Message}");
             }
 
-            var session = new GeminiSession(pid, startTime, _logger, _debugMode, (p, text, finished, history, isCodeDiff) =>
+            var session = new GeminiSession(pid, startTime, _logger, _debugMode, (p, text, finished, history, isCodeDiff, isUser) =>
             {
                 ResponseReceived?.Invoke(this, new GeminiResponseEventArgs
                 {
@@ -932,7 +933,8 @@ namespace OmniSync.Hub.Infrastructure.Services
                     Text = text,
                     IsFinished = finished,
                     IsHistory = history,
-                    IsCodeDiff = isCodeDiff
+                    IsCodeDiff = isCodeDiff,
+                    IsUser = isUser
                 });
             }, (p, type, prompt, options) =>
             {
@@ -1249,7 +1251,7 @@ namespace OmniSync.Hub.Infrastructure.Services
         private readonly DateTime _startTime;
         private readonly ILogger _logger;
         private readonly bool _debugMode;
-        private readonly Action<int, string, bool, bool, bool> _onResponse;
+        private readonly Action<int, string, bool, bool, bool, bool> _onResponse;
         private readonly Action<int, string, string, List<string>?> _onDialog;
         private NamedPipeClientStream? _pipeClient;
         private StreamWriter? _writer;
@@ -1267,7 +1269,7 @@ namespace OmniSync.Hub.Infrastructure.Services
         public DateTime StartTime => _startTime;
         public Process? ShellProcess => _shellProcess;
 
-        public GeminiSession(int pid, DateTime startTime, ILogger logger, bool debugMode, Action<int, string, bool, bool, bool> onResponse, Action<int, string, string, List<string>?> onDialog)
+        public GeminiSession(int pid, DateTime startTime, ILogger logger, bool debugMode, Action<int, string, bool, bool, bool, bool> onResponse, Action<int, string, string, List<string>?> onDialog)
         {
             _pid = pid;
             _sid = Guid.NewGuid().ToString().Substring(0, 4);
@@ -1422,12 +1424,12 @@ namespace OmniSync.Hub.Infrastructure.Services
 
                             // Auto-clear transient status messages like "Authentication in progress..."
                             // when we receive the first real activity after it.
-                            if (typeStr == "response" || typeStr == "thought" || typeStr == "codeDiff" || typeStr == "toolCall")
+                            if (typeStr == "response" || typeStr == "thought" || typeStr == "codeDiff" || typeStr == "toolCall" || typeStr == "user")
                             {
                                 if (_lastDialogType == "auth_in_progress")
                                 {
                                     _logger.LogInformation($"[GeminiSession] SID: {_sid} | Activity received after auth. Clearing auth status for PID {_pid}");
-                                    _onResponse(_pid, string.Empty, true, false, false); // Sends FINISHED status
+                                    _onResponse(_pid, string.Empty, true, false, false, false); // Sends FINISHED status
                                     _lastDialogType = null;
                                 }
                             }
@@ -1446,7 +1448,7 @@ namespace OmniSync.Hub.Infrastructure.Services
                                     if (endIdx != -1)
                                     {
                                         var historyJson = text.Substring(startIdx, endIdx - startIdx);
-                                        _onResponse(_pid, historyJson, true, true, false);
+                                        _onResponse(_pid, historyJson, true, true, false, false);
                                     }
                                 }
                                 else if (text == "[TURN_FINISHED]")
@@ -1455,7 +1457,7 @@ namespace OmniSync.Hub.Infrastructure.Services
                                     _recentlyBroadcastMessages.Clear(); 
                                     _sentPrompts.Clear();
                                     _lastDialogType = null;
-                                    _onResponse(_pid, string.Empty, true, false, false);
+                                    _onResponse(_pid, string.Empty, true, false, false, false);
                                 }
                                 else if (text == "[Command Handled]")
                                 {
@@ -1475,7 +1477,7 @@ namespace OmniSync.Hub.Infrastructure.Services
                                     if (_recentlyBroadcastMessages.Add(text))
                                     {
                                         _logger.LogDebug($"[GeminiSession] SID: {_sid} | Broadcasting unique response from PID {_pid}");
-                                        _onResponse(_pid, text, false, false, false);
+                                        _onResponse(_pid, text, false, false, false, false);
                                     }
                                     else
                                     {
@@ -1483,12 +1485,20 @@ namespace OmniSync.Hub.Infrastructure.Services
                                     }
                                 }
                             }
+                            else if (typeStr == "user")
+                            {
+                                if (text != null && _recentlyBroadcastMessages.Add($"user_{text}"))
+                                {
+                                    _logger.LogInformation($"[GeminiSession] SID: {_sid} | Received user input from PID {_pid}");
+                                    _onResponse(_pid, text, false, false, false, true);
+                                }
+                            }
                             else if (typeStr == "thought")
                             {
                                 if (_recentlyBroadcastMessages.Add($"thought_{text}"))
                                 {
                                     _logger.LogDebug($"[GeminiSession] SID: {_sid} | Received thought from PID {_pid}: {text}");
-                                    _onResponse(_pid, $"Thinking: {text}", false, false, false);
+                                    _onResponse(_pid, $"Thinking: {text}", false, false, false, false);
                                 }
                             }
                             else if (typeStr == "codeDiff")
@@ -1496,7 +1506,7 @@ namespace OmniSync.Hub.Infrastructure.Services
                                 if (text != null && _recentlyBroadcastMessages.Add($"diff_{text}"))
                                 {
                                     _logger.LogInformation($"[GeminiSession] SID: {_sid} | Received codeDiff from PID {_pid}");
-                                    _onResponse(_pid, text, false, false, true);
+                                    _onResponse(_pid, text, false, false, true, false);
                                 }
                             }
                             else if (typeStr == "toolCall")
@@ -1504,7 +1514,7 @@ namespace OmniSync.Hub.Infrastructure.Services
                                 if (text != null && _recentlyBroadcastMessages.Add($"tool_{text}"))
                                 {
                                     _logger.LogInformation($"[GeminiSession] SID: {_sid} | Received toolCall from PID {_pid}");
-                                    _onResponse(_pid, text, false, false, false);
+                                    _onResponse(_pid, text, false, false, false, false);
                                 }
                             }
                             else if (typeStr == "dialog")

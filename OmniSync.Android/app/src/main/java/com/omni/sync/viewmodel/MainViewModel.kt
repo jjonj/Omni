@@ -358,9 +358,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         if (connected) {
             addLog("Hub Connected", LogType.SUCCESS)
             showToast("Hub Connected")
+            sleepTracker.pauseTracking()
         } else {
             addLog("Hub Disconnected", LogType.ERROR)
             showToast("Hub Disconnected")
+            sleepTracker.resumeTracking()
         }
     }
     

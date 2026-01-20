@@ -70,13 +70,6 @@ fun DashboardScreen(modifier: Modifier = Modifier, signalRClient: SignalRClient,
         else -> ConnectionStatus.UNKNOWN
     }
     
-    // Auto-scroll to bottom when new logs arrive
-    LaunchedEffect(displayLogs.size) {
-        if (displayLogs.isNotEmpty()) {
-            listState.animateScrollToItem(displayLogs.size - 1)
-        }
-    }
-    
     Column(modifier = modifier.fillMaxSize()) {
         TopAppBar(
             title = { Text("OmniSync Dashboard") },

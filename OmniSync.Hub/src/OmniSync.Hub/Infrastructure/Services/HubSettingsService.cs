@@ -65,6 +65,7 @@ namespace OmniSync.Hub.Infrastructure.Services
         public string TellPcWorkspace { get; set; } = @"B:\GDrive\Tools";
         public string TellPcSystemContext { get; set; } = "You are to help the user execute commands and tools on this windows PC. You are an expert assistant with full system access. Be concise and efficient.";
         public bool TellPcSoundEnabled { get; set; } = true;
+        public DateTime? LastStartupRoutineDate { get; set; }
     }
 
     public class HubSettingsService
@@ -146,11 +147,10 @@ namespace OmniSync.Hub.Infrastructure.Services
         {
             var defaults = new List<HotkeyConfig>
             {
-                                new HotkeyConfig { Name = "TFT: Activate Current Team", Key = "Ctrl+1", Action = "TFT_ACTIVATE_CURRENT_TEAM" },
-                                new HotkeyConfig { Name = "TFT: Activate Must Include", Key = "Ctrl+2", Action = "TFT_ACTIVATE_MUST_INCLUDE" },
-                                                                                new HotkeyConfig { Name = "TFT: Enter Active Mode", Key = "Ctrl+A", Action = "TFT_ENTER_ADD_MODE" },
-                                                                                                                new HotkeyConfig { Name = "TFT: Run Optimization", Key = "Alt+S", Action = "TFT_RUN_OPTIMIZATION" },
-                                                                                                                new HotkeyConfig { Name = "TFT: Toggle Smart Sort", Key = "Ctrl+M", Action = "TFT_TOGGLE_SMART_SORT" },
+                                                new HotkeyConfig { Name = "TFT: Activate Current Team", Key = "Ctrl+1", Action = "TFT_ACTIVATE_CURRENT_TEAM" },
+                                                new HotkeyConfig { Name = "TFT: Activate Must Include", Key = "Ctrl+2", Action = "TFT_ACTIVATE_MUST_INCLUDE" },
+                                                new HotkeyConfig { Name = "TFT: Enter Active Mode", Key = "Alt+A", Action = "TFT_ENTER_ADD_MODE" },
+                                                new HotkeyConfig { Name = "TFT: Run Optimization", Key = "Alt+S", Action = "TFT_RUN_OPTIMIZATION" },                                                                                                                new HotkeyConfig { Name = "TFT: Toggle Smart Sort", Key = "Ctrl+M", Action = "TFT_TOGGLE_SMART_SORT" },
                                                                                                                 new HotkeyConfig { Name = "TFT: Clear All", Key = "Alt+X", Action = "TFT_CLEAR_ALL" },
                                                                                                                 new HotkeyConfig { Name = "TFT: Save Comp", Key = "Alt+G", Action = "TFT_SAVE_COMP" }, 
                                                                                                                 new HotkeyConfig { Name = "TFT: Tab Solver", Key = "Alt+B", Action = "TFT_SWITCH_TAB_SOLVER" },

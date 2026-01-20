@@ -107,13 +107,25 @@ fun ProcessScreen(
         
         // Output Window with Auto-Scroll
         val scrollState = rememberScrollState()
-        // NOTE: Replace 'output_text_here' with mainViewModel.commandOutput
-        // I am creating a dummy state here so it compiles for you, but connect it to VM!
+        var isAutoScrollEnabled by remember { mutableStateOf(true) }
         val outputText by mainViewModel.commandOutput.collectAsState()
 
+        // Detect manual scroll direction
+        LaunchedEffect(scrollState.value) {
+            val isAtBottom = scrollState.value >= scrollState.maxValue - 10
+            if (isAtBottom) {
+                isAutoScrollEnabled = true
+            } else if (scrollState.isScrollInProgress) {
+                // If user is scrolling and NOT at bottom, they must be scrolling up
+                isAutoScrollEnabled = false
+            }
+        }
+
         // Auto-Scroll Logic
-        LaunchedEffect(outputText) {
-            scrollState.animateScrollTo(scrollState.maxValue)
+        LaunchedEffect(outputText, isAutoScrollEnabled) {
+            if (isAutoScrollEnabled) {
+                scrollState.animateScrollTo(scrollState.maxValue)
+            }
         }
 
         Card(

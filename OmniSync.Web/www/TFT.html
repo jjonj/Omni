@@ -8,7 +8,7 @@
     <meta http-equiv="Expires" content="0">
     <title>OmniSync - TFT Helper</title>
     <link rel="icon" type="image/png" href="favicon.png">
-    <link rel="stylesheet" href="css/style.css?v=2026.01.18.19.10">
+    <link rel="stylesheet" href="css/style.css?v=2026.01.20.18.38">
     <style>
         .tft-container {
             display: flex;
@@ -672,7 +672,15 @@
             <a href="Test.html" class="nav-item">Test</a>
             <a href="Settings.html" class="nav-item">Settings</a>
             <a href="IslandGenerator/index.html" class="nav-item">Island</a>
-            <span class="nav-version" style="margin-left: auto; font-size: 10px; color: var(--text-dimmer); font-family: var(--font-mono); padding: 0 10px; align-self: center;">2026.01.18.19.10</span>
+
+            <select id="quick-nav" class="quick-nav-select">
+                <option value="">Quick Nav</option>
+                <option value="https://google.com">Google</option>
+                <option value="http://10.0.0.37:5000">Hub API (5000)</option>
+                <option value="http://10.0.0.37:3333">Hub Web (3333)</option>
+            </select>
+
+            <span class="nav-version" style="margin-left: 10px; font-size: 10px; color: var(--text-dimmer); font-family: var(--font-mono); padding: 0 10px; align-self: center;">2026.01.20.18.38</span>
             <button id="toggle-dev-console" class="nav-item" style="font-size: 10px; background: transparent; border: 1px solid var(--border);">Console</button>
         </nav>
 
@@ -1056,9 +1064,9 @@
         </div>
     </div>
 
-    <script src="js/signalr.min.js?v=2026.01.18.19.10"></script>
-    <script src="js/drag_drop_touch.js?v=2026.01.18.19.10"></script>
-    <script src="js/config.js?v=2026.01.18.19.10"></script>
+    <script src="js/signalr.min.js?v=2026.01.20.18.38"></script>
+    <script src="js/drag_drop_touch.js?v=2026.01.20.18.38"></script>
+    <script src="js/config.js?v=2026.01.20.18.38"></script>
     <script>
         function hardRefresh() {
             if (confirm("This will clear local settings (except persistent quiz progress) and force a full reload. Continue?")) {
@@ -1075,12 +1083,12 @@
             }
         }
     </script>
-    <script src="js/tft_optimizer.js?v=2026.01.18.19.10"></script>
-    <script src="js/TeamPlannerCode.js?v=2026.01.18.19.10"></script>
-        <script src="js/tft_tests.js?v=2026.01.18.19.10"></script>
-        <script src="js/tft_filter_test.js?v=2026.01.18.19.10"></script>
-        <script src="js/tft_evolution_test.js?v=2026.01.18.19.10"></script>
-        <script src="js/tft.js?v=2026.01.18.19.10"></script>
+    <script src="js/tft_optimizer.js?v=2026.01.20.18.38"></script>
+    <script src="js/TeamPlannerCode.js?v=2026.01.20.18.38"></script>
+        <script src="js/tft_tests.js?v=2026.01.20.18.38"></script>
+        <script src="js/tft_filter_test.js?v=2026.01.20.18.38"></script>
+        <script src="js/tft_evolution_test.js?v=2026.01.20.18.38"></script>
+        <script src="js/tft.js?v=2026.01.20.18.38"></script>
     
         <div id="dev-console" class="hidden">
             <div class="dev-console-header">
@@ -1089,7 +1097,7 @@
             </div>
             <div id="console-output"></div>
         </div>
-        <script src="js/dev-console.js?v=2026.01.18.19.10"></script>
+        <script src="js/dev-console.js?v=2026.01.20.18.38"></script>
     </body>
     </html>
     

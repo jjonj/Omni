@@ -30,8 +30,30 @@ class SleepTracker(private val context: Context) {
     }
 
     fun resetSleep() {
-        prefs.edit().putLong(KEY_SLEEP_START_TIME, 0L).apply()
+        prefs.edit().putLong(KEY_SLEEP_START_TIME, 0L).putLong("pause_time", 0L).apply()
         recordActivity()
+    }
+
+    fun pauseTracking() {
+        if (isSleeping() && prefs.getLong("pause_time", 0L) == 0L) {
+            prefs.edit().putLong("pause_time", System.currentTimeMillis()).apply()
+        }
+    }
+
+    fun resumeTracking() {
+        val pauseTime = prefs.getLong("pause_time", 0L)
+        if (pauseTime != 0L && isSleeping()) {
+            val now = System.currentTimeMillis()
+            val pausedDuration = now - pauseTime
+            val oldStart = getSleepStartTime()
+            prefs.edit()
+                .putLong(KEY_SLEEP_START_TIME, oldStart + pausedDuration)
+                .putLong("pause_time", 0L)
+                .apply()
+        } else {
+            // Ensure pause_time is cleared if we weren't sleeping or no pause time recorded
+            prefs.edit().putLong("pause_time", 0L).apply()
+        }
     }
 
     fun getSleepStartTime(): Long {

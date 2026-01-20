@@ -64,13 +64,22 @@ object AlarmScheduler {
         }
 
         val calendar = Calendar.getInstance().apply {
-            set(Calendar.HOUR_OF_DAY, hour24)
-            set(Calendar.MINUTE, data.minute)
-            set(Calendar.SECOND, 0)
-            set(Calendar.MILLISECOND, 0)
-            
-            if (timeInMillis <= System.currentTimeMillis()) {
-                add(Calendar.DAY_OF_YEAR, 1)
+            if (data.scheduledDate != null) {
+                timeInMillis = data.scheduledDate!!
+                // Ensure we use the specified hour/minute even if the timestamp had different ones
+                set(Calendar.HOUR_OF_DAY, hour24)
+                set(Calendar.MINUTE, data.minute)
+                set(Calendar.SECOND, 0)
+                set(Calendar.MILLISECOND, 0)
+            } else {
+                set(Calendar.HOUR_OF_DAY, hour24)
+                set(Calendar.MINUTE, data.minute)
+                set(Calendar.SECOND, 0)
+                set(Calendar.MILLISECOND, 0)
+                
+                if (timeInMillis <= System.currentTimeMillis()) {
+                    add(Calendar.DAY_OF_YEAR, 1)
+                }
             }
         }
         

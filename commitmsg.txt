@@ -1,4 +1,6 @@
-fix(tft): resolve unit replacement feature failure in result cards
+feat(debug): instrument CLI and Hub for initialization crash analysis
 
-- Added container.innerHTML = '' to the top of renderResults to ensure UI refreshes correctly instead of appending.
-- Updated replacement onclick handler to re-calculate trait counts when a unit is swapped, ensuring accurate trait summary display.
+- Hub: Added verbose `[INIT_DEBUG]` logging to `AiCliService` and `RpcApiHub` to track session launch, pipe connection, and authentication steps.
+- Hub: Changed CLI launch command to use `cmd /K` to preserve the window on crash for visual inspection.
+- CLI: Added global exception handling and persistent crash logging (`ai_listener_crash.log`, `omni_cli_crash.log`) to `ai_listener.py` and `omni_cli_script.py`.
+- CLI: Added explicit fatal error logging to entry points.

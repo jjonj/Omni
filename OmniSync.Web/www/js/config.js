@@ -81,3 +81,20 @@ const DAY_TEMPLATES = {
         { name: "SLEEP (9 HOURS)",     dur: 540, type: "sleep" }
     ]
 };
+
+/* =========================================
+   NAVIGATION HELPERS
+   ========================================= */
+function setupQuickNav() {
+    const quickNav = document.getElementById('quick-nav');
+    if (quickNav) {
+        quickNav.addEventListener('change', function() {
+            if (this.value) {
+                window.location.href = this.value;
+            }
+        });
+    }
+}
+
+// Auto-setup when DOM is ready
+document.addEventListener('DOMContentLoaded', setupQuickNav);

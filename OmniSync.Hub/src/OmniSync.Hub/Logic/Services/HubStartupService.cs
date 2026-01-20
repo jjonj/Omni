@@ -1,6 +1,9 @@
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Configuration;
+using Microsoft.AspNetCore.SignalR;
+using OmniSync.Hub.Presentation.Hubs;
+using OmniSync.Hub.Infrastructure.Services;
 using System;
 using System.Diagnostics;
 using System.IO;
@@ -14,42 +17,83 @@ namespace OmniSync.Hub.Logic.Services
         private readonly ILogger<HubStartupService> _logger;
         private readonly IConfiguration _configuration;
         private readonly IHostApplicationLifetime _appLifetime;
+        private readonly HubSettingsService _settingsService;
+        private readonly IHubContext<RpcApiHub> _hubContext;
 
-        public HubStartupService(ILogger<HubStartupService> logger, IConfiguration configuration, IHostApplicationLifetime appLifetime)
+        public HubStartupService(
+            ILogger<HubStartupService> logger, 
+            IConfiguration configuration, 
+            IHostApplicationLifetime appLifetime,
+            HubSettingsService settingsService,
+            IHubContext<RpcApiHub> hubContext)
         {
             _logger = logger;
             _configuration = configuration;
             _appLifetime = appLifetime;
+            _settingsService = settingsService;
+            _hubContext = hubContext;
         }
 
         public Task StartAsync(CancellationToken cancellationToken)
         {
-            bool autoStart = _configuration.GetValue<bool>("AiSettings:AutoStartComponents", true);
-            
-            if (autoStart)
-            {
-                _logger.LogInformation("HubStartupService: AI auto-start is enabled. Registering startup tasks.");
-                _appLifetime.ApplicationStarted.Register(OnApplicationStarted);
-            }
-            else
-            {
-                _logger.LogInformation("HubStartupService: AI auto-start is disabled in configuration.");
-            }
+            _logger.LogInformation("HubStartupService: Registering startup tasks.");
+            _appLifetime.ApplicationStarted.Register(OnApplicationStarted);
 
             return Task.CompletedTask;
         }
 
         private void OnApplicationStarted()
         {
-            // Only launch if the computer booted in the last 5 minutes (300,000 milliseconds)
-            // Environment.TickCount64 returns milliseconds since boot.
-            if (Environment.TickCount64 < 300000)
+            // Run startup routines (Quick Actions)
+            _ = Task.Run(CheckAndRunStartupRoutines);
+
+            bool autoStart = _configuration.GetValue<bool>("AiSettings:AutoStartComponents", true);
+            
+            if (autoStart)
             {
-                LaunchFirefox();
+                // Only launch if the computer booted in the last 5 minutes (300,000 milliseconds)
+                if (Environment.TickCount64 < 300000)
+                {
+                    LaunchFirefox();
+                }
+                else
+                {
+                    _logger.LogInformation($"HubStartupService: System has been up for {Environment.TickCount64 / 1000 / 60} minutes. Skipping Firefox auto-launch.");
+                }
             }
-            else
+        }
+
+        private async Task CheckAndRunStartupRoutines()
+        {
+            try
             {
-                _logger.LogInformation($"HubStartupService: System has been up for {Environment.TickCount64 / 1000 / 60} minutes. Skipping Firefox auto-launch.");
+                var lastRun = _settingsService.Settings.LastStartupRoutineDate;
+                var today = DateTime.Today;
+
+                if (lastRun == null || lastRun.Value.Date < today)
+                {
+                    _logger.LogInformation("HubStartupService: Running once-per-day startup routines...");
+
+                    // 1. Browser Tab Cleanup
+                    // Wait a bit for the extension to connect
+                    await Task.Delay(10000);
+                    await _hubContext.Clients.All.SendAsync("ReceiveBrowserCommand", "CleanTabs", "", false);
+                    _logger.LogInformation("HubStartupService: Browser cleanup command sent.");
+
+                    // Update last run date
+                    _settingsService.Settings.LastStartupRoutineDate = DateTime.Now;
+                    _settingsService.SaveSettings();
+                    
+                    _logger.LogInformation("HubStartupService: Startup routines completed.");
+                }
+                else
+                {
+                    _logger.LogInformation($"HubStartupService: Startup routines already ran today ({lastRun.Value}).");
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "HubStartupService: Error running startup routines.");
             }
         }
 

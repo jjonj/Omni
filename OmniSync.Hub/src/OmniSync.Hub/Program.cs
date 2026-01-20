@@ -18,10 +18,50 @@ using Microsoft.AspNetCore.SignalR; // Added for IHubContext
 using Microsoft.AspNetCore.SignalR.Client; // Added for HubConnectionBuilder extension methods
 using System.Threading.Tasks; // For TaskScheduler events
 using System.Text; // For StringBuilder
+using System.Threading; // Added for Mutex
 
 // Set the current directory to the location of the executable to ensure
 // consistent behavior for file paths (config, static files) regardless of startup method.
 Directory.SetCurrentDirectory(AppContext.BaseDirectory);
+
+// --- Single Instance Check ---
+using var mutex = new Mutex(true, "Global\\OmniSyncHubSingleInstance", out bool createdNew);
+if (!createdNew)
+{
+    var config = new ConfigurationBuilder()
+        .AddJsonFile(Path.Combine(AppContext.BaseDirectory, "appsettings.json"), optional: true)
+        .Build();
+    
+    string? apiKey = config["AuthApiKey"];
+    if (string.IsNullOrEmpty(apiKey))
+    {
+        string altPath = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "appsettings.json");
+        if (File.Exists(altPath))
+        {
+            config = new ConfigurationBuilder().AddJsonFile(altPath).Build();
+            apiKey = config["AuthApiKey"];
+        }
+    }
+
+    if (args.Length == 0)
+    {
+        Console.WriteLine("OmniSync Hub is already running. Signaling existing instance to show window...");
+        await ForwardToHub(apiKey, "SHOW_WINDOW", "");
+    }
+    else if (args[0] == "--open-on-android" && args.Length > 1)
+    {
+        await ForwardToHub(apiKey, "OpenOnAndroid", args[1]);
+    }
+    else if (args[0] == "--cli-here" && args.Length > 1)
+    {
+        await ForwardToHub(apiKey, "CliHere", args[1]);
+    }
+    else
+    {
+        Console.WriteLine("OmniSync Hub is already running. Exiting.");
+    }
+    return;
+}
 
 // --- Command Line Argument Handling ---
 if (args.Length > 0)
@@ -84,6 +124,10 @@ static async Task ForwardToHub(string? apiKey, string command, string payload)
             else if (command == "CliHere")
             {
                 await hubConnection.InvokeAsync("HandleExternalCommand", "CLI_HERE", payload);
+            }
+            else if (command == "SHOW_WINDOW")
+            {
+                await hubConnection.InvokeAsync("HandleExternalCommand", "SHOW_WINDOW", payload);
             }
         }
         else

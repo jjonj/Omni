@@ -170,36 +170,33 @@ fun AiChatScreen(
         messages.filter { it.text.isNotBlank() }
     }
 
-    // 1. Detect User Drags (Interactions)
+    // 1. Monitor scroll changes to detect direction
     LaunchedEffect(listState) {
-        listState.interactionSource.interactions.collect { interaction ->
-            if (interaction is DragInteraction.Start) {
-                // User touched and started dragging -> Stop auto-scrolling
-                isAutoScrollEnabled = false
+        var lastIndex = listState.firstVisibleItemIndex
+        var lastOffset = listState.firstVisibleItemScrollOffset
+        
+        snapshotFlow { listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset }
+            .collect { (currentIndex, currentOffset) ->
+                // In reverseLayout=true, index 0 is bottom. 
+                // Scrolling UP (away from bottom) INCREASES index or offset.
+                if (currentIndex > lastIndex || (currentIndex == lastIndex && currentOffset > lastOffset)) {
+                    isAutoScrollEnabled = false
+                }
+                
+                // Re-enable if we reach the bottom (or very close to it)
+                if (currentIndex == 0 && currentOffset < 10) {
+                    isAutoScrollEnabled = true
+                }
+                
+                lastIndex = currentIndex
+                lastOffset = currentOffset
             }
-        }
     }
 
-    // 2. Re-enable if at bottom
-    // We use a derived state to prevent excessive recomposition, but check it frequently
-    val isAtBottom by remember {
-        derivedStateOf { 
-            // Allow a small threshold (e.g. 50 pixels) to make it easier to activate
-            listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset < 50 
-        }
-    }
-
-    LaunchedEffect(isAtBottom) {
-        if (isAtBottom) {
-            isAutoScrollEnabled = true
-        }
-    }
-
-    // 3. Force Auto-Scroll
+    // 2. Force Auto-Scroll when enabled
     LaunchedEffect(filteredMessages.size, isAiThinking, isAutoScrollEnabled) {
         if (isAutoScrollEnabled && filteredMessages.isNotEmpty()) {
-            // If enabled, we scroll. No questions asked.
-            delay(50) // Small delay for layout calculation
+            delay(50)
             listState.animateScrollToItem(0)
         }
     }
@@ -962,17 +959,26 @@ fun ToolCallBubble(content: String) {
     val toolData = remember(content) {
         val jsonStr = content.removePrefix("Tool Call:").trim()
         try {
-            if (jsonStr.contains("(")) {
-                val toolName = jsonStr.substringBefore("(").trim()
-                val argsStr = jsonStr.substringAfter("(").substringBeforeLast(")")
-                toolName to argsStr
-            } else {
-                "Tool" to jsonStr
+            // Support both "Name{...}" and "Name(...)"
+            val toolName = when {
+                jsonStr.contains("{") -> jsonStr.substringBefore("{").trim()
+                jsonStr.contains("(") -> jsonStr.substringBefore("(").trim()
+                else -> "Tool"
             }
+            val rawArgs = when {
+                jsonStr.contains("{") -> jsonStr.substring(jsonStr.indexOf("{"))
+                jsonStr.contains("(") -> jsonStr.substringAfter("(").substringBeforeLast(")")
+                else -> jsonStr
+            }
+            toolName to rawArgs
         } catch (e: Exception) {
             "Tool" to jsonStr
         }
     }
+
+    val isEditOrReplace = toolData.first.equals("Edit", ignoreCase = true) || 
+                         toolData.first.equals("Replace", ignoreCase = true) ||
+                         toolData.first.equals("patch", ignoreCase = true)
 
     Column(
         modifier = Modifier.padding(8.dp).fillMaxWidth()
@@ -988,18 +994,83 @@ fun ToolCallBubble(content: String) {
             )
         }
         Spacer(Modifier.height(4.dp))
-        Surface(
-            color = Color.White.copy(alpha = 0.5f),
-            shape = RoundedCornerShape(4.dp),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text(
-                text = toolData.second,
-                modifier = Modifier.padding(6.dp),
-                style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-                color = Color(0xFF333333)
-            )
+        
+        if (isEditOrReplace) {
+            // Parse JSON args for diff rendering
+            val diffInfo = remember(toolData.second) {
+                try {
+                    val gson = com.google.gson.Gson()
+                    val map = gson.fromJson(toolData.second, Map::class.java)
+                    val old = map["old_string"] as? String ?: map["find"] as? String
+                    val new = map["new_string"] as? String ?: map["replace"] as? String
+                    val file = map["file_path"] as? String ?: map["path"] as? String
+                    val instruction = map["instruction"] as? String
+                    Triple(old, new, file) to instruction
+                } catch (e: Exception) {
+                    null
+                }
+            }
+
+            if (diffInfo != null) {
+                val (old, new, file) = diffInfo.first
+                val instruction = diffInfo.second
+                
+                Surface(
+                    color = Color.White.copy(alpha = 0.5f),
+                    shape = RoundedCornerShape(4.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(6.dp)) {
+                        if (!file.isNullOrBlank()) {
+                            Text("File: $file", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = Color.DarkGray)
+                        }
+                        if (!instruction.isNullOrBlank()) {
+                            Text("Instruction: $instruction", style = MaterialTheme.typography.bodySmall, fontStyle = FontStyle.Italic, color = Color.DarkGray)
+                        }
+                        
+                        Spacer(modifier = Modifier.height(4.dp))
+                        
+                        if (old != null && new != null) {
+                            // Interleaved Diff-like rendering
+                            val oldLines = old.split("\n")
+                            val newLines = new.split("\n")
+                            
+                            Column(modifier = Modifier.background(Color.Black.copy(alpha = 0.05f)).padding(4.dp)) {
+                                oldLines.forEach { line ->
+                                    Text("- $line", style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace), color = Color(0xFFB71C1C))
+                                }
+                                newLines.forEach { line ->
+                                    Text("+ $line", style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace), color = Color(0xFF1B5E20))
+                                }
+                            }
+                        } else {
+                            Text(text = toolData.second, style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace), color = Color(0xFF333333))
+                        }
+                    }
+                }
+            } else {
+                // Fallback to raw text
+                ToolCallRawArgs(toolData.second)
+            }
+        } else {
+            ToolCallRawArgs(toolData.second)
         }
+    }
+}
+
+@Composable
+fun ToolCallRawArgs(args: String) {
+    Surface(
+        color = Color.White.copy(alpha = 0.5f),
+        shape = RoundedCornerShape(4.dp),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Text(
+            text = args,
+            modifier = Modifier.padding(6.dp),
+            style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+            color = Color(0xFF333333)
+        )
     }
 }
 

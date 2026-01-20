@@ -36,9 +36,10 @@ namespace OmniSync.Hub.Presentation.Hubs
         private readonly PcgPersistentService _pcgService;
         private readonly HubSettingsService _settingsService;
         private readonly GitService _gitService;
+        private readonly GlobalHotkeyService _hotkeyService;
         private readonly ILogger<RpcApiHub> _logger; // Added for logging
 
-        public RpcApiHub(AuthService authService, FileService fileService, ClipboardService clipboardService, CommandDispatcher commandDispatcher, ProcessService processService, HubEventSender hubEventSender, InputService inputService, AudioService audioService, ShutdownService shutdownService, RegistryService registryService, HubMonitorService hubMonitorService, AiCliService aiCliService, PcgPersistentService pcgService, HubSettingsService settingsService, GitService gitService, ILogger<RpcApiHub> logger)
+        public RpcApiHub(AuthService authService, FileService fileService, ClipboardService clipboardService, CommandDispatcher commandDispatcher, ProcessService processService, HubEventSender hubEventSender, InputService inputService, AudioService audioService, ShutdownService shutdownService, RegistryService registryService, HubMonitorService hubMonitorService, AiCliService aiCliService, PcgPersistentService pcgService, HubSettingsService settingsService, GitService gitService, GlobalHotkeyService hotkeyService, ILogger<RpcApiHub> logger)
         {
             _authService = authService;
             _fileService = fileService;
@@ -55,6 +56,7 @@ namespace OmniSync.Hub.Presentation.Hubs
             _pcgService = pcgService;
             _settingsService = settingsService;
             _gitService = gitService;
+            _hotkeyService = hotkeyService;
             _logger = logger;
         }
 
@@ -1192,6 +1194,9 @@ namespace OmniSync.Hub.Presentation.Hubs
                         _ = Task.Run(async () => {
                              await _aiCliService.LaunchSessionAsync(payload);
                         });
+                        break;
+                    case "SHOW_WINDOW":
+                        _hotkeyService.RequestOpenWindow();
                         break;
                 }
             }

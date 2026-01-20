@@ -924,8 +924,17 @@ async function handleTftHotkey(command, payload) {
             setActiveZone('must-include');
             break;
         case "TFT_ENTER_ADD_MODE":
-            if (isAddMode) exitAddMode();
-            else enterAddMode();
+            if (payload && typeof payload.Active === 'boolean') {
+                if (payload.Active) {
+                    if (!isAddMode) enterAddMode();
+                } else {
+                    if (isAddMode) exitAddMode();
+                }
+            } else {
+                // Fallback to toggle
+                if (isAddMode) exitAddMode();
+                else enterAddMode();
+            }
             break;
         case "TFT_INPUT":
             if (payload && payload.Key) {
@@ -1223,7 +1232,7 @@ function renderHotkeysButton() {
     tooltip.innerHTML = `
         <h3 style="margin: 0 0 8px 0; color: var(--accent);">Global Hotkeys</h3>
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px;">
-            <span style="color: var(--text-dim);">Active Mode</span> <span style="text-align: right; font-family: monospace;">Ctrl+A</span>
+            <span style="color: var(--text-dim);">Active Mode</span> <span style="text-align: right; font-family: monospace;">Alt+A</span>
             <span style="color: var(--text-dim);">Current Team</span> <span style="text-align: right; font-family: monospace;">Ctrl+1</span>
             <span style="color: var(--text-dim);">Must Include</span> <span style="text-align: right; font-family: monospace;">Ctrl+2</span>
             <span style="color: var(--text-dim);">Run Solver</span> <span style="text-align: right; font-family: monospace;">Alt+S</span>

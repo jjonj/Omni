@@ -385,7 +385,7 @@ class SignalRClient(
         }, String::class.java)
 
         hubConnection?.on("ReceiveAiMessage", { senderId: String, message: String, pid: Int ->
-            val senderName = if (senderId == hubConnection?.connectionId) "Me" else "User"
+            val senderName = if (senderId == hubConnection?.connectionId || senderId == "CLI_USER") "Me" else "User"
             updateSessionMessages(pid) { it + AiMessage(senderName, message) }
         }, String::class.java, String::class.java, Int::class.java)
 

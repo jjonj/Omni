@@ -313,9 +313,6 @@ fun FilesScreen(
                         }) {
                             Icon(if (showCachesList) Icons.Default.Close else Icons.Default.Storage, contentDescription = "Manage Caches")
                         }
-                        IconButton(onClick = { startVoiceRecognition() }) {
-                            Icon(Icons.Default.Mic, contentDescription = "Voice Input (AI)", tint = MaterialTheme.colorScheme.primary)
-                        }
                         if (bookmarks.isEmpty()) {
                             Text(
                                 "No bookmarks yet", 
