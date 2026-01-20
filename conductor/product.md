@@ -27,6 +27,8 @@ The primary user is the developer/creator themselves—a power user who demands:
 ### 3. Automation & Monitoring
 -   **Macro Triggers:** Hardware button mapping (e.g., volume keys) on Android to trigger PC scripts.
 -   **System Health:** Real-time monitoring of PC status (active window, processes) from the mobile dashboard.
+-   **Startup Routines:** Automated "Quick Actions" (e.g., browser tab cleanup) executed once per day upon Hub initialization.
+-   **Intelligent Alarms:** Advanced alarm system with gradual wake, macro integration, and specific future date support.
 
 ### 4. Creative Tools & Submodules
 -   **Procedural Generation:** Integration of standalone tools like the Island Generator for rapid creative prototyping and world-building.
