@@ -287,55 +287,135 @@ def on_open():
     connection_started = True
 
 def on_error(error):
+
     logger.error(f"Connection error: {error}")
 
+
+
+def write_fatal_log(error_msg):
+
+    crash_log = os.path.join(os.getcwd(), "ai_listener_crash.log")
+
+    with open(crash_log, "a") as f:
+
+        f.write(f"\n--- FATAL STARTUP ERROR: {time.strftime('%Y-%m-%d %H:%M:%S')} ---\n")
+
+        f.write(error_msg + "\n")
+
+        f.write(traceback.format_exc() + "\n")
+
+        f.write("-" * 40 + "\n")
+
+
+
 async def main():
+
     global hub, GLOBAL_LOOP
-    GLOBAL_LOOP = asyncio.get_running_loop()
 
-    parser = argparse.ArgumentParser(description="AI Listener for OmniSync")
-    parser.add_argument("--pid", type=int, help="Specific Gemini PID to target")
-    args = parser.parse_args()
-    
-    global TARGET_PID
-    if args.pid:
-        TARGET_PID = args.pid
-        logger.info(f"Initial target Gemini PID: {TARGET_PID}")
+    try:
 
-    hub = HubConnectionBuilder()\
-        .with_url(HUB_URL)\
-        .configure_logging(logging.INFO)\
-        .with_automatic_reconnect({
-            "type": "raw",
-            "keep_alive_interval": 10,
-            "reconnect_interval": 5,
-            "max_attempts": 999
-        }).build()
+        GLOBAL_LOOP = asyncio.get_running_loop()
 
-    hub.on("ReceiveAiMessage", on_ai_message)
-    hub.on("RequestAiSessions", on_get_sessions)
-    hub.on("SwitchAiSession", on_switch_session)
-    hub.on_close(on_close) 
-    hub.on_open(on_open)   
-    hub.on_error(on_error) 
 
-    logger.info(f"Connecting to {HUB_URL}...")
-    hub.start()
 
-    while not connection_started:
-        await asyncio.sleep(0.5)
-    
-    hub.send("Authenticate", [API_KEY])
-    logger.info("Authenticated. Listening for AI messages via Named Pipe Hook.")
+        parser = argparse.ArgumentParser(description="AI Listener for OmniSync")
 
-    while True:
-        await asyncio.sleep(1)
+        parser.add_argument("--pid", type=int, help="Specific Gemini PID to target")
+
+        args = parser.parse_args()
+
+        
+
+        global TARGET_PID
+
+        if args.pid:
+
+            TARGET_PID = args.pid
+
+            logger.info(f"Initial target Gemini PID: {TARGET_PID}")
+
+
+
+        hub = HubConnectionBuilder()\
+
+            .with_url(HUB_URL)\
+
+            .configure_logging(logging.INFO)\
+
+            .with_automatic_reconnect({
+
+                "type": "raw",
+
+                "keep_alive_interval": 10,
+
+                "reconnect_interval": 5,
+
+                "max_attempts": 999
+
+            }).build()
+
+
+
+        hub.on("ReceiveAiMessage", on_ai_message)
+
+        hub.on("RequestAiSessions", on_get_sessions)
+
+        hub.on("SwitchAiSession", on_switch_session)
+
+        hub.on_close(on_close) 
+
+        hub.on_open(on_open)   
+
+        hub.on_error(on_error) 
+
+
+
+        logger.info(f"Connecting to {HUB_URL}...")
+
+        hub.start()
+
+
+
+        while not connection_started:
+
+            await asyncio.sleep(0.5)
+
+        
+
+        hub.send("Authenticate", [API_KEY])
+
+        logger.info("Authenticated. Listening for AI messages via Named Pipe Hook.")
+
+
+
+        while True:
+
+            await asyncio.sleep(1)
+
+    except Exception as e:
+
+        logger.error(f"Main loop error: {e}")
+
+        write_fatal_log(str(e))
+
+        raise
+
+
 
 if __name__ == "__main__":
+
     try:
+
         asyncio.run(main())
+
     except KeyboardInterrupt:
+
         logger.info("Stopping AI Listener...")
+
     except Exception as e:
-        logger.error(f"Fatal error: {e}")
-        traceback.print_exc()
+
+        logger.error(f"Fatal error at entry point: {e}")
+
+        write_fatal_log(f"Entry point crash: {str(e)}")
+
+        sys.exit(1)

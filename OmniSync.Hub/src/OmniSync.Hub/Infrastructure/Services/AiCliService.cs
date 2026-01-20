@@ -635,39 +635,66 @@ namespace OmniSync.Hub.Infrastructure.Services
                     // Capture ALL existing Gemini PIDs before launch (even if not yet connected)
                     onProgress?.Invoke("Scanning for existing sessions...");
                     var initialPids = await GetAllGeminiPidsAsync(); 
-                    _logger.LogInformation($"[AiCliService] Baseline Gemini PIDs: {string.Join(", ", initialPids)}");
+                _logger.LogInformation($"[AiCliService][INIT_DEBUG] Baseline Gemini PIDs: {string.Join(", ", initialPids)}");
 
-                    string rootPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", ".."));
-                    string geminiDir = Path.GetFullPath(Path.Combine(rootPath, "..", "Tools", "gemini-cli"));
+                string rootPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", ".."));
+                _logger.LogInformation($"[AiCliService][INIT_DEBUG] Resolved Hub Root Path: {rootPath}");
+                
+                string geminiDir = Path.GetFullPath(Path.Combine(rootPath, "..", "Tools", "gemini-cli"));
+                _logger.LogInformation($"[AiCliService][INIT_DEBUG] Resolved Gemini CLI Dir: {geminiDir}");
+                
+                if (!Directory.Exists(geminiDir))
+                {
+                    _logger.LogError($"[AiCliService][INIT_DEBUG] CRITICAL: Gemini CLI directory does not exist: {geminiDir}");
+                    onProgress?.Invoke("Error: Gemini CLI directory not found.");
+                    return null;
+                }
 
-                    string finalWorkspace = "";
-                    if (string.IsNullOrWhiteSpace(workspace))
-                    {
-                        finalWorkspace = Path.GetFullPath(Path.Combine(rootPath, ".."));
-                    }
-                    else
-                    {
-                        finalWorkspace = Path.GetFullPath(workspace);
-                    }
+                string finalWorkspace = "";
+                if (string.IsNullOrWhiteSpace(workspace))
+                {
+                    finalWorkspace = Path.GetFullPath(Path.Combine(rootPath, ".."));
+                }
+                else
+                {
+                    finalWorkspace = Path.GetFullPath(workspace);
+                }
 
-                    _logger.LogInformation($"[AiCliService] Launching process: cd /d {geminiDir} && node bundle/gemini.js --workspace {finalWorkspace}");
-                    onProgress?.Invoke($"Launching process in {finalWorkspace}...");
+                _logger.LogInformation($"[AiCliService][INIT_DEBUG] Final Workspace: {finalWorkspace}");
+                _logger.LogInformation($"[AiCliService] Launching process: cd /d {geminiDir} && node bundle/gemini.js --workspace {finalWorkspace}");
+                onProgress?.Invoke($"Launching process in {finalWorkspace}...");
 
-                    string command = $"title OMNI_GEMINI_INTERACTIVE && cd /d \"{geminiDir}\" && node bundle/gemini.js --workspace \"{finalWorkspace}\" --yolo";
-                    string debugLog = Path.Combine(rootPath, "gemini_cli_debug.log");
-                    string finalCommand = $"set GEMINI_DEBUG_LOG_FILE={debugLog} && {command}";
+                string bundlePath = Path.Combine(geminiDir, "bundle", "gemini.js");
+                if (!File.Exists(bundlePath))
+                {
+                    _logger.LogError($"[AiCliService][INIT_DEBUG] CRITICAL: bundle/gemini.js not found at {bundlePath}");
+                    onProgress?.Invoke("Error: bundle/gemini.js not found.");
+                    return null;
+                }
 
-                    var startInfo = new ProcessStartInfo
-                    {
-                        FileName = "cmd.exe",
-                        Arguments = $"/C \"{finalCommand}\"",
-                        UseShellExecute = true,
-                        CreateNoWindow = false,
-                        WindowStyle = ProcessWindowStyle.Normal
-                    };
+                string command = $"title OMNI_GEMINI_INTERACTIVE && cd /d \"{geminiDir}\" && node bundle/gemini.js --workspace \"{finalWorkspace}\" --yolo";
+                string debugLog = Path.Combine(rootPath, "gemini_cli_debug.log");
+                string finalCommand = $"set GEMINI_DEBUG_LOG_FILE={debugLog} && {command}";
+                
+                _logger.LogInformation($"[AiCliService][INIT_DEBUG] Full Command String: {finalCommand}");
 
-                    var shellProcess = Process.Start(startInfo);
-                    _logger.LogInformation($"[AiCliService] Process started (Shell PID: {shellProcess.Id}). Waiting for node child process...");
+                var startInfo = new ProcessStartInfo
+                {
+                    FileName = "cmd.exe",
+                    Arguments = $"/K \"{finalCommand}\"", // Changed /C to /K to keep window open on crash
+                    UseShellExecute = true,
+                    CreateNoWindow = false,
+                    WindowStyle = ProcessWindowStyle.Normal
+                };
+
+                _logger.LogInformation($"[AiCliService][INIT_DEBUG] Starting shell process (using /K to preserve window)...");
+                var shellProcess = Process.Start(startInfo);
+                if (shellProcess == null)
+                {
+                    _logger.LogError("[AiCliService][INIT_DEBUG] CRITICAL: Process.Start returned null for shell process.");
+                    return null;
+                }
+                _logger.LogInformation($"[AiCliService] Process started (Shell PID: {shellProcess.Id}). Waiting for node child process...");
                     onProgress?.Invoke("Process started. Waiting for connection...");
 
                     int? launchedPid = null;
@@ -776,19 +803,9 @@ namespace OmniSync.Hub.Infrastructure.Services
                     _logger.LogWarning($"[AiCliService] {errorMsg}");
                     onProgress?.Invoke(errorMsg);
                     
-                    // Cleanup the shell process if we failed to connect
-                    try
-                    {
-                        if (!shellProcess.HasExited)
-                        {
-                            shellProcess.Kill(true);
-                            _logger.LogInformation($"[AiCliService] Killed shell process {shellProcess.Id} after failed launch.");
-                        }
-                    }
-                    catch (Exception killEx)
-                    {
-                        _logger.LogWarning($"[AiCliService] Failed to kill shell process after failed launch: {killEx.Message}");
-                    }
+                    // Cleanup removed: We keep the shell process alive because we used /K 
+                    // and we want the user to be able to see any errors in the console.
+                    _logger.LogInformation($"[AiCliService][INIT_DEBUG] Launch failed. Leaving shell process {shellProcess.Id} alive for user inspection (due to /K).");
 
                     return null;
                 }
@@ -1269,12 +1286,15 @@ namespace OmniSync.Hub.Infrastructure.Services
 
         public async Task<bool> ConnectAsync(int timeoutMs)
         {
-            _logger.LogInformation($"[GeminiSession] SID: {_sid} | Connecting to pipe 'gemini-cli-{_pid}' (timeout: {timeoutMs}ms)");
+            _logger.LogInformation($"[GeminiSession][INIT_DEBUG] SID: {_sid} | Attempting connection to pipe 'gemini-cli-{_pid}' (timeout: {timeoutMs}ms)");
             try
             {
                 _pipeClient = new NamedPipeClientStream(".", $"gemini-cli-{_pid}", PipeDirection.InOut, PipeOptions.Asynchronous);
+                _logger.LogInformation($"[GeminiSession][INIT_DEBUG] SID: {_sid} | NamedPipeClientStream object created. Waiting for connection...");
+                
                 await _pipeClient.ConnectAsync(timeoutMs);
 
+                _logger.LogInformation($"[GeminiSession][INIT_DEBUG] SID: {_sid} | Pipe connected! Setting up writer and starting read loop.");
                 _writer = new StreamWriter(_pipeClient) { AutoFlush = true };
                 _cts = new CancellationTokenSource();
                 _ = Task.Run(() => ReadLoopAsync(_cts.Token));
@@ -1284,10 +1304,10 @@ namespace OmniSync.Hub.Infrastructure.Services
             }
             catch (Exception ex)
             {
-                _logger.LogWarning($"[GeminiSession] SID: {_sid} | Could not connect to pipe for PID {_pid} within {timeoutMs}ms: {ex.Message} (Type: {ex.GetType().Name})");
+                _logger.LogWarning($"[GeminiSession][INIT_DEBUG] SID: {_sid} | CONNECTION FAILED for PID {_pid}: {ex.Message} (Type: {ex.GetType().Name})");
                 if (ex.InnerException != null)
                 {
-                    _logger.LogDebug($"[GeminiSession] SID: {_sid} | Inner Exception: {ex.InnerException.Message}");
+                    _logger.LogDebug($"[GeminiSession][INIT_DEBUG] SID: {_sid} | Inner Exception: {ex.InnerException.Message}");
                 }
                 return false;
             }
@@ -1365,18 +1385,23 @@ namespace OmniSync.Hub.Infrastructure.Services
 
         private async Task ReadLoopAsync(CancellationToken token)
         {
-            if (_pipeClient == null) return;
+            if (_pipeClient == null) 
+            {
+                _logger.LogError($"[GeminiSession][INIT_DEBUG] SID: {_sid} | ReadLoopAsync called but _pipeClient is null.");
+                return;
+            }
 
-            _logger.LogInformation($"[GeminiSession] SID: {_sid} | Starting read loop for PID {_pid}");
+            _logger.LogInformation($"[GeminiSession][INIT_DEBUG] SID: {_sid} | Starting read loop for PID {_pid}");
             using var reader = new StreamReader(_pipeClient, Encoding.UTF8, false, 1024, leaveOpen: true);
             try
             {
                 while (!token.IsCancellationRequested)
                 {
+                    _logger.LogDebug($"[GeminiSession][INIT_DEBUG] SID: {_sid} | Waiting for line from PID {_pid}...");
                     var line = await reader.ReadLineAsync(token);
                     if (line == null) 
                     {
-                        _logger.LogInformation($"[GeminiSession] SID: {_sid} | Read null from PID {_pid}, pipe might be closed");
+                        _logger.LogInformation($"[GeminiSession][INIT_DEBUG] SID: {_sid} | Read NULL from PID {_pid}. Pipe closed by remote side.");
                         break;
                     }
 

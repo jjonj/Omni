@@ -61,7 +61,8 @@ namespace OmniSync.Hub.Presentation.Hubs
         public override async Task OnConnectedAsync()
         {
             var ip = Context.GetHttpContext()?.Connection.RemoteIpAddress?.ToString();
-            _logger.LogInformation($"Client connected: {Context.ConnectionId} from IP: {ip}. Awaiting authentication.");
+            var userAgent = Context.GetHttpContext()?.Request.Headers["User-Agent"].ToString();
+            _logger.LogInformation($"[RpcApiHub][INIT_DEBUG] Client connecting: {Context.ConnectionId} from IP: {ip}. UA: {userAgent}. Awaiting authentication.");
             ClientConnectedEvent?.Invoke(this, Context.ConnectionId);
             _hubEventSender.SubscribeForCommandOutput(Context.UserIdentifier ?? Context.ConnectionId, Context.ConnectionId);
             await base.OnConnectedAsync();
@@ -149,7 +150,7 @@ namespace OmniSync.Hub.Presentation.Hubs
             if (isAuthenticated)
             {
                 Context.Items["IsAuthenticated"] = true;
-                _logger.LogInformation($"Client authenticated: {Context.ConnectionId} from IP: {ip}");
+                _logger.LogInformation($"[RpcApiHub][INIT_DEBUG] Client AUTHENTICATED: {Context.ConnectionId} from IP: {ip}");
                 
                 // Immediately send current states after successful authentication
                 _ = SendCurrentState();
@@ -157,7 +158,7 @@ namespace OmniSync.Hub.Presentation.Hubs
                 return true;
             }
 
-            _logger.LogWarning($"Client failed authentication: {Context.ConnectionId} from IP: {ip}");
+            _logger.LogWarning($"[RpcApiHub][INIT_DEBUG] Client FAILED AUTHENTICATION: {Context.ConnectionId} from IP: {ip}");
             Context.Abort();
             return false;
         }
@@ -1058,19 +1059,19 @@ namespace OmniSync.Hub.Presentation.Hubs
                 await _aiLaunchSemaphore.WaitAsync();
                 try
                 {
-                    _logger.LogInformation($"[RpcApiHub] StartNewAiSession requested (Workspace: {workspace}). Broadcasting status...");
+                    _logger.LogInformation($"[RpcApiHub][INIT_DEBUG] StartNewAiSession requested by {Context.ConnectionId} (Workspace: {workspace}). Broadcasting status...");
                     AnyCommandReceived?.Invoke(this, $"StartNewAiSession requested (Workspace: {workspace})");
                     await Clients.All.SendAsync("ReceiveAiHistory", "[]", -1);
                     await Clients.All.SendAsync("ReceiveAiStatus", "Starting session...", -1);
                     
-                    _logger.LogInformation("[RpcApiHub] Calling AiCliService.LaunchSessionAsync...");
+                    _logger.LogInformation($"[RpcApiHub][INIT_DEBUG] Calling AiCliService.LaunchSessionAsync for connection {Context.ConnectionId}...");
                     
                     var result = await _aiCliService.LaunchSessionAsync(workspace, (status) => 
                     {
                         AnyCommandReceived?.Invoke(this, $"AI Launch: {status}");
                     });
                     
-                    _logger.LogInformation($"[RpcApiHub] StartNewAiSession result: {result}");
+                    _logger.LogInformation($"[RpcApiHub][INIT_DEBUG] StartNewAiSession result: {result}");
 
                     if (result.HasValue)
                     {

@@ -1,0 +1,8 @@
+{
+  "track_id": "debug_cli_crash_20260120",
+  "type": "bug",
+  "status": "new",
+  "created_at": "2026-01-20T10:23:00Z",
+  "updated_at": "2026-01-20T10:23:00Z",
+  "description": "Debug an inconsistent issue where the CLI session window closes instantly upon initialization."
+}

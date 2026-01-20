@@ -119,17 +119,26 @@ def on_open():
 def on_error(error):
     print(f"Connection error: {error}")
 
+def write_fatal_log(error_msg):
+    import os
+    crash_log = os.path.join(os.getcwd(), "omni_cli_crash.log")
+    with open(crash_log, "a") as f:
+        f.write(f"\n--- FATAL STARTUP ERROR: {time.strftime('%Y-%m-%d %H:%M:%S')} ---\n")
+        f.write(error_msg + "\n")
+        f.write(traceback.format_exc() + "\n")
+        f.write("-" * 40 + "\n")
+
 GLOBAL_EVENT_LOOP = None
 
 async def main():
     global is_done, connection_started, command_to_run_single_mode, GLOBAL_EVENT_LOOP
 
-    total_execution_start_time = time.time() # Start stopwatch
-
-    GLOBAL_EVENT_LOOP = asyncio.get_running_loop() # Get reference to the main event loop
-
-    hub = None # Initialize hub to None
     try:
+        total_execution_start_time = time.time() # Start stopwatch
+
+        GLOBAL_EVENT_LOOP = asyncio.get_running_loop() # Get reference to the main event loop
+
+        hub = None # Initialize hub to None
         hub = await connect_and_authenticate()
     
         if IS_SINGLE_COMMAND_MODE:
@@ -180,6 +189,7 @@ async def main():
     except Exception as e: 
         print(f"Error during execution: {e}") 
         traceback.print_exc() 
+        write_fatal_log(str(e))
     finally:
         if hub and connection_started: # Only try to stop if it was actually started
             hub.stop() 
@@ -190,4 +200,11 @@ async def main():
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("\nStopping Omni CLI...")
+    except Exception as e:
+        print(f"Fatal error at entry point: {e}")
+        write_fatal_log(f"Entry point crash: {str(e)}")
+        sys.exit(1)
