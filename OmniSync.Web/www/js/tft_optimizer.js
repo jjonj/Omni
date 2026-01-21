@@ -130,7 +130,8 @@ class TFTOptimizer {
             const u = board[i];
             for (let j = 0; j < u.traits.length; j++) {
                 const t = u.traits[j];
-                if (this.IGNORE_TRAITS.includes(t)) continue;
+                // In ryze-unlock mode, we need all origins, even ignored ones like Ixtal
+                if (this.IGNORE_TRAITS.includes(t) && mode !== 'ryze-unlock') continue;
                 const increment = (u.name === "Annie" && t === "Arcanist") ? this.ANNIE_ARCANIST_COUNT : 1;
                 counts[t] = (counts[t] || 0) + increment;
             }
@@ -138,7 +139,7 @@ class TFTOptimizer {
         
         for (let i = 0; i < emblems.length; i++) {
             const emb = emblems[i];
-            if (!this.IGNORE_TRAITS.includes(emb)) {
+            if (!this.IGNORE_TRAITS.includes(emb) || mode === 'ryze-unlock') {
                 counts[emb] = (counts[emb] || 0) + 1;
             }
         }
