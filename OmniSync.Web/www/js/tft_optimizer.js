@@ -85,7 +85,8 @@ class TFTOptimizer {
     getActiveOrigins(counts) {
         return Object.keys(counts).filter(t => {
             const traitData = this.TRAITS_DATA[t];
-            if (!traitData || traitData.type !== 'origin') return false;
+            if (!traitData) return counts[t] >= 1;
+            if (traitData.type !== 'origin') return false;
             
             const breakpoints = traitData.breakpoints;
             // Targon is active at 1 unit, others check breakpoints
@@ -509,7 +510,8 @@ class TFTOptimizer {
 
                     const activeOrigins = Object.keys(counts).filter(t => {
                         const meta = this.TRAITS_DATA[t];
-                        if (!meta || meta.type !== 'origin') return false;
+                        if (!meta) return counts[t] >= 1;
+                        if (meta.type !== 'origin') return false;
                         const breakpoints = meta.breakpoints;
                         
                         // Origin is active if it has a breakpoint met OR it is Targon with 1 unit
