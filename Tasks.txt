@@ -21,14 +21,10 @@ Only work on subtasks if told to do so or if told explicitly to do a Megasession
 
 ## For the hub
 
-If i try to run omni.exe again when its already running it tries to run a second instance and gives an error that it can't bind to port blabla. Can you make it just open the hub window instead of trying to open a second instance. Maybe the second instance does run but simply checks and sees omni is already running and therefore tells the existing omni to open its window and then terminates 
 
 ## in OmniSync.Android
 ### General
 
-Swiping side to side to change screens is too sensitive, it should require a stronger sideways angle to do it. 
-
-When i press Android back button while the keyboard is up, it is with the intention of lowering the keyboard, nothing else. make sure the back function doesn't change screen or otherwise if the keyboard is up 
 
 ### Dashboard
 
@@ -41,11 +37,8 @@ When i press Android back button while the keyboard is up, it is with the intent
 ### Files & Video Screen
 
 
-
-the folder view has a mic icon that doesn't make sense, remove it, we only want the mic button in the text file viewer
 ### Browser control screen
 
-Allow adding cleanup patterns based on not just URL but also tab title. E.g. "title:LIVE Breaking news" (caps insensitive) which closes all tabs that has that as a substring
 
 ### Android Home screen launcher widgets
 
@@ -53,35 +46,20 @@ Allow adding cleanup patterns based on not just URL but also tab title. E.g. "ti
 
 ### AI screen
 
-tool call: replace and tool call: edit are rendered in yellow because they are tool calls but maybe they should use file diff rendering instead, maybe with some yellow somewhere
-
-when i send a message to ai it doesn't always scroll to bottom which it should 
-
-when i use clear command it needs to reload session history 
-
-unit test all of the above first 
 
 ### Embedded web screen
 
 
 ### Alarm screen
 
-For alarm 2 when setting it to a date in the future, allow entering a custom text leave that will be shown on the dismiss screen 
 
 ### Settings screen
 
-Allow configuring a startup routine, a series of "quick actions" that can be scheduled to run whenever the hub first starts up ONCE per day only (if it restarts on the same day then dont rerun). 
-Add tab cleanup as a quickaction
 
 
 ## Chrome extension
 
 ## Omni Web
-
-Add a dropdown that lets me select one of 3 websites:
-google.com
-http://10.0.0.37:5000
-http://10.0.0.37:3333
 
 
 ### Omni web tft

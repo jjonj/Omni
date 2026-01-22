@@ -47,11 +47,6 @@ import java.util.Locale
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.ui.graphics.Color
 import androidx.compose.material.icons.filled.Add
-import android.speech.RecognizerIntent
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
-import android.app.Activity
-import android.content.Intent
 import androidx.activity.compose.BackHandler
 import com.omni.sync.ui.components.VerticalScrollbar
 import com.omni.sync.ui.components.DirectoryPickerDialog

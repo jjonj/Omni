@@ -157,3 +157,33 @@
 ✅ Repalce feature to hover and select another unit in results tiles is broken
 ✅ Clear log file on startup.
 ✅ Allow seeing git log/commits for folders that are repos, browsing history and seeing the changes of clicked commits.
+
+## Megasession Jan 21, 2026
+
+### Hub
+? Hub Single Instance: Implemented via Mutex and SignalR-based window restoration to prevent multiple instances and port bind errors.
+
+### Android General
+? Navigation Stability: Increased touchSlop multiplier to 6.0f to reduce accidental swipes.
+? Back Button Optimization: Back button now correctly dismisses the keyboard without triggering screen navigation.
+
+### Android Files
+? Folder View Cleanup: Removed unused voice recognition components and icons from folder browsing.
+
+### Android Browser
+? Title-Based Cleanup: Added support for "title:" prefix in cleanup patterns (e.g., ChatGPT, Messenger).
+
+### Android AI
+? Interleaved Diffs: "replace" and "edit" tool calls now render readable line-by-line (+/-) diffs using greedy matching.
+? Scroll to Bottom: Fixed auto-scroll reliability in AI chat window.
+? Clear Command: Added history reload after clearAiMessages to ensure synchronization.
+? Robust Testing: Updated roundtrip and multi-instance tests with target_pid filtering.
+
+### Android Alarms
+? Custom Dismiss Text: Alarm 2 now supports a custom text message shown during the dismiss phase.
+
+### Hub Startup Routines
+? QuickActionService: Framework for once-per-day maintenance tasks (e.g., daily tab cleanup).
+
+### Web UI
+? Quick Nav: Restricted site selector dropdown to WebServerScreen context and fixed style leaks.
