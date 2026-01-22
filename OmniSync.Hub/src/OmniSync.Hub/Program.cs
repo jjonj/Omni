@@ -219,6 +219,7 @@ builder.Services.AddSingleton<InputService>(provider =>
 });
 builder.Services.AddSingleton<AudioService>();
 builder.Services.AddSingleton<HubSettingsService>();
+builder.Services.AddSingleton<QuickActionService>();
 builder.Services.AddSingleton<CommandDispatcher>(provider => {
     var inputService = provider.GetRequiredService<InputService>();
     var fileService = provider.GetRequiredService<FileService>();

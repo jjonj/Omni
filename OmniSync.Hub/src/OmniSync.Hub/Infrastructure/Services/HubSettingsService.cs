@@ -65,7 +65,6 @@ namespace OmniSync.Hub.Infrastructure.Services
         public string TellPcWorkspace { get; set; } = @"B:\GDrive\Tools";
         public string TellPcSystemContext { get; set; } = "You are to help the user execute commands and tools on this windows PC. You are an expert assistant with full system access. Be concise and efficient.";
         public bool TellPcSoundEnabled { get; set; } = true;
-        public DateTime? LastStartupRoutineDate { get; set; }
     }
 
     public class HubSettingsService

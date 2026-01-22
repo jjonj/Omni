@@ -262,8 +262,23 @@ namespace OmniSync.Hub.Presentation
                     {
                         try
                         {
-                            _mainWindow.Show();
+                            // Ensure window is shown
+                            if (!_mainWindow.IsVisible)
+                            {
+                                _mainWindow.Show();
+                            }
+
+                            // If minimized, restore it
+                            if (_mainWindow.WindowState == WindowState.Minimized)
+                            {
+                                _mainWindow.WindowState = WindowState.Normal;
+                            }
+
+                            // Bring to foreground and focus
                             _mainWindow.Activate();
+                            _mainWindow.Topmost = true;  // Brief toggle to force foreground
+                            _mainWindow.Topmost = false; 
+                            _mainWindow.Focus();
                         }
                         catch (InvalidOperationException) { }
                     }));
