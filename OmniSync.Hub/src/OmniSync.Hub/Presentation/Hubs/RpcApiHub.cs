@@ -93,6 +93,7 @@ namespace OmniSync.Hub.Presentation.Hubs
             await Clients.Caller.SendAsync("ShutdownScheduled", _shutdownService.GetScheduledTime());
             await Clients.Caller.SendAsync("ShutdownModeUpdated", _shutdownService.GetCurrentMode().ToString());
             await Clients.Caller.SendAsync("UpdateRunOnStartup", _registryService.IsRunOnStartupEnabled());
+            await Clients.Caller.SendAsync("ReceiveCleanupPatterns", _settingsService.Settings.BrowserCleanupPatterns);
         }
 
         public void ToggleShutdownMode()
@@ -759,6 +760,10 @@ namespace OmniSync.Hub.Presentation.Hubs
             {
                 AnyCommandReceived?.Invoke(this, $"SendCleanupPatterns: {patterns.Count} patterns");
                 
+                // Persist on server
+                _settingsService.Settings.BrowserCleanupPatterns = patterns;
+                _settingsService.SaveSettings();
+
                 // Forward to all clients (Android will pick this up)
                 await Clients.All.SendAsync("ReceiveCleanupPatterns", patterns);
             }

@@ -48,5 +48,13 @@
 
 ---
 
-- [x] **Track: Megasession Jan 20 2026**
+## [x] Track: Megasession Jan 20 2026
 *Link: [./tracks/megasession_jan20_20260120/](./tracks/megasession_jan20_20260120/)*
+
+---
+
+
+
+- [~] **Track: Megasession Jan 21 2026**
+
+*Link: [./tracks/megasession_jan21_20260121/](./tracks/megasession_jan21_20260121/)*

@@ -742,15 +742,15 @@ class SignalRClient(
         }
     }
 
-    fun requestAiHistory() {
+    fun requestAiHistory(pid: Int? = null) {
         if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {       
-            val pid = _selectedPid.value
+            val targetPid = pid ?: _selectedPid.value
             // Clear current messages to show it's reloading
-            _aiMessagesMap.value = _aiMessagesMap.value + (pid to emptyList())
+            _aiMessagesMap.value = _aiMessagesMap.value + (targetPid to emptyList())
             updateActiveView()
             
-            updateSessionStatus(pid, "Reloading history...")
-            val hubPid = if (pid == -1) null else pid
+            updateSessionStatus(targetPid, "Reloading history...")
+            val hubPid = if (targetPid == -1) null else targetPid
             hubConnection?.send("RequestAiHistory", hubPid)
         }
     }
@@ -885,18 +885,18 @@ class SignalRClient(
 
     fun clearAiMessages(pid: Int? = null) {
         val targetPid = pid ?: _selectedPid.value
-        if (hubConnection != null && hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED && aiSessions.value.isNotEmpty()) {
+        if (hubConnection != null && hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED && aiSessions.value.containsKey(targetPid)) {
             hubConnection?.send("SendAiMessage", "/clear", targetPid)
         }
 
-        // Insta-clear local view
+        // Insta-clear local view for this session
         _aiMessagesMap.value = _aiMessagesMap.value.toMutableMap().apply {
-            remove(targetPid)
+            put(targetPid, emptyList())
         }
         updateActiveView()
 
         // Repopulate (request history from Hub which should now be empty or have a system message)
-        requestAiHistory()
+        requestAiHistory(targetPid)
     }
 
     fun stopConnection() {

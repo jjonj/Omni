@@ -6,6 +6,7 @@ import android.webkit.WebChromeClient
 import android.webkit.WebSettings
 import com.omni.sync.ui.screen.LogType
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.clickable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -31,9 +32,16 @@ fun WebServerScreen(
     signalRClient: SignalRClient,
     mainViewModel: MainViewModel = viewModel()
 ) {
-    val url = "https://www.google.com" // Debugging: use google instead of hub url
+    val predefinedUrls = listOf(
+        "https://www.google.com" to "Google",
+        "http://10.0.0.37:5000" to "Hub API (5000)",
+        "http://10.0.0.37:3333" to "Hub Web (3333)"
+    )
+
+    var currentUrl by remember { mutableStateOf(predefinedUrls[0].first) }
     var webView by remember { mutableStateOf<WebView?>(null) }
     var isMoreMode by remember { mutableStateOf(false) }
+    var showUrlPicker by remember { mutableStateOf(false) }
 
     androidx.activity.compose.BackHandler(enabled = isMoreMode) {
         isMoreMode = false
@@ -43,12 +51,32 @@ fun WebServerScreen(
         topBar = {
             TopAppBar(
                 title = { 
-                    Text(
-                        text = if (isMoreMode) "Server Controls" else url, 
-                        style = MaterialTheme.typography.labelSmall,
-                        maxLines = 1,
-                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-                    ) 
+                    Box {
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable { if (!isMoreMode) showUrlPicker = true }) {
+                            Text(
+                                text = if (isMoreMode) "Server Controls" else predefinedUrls.find { it.first == currentUrl }?.second ?: currentUrl, 
+                                style = MaterialTheme.typography.labelSmall,
+                                maxLines = 1,
+                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                            ) 
+                            if (!isMoreMode) {
+                                Icon(Icons.Default.ArrowDropDown, null, modifier = Modifier.size(16.dp))
+                            }
+                        }
+                        
+                        DropdownMenu(expanded = showUrlPicker, onDismissRequest = { showUrlPicker = false }) {
+                            predefinedUrls.forEach { (targetUrl, label) ->
+                                DropdownMenuItem(
+                                    text = { Text(label) },
+                                    onClick = {
+                                        currentUrl = targetUrl
+                                        webView?.loadUrl(targetUrl)
+                                        showUrlPicker = false
+                                    }
+                                )
+                            }
+                        }
+                    }
                 },
                 navigationIcon = {
                     if (isMoreMode) {
@@ -164,12 +192,12 @@ fun WebServerScreen(
                                 mediaPlaybackRequiresUserGesture = false
                             }
                             
-                            if (url.startsWith("http")) {
-                                mainViewModel.addLog("WebView loading URL: $url", LogType.INFO)
-                                loadUrl(url)
+                            if (currentUrl.startsWith("http")) {
+                                mainViewModel.addLog("WebView loading URL: $currentUrl", LogType.INFO)
+                                loadUrl(currentUrl)
                             } else {
-                                mainViewModel.addLog("WebView INVALID URL: $url", LogType.ERROR)
-                                loadData("<html><body><h1>Hello World</h1><p>Invalid URL: $url</p></body></html>", "text/html", "UTF-8")
+                                mainViewModel.addLog("WebView INVALID URL: $currentUrl", LogType.ERROR)
+                                loadData("<html><body><h1>Hello World</h1><p>Invalid URL: $currentUrl</p></body></html>", "text/html", "UTF-8")
                             }
                         }
                     },

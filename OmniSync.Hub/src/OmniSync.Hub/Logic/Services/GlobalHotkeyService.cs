@@ -58,8 +58,56 @@ namespace OmniSync.Hub.Logic.Services
         private void OnKeyActionOccurred(object? sender, KeyHookEventArgs e)
         {
             // Track state for both Down and Up to be accurate
-            if (e.State == KeyState.Down) _pressedKeys.Add(e.Key);
-            else _pressedKeys.Remove(e.Key);
+            if (e.State == KeyState.Down)
+            {
+                _pressedKeys.Add(e.Key);
+            }
+            else
+            {
+                _pressedKeys.Remove(e.Key);
+
+                // Extra safety: if any modifier key is released, clear our internal tracking for it entirely
+                // This helps recover from "stuck" modifiers if a KeyUp event was missed previously
+                if (e.Key == Keys.LMenu || e.Key == Keys.RMenu || e.Key == Keys.Menu)
+                {
+                    _pressedKeys.Remove(Keys.LMenu);
+                    _pressedKeys.Remove(Keys.RMenu);
+                    _pressedKeys.Remove(Keys.Menu);
+                }
+                if (e.Key == Keys.LControlKey || e.Key == Keys.RControlKey || e.Key == Keys.ControlKey)
+                {
+                    _pressedKeys.Remove(Keys.LControlKey);
+                    _pressedKeys.Remove(Keys.RControlKey);
+                    _pressedKeys.Remove(Keys.ControlKey);
+                }
+                if (e.Key == Keys.LShiftKey || e.Key == Keys.RShiftKey || e.Key == Keys.ShiftKey)
+                {
+                    _pressedKeys.Remove(Keys.LShiftKey);
+                    _pressedKeys.Remove(Keys.RShiftKey);
+                    _pressedKeys.Remove(Keys.ShiftKey);
+                }
+            }
+
+            // Real-time synchronization: if GetAsyncKeyState says a modifier is NOT pressed, 
+            // ensure it's removed from our tracked set regardless of previous KeyUp events.
+            if (!e.Alt)
+            {
+                _pressedKeys.Remove(Keys.LMenu);
+                _pressedKeys.Remove(Keys.RMenu);
+                _pressedKeys.Remove(Keys.Menu);
+            }
+            if (!e.Control)
+            {
+                _pressedKeys.Remove(Keys.LControlKey);
+                _pressedKeys.Remove(Keys.RControlKey);
+                _pressedKeys.Remove(Keys.ControlKey);
+            }
+            if (!e.Shift)
+            {
+                _pressedKeys.Remove(Keys.LShiftKey);
+                _pressedKeys.Remove(Keys.RShiftKey);
+                _pressedKeys.Remove(Keys.ShiftKey);
+            }
 
             if (e.State != KeyState.Down) return;
 
@@ -194,13 +242,20 @@ namespace OmniSync.Hub.Logic.Services
 
         private bool MatchHotkey(string hotkeyStr, KeyHookEventArgs e)
         {
-            var parts = hotkeyStr.Split('+').Select(p => p.Trim().ToUpper()).ToList();
-            
+            if (string.IsNullOrWhiteSpace(hotkeyStr)) return false;
+
+            // Support multiple separators (+, -, space)
+            var parts = hotkeyStr.Split(new[] { '+', '-', ' ' }, StringSplitOptions.RemoveEmptyEntries)
+                                 .Select(p => p.Trim().ToUpper())
+                                 .ToList();
+
+            if (parts.Count == 0) return false;
+
             // Required modifiers from the config string
             bool ctrlReq = parts.Contains("CTRL") || parts.Contains("CONTROL");
-            bool altReq = parts.Contains("ALT");
+            bool altReq = parts.Contains("ALT") || parts.Contains("MENU");
             bool shiftReq = parts.Contains("SHIFT");
-            bool winReq = parts.Contains("WIN");
+            bool winReq = parts.Contains("WIN") || parts.Contains("CMD");
 
             // Check modifier states using both hook flags AND tracked keys for maximum reliability
             bool isCtrl = e.Control || _pressedKeys.Any(k => k == Keys.ControlKey || k == Keys.LControlKey || k == Keys.RControlKey);
@@ -223,12 +278,15 @@ namespace OmniSync.Hub.Logic.Services
             else if (targetKeyName.Length == 1 && char.IsDigit(targetKeyName[0]) && (pressedKeyName == "D" + targetKeyName || pressedKeyName == "NUMPAD" + targetKeyName)) keyMatch = true;
             else if (targetKeyName == pressedKeyName) keyMatch = true;
             
-            if (!modifiersMatch) return false;
-            
-            // If the pressed key IS a modifier, we don't trigger (Wait for the actual key)
-            if (IsModifier(e.Key)) return false;
+            bool result = modifiersMatch && keyMatch && !IsModifier(e.Key);
 
-            return keyMatch;
+            if (keyMatch && !result && !IsModifier(e.Key))
+            {
+                // Detailed logging for mismatched hotkeys to help debug "stuck" modifiers or incorrect configs
+                // _hubMonitorService.AddLogMessage($"[Hotkey] '{hotkeyStr}' key match but modifier mismatch. Req: C={ctrlReq},A={altReq},S={shiftReq},W={winReq}. Actual: C={isCtrl},A={isAlt},S={isShift},W={isWin}. Flags: C={(e.Control)},A={(e.Alt)}");
+            }
+
+            return result;
         }
 
         private bool IsModifier(Keys k)

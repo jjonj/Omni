@@ -18,6 +18,7 @@ class AndroidAiTester:
         self.connection_started = False
         self.message_received = False
         self.response_received = False
+        self.target_pid = None
         self.hub = None
 
     def on_open(self):
@@ -25,23 +26,36 @@ class AndroidAiTester:
         self.connection_started = True
 
     def on_ai_message(self, args):
-        if len(args) >= 2:
-            sender_id, message = args[0], args[1]
-            logger.info(f"HUB BROADCAST: Message from {sender_id}: {message}")
+        if len(args) >= 3:
+            sender_id, message, pid = args[0], args[1], args[2]
+            if str(pid) != str(self.target_pid):
+                return
+            logger.info(f"HUB BROADCAST: Message from {sender_id} (PID {pid}): {message}")
             self.message_received = True
 
     def on_ai_response(self, args):
-        if args:
-            response = args[0]
-            logger.info(f"HUB BROADCAST: AI Response received: {response}")
+        if len(args) >= 2:
+            response, pid = args[0], args[1]
+            if str(pid) != str(self.target_pid):
+                return
+            logger.info(f"HUB BROADCAST: AI Response received (PID {pid}): {response}")
             self.response_received = True
 
     def on_ai_status(self, args):
-        if args:
-            status = args[0]
-            logger.info(f"AI Status: {status}")
+        if len(args) >= 2:
+            status, pid = args[0], args[1]
+            if str(pid) != str(self.target_pid):
+                return
+            logger.info(f"AI Status (PID {pid}): {status}")
             if status == "FINISHED":
                 self.response_received = True
+
+    def on_new_session_pid(self, args):
+        pid = args[0]
+        logger.info(f"Received new session PID: {pid}")
+        if self.target_pid is None:
+            self.target_pid = pid
+            logger.info(f"Captured Target PID: {self.target_pid}")
 
     async def run_test(self):
         self.hub = HubConnectionBuilder()\
@@ -52,6 +66,7 @@ class AndroidAiTester:
         self.hub.on("ReceiveAiMessage", self.on_ai_message)
         self.hub.on("ReceiveAiResponse", self.on_ai_response)
         self.hub.on("ReceiveAiStatus", self.on_ai_status)
+        self.hub.on("ReceiveNewAiSessionPid", self.on_new_session_pid)
         self.hub.on_open(self.on_open)
         
         self.hub.start()

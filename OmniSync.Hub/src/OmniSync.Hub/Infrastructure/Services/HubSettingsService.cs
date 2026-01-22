@@ -57,9 +57,10 @@ namespace OmniSync.Hub.Infrastructure.Services
         public Dictionary<string, string> ExeMappings { get; set; } = new();
         public List<HotkeyConfig> Hotkeys { get; set; } = new();
         public Dictionary<string, string> AiSessionNames { get; set; } = new();
-        public List<string> AutoApprovePatterns { get; set; } = new();
-        public List<string> AiPresets { get; set; } = new();
-        public List<Project> Projects { get; set; } = new();
+        public List<string> AutoApprovePatterns { get; set; } = new List<string>();
+        public List<string> AiPresets { get; set; } = new List<string>();
+        public List<Project> Projects { get; set; } = new List<Project>();
+        public List<string> BrowserCleanupPatterns { get; set; } = new List<string>();
 
         // Tell PC Settings
         public string TellPcWorkspace { get; set; } = @"B:\GDrive\Tools";

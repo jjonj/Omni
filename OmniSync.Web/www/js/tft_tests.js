@@ -406,33 +406,6 @@ class TFTTester {
         console.log("[Test] Found Demacia 7 board:", res.board.map(u => u.name).join(', '));
     }
 
-    async testNidaleeAutoIncludeBug() {
-        // This test simulates the UI's rendering logic fix.
-        const neekoUnit = this.data.units.find(u => u.name === "Neeko");
-        const mockBoard = [neekoUnit];
-        const results = [{ board: mockBoard, score: 100, counts: { "Ixtal": 1 } }];
-        
-        // Simulating the FIXED logic in renderResults (data-driven):
-        let displayBoard = [...results[0].board];
-        
-        displayBoard.forEach(u => {
-            if (u.auto_include && !displayBoard.find(du => du.name === u.auto_include)) {
-                const sharedTrait = u.traits[0];
-                const meta = this.data.trait_metadata[sharedTrait];
-                const hasTraitActive = results[0].counts[sharedTrait] && (meta?.breakpoints.some(b => b <= results[0].counts[sharedTrait]));
-                
-                if (hasTraitActive) {
-                    const extraUnit = this.data.units.find(du => du.name === u.auto_include);
-                    if (extraUnit) displayBoard.push(extraUnit);
-                }
-            }
-        });
-
-        if (displayBoard.some(u => u.name === "Nidalee")) {
-            if (results[0].counts["Ixtal"] < 3) {
-                throw new Error("BUG: Nidalee was automatically added to a Neeko board even though Ixtal breakpoint (3) was not reached");
-            }
-        }
     }
 }
 

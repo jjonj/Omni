@@ -18,6 +18,7 @@ class HookinTester:
     def __init__(self):
         self.connection_started = False
         self.new_session_pid = None
+        self.target_pid = None
         self.response_received = False
         self.hub = None
         self.session_created_event = asyncio.Event()
@@ -29,20 +30,26 @@ class HookinTester:
     def on_ai_message(self, args):
         if len(args) >= 3:
             sender, message, pid = args[0], args[1], args[2]
+            if str(pid) != str(self.target_pid):
+                return
             logger.info(f"HUB BROADCAST: Message from {sender} to PID {pid}: {message[:50]}...")
 
     def on_ai_response(self, args):
         if len(args) >= 2:
             response, pid = args[0], args[1]
+            if str(pid) != str(self.target_pid):
+                return
             logger.info(f"HUB BROADCAST: AI Response from PID {pid}: {response[:50]}...")
-            if pid == self.new_session_pid:
-                self.response_received = True
+            self.response_received = True
 
     def on_new_session_pid(self, args):
         if args:
             pid = args[0]
             logger.info(f"Received NEW SESSION PID: {pid}")
             self.new_session_pid = pid
+            if self.target_pid is None:
+                self.target_pid = pid
+                logger.info(f"Captured Target PID: {self.target_pid}")
             self.session_created_event.set()
 
     async def run_test(self):

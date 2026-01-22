@@ -315,6 +315,12 @@ function handleAddModeKeydown(e) {
         return;
     }
 
+    if (e.key === 'a' && e.altKey) {
+        e.preventDefault();
+        exitAddMode();
+        return; 
+    }
+
     if (e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey) {
         e.preventDefault();
         addModeBuffer += e.key.toLowerCase();
@@ -1354,17 +1360,15 @@ function renderUnitPools() {
             item.classList.add('unit-node');
 
             if (activeDisabledUnits.includes(u.name)) {
-                item.style.opacity = '0.3';
-                item.style.filter = 'grayscale(1)';
+                item.style.opacity = '0.55';
+                item.style.filter = 'grayscale(0.7)';
             }
             
             item.addEventListener('click', (e) => {
-                if (!activeDisabledUnits.includes(u.name)) {
-                    if (activeDropZone === 'must-include') {
-                        addToMustInclude(u);
-                    } else {
-                        addToCurrentTeam(u);
-                    }
+                if (activeDropZone === 'must-include') {
+                    addToMustInclude(u);
+                } else {
+                    addToCurrentTeam(u);
                 }
             });
 
@@ -1826,30 +1830,25 @@ function renderSelectionZones() {
     }
 
     // Calculate and render traits summary for Must Include
-    const mustCounts = {};
-    const mustBoard = [];
+    const mustBoardRaw = [];
     selectedMustInclude.forEach(item => {
         if (item.type === 'unit') {
             const unitData = tftData.units.find(du => du.name === item.name);
-            if (unitData) {
-                mustBoard.push(unitData);
-                unitData.traits.forEach(t => mustCounts[t] = (mustCounts[t] || 0) + 1);
-            }
+            if (unitData) mustBoardRaw.push(unitData);
         }
     });
-    // Add emblems
-    selectedEmblems.forEach(emb => {
-        mustCounts[emb.trait] = (mustCounts[emb.trait] || 0) + 1;
-    });
     
-    if (mustBoard.length > 0) {
+    const mustDisplayBoard = getDisplayBoard(mustBoardRaw);
+    const mustDisplayCounts = calculateCounts(mustDisplayBoard, selectedEmblems.map(e => e.trait));
+
+    if (mustDisplayBoard.length > 0) {
         const solverModeEl = document.querySelector('input[name="solver-mode"]:checked');
         const solverMode = solverModeEl ? solverModeEl.value : 'default';
         const summaryContainer = document.createElement('div');
         summaryContainer.style.borderTop = '1px dashed var(--border-light)';
         summaryContainer.style.marginTop = '10px';
         summaryContainer.style.paddingTop = '5px';
-        renderTraitsSummary(mustCounts, mustBoard, summaryContainer, solverMode);
+        renderTraitsSummary(mustDisplayCounts, mustDisplayBoard, summaryContainer, solverMode);
         mustZone.appendChild(summaryContainer);
     }
 
@@ -2244,6 +2243,26 @@ async function runOptimization() {
     }
 }
 
+function calculateCounts(board, emblemTraits) {
+    const counts = {};
+    board.forEach(u => {
+        u.traits.forEach(t => {
+            counts[t] = (counts[t] || 0) + 1;
+        });
+    });
+    emblemTraits.forEach(trait => {
+        counts[trait] = (counts[trait] || 0) + 1;
+    });
+    return counts;
+}
+
+function getDisplayBoard(board) {
+    return [...board].map((u, i) => ({ 
+        ...u, 
+        originalIdx: (u.originalIdx !== undefined ? u.originalIdx : i) 
+    }));
+}
+
 function renderResults(results, container, level) {
     container.innerHTML = '';
     if (results.length === 0) {
@@ -2271,32 +2290,16 @@ function renderResults(results, container, level) {
         const card = document.createElement('div');
         card.className = 'result-card';
         card.style.marginBottom = '10px';
-        let displayBoard = res.board.map((u, i) => ({ ...u, originalIdx: i }));
-        if (displayBoard.find(u => u.name === "Annie") && !displayBoard.find(u => u.name === "Tibbers")) {
-            const tibbers = tftData.units.find(u => u.name === "Tibbers");
-            if (tibbers) displayBoard.push({ ...tibbers, originalIdx: -1 });
-        }
         
-        // Data-driven auto-include (e.g. Neeko auto-includes Nidalee if Ixtal is active)
-        displayBoard.forEach(u => {
-            if (u.auto_include && !displayBoard.find(du => du.name === u.auto_include)) {
-                // Check if the trait shared by these two is actually active
-                const sharedTrait = u.traits[0]; // Heuristic: first trait is usually the origin
-                const hasTraitActive = res.counts[sharedTrait] && (tftData.trait_metadata[sharedTrait]?.breakpoints.some(b => b <= res.counts[sharedTrait]));
-                
-                if (hasTraitActive) {
-                    const extraUnit = tftData.units.find(du => du.name === u.auto_include);
-                    if (extraUnit) displayBoard.push({ ...extraUnit, originalIdx: -1 });
-                }
-            }
-        });
+        const displayBoard = getDisplayBoard(res.board);
+        const displayCounts = calculateCounts(displayBoard, emblemTraits);
 
         let bronzeInfo = "";
         if (solverMode === 'bronze-for-life') {
-            const activeCount = Object.keys(res.counts).filter(t => {
-                if (t === 'Targon') return false; // Exclude Targon from active count in Bronze mode
+            const activeCount = Object.keys(displayCounts).filter(t => {
+                if (t === 'Targon') return false; 
                 const traitInfo = tftData.trait_metadata[t];
-                return traitInfo && traitInfo.breakpoints.some(b => b <= res.counts[t]);
+                return traitInfo && traitInfo.breakpoints.some(b => b <= displayCounts[t]);
             }).length;
             bronzeInfo = `<span style="font-size: 10px; color: var(--text-dim); margin-left: 8px;">(${activeCount} active)</span>`;
         }
@@ -2382,7 +2385,7 @@ function renderResults(results, container, level) {
         card.appendChild(list);
         
         // Traits Section
-        renderTraitsSummary(res.counts, displayBoard, card, solverMode);
+        renderTraitsSummary(displayCounts, displayBoard, card, solverMode);
 
         // Next Unit Suggestions Section
         const nextUnits = optimizer.getBestNextUnits(res.board, tftData.units.filter(u => !activeDisabledUnits.includes(u.name)), selectedEmblems.map(e => e.trait), solverMode, mustIncludeTraits, mustIncludeNames, 3);
@@ -2418,7 +2421,7 @@ function renderResults(results, container, level) {
                 // Calculate which traits are improved
                 const improvedTraits = Object.entries(s.counts)
                     .filter(([t, c]) => {
-                        const prevC = res.counts[t] || 0;
+                        const prevC = displayCounts[t] || 0;
                         if (c <= prevC) return false;
                         const meta = tftData.trait_metadata[t];
                         if (!meta) return false;
@@ -2481,10 +2484,16 @@ function renderImproveResults(suggestions, container, currentCounts) {
         // Store the best candidate board
         card.dataset.board = JSON.stringify(bestCandidate.board);
         
+        const displayBoard = getDisplayBoard(bestCandidate.board);
+        const displayCounts = calculateCounts(displayBoard, emblemTraits);
+        
+        const currentDisplayBoard = getDisplayBoard(selectedCurrentTeam);
+        const currentDisplayCounts = calculateCounts(currentDisplayBoard, emblemTraits);
+
         const list = document.createElement('div');
         list.className = 'unit-list';
         list.style.gap = '4px';
-        const sortedBoard = [...bestCandidate.board].sort((a, b) => a.cost - b.cost || a.name.localeCompare(b.name));
+        const sortedBoard = [...displayBoard].sort((a, b) => a.cost - b.cost || a.name.localeCompare(b.name));
         sortedBoard.forEach(u => {
             const item = document.createElement('div');
             item.className = 'unit-item';
@@ -2495,6 +2504,7 @@ function renderImproveResults(suggestions, container, currentCounts) {
             list.appendChild(item);
         });
         card.appendChild(list);
+
         const traitsList = document.createElement('div');
         traitsList.className = 'trait-summary';
         traitsList.style.display = 'flex';
@@ -2503,15 +2513,14 @@ function renderImproveResults(suggestions, container, currentCounts) {
         traitsList.style.marginTop = '10px';
         traitsList.style.paddingTop = '8px';
         traitsList.style.borderTop = '1px solid var(--border-light)';
-        const allTraitNames = new Set([...Object.keys(currentCounts), ...Object.keys(bestCandidate.counts)]);
+        const allTraitNames = new Set([...Object.keys(currentDisplayCounts), ...Object.keys(displayCounts)]);
                 Array.from(allTraitNames).sort().forEach(trait => {
-                    const count = bestCandidate.counts[trait] || 0;
-                    const prevCount = currentCounts[trait] || 0;
+                    const count = displayCounts[trait] || 0;
+                    const prevCount = currentDisplayCounts[trait] || 0;
                     const traitInfo = (tftData.trait_metadata && tftData.trait_metadata[trait]) ? tftData.trait_metadata[trait] : null;
                     const breakpoints = traitInfo ? traitInfo.breakpoints : null;
                     const isTargon = trait === 'Targon';
                     const isOrigin = traitInfo && traitInfo.type === 'origin';
-                    const hasEmblem = emblemTraits.includes(trait);
                     
                     if (!breakpoints && !isTargon) return;
             const getTier = (c) => { if (!breakpoints) return 0; const reached = breakpoints.filter(b => b <= c); return reached.length > 0 ? Math.max(...reached) : 0; };
@@ -2569,17 +2578,17 @@ async function runLogicTests() {
     if (!tftData || !optimizer) return;
     const runner = new TFTTester(optimizer, tftData);
             const tests = [
-                runner.testLevel4Optimal, runner.testAnnieTibbersLogic, runner.testLevel4CostConstraint,
+                runner.testLevel4Optimal, runner.testLevel4CostConstraint,
                 runner.testLevel5CostConstraint, runner.testBronzeForLifeLogic, runner.testLevel10Constraints,
                 runner.testSpecificLevelUnitRestrictions, runner.testMustIncludeTraits, runner.testAnnieOneArcanistFix,
                 runner.testTargonSpecialLogic, runner.testUnitReplacementPersistenceBug, runner.testSylasForbiddenUnits,
                 runner.testLevel8FiveCostLimit, runner.testLevel9Constraints, runner.testTraitIgnoreList,
                 runner.testForbiddenShurima, runner.testCarryRequirements, runner.testMustIncludeBypassLevelRestriction,
-                runner.testNeekoNidaleeLogic, runner.testNeekoNidaleeOneWayLogic, runner.testNidaleeAutoIncludeBug,
+                runner.testNeekoNidaleeLogic, runner.testNeekoNidaleeOneWayLogic,
                 runner.testNidaleeRequiresNeeko, runner.testSuperHeuristicPoppyLevel6, runner.testSuperHeuristicKobukoLevel6,
                 runner.testWorldRunesLogic, runner.testRuneSolverLevel5, runner.testRuneSolverLevel5PiltoverDemacia,
                 runner.testRyzeUnlockSolver, runner.testSaveLoadComps, runner.testFullLoadFlow,
-                runner.testNidaleeAutoIncludeBug, runner.testDemacia7AtLevel8
+                runner.testDemacia7AtLevel8
             ];    for (const test of tests) {
         const statusEl = document.createElement('div');
         statusEl.style.color = "#aaa";

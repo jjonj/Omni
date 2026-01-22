@@ -26,13 +26,11 @@ If i try to run omni.exe again when its already running it tries to run a second
 ## in OmniSync.Android
 ### General
 
+Swiping side to side to change screens is too sensitive, it should require a stronger sideways angle to do it. 
 
 When i press Android back button while the keyboard is up, it is with the intention of lowering the keyboard, nothing else. make sure the back function doesn't change screen or otherwise if the keyboard is up 
 
 ### Dashboard
-
-Sleep tracker should stop tracking/counting hours whenever connecting to hub. 
-When log entries come in, it auto scrolls to bottom. Dont do that for the dashboard.
 
 
 ### Remote Control Screen
@@ -57,10 +55,9 @@ Allow adding cleanup patterns based on not just URL but also tab title. E.g. "ti
 
 tool call: replace and tool call: edit are rendered in yellow because they are tool calls but maybe they should use file diff rendering instead, maybe with some yellow somewhere
 
-auto Scroll to bottom disiables itself if I'm already at bottom at scrolls DOWN. the scrolling down obviously does nothing and certainly sound not disable auto scroll. only scrolling up should disable 
+when i send a message to ai it doesn't always scroll to bottom which it should 
 
-
-if i sent a message to the ai from the gemini cli on windows skipping android, that message becomes visible on Android app as well which is good but if shows as if the AI was the one who typed that message even though it was me 
+when i use clear command it needs to reload session history 
 
 unit test all of the above first 
 
@@ -69,15 +66,13 @@ unit test all of the above first
 
 ### Alarm screen
 
-For alarm #2, allow setting it to a specific date in the future. 
+For alarm 2 when setting it to a date in the future, allow entering a custom text leave that will be shown on the dismiss screen 
 
 ### Settings screen
 
 Allow configuring a startup routine, a series of "quick actions" that can be scheduled to run whenever the hub first starts up ONCE per day only (if it restarts on the same day then dont rerun). 
 Add tab cleanup as a quickaction
 
-
-Add a toggle to alarm 1 for whether to repeat daily 
 
 ## Chrome extension
 
@@ -90,7 +85,5 @@ http://10.0.0.37:3333
 
 
 ### Omni web tft
-
-Ctrl-A hotkey is inconsistents, when tft page is open it sometimes doesnt activate the tft page but it still starts blocking input
 
 ## Chrome extension

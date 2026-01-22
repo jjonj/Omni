@@ -221,7 +221,6 @@
       ],
       "is_carry": false,
       "locked": false,
-      "auto_include": "Nidalee",
       "icon_url": "assets/tft/set16/champions/Neeko.png"
     },
     {
@@ -1018,6 +1017,7 @@
       ],
       "is_carry": false,
       "locked": false,
+      "requires": "Annie",
       "icon_url": "assets/tft/set16/champions/Tibbers.png"
     },
     {

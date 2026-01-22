@@ -52,7 +52,6 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import android.app.Activity
 import android.content.Intent
-import androidx.compose.material.icons.filled.Mic
 import androidx.activity.compose.BackHandler
 import com.omni.sync.ui.components.VerticalScrollbar
 import com.omni.sync.ui.components.DirectoryPickerDialog
@@ -101,7 +100,9 @@ fun FilesScreen(
     var sourceEntry by remember { mutableStateOf<FileSystemEntry?>(null) }
 
     // Handle back press to navigate up or close panels
-    BackHandler(enabled = (currentPath.isNotEmpty() && currentPath != "/") || showBookmarksList || showCachesList || showCopyDialog || showMoveDialog) {
+    val isKeyboardVisible = androidx.compose.foundation.layout.WindowInsets.ime.getBottom(androidx.compose.ui.platform.LocalDensity.current) > 0
+
+    BackHandler(enabled = !isKeyboardVisible && ((currentPath.isNotEmpty() && currentPath != "/") || showBookmarksList || showCachesList || showCopyDialog || showMoveDialog)) {
         if (showBookmarksList) {
             showBookmarksList = false
         } else if (showCachesList) {
@@ -123,28 +124,6 @@ fun FilesScreen(
     val downloadErrorMessage by filesViewModel.downloadErrorMessage.collectAsState()
 
     val context = LocalContext.current // Get context for Toast
-
-    val voiceLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.StartActivityForResult()
-    ) { result ->
-        if (result.resultCode == Activity.RESULT_OK) {
-            val data = result.data
-            val results = data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
-            if (!results.isNullOrEmpty()) {
-                val spokenText = results[0]
-                // Send to current AI session
-                filesViewModel.signalRClient.sendAiMessage(spokenText, if (selectedPid != -1) selectedPid else null)
-            }
-        }
-    }
-
-    fun startVoiceRecognition() {
-        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-            putExtra(RecognizerIntent.EXTRA_PROMPT, "Listening...")
-        }
-        voiceLauncher.launch(intent)
-    }
 
     val listState = rememberLazyListState()
     

@@ -55,16 +55,6 @@ async function start() {
 
 // Periodic check alarm to keep things alive and ensure we haven't stayed disconnected
 chrome.alarms.create("keep-alive-check", { periodInMinutes: 1 });
-    if (connection.state === signalR.HubConnectionState.Connected) {
-        try {
-            const success = await connection.invoke("Authenticate", API_KEY);
-            console.log("SignalR: Authentication result:", success);
-            checkActiveTab(); // Check immediately after auth
-        } catch (e) {
-            console.error("SignalR: Authentication failed:", e);
-        }
-    }
-}
 
 // --- Active Tab Tracking for TFT ---
 let lastTftStatus = false;
@@ -178,6 +168,13 @@ function shouldCleanTab(tabUrl, tabTitle) {
     // Chrome start page / new tab
     if (tabUrl === "chrome://newtab/" || tabUrl === "about:blank" || tabUrl === "edge://newtab/") return true;
     
+    // Default title-based patterns (case-insensitive)
+    const lowerTitle = tabTitle ? tabTitle.toLowerCase() : "";
+    if (lowerTitle.includes("inbox")) return true;
+    if (lowerTitle.includes("messenger")) return true;
+    if (lowerTitle.includes("chatgpt")) return true;
+    if (lowerTitle.includes("discord |")) return true;
+
     // Check custom patterns
     for (const pattern of customCleanupPatterns) {
         if (pattern.toLowerCase().startsWith("title:")) {
@@ -192,6 +189,14 @@ function shouldCleanTab(tabUrl, tabTitle) {
 }
 
 // Handle Commands from Android
+connection.on("ReceiveCleanupPatterns", (patterns) => {
+    console.log("SignalR: Received master cleanup patterns from Hub:", patterns);
+    if (Array.isArray(patterns)) {
+        customCleanupPatterns = patterns;
+        chrome.storage.local.set({ customCleanupPatterns });
+    }
+});
+
 connection.on("ReceiveBrowserCommand", async (command, url, newTab) => {
     try {
         console.log(`SignalR: Received command: ${command}, URL: ${url}, NewTab: ${newTab}`);
@@ -453,3 +458,15 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
 });
 
 start();
+
+async function authenticate() {
+    if (connection.state === signalR.HubConnectionState.Connected) {
+        try {
+            const success = await connection.invoke("Authenticate", API_KEY);
+            console.log("SignalR: Authentication result:", success);
+            checkActiveTab(); // Check immediately after auth
+        } catch (e) {
+            console.error("SignalR: Authentication failed:", e);
+        }
+    }
+}

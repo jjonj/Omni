@@ -40,7 +40,7 @@ namespace OmniSync.Hub.Infrastructure.Services
         private static extern IntPtr GetModuleHandle(string lpModuleName);
 
         [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
-        private static extern short GetKeyState(int nVirtKey);
+        private static extern short GetAsyncKeyState(int nVirtKey);
 
         private IntPtr _hookID = IntPtr.Zero;
         private LowLevelKeyboardProc _proc;
@@ -104,24 +104,35 @@ namespace OmniSync.Hub.Infrastructure.Services
         {
             if (nCode >= 0)
             {
-                // Modifier keys are special; their state can change without a specific KEYDOWN/KEYUP for them
-                // We always check the state of modifiers
-                bool isShiftPressed = (GetKeyState((int)Keys.LShiftKey) & 0x8000) != 0 || (GetKeyState((int)Keys.RShiftKey) & 0x8000) != 0;
-                bool isCtrlPressed = (GetKeyState((int)Keys.LControlKey) & 0x8000) != 0 || (GetKeyState((int)Keys.RControlKey) & 0x8000) != 0;
-                bool isAltPressed = (GetKeyState((int)Keys.LMenu) & 0x8000) != 0 || (GetKeyState((int)Keys.RMenu) & 0x8000) != 0;
-                bool isWinPressed = (GetKeyState((int)Keys.LWin) & 0x8000) != 0 || (GetKeyState((int)Keys.RWin) & 0x8000) != 0;
+                KBDLLHOOKSTRUCT hookStruct = (KBDLLHOOKSTRUCT)Marshal.PtrToStructure(lParam, typeof(KBDLLHOOKSTRUCT));
+                
+                // GetAsyncKeyState is more reliable for global state than GetKeyState
+                bool isShiftPressed = (GetAsyncKeyState((int)Keys.ShiftKey) & 0x8000) != 0 || 
+                                      (GetAsyncKeyState((int)Keys.LShiftKey) & 0x8000) != 0 || 
+                                      (GetAsyncKeyState((int)Keys.RShiftKey) & 0x8000) != 0;
+                
+                bool isCtrlPressed = (GetAsyncKeyState((int)Keys.ControlKey) & 0x8000) != 0 || 
+                                     (GetAsyncKeyState((int)Keys.LControlKey) & 0x8000) != 0 || 
+                                     (GetAsyncKeyState((int)Keys.RControlKey) & 0x8000) != 0;
+                
+                // For Alt, we can also check the LLKHF_ALTDOWN flag (bit 5) in hookStruct.flags
+                bool isAltPressed = (GetAsyncKeyState((int)Keys.Menu) & 0x8000) != 0 || 
+                                    (GetAsyncKeyState((int)Keys.LMenu) & 0x8000) != 0 || 
+                                    (GetAsyncKeyState((int)Keys.RMenu) & 0x8000) != 0 ||
+                                    (hookStruct.flags & 0x20) != 0; // LLKHF_ALTDOWN
+
+                bool isWinPressed = (GetAsyncKeyState((int)Keys.LWin) & 0x8000) != 0 || 
+                                    (GetAsyncKeyState((int)Keys.RWin) & 0x8000) != 0;
 
                 bool isKeyDown = wParam == (IntPtr)WM_KEYDOWN || wParam == (IntPtr)WM_SYSKEYDOWN;
                 bool isKeyUp = wParam == (IntPtr)WM_KEYUP || wParam == (IntPtr)WM_SYSKEYUP;
 
                 if (isKeyDown || isKeyUp)
                 {
-                    KBDLLHOOKSTRUCT hookStruct = (KBDLLHOOKSTRUCT)Marshal.PtrToStructure(lParam, typeof(KBDLLHOOKSTRUCT));
                     Keys key = (Keys)hookStruct.vkCode;
-                    
                     var state = isKeyDown ? KeyState.Down : KeyState.Up;
                     
-                    _logger.LogDebug($"Key {state}: {key}, Shift: {isShiftPressed}, Ctrl: {isCtrlPressed}, Alt: {isAltPressed}, Win: {isWinPressed}");
+                    // _logger.LogDebug($"Key {state}: {key}, Shift: {isShiftPressed}, Ctrl: {isCtrlPressed}, Alt: {isAltPressed}, Win: {isWinPressed}");
                     var args = new KeyHookEventArgs(key, state, isShiftPressed, isCtrlPressed, isAltPressed, isWinPressed);
                     KeyActionOccurred?.Invoke(this, args);
 

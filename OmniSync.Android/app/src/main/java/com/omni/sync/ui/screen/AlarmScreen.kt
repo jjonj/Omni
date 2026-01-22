@@ -13,6 +13,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -49,7 +50,8 @@ data class AlarmData(
     var soundId: String = "gentle",
     var macroOnTrigger: String? = null,
     var macroOnDismiss: String? = null,
-    var scheduledDate: Long? = null // Optional specific date
+    var scheduledDate: Long? = null, // Optional specific date
+    var dismissText: String? = null // Custom text for the dismiss screen
 )
 
 data class GradualConfig(
@@ -129,6 +131,7 @@ fun AlarmScreen(
         saveAlarms()
         if (data.enabled) {
             AlarmScheduler.scheduleAlarm(context, id, data, config)
+            mainViewModel.startSleep()
         } else {
             AlarmScheduler.cancelAlarm(context, id)
         }
@@ -251,16 +254,36 @@ fun AlarmScreen(
             val isRinging by AlarmService.isRinging.collectAsState()
             val isSnoozing by AlarmService.isSnoozing.collectAsState()
             if (isRinging || isSnoozing) {
-                Button(
-                    onClick = { 
-                        // Try to find the actual ringing alarm from service if possible, 
-                        // or fallback to the one enabled in UI
-                        AlarmService.stopAlarm(context, activeAlarmId, isActiveAlarmRepeating) 
-                    },
-                    modifier = Modifier.fillMaxWidth().height(64.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
-                ) {
-                    Text(if (isRinging) "DISMISS ALARM" else "CANCEL SNOOZE", style = MaterialTheme.typography.headlineSmall)
+                val dismissText = if (activeAlarmId == 1) alarm1.dismissText else if (activeAlarmId == 2) alarm2.dismissText else null
+                
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (!dismissText.isNullOrBlank()) {
+                        Surface(
+                            color = MaterialTheme.colorScheme.tertiaryContainer,
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                text = dismissText,
+                                modifier = Modifier.padding(16.dp),
+                                style = MaterialTheme.typography.headlineSmall,
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                color = MaterialTheme.colorScheme.onTertiaryContainer
+                            )
+                        }
+                    }
+
+                    Button(
+                        onClick = { 
+                            // Try to find the actual ringing alarm from service if possible, 
+                            // or fallback to the one enabled in UI
+                            AlarmService.stopAlarm(context, activeAlarmId, isActiveAlarmRepeating) 
+                        },
+                        modifier = Modifier.fillMaxWidth().height(64.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                    ) {
+                        Text(if (isRinging) "DISMISS ALARM" else "CANCEL SNOOZE", style = MaterialTheme.typography.headlineSmall)
+                    }
                 }
             }
             
@@ -585,6 +608,17 @@ fun AlarmCard(
                         macros = macros,
                         onMacroSelected = { onAlarmChange(alarm.copy(macroOnDismiss = it)) }
                     )
+
+                    if (alarmNumber == 2) {
+                        OutlinedTextField(
+                            value = alarm.dismissText ?: "",
+                            onValueChange = { onAlarmChange(alarm.copy(dismissText = it)) },
+                            label = { Text("Custom Dismiss Message") },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                            placeholder = { Text("e.g. Leave for airport") }
+                        )
+                    }
                 }
             }
         }

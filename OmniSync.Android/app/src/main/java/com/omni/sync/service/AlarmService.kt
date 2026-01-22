@@ -44,6 +44,7 @@ class AlarmService : Service(), android.content.SharedPreferences.OnSharedPrefer
     private var repeatDaily: Boolean = false
     private var currentDurationSec: Int = 3
     private var snoozeMessage: String? = null
+    private var dismissText: String? = null
     private var macroOnTrigger: String? = null
     private var macroOnDismiss: String? = null
 
@@ -143,6 +144,7 @@ class AlarmService : Service(), android.content.SharedPreferences.OnSharedPrefer
         repeatDaily = intent?.getBooleanExtra("REPEAT_DAILY", false) ?: false
         macroOnTrigger = intent?.getStringExtra("MACRO_ON_TRIGGER")
         macroOnDismiss = intent?.getStringExtra("MACRO_ON_DISMISS")
+        dismissText = intent?.getStringExtra("DISMISS_TEXT")
 
         _isRinging.value = true
         _isSnoozing.value = false
@@ -245,7 +247,8 @@ class AlarmService : Service(), android.content.SharedPreferences.OnSharedPrefer
                 repetition = nextRepetition,
                 repeatDaily = repeatDaily,
                 macroOnTrigger = macroOnTrigger,
-                macroOnDismiss = macroOnDismiss
+                macroOnDismiss = macroOnDismiss,
+                dismissText = dismissText
             )
         } else {
             // Max repetitions reached. 
@@ -347,9 +350,11 @@ class AlarmService : Service(), android.content.SharedPreferences.OnSharedPrefer
         }
         val pendingFullScreen = PendingIntent.getActivity(this, currentAlarmId, fullScreenIntent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
 
+        val content = if (!dismissText.isNullOrBlank()) dismissText else "Volume: $currentVolume% | Tap to Dismiss"
+
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Alarm")
-            .setContentText("Volume: $currentVolume% | Tap to Dismiss")
+            .setContentText(content)
             .setSmallIcon(R.drawable.ic_notification)
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setCategory(NotificationCompat.CATEGORY_ALARM)

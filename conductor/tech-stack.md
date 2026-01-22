@@ -10,13 +10,15 @@ OmniSync is a multi-platform ecosystem utilizing native technologies for maximum
 -   **Framework:** Windows Presentation Foundation (WPF) for the Monitoring UI.
 -   **Networking:** ASP.NET Core SignalR for real-time bi-directional communication.
 -   **System Integration:** P/Invoke (`user32.dll`, `ole32.dll`) for low-level input injection and clipboard management.
--   **Instance Management:** OS-level Mutex for single-instance enforcement and cross-process signaling.
--   **Architecture:** Modular Monolith using Dependency Injection (Microsoft.Extensions.DependencyInjection).
+-   **Instance Management:** Global Mutex (`Global\OmniSyncHubSingleInstance`) for single-instance enforcement with SignalR-based cross-process window restoration.
+-   **Architecture:** Modular Monolith using Dependency Injection (Microsoft.Extensions.DependencyInjection) and a daily "QuickAction" routine framework.
 
 ### 2. Android Client (Remote & Sensor)
 -   **Language:** Kotlin (Native)
--   **UI Framework:** Jetpack Compose (Material Design 3)
+-   **UI Framework:** Jetpack Compose (Material Design 3) with custom `touchSlop` sensitivity for high-stability navigation.
 -   **Networking:** SignalR Client for Android.
+-   **AI Logic:**
+    -   `InterleavedDiffMatcher`: A greedy matcher implementation for rendering human-readable code diffs in chat bubbles.
 -   **System Integration:**
     -   `AccessibilityService` for input injection and macro triggers.
     -   `ForegroundService` for persistent connection.

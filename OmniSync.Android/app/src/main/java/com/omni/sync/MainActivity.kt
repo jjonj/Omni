@@ -152,6 +152,8 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
+                    // BackHandler is only enabled when keyboard is NOT visible.
+                    // This allows the system to handle keyboard dismissal naturally when it's open.
                     BackHandler(enabled = !isKeyboardVisible) {
                         mainViewModel.handleBackPress { finish() }
                     }
@@ -286,7 +288,7 @@ class MainActivity : ComponentActivity() {
                             val viewConfig = androidx.compose.ui.platform.LocalViewConfiguration.current
                             val customViewConfig = remember {
                                 object : androidx.compose.ui.platform.ViewConfiguration by viewConfig {
-                                    override val touchSlop: Float get() = viewConfig.touchSlop * 2.5f
+                                    override val touchSlop: Float get() = viewConfig.touchSlop * 6.0f
                                 }
                             }
                             

@@ -603,7 +603,7 @@ fun TextEditorScreen(
     onBack: () -> Unit,
     parentPadding: PaddingValues = PaddingValues(0.dp)
 ) {
-    val isKeyboardVisible = WindowInsets.isImeVisible
+    val isKeyboardVisible = androidx.compose.foundation.layout.WindowInsets.ime.getBottom(androidx.compose.ui.platform.LocalDensity.current) > 0
     val editingFile by filesViewModel.editingFile.collectAsState()
     val editingContent by filesViewModel.editingContent.collectAsState()
     val openFiles by filesViewModel.openFiles.collectAsState()
@@ -852,7 +852,7 @@ fun TextEditorScreen(
         onBack() // Back button doesn't close files anymore, just goes back to explorer
     }
 
-    androidx.activity.compose.BackHandler(enabled = true) {
+    androidx.activity.compose.BackHandler(enabled = !isKeyboardVisible) {
         exitHandler()
     }
 

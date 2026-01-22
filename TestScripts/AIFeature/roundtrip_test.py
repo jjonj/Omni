@@ -29,6 +29,7 @@ class RoundtripTester:
         self.response_received = False
         self.failure_detected = False
         self.new_session_pid = None
+        self.target_pid = None
         self.hub = None
 
     def on_open(self):
@@ -39,37 +40,49 @@ class RoundtripTester:
         # Hub sends [senderId, message, pid]
         if len(args) >= 3:
             sender_id, message, pid = args[0], args[1], args[2]
+            if str(pid) != str(self.target_pid):
+                return
             logger.info(f"HUB BROADCAST: Message from {sender_id} to PID {pid}: {message}")
+            self.message_received = True
         else:
             logger.info(f"HUB BROADCAST: AI Message received (partial args: {args})")
-        self.message_received = True
 
     def on_ai_response(self, args):
         # Hub sends [response, pid]
-        if args:
-            response = args[0]
-            logger.info(f"AI Response: {response}")
+        if args and len(args) >= 2:
+            response, pid = args[0], args[1]
+            if str(pid) != str(self.target_pid):
+                return
+            logger.info(f"AI Response (PID {pid}): {response}")
             if str(response).startswith("Error:") or "Error:" in str(response)[:20]:
                 logger.error(f"FAIL: AI Response indicated an error: {response}")
                 self.failure_detected = True
 
     def on_ai_status(self, args):
         # Hub sends [status, pid]
-        if args:
-            status = args[0]
-            logger.info(f"AI Status: {status}")
+        if args and len(args) >= 2:
+            status, pid = args[0], args[1]
+            if str(pid) != str(self.target_pid):
+                return
+            logger.info(f"AI Status (PID {pid}): {status}")
             if status == "FINISHED":
                 self.response_received = True
 
     def on_ai_thought(self, args):
-        if args:
-            thought = args[0]
-            logger.info(f"AI Thought: {thought}")
+        # Hub sends [thought, pid]
+        if args and len(args) >= 2:
+            thought, pid = args[0], args[1]
+            if str(pid) != str(self.target_pid):
+                return
+            logger.info(f"AI Thought (PID {pid}): {thought}")
 
     def on_new_session_pid(self, args):
         pid = args[0]
         logger.info(f"Received new session PID from Hub: {pid}")
         self.new_session_pid = pid
+        if self.target_pid is None:
+            self.target_pid = pid
+            logger.info(f"Captured Target PID: {self.target_pid}")
 
     async def run_test(self):
         cleanup_all_gemini_windows()

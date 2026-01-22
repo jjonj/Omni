@@ -5,30 +5,15 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Cortex Scheduler</title>
     <link rel="icon" type="image/png" href="favicon.png">
-    <link rel="stylesheet" href="css/style.css?v=2026.01.20.18.38">
+    <link rel="stylesheet" href="css/style.css?v=2026.01.22.17.10">
 </head>
 <body>
     <div class="app-layout">
         <!-- Navigation -->
         <nav class="nav-menu">
-            <div class="nav-brand">OMNISYNC</div>
-            <a href="index.html" class="nav-item">Hub</a>
-            <a href="Scheduler.html" class="nav-item active">Scheduler</a>
-            <a href="TFT.html" class="nav-item">TFT</a>
-            <a href="Test.html" class="nav-item">Test</a>
-            <a href="Settings.html" class="nav-item">Settings</a>
-            <a href="IslandGenerator/index.html" class="nav-item">Island</a>
-
-            <select id="quick-nav" class="quick-nav-select">
-                <option value="">Quick Nav</option>
-                <option value="https://google.com">Google</option>
-                <option value="http://10.0.0.37:5000">Hub API (5000)</option>
-                <option value="http://10.0.0.37:3333">Hub Web (3333)</option>
-            </select>
-
-            <span class="nav-version" style="margin-left: 10px; font-size: 10px; color: var(--text-dimmer); font-family: var(--font-mono); padding: 0 10px; align-self: center;">2026.01.20.18.38</span>
-            <button id="toggle-dev-console" class="nav-item" style="font-size: 10px; background: transparent; border: 1px solid var(--border);">Console</button>
+            <span class="nav-version" style="display:none;">2026.01.22.17.10</span>
         </nav>
+        <script src="js/nav.js?v=2026.01.22.17.10"></script>
         
         <!-- Content Wrapper with Sidebar + Main -->
         <div class="content-wrapper">
@@ -130,11 +115,11 @@
     </div>
 
     <!-- Scripts -->
-    <script src="js/signalr.min.js?v=2026.01.20.18.38"></script>
-    <script src="js/config.js?v=2026.01.20.18.38"></script>
-    <script src="js/audio.js?v=2026.01.20.18.38"></script>
-    <script src="js/gcal.js?v=2026.01.20.18.38"></script>
-        <script src="js/app.js?v=2026.01.20.18.38"></script>
+    <script src="js/signalr.min.js?v=2026.01.22.17.10"></script>
+    <script src="js/config.js?v=2026.01.22.17.10"></script>
+    <script src="js/audio.js?v=2026.01.22.17.10"></script>
+    <script src="js/gcal.js?v=2026.01.22.17.10"></script>
+        <script src="js/app.js?v=2026.01.22.17.10"></script>
         <div id="dev-console" class="hidden">
             <div class="dev-console-header">
                 <span class="dev-console-title">System Console</span>
@@ -142,7 +127,7 @@
             </div>
             <div id="console-output"></div>
         </div>
-        <script src="js/dev-console.js?v=2026.01.20.18.38"></script>
+        <script src="js/dev-console.js?v=2026.01.22.17.10"></script>
     </body>
     </html>
     

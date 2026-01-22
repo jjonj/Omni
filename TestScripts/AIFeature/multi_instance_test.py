@@ -30,6 +30,7 @@ class MultiInstanceTester:
         self.num_instances = num_instances
         self.pids = []
         self.new_pids = []
+        self.current_test_pid = None
         self.sessions_received_event = asyncio.Event()
         self.response_received_event = asyncio.Event()
         self.new_pid_received_event = asyncio.Event()
@@ -50,16 +51,22 @@ class MultiInstanceTester:
         self.sessions_received_event.set()
 
     def on_ai_response(self, args):
-        response = args[0]
-        # logger.info("AI Response received.")
-        self.captured_responses.append(response)
+        if len(args) >= 2:
+            response, pid = args[0], args[1]
+            if str(pid) != str(self.current_test_pid):
+                return
+            # logger.info(f"AI Response from PID {pid} received.")
+            self.captured_responses.append(response)
 
     def on_ai_status(self, args):
-        status = args[0]
-        logger.info(f"AI Status: {status}")
-        if status == "FINISHED":
-            if self.loop:
-                self.loop.call_soon_threadsafe(self.response_received_event.set)
+        if len(args) >= 2:
+            status, pid = args[0], args[1]
+            if str(pid) != str(self.current_test_pid):
+                return
+            logger.info(f"AI Status (PID {pid}): {status}")
+            if status == "FINISHED":
+                if self.loop:
+                    self.loop.call_soon_threadsafe(self.response_received_event.set)
 
     def on_new_session_pid(self, args):
         pid = args[0]
@@ -75,8 +82,8 @@ class MultiInstanceTester:
 
         self.loop = asyncio.get_running_loop()
         self.hub = HubConnectionBuilder()\
-            .with_url(HUB_URL)\
-            .configure_logging(logging.WARNING)\
+            .with_url(HUB_URL)
+            .configure_logging(logging.WARNING)
             .build()
 
         self.hub.on_open(self.on_open)
@@ -124,6 +131,7 @@ class MultiInstanceTester:
         for i, pid in enumerate(self.new_pids):
             instance_id = i + 1
             logger.info(f"--- Testing Session {instance_id} (PID: {pid}) ---")
+            self.current_test_pid = pid
             
             # Send targeted prompt
             prompt = f"Multi-instance test. You are Instance {instance_id}. Repeat: 'I am Instance {instance_id}'"

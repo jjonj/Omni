@@ -27,8 +27,13 @@ The primary user is the developer/creator themselves—a power user who demands:
 ### 3. Automation & Monitoring
 -   **Macro Triggers:** Hardware button mapping (e.g., volume keys) on Android to trigger PC scripts.
 -   **System Health:** Real-time monitoring of PC status (active window, processes) from the mobile dashboard.
--   **Startup Routines:** Automated "Quick Actions" (e.g., browser tab cleanup) executed once per day upon Hub initialization.
--   **Intelligent Alarms:** Advanced alarm system with gradual wake, macro integration, and specific future date support.
+-   **Startup Routines:** A "QuickActionService" framework that executes once-per-day maintenance tasks (e.g., browser tab cleanup based on title patterns) upon Hub initialization.
+-   **Intelligent Alarms:** Advanced alarm system with gradual wake, macro integration, and custom dismiss messages.
+
+### 4. AI Integration
+-   **Mobile AI Interface:** A dedicated chat interface on Android for interacting with local LLMs (via Gemini CLI).
+-   **Interleaved Diffs:** Readable, line-by-line file modification previews (+/-) using a greedy matching algorithm for code changes.
+-   **Remote Execution:** Triggering Hub commands and file modifications through natural language on the phone.
 
 ### 4. Creative Tools & Submodules
 -   **Procedural Generation:** Integration of standalone tools like the Island Generator for rapid creative prototyping and world-building.

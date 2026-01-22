@@ -47,6 +47,7 @@ object AlarmScheduler {
             putExtra("CURRENT_REPETITION", 0)
             putExtra("MACRO_ON_TRIGGER", data.macroOnTrigger)
             putExtra("MACRO_ON_DISMISS", data.macroOnDismiss)
+            putExtra("DISMISS_TEXT", data.dismissText)
         }
 
         val pendingIntent = PendingIntent.getBroadcast(
@@ -124,33 +125,34 @@ object AlarmScheduler {
         volIncrement: Int,
         maxReps: Int,
         repetition: Int,
-        repeatDaily: Boolean,
-        macroOnTrigger: String?,
-        macroOnDismiss: String?
-    ) {
-        val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-        
-        val intent = Intent(context, AlarmReceiver::class.java).apply {
-            action = "com.omni.sync.ALARM_TRIGGER"
-            putExtra("ALARM_ID", alarmId)
-            putExtra("SOUND_ID", soundId)
-            putExtra("HOUR", hour)
-            putExtra("MINUTE", minute)
-            putExtra("IS_AM", isAM)
-            
-            // Updated Step Config
-            putExtra("CURRENT_VOLUME", volume)
-            putExtra("ALARM_DURATION", durationSec)
-            putExtra("MAX_REPETITIONS", maxReps)
-            putExtra("VOLUME_INCREMENT", volIncrement)
-            putExtra("SNOOZE_DURATION", snoozeMin)
-            putExtra("REPEAT_DAILY", repeatDaily)
-            putExtra("CURRENT_REPETITION", repetition)
-            putExtra("MACRO_ON_TRIGGER", macroOnTrigger)
-            putExtra("MACRO_ON_DISMISS", macroOnDismiss)
-        }
-
-        val pendingIntent = PendingIntent.getBroadcast(
+                        repeatDaily: Boolean,
+                        macroOnTrigger: String?,
+                        macroOnDismiss: String?,
+                        dismissText: String?
+            ) {
+                val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+                
+                val intent = Intent(context, AlarmReceiver::class.java).apply {
+                    action = "com.omni.sync.ALARM_TRIGGER"
+                    putExtra("ALARM_ID", alarmId)
+                    putExtra("SOUND_ID", soundId)
+                    putExtra("HOUR", hour)
+                    putExtra("MINUTE", minute)
+                    putExtra("IS_AM", isAM)
+                    
+                    // Updated Step Config
+                    putExtra("CURRENT_VOLUME", volume)
+                    putExtra("ALARM_DURATION", durationSec)
+                    putExtra("MAX_REPETITIONS", maxReps)
+                    putExtra("VOLUME_INCREMENT", volIncrement)
+                    putExtra("SNOOZE_DURATION", snoozeMin)
+                    putExtra("REPEAT_DAILY", repeatDaily)
+                    putExtra("CURRENT_REPETITION", repetition)
+                    putExtra("MACRO_ON_TRIGGER", macroOnTrigger)
+                    putExtra("MACRO_ON_DISMISS", macroOnDismiss)
+                    putExtra("DISMISS_TEXT", dismissText)
+                }
+                val pendingIntent = PendingIntent.getBroadcast(
             context,
             alarmId + 1000, // Offset ID for Snooze
             intent,

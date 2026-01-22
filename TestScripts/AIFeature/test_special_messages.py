@@ -24,6 +24,7 @@ class SpecialMessageTester:
         self.full_response_text = ""
         self.hub = None
         self.new_session_pid = None
+        self.target_pid = None
         self.last_activity_time = 0
 
     def on_open(self):
@@ -34,25 +35,30 @@ class SpecialMessageTester:
         self.last_activity_time = time.time()
 
     def on_ai_message(self, args):
-        if len(args) >= 2:
-            sender_id, message = args[0], args[1]
-            pid = args[2] if len(args) > 2 else -1
+        if len(args) >= 3:
+            sender_id, message, pid = args[0], args[1], args[2]
+            if str(pid) != str(self.target_pid):
+                return
             logger.info(f"HUB BROADCAST: Message from {sender_id} to PID {pid}: {message}")
-        self.message_received = True
-        self.update_activity()
+            self.message_received = True
+            self.update_activity()
 
     def on_ai_response(self, args):
         # Hub sends [response, pid]
-        if args:
-            response = str(args[0])
+        if len(args) >= 2:
+            response, pid = str(args[0]), args[1]
+            if str(pid) != str(self.target_pid):
+                return
             self.full_response_text += response
-            # logger.info(f"AI Response Chunk: {response[:50]}...")
+            # logger.info(f"AI Response Chunk (PID {pid}): {response[:50]}...")
             self.update_activity()
 
     def on_ai_status(self, args):
-        if args:
-            status = args[0]
-            logger.info(f"AI Status: {status}")
+        if len(args) >= 2:
+            status, pid = args[0], args[1]
+            if str(pid) != str(self.target_pid):
+                return
+            logger.info(f"AI Status (PID {pid}): {status}")
             if status == "FINISHED":
                 self.response_received = True
             self.update_activity()
@@ -61,6 +67,9 @@ class SpecialMessageTester:
         pid = args[0]
         logger.info(f"Received new session PID: {pid}")
         self.new_session_pid = pid
+        if self.target_pid is None:
+            self.target_pid = pid
+            logger.info(f"Captured Target PID: {self.target_pid}")
         self.update_activity()
 
     async def wait_for_silence(self, silence_duration=15, timeout=180):

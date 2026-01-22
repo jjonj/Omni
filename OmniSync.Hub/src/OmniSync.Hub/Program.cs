@@ -219,7 +219,14 @@ builder.Services.AddSingleton<InputService>(provider =>
 });
 builder.Services.AddSingleton<AudioService>();
 builder.Services.AddSingleton<HubSettingsService>();
-builder.Services.AddSingleton<QuickActionService>();
+builder.Services.AddSingleton<QuickActionService>(provider =>
+{
+    var logger = provider.GetRequiredService<ILogger<QuickActionService>>();
+    var configuration = provider.GetRequiredService<IConfiguration>();
+    var hubContext = provider.GetRequiredService<IHubContext<RpcApiHub>>();
+    var monitorService = provider.GetRequiredService<HubMonitorService>();
+    return new QuickActionService(logger, configuration, provider, hubContext, monitorService);
+});
 builder.Services.AddSingleton<CommandDispatcher>(provider => {
     var inputService = provider.GetRequiredService<InputService>();
     var fileService = provider.GetRequiredService<FileService>();

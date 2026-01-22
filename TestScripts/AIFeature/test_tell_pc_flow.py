@@ -17,17 +17,24 @@ class TellPcTester:
         self.connection_started = False
         self.pids_received = []
         self.status_updates = []
+        self.target_pid = None
         self.hub = None
 
     def on_new_pid(self, args):
         pid = args[0]
         logger.info(f"New AI Session PID: {pid}")
         self.pids_received.append(pid)
+        if self.target_pid is None:
+            self.target_pid = pid
+            logger.info(f"Captured Target PID: {self.target_pid}")
 
     def on_status(self, args):
-        status = args[0]
-        logger.info(f"AI Status: {status}")
-        self.status_updates.append(status)
+        if len(args) >= 2:
+            status, pid = args[0], args[1]
+            if str(pid) != str(self.target_pid):
+                return
+            logger.info(f"AI Status (PID {pid}): {status}")
+            self.status_updates.append(status)
 
     async def run_test(self):
         self.hub = HubConnectionBuilder() \

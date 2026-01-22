@@ -184,7 +184,7 @@ fun AiChatScreen(
                 }
                 
                 // Re-enable if we reach the bottom (or very close to it)
-                if (currentIndex == 0 && currentOffset < 10) {
+                if (currentIndex == 0 && currentOffset < 100) {
                     isAutoScrollEnabled = true
                 }
                 
@@ -195,8 +195,8 @@ fun AiChatScreen(
 
     // 2. Force Auto-Scroll when enabled
     LaunchedEffect(filteredMessages.size, isAiThinking, isAutoScrollEnabled) {
-        if (isAutoScrollEnabled && filteredMessages.isNotEmpty()) {
-            delay(50)
+        if (isAutoScrollEnabled && (filteredMessages.isNotEmpty() || isAiThinking)) {
+            delay(10)
             listState.animateScrollToItem(0)
         }
     }
@@ -1031,16 +1031,29 @@ fun ToolCallBubble(content: String) {
                         Spacer(modifier = Modifier.height(4.dp))
                         
                         if (old != null && new != null) {
-                            // Interleaved Diff-like rendering
-                            val oldLines = old.split("\n")
-                            val newLines = new.split("\n")
+                            // Specialized interleaved Diff-like rendering
+                            val diffLines = computeInterleavedDiff(old, new)
                             
                             Column(modifier = Modifier.background(Color.Black.copy(alpha = 0.05f)).padding(4.dp)) {
-                                oldLines.forEach { line ->
-                                    Text("- $line", style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace), color = Color(0xFFB71C1C))
-                                }
-                                newLines.forEach { line ->
-                                    Text("+ $line", style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace), color = Color(0xFF1B5E20))
+                                diffLines.forEach { (type, line) ->
+                                    val (prefix, color, bgColor) = when(type) {
+                                        "DEL" -> Triple("-", Color(0xFFB71C1C), Color(0xFFFFEBEE))
+                                        "ADD" -> Triple("+", Color(0xFF1B5E20), Color(0xFFE6FFEC))
+                                        else -> Triple(" ", Color.DarkGray, Color.Transparent)
+                                    }
+                                    
+                                    Surface(color = bgColor, modifier = Modifier.fillMaxWidth()) {
+                                        Text(
+                                            text = "$prefix $line", 
+                                            style = MaterialTheme.typography.bodySmall.copy(
+                                                fontFamily = FontFamily.Monospace,
+                                                fontSize = 10.sp,
+                                                lineHeight = 12.sp
+                                            ), 
+                                            color = color,
+                                            modifier = Modifier.padding(horizontal = 2.dp)
+                                        )
+                                    }
                                 }
                             }
                         } else {
@@ -1056,6 +1069,42 @@ fun ToolCallBubble(content: String) {
             ToolCallRawArgs(toolData.second)
         }
     }
+}
+
+fun computeInterleavedDiff(old: String, new: String): List<Pair<String, String>> {
+    val oldLines = old.split("\n")
+    val newLines = new.split("\n")
+    val result = mutableListOf<Pair<String, String>>()
+    
+    // Simple greedy matcher for tool-call style diffs
+    // Since these are usually small chunks, we just output all DEL then all ADD
+    // but try to match common prefixes/suffixes if they were identical (context)
+    
+    var startMatch = 0
+    while (startMatch < oldLines.size && startMatch < newLines.size && oldLines[startMatch] == newLines[startMatch]) {
+        result.add("UNCHANGED" to oldLines[startMatch])
+        startMatch++
+    }
+    
+    var endMatchOld = oldLines.size - 1
+    var endMatchNew = newLines.size - 1
+    val endResult = mutableListOf<Pair<String, String>>()
+    while (endMatchOld >= startMatch && endMatchNew >= startMatch && oldLines[endMatchOld] == newLines[endMatchNew]) {
+        endResult.add(0, "UNCHANGED" to oldLines[endMatchOld])
+        endMatchOld--
+        endMatchNew--
+    }
+    
+    // Middle part is different
+    for (i in startMatch..endMatchOld) {
+        result.add("DEL" to oldLines[i])
+    }
+    for (i in startMatch..endMatchNew) {
+        result.add("ADD" to newLines[i])
+    }
+    
+    result.addAll(endResult)
+    return result
 }
 
 @Composable

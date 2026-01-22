@@ -62,16 +62,7 @@ class TFTOptimizer {
             for (let i = 0; i < this.UNITS.length; i++) {
                 const u = this.UNITS[i];
                 if (expandedNames.has(u.name)) {
-                    // Hardcoded Annie/Tibbers dependency
-                    if (u.name === "Annie" && !expandedNames.has("Tibbers")) {
-                        expandedNames.add("Tibbers");
-                        added = true;
-                    }
-                    if (u.name === "Tibbers" && !expandedNames.has("Annie")) {
-                        expandedNames.add("Annie");
-                        added = true;
-                    }
-                    // Data-driven dependency
+                    // Data-driven dependency (e.g. Nidalee requires Neeko)
                     if (u.requires && !expandedNames.has(u.requires)) {
                         expandedNames.add(u.requires);
                         added = true;
@@ -100,12 +91,6 @@ class TFTOptimizer {
         for (let i = 0; i < board.length; i++) names.add(board[i].name);
         
         if (names.has("Sylas") && this.SYLAS_FORBIDDEN_NAMES.some(x => names.has(x))) {
-            return { score: -this.INVALID_COMP_PENALTY, counts };
-        }
-
-        const hasAnnie = names.has("Annie");
-        const hasTibbers = names.has("Tibbers");
-        if (hasAnnie !== hasTibbers) {
             return { score: -this.INVALID_COMP_PENALTY, counts };
         }
 
