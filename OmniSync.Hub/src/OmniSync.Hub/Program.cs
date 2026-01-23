@@ -162,6 +162,13 @@ try
     {
         File.WriteAllText(logFilePath, string.Empty);
     }
+
+    // Also clear gemini_cli_debug.log
+    string debugLogPath = Path.Combine(Path.GetDirectoryName(logFilePath) ?? "", "gemini_cli_debug.log");
+    if (File.Exists(debugLogPath))
+    {
+        File.WriteAllText(debugLogPath, string.Empty);
+    }
 }
 catch (Exception ex)
 {

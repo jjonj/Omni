@@ -3,11 +3,14 @@
 ## Overview
 This track focuses on diagnosing and fixing an inconsistent issue where the Gemini CLI session initializes but instantly closes. This behavior has been observed intermittently.
 
-## Status (2026-01-20)
--   **Current State:** The issue is currently **dormant**.
--   **Observation:** After adding extensive logging and restarting the Hub, the `roundtrip_test.py` passes successfully and the CLI launches without issue.
--   **Hypothesis:** The issue may be related to a stale state in the Hub or a zombie process that was cleared during the restart/rebuild process.
--   **Next Steps:** The system has been fully instrumented. We are now in a "Monitor and Wait" phase. The next time the crash occurs, the new logs (specifically `ai_listener_crash.log`, `omni_cli_crash.log`, and the enhanced Hub logs) should provide the root cause.
+## Status (2026-01-23)
+-   **Current State:** The issue is currently **dormant** (re-cleared by Hub restart).
+-   **Observation:** The crash occurs intermittently in the morning and persists until a Hub restart. Manually launching the CLI via `cli.exe --workspace D:/` works even when the Hub-spawned version fails.
+-   **New Hypothesis:** The failure is likely in the Hub's process spawning environment or the `cmd.exe /K` handoff, rather than a crash in the CLI logic itself (since `/K` should keep the window open, but it "instantly closes"). Stale environment variables or shell state in the Hub process might be the culprit.
+-   **Logging Strategy:** 
+    -   Hub now clears `hub_log.txt` and `gemini_cli_debug.log` on every startup to ensure fresh diagnostic data.
+    -   `GeminiPipe DEBUG` logging has been suppressed to reduce noise and allow easier identification of `INIT_DEBUG` events.
+
 
 ## Goals
 1.  **Instrument the System:** Add extensive, persistent logging across the entire call chain (Hub, CLI, Launch Scripts) to capture the state immediately preceding the crash. **(COMPLETED)**

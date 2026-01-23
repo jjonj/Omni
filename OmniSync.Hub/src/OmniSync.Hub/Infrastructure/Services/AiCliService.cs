@@ -1409,7 +1409,7 @@ namespace OmniSync.Hub.Infrastructure.Services
 
                     if (_debugMode)
                     {
-                        _logger.LogInformation($"[GeminiPipe DEBUG] SID: {_sid} | PID {_pid} RAW: {line}");
+                        // _logger.LogInformation($"[GeminiPipe DEBUG] SID: {_sid} | PID {_pid} RAW: {line}");
                     }
 
                     Console.WriteLine($"[GeminiPipe RAW] PID {_pid}: {line}");
