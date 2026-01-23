@@ -189,6 +189,20 @@ namespace OmniSync.Hub.Presentation
                             }
                         }
 
+                        public int MaxHistoryChars
+                        {
+                            get => _settingsService.Settings.MaxHistoryChars;
+                            set
+                            {
+                                if (_settingsService.Settings.MaxHistoryChars != value)
+                                {
+                                    _settingsService.Settings.MaxHistoryChars = value;
+                                    _settingsService.SaveSettings();
+                                    OnPropertyChanged();
+                                }
+                            }
+                        }
+
                         // --- Tell PC Settings ---
                         public string TellPcWorkspace
                         {

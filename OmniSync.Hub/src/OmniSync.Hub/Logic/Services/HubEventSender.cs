@@ -81,6 +81,25 @@ namespace OmniSync.Hub.Logic.Services
             _logger.LogInformation($"[HubEventSender] Received Dialog from PID {e.Pid}. Type: {e.Type}, Prompt: {e.Prompt}");
             _monitorService.AddLogMessage($"AI Dialog ({e.Type}): {e.Prompt}");
 
+            // Special handling for pro_quota
+            if (e.Type == "pro_quota")
+            {
+                await Task.Delay(5000);
+                if (e.Prompt.Contains("flash", StringComparison.OrdinalIgnoreCase))
+                {
+                    _logger.LogInformation($"[HubEventSender] Handling pro_quota dialog for PID {e.Pid} (Flash Model). Auto-retrying later...");
+                    _monitorService.AddLogMessage("Quota reached (Flash). Auto-selecting 'retry_later' in 5s...");
+                    await _aiCliService.SendDialogResponseAsync("retry_later", e.Pid);
+                }
+                else
+                {
+                    _logger.LogInformation($"[HubEventSender] Handling pro_quota dialog for PID {e.Pid} (Standard). Auto-retrying always...");
+                    _monitorService.AddLogMessage("Quota reached. Auto-selecting 'retry_always' in 5s...");
+                    await _aiCliService.SendDialogResponseAsync("retry_always", e.Pid);
+                }
+                return;
+            }
+
             // Auto-approve based on settings
             if (_settingsService.Settings.AutoApprovePatterns != null)
             {
@@ -112,7 +131,21 @@ namespace OmniSync.Hub.Logic.Services
             if (e.IsHistory)
             {
                 Console.WriteLine($"[HubEventSender] Received History for PID {broadcastPid}");
-                await _hubContext.Clients.All.SendAsync("ReceiveAiHistory", e.Text, broadcastPid);
+
+                string historyText = e.Text;
+                // MaxHistoryChars is in thousands (e.g. 50 = 50,000)
+                int maxChars = _settingsService.Settings.MaxHistoryChars * 1000;
+
+                if (maxChars > 0 && historyText.Length > maxChars)
+                {
+                    _logger.LogInformation($"[HubEventSender] Truncating history from {historyText.Length} to last {maxChars} characters.");
+                    // Keep the end of the history
+                    historyText = historyText.Substring(historyText.Length - maxChars);
+                    // Add a marker to indicate truncation
+                    historyText = $"[...History Truncated ({maxChars / 1000}k limit)...]\n{historyText}";
+                }
+
+                await _hubContext.Clients.All.SendAsync("ReceiveAiHistory", historyText, broadcastPid);
             }
             else if (e.IsCodeDiff)
             {
