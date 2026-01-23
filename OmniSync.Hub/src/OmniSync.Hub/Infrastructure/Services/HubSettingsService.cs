@@ -54,7 +54,6 @@ namespace OmniSync.Hub.Infrastructure.Services
     {
         public bool UseOneCommander { get; set; } = false;
         public bool AiDebugMode { get; set; } = true;
-        public int MaxHistoryChars { get; set; } = 50; // Default 50k
         public Dictionary<string, string> ExeMappings { get; set; } = new();
         public List<HotkeyConfig> Hotkeys { get; set; } = new();
         public Dictionary<string, string> AiSessionNames { get; set; } = new();

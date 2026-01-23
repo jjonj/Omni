@@ -131,21 +131,7 @@ namespace OmniSync.Hub.Logic.Services
             if (e.IsHistory)
             {
                 Console.WriteLine($"[HubEventSender] Received History for PID {broadcastPid}");
-
-                string historyText = e.Text;
-                // MaxHistoryChars is in thousands (e.g. 50 = 50,000)
-                int maxChars = _settingsService.Settings.MaxHistoryChars * 1000;
-
-                if (maxChars > 0 && historyText.Length > maxChars)
-                {
-                    _logger.LogInformation($"[HubEventSender] Truncating history from {historyText.Length} to last {maxChars} characters.");
-                    // Keep the end of the history
-                    historyText = historyText.Substring(historyText.Length - maxChars);
-                    // Add a marker to indicate truncation
-                    historyText = $"[...History Truncated ({maxChars / 1000}k limit)...]\n{historyText}";
-                }
-
-                await _hubContext.Clients.All.SendAsync("ReceiveAiHistory", historyText, broadcastPid);
+                await _hubContext.Clients.All.SendAsync("ReceiveAiHistory", e.Text, broadcastPid);
             }
             else if (e.IsCodeDiff)
             {
