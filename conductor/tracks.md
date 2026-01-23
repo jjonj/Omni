@@ -3,24 +3,9 @@
 ---
 ---
 
-## [~] Track: TFT Team Planner Encoding
-*Link: [./conductor/tracks/feat_tft_team_planner_encoding_20260104/](./conductor/tracks/feat_tft_team_planner_encoding_20260104/)*
-
----
-
 ## [ ] Track: Island Generator
 *Submodule: [OmniSync.Web/www/IslandGenerator/](../OmniSync.Web/www/IslandGenerator/)*
 *Plan: [OmniSync.Web/www/IslandGenerator/conductor/tracks.md](../OmniSync.Web/www/IslandGenerator/conductor/tracks.md)*
-
----
-
-## [~] Track: Improving Hydrology Height Generation
-*Link: [./conductor/tracks/hydrology_height_improvement_20260105/](./conductor/tracks/hydrology_height_improvement_20260105/)*
-
----
-
-## [~] Track: Megasession Jan 10
-*Link: [./conductor/tracks/megasession_jan10_20260110/](./conductor/tracks/megasession_jan10_20260110/)*  
 
 ---
 
@@ -55,6 +40,10 @@
 
 
 
-- [~] **Track: Megasession Jan 21 2026**
+## [x] Track: Megasession Jan 21 2026
+*Link: [./archive/megasession_jan21_20260121/](./archive/megasession_jan21_20260121/)*
 
-*Link: [./tracks/megasession_jan21_20260121/](./tracks/megasession_jan21_20260121/)*
+---
+
+- [x] **Track: Megasession Jan 23 2026**
+*Link: [./tracks/megasession_jan23_20260123/](./tracks/megasession_jan23_20260123/)*
