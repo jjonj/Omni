@@ -1,10 +1,10 @@
 # Implementation Plan - Megasession Jan 23 2026
 
 ## Phase 1: OmniSync.Hub - History Limit
-- [ ] Task: Implement history limit logic in `HubEventSender` or relevant service.
-- [ ] Task: Add "Max History Characters (k)" setting to the Hub WPF UI.
-- [ ] Task: Synchronize setting with Web Settings UI.
-- [ ] Task: Conductor - User Manual Verification 'Phase 1' (Protocol in workflow.md)
+- [x] Task: Implement history limit logic in `HubEventSender` or relevant service.
+- [x] Task: Add "Max History Characters (k)" setting to the Hub WPF UI.
+- [x] Task: Synchronize setting with Web Settings UI.
+- [x] Task: Conductor - User Manual Verification 'Phase 1' (Protocol in workflow.md)
 
 ## Phase 2: Android - Files & Video Screen Improvements
 - [ ] Task: Implement `AutoResizingText` or dynamic font scaling for the path header.
