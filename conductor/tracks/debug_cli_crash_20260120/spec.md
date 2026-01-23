@@ -5,11 +5,22 @@ This track focuses on diagnosing and fixing an inconsistent issue where the Gemi
 
 ## Status (2026-01-23)
 -   **Current State:** The issue is currently **dormant** (re-cleared by Hub restart).
--   **Observation:** The crash occurs intermittently in the morning and persists until a Hub restart. Manually launching the CLI via `cli.exe --workspace D:/` works even when the Hub-spawned version fails.
+-   **Observation:** The crash occurs intermittently in the morning and persists until a Hub restart. It appears to "reset" or return every 24 hours (next morning). Manually launching the CLI via `cli.exe --workspace D:/` works even when the Hub-spawned version fails.
 -   **New Hypothesis:** The failure is likely in the Hub's process spawning environment or the `cmd.exe /K` handoff, rather than a crash in the CLI logic itself (since `/K` should keep the window open, but it "instantly closes"). Stale environment variables or shell state in the Hub process might be the culprit.
 -   **Logging Strategy:** 
     -   Hub now clears `hub_log.txt` and `gemini_cli_debug.log` on every startup to ensure fresh diagnostic data.
     -   `GeminiPipe DEBUG` logging has been suppressed to reduce noise and allow easier identification of `INIT_DEBUG` events.
+
+## Launch Details
+The Hub launches the CLI using the following command pattern (via `Process.Start` with `UseShellExecute = true`):
+
+```bash
+cmd.exe /K "set GEMINI_DEBUG_LOG_FILE=[root]\gemini_cli_debug.log && title OMNI_GEMINI_INTERACTIVE && cd /d "[gemini-cli-dir]" && node bundle/gemini.js --workspace "[workspace]" --yolo"
+```
+
+- **Binary:** `node` (v20+)
+- **Script:** `bundle/gemini.js`
+- **Shell:** `cmd.exe` with `/K` (keep open) to preserve the window if the inner command fails.
 
 
 ## Goals
