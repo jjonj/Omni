@@ -48,6 +48,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.ui.graphics.Color
 import androidx.compose.material.icons.filled.Add
 import androidx.activity.compose.BackHandler
+import androidx.compose.ui.draw.drawWithContent
 import com.omni.sync.ui.components.VerticalScrollbar
 import com.omni.sync.ui.components.DirectoryPickerDialog
 
@@ -148,7 +149,7 @@ fun FilesScreen(
                 title = { 
                     Box {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(
+                            AutoResizingText(
                                 text = "Files: ${currentPath.ifEmpty { "/" }}",
                                 modifier = Modifier.combinedClickable(
                                     onClick = { },
@@ -172,14 +173,76 @@ fun FilesScreen(
                         ) {
                             if (currentPath.isNotEmpty() && currentPath != "/") {
                                 if (isGitRepo) {
-                                    DropdownMenuItem(
-                                        text = { Text("View Git Log") },
-                                        onClick = {
-                                            showHeaderMenu = false
-                                            showGitDialog = true
-                                        }
-                                    )
-                                }
+                                    // Add this at the bottom of the file or in a separate file if preferred
+                                    @Composable
+                                    fun AutoResizingText(
+                                        text: String,
+                                        modifier: Modifier = Modifier,
+                                        color: Color = Color.Unspecified,
+                                        targetTextSize: androidx.compose.ui.unit.TextUnit = MaterialTheme.typography.titleMedium.fontSize
+                                    ) {
+                                        var textSize by remember { mutableStateOf(targetTextSize) }
+                                        var readyToDraw by remember { mutableStateOf(false) }
+                                    
+                                        Text(
+                                            text = text,
+                                            color = color,
+                                            maxLines = 1,
+                                            style = MaterialTheme.typography.titleMedium,
+                                            fontSize = textSize,
+                                            overflow = TextOverflow.Ellipsis,
+                                            modifier = modifier.drawWithContent {
+                                                if (readyToDraw) drawContent()
+                                            },
+                                            onTextLayout = { textLayoutResult ->
+                                                if (textLayoutResult.didOverflowWidth) {
+                                                    textSize = textSize * 0.9f
+                                                } else {
+                                                    readyToDraw = true
+                                                }
+                                            }
+                                        )
+                                    }
+                                    
+                                    import androidx.compose.ui.draw.drawWithContent
+                                    
+                                    
+                                    
+                                    // ... existing code ...
+                                    
+                                    
+                                    
+                                                                        DropdownMenuItem(
+                                    
+                                                                            text = { Text("View Git Log") },
+                                    
+                                                                            onClick = {
+                                    
+                                                                                showHeaderMenu = false
+                                    
+                                                                                showGitDialog = true
+                                    
+                                                                            }
+                                    
+                                                                        )
+                                    
+                                                                    }
+                                    
+                                                                    DropdownMenuItem(
+                                    
+                                                                        text = { Text("Copy Path to Clipboard") },
+                                    
+                                                                        onClick = {
+                                    
+                                                                            showHeaderMenu = false
+                                    
+                                                                            filesViewModel.copyPathToClipboard(currentPath)
+                                    
+                                                                            Toast.makeText(context, "Path copied to clipboard", Toast.LENGTH_SHORT).show()
+                                    
+                                                                        }
+                                    
+                                                                    )                                }
                                 if (selectedPid != -1 && activeSessionName != null) {
                                      DropdownMenuItem(
                                         text = { Text("AI: Add dir to $activeSessionName") },
@@ -840,6 +903,37 @@ fun FilesScreen(
             }
         )
     }
+}
+
+// Add this at the bottom of the file or in a separate file if preferred
+@Composable
+fun AutoResizingText(
+    text: String,
+    modifier: Modifier = Modifier,
+    color: Color = Color.Unspecified,
+    targetTextSize: androidx.compose.ui.unit.TextUnit = MaterialTheme.typography.titleMedium.fontSize
+) {
+    var textSize by remember { mutableStateOf(targetTextSize) }
+    var readyToDraw by remember { mutableStateOf(false) }
+
+    Text(
+        text = text,
+        color = color,
+        maxLines = 1,
+        style = MaterialTheme.typography.titleMedium,
+        fontSize = textSize,
+        overflow = TextOverflow.Ellipsis,
+        modifier = modifier.drawWithContent {
+            if (readyToDraw) drawContent()
+        },
+        onTextLayout = { textLayoutResult ->
+            if (textLayoutResult.didOverflowWidth) {
+                textSize = textSize * 0.9f
+            } else {
+                readyToDraw = true
+            }
+        }
+    )
 }
 
 @OptIn(ExperimentalFoundationApi::class)

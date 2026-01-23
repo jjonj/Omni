@@ -24,6 +24,8 @@ import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import java.io.File
+import androidx.compose.foundation.shape.RoundedCornerShape
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
@@ -179,6 +181,30 @@ fun ImageViewerScreen(
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Black.copy(alpha = 0.5f))
             )
+        }
+        
+        // --- Added: Filename Overlay ---
+        if (showControls) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 80.dp) // Adjust based on bottom bar height
+            ) {
+                Surface(
+                    color = Color.Black.copy(alpha = 0.6f),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.align(Alignment.Center)
+                ) {
+                    val currentUrl = if (playlist.isNotEmpty()) playlist[pagerState.currentPage] else initialImageUrl
+                    Text(
+                        text = File(currentUrl).name,
+                        color = Color.White,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                }
+            }
         }
     }
 }

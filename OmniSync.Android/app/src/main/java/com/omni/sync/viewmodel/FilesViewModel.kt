@@ -173,6 +173,23 @@ class FilesViewModel(
         loadPendingEditPaths()
         refreshCachedPaths()
         
+        // Restore last opened file if any
+        val lastOpenedPath = prefs.getString("last_opened_file_path", null)
+        if (lastOpenedPath != null) {
+             // We can't immediately load it because we might not have file info
+             // But we can check cache
+             val cachedContent = textCachePrefs.getString("text_$lastOpenedPath", null)
+             if (cachedContent != null) {
+                 // Construct a minimal entry
+                 val name = lastOpenedPath.substringAfterLast("/").substringAfterLast("\\")
+                 val entry = FileSystemEntry(name, lastOpenedPath, false, 0, java.util.Date())
+                 openForEditing(entry)
+             } else {
+                 // If not cached, we'll wait for connection or ignore
+                 // We could set a "pending restore" flag here if needed
+             }
+        }
+
         // Listen for connection changes to trigger sync
         viewModelScope.launch {
             mainViewModel.isConnected.collect { connected ->
@@ -928,6 +945,9 @@ class FilesViewModel(
         currentRecent.add(0, entry)
         _recentFiles.value = currentRecent.take(10)
 
+        // Save LAST_OPENED_FILE for session persistence
+        prefs.edit().putString("last_opened_file_path", entry.path).apply()
+
         if (!mainViewModel.isConnected.value) {
             Log.d("FilesViewModel", "Offline: attempting to open from cache: ${entry.path}")
             val cachedContent = textCachePrefs.getString("text_${entry.path}", null)
@@ -1082,6 +1102,9 @@ class FilesViewModel(
         _editingFile.value = null
         _editingContent.value = ""
         _hasUnsavedChanges.value = false
+        // Clear LAST_OPENED_FILE as we explicitly closed it
+        prefs.edit().remove("last_opened_file_path").apply()
+        
         mainViewModel.navigateTo(AppScreen.FILES)
     }
 
@@ -2074,6 +2097,13 @@ class FilesViewModel(
                 Log.e("FilesViewModel", "Play video error", e)
             }
         }
+    }
+
+    fun copyPathToClipboard(path: String) {
+        val clipboard = mainViewModel.applicationContext.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+        val clip = android.content.ClipData.newPlainText("File Path", path)
+        clipboard.setPrimaryClip(clip)
+        mainViewModel.addLog("Copied path to clipboard: $path", com.omni.sync.ui.screen.LogType.INFO)
     }
 
     private fun deriveKeyFromPassword(password: String, salt: ByteArray? = null): SecretKey {
