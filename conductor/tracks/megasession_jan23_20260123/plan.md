@@ -14,12 +14,12 @@
 - [x] Task: Conductor - User Manual Verification 'Phase 2' (Protocol in workflow.md)
 
 ## Phase 3: Android - AI Screen UX & Robustness
-- [ ] Task: Implement `LaunchedEffect` or similar to scroll to bottom on screen entry and message send.
-- [ ] Task: Debug and fix the AI screen "Focus" button logic.
-- [ ] Task: Implement Model Selection dialog/trigger for Gemini CLI.
-- [ ] Task: Create and integrate the Stopwatch UI component at the bottom of the chat.
-- [ ] Task: Refactor "Thinking" indicator state to be persistent and robust across session switches.
-- [ ] Task: Conductor - User Manual Verification 'Phase 3' (Protocol in workflow.md)
+- [x] Task: Implement `LaunchedEffect` or similar to scroll to bottom on screen entry and message send.
+- [x] Task: Debug and fix the AI screen "Focus" button logic.
+- [x] Task: Implement Model Selection dialog/trigger for Gemini CLI.
+- [x] Task: Create and integrate the Stopwatch UI component at the bottom of the chat.
+- [x] Task: Refactor "Thinking" indicator state to be persistent and robust across session switches.
+- [x] Task: Conductor - User Manual Verification 'Phase 3' (Protocol in workflow.md)
 
 ## Phase 4: Finalization & Cleanup
 - [ ] Task: Run `build_run_omnihub.py` to verify Hub changes.
