@@ -118,6 +118,11 @@ fun AiChatScreen(
     
     // STRICT AUTO-SCROLL LOGIC
     var isAutoScrollEnabled by remember { mutableStateOf(true) }
+    
+    // Always scroll to bottom on entry
+    LaunchedEffect(Unit) {
+        listState.scrollToItem(0)
+    }
 
     val voiceLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
@@ -152,13 +157,40 @@ fun AiChatScreen(
     val listState = rememberLazyListState()
     val isWaitingForAiMap by signalRClient.isWaitingForAiResponseMap.collectAsState()
     val isWaitingForAi = isWaitingForAiMap[selectedPid] ?: false
-    val isAiThinking = isWaitingForAi || aiStatus?.contains("Thinking", ignoreCase = true) == true || aiStatus?.contains("Starting", ignoreCase = true) == true
+    // Robust Thinking Check: Check local waiting status OR hub status OR dialog existence
+    val isAiThinking = isWaitingForAi || 
+                       aiStatus?.contains("Thinking", ignoreCase = true) == true || 
+                       aiStatus?.contains("Starting", ignoreCase = true) == true ||
+                       aiDialog != null // Dialog means it's waiting for input, but effectively "active/busy" in a sense, but maybe not "thinking". Let's stick to active processing.
+                       
     val coroutineScope = rememberCoroutineScope()
     val isStartingSession by signalRClient.isStartingSessionFlow.collectAsState()
     val isConnected by mainViewModel.isConnected.collectAsState()
 
     var textFieldValue by remember { mutableStateOf(TextFieldValue(inputText)) }
     
+    // Timer state for Stopwatch
+    var timeElapsedSeconds by remember { mutableLongStateOf(0L) }
+    var lastMessageTime by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    
+    // Reset timer on new user message or AI response
+    LaunchedEffect(filteredMessages.size, isAiThinking) {
+        if (isAiThinking) {
+             // Reset when thinking starts? Or keep counting idle time? 
+             // Requirement: "since last message". Usually means idle time.
+             // If AI is thinking, we want to see how long it's been thinking.
+             lastMessageTime = System.currentTimeMillis()
+        }
+    }
+
+    // Ticker
+    LaunchedEffect(Unit) {
+        while(true) {
+            delay(1000)
+            timeElapsedSeconds = (System.currentTimeMillis() - lastMessageTime) / 1000
+        }
+    }
+
     // Sync external changes to internal state
     LaunchedEffect(inputText) {
         if (inputText != textFieldValue.text) {
@@ -196,8 +228,12 @@ fun AiChatScreen(
     // 2. Force Auto-Scroll when enabled
     LaunchedEffect(filteredMessages.size, isAiThinking, isAutoScrollEnabled) {
         if (isAutoScrollEnabled && (filteredMessages.isNotEmpty() || isAiThinking)) {
-            delay(10)
-            listState.animateScrollToItem(0)
+            // Use scrollToItem for instant jump on send, animate for incoming
+            if (isAiThinking) {
+                 listState.animateScrollToItem(0)
+            } else {
+                 listState.scrollToItem(0)
+            }
         }
     }
     
@@ -249,6 +285,14 @@ fun AiChatScreen(
                             )
                             Spacer(Modifier.width(8.dp))
                             
+                            // Stopwatch
+                            Text(
+                                text = String.format("%02d:%02d", timeElapsedSeconds / 60, timeElapsedSeconds % 60),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.outline,
+                                modifier = Modifier.padding(end = 8.dp)
+                            )
+
                             TextButton(
                                 onClick = { 
                                     if (isConnected) {
@@ -322,6 +366,14 @@ fun AiChatScreen(
                                     showSessionMenu = false
                                 },
                                 leadingIcon = { Icon(Icons.Default.Cached, contentDescription = null) }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Select Model (CLI)") },
+                                onClick = {
+                                    signalRClient.sendAiMessage("/model", selectedPid)
+                                    showSessionMenu = false
+                                },
+                                leadingIcon = { Icon(Icons.Default.Tune, contentDescription = null) }
                             )
                             DropdownMenuItem(
                                 text = { Text("Nuke All Sessions", color = MaterialTheme.colorScheme.error) },
@@ -534,17 +586,18 @@ fun AiChatScreen(
                     IconButton(
                         onClick = {
                             isAutoScrollEnabled = true
+                            lastMessageTime = System.currentTimeMillis() // Reset timer
                             if (inputText.isNotBlank()) {
                                 signalRClient.sendAiMessage(inputText, if (selectedPid != -1) selectedPid else null)
                                 signalRClient.updateAiInputText("")
                                 coroutineScope.launch {
-                                    listState.animateScrollToItem(0)
+                                    listState.scrollToItem(0) // Instant scroll on send
                                 }
                             } else {
                                 // If empty, send Enter key to targeted PID
                                 signalRClient.sendAiSpecialKey("enter")
                                 coroutineScope.launch {
-                                    listState.animateScrollToItem(0)
+                                    listState.scrollToItem(0)
                                 }
                             }
                         },
