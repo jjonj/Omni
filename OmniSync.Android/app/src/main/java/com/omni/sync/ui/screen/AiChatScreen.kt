@@ -116,6 +116,11 @@ fun AiChatScreen(
     var browseMode by remember { mutableStateOf("new") }
     val context = LocalContext.current
     
+    val listState = rememberLazyListState()
+    val filteredMessages = remember(messages) {
+        messages.filter { it.text.isNotBlank() }
+    }
+
     // STRICT AUTO-SCROLL LOGIC
     var isAutoScrollEnabled by remember { mutableStateOf(true) }
     
@@ -154,7 +159,6 @@ fun AiChatScreen(
         }
     }
 
-    val listState = rememberLazyListState()
     val isWaitingForAiMap by signalRClient.isWaitingForAiResponseMap.collectAsState()
     val isWaitingForAi = isWaitingForAiMap[selectedPid] ?: false
     // Robust Thinking Check: Check local waiting status OR hub status OR dialog existence
@@ -196,10 +200,6 @@ fun AiChatScreen(
         if (inputText != textFieldValue.text) {
             textFieldValue = textFieldValue.copy(text = inputText)
         }
-    }
-
-    val filteredMessages = remember(messages) {
-        messages.filter { it.text.isNotBlank() }
     }
 
     // 1. Monitor scroll changes to detect direction
