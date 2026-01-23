@@ -7,11 +7,11 @@
 - [x] Task: Conductor - User Manual Verification 'Phase 1' (Protocol in workflow.md)
 
 ## Phase 2: Android - Files & Video Screen Improvements
-- [ ] Task: Implement `AutoResizingText` or dynamic font scaling for the path header.
-- [ ] Task: Update folder long-press logic to include "Copy Path" in the context menu.
-- [ ] Task: Update Image Viewer UI to include a filename label.
-- [ ] Task: Refactor File Screen state management to ensure persistence and conditional text file re-opening.
-- [ ] Task: Conductor - User Manual Verification 'Phase 2' (Protocol in workflow.md)
+- [x] Task: Implement `AutoResizingText` or dynamic font scaling for the path header.
+- [x] Task: Update folder long-press logic to include "Copy Path" in the context menu.
+- [x] Task: Update Image Viewer UI to include a filename label.
+- [x] Task: Refactor File Screen state management to ensure persistence and conditional text file re-opening.
+- [x] Task: Conductor - User Manual Verification 'Phase 2' (Protocol in workflow.md)
 
 ## Phase 3: Android - AI Screen UX & Robustness
 - [ ] Task: Implement `LaunchedEffect` or similar to scroll to bottom on screen entry and message send.
