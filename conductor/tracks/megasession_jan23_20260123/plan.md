@@ -22,7 +22,7 @@
 - [x] Task: Conductor - User Manual Verification 'Phase 3' (Protocol in workflow.md)
 
 ## Phase 4: Finalization & Cleanup
-- [ ] Task: Run `build_run_omnihub.py` to verify Hub changes.
-- [ ] Task: Run `OmniSync.Android/build_and_deploy.py` to verify Android changes.
-- [ ] Task: Final project-wide linting and check.
-- [ ] Task: Conductor - User Manual Verification 'Phase 4' (Protocol in workflow.md)
+- [x] Task: Run `build_run_omnihub.py` to verify Hub changes.
+- [x] Task: Run `OmniSync.Android/build_and_deploy.py` to verify Android changes.
+- [x] Task: Final project-wide linting and check.
+- [x] Task: Conductor - User Manual Verification 'Phase 4' (Protocol in workflow.md)
