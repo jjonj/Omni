@@ -4,9 +4,16 @@
 This track focuses on diagnosing and fixing an inconsistent issue where the Gemini CLI session initializes but instantly closes. This behavior has been observed intermittently.
 
 ## Status (2026-01-24 Update)
-- **Observation:** Analysis of `hub_log.txt` revealed that when a new Gemini CLI session is launched (e.g., PID 26396), the `DiscoverSessionsAsync` background task incorrectly identifies it as a "wrapper" process. 
-- **Hypothesis:** This occurs because the discovery logic finds another Gemini process (e.g., PID 11892) that incorrectly reports the *new* PID as its parent (likely due to WMI stale data or PID reuse). The Hub then calls `Dispose()` on the new session, closing its pipe and causing "Pipe is broken" errors in background communication tasks.
-- **Fix Applied:** Modified `AiCliService.cs` to disable the "wrapper deduplication" logic while `_isLaunching` is true. This prevents the Hub from disposing of its own freshly-spawned session due to discovery race conditions or stale process metadata.
+- **Observation:** Analysis of `hub_log.txt` showed the Hub explicitly logging `Removing wrapper session PID X (Leaf process discovered)` for the *exact PID* it had just successfully launched. This was immediately followed by `System.IO.IOException: Pipe is broken` when the Hub tried to send the initial prompt.
+- **Hypothesis (The Discovery Race):** 
+    1. The Hub launches a new Gemini process.
+    2. Before the launch sequence is "complete" in the Hub's state machine, the background `DiscoverSessionsAsync` task triggers.
+    3. WMI returns the new PID and a "phantom/stale" PID from a previous failed run.
+    4. The deduplication logic sees a parent-child relationship (potentially due to PID reuse or stale WMI metadata) and concludes the new PID is just a "wrapper."
+    5. The Hub calls `Dispose()` on the new session, closing the named pipe.
+    6. **Take on Stack Traces:** The `Pipe is broken` stack traces are *not* the cause of the crash; they are the symptom of the Hub trying to use a pipe it just closed itself.
+- **Fix Applied:** Added a guard in `AiCliService.cs` to skip wrapper deduplication while `_isLaunching` is true.
+- **Caution:** Since the Hub restart clears the environment, we cannot confirm this fix until the system has been running for >24 hours (the typical recurrence window).
 
 ## Launch Details
 The Hub launches the CLI using the following command pattern (via `Process.Start` with `UseShellExecute = true`):

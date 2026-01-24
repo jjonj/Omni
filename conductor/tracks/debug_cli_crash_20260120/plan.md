@@ -10,9 +10,9 @@
 ## Phase 2: Observation & Trap Setting (Current)
 - [x] Task: Validate instrumentation with a roundtrip test.
     -   *Result 2026-01-20:* Roundtrip passed. Issue not reproduced. Hub restart likely cleared the bad state.
-- [~] Task: **WAIT FOR RECURRENCE.** Do not proceed until the crash is observed again.
-    -   *Update 2026-01-23:* Issue reproduced. Manually launched CLI works; Hub-launched CLI closes instantly. Hub restart cleared the issue before logs could be captured in depth. Resetting wait for next occurrence.
-- [ ] Task: Upon recurrence, collect:
+- [~] Task: **WAIT FOR RECURRENCE.** 
+    -   *Update 2026-01-24:* Hypothesis formed based on `hub_log.txt`. Fix implemented to guard discovery during launch. However, verification is pending next morning's typical failure window.
+- [ ] Task: Upon recurrence (if it occurs), collect:
     -   `hub_log.txt` (Hub side)
     -   `gemini_cli_debug.log` (CLI stdout/stderr)
     -   `ai_listener_crash.log` (Python exception log)
