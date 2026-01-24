@@ -26,6 +26,7 @@
 
 - [~] **Track: Debug CLI Initialization Crash**
 *Link: [./tracks/debug_cli_crash_20260120/](./tracks/debug_cli_crash_20260120/)*
+*Note: Fix implemented 2026-01-24; awaiting verification tomorrow.*
 
 
 
