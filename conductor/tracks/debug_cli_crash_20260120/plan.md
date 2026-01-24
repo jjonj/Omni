@@ -18,10 +18,13 @@
     -   `ai_listener_crash.log` (Python exception log)
     -   `omni_cli_crash.log` (Python exception log)
 
-## Phase 3: Analysis & Fix (Pending Diagnosis)
-- [ ] Task: Analyze the gathered logs to identify the specific exception or exit code causing the crash.
-- [ ] Task: Create a minimal failing test case or reproduction script if `roundtrip_test.py` is inconsistent, to confirm the root cause (Red Phase).
-- [ ] Task: Implement the fix for the identified issue (Green Phase).
+## Phase 3: Analysis & Fix (Completed 2026-01-24)
+- [x] Task: Analyze the gathered logs to identify the specific exception or exit code causing the crash.
+    - *Result:* Identified a race condition in `DiscoverSessionsAsync` where new sessions were incorrectly flagged as wrappers and disposed.
+- [x] Task: Create a minimal failing test case or reproduction script if `roundtrip_test.py` is inconsistent, to confirm the root cause (Red Phase).
+    - *Note:* Analysis was definitive enough from `hub_log.txt` showing the "Removing wrapper session" log immediately followed by the crash.
+- [x] Task: Implement the fix for the identified issue (Green Phase).
+    - *Fix:* Guarded wrapper deduplication with `!_isLaunching`.
 - [ ] Task: Verify the fix using `roundtrip_test.py` and ensure the session remains stable.
 
 ## Phase 4: Cleanup

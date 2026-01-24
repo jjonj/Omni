@@ -3,13 +3,10 @@
 ## Overview
 This track focuses on diagnosing and fixing an inconsistent issue where the Gemini CLI session initializes but instantly closes. This behavior has been observed intermittently.
 
-## Status (2026-01-23)
--   **Current State:** The issue is currently **dormant** (re-cleared by Hub restart).
--   **Observation:** The crash occurs intermittently in the morning and persists until a Hub restart. It appears to "reset" or return every 24 hours (next morning). Manually launching the CLI via `cli.exe --workspace D:/` works even when the Hub-spawned version fails.
--   **New Hypothesis:** The failure is likely in the Hub's process spawning environment or the `cmd.exe /K` handoff, rather than a crash in the CLI logic itself (since `/K` should keep the window open, but it "instantly closes"). Stale environment variables or shell state in the Hub process might be the culprit.
--   **Logging Strategy:** 
-    -   Hub now clears `hub_log.txt` and `gemini_cli_debug.log` on every startup to ensure fresh diagnostic data.
-    -   `GeminiPipe DEBUG` logging has been suppressed to reduce noise and allow easier identification of `INIT_DEBUG` events.
+## Status (2026-01-24 Update)
+- **Observation:** Analysis of `hub_log.txt` revealed that when a new Gemini CLI session is launched (e.g., PID 26396), the `DiscoverSessionsAsync` background task incorrectly identifies it as a "wrapper" process. 
+- **Hypothesis:** This occurs because the discovery logic finds another Gemini process (e.g., PID 11892) that incorrectly reports the *new* PID as its parent (likely due to WMI stale data or PID reuse). The Hub then calls `Dispose()` on the new session, closing its pipe and causing "Pipe is broken" errors in background communication tasks.
+- **Fix Applied:** Modified `AiCliService.cs` to disable the "wrapper deduplication" logic while `_isLaunching` is true. This prevents the Hub from disposing of its own freshly-spawned session due to discovery race conditions or stale process metadata.
 
 ## Launch Details
 The Hub launches the CLI using the following command pattern (via `Process.Start` with `UseShellExecute = true`):

@@ -241,7 +241,6 @@ namespace OmniSync.Hub.Infrastructure.Services
         public List<AiSessionInfo> GetActiveSessions()
         {
             return _sessions.Values
-                .Where(s => s.IsConnected)
                 .OrderBy(s => s.StartTime)
                 .Select(s => new AiSessionInfo
                 {
@@ -267,6 +266,27 @@ namespace OmniSync.Hub.Infrastructure.Services
                 foreach (var kp in _failedPids.Where(kvp => (now - kvp.Value.LastAttempt).TotalMinutes > 5).ToList())
                 {
                     _failedPids.TryRemove(kp.Key, out _);
+                }
+
+                // Clean up sessions whose processes have died
+                foreach (var existingPid in _sessions.Keys.ToList())
+                {
+                    try
+                    {
+                        var proc = Process.GetProcessById(existingPid);
+                        if (proc == null || proc.HasExited)
+                        {
+                            _logger.LogInformation($"[AiCliService] Removing session PID {existingPid} because process has exited.");
+                            _sessions.TryRemove(existingPid, out var deadSession);
+                            deadSession?.Dispose();
+                        }
+                    }
+                    catch (ArgumentException)
+                    {
+                        _logger.LogInformation($"[AiCliService] Removing session PID {existingPid} because process no longer exists.");
+                        _sessions.TryRemove(existingPid, out var deadSession);
+                        deadSession?.Dispose();
+                    }
                 }
 
                 // Cache WMI for 5 seconds to avoid spamming slow queries
@@ -316,7 +336,9 @@ namespace OmniSync.Hub.Infrastructure.Services
                             foreach (var gp in rawGeminiProcesses)
                             {
                                 // If this process is a PARENT of another gemini process in our list, skip it (prefer the leaf)
-                                if (rawGeminiProcesses.Any(other => other.Parent == gp.Pid))
+                                // CRITICAL: Only skip if we ARE NOT currently launching, otherwise we might kill the session we just started
+                                // because of a stale parent-child relationship or incorrect PID reuse detection.
+                                if (!_isLaunching && rawGeminiProcesses.Any(other => other.Parent == gp.Pid))
                                 {
                                     parentPids.Add(gp.Pid);
                                     continue;
@@ -1188,11 +1210,21 @@ namespace OmniSync.Hub.Infrastructure.Services
             return await session.SendDialogResponseAsync(response);
         }
 
-        public async Task GetHistoryAsync(int pid)
+        public async Task GetHistoryAsync(int pid, int maxChars = 0)
         {
             if (_sessions.TryGetValue(pid, out var session))
             {
-                await session.RequestHistoryAsync();
+                if (!session.IsConnected)
+                {
+                    _logger.LogInformation($"[AiCliService] Session PID {pid} disconnected. Attempting reconnection for history fetch...");
+                    bool reconnected = await session.ConnectAsync(2000);
+                    if (!reconnected)
+                    {
+                        _logger.LogWarning($"[AiCliService] Failed to reconnect to session PID {pid} for history fetch.");
+                        return;
+                    }
+                }
+                await session.RequestHistoryAsync(maxChars);
             }
         }
 
@@ -1262,6 +1294,8 @@ namespace OmniSync.Hub.Infrastructure.Services
         private readonly SemaphoreSlim _writeLock = new(1, 1);
         private string? _lastDialogType;
         private Process? _shellProcess;
+        private string? _lastHistoryJson;
+        private int _pendingMaxChars = 0;
 
         public bool IsConnected => _pipeClient?.IsConnected ?? false;
         public int Pid => _pid;
@@ -1334,57 +1368,68 @@ namespace OmniSync.Hub.Infrastructure.Services
             return await SendCommandAsync("dialogResponse", response, "response");
         }
 
-        public async Task RequestHistoryAsync()
-        {
-            _logger.LogDebug($"[GeminiSession] RequestHistoryAsync to PID {_pid}");
-            await SendCommandAsync("getHistory", null);
-        }
-
-        private async Task<bool> SendCommandAsync(string command, string? text, string textPropName = "text")
-        {
-            if (!IsConnected || _writer == null) 
-            {
-                                _logger.LogWarning($"[GeminiSession] Cannot send command '{command}' to PID {_pid}: Not connected");
-                                return false;
-                            }
-                
-                            await _writeLock.WaitAsync();
-                            try
-                            {
-                                // Normalize path separators in prompt text to avoid double-escaping issues
-                                string normalizedText = text?.Replace("\\\\", "/") ?? string.Empty;
-                                var payloadObj = new Dictionary<string, object>
-                                {
-                                    { "command", command },
-                                    { textPropName, normalizedText }
-                                };
-                                var payload = JsonSerializer.Serialize(payloadObj);
-                                Console.WriteLine($"[GeminiPipe WRITE] PID {_pid}: {payload}");
-                                _logger.LogInformation($"[GeminiSession] Sending to PID {_pid}: {payload}");
-
-                                // Add to sent prompts to prevent echo ghosting
-                                if (command == "prompt" && !string.IsNullOrEmpty(text))
-                                {
-                                    string normalized = text.Trim().ToLower();
-                                    _logger.LogDebug($"[GeminiSession] Adding to _sentPrompts: {normalized.Take(30)}...");
-                                    _sentPrompts.Add(normalized);
-                                }
-
-                                await _writer.WriteLineAsync(payload);
-                await _writer.FlushAsync();
-                return true;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, $"[GeminiSession] Error sending command to PID {_pid}");
-                return false;
-            }
-            finally
-            {
-                _writeLock.Release();
-            }
-        }
-
+                public async Task RequestHistoryAsync(int maxChars = 0)
+                {
+                    _logger.LogDebug($"[GeminiSession] RequestHistoryAsync to PID {_pid} (maxChars: {maxChars})");
+                    _pendingMaxChars = maxChars;
+        
+                    // Optional: If we have a cached version and maxChars is the same or larger, we could send it instantly
+                    // but for now let's always fetch the latest from the CLI to ensure consistency.
+                    await SendCommandAsync("getHistory", null, "text", maxChars);
+                }
+        
+                private async Task<bool> SendCommandAsync(string command, string? text, string textPropName = "text", int maxChars = 0)
+                {
+                    if (!IsConnected || _writer == null) 
+                    {
+                        _logger.LogWarning($"[GeminiSession] Cannot send command '{command}' to PID {_pid}: Not connected");
+                        return false;
+                    }
+        
+                    if (maxChars > 0) _pendingMaxChars = maxChars;
+                        
+                    await _writeLock.WaitAsync();
+                    try
+                    {
+                        // Normalize path separators in prompt text to avoid double-escaping issues
+                        string normalizedText = text?.Replace("\\\\", "/") ?? string.Empty;
+                        var payloadObj = new Dictionary<string, object>
+                        {
+                            { "command", command },
+                            { textPropName, normalizedText }
+                        };
+        
+                        if (maxChars > 0)
+                        {
+                            payloadObj["maxChars"] = maxChars;
+                        }
+        
+                        var payload = JsonSerializer.Serialize(payloadObj);
+                        Console.WriteLine($"[GeminiPipe WRITE] PID {_pid}: {payload}");
+                        _logger.LogInformation($"[GeminiSession] Sending to PID {_pid}: {payload}");
+        
+                        // Add to sent prompts to prevent echo ghosting
+                        if (command == "prompt" && !string.IsNullOrEmpty(text))
+                        {
+                            string normalized = text.Trim().ToLower();
+                            _logger.LogDebug($"[GeminiSession] Adding to _sentPrompts: {normalized.Take(30)}...");
+                            _sentPrompts.Add(normalized);
+                        }
+        
+                        await _writer.WriteLineAsync(payload);
+                        await _writer.FlushAsync();
+                        return true;
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, $"[GeminiSession] Error sending command to PID {_pid}");
+                        return false;
+                    }
+                    finally
+                    {
+                        _writeLock.Release();
+                    }
+                }
         private async Task ReadLoopAsync(CancellationToken token)
         {
             if (_pipeClient == null) 
@@ -1440,7 +1485,7 @@ namespace OmniSync.Hub.Infrastructure.Services
 
                                 if (text.Contains("[HISTORY_START]"))
                                 {
-                                    _logger.LogInformation($"[GeminiSession] SID: {_sid} | Received history from PID {_pid}");
+                                    _logger.LogInformation($"[GeminiSession] SID: {_sid} | Received history string from PID {_pid}. Length: {text.Length}");
                                     _recentlyBroadcastMessages.Clear(); 
                                     _sentPrompts.Clear();
                                     int startIdx = text.IndexOf("[HISTORY_START]") + "[HISTORY_START]".Length;
@@ -1448,7 +1493,46 @@ namespace OmniSync.Hub.Infrastructure.Services
                                     if (endIdx != -1)
                                     {
                                         var historyJson = text.Substring(startIdx, endIdx - startIdx);
+                                        _logger.LogInformation($"[GeminiSession] SID: {_sid} | Parsed history JSON. Length: {historyJson.Length}");
+                                        
+                                        // Server-side truncation to prevent client OOM
+                                        if (_pendingMaxChars > 0)
+                                        {
+                                            try
+                                            {
+                                                var history = JsonSerializer.Deserialize<List<Dictionary<string, string>>>(historyJson);
+                                                if (history != null)
+                                                {
+                                                    _logger.LogInformation($"[GeminiSession] SID: {_sid} | Deserialized history. Item count: {history.Count}");
+                                                    var truncated = new List<Dictionary<string, string>>();
+                                                    long currentTotal = 0;
+                                                    for (int i = history.Count - 1; i >= 0; i--)
+                                                    {
+                                                        var item = history[i];
+                                                        string itemText = item.ContainsKey("text") ? item["text"] : "";
+                                                        if (currentTotal + itemText.Length <= _pendingMaxChars)
+                                                        {
+                                                            truncated.Insert(0, item);
+                                                            currentTotal += itemText.Length;
+                                                        }
+                                                        else break;
+                                                    }
+                                                    historyJson = JsonSerializer.Serialize(truncated);
+                                                    _logger.LogInformation($"[GeminiSession] SID: {_sid} | Truncated history to {truncated.Count} items. Final JSON length: {historyJson.Length} (max: {_pendingMaxChars})");
+                                                }
+                                            }
+                                            catch (Exception ex)
+                                            {
+                                                _logger.LogWarning($"[GeminiSession] SID: {_sid} | Failed to truncate history JSON: {ex.Message}");
+                                            }
+                                        }
+
+                                        _lastHistoryJson = historyJson;
                                         _onResponse(_pid, historyJson, true, true, false, false);
+                                    }
+                                    else
+                                    {
+                                        _logger.LogWarning($"[GeminiSession] SID: {_sid} | Received malformed history (missing [HISTORY_END]) from PID {_pid}");
                                     }
                                 }
                                 else if (text == "[TURN_FINISHED]")
