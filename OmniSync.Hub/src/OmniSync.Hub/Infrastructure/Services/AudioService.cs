@@ -92,7 +92,15 @@ namespace OmniSync.Hub.Infrastructure.Services
 
             if (resourcesPath != null)
             {
-                // Try chime.mp3 first, then shut1min.wav as fallback
+                // Try the specific requested sound first
+                string requestedSound = System.IO.Path.Combine(resourcesPath, "UI", "UI_SoundPack13_Scroll_version05.wav");
+                if (System.IO.File.Exists(requestedSound))
+                {
+                    PlaySound(requestedSound);
+                    return;
+                }
+
+                // Fallback to chime.mp3 then shut1min.wav
                 string chime = System.IO.Path.Combine(resourcesPath, "Alarms", "chime.mp3");
                 if (System.IO.File.Exists(chime))
                 {
