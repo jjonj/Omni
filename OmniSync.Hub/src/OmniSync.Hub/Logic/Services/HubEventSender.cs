@@ -148,8 +148,8 @@ namespace OmniSync.Hub.Logic.Services
             else if (e.Text.StartsWith("Thinking: "))
             {
                 string thought = e.Text.Substring("Thinking: ".Length);
-                _logger.LogInformation($"[HubEventSender] Broadcasting Thought for PID {broadcastPid}: {thought.Substring(0, Math.Min(thought.Length, 50))}...");
-                _monitorService.AddLogMessage($"[AI] Thought from PID {broadcastPid}: {thought.Take(30)}...");
+                // _logger.LogInformation($"[HubEventSender] Broadcasting Thought for PID {broadcastPid}: {thought.Substring(0, Math.Min(thought.Length, 50))}...");
+                // _monitorService.AddLogMessage($"[AI] Thought from PID {broadcastPid}: {thought.Take(30)}...");
                 
                 await _hubContext.Clients.All.SendAsync("ReceiveAiThought", thought, broadcastPid);
             }
@@ -166,14 +166,14 @@ namespace OmniSync.Hub.Logic.Services
                      else
                      {
                          string preview = e.Text.Length > 50 ? e.Text.Substring(0, 50) + "..." : e.Text;
-                         Console.WriteLine($"[HubEventSender] Broadcasting Response for PID {broadcastPid}: {preview}");
+                         // Console.WriteLine($"[HubEventSender] Broadcasting Response for PID {broadcastPid}: {preview}");
                          await _hubContext.Clients.All.SendAsync("ReceiveAiResponse", e.Text, broadcastPid);
                      }
                  }
 
                  if (e.IsFinished)
                  {
-                     Console.WriteLine($"[HubEventSender] Turn FINISHED for PID {broadcastPid}");
+                     // Console.WriteLine($"[HubEventSender] Turn FINISHED for PID {broadcastPid}");
                      await _hubContext.Clients.All.SendAsync("ReceiveAiStatus", "FINISHED", broadcastPid);
                  }
             }
