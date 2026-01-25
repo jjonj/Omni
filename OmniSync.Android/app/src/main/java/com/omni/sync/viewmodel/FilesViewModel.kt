@@ -173,20 +173,26 @@ class FilesViewModel(
         loadPendingEditPaths()
         refreshCachedPaths()
         
-        // Restore last opened file if any
+        // Restore last opened file if any (CONTEXT ONLY, NO NAVIGATION)
         val lastOpenedPath = prefs.getString("last_opened_file_path", null)
         if (lastOpenedPath != null) {
-             // We can't immediately load it because we might not have file info
-             // But we can check cache
              val cachedContent = textCachePrefs.getString("text_$lastOpenedPath", null)
              if (cachedContent != null) {
-                 // Construct a minimal entry
                  val name = lastOpenedPath.substringAfterLast("/").substringAfterLast("\\")
                  val entry = FileSystemEntry(name, lastOpenedPath, false, 0, java.util.Date())
-                 openForEditing(entry)
-             } else {
-                 // If not cached, we'll wait for connection or ignore
-                 // We could set a "pending restore" flag here if needed
+                 
+                 // Manual context setup without navigation
+                 _editingFile.value = entry
+                 _editingContent.value = cachedContent
+                 
+                 val currentOpen = _openFiles.value.toMutableList()
+                 if (currentOpen.none { it.path == entry.path }) {
+                     currentOpen.add(entry)
+                     _openFiles.value = currentOpen
+                 }
+                 val currentContents = _openFileContents.value.toMutableMap()
+                 currentContents[entry.path] = cachedContent
+                 _openFileContents.value = currentContents
              }
         }
 

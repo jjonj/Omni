@@ -194,6 +194,22 @@ fun SettingsScreen(
                 modifier = Modifier.fillMaxWidth()
             )
 
+            Spacer(modifier = Modifier.height(16.dp))
+
+            var maxAiHistory by remember { mutableIntStateOf(appConfig.maxAiHistory) }
+            OutlinedTextField(
+                value = maxAiHistory.toString(),
+                onValueChange = { 
+                    val newValue = it.toIntOrNull() ?: 0
+                    maxAiHistory = newValue
+                    appConfig.maxAiHistory = newValue
+                    mainViewModel.saveAppConfig()
+                },
+                label = { Text("Max AI History per Session (chars)") },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                modifier = Modifier.fillMaxWidth()
+            )
+
             Spacer(modifier = Modifier.height(24.dp))
 
             Text("Hub Connection", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)

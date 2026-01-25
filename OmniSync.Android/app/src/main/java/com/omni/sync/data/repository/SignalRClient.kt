@@ -179,6 +179,14 @@ class SignalRClient(
     val isTriggeringTellPc = _isTriggeringTellPc.asSharedFlow()
 
     private val _isNextBubbleMap = MutableStateFlow<Map<Int, Boolean>>(emptyMap())
+    
+    // Per-session stopwatch state
+    private val _sessionTimers = MutableStateFlow<Map<Int, Long>>(emptyMap())
+    val sessionTimers: StateFlow<Map<Int, Long>> = _sessionTimers
+
+    fun recordSessionActivity(pid: Int) {
+        _sessionTimers.value = _sessionTimers.value + (pid to System.currentTimeMillis())
+    }
 
     private fun setIsNextBubble(pid: Int, isNew: Boolean) {
         _isNextBubbleMap.value = _isNextBubbleMap.value + (pid to isNew)
@@ -396,11 +404,14 @@ class SignalRClient(
 
         hubConnection?.on("ReceiveAiThought", { thought: String, pid: Int ->
             Log.d("SignalRClient", "ReceiveAiThought: pid=$pid")
+            mainViewModel.addLog("[AI] Thought from PID $pid (${thought.length} chars)", com.omni.sync.ui.screen.LogType.INFO)
+            recordSessionActivity(pid)
             updateSessionThought(pid, thought)
         }, String::class.java, Int::class.java)
 
         hubConnection?.on("ReceiveAiCodeDiff", { diff: String, pid: Int ->
             Log.d("SignalRClient", "ReceiveAiCodeDiff: pid=$pid")
+            mainViewModel.addLog("[AI] Code diff from PID $pid (${diff.length} chars)", com.omni.sync.ui.screen.LogType.INFO)
             handleAiCodeDiff(diff, pid)
         }, String::class.java, Int::class.java)
 
@@ -543,6 +554,8 @@ class SignalRClient(
 
         hubConnection?.on("ReceiveAiHistory", { historyJson: String, pid: Int ->
             try {
+                Log.d("SignalRClient", "ReceiveAiHistory from Hub: pid=$pid, json length=${historyJson.length}")
+                mainViewModel.addLog("[AI] History received for PID $pid (${historyJson.length} bytes)", com.omni.sync.ui.screen.LogType.INFO)
                 if (pid == -1 && (historyJson == "[]" || historyJson.isNullOrBlank())) {
                     return@on
                 }
@@ -623,7 +636,32 @@ class SignalRClient(
     private fun updateSessionMessages(pid: Int, block: (List<AiMessage>) -> List<AiMessage>) {
         val currentMap = _aiMessagesMap.value
         val sessionMessages = currentMap[pid] ?: emptyList()
-        val newMessages = block(sessionMessages)
+        var newMessages = block(sessionMessages)
+        
+        // --- Truncation Logic ---
+        val maxChars = mainViewModel.appConfig.maxAiHistory
+        if (maxChars > 0) {
+            var currentTotal = newMessages.sumOf { it.text.length }
+            if (currentTotal > maxChars) {
+                val truncated = mutableListOf<AiMessage>()
+                var runningTotal = 0
+                // Keep the NEWEST messages (they are at the end of the list)
+                for (i in newMessages.indices.reversed()) {
+                    val msg = newMessages[i]
+                    if (runningTotal + msg.text.length <= maxChars) {
+                        truncated.add(0, msg)
+                        runningTotal += msg.text.length
+                    } else {
+                        // Part of this message or previous ones are too much
+                        // For simplicity, we just stop adding whole bubbles.
+                        break
+                    }
+                }
+                newMessages = truncated
+            }
+        }
+        // ------------------------
+
         _aiMessagesMap.value = currentMap + (pid to newMessages)
         updateActiveView()
     }
@@ -745,13 +783,19 @@ class SignalRClient(
     fun requestAiHistory(pid: Int? = null) {
         if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {       
             val targetPid = pid ?: _selectedPid.value
-            // Clear current messages to show it's reloading
-            _aiMessagesMap.value = _aiMessagesMap.value + (targetPid to emptyList())
+            
+            // If we already have messages for this session, don't clear them immediately
+            // to allow for a smoother transition, but still show reloading status.
+            val currentMessages = _aiMessagesMap.value[targetPid]
+            if (currentMessages.isNullOrEmpty()) {
+                _aiMessagesMap.value = _aiMessagesMap.value + (targetPid to emptyList())
+            }
             updateActiveView()
             
             updateSessionStatus(targetPid, "Reloading history...")
+            mainViewModel.addLog("[AI] Requesting history for PID $targetPid (max: ${mainViewModel.appConfig.maxAiHistory} chars)", com.omni.sync.ui.screen.LogType.INFO)
             val hubPid = if (targetPid == -1) null else targetPid
-            hubConnection?.send("RequestAiHistory", hubPid)
+            hubConnection?.send("RequestAiHistory", hubPid, mainViewModel.appConfig.maxAiHistory)
         }
     }
 
@@ -761,10 +805,10 @@ class SignalRClient(
             isStartingSessionFlow.value = false
             messageQueue.clear()
 
-            // mainViewModel.addLog("[AI] Switching to session PID $pid (Request)", com.omni.sync.ui.screen.LogType.INFO) // REMOVED redundant log
+            mainViewModel.addLog("[AI] Switching to session PID $pid", com.omni.sync.ui.screen.LogType.INFO)
             setSelectedPid(pid)
             updateSessionStatus(pid, "Switching session...")
-            hubConnection?.send("SwitchAiSession", pid)
+            hubConnection?.send("SwitchAiSession", pid, mainViewModel.appConfig.maxAiHistory)
         }
     }
 
@@ -1241,6 +1285,11 @@ class SignalRClient(
 
         if (response.isBlank()) return
 
+        mainViewModel.addLog("[AI] Response from PID $pid (${response.length} chars)", com.omni.sync.ui.screen.LogType.INFO)
+
+        // Update session idle timer on AI activity
+        recordSessionActivity(pid)
+
         // Notify any AI activity
         coroutineScope.launch { anyAiActivityEvent.emit(Unit) }
 
@@ -1286,6 +1335,9 @@ class SignalRClient(
     private fun handleAiCodeDiff(diff: String, pid: Int) {
         if (diff.isBlank()) return
         
+        // Update session idle timer on AI activity
+        recordSessionActivity(pid)
+
         // Notify any AI activity
         coroutineScope.launch { anyAiActivityEvent.emit(Unit) }
         

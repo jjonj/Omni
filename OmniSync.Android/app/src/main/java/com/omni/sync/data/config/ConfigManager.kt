@@ -23,7 +23,8 @@ data class AppConfig(
     var wakeOnLanMac: String = "10FFE0379DAC",
     var subnetBroadcastIp: String = "192.168.1.255",
     var streamFps: Int = 10,
-    var streamResolution: Int = 100 // Percentage
+    var streamResolution: Int = 100, // Percentage
+    var maxAiHistory: Int = 10000 // characters per session default
 )
 
 class ConfigManager(private val context: Context) {

@@ -173,27 +173,35 @@ fun AiChatScreen(
 
     var textFieldValue by remember { mutableStateOf(TextFieldValue(inputText)) }
     
-    // Timer state for Stopwatch
-    var timeElapsedSeconds by remember { mutableLongStateOf(0L) }
-    var lastMessageTime by remember { mutableLongStateOf(System.currentTimeMillis()) }
-    
-    // Reset timer on new user message or AI response
-    LaunchedEffect(filteredMessages.size, isAiThinking) {
-        if (isAiThinking) {
-             // Reset when thinking starts? Or keep counting idle time? 
-             // Requirement: "since last message". Usually means idle time.
-             // If AI is thinking, we want to see how long it's been thinking.
-             lastMessageTime = System.currentTimeMillis()
+    fun scrollToBottom(animate: Boolean = true) {
+        isAutoScrollEnabled = true
+        coroutineScope.launch {
+            if (animate) {
+                listState.animateScrollToItem(0)
+            } else {
+                listState.scrollToItem(0)
+            }
         }
     }
 
-    // Ticker
-    LaunchedEffect(Unit) {
+    // Timer state for Stopwatch (PER SESSION)
+    val sessionTimers by signalRClient.sessionTimers.collectAsState()
+    var timeElapsedSeconds by remember { mutableLongStateOf(0L) }
+
+    // Ticker updates the displayed elapsed time based on the SELECTED session
+    LaunchedEffect(selectedPid, sessionTimers) {
         while(true) {
+            val lastTime = sessionTimers[selectedPid]
+            if (lastTime != null) {
+                timeElapsedSeconds = (System.currentTimeMillis() - lastTime) / 1000
+            } else {
+                timeElapsedSeconds = 0
+            }
             delay(1000)
-            timeElapsedSeconds = (System.currentTimeMillis() - lastMessageTime) / 1000
         }
     }
+
+    // Reset timer logic removed from here as it's now handled by SignalRClient Receive handlers.
 
     // Sync external changes to internal state
     LaunchedEffect(inputText) {
@@ -230,9 +238,9 @@ fun AiChatScreen(
         if (isAutoScrollEnabled && (filteredMessages.isNotEmpty() || isAiThinking)) {
             // Use scrollToItem for instant jump on send, animate for incoming
             if (isAiThinking) {
-                 listState.animateScrollToItem(0)
+                 scrollToBottom(animate = true)
             } else {
-                 listState.scrollToItem(0)
+                 scrollToBottom(animate = false)
             }
         }
     }
@@ -242,8 +250,7 @@ fun AiChatScreen(
          val isReloading = aiStatus?.contains("Reloading", ignoreCase = true) == true || 
                           aiStatus?.contains("Switching", ignoreCase = true) == true
          if (isReloading) {
-             isAutoScrollEnabled = true
-             listState.scrollToItem(0)
+             scrollToBottom(animate = false)
          }
     }
 
@@ -585,21 +592,9 @@ fun AiChatScreen(
                     
                     IconButton(
                         onClick = {
-                            isAutoScrollEnabled = true
-                            lastMessageTime = System.currentTimeMillis() // Reset timer
-                            if (inputText.isNotBlank()) {
-                                signalRClient.sendAiMessage(inputText, if (selectedPid != -1) selectedPid else null)
-                                signalRClient.updateAiInputText("")
-                                coroutineScope.launch {
-                                    listState.scrollToItem(0) // Instant scroll on send
-                                }
-                            } else {
-                                // If empty, send Enter key to targeted PID
-                                signalRClient.sendAiSpecialKey("enter")
-                                coroutineScope.launch {
-                                    listState.scrollToItem(0)
-                                }
-                            }
+                            signalRClient.sendAiMessage(inputText, if (selectedPid != -1) selectedPid else null)
+                            signalRClient.updateAiInputText("")
+                            scrollToBottom(animate = false) // Instant jump
                         },
                         modifier = Modifier.background(
                             if (isConnected) MaterialTheme.colorScheme.primary else Color.Gray, 
@@ -610,6 +605,27 @@ fun AiChatScreen(
                     ) {
                         Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Send")
                     }
+                }
+            }
+
+            // --- Added: Scroll to Bottom Button ---
+            val showScrollToBottom by remember {
+                derivedStateOf {
+                    listState.firstVisibleItemIndex > 0
+                }
+            }
+            if (showScrollToBottom) {
+                SmallFloatingActionButton(
+                    onClick = {
+                        scrollToBottom(animate = true)
+                    },
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(bottom = currentBottomPadding + 170.dp, end = 16.dp),
+                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                ) {
+                    Icon(Icons.Default.KeyboardDoubleArrowDown, contentDescription = "Scroll to Bottom")
                 }
             }
 
@@ -635,7 +651,8 @@ fun AiChatScreen(
                         textFieldValue,
                         onTextFieldValueChange = { textFieldValue = it },
                         onVoiceTrigger = { startVoiceRecognition() },
-                        onMessageSent = { isAutoScrollEnabled = true }
+                        onMessageSent = { isAutoScrollEnabled = true },
+                        onScrollToBottom = { scrollToBottom(animate = true) }
                     )
                 }
             }
@@ -699,7 +716,8 @@ fun QuickActionPanel(
     textFieldValue: TextFieldValue,
     onTextFieldValueChange: (TextFieldValue) -> Unit,
     onVoiceTrigger: () -> Unit,
-    onMessageSent: () -> Unit
+    onMessageSent: () -> Unit,
+    onScrollToBottom: () -> Unit
 ) {
     var isZoomed by remember { mutableStateOf(false) }
     val presets by signalRClient.aiPresets.collectAsState()
@@ -920,9 +938,16 @@ fun QuickActionPanel(
                 modifier = Modifier.weight(1f).height(33.dp),
                 onClick = { onVoiceTrigger() }
             )
+
+            ActionKeyButton(
+                text = "Bottom",
+                icon = Icons.Default.KeyboardDoubleArrowDown,
+                modifier = Modifier.weight(1f).height(33.dp),
+                onClick = { onScrollToBottom() }
+            )
             
-            // Fill remaining space if any, or just weight them equally
-            Spacer(modifier = Modifier.weight(2f))
+            // Fill remaining space
+            Spacer(modifier = Modifier.weight(1f))
         }
     }
 }

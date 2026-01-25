@@ -49,6 +49,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.material.icons.filled.Add
 import androidx.activity.compose.BackHandler
 import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.unit.sp
 import com.omni.sync.ui.components.VerticalScrollbar
 import com.omni.sync.ui.components.DirectoryPickerDialog
 
@@ -865,16 +866,21 @@ fun AutoResizingText(
     Text(
         text = text,
         color = color,
-        maxLines = 1,
+        maxLines = 2,
         style = MaterialTheme.typography.titleMedium,
         fontSize = textSize,
+        lineHeight = textSize * 1.1f,
         overflow = TextOverflow.Ellipsis,
         modifier = modifier.drawWithContent {
             if (readyToDraw) drawContent()
         },
         onTextLayout = { textLayoutResult ->
-            if (textLayoutResult.didOverflowWidth) {
-                textSize = textSize * 0.9f
+            if (textLayoutResult.didOverflowHeight || textLayoutResult.didOverflowWidth) {
+                if (textSize.value > 8f) { // Scale down until 8sp
+                    textSize = (textSize.value * 0.9f).sp
+                } else {
+                    readyToDraw = true
+                }
             } else {
                 readyToDraw = true
             }

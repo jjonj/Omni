@@ -197,8 +197,21 @@ fun ImageViewerScreen(
                     modifier = Modifier.align(Alignment.Center)
                 ) {
                     val currentUrl = if (playlist.isNotEmpty()) playlist[pagerState.currentPage] else initialImageUrl
+                    val displayName = remember(currentUrl) {
+                        try {
+                            val uri = android.net.Uri.parse(currentUrl)
+                            val pathParam = uri.getQueryParameter("path")
+                            if (pathParam != null) {
+                                File(pathParam).name
+                            } else {
+                                File(currentUrl).name
+                            }
+                        } catch (e: Exception) {
+                            currentUrl.substringAfterLast("/").substringAfterLast("\\")
+                        }
+                    }
                     Text(
-                        text = File(currentUrl).name,
+                        text = displayName,
                         color = Color.White,
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
                         style = MaterialTheme.typography.bodyMedium
