@@ -180,12 +180,21 @@ namespace OmniSync.Hub.Logic.Monitoring
             {
                 System.Windows.Application.Current.Dispatcher.BeginInvoke(() =>
                 {
-                    LogMessages.Insert(0, logEntry);
+                    LogMessages.Add(logEntry);
+                    // Keep last 1000 messages
+                    if (LogMessages.Count > 1000)
+                    {
+                        LogMessages.RemoveAt(0);
+                    }
                 });
             }
             else
             {
-                LogMessages.Insert(0, logEntry);
+                LogMessages.Add(logEntry);
+                if (LogMessages.Count > 1000)
+                {
+                    LogMessages.RemoveAt(0);
+                }
             }
 
             LogEntryAdded?.Invoke(this, logEntry);

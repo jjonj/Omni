@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Collections.ObjectModel; // Still needed for ObservableCollection type reference in XAML binding
+using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Windows.Threading; // For Dispatcher
@@ -44,6 +45,15 @@ namespace OmniSync.Hub.Presentation
             _viewModel = new MainViewModel(hubMonitorService, inputService, processService, shutdownService, registryService, settingsService, keyboardHook, aiCliService, layoutCaptureService, projectLauncherService);
             DataContext = _viewModel;
 
+            // Auto-scroll LogListBox to bottom
+            ((INotifyCollectionChanged)LogListBox.Items).CollectionChanged += (s, e) =>
+            {
+                if (e.Action == NotifyCollectionChangedAction.Add)
+                {
+                    LogListBox.ScrollIntoView(LogListBox.Items[LogListBox.Items.Count - 1]);
+                }
+            };
+
             // Hook up event handlers (now in ViewModel where appropriate)
             _settingsService.SettingsChanged += OnSettingsChanged;
             inputService.ModifierStateChanged += OnModifierStateChanged;
@@ -81,8 +91,17 @@ namespace OmniSync.Hub.Presentation
         private void RunOnStartupCheckBox_Unchecked(object sender, RoutedEventArgs e) => _viewModel.IsRunOnStartupEnabled = false;
 
         // Long press for shutdown button remains in code-behind to handle MouseDown/Up events properly
-        private void ShutdownButton_MouseDown(object sender, MouseButtonEventArgs e) => _viewModel.StartLongPressTimer();
-        private void ShutdownButton_MouseUp(object sender, MouseButtonEventArgs e) => _viewModel.StopLongPressTimer();
+        private void ShutdownButton_MouseDown(object sender, MouseButtonEventArgs e)
+        {
+            _hubMonitorService.AddLogMessage("[UI] ShutdownButton MouseDown");
+            _viewModel.StartLongPressTimer();
+        }
+
+        private void ShutdownButton_MouseUp(object sender, MouseButtonEventArgs e)
+        {
+            _hubMonitorService.AddLogMessage("[UI] ShutdownButton MouseUp");
+            _viewModel.StopLongPressTimer();
+        }
 
         private void TextBox_GotFocus(object sender, RoutedEventArgs e)
         {
