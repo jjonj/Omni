@@ -21,6 +21,8 @@ Only work on subtasks if told to do so or if told explicitly to do a Megasession
 
 ## For the hub
 
+of the conversion is too long it might start lagging. add a setting in settings for the max admin by of history to load, defined in kb or character count, not msg count 
+
 
 ## in OmniSync.Android
 ### General
@@ -35,6 +37,18 @@ Only work on subtasks if told to do so or if told explicitly to do a Megasession
 
 
 ### Files & Video Screen
+ 
+
+
+
+
+In folder view Use scaling size font for the path at the top left, longer path should use smaller font 
+
+when long pressing folder, add option to copy path to clipboard 
+
+Image viewer needs to display the name of the file shown
+
+when switching to file screen it will show  the last opened text file, that should only happen if a text file was actually open when leaving the screen. in general the file screen should not change what was shown at all when leaving it and coming back, should be simple 
 
 
 ### Browser control screen
@@ -44,8 +58,22 @@ Only work on subtasks if told to do so or if told explicitly to do a Megasession
 
 ### Settings screen (accessed by button on dashboard, not bottom panel)
 
+
+
 ### AI screen
 
+when going to the ai screen, always scroll up bottom 
+
+focus button no longer works 
+
+ask user for access to gemini cli to do model Select
+
+
+sending a message to ai should scroll to bottom
+
+show a small stopwatch like counter at the bottom of chat showing seconds minutes etc since last message
+
+I need to be able to see if the AI is active and working or waiting for a message from me. if it's not getting thinking updates eg if server is slow i need a spinner or animated ... that shows that it's not stuck. there is some work done already on this but it's inconsistent and especially bad when switching to a session while it's working. i want this to be really robust
 
 ### Embedded web screen
 

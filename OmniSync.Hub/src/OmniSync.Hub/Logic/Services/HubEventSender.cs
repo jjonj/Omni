@@ -130,18 +130,21 @@ namespace OmniSync.Hub.Logic.Services
 
             if (e.IsHistory)
             {
-                Console.WriteLine($"[HubEventSender] Received History for PID {broadcastPid}");
+                _logger.LogInformation($"[HubEventSender] Broadcasting History for PID {broadcastPid}. JSON length: {e.Text.Length}");
+                _monitorService.AddLogMessage($"[AI] History received for PID {broadcastPid} ({e.Text.Length} bytes)");
                 await _hubContext.Clients.All.SendAsync("ReceiveAiHistory", e.Text, broadcastPid);
             }
             else if (e.IsCodeDiff)
             {
-                Console.WriteLine($"[HubEventSender] Broadcasting Code Diff for PID {broadcastPid}");
+                _logger.LogInformation($"[HubEventSender] Broadcasting Code Diff for PID {broadcastPid}");
+                _monitorService.AddLogMessage($"[AI] Code diff received for PID {broadcastPid}");
                 await _hubContext.Clients.All.SendAsync("ReceiveAiCodeDiff", e.Text, broadcastPid);
             }
             else if (e.Text.StartsWith("Thinking: "))
             {
                 string thought = e.Text.Substring("Thinking: ".Length);
-                Console.WriteLine($"[HubEventSender] Broadcasting Thought for PID {broadcastPid}: {thought.Substring(0, Math.Min(thought.Length, 50))}...");
+                _logger.LogInformation($"[HubEventSender] Broadcasting Thought for PID {broadcastPid}: {thought.Substring(0, Math.Min(thought.Length, 50))}...");
+                _monitorService.AddLogMessage($"[AI] Thought from PID {broadcastPid}: {thought.Take(30)}...");
                 
                 await _hubContext.Clients.All.SendAsync("ReceiveAiThought", thought, broadcastPid);
             }

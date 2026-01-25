@@ -1221,21 +1221,18 @@ namespace OmniSync.Hub.Presentation.Hubs
             }
         }
 
-        public async Task SwitchAiSession(int pid)
+        public async Task SwitchAiSession(int pid, int maxChars = 0)
         {
             if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
             {
-                _logger.LogInformation($"[RpcApiHub] SwitchAiSession: {pid}");
+                _logger.LogInformation($"[RpcApiHub] SwitchAiSession: {pid} (maxChars: {maxChars})");
                 AnyCommandReceived?.Invoke(this, $"SwitchAiSession: {pid}");
                 
-                // Switch in legacy Python listeners
-                await Clients.All.SendAsync("SwitchAiSession", pid);
-
                 // Switch in Hub
                 bool success = await _aiCliService.SetTargetPidAsync(pid);
                 if (success)
                 {
-                    await _aiCliService.GetHistoryAsync(pid);
+                    await _aiCliService.GetHistoryAsync(pid, maxChars);
                 }
                 else
                 {
@@ -1274,14 +1271,14 @@ namespace OmniSync.Hub.Presentation.Hubs
             }
         }
 
-        public async Task RequestAiHistory(int? pid = null)
+        public async Task RequestAiHistory(int? pid = null, int maxChars = 0)
         {
             if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
             {
                 int targetPid = pid ?? _aiCliService.GetTargetPid();
-                _logger.LogInformation($"[RpcApiHub] RequestAiHistory for PID {targetPid}");
+                _logger.LogInformation($"[RpcApiHub] RequestAiHistory for PID {targetPid} (maxChars: {maxChars})");
                 await Clients.All.SendAsync("ReceiveAiStatus", "Reloading history...", targetPid);
-                await _aiCliService.GetHistoryAsync(targetPid);
+                await _aiCliService.GetHistoryAsync(targetPid, maxChars);
             }
         }
 
@@ -1314,11 +1311,14 @@ namespace OmniSync.Hub.Presentation.Hubs
             }
         }
 
-        public async Task ReceiveAiHistory(string historyJson)
+        public async Task ReceiveAiHistory(string historyJson, int pid = -1)
         {
             if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
             {
-                await Clients.All.SendAsync("ReceiveAiHistory", historyJson);
+                int targetPid = pid;
+                if (targetPid <= 0) targetPid = _aiCliService.GetTargetPid();
+                
+                await Clients.All.SendAsync("ReceiveAiHistory", historyJson, targetPid);
             }
         }
 

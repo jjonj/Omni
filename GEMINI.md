@@ -16,3 +16,19 @@ If told to do a megasession then read Tasks.txt
 Keep the WPF Hub UI and Web Settings UI in sync for features like Hotkeys, but prioritize the WPF version as primary.
 
 When asked to add logging, use the activity log on android and hub, not logcat.
+
+### AI Dialog Auto-Responses
+
+To add a new automatic response to an AI dialog:
+
+1.  Open `OmniSync.Hub/src/OmniSync.Hub/Logic/Services/HubEventSender.cs`.
+
+2.  Locate the `OnAiCliDialogReceived` method.
+
+3.  Add a check for the `e.Type` (from the CLI) or `e.Prompt` content.
+
+4.  Use `await _aiCliService.SendDialogResponseAsync("response_text", e.Pid);` to respond.
+
+5.  Always include a `Task.Delay` (e.g., 5000ms) if the response is a retry to avoid rapid loops.
+
+6.  You can branch logic based on `e.Prompt.Contains("keyword")` to handle different variants of the same dialog type.

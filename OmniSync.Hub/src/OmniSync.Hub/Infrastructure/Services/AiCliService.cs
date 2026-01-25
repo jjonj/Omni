@@ -332,22 +332,22 @@ namespace OmniSync.Hub.Infrastructure.Services
                             // Deduplicate: If a process has a child that is ALSO a Gemini process, 
                             // then this process is likely a wrapper (e.g. cmd.exe or a node parent).
                             // We prefer the 'leaf' process which usually holds the pipe.
-                            var parentPids = new HashSet<int>();
+                            var parentPids = new Dictionary<int, int>(); // Parent -> Child (Leaf)
                             foreach (var gp in rawGeminiProcesses)
                             {
-                                // If this process is a PARENT of another gemini process in our list, skip it (prefer the leaf)
-                                // CRITICAL: Only skip if we ARE NOT currently launching, otherwise we might kill the session we just started
-                                // because of a stale parent-child relationship or incorrect PID reuse detection.
-                                if (!_isLaunching && rawGeminiProcesses.Any(other => other.Parent == gp.Pid))
-                                {
-                                    parentPids.Add(gp.Pid);
-                                    continue;
-                                }
-
-                                // Skip if it's already a connected session
+                                // 1. Skip if it's already a connected session. CONNECTED SESSIONS ARE NEVER WRAPPERS.
                                 if (_sessions.TryGetValue(gp.Pid, out var existing) && existing.IsConnected)
                                 {
                                     if (!pids.Contains(gp.Pid)) pids.Add(gp.Pid);
+                                    continue;
+                                }
+
+                                // 2. If this process is a PARENT of another gemini process in our list, it's likely a wrapper (prefer the leaf)
+                                // CRITICAL: Only skip if we ARE NOT currently launching, otherwise we might kill the session we just started.
+                                var child = rawGeminiProcesses.FirstOrDefault(other => other.Parent == gp.Pid);
+                                if (!_isLaunching && child.Pid != 0)
+                                {
+                                    parentPids[gp.Pid] = child.Pid;
                                     continue;
                                 }
 
@@ -371,11 +371,14 @@ namespace OmniSync.Hub.Infrastructure.Services
                             // SKIP this cleanup if we are currently launching to avoid race conditions
                             if (!_isLaunching)
                             {
-                                foreach (var parentPid in parentPids)
+                                foreach (var kvp in parentPids)
                                 {
+                                    int parentPid = kvp.Key;
+                                    int childPid = kvp.Value;
+
                                     if (_sessions.TryRemove(parentPid, out var session))
                                     {
-                                        _logger.LogInformation($"[AiCliService] Removing wrapper session PID {parentPid} (Leaf process discovered)");
+                                        _logger.LogInformation($"[AiCliService] Removing wrapper session PID {parentPid} because leaf process PID {childPid} was discovered.");
                                         session.Dispose();
                                         _sessionNames.TryRemove(parentPid, out _);
                                         _workspaces.TryRemove(parentPid, out _);
@@ -384,7 +387,7 @@ namespace OmniSync.Hub.Infrastructure.Services
                             }
                             else if (parentPids.Any())
                             {
-                                _logger.LogInformation($"[AiCliService] Launch in progress. Skipping cleanup of {parentPids.Count} potential wrapper PIDs: {string.Join(", ", parentPids)}");
+                                _logger.LogInformation($"[AiCliService] Launch in progress. Skipping cleanup of {parentPids.Count} potential wrapper PIDs: {string.Join(", ", parentPids.Keys)}");
                             }
 
                             _lastWmiDiscovery = now;
