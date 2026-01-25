@@ -106,6 +106,9 @@ namespace OmniSync.Hub.Infrastructure.Services
             {
                 KBDLLHOOKSTRUCT hookStruct = (KBDLLHOOKSTRUCT)Marshal.PtrToStructure(lParam, typeof(KBDLLHOOKSTRUCT));
                 
+                // LLKHF_INJECTED = 0x00000010
+                bool isInjected = (hookStruct.flags & 0x10) != 0;
+
                 // GetAsyncKeyState is more reliable for global state than GetKeyState
                 bool isShiftPressed = (GetAsyncKeyState((int)Keys.ShiftKey) & 0x8000) != 0 || 
                                       (GetAsyncKeyState((int)Keys.LShiftKey) & 0x8000) != 0 || 
@@ -130,10 +133,20 @@ namespace OmniSync.Hub.Infrastructure.Services
                 if (isKeyDown || isKeyUp)
                 {
                     Keys key = (Keys)hookStruct.vkCode;
+
+                    // Override GetAsyncKeyState result with the actual event state if this key is a modifier.
+                    // This ensures KeyUp events correctly report 'false' for the key being released.
+                    if (key == Keys.ShiftKey || key == Keys.LShiftKey || key == Keys.RShiftKey) isShiftPressed = isKeyDown;
+                    if (key == Keys.ControlKey || key == Keys.LControlKey || key == Keys.RControlKey) isCtrlPressed = isKeyDown;
+                    if (key == Keys.Menu || key == Keys.LMenu || key == Keys.RMenu) isAltPressed = isKeyDown;
+                    if (key == Keys.LWin || key == Keys.RWin) isWinPressed = isKeyDown;
+
                     var state = isKeyDown ? KeyState.Down : KeyState.Up;
                     
-                    // _logger.LogDebug($"Key {state}: {key}, Shift: {isShiftPressed}, Ctrl: {isCtrlPressed}, Alt: {isAltPressed}, Win: {isWinPressed}");
-                    var args = new KeyHookEventArgs(key, state, isShiftPressed, isCtrlPressed, isAltPressed, isWinPressed);
+                    // Only report events that aren't injected by our own service to avoid loops,
+                    // OR if they ARE injected, let them pass through for state synchronization 
+                    // only if they are modifier keys.
+                    var args = new KeyHookEventArgs(key, state, isShiftPressed, isCtrlPressed, isAltPressed, isWinPressed, isInjected);
                     KeyActionOccurred?.Invoke(this, args);
 
                     if (args.Handled || IsRecording)
@@ -167,9 +180,10 @@ namespace OmniSync.Hub.Infrastructure.Services
         public bool Control { get; private set; }
         public bool Alt { get; private set; }
         public bool Win { get; private set; }
+        public bool IsInjected { get; private set; }
         public bool Handled { get; set; }
 
-        public KeyHookEventArgs(Keys key, KeyState state, bool shift, bool control, bool alt, bool win = false)
+        public KeyHookEventArgs(Keys key, KeyState state, bool shift, bool control, bool alt, bool win = false, bool isInjected = false)
         {
             Key = key;
             State = state;
@@ -177,6 +191,7 @@ namespace OmniSync.Hub.Infrastructure.Services
             Control = control;
             Alt = alt;
             Win = win;
+            IsInjected = isInjected;
         }
     }
 }

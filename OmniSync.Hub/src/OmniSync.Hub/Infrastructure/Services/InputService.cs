@@ -22,6 +22,9 @@ namespace OmniSync.Hub.Infrastructure.Services
         private static extern uint MapVirtualKey(uint uCode, uint uMapType);
 
         [DllImport("user32.dll")]
+        private static extern IntPtr GetMessageExtraInfo();
+
+        [DllImport("user32.dll")]
         private static extern int GetSystemMetrics(int nIndex);
 
         private const int SM_CXSCREEN = 0;
@@ -87,63 +90,78 @@ namespace OmniSync.Hub.Infrastructure.Services
         private const uint MOUSEEVENTF_HWHEEL = 0x01000;
 
         // Keyboard Flags
+        private const uint KEYEVENTF_EXTENDEDKEY = 0x0001;
         private const uint KEYEVENTF_KEYUP = 0x0002;
         private const uint KEYEVENTF_UNICODE = 0x0004;
+        private const uint KEYEVENTF_SCANCODE = 0x0008;
 
         // Modifier Key States (Internal)
-        private bool _isShiftPressed;
-        private bool _isCtrlPressed;
-        private bool _isAltPressed;
-        private bool _isWinPressed;
+        private bool _localShift, _remoteShift;
+        private bool _localCtrl, _remoteCtrl;
+        private bool _localAlt, _remoteAlt;
+        private bool _localWin, _remoteWin;
 
-        // Public Properties for Modifier Key States
+        private bool _effectiveShift;
+        private bool _effectiveCtrl;
+        private bool _effectiveAlt;
+        private bool _effectiveWin;
+
+        // Public Properties for Effective Modifier Key States (Combined Local & Remote)
         public bool IsShiftPressed
         {
-            get => _isShiftPressed;
+            get => _effectiveShift;
             private set
             {
-                if (_isShiftPressed != value)
+                if (_effectiveShift != value)
                 {
-                    _isShiftPressed = value;
+                    _effectiveShift = value;
                     ModifierStateChanged?.Invoke(this, new ModifierStateEventArgs(ModifierKey.Shift, value));
                 }
             }
         }
         public bool IsCtrlPressed
         {
-            get => _isCtrlPressed;
+            get => _effectiveCtrl;
             private set
             {
-                if (_isCtrlPressed != value)
+                if (_effectiveCtrl != value)
                 {
-                    _isCtrlPressed = value;
+                    _effectiveCtrl = value;
                     ModifierStateChanged?.Invoke(this, new ModifierStateEventArgs(ModifierKey.Ctrl, value));
                 }
             }
         }
         public bool IsAltPressed
         {
-            get => _isAltPressed;
+            get => _effectiveAlt;
             private set
             {
-                if (_isAltPressed != value)
+                if (_effectiveAlt != value)
                 {
-                    _isAltPressed = value;
+                    _effectiveAlt = value;
                     ModifierStateChanged?.Invoke(this, new ModifierStateEventArgs(ModifierKey.Alt, value));
                 }
             }
         }
         public bool IsWinPressed
         {
-            get => _isWinPressed;
+            get => _effectiveWin;
             private set
             {
-                if (_isWinPressed != value)
+                if (_effectiveWin != value)
                 {
-                    _isWinPressed = value;
+                    _effectiveWin = value;
                     ModifierStateChanged?.Invoke(this, new ModifierStateEventArgs(ModifierKey.Win, value));
                 }
             }
+        }
+
+        private void UpdateEffectiveStates()
+        {
+            IsShiftPressed = _localShift || _remoteShift;
+            IsCtrlPressed = _localCtrl || _remoteCtrl;
+            IsAltPressed = _localAlt || _remoteAlt;
+            IsWinPressed = _localWin || _remoteWin;
         }
 
         // Event for notifying about modifier state changes
@@ -168,13 +186,24 @@ namespace OmniSync.Hub.Infrastructure.Services
 
         private void OnKeyActionOccurred(object? sender, KeyHookEventArgs e)
         {
-            // Update internal state based on the hook's reported modifier states
-            IsShiftPressed = e.Shift;
-            IsCtrlPressed = e.Control;
-            IsAltPressed = e.Alt;
-            IsWinPressed = e.Win;
+            // Only update our internal LOCAL state from the hook if the key that changed IS a modifier key,
+            // AND the event is NOT injected (simulated by software). 
+            if (!e.IsInjected && IsModifierKey(e.Key))
+            {
+                _localShift = e.Shift;
+                _localCtrl = e.Control;
+                _localAlt = e.Alt;
+                _localWin = e.Win;
+                UpdateEffectiveStates();
+            }
+        }
 
-            _logger.LogDebug($"Modifier states from hook: Shift={IsShiftPressed}, Ctrl={IsCtrlPressed}, Alt={IsAltPressed}, Win={IsWinPressed}");
+        private bool IsModifierKey(System.Windows.Forms.Keys key)
+        {
+            return key == System.Windows.Forms.Keys.ShiftKey || key == System.Windows.Forms.Keys.LShiftKey || key == System.Windows.Forms.Keys.RShiftKey ||
+                   key == System.Windows.Forms.Keys.ControlKey || key == System.Windows.Forms.Keys.LControlKey || key == System.Windows.Forms.Keys.RControlKey ||
+                   key == System.Windows.Forms.Keys.Menu || key == System.Windows.Forms.Keys.LMenu || key == System.Windows.Forms.Keys.RMenu ||
+                   key == System.Windows.Forms.Keys.LWin || key == System.Windows.Forms.Keys.RWin;
         }
         public void LeftClick()
         {
@@ -289,40 +318,137 @@ namespace OmniSync.Hub.Infrastructure.Services
         // Keyboard Input Methods (These remain mostly the same, just included in the new class structure)
         public void SendKeyPress(ushort keyCode)
         {
-            INPUT[] inputs = new INPUT[2];
-            inputs[0].type = INPUT_KEYBOARD;
-            inputs[0].U.ki = new KEYBDINPUT { wVk = keyCode, wScan = 0, dwFlags = 0 };
-            inputs[1].type = INPUT_KEYBOARD;
-            inputs[1].U.ki = new KEYBDINPUT { wVk = keyCode, wScan = 0, dwFlags = KEYEVENTF_KEYUP };
-            SendInputWithLogging(inputs);
+            IntPtr extraInfo = GetMessageExtraInfo();
+            var inputs = new System.Collections.Generic.List<INPUT>();
+            AddKeyDown(inputs, keyCode, extraInfo);
+            AddKeyUp(inputs, keyCode, extraInfo);
+            SendInputWithLogging(inputs.ToArray());
+        }
+
+        private void AddKeyDown(System.Collections.Generic.List<INPUT> list, ushort keyCode, IntPtr extraInfo)
+        {
+            uint flags = 0;
+            if (IsExtendedKey(keyCode)) flags |= KEYEVENTF_EXTENDEDKEY;
+            
+            list.Add(new INPUT { 
+                type = INPUT_KEYBOARD, 
+                U = new InputUnion { 
+                    ki = new KEYBDINPUT { 
+                        wVk = keyCode, 
+                        wScan = (ushort)MapVirtualKey(keyCode, 0), 
+                        dwFlags = flags,
+                        dwExtraInfo = extraInfo
+                    } 
+                } 
+            });
+        }
+
+        private void AddKeyUp(System.Collections.Generic.List<INPUT> list, ushort keyCode, IntPtr extraInfo)
+        {
+            uint flags = KEYEVENTF_KEYUP;
+            if (IsExtendedKey(keyCode)) flags |= KEYEVENTF_EXTENDEDKEY;
+
+            list.Add(new INPUT { 
+                type = INPUT_KEYBOARD, 
+                U = new InputUnion { 
+                    ki = new KEYBDINPUT { 
+                        wVk = keyCode, 
+                        wScan = (ushort)MapVirtualKey(keyCode, 0), 
+                        dwFlags = flags,
+                        dwExtraInfo = extraInfo
+                    } 
+                } 
+            });
+        }
+
+        private bool IsExtendedKey(ushort keyCode)
+        {
+            return (keyCode >= 0x21 && keyCode <= 0x2E) || // Page Up, Page Down, End, Home, Left, Up, Right, Down, Ins, Del
+                   (keyCode >= 0x5B && keyCode <= 0x5C) || // Windows keys
+                   (keyCode == 0x12) || // Alt
+                   (keyCode == 0x11);   // Ctrl (if right ctrl)
         }
         
         public void KeyDown(ushort keyCode)
         {
-            INPUT[] inputs = new INPUT[1];
-            inputs[0].type = INPUT_KEYBOARD;
-            inputs[0].U.ki = new KEYBDINPUT { wVk = keyCode, wScan = 0, dwFlags = 0 };
-            SendInputWithLogging(inputs);
+            UpdateModifierState(keyCode, true);
+            IntPtr extraInfo = GetMessageExtraInfo();
+            var inputs = new System.Collections.Generic.List<INPUT>();
+            AddKeyDown(inputs, keyCode, extraInfo);
+            SendInputWithLogging(inputs.ToArray());
         }
 
         public void KeyUp(ushort keyCode)
         {
-            INPUT[] inputs = new INPUT[1];
-            inputs[0].type = INPUT_KEYBOARD;
-            inputs[0].U.ki = new KEYBDINPUT { wVk = keyCode, wScan = 0, dwFlags = KEYEVENTF_KEYUP };
-            SendInputWithLogging(inputs);
+            UpdateModifierState(keyCode, false);
+            IntPtr extraInfo = GetMessageExtraInfo();
+            var inputs = new System.Collections.Generic.List<INPUT>();
+            AddKeyUp(inputs, keyCode, extraInfo);
+            SendInputWithLogging(inputs.ToArray());
+        }
+
+        private void UpdateModifierState(ushort keyCode, bool isPressed)
+        {
+            switch (keyCode)
+            {
+                case 0x10: // VK_SHIFT
+                case 0xA0: // VK_LSHIFT
+                case 0xA1: // VK_RSHIFT
+                    _remoteShift = isPressed;
+                    break;
+                case 0x11: // VK_CONTROL
+                case 0xA2: // VK_LCONTROL
+                case 0xA3: // VK_RCONTROL
+                    _remoteCtrl = isPressed;
+                    break;
+                case 0x12: // VK_MENU (ALT)
+                case 0xA4: // VK_LMENU
+                case 0xA5: // VK_RMENU
+                    _remoteAlt = isPressed;
+                    break;
+                case 0x5B: // VK_LWIN
+                case 0x5C: // VK_RWIN
+                    _remoteWin = isPressed;
+                    break;
+            }
+            UpdateEffectiveStates();
         }
 
         public void SendText(string text)
         {
             if (string.IsNullOrEmpty(text)) return;
-            var inputList = new System.Collections.Generic.List<INPUT>();
+            IntPtr extraInfo = GetMessageExtraInfo();
+            var inputs = new System.Collections.Generic.List<INPUT>();
+
+            // If modifiers are active and we have a single character, 
+            // try to send it as a Virtual Key so shortcuts work.
+            // VK events are combined with current keyboard state (toggled modifiers).
+            bool useVkFallback = text.Length == 1 && (IsCtrlPressed || IsAltPressed || IsWinPressed || IsShiftPressed);
+
             foreach (char c in text)
             {
-                inputList.Add(new INPUT { type = INPUT_KEYBOARD, U = new InputUnion { ki = new KEYBDINPUT { wScan = c, dwFlags = KEYEVENTF_UNICODE } } });
-                inputList.Add(new INPUT { type = INPUT_KEYBOARD, U = new InputUnion { ki = new KEYBDINPUT { wScan = c, dwFlags = KEYEVENTF_UNICODE | KEYEVENTF_KEYUP } } });
+                ushort vk = 0;
+                if (useVkFallback)
+                {
+                    // Map common letters and numbers to VK
+                    char upper = char.ToUpperInvariant(c);
+                    if (upper >= 'A' && upper <= 'Z') vk = (ushort)upper;
+                    else if (upper >= '0' && upper <= '9') vk = (ushort)upper;
+                }
+
+                if (vk != 0)
+                {
+                    AddKeyDown(inputs, vk, extraInfo);
+                    AddKeyUp(inputs, vk, extraInfo);
+                }
+                else
+                {
+                    inputs.Add(new INPUT { type = INPUT_KEYBOARD, U = new InputUnion { ki = new KEYBDINPUT { wScan = c, dwFlags = KEYEVENTF_UNICODE, dwExtraInfo = extraInfo } } });
+                    inputs.Add(new INPUT { type = INPUT_KEYBOARD, U = new InputUnion { ki = new KEYBDINPUT { wScan = c, dwFlags = KEYEVENTF_UNICODE | KEYEVENTF_KEYUP, dwExtraInfo = extraInfo } } });
+                }
             }
-            SendInputWithLogging(inputList.ToArray());
+
+            SendInputWithLogging(inputs.ToArray());
         }
 
         public void SendKeys(string keys)

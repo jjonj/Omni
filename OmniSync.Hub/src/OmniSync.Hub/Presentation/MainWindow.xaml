@@ -13,6 +13,7 @@
         <vm:InverseBooleanToVisibilityConverter x:Key="InverseBooleanToVisibilityConverter" />
         <vm:EnumToVisibilityConverter x:Key="EnumToVisibilityConverter" />
         <vm:ActionNameConverter x:Key="ActionNameConverter" />
+        <vm:StateToBrushConverter x:Key="StateToBrushConverter" />
         <Style TargetType="TabControl">
             <Setter Property="Background" Value="#252526"/>
             <Setter Property="BorderBrush" Value="#333337"/>
@@ -272,6 +273,13 @@
                                            FontStyle="Italic" Opacity="0.8"/>
                             </StackPanel>
                             <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                <Button Content="Test Ctrl" 
+                                        Command="{Binding TestCtrlCommand}"
+                                        Background="{Binding IsCtrlPressed, Converter={StaticResource StateToBrushConverter}}"/>
+                                <Button Content="Test Y" 
+                                        Command="{Binding TestYCommand}"/>
+                                <Button Content="Test Ctrl+Y" 
+                                        Command="{Binding TestCtrlYCommand}"/>
                                 <Button Content="Reset AI Sessions" 
                                         Command="{Binding ResetAiSessionsCommand}"
                                         MinWidth="120"

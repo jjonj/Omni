@@ -331,6 +331,7 @@ class SignalRClient(
         }, String::class.java)
 
         hubConnection?.on("ModifierStateUpdated", { modifierName: String, isPressed: Boolean ->
+            mainViewModel.addLog("[Remote] Hub reports $modifierName is ${if (isPressed) "DOWN" else "UP"}", com.omni.sync.ui.screen.LogType.INFO)
             when (modifierName) {
                 "Shift" -> mainViewModel.setShiftPressed(isPressed)
                 "Ctrl" -> mainViewModel.setCtrlPressed(isPressed)

@@ -766,7 +766,7 @@ fun ButtonPanel(
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
             // Grid 1
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                ModifierKeyButton("Ctrl", isCtrlPressed, Modifier.weight(1f), onToggle = { 
+                ModifierKeyButton("Ctrl", isCtrlPressed, Modifier.weight(1f), label = "Ctrl", mainViewModel = mainViewModel, onToggle = { 
                     if (it) signalRClient.sendKeyEvent("INPUT_KEY_DOWN", VK_CONTROL)
                     else signalRClient.sendKeyEvent("INPUT_KEY_UP", VK_CONTROL)
                     mainViewModel.setCtrlPressed(it)
@@ -776,7 +776,7 @@ fun ButtonPanel(
                     signalRClient.sendKeyEvent("INPUT_KEY_UP", VK_CONTROL)
                     mainViewModel.setCtrlPressed(false)
                 })
-                ModifierKeyButton("Alt", isAltPressed, Modifier.weight(1f), onToggle = { 
+                ModifierKeyButton("Alt", isAltPressed, Modifier.weight(1f), label = "Alt", mainViewModel = mainViewModel, onToggle = { 
                     if (it) signalRClient.sendKeyEvent("INPUT_KEY_DOWN", VK_MENU)
                     else signalRClient.sendKeyEvent("INPUT_KEY_UP", VK_MENU)
                     mainViewModel.setAltPressed(it)
@@ -786,7 +786,7 @@ fun ButtonPanel(
                     signalRClient.sendKeyEvent("INPUT_KEY_UP", VK_MENU)
                     mainViewModel.setAltPressed(false)
                 })
-                ModifierKeyButton("Win", isWinPressed, Modifier.weight(1f), onToggle = { 
+                ModifierKeyButton("Win", isWinPressed, Modifier.weight(1f), toggleOnTap = false, label = "Win", mainViewModel = mainViewModel, onToggle = { 
                     // Single tap: Send full press
                     signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_LWIN)
                 }, onDoubleClick = {
@@ -811,7 +811,7 @@ fun ButtonPanel(
                 ActionKeyButton(text = "Esc", modifier = Modifier.weight(1f)) {
                     signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_ESCAPE)
                 }
-                ModifierKeyButton("Shift", isShiftPressed, Modifier.weight(1f), onToggle = { 
+                ModifierKeyButton("Shift", isShiftPressed, Modifier.weight(1f), label = "Shift", mainViewModel = mainViewModel, onToggle = { 
                     if (it) signalRClient.sendKeyEvent("INPUT_KEY_DOWN", VK_SHIFT)
                     else signalRClient.sendKeyEvent("INPUT_KEY_UP", VK_SHIFT)
                     mainViewModel.setShiftPressed(it)
@@ -928,35 +928,59 @@ fun ModifierKeyButton(
     text: String,
     isToggled: Boolean,
     modifier: Modifier = Modifier,
+    toggleOnTap: Boolean = true,
+    label: String = text,
+    mainViewModel: MainViewModel? = null,
     onToggle: (Boolean) -> Unit,
     onDoubleClick: () -> Unit,
     onLongPress: (() -> Unit)? = null
 ) {
-    val containerColor = if (isToggled) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainer
-    val contentColor = if (isToggled) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
+    // Local state for instant feedback
+    var localToggled by remember { mutableStateOf(isToggled) }
+    
+    // Sync with remote state ONLY when it changes from the server
+    LaunchedEffect(isToggled) {
+        if (localToggled != isToggled) {
+            localToggled = isToggled
+        }
+    }
+    
+    val containerColor = if (localToggled) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainer
+    val contentColor = if (localToggled) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
 
-    FilledTonalButton(
-        onClick = { onToggle(!isToggled) },
-        colors = ButtonDefaults.filledTonalButtonColors(containerColor = containerColor, contentColor = contentColor),
+    Surface(
+        color = containerColor,
+        contentColor = contentColor,
+        shape = RoundedCornerShape(8.dp),
         modifier = modifier
             .height(40.dp)
             .pointerInput(Unit) {
                 detectTapGestures(
                     onDoubleTap = {
+                        mainViewModel?.addLog("[Remote] $label Double-Tapped", com.omni.sync.ui.screen.LogType.INFO)
                         onDoubleClick()
                     },
                     onTap = {
-                         onToggle(!isToggled)
+                         if (toggleOnTap) {
+                             localToggled = !localToggled
+                             mainViewModel?.addLog("[Remote] $label Toggled: $localToggled", com.omni.sync.ui.screen.LogType.INFO)
+                             onToggle(localToggled)
+                         } else {
+                             mainViewModel?.addLog("[Remote] $label Tapped (No toggle)", com.omni.sync.ui.screen.LogType.INFO)
+                             onToggle(localToggled)
+                         }
                     },
                     onLongPress = {
+                        localToggled = !localToggled
+                        mainViewModel?.addLog("[Remote] $label Long-Pressed. New state: $localToggled", com.omni.sync.ui.screen.LogType.INFO)
                         onLongPress?.invoke()
                     }
                 )
-            },
-        shape = RoundedCornerShape(8.dp),
-        contentPadding = PaddingValues(0.dp)
+            }
     ) {
-        Text(text, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Visible, fontSize = 11.sp)
+        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+            Text(text, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Visible, fontSize = 11.sp)
+        }
     }
 }
 
