@@ -124,9 +124,31 @@ fun AiChatScreen(
     // STRICT AUTO-SCROLL LOGIC
     var isAutoScrollEnabled by remember { mutableStateOf(true) }
     
-    // Always scroll to bottom on entry
-    LaunchedEffect(Unit) {
-        listState.scrollToItem(0)
+    val coroutineScope = rememberCoroutineScope()
+    fun scrollToBottom(animate: Boolean = true) {
+        isAutoScrollEnabled = true
+        coroutineScope.launch {
+            // Slight delay to ensure layout is ready
+            delay(100) 
+            if (animate) {
+                listState.animateScrollToItem(0)
+            } else {
+                listState.scrollToItem(0)
+            }
+        }
+    }
+
+    // Scroll to bottom when navigating to this screen
+    val currentScreen by mainViewModel.currentScreen.collectAsState()
+    LaunchedEffect(currentScreen) {
+        if (currentScreen == com.omni.sync.viewmodel.AppScreen.AI_CHAT) {
+            scrollToBottom(animate = false)
+        }
+    }
+
+    // Always scroll to bottom on session switch
+    LaunchedEffect(selectedPid) {
+        scrollToBottom(animate = false)
     }
 
     val voiceLauncher = rememberLauncherForActivityResult(
@@ -167,23 +189,11 @@ fun AiChatScreen(
                        aiStatus?.contains("Starting", ignoreCase = true) == true ||
                        aiDialog != null // Dialog means it's waiting for input, but effectively "active/busy" in a sense, but maybe not "thinking". Let's stick to active processing.
                        
-    val coroutineScope = rememberCoroutineScope()
     val isStartingSession by signalRClient.isStartingSessionFlow.collectAsState()
     val isConnected by mainViewModel.isConnected.collectAsState()
 
     var textFieldValue by remember { mutableStateOf(TextFieldValue(inputText)) }
     
-    fun scrollToBottom(animate: Boolean = true) {
-        isAutoScrollEnabled = true
-        coroutineScope.launch {
-            if (animate) {
-                listState.animateScrollToItem(0)
-            } else {
-                listState.scrollToItem(0)
-            }
-        }
-    }
-
     // Timer state for Stopwatch (PER SESSION)
     val sessionTimers by signalRClient.sessionTimers.collectAsState()
     var timeElapsedSeconds by remember { mutableLongStateOf(0L) }
@@ -215,12 +225,17 @@ fun AiChatScreen(
         var lastIndex = listState.firstVisibleItemIndex
         var lastOffset = listState.firstVisibleItemScrollOffset
         
-        snapshotFlow { listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset }
-            .collect { (currentIndex, currentOffset) ->
-                // In reverseLayout=true, index 0 is bottom. 
-                // Scrolling UP (away from bottom) INCREASES index or offset.
-                if (currentIndex > lastIndex || (currentIndex == lastIndex && currentOffset > lastOffset)) {
-                    isAutoScrollEnabled = false
+        snapshotFlow { listState.isScrollInProgress to (listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset) }
+            .collect { (inProgress, pos) ->
+                val (currentIndex, currentOffset) = pos
+                
+                // ONLY disable autoscroll if the USER is manually scrolling
+                if (inProgress) {
+                    // In reverseLayout=true, index 0 is bottom. 
+                    // Scrolling UP (away from bottom) INCREASES index or offset.
+                    if (currentIndex > lastIndex || (currentIndex == lastIndex && currentOffset > lastOffset)) {
+                        isAutoScrollEnabled = false
+                    }
                 }
                 
                 // Re-enable if we reach the bottom (or very close to it)
@@ -234,12 +249,11 @@ fun AiChatScreen(
     }
 
     // 2. Force Auto-Scroll when enabled
-    LaunchedEffect(filteredMessages.size, isAiThinking, isAutoScrollEnabled) {
-        if (isAutoScrollEnabled && (filteredMessages.isNotEmpty() || isAiThinking)) {
-            // Use scrollToItem for instant jump on send, animate for incoming
+    LaunchedEffect(filteredMessages, isAiThinking, isAutoScrollEnabled) {
+        if (isAutoScrollEnabled) {
             if (isAiThinking) {
                  scrollToBottom(animate = true)
-            } else {
+            } else if (filteredMessages.isNotEmpty()) {
                  scrollToBottom(animate = false)
             }
         }
@@ -621,7 +635,7 @@ fun AiChatScreen(
                     },
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
-                        .padding(bottom = currentBottomPadding + 170.dp, end = 16.dp),
+                        .padding(bottom = currentBottomPadding + 240.dp, end = 16.dp), // Moved up from 220.dp
                     containerColor = MaterialTheme.colorScheme.secondaryContainer,
                     contentColor = MaterialTheme.colorScheme.onSecondaryContainer
                 ) {

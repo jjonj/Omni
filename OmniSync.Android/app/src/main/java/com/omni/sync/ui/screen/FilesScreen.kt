@@ -26,8 +26,12 @@ import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import android.content.ClipboardManager
+import android.content.ClipData
+import android.content.Context
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.background
 import androidx.compose.ui.Alignment
@@ -915,6 +919,7 @@ fun FileSystemEntryItem(
     onMoveTo: (FileSystemEntry) -> Unit = {},
     onViewGitLog: (FileSystemEntry) -> Unit = {}
 ) {
+    val context = LocalContext.current
     var showMenu by remember { mutableStateOf(false) }
     var showDownloadDialog by remember { mutableStateOf(false) }
     var showDeleteConfirmation by remember { mutableStateOf(false) }
@@ -1099,6 +1104,16 @@ fun FileSystemEntryItem(
                         showMenu = false
                         onCliHere(entry)
                     }
+                )
+                DropdownMenuItem(
+                    text = { Text("Copy Path") },
+                    onClick = {
+                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                        val clip = ClipData.newPlainText("Path", entry.path)
+                        clipboard.setPrimaryClip(clip)
+                        showMenu = false
+                    },
+                    leadingIcon = { Icon(Icons.Default.ContentCopy, null) }
                 )
                 DropdownMenuItem(
                     text = { Text("Cache Whole Folder") },
