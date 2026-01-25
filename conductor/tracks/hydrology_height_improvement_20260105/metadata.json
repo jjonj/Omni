@@ -1,8 +1,0 @@
-{
-  "track_id": "hydrology_height_improvement_20260105",
-  "type": "feature",
-  "status": "new",
-  "created_at": "2026-01-05T17:21:00Z",
-  "updated_at": "2026-01-05T17:21:00Z",
-  "description": "Improve hydrology height generation by refining coastal blending, removing BFS artifacts, and fixing the river sinuosity slider."
-}
