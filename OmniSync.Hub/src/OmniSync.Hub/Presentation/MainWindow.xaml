@@ -255,15 +255,9 @@
                                 <TextBlock Text="Log Output" FontWeight="Bold" Margin="10" VerticalAlignment="Center"/>
                                 <Button Content="Clear Log" Command="{Binding ClearLogCommand}" HorizontalAlignment="Right" Margin="5" Padding="5,2"/>
                             </Grid>
-                            <ListBox x:Name="LogListBox" ItemsSource="{Binding LogMessages}" 
-                                     Background="#1E1E1E" Foreground="#D4D4D4" BorderThickness="0"
-                                     Margin="5" ScrollViewer.VerticalScrollBarVisibility="Auto">
-                                <ListBox.ItemTemplate>
-                                    <DataTemplate>
-                                        <TextBlock Text="{Binding}" TextWrapping="Wrap" FontFamily="Consolas"/>
-                                    </DataTemplate>
-                                </ListBox.ItemTemplate>
-                            </ListBox>
+                            <TextBox x:Name="LogTextBox" Text="{Binding LogMessagesText, Mode=OneWay}" IsReadOnly="True" 
+                                     VerticalScrollBarVisibility="Auto" TextWrapping="Wrap" Margin="5" 
+                                     TextChanged="LogTextBox_TextChanged"/>
                         </DockPanel>
                     </Border>
 
@@ -289,9 +283,8 @@
                                         MinWidth="120"/>
                                 <Button x:Name="ShutdownButton" 
                                         Content="{Binding ScheduledShutdownTimeLabel}" 
-                                        Command="{Binding ScheduleShutdownCommand}"
-                                        MouseDown="ShutdownButton_MouseDown"
-                                        MouseUp="ShutdownButton_MouseUp"
+                                        PreviewMouseDown="ShutdownButton_MouseDown"
+                                        PreviewMouseUp="ShutdownButton_MouseUp"
                                         MinWidth="150"/>
                             </StackPanel>
                         </Grid>

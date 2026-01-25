@@ -149,7 +149,7 @@ namespace OmniSync.Hub.Logic.Services
             else if (e.IsCodeDiff)
             {
                 _logger.LogInformation($"[HubEventSender] Broadcasting Code Diff for PID {broadcastPid}");
-                _monitorService.AddLogMessage($"[AI] Code diff received for PID {broadcastPid}");
+                // _monitorService.AddLogMessage($"[AI] Code diff received for PID {broadcastPid}");
                 await _hubContext.Clients.All.SendAsync("ReceiveAiCodeDiff", e.Text, broadcastPid);
             }
             else if (e.Text.StartsWith("Thinking: "))

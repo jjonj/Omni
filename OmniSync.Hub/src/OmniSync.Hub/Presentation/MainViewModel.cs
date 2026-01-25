@@ -712,28 +712,31 @@ namespace OmniSync.Hub.Presentation
 
         public void UpdateShutdownLabel(DateTime? scheduledTime)
         {
-            ShutdownModeLabel = _shutdownService.GetCurrentMode().ToString();
+            var mode = _shutdownService.GetCurrentMode().ToString();
+            ShutdownModeLabel = mode;
             if (scheduledTime == null)
             {
-                ScheduledShutdownTimeLabel = "None";
+                ScheduledShutdownTimeLabel = $"{mode}: None";
             }
             else
             {
                 var remaining = scheduledTime.Value - DateTime.Now;
                 if (remaining.TotalSeconds > 0)
                 {
+                    string timeStr;
                     if (remaining.TotalHours >= 1)
                     {
-                        ScheduledShutdownTimeLabel = $"{remaining.Days}d {(int)remaining.TotalHours % 24}h {remaining.Minutes}m {remaining.Seconds}s";
+                        timeStr = $"{(int)remaining.TotalHours}h {remaining.Minutes}m {remaining.Seconds}s";
                     }
                     else
                     {
-                        ScheduledShutdownTimeLabel = $"{remaining.Minutes}m {remaining.Seconds}s";
+                        timeStr = $"{remaining.Minutes}m {remaining.Seconds}s";
                     }
+                    ScheduledShutdownTimeLabel = $"{mode}: {timeStr}";
                 }
                 else
                 {
-                    ScheduledShutdownTimeLabel = "Now";
+                    ScheduledShutdownTimeLabel = $"{mode}: Now";
                 }
             }
         }
