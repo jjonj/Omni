@@ -273,13 +273,6 @@
                                            FontStyle="Italic" Opacity="0.8"/>
                             </StackPanel>
                             <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-                                <Button Content="Test Ctrl" 
-                                        Command="{Binding TestCtrlCommand}"
-                                        Background="{Binding IsCtrlPressed, Converter={StaticResource StateToBrushConverter}}"/>
-                                <Button Content="Test Y" 
-                                        Command="{Binding TestYCommand}"/>
-                                <Button Content="Test Ctrl+Y" 
-                                        Command="{Binding TestCtrlYCommand}"/>
                                 <Button Content="Reset AI Sessions" 
                                         Command="{Binding ResetAiSessionsCommand}"
                                         MinWidth="120"

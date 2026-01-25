@@ -45,9 +45,6 @@ namespace OmniSync.Hub.Presentation
         public ICommand FocusAiSessionsCommand { get; }
         public ICommand ResetAiSessionsCommand { get; }
         public ICommand SaveAiSettingsCommand { get; }
-        public ICommand TestCtrlCommand { get; }
-        public ICommand TestYCommand { get; }
-        public ICommand TestCtrlYCommand { get; }
 
         public ICommand AddProjectCommand { get; }
         public ICommand DeleteProjectCommand { get; }
@@ -458,21 +455,6 @@ namespace OmniSync.Hub.Presentation
                 _hubMonitorService.AddLogMessage("[AI] User requested manual reset of all AI sessions.");
                 _aiCliService.KillAllGeminiProcesses();
                 await _aiCliService.DiscoverSessionsAsync();
-            });
-
-            TestCtrlCommand = new RelayCommand(_ => {
-                if (IsCtrlPressed) _inputService.KeyUp(0x11);
-                else _inputService.KeyDown(0x11);
-            });
-
-            TestYCommand = new RelayCommand(_ => {
-                _inputService.SendKeyPress(0x59);
-            });
-
-            TestCtrlYCommand = new RelayCommand(_ => {
-                _inputService.KeyDown(0x11); // Ctrl
-                _inputService.SendKeyPress(0x59); // Y
-                _inputService.KeyUp(0x11);
             });
 
             SaveAiSettingsCommand = new RelayCommand(_ => {
