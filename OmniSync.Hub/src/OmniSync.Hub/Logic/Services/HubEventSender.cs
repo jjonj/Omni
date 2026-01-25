@@ -24,6 +24,7 @@ namespace OmniSync.Hub.Logic.Services
         private readonly IHubContext<RpcApiHub> _hubContext;
         private readonly ProcessService _processService;
         private readonly InputService _inputService;
+        private readonly AudioService _audioService;
         private readonly ShutdownService _shutdownService;
         private readonly CommandDispatcher _commandDispatcher;
         private readonly FileService _fileService; // Added FileService dependency
@@ -32,12 +33,13 @@ namespace OmniSync.Hub.Logic.Services
         private readonly HubMonitorService _monitorService;
         private readonly Dictionary<string, string> _clientCommandOutputSubscriptions = new Dictionary<string, string>(); // ClientId -> ConnectionId for command output
 
-        public HubEventSender(ILogger<HubEventSender> logger, IHubContext<RpcApiHub> hubContext, ProcessService processService, InputService inputService, ShutdownService shutdownService, CommandDispatcher commandDispatcher, FileService fileService, AiCliService aiCliService, HubSettingsService settingsService, HubMonitorService monitorService) // Added AiCliService
+        public HubEventSender(ILogger<HubEventSender> logger, IHubContext<RpcApiHub> hubContext, ProcessService processService, InputService inputService, AudioService audioService, ShutdownService shutdownService, CommandDispatcher commandDispatcher, FileService fileService, AiCliService aiCliService, HubSettingsService settingsService, HubMonitorService monitorService) // Added AiCliService
         {
             _logger = logger;
             _hubContext = hubContext;
             _processService = processService;
             _inputService = inputService;
+            _audioService = audioService;
             _shutdownService = shutdownService;
             _commandDispatcher = commandDispatcher;
             _fileService = fileService; // Assign FileService
@@ -80,6 +82,9 @@ namespace OmniSync.Hub.Logic.Services
         {
             _logger.LogInformation($"[HubEventSender] Received Dialog from PID {e.Pid}. Type: {e.Type}, Prompt: {e.Prompt}");
             _monitorService.AddLogMessage($"AI Dialog ({e.Type}): {e.Prompt}");
+
+            // Play sound on Hub
+            _audioService.PlayBlip();
 
             // Special handling for pro_quota
             if (e.Type == "pro_quota")

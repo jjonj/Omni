@@ -133,8 +133,6 @@ class SignalRClient(
     private val _isWaitingForAiResponseMap = MutableStateFlow<Map<Int, Boolean>>(emptyMap())
     val isWaitingForAiResponseMap: StateFlow<Map<Int, Boolean>> = _isWaitingForAiResponseMap
 
-    val aiDialogAlertEvent = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
-
     val selectedPid: StateFlow<Int> = _selectedPid
 
     private val _aiMessages = MutableStateFlow<List<AiMessage>>(emptyList())
@@ -598,7 +596,6 @@ class SignalRClient(
         hubConnection?.on("ReceiveAiDialog", { pid: Int, type: String, prompt: String, options: List<String>? ->
             Log.d("SignalRClient", "ReceiveAiDialog from PID $pid: $type - $prompt")
             updateSessionDialog(pid, AiDialog(type, prompt, options))
-            coroutineScope.launch { aiDialogAlertEvent.emit(Unit) }
         }, Int::class.java, String::class.java, String::class.java, List::class.java)
 
         hubConnection?.on("ReceivePayload", { payloadData: Any ->

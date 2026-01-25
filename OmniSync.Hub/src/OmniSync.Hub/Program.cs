@@ -271,6 +271,7 @@ builder.Services.AddSingleton<HubEventSender>(provider =>
     var hubContext = provider.GetRequiredService<IHubContext<RpcApiHub>>();
     var processService = provider.GetRequiredService<ProcessService>();
     var inputService = provider.GetRequiredService<InputService>();
+    var audioService = provider.GetRequiredService<AudioService>();
     var shutdownService = provider.GetRequiredService<ShutdownService>();
     var commandDispatcher = provider.GetRequiredService<CommandDispatcher>();
     var fileService = provider.GetRequiredService<FileService>(); // Get FileService
@@ -278,7 +279,7 @@ builder.Services.AddSingleton<HubEventSender>(provider =>
     var settingsService = provider.GetRequiredService<HubSettingsService>();
     var monitorService = provider.GetRequiredService<HubMonitorService>();
 
-    return new HubEventSender(logger, hubContext, processService, inputService, shutdownService, commandDispatcher, fileService, aiCliService, settingsService, monitorService);
+    return new HubEventSender(logger, hubContext, processService, inputService, audioService, shutdownService, commandDispatcher, fileService, aiCliService, settingsService, monitorService);
 });
 builder.Services.AddSingleton<TrayIconManager>(provider =>
 {

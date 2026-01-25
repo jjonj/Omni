@@ -204,17 +204,6 @@ class MainActivity : ComponentActivity() {
                         }
                     }
 
-                    LaunchedEffect(Unit) {
-                        signalRClient.aiDialogAlertEvent.collect {
-                            try {
-                                val toneGen = ToneGenerator(AudioManager.STREAM_NOTIFICATION, 100)
-                                toneGen.startTone(ToneGenerator.TONE_PROP_BEEP, 150)
-                            } catch (e: Exception) {
-                                // Ignore sound errors
-                            }
-                        }
-                    }
-
                     LaunchedEffect(currentScreen) {
                         val index = swipeableScreens.indexOf(currentScreen)
                         if (index != -1 && pagerState.currentPage != index) {
