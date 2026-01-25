@@ -31,6 +31,7 @@ namespace OmniSync.Hub.Logic.Services
         private readonly AiCliService _aiCliService; // Added AiCliService
         private readonly HubSettingsService _settingsService;
         private readonly HubMonitorService _monitorService;
+        private string? _lastPlayedDialogPrompt;
         private readonly Dictionary<string, string> _clientCommandOutputSubscriptions = new Dictionary<string, string>(); // ClientId -> ConnectionId for command output
 
         public HubEventSender(ILogger<HubEventSender> logger, IHubContext<RpcApiHub> hubContext, ProcessService processService, InputService inputService, AudioService audioService, ShutdownService shutdownService, CommandDispatcher commandDispatcher, FileService fileService, AiCliService aiCliService, HubSettingsService settingsService, HubMonitorService monitorService) // Added AiCliService
@@ -83,8 +84,12 @@ namespace OmniSync.Hub.Logic.Services
             _logger.LogInformation($"[HubEventSender] Received Dialog from PID {e.Pid}. Type: {e.Type}, Prompt: {e.Prompt}");
             _monitorService.AddLogMessage($"AI Dialog ({e.Type}): {e.Prompt}");
 
-            // Play sound on Hub
-            _audioService.PlayBlip();
+            // Play sound on Hub ONLY if it's a new prompt
+            if (_lastPlayedDialogPrompt != e.Prompt)
+            {
+                _audioService.PlayBlip();
+                _lastPlayedDialogPrompt = e.Prompt;
+            }
 
             // Special handling for pro_quota
             if (e.Type == "pro_quota")
@@ -155,6 +160,10 @@ namespace OmniSync.Hub.Logic.Services
             }
             else 
             {
+                 // Normal response received, clear the last dialog prompt tracker
+                 // so the next dialog (even if identical) will play its sound.
+                 _lastPlayedDialogPrompt = null;
+
                  // Always send the text if present
                  if (!string.IsNullOrEmpty(e.Text))
                  {
