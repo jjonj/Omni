@@ -32,6 +32,7 @@ namespace OmniSync.Hub.Logic.Services
         private readonly HubSettingsService _settingsService;
         private readonly HubMonitorService _monitorService;
         private string? _lastPlayedDialogPrompt;
+        private DateTime _lastPlayedDialogTime = DateTime.MinValue;
         private readonly Dictionary<string, string> _clientCommandOutputSubscriptions = new Dictionary<string, string>(); // ClientId -> ConnectionId for command output
 
         public HubEventSender(ILogger<HubEventSender> logger, IHubContext<RpcApiHub> hubContext, ProcessService processService, InputService inputService, AudioService audioService, ShutdownService shutdownService, CommandDispatcher commandDispatcher, FileService fileService, AiCliService aiCliService, HubSettingsService settingsService, HubMonitorService monitorService) // Added AiCliService
@@ -84,11 +85,12 @@ namespace OmniSync.Hub.Logic.Services
             _logger.LogInformation($"[HubEventSender] Received Dialog from PID {e.Pid}. Type: {e.Type}, Prompt: {e.Prompt}");
             _monitorService.AddLogMessage($"AI Dialog ({e.Type}): {e.Prompt}");
 
-            // Play sound on Hub ONLY if it's a new prompt
-            if (_lastPlayedDialogPrompt != e.Prompt)
+            // Play sound on Hub ONLY if it's a new prompt AND cooldown has passed (30s)
+            if (_lastPlayedDialogPrompt != e.Prompt || (DateTime.Now - _lastPlayedDialogTime).TotalSeconds > 30)
             {
                 _audioService.PlayBlip();
                 _lastPlayedDialogPrompt = e.Prompt;
+                _lastPlayedDialogTime = DateTime.Now;
             }
 
             // Special handling for pro_quota
