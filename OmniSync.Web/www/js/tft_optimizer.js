@@ -199,8 +199,14 @@ class TFTOptimizer {
 
         for (const targetTrait in mustIncludeTraits) {
             const requiredValue = mustIncludeTraits[targetTrait];
-            if ((counts[targetTrait] || 0) < requiredValue) {
-                score -= this.INVALID_COMP_PENALTY;
+            const currentCount = (counts[targetTrait] || 0);
+            if (board.length >= targetSize) {
+                if (currentCount < requiredValue) {
+                    score -= this.INVALID_COMP_PENALTY;
+                }
+            } else {
+                // Guidance for beam search: partial progress towards must-include traits is good
+                score += currentCount * 5000;
             }
         }
         
@@ -221,12 +227,18 @@ class TFTOptimizer {
             if (u.cost >= 4) highCostCount++;
         }
 
-        if (targetSize <= 6) {
-            if (carryCount < 1) score -= this.MISSING_CARRY_PENALTY;
-        } else if (targetSize <= 8) {
-            if (carryCount < 2 || highCostCarryCount < 1) score -= this.MISSING_CARRY_PENALTY;
+        if (board.length >= targetSize) {
+            if (targetSize <= 6) {
+                if (carryCount < 1) score -= this.MISSING_CARRY_PENALTY;
+            } else if (targetSize <= 8) {
+                if (carryCount < 2 || highCostCarryCount < 1) score -= this.MISSING_CARRY_PENALTY;
+            } else {
+                if (carryCount < 3 || highCostCarryCount < 2) score -= this.MISSING_CARRY_PENALTY;
+            }
         } else {
-            if (carryCount < 3 || highCostCarryCount < 2) score -= this.MISSING_CARRY_PENALTY;
+            // Guidance for carries in partial boards
+            score += carryCount * 2000;
+            score += highCostCarryCount * 3000;
         }
         
         const costWeight = (targetSize >= 7) ? this.UNIT_COST_TIEBREAKER_WEIGHT : -10; 
@@ -251,16 +263,18 @@ class TFTOptimizer {
             score += u.cost * costWeight;
         }
         
-        if (targetSize === 10) {
-            if (lowCostCount > 3) score -= this.INVALID_COMP_PENALTY;
-            if (highCostCount < 5) score -= this.INVALID_COMP_PENALTY;
+        if (board.length >= targetSize) {
+            if (targetSize === 10) {
+                if (lowCostCount > 3) score -= this.INVALID_COMP_PENALTY;
+                if (highCostCount < 5) score -= this.INVALID_COMP_PENALTY;
+            }
+            if (targetSize === 9) {
+                if (lowCostCount > 4) score -= this.INVALID_COMP_PENALTY;
+                if (highCostCount < 4) score -= this.INVALID_COMP_PENALTY;
+            }
+            if (targetSize === 4 && threeCostCount > 1) score -= this.INVALID_COMP_PENALTY;
+            if (targetSize === 5 && threeCostCount > 2) score -= this.INVALID_COMP_PENALTY;
         }
-        if (targetSize === 9) {
-            if (lowCostCount > 4) score -= this.INVALID_COMP_PENALTY;
-            if (highCostCount < 4) score -= this.INVALID_COMP_PENALTY;
-        }
-        if (targetSize === 4 && threeCostCount > 1) score -= this.INVALID_COMP_PENALTY;
-        if (targetSize === 5 && threeCostCount > 2) score -= this.INVALID_COMP_PENALTY;
         
         return { score, counts };
     }
@@ -330,10 +344,12 @@ class TFTOptimizer {
         
         // Pass 1: Direct Synergy Scoring
         const unitScores = new Map();
+        const mustTraitNames = Object.keys(mustIncludeTraits);
         for (const u of candidates) {
             let score = 0;
             for (const t of u.traits) {
                 if (synergyBase.has(t)) score += 20;
+                if (mustTraitNames.includes(t)) score += 30;
                 
                 // Prioritize origins if in world-runes mode
                 if (mode === 'world-runes') {
