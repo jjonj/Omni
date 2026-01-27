@@ -49,6 +49,3 @@
 ---
 
 ---
-
-- [~] **Track: cli api (Omni Hub Resource Opener & Gemini CLI Extension)**
-*Link: [./tracks/feat_cli_api_20260126/](./tracks/feat_cli_api_20260126/)*

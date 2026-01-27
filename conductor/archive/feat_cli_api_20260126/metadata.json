@@ -1,0 +1,8 @@
+{
+  "track_id": "feat_cli_api_20260126",
+  "type": "feature",
+  "status": "in_progress",
+  "created_at": "2026-01-26T19:34:00Z",
+  "updated_at": "2026-01-26T20:45:00Z",
+  "description": "cli api: Enable OmniHub to open files/folders and provide an API for Gemini CLI, renaming ExternalCommandController to OmniHubAPI."
+}
