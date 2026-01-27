@@ -39,9 +39,14 @@ OmniSync is a multi-platform ecosystem utilizing native technologies for maximum
     -   **Path:** `OmniSync.Web/www/IslandGenerator`
 
 ### 5. Infrastructure & Communication
--   **Protocol:** SignalR (WebSockets with Long Polling fallback).
+-   **Protocols:** 
+    - SignalR (WebSockets) for real-time bi-directional events.
+    - REST API (OmniHubAPI) for authenticated external command execution and session management.
 -   **Transport Security:** Tailscale VPN Mesh (WireGuard) - No public internet exposure.
 -   **Serialization:** JSON / Protocol Buffers.
+
+### 6. AI & Extension Framework
+-   **Gemini CLI Extensions:** Support for Model Context Protocol (MCP) compatible extensions (e.g., `omni` extension) for host-AI interoperability.
 
 ## Extensibility
 The system is designed to be extensible. New technology stacks and languages (e.g., Python for scripting, Go for specific micro-utilities) can be integrated as needed to support new features or "skills."

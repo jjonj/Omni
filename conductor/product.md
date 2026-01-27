@@ -31,9 +31,11 @@ The primary user is the developer/creator themselves—a power user who demands:
 -   **Intelligent Alarms:** Advanced alarm system with gradual wake, macro integration, and custom dismiss messages.
 
 ### 4. AI Integration
--   **Mobile AI Interface:** A dedicated chat interface on Android for interacting with local LLMs (via Gemini CLI).
+-   **Hybrid AI Ecosystem:** Interaction with local LLMs via Gemini CLI, with deep system integration through custom extensions.
 -   **Interleaved Diffs:** Readable, line-by-line file modification previews (+/-) using a greedy matching algorithm for code changes.
 -   **Remote Execution:** Triggering Hub commands and file modifications through natural language on the phone.
+-   **Cross-Session Intelligence:** Capabilities for the AI to list, interact with, and retrieve history from other active CLI sessions.
+-   **Intelligent Resource Opener:** AI-driven capability to open files (with line-specific targeting), folders, and URLs using host-defined application mappings and automatic window focusing.
 
 ### 4. Creative Tools & Submodules
 -   **Procedural Generation:** Integration of standalone tools like the Island Generator for rapid creative prototyping and world-building.
