@@ -82,6 +82,7 @@ hint.txt
 question.txt
 answer.txt
 problem.txt
+gemini_cli_debug.log
 
 /gradle-8.8/
 .gradle/
@@ -99,3 +100,12 @@ problem.txt
 hub_log.txt
 
 Resources/UI/
+
+commit_msg*
+
+git*.txt
+coderesults.txt
+
+speech_input.wav
+response.wav
+OmniSync.Hub/Voice/MIND/Diary/*

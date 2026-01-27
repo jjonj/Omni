@@ -37,6 +37,7 @@ class CliApiTester:
         self.new_session_pid = None
         self.hub = None
         self.history_received = asyncio.Event()
+        self.ai_finished = asyncio.Event()
         self.last_history = None
 
     def on_open(self):
@@ -47,6 +48,15 @@ class CliApiTester:
         pid = args[0]
         logger.info(f"Received new session PID from Hub: {pid}")
         self.new_session_pid = pid
+
+    def on_ai_status(self, args):
+        # Hub sends [status, pid]
+        if args and len(args) >= 2:
+            status, pid = args[0], args[1]
+            if str(pid) == str(self.new_session_pid):
+                logger.info(f"AI Status (PID {pid}): {status}")
+                if status == "FINISHED":
+                    self.loop.call_soon_threadsafe(self.ai_finished.set)
 
     def on_ai_history(self, args):
         # Hub sends [historyJson, pid]
@@ -66,6 +76,7 @@ class CliApiTester:
 
         self.hub.on("ReceiveNewAiSessionPid", self.on_new_session_pid)
         self.hub.on("ReceiveAiHistory", self.on_ai_history)
+        self.hub.on("ReceiveAiStatus", self.on_ai_status)
         self.hub.on_open(self.on_open)
         
         self.hub.start()
@@ -112,70 +123,58 @@ class CliApiTester:
             return 1
         logger.info("List Sessions verification SUCCESS.")
 
-        # 5. Test REST API: Send Message
-        logger.info(f"Testing REST API: Send Message to PID {pid}...")
-        test_msg = "Hello, please confirm you received this message by saying 'ACK'."
-        payload = {"Pid": pid, "Message": test_msg}
-        resp = requests.post(f"{REST_API_URL}/command", params={"key": API_KEY, "cmd": "SEND_CLI_MESSAGE"}, json=payload)
-        if resp.status_code != 200:
-            logger.error(f"Send Message API failed: {resp.status_code} {resp.text}")
-            return 1
-        logger.info("Send Message command accepted. Waiting for AI to process...")
-        await asyncio.sleep(10) # Give AI time to respond and update history
-
-        # 6. Test REST API: Get History
-        logger.info(f"Testing REST API: Get History for PID {pid}...")
-        self.history_received.clear()
-        resp = requests.get(f"{REST_API_URL}/cli/history", params={"key": API_KEY, "pid": pid, "maxChars": 1000})
-        if resp.status_code != 200:
-            logger.error(f"Get History API failed: {resp.status_code} {resp.text}")
-            return 1
+        # 5. Test AI Tool Integration: Ask AI to open design.txt
+        target_file = os.path.join(ROOT_DIR, "design.txt").replace("/", "\\")
+        logger.info(f"Testing AI Tool Integration: Asking AI to open {target_file} at line 100...")
         
-        logger.info("History request triggered via REST, waiting for Hub broadcast...")
+        # We prompt the AI to use its tool.
+        ai_prompt = f"Please open the file '{target_file}' at line 100 using your open_resource tool."
+        payload = {"Pid": pid, "Message": ai_prompt}
+        
+        self.ai_finished.clear()
+        resp = requests.post(f"{REST_API_URL}/command", params={"key": API_KEY, "cmd": "SEND_CLI_MESSAGE"}, json=payload)
+        
+        if resp.status_code != 200:
+            logger.error(f"Send AI Prompt failed: {resp.status_code} {resp.text}")
+            return 1
+            
+        logger.info("AI Prompt sent. Waiting for AI to reply (FINISHED status)...")
+        await asyncio.wait_for(self.ai_finished.wait(), timeout=60)
+        
+        logger.info("AI finished its turn. Waiting an additional 60 seconds as requested...")
+        await asyncio.sleep(60)
+
+        # 6. Verify Tool Execution via History
+        logger.info("Fetching history to verify tool call...")
+        self.history_received.clear()
+        requests.get(f"{REST_API_URL}/cli/history", params={"key": API_KEY, "pid": pid, "maxChars": 2000})
+        
         try:
             await asyncio.wait_for(self.history_received.wait(), timeout=30)
-            logger.info(f"History received successfully. Length: {len(self.last_history)}")
-            preview = self.last_history[:150] + "..." if len(self.last_history) > 150 else self.last_history
-            print(f"\nHISTORY PREVIEW:\n{preview}\n")
+            logger.info("History received for verification.")
             
-            if "ACK" not in self.last_history and "confirm" not in self.last_history:
-                logger.warning("Warning: Could not find expected message content in history. AI might still be thinking.")
+            # Check if history contains the tool call
+            if "open_resource" in self.last_history and "design.txt" in self.last_history:
+                logger.info("SUCCESS: Found 'open_resource' tool call in AI history.")
+            else:
+                logger.warning("WARNING: Could not find 'open_resource' call in history. AI might have failed or used a different tool.")
+                print(f"\nFULL HISTORY FOR DEBUG:\n{self.last_history}\n")
         except asyncio.TimeoutError:
-            logger.error("Timed out waiting for history broadcast.")
+            logger.error("Timed out waiting for history broadcast during tool verification.")
             return 1
 
-        # 7. Test REST API: Open Resource (File, Folder, HTML simultaneously)
-        target_file = os.path.join(ROOT_DIR, "design.txt").replace("/", "\\")
-        target_folder = WORKSPACE.replace("/", "\\")
-        target_html = os.path.join(ROOT_DIR, "OmniSync.Web", "www", "IslandGenerator", "index.html").replace("/", "\\")
-
-        logger.info(f"Testing REST API: Opening 3 resources...")
-        
-        # Open File
-        logger.info(f"Opening File: {target_file}")
-        requests.post(f"{REST_API_URL}/command", params={"key": API_KEY, "cmd": "OPEN_RESOURCE"}, json={"Path": target_file})
-        
-        # Open Folder
-        logger.info(f"Opening Folder: {target_folder}")
-        requests.post(f"{REST_API_URL}/command", params={"key": API_KEY, "cmd": "OPEN_RESOURCE"}, json={"Path": target_folder})
-        
-        # Open HTML
-        logger.info(f"Opening HTML: {target_html}")
-        requests.post(f"{REST_API_URL}/command", params={"key": API_KEY, "cmd": "OPEN_RESOURCE"}, json={"Path": target_html})
-
+        # 7. Manual Verification of AI Action
         print("\n" + "!"*60)
         print(" MANUAL VERIFICATION REQUIRED")
         print("!"*60)
         
-        opened_file = input(f"1. Did 'design.txt' open in Notepad++? (y/n): ")
-        opened_folder = input(f"2. Did the folder '{target_folder}' open in Explorer? (y/n): ")
-        opened_html = input(f"3. Did the HTML file open in the mapped browser? (y/n): ")
+        opened_file = input(f"Did the AI successfully open 'design.txt' at line 100 in Notepad++? (y/n): ")
 
-        if opened_file.lower() != 'y' or opened_folder.lower() != 'y' or opened_html.lower() != 'y':
-            logger.error(f"FAIL: Resource opening failed. Results: File={opened_file}, Folder={opened_folder}, HTML={opened_html}")
+        if opened_file.lower() != 'y':
+            logger.error(f"FAIL: AI tool execution failed or was not visible.")
             return 1
 
-        logger.info("All resources opened successfully.")
+        logger.info("AI Tool Integration verified successfully.")
         self.hub.stop()
         return 0
 
