@@ -95,7 +95,7 @@ class DiffDisplayTester:
 
     async def start_session(self):
         logger.info(f"Requesting Hub to launch Gemini CLI at {self.test_dir}...")
-        self.hub.send("StartCliAtWorkspace", [self.test_dir])
+        self.hub.send("StartCliAtWorkspace", [self.test_dir, "JarvisFast"])
         
         start_wait = time.time()
         while self.new_session_pid is None and time.time() - start_wait < 30:

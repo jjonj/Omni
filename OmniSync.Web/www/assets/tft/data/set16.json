@@ -612,18 +612,17 @@
       "locked": true,
       "icon_url": "assets/tft/set16/champions/Fizz.png"
     },
-    {
-      "name": "Garen",
-      "cost": 4,
-      "traits": [
-        "Demacia",
-        "Juggernaut"
-      ],
-      "is_carry": false,
-      "locked": false,
-      "icon_url": "assets/tft/set16/champions/Garen.png"
-    },
-    {
+          {
+            "name": "Garen",
+            "cost": 4,
+            "traits": [
+              "Demacia",
+              "Defender"
+            ],
+            "is_carry": false,
+            "locked": false,
+            "icon_url": "assets/tft/set16/champions/Garen.png"
+          },    {
       "name": "Kai'Sa",
       "cost": 4,
       "traits": [

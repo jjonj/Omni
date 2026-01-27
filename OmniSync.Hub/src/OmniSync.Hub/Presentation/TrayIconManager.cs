@@ -206,7 +206,7 @@ namespace OmniSync.Hub.Presentation
                     _notifyIcon.MouseClick += OnMouseClick; // Handle left-click to show/hide window
 
                     _hubMonitorService.ExternalCommandReceived += (s, cmd) => {
-                        _notifyIcon.ShowBalloonTip(3000, "External Command", $"Executed: {cmd}", ToolTipIcon.Info);
+                        // Notification removed per user request to reduce noise
                     };
 
                     _hotkeyService.OpenHubWindowRequested += (s, e) => OnShowWindow(null, EventArgs.Empty);

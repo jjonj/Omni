@@ -10,8 +10,8 @@ SILENCE_THRESHOLD = 0.01
 SILENCE_DURATION = 2.0
 MAX_DURATION = 30
 
-OUTPUT_FILE = "JarvisPoC/speech_input.wav"
-LOCK_FILE = "JarvisPoC/recording.lock"
+OUTPUT_FILE = r"D:\SSDProjects\Omni\OmniSync.Hub\Voice\JarvisPoC\speech_input.wav"
+LOCK_FILE = r"D:\SSDProjects\Omni\OmniSync.Hub\Voice\JarvisPoC\recording.lock"
 
 def record():
     with open(LOCK_FILE, "w") as f: f.write("1")

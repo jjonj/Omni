@@ -10,7 +10,7 @@ import queue
 import threading
 
 # --- Robust Config ---
-FINGERPRINT_FILE = "JarvisPoC/fingerprint.pkl"
+FINGERPRINT_FILE = r"D:\SSDProjects\Omni\OmniSync.Hub\Voice\JarvisPoC\fingerprint.pkl"
 FS = 16000
 CHUNK_DURATION = 1.5
 THRESHOLD = 0.95      # Balanced
@@ -57,7 +57,8 @@ def audio_processor():
             
             if max_sim > THRESHOLD:
                 print(f"\n[MATCH] Confidence: {max_sim:.4f}")
-                subprocess.Popen([sys.executable, "JarvisPoC/recorder.py"])
+                recorder_path = r"D:\SSDProjects\Omni\OmniSync.Hub\Voice\JarvisPoC\recorder.py"
+                subprocess.Popen([sys.executable, recorder_path])
                 os._exit(0)
         except Exception as e:
             pass

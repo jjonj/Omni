@@ -45,6 +45,7 @@ namespace OmniSync.Hub.Presentation
         public ICommand FocusAiSessionsCommand { get; }
         public ICommand ResetAiSessionsCommand { get; }
         public ICommand SaveAiSettingsCommand { get; }
+        public ICommand LaunchJarvisCommand { get; }
 
         public ICommand AddProjectCommand { get; }
         public ICommand DeleteProjectCommand { get; }
@@ -216,20 +217,120 @@ namespace OmniSync.Hub.Presentation
                             }
                         }
 
-                        public bool TellPcSoundEnabled
-                        {
-                            get => _settingsService.Settings.TellPcSoundEnabled;
-                            set
-                            {
-                                if (_settingsService.Settings.TellPcSoundEnabled != value)
+                                public bool TellPcSoundEnabled
                                 {
-                                    _settingsService.Settings.TellPcSoundEnabled = value;
-                                    OnPropertyChanged();
+                                    get => _settingsService.Settings.TellPcSoundEnabled;
+                                    set
+                                    {
+                                        if (_settingsService.Settings.TellPcSoundEnabled != value)
+                                        {
+                                            _settingsService.Settings.TellPcSoundEnabled = value;
+                                            OnPropertyChanged();
+                                        }
+                                    }
                                 }
-                            }
-                        }
-                
-                        private string _scheduledShutdownTimeLabel = "None";
+                        
+                                // --- Jarvis Settings ---
+                                public bool JarvisAutoStart
+                                {
+                                    get => _settingsService.Settings.JarvisAutoStart;
+                                    set
+                                    {
+                                        if (_settingsService.Settings.JarvisAutoStart != value)
+                                        {
+                                            _settingsService.Settings.JarvisAutoStart = value;
+                                            _settingsService.SaveSettings();
+                                            OnPropertyChanged();
+                                        }
+                                    }
+                                }
+                        
+                                        public string JarvisWorkspace
+                        
+                                        {
+                        
+                                            get => _settingsService.Settings.JarvisWorkspace;
+                        
+                                            set
+                        
+                                            {
+                        
+                                                if (_settingsService.Settings.JarvisWorkspace != value)
+                        
+                                                {
+                        
+                                                    _settingsService.Settings.JarvisWorkspace = value;
+                        
+                                                    _settingsService.SaveSettings();
+                        
+                                                    OnPropertyChanged();
+                        
+                                                }
+                        
+                                            }
+                        
+                                        }
+                        
+                                
+                        
+                                        public string JarvisSystemContextPath
+                        
+                                        {
+                        
+                                            get => _settingsService.Settings.JarvisSystemContextPath;
+                        
+                                            set
+                        
+                                            {
+                        
+                                                if (_settingsService.Settings.JarvisSystemContextPath != value)
+                        
+                                                {
+                        
+                                                    _settingsService.Settings.JarvisSystemContextPath = value;
+                        
+                                                    _settingsService.SaveSettings();
+                        
+                                                    OnPropertyChanged();
+                        
+                                                }
+                        
+                                            }
+                        
+                                        }
+                        
+                                
+                        
+                                        public string JarvisModel
+                        
+                                        {
+                        
+                                            get => _settingsService.Settings.JarvisModel;
+                        
+                                            set
+                        
+                                            {
+                        
+                                                if (_settingsService.Settings.JarvisModel != value)
+                        
+                                                {
+                        
+                                                    _settingsService.Settings.JarvisModel = value;
+                        
+                                                    _settingsService.SaveSettings();
+                        
+                                                    OnPropertyChanged();
+                        
+                                                }
+                        
+                                            }
+                        
+                                        }
+                        
+                                
+                        
+                                
+                                                private string _scheduledShutdownTimeLabel = "None";
                         public string ScheduledShutdownTimeLabel
                         {
                             get => _scheduledShutdownTimeLabel;
@@ -352,6 +453,7 @@ namespace OmniSync.Hub.Presentation
             FocusAiSessionsCommand = new RelayCommand(_ => { });
             ResetAiSessionsCommand = new RelayCommand(_ => { });
             SaveAiSettingsCommand = new RelayCommand(_ => { });
+            LaunchJarvisCommand = new RelayCommand(_ => { });
 
             AddProjectCommand = new RelayCommand(_ => { });
             DeleteProjectCommand = new RelayCommand(_ => { });
@@ -459,8 +561,49 @@ namespace OmniSync.Hub.Presentation
 
             SaveAiSettingsCommand = new RelayCommand(_ => {
                 _settingsService.SaveSettings();
-                _hubMonitorService.AddLogMessage("[Settings] Saved Tell PC Configuration.");
+                _hubMonitorService.AddLogMessage("[Settings] Saved AI Configuration.");
                 MessageBox.Show("AI Configuration Saved.", "Settings", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            });
+
+            LaunchJarvisCommand = new RelayCommand(async _ => {
+                _hubMonitorService.AddLogMessage("[AI] User triggered Jarvis Loop launch.");
+                string workspace = _settingsService.Settings.JarvisWorkspace;
+                string systemPromptPath = _settingsService.Settings.JarvisSystemContextPath;
+                string model = _settingsService.Settings.JarvisModel;
+
+                string systemContext = "You are Jarvis.";
+                try
+                {
+                    if (System.IO.File.Exists(systemPromptPath))
+                    {
+                        systemContext = System.IO.File.ReadAllText(systemPromptPath);
+                    }
+                }
+                catch { }
+
+                                        _hubMonitorService.AddLogMessage($"[AI] Launching Jarvis session in {workspace} (Model: {model})...");
+
+                                        
+
+                                        var pid = await _aiCliService.LaunchSessionAsync(workspace, null, model, systemPromptPath);
+
+                            
+
+                                        if (pid.HasValue)
+                {
+                    _hubMonitorService.AddLogMessage($"[AI] Jarvis started with PID {pid.Value}. Sending 'Begin'.");
+                    _aiCliService.SetTellPcContext(pid.Value, systemContext);
+                    
+                    // Send the "Begin" message
+                    _ = Task.Run(async () => {
+                        await Task.Delay(2000); 
+                        await _aiCliService.SendPromptAsync("Begin", pid.Value);
+                    });
+                }
+                else
+                {
+                    _hubMonitorService.AddLogMessage("[AI] Failed to start Jarvis.");
+                }
             });
 
             AddProjectCommand = new RelayCommand(_ => ExecuteAddProject());

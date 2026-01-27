@@ -8,6 +8,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.AspNetCore.SignalR;
 using OmniSync.Hub.Presentation.Hubs;
 using OmniSync.Hub.Logic.Monitoring;
+using OmniSync.Hub.Infrastructure.Services;
 
 namespace OmniSync.Hub.Logic.Services
 {
@@ -39,6 +40,61 @@ namespace OmniSync.Hub.Logic.Services
         }
     }
 
+    public class JarvisLaunchAction : IQuickAction
+    {
+        private readonly OmniSync.Hub.Infrastructure.Services.AiCliService _aiCliService;
+        private readonly OmniSync.Hub.Infrastructure.Services.HubSettingsService _settingsService;
+        private readonly ILogger _logger;
+        private readonly HubMonitorService _hubMonitorService;
+
+        public string Name => "JarvisLaunch";
+
+        public JarvisLaunchAction(OmniSync.Hub.Infrastructure.Services.AiCliService aiCliService, OmniSync.Hub.Infrastructure.Services.HubSettingsService settingsService, ILogger logger, HubMonitorService hubMonitorService)
+        {
+            _aiCliService = aiCliService;
+            _settingsService = settingsService;
+            _logger = logger;
+            _hubMonitorService = hubMonitorService;
+        }
+
+        public async Task ExecuteAsync()
+        {
+            if (!_settingsService.Settings.JarvisAutoStart) return;
+
+            try
+            {
+                string workspace = _settingsService.Settings.JarvisWorkspace;
+                string systemPromptPath = _settingsService.Settings.JarvisSystemContextPath;
+                string model = _settingsService.Settings.JarvisModel;
+
+                _logger.LogInformation($"QuickActionService: Auto-launching Jarvis session in workspace: {workspace} (Model: {model})");
+                _hubMonitorService.AddLogMessage($"[AI] Daily Auto-launch: Starting Jarvis in {workspace}...");
+
+                var pid = await _aiCliService.LaunchSessionAsync(workspace, null, model, systemPromptPath);
+
+                if (pid.HasValue)
+                {
+                    _logger.LogInformation($"QuickActionService: Jarvis session started with PID {pid.Value}. Sending 'Begin'.");
+                    _hubMonitorService.AddLogMessage($"[AI] Jarvis started (PID {pid.Value}). Sending 'Begin'.");
+                    
+                    // Send the "Begin" message to kick off the loop
+                    await Task.Delay(5000); // Give CLI more time to settle during startup
+                    await _aiCliService.SendPromptAsync("Begin", pid.Value);
+                }
+                else
+                {
+                    _logger.LogWarning("QuickActionService: Failed to auto-start Jarvis session.");
+                    _hubMonitorService.AddLogMessage("[Error] Failed to auto-start Jarvis.");
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "QuickActionService: Failed to launch Jarvis.");
+                _hubMonitorService.AddLogMessage($"[Error] Jarvis launch failed: {ex.Message}");
+            }
+        }
+    }
+
     public class StartupState
     {
         public DateTime? LastRun { get; set; }
@@ -51,6 +107,8 @@ namespace OmniSync.Hub.Logic.Services
         private readonly IServiceProvider _serviceProvider;
         private readonly IHubContext<RpcApiHub> _hubContext;
         private readonly HubMonitorService _hubMonitorService;
+        private readonly OmniSync.Hub.Infrastructure.Services.AiCliService _aiCliService;
+        private readonly OmniSync.Hub.Infrastructure.Services.HubSettingsService _settingsService;
         private readonly string _statePath;
         private StartupState _state = new();
 
@@ -59,13 +117,17 @@ namespace OmniSync.Hub.Logic.Services
             IConfiguration configuration,
             IServiceProvider serviceProvider,
             IHubContext<RpcApiHub> hubContext,
-            HubMonitorService hubMonitorService)
+            HubMonitorService hubMonitorService,
+            OmniSync.Hub.Infrastructure.Services.AiCliService aiCliService,
+            OmniSync.Hub.Infrastructure.Services.HubSettingsService settingsService)
         {
             _logger = logger;
             _configuration = configuration;
             _serviceProvider = serviceProvider;
             _hubContext = hubContext;
             _hubMonitorService = hubMonitorService;
+            _aiCliService = aiCliService;
+            _settingsService = settingsService;
 
             string appDataPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "OmniSync");
             if (!Directory.Exists(appDataPath))
@@ -131,11 +193,18 @@ namespace OmniSync.Hub.Logic.Services
 
                 var actionsToRun = _configuration.GetSection("StartupRoutines:Actions").Get<List<string>>() ?? new List<string> { "BrowserTabCleanup" };
                 
+                // Add JarvisLaunch to actions if enabled
+                if (_settingsService.Settings.JarvisAutoStart && !actionsToRun.Contains("JarvisLaunch"))
+                {
+                    actionsToRun.Add("JarvisLaunch");
+                }
+
                 foreach (var actionName in actionsToRun)
                 {
                     IQuickAction? action = actionName switch
                     {
                         "BrowserTabCleanup" => new BrowserTabCleanupAction(_hubContext, _logger),
+                        "JarvisLaunch" => new JarvisLaunchAction(_aiCliService, _settingsService, _logger, _hubMonitorService),
                         _ => null
                     };
 

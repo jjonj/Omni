@@ -92,11 +92,19 @@ namespace OmniSync.Hub.Infrastructure.Services
 
             if (resourcesPath != null)
             {
-                // Try the specific requested sound first
-                string requestedSound = System.IO.Path.Combine(resourcesPath, "UI", "UI_SoundPack13_Scroll_version05.wav");
+                // Try the specific requested sound first (new split sounds)
+                string requestedSound = System.IO.Path.Combine(resourcesPath, "SoundEffects", "Scroll_03.wav");
                 if (System.IO.File.Exists(requestedSound))
                 {
                     PlaySound(requestedSound);
+                    return;
+                }
+
+                // Fallback to the old sound pack path
+                string oldSound = System.IO.Path.Combine(resourcesPath, "UI", "UI_SoundPack13_Scroll_version05.wav");
+                if (System.IO.File.Exists(oldSound))
+                {
+                    PlaySound(oldSound);
                     return;
                 }
 

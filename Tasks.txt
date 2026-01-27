@@ -27,6 +27,7 @@ of the conversion is too long it might start lagging. add a setting in settings 
 ## in OmniSync.Android
 ### General
 
+android app attempts to reconnect only once when disconnected. it needs to try to reconnect after 0, 10, 30, 60, 120, 1800 repeating, seconds 
 
 ### Dashboard
 
@@ -64,16 +65,11 @@ when switching to file screen it will show  the last opened text file, that shou
 
 when going to the ai screen, always scroll up bottom 
 
-focus button no longer works 
 
 ask user for access to gemini cli to do model Select
 
+change the zoom button to zoom even more 
 
-sending a message to ai should scroll to bottom
-
-show a small stopwatch like counter at the bottom of chat showing seconds minutes etc since last message
-
-I need to be able to see if the AI is active and working or waiting for a message from me. if it's not getting thinking updates eg if server is slow i need a spinner or animated ... that shows that it's not stuck. there is some work done already on this but it's inconsistent and especially bad when switching to a session while it's working. i want this to be really robust
 
 ### Embedded web screen
 

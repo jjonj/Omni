@@ -644,7 +644,7 @@ namespace OmniSync.Hub.Infrastructure.Services
 
         private readonly SemaphoreSlim _launchLock = new(1, 1);
 
-        public async Task<int?> LaunchSessionAsync(string? workspace = null, Action<string>? onProgress = null, string? model = null)
+        public async Task<int?> LaunchSessionAsync(string? workspace = null, Action<string>? onProgress = null, string? model = null, string? prepromptFile = null)
         {
             await _launchLock.WaitAsync();
             try 
@@ -657,7 +657,7 @@ namespace OmniSync.Hub.Infrastructure.Services
                 }
 
                 _isLaunching = true;
-                _logger.LogInformation($"[AiCliService] LaunchSessionAsync starting (workspace: {workspace ?? "default"}, model: {model ?? "default"})");
+                _logger.LogInformation($"[AiCliService] LaunchSessionAsync starting (workspace: {workspace ?? "default"}, model: {model ?? "default"}, prepromptFile: {prepromptFile ?? "none"})");
                 onProgress?.Invoke("Initializing launch sequence...");
                 try
                 {
@@ -708,6 +708,11 @@ namespace OmniSync.Hub.Infrastructure.Services
                 {
                     command += $" --model {model}";
                 }
+                if (!string.IsNullOrEmpty(prepromptFile))
+                {
+                    command += $" --prepromptfile {prepromptFile.Replace("\\", "/")}";
+                }
+
                 string debugLog = Path.Combine(rootPath, "gemini_cli_debug.log");
                 string finalCommand = $"set GEMINI_DEBUG_LOG_FILE={debugLog} && {command}";
                 

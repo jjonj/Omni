@@ -19,6 +19,7 @@ namespace OmniSync.Hub.Logic.Services
         private readonly IHostApplicationLifetime _appLifetime;
         private readonly HubSettingsService _settingsService;
         private readonly QuickActionService _quickActionService;
+        private readonly AiCliService _aiCliService;
         private readonly IHubContext<RpcApiHub> _hubContext;
 
         public HubStartupService(
@@ -27,6 +28,7 @@ namespace OmniSync.Hub.Logic.Services
             IHostApplicationLifetime appLifetime,
             HubSettingsService settingsService,
             QuickActionService quickActionService,
+            AiCliService aiCliService,
             IHubContext<RpcApiHub> hubContext)
         {
             _logger = logger;
@@ -34,6 +36,7 @@ namespace OmniSync.Hub.Logic.Services
             _appLifetime = appLifetime;
             _settingsService = settingsService;
             _quickActionService = quickActionService;
+            _aiCliService = aiCliService;
             _hubContext = hubContext;
         }
 

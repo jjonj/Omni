@@ -109,7 +109,7 @@ class SpecialMessageTester:
         if not await self.setup_connection(): return 1
         
         logger.info(f"Launching AI session at {os.getcwd()}...")
-        self.hub.send("StartCliAtWorkspace", [os.getcwd()])
+        self.hub.send("StartCliAtWorkspace", [os.getcwd(), "JarvisFast"])
         while self.new_session_pid is None: await asyncio.sleep(1)
         
         await asyncio.sleep(5)

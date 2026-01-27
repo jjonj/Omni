@@ -79,7 +79,7 @@ class DisplayCapabilitiesTester:
     async def start_session(self):
         workspace = "D:/SSDProjects" 
         logger.info(f"Requesting Hub to launch Gemini CLI at {workspace}...")
-        self.hub.send("StartCliAtWorkspace", [workspace])
+        self.hub.send("StartCliAtWorkspace", [workspace, "JarvisFast"])
         
         start_wait = time.time()
         while self.new_session_pid is None and time.time() - start_wait < 30:

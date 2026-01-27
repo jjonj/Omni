@@ -274,6 +274,11 @@
                                            FontStyle="Italic" Opacity="0.8"/>
                             </StackPanel>
                             <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                <Button Content="Launch Jarvis" 
+                                        Command="{Binding LaunchJarvisCommand}"
+                                        MinWidth="120"
+                                        Background="#4CAF50"
+                                        FontWeight="Bold"/>
                                 <Button Content="Reset AI Sessions" 
                                         Command="{Binding ResetAiSessionsCommand}"
                                         MinWidth="120"
@@ -358,23 +363,42 @@
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto"/>
                                 <RowDefinition Height="Auto"/>
-                                <RowDefinition Height="Auto"/>
-                                <RowDefinition Height="Auto"/>
                                 <RowDefinition Height="*"/>
+                                <RowDefinition Height="Auto"/>
                             </Grid.RowDefinitions>
 
-                            <TextBlock Grid.Row="0" Text="Tell PC Configuration" FontSize="18" FontWeight="Bold" Margin="0,0,0,5"/>
-                            <TextBlock Grid.Row="1" Text="Configure the 'Tell PC' feature triggered from the remote." FontSize="12" Opacity="0.7" Margin="0,0,0,20"/>
+                            <StackPanel Grid.Row="0">
+                                <TextBlock Text="Tell PC Configuration" FontSize="18" FontWeight="Bold" Margin="0,0,0,5"/>
+                                <TextBlock Text="Configure the 'Tell PC' feature triggered from the remote." FontSize="12" Opacity="0.7" Margin="0,0,0,10"/>
+                            </StackPanel>
 
-                            <StackPanel Grid.Row="2" Margin="0,0,0,20">
+                            <StackPanel Grid.Row="1" Margin="0,0,0,20">
                                 <TextBlock Text="Default Workspace" Margin="0,0,0,5" Opacity="0.7"/>
                                 <TextBox Text="{Binding TellPcWorkspace}" Padding="5"/>
                                 
                                 <TextBlock Text="System Context" Margin="0,15,0,5" Opacity="0.7"/>
-                                <TextBox Text="{Binding TellPcSystemContext}" Height="100" TextWrapping="Wrap" AcceptsReturn="True" VerticalScrollBarVisibility="Auto" Padding="5"/>
+                                <TextBox Text="{Binding TellPcSystemContext}" Height="60" TextWrapping="Wrap" AcceptsReturn="True" VerticalScrollBarVisibility="Auto" Padding="5"/>
                                 
                                 <CheckBox IsChecked="{Binding TellPcSoundEnabled}" Content="Play confirmation sound (blip) on Hub" 
-                                          Foreground="#D4D4D4" Margin="0,15,0,0" FontSize="14"/>
+                                          Foreground="#D4D4D4" Margin="0,10,0,0" FontSize="14"/>
+                            </StackPanel>
+
+                            <StackPanel Grid.Row="2">
+                                <Separator Background="#333337" Margin="0,0,0,20"/>
+                                <TextBlock Text="Jarvis Configuration" FontSize="18" FontWeight="Bold" Margin="0,0,0,5"/>
+                                <TextBlock Text="Configure the Jarvis voice assistant loop." FontSize="12" Opacity="0.7" Margin="0,0,0,10"/>
+
+                                <CheckBox IsChecked="{Binding JarvisAutoStart}" Content="Auto-start Jarvis loop on Hub launch" 
+                                          Foreground="#D4D4D4" Margin="0,0,0,10" FontSize="14"/>
+
+                                <TextBlock Text="Jarvis Workspace" Margin="0,10,0,5" Opacity="0.7"/>
+                                <TextBox Text="{Binding JarvisWorkspace, UpdateSourceTrigger=PropertyChanged}" Padding="5"/>
+
+                                <TextBlock Text="Jarvis Model" Margin="0,10,0,5" Opacity="0.7"/>
+                                <TextBox Text="{Binding JarvisModel, UpdateSourceTrigger=PropertyChanged}" Padding="5"/>
+
+                                <TextBlock Text="System Prompt Path (.md)" Margin="0,10,0,5" Opacity="0.7"/>
+                                <TextBox Text="{Binding JarvisSystemContextPath, UpdateSourceTrigger=PropertyChanged}" Padding="5"/>
                             </StackPanel>
 
                             <Button Grid.Row="3" Content="Save AI Configuration" Command="{Binding SaveAiSettingsCommand}" 

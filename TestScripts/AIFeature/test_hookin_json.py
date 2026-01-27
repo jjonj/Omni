@@ -134,7 +134,7 @@ class HookinJsonTester:
 
         # 3. Call StartCliAtWorkspace AND SendAiMessage INSTANTLY
         logger.info("Step 1: Requesting StartCliAtWorkspace...")
-        self.hub.send("StartCliAtWorkspace", [target_workspace])
+        self.hub.send("StartCliAtWorkspace", [target_workspace, "JarvisFast"])
         
         logger.info("Step 2: INSTANTLY Sending AI Message to PID -1 (Current Target)...")
         # Sending to -1 hopes that StartCliAtWorkspace sets the new session as target immediately

@@ -85,12 +85,18 @@ namespace OmniSync.Hub.Logic.Services
             _logger.LogInformation($"[HubEventSender] Received Dialog from PID {e.Pid}. Type: {e.Type}, Prompt: {e.Prompt}");
             _monitorService.AddLogMessage($"AI Dialog ({e.Type}): {e.Prompt}");
 
-            // Play sound on Hub ONLY if it's a new prompt AND cooldown has passed (30s)
-            if (_lastPlayedDialogPrompt != e.Prompt || (DateTime.Now - _lastPlayedDialogTime).TotalSeconds > 30)
+            // Play sound on Hub with a multi-layered cooldown:
+            // 1. Mandatory 5s gap between ANY two blips (to stop rapid spam).
+            // 2. 30s cooldown if it's the same prompt.
+            var now = DateTime.Now;
+            double secondsSinceLastBlip = (now - _lastPlayedDialogTime).TotalSeconds;
+            bool isNewPrompt = !string.Equals(_lastPlayedDialogPrompt, e.Prompt, StringComparison.OrdinalIgnoreCase);
+
+            if (secondsSinceLastBlip > 5 && (isNewPrompt || secondsSinceLastBlip > 30))
             {
                 _audioService.PlayBlip();
                 _lastPlayedDialogPrompt = e.Prompt;
-                _lastPlayedDialogTime = DateTime.Now;
+                _lastPlayedDialogTime = now;
             }
 
             // Special handling for pro_quota
@@ -162,10 +168,6 @@ namespace OmniSync.Hub.Logic.Services
             }
             else 
             {
-                 // Normal response received, clear the last dialog prompt tracker
-                 // so the next dialog (even if identical) will play its sound.
-                 _lastPlayedDialogPrompt = null;
-
                  // Always send the text if present
                  if (!string.IsNullOrEmpty(e.Text))
                  {

@@ -76,7 +76,7 @@ class HookinTester:
 
         # 2. Mimic Android Hookin: Request Start (null workspace)
         logger.info("Step 1: Requesting StartNewAiSession (mimicking Hookin)...")
-        self.hub.send("StartNewAiSession", [None]) 
+        self.hub.send("StartNewAiSession", [None, "JarvisFast"]) 
 
         # 3. Wait for PID
         logger.info("Waiting for PID...")

@@ -54,6 +54,7 @@ namespace OmniSync.Hub.Infrastructure.Services
 
         public virtual async Task ExecuteCommand(string command)
         {
+            _monitorService.AddLogMessage($"[ProcessService] ExecuteCommand: '{command}'");
             // Resolve mapping if available
             string finalCommand = command;
             string executable = "";
@@ -97,6 +98,7 @@ namespace OmniSync.Hub.Infrastructure.Services
 
             await Task.Run(() =>
             {
+                _monitorService.AddLogMessage($"[ProcessService] ExecuteCommand (detached): finalCommand='{finalCommand}'");
                 var processStartInfo = new ProcessStartInfo
                 {
                     FileName = "cmd.exe",
@@ -124,7 +126,20 @@ namespace OmniSync.Hub.Infrastructure.Services
                         }
                     };
 
-                    process.Start();
+                    Action startAction = () => {
+                        try { process.Start(); }
+                        catch (Exception ex) { _monitorService.AddLogMessage($"[ERROR] Process Start failed: {ex.Message}"); }
+                    };
+
+                    if (System.Windows.Application.Current != null)
+                    {
+                        System.Windows.Application.Current.Dispatcher.Invoke(startAction);
+                    }
+                    else
+                    {
+                        startAction();
+                    }
+
                     process.BeginOutputReadLine();
                     process.BeginErrorReadLine();
                     process.WaitForExit();
@@ -132,20 +147,35 @@ namespace OmniSync.Hub.Infrastructure.Services
             });
         }
 
-        public virtual void ShellExecute(string path)
+        public virtual void ShellExecute(string path, string? arguments = null)
         {
-            try
-            {
-                var psi = new ProcessStartInfo
+            _monitorService.AddLogMessage($"[ProcessService] ShellExecute: '{path}' Args: '{arguments}'");
+            
+            Action action = () => {
+                try
                 {
-                    FileName = path,
-                    UseShellExecute = true
-                };
-                Process.Start(psi);
-            }
-            catch (Exception ex)
+                    var psi = new ProcessStartInfo
+                    {
+                        FileName = path,
+                        Arguments = arguments ?? "",
+                        UseShellExecute = true
+                    };
+                    Process.Start(psi);
+                    _monitorService.AddLogMessage($"[ProcessService] ShellExecute started process for '{path}'");
+                }
+                catch (Exception ex)
+                {
+                    _monitorService.AddLogMessage($"[ERROR] ShellExecute failed for {path}: {ex.Message}");
+                }
+            };
+
+            if (System.Windows.Application.Current != null)
             {
-                _monitorService.AddLogMessage($"[ERROR] ShellExecute failed for {path}: {ex.Message}");
+                System.Windows.Application.Current.Dispatcher.Invoke(action);
+            }
+            else
+            {
+                action();
             }
         }
 
@@ -175,10 +205,11 @@ namespace OmniSync.Hub.Infrastructure.Services
 
         public void WinActivate(string target)
         {
-            try
-            {
-                // Intelligent activation: try exact title, partial title, then process name
-                string script = $@"
+            Action action = () => {
+                try
+                {
+                    // Intelligent activation: try exact title, partial title, then process name
+                    string script = $@"
 $target = '{target.Replace("'", "''")}'
 $wshell = New-Object -ComObject WScript.Shell
 if ($wshell.AppActivate($target)) {{ exit }}
@@ -188,29 +219,40 @@ foreach ($p in $procs) {{
     if ($wshell.AppActivate($p.Id)) {{ exit }}
 }}
 ";
-                RunPowerShellSynchronous(script);
+                    RunPowerShellSynchronous(script);
 
-                // C# Fallback and Un-minimize check
-                var procs = Process.GetProcesses()
-                    .Where(p => (p.MainWindowTitle.Contains(target, StringComparison.OrdinalIgnoreCase) || 
-                                p.ProcessName.Equals(target, StringComparison.OrdinalIgnoreCase)) && 
-                                p.MainWindowHandle != IntPtr.Zero)
-                    .ToList();
+                    // C# Fallback and Un-minimize check
+                    var procs = Process.GetProcesses()
+                        .Where(p => (p.MainWindowTitle.Contains(target, StringComparison.OrdinalIgnoreCase) || 
+                                    p.ProcessName.Equals(target, StringComparison.OrdinalIgnoreCase)) && 
+                                    p.MainWindowHandle != IntPtr.Zero)
+                        .ToList();
 
-                foreach (var p in procs)
-                {
-                    ActivateWindow(p.MainWindowHandle);
+                    foreach (var p in procs)
+                    {
+                        ActivateWindow(p.MainWindowHandle);
+                    }
                 }
+                catch { }
+            };
+
+            if (System.Windows.Application.Current != null)
+            {
+                System.Windows.Application.Current.Dispatcher.Invoke(action);
             }
-            catch { }
+            else
+            {
+                action();
+            }
         }
 
         public void WinActivatePid(int pid)
         {
-            try
-            {
-                // Use synchronous call to ensure activation happens before we return
-                string script = $@"
+            Action action = () => {
+                try
+                {
+                    // Use synchronous call to ensure activation happens before we return
+                    string script = $@"
 $targetPid = {pid}
 $wshell = New-Object -ComObject WScript.Shell
 
@@ -232,21 +274,26 @@ for ($i=0; $i -lt 5; $i++) {{
     $currPid = $parent
 }}
 ";
-                RunPowerShellSynchronous(script);
+                    RunPowerShellSynchronous(script);
 
-                // C# Fallback attempt using handle if available
-                var proc = Process.GetProcessById(pid);
-                if (proc.MainWindowHandle != IntPtr.Zero)
-                {
-                    ActivateWindow(proc.MainWindowHandle);
+                    // C# Fallback attempt using handle if available
+                    var proc = Process.GetProcessById(pid);
+                    if (proc.MainWindowHandle != IntPtr.Zero)
+                    {
+                        ActivateWindow(proc.MainWindowHandle);
+                    }
                 }
-                else
-                {
-                    // If no handle, try searching for any process with this PID as ancestor that HAS a handle
-                    // (Common for node processes running in terminals)
-                }
+                catch { }
+            };
+
+            if (System.Windows.Application.Current != null)
+            {
+                System.Windows.Application.Current.Dispatcher.Invoke(action);
             }
-            catch { }
+            else
+            {
+                action();
+            }
         }
 
         private void ActivateWindow(IntPtr handle)
@@ -258,8 +305,9 @@ for ($i=0; $i -lt 5; $i++) {{
 
         public void WinClose(string target)
         {
-            // Intelligent close: try exact title, partial title, then process name
-            string script = $@"
+            Action action = () => {
+                // Intelligent close: try exact title, partial title, then process name
+                string script = $@"
 $target = '{target.Replace("'", "''")}'
 $procs = Get-Process | Where-Object {{ $_.MainWindowTitle -eq $target -or $_.MainWindowTitle -like ""*$target*"" -or $_.ProcessName -eq $target }}
 foreach ($p in $procs) {{
@@ -268,12 +316,23 @@ foreach ($p in $procs) {{
     if (!$p.HasExited) {{ $p.Kill() }}
 }}
 ";
-            RunPowerShell(script);
+                RunPowerShell(script);
+            };
+
+            if (System.Windows.Application.Current != null)
+            {
+                System.Windows.Application.Current.Dispatcher.Invoke(action);
+            }
+            else
+            {
+                action();
+            }
         }
 
         public void WinMinimize(string target)
         {
-            RunPowerShell($@"
+            Action action = () => {
+                RunPowerShell($@"
 $target = '{target.Replace("'", "''")}'
 $procs = Get-Process | Where-Object {{ $_.MainWindowTitle -like ""*$target*"" -or $_.ProcessName -eq $target }}
 $wshell = New-Object -ComObject WScript.Shell
@@ -283,11 +342,22 @@ foreach ($p in $procs) {{
     }}
 }}
 ");
+            };
+
+            if (System.Windows.Application.Current != null)
+            {
+                System.Windows.Application.Current.Dispatcher.Invoke(action);
+            }
+            else
+            {
+                action();
+            }
         }
 
         public void WinMaximize(string target)
         {
-            RunPowerShell($@"
+            Action action = () => {
+                RunPowerShell($@"
 $target = '{target.Replace("'", "''")}'
 $procs = Get-Process | Where-Object {{ $_.MainWindowTitle -like ""*$target*"" -or $_.ProcessName -eq $target }}
 $wshell = New-Object -ComObject WScript.Shell
@@ -297,6 +367,16 @@ foreach ($p in $procs) {{
     }}
 }}
 ");
+            };
+
+            if (System.Windows.Application.Current != null)
+            {
+                System.Windows.Application.Current.Dispatcher.Invoke(action);
+            }
+            else
+            {
+                action();
+            }
         }
 
         public void MoveWindow(IntPtr hWnd, int x, int y, int width, int height)
@@ -308,7 +388,8 @@ foreach ($p in $procs) {{
 
         public void WinHide(string target)
         {
-            RunPowerShell($@"
+            Action action = () => {
+                RunPowerShell($@"
 $code = @'
 [DllImport(""user32.dll"")]
 public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
@@ -320,6 +401,16 @@ foreach ($p in $procs) {{
     [Native.Win32]::ShowWindow($p.MainWindowHandle, 0)
 }}
 ");
+            };
+
+            if (System.Windows.Application.Current != null)
+            {
+                System.Windows.Application.Current.Dispatcher.Invoke(action);
+            }
+            else
+            {
+                action();
+            }
         }
 
         public bool WaitWinActive(string target, int timeoutMs)

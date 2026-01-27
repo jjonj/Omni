@@ -3,8 +3,9 @@ import time
 import subprocess
 import sys
 
-LOCK_FILE = "JarvisPoC/recording.lock"
-INPUT_FILE = "JarvisPoC/speech_input.wav"
+LOCK_FILE = r"D:\SSDProjects\Omni\OmniSync.Hub\Voice\JarvisPoC\recording.lock"
+INPUT_FILE = r"D:\SSDProjects\Omni\OmniSync.Hub\Voice\JarvisPoC\speech_input.wav"
+TRANSCRIPT_FILE = r"D:\SSDProjects\Omni\OmniSync.Hub\Voice\JarvisPoC\transcript.txt"
 
 def transcribe():
     print("Transcribe Worker: Waiting for recording...")
@@ -25,10 +26,13 @@ def transcribe():
     
     # The functioning command from history
     abs_input = os.path.abspath(INPUT_FILE)
+    # parakeet-rs is a sibling directory
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    parakeet_dir = os.path.join(base_dir, "parakeet-rs")
     cmd = ["cargo", "run", "--example", "transcribe", "--", abs_input, "tdt"]
     
     try:
-        result = subprocess.run(cmd, cwd="parakeet-rs", capture_output=True, text=True)
+        result = subprocess.run(cmd, cwd=parakeet_dir, capture_output=True, text=True)
         output = result.stdout
         
         # Check output for transcription
@@ -51,7 +55,7 @@ def transcribe():
                         break
 
             print(f"\n[JARVIS HEARD] {transcription}")
-            with open("JarvisPoC/transcript.txt", "w") as f:
+            with open(TRANSCRIPT_FILE, "w") as f:
                 f.write(transcription)
         else:
             print("Transcribe Worker: Error - could not parse output.")

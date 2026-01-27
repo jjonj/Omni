@@ -2,9 +2,11 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Configuration;
 using Moq;
 using OmniSync.Hub.Infrastructure.Services;
+using OmniSync.Hub.Logic.Monitoring;
 using System.Diagnostics;
 using System.Management;
 using Xunit;
+using System.Threading.Tasks;
 
 namespace OmniSync.Hub.Tests.Services
 {
@@ -19,12 +21,13 @@ namespace OmniSync.Hub.Tests.Services
             var loggerMock = new Mock<ILogger<AiCliService>>();
             var settingsMock = new Mock<HubSettingsService>(new Mock<ILogger<HubSettingsService>>().Object);
             var processServiceMock = new Mock<ProcessService>(new Mock<ILogger<ProcessService>>().Object);
+            var monitorMock = new Mock<HubMonitorService>(new Mock<ILogger<HubMonitorService>>().Object);
             var configMock = new Mock<IConfiguration>();
 
             // Mock settings to return a default object
             settingsMock.Setup(s => s.Settings).Returns(new HubSettings());
 
-            var aiCliService = new AiCliService(loggerMock.Object, settingsMock.Object, processServiceMock.Object, configMock.Object);
+            var aiCliService = new AiCliService(loggerMock.Object, settingsMock.Object, processServiceMock.Object, monitorMock.Object, configMock.Object);
 
             // We need to simulate the state where:
             // 1. A session is being launched (IsLaunching = true)

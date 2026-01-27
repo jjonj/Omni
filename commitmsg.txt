@@ -1,6 +1,5 @@
-feat(debug): instrument CLI and Hub for initialization crash analysis
+fix(android): Correct variable declaration order and syntax errors in screens
 
-- Hub: Added verbose `[INIT_DEBUG]` logging to `AiCliService` and `RpcApiHub` to track session launch, pipe connection, and authentication steps.
-- Hub: Changed CLI launch command to use `cmd /K` to preserve the window on crash for visual inspection.
-- CLI: Added global exception handling and persistent crash logging (`ai_listener_crash.log`, `omni_cli_crash.log`) to `ai_listener.py` and `omni_cli_script.py`.
-- CLI: Added explicit fatal error logging to entry points.
+- Fixed `AiChatScreen.kt` build error by moving `listState` and `filteredMessages` before their use in `LaunchedEffect`.
+- Fixed `FilesScreen.kt` build error by cleaning up a catastrophic paste error in the `DropdownMenu`.
+- Verified build and deployment to device.

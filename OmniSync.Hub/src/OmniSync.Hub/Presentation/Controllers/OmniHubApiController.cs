@@ -37,6 +37,7 @@ namespace OmniSync.Hub.Presentation.Controllers
         {
             if (!_authService.Validate(key)) return Unauthorized();
 
+            _monitor.AddLogMessage("[OmniHubAPI] Listing CLI sessions...");
             var sessions = _aiCliService.GetActiveSessions();
             return Ok(sessions);
         }
@@ -46,6 +47,8 @@ namespace OmniSync.Hub.Presentation.Controllers
         {
             if (!_authService.Validate(key)) return Unauthorized();
 
+            _monitor.AddLogMessage($"[OmniHubAPI] Getting CLI history for PID {pid} (maxChars: {maxChars})");
+            
             // The history is broadcast via ResponseReceived event in AiCliService.
             // For a direct REST API call, we need a way to capture the specific response for this PID.
             // For now, we'll trigger the fetch. The client will have to listen to the socket or we'll need a better polling mechanism.
@@ -66,7 +69,7 @@ namespace OmniSync.Hub.Presentation.Controllers
                 return Unauthorized();
             }
             
-            _monitor.AddLogMessage($"External Command Received: '{cmd}' (Payload: {payload}) from IP: {ip}");
+            _monitor.AddLogMessage($"[OmniHubAPI] External Command Received: '{cmd}' (Payload: {payload}) from IP: {ip}");
             
             try 
             {

@@ -1059,15 +1059,15 @@ namespace OmniSync.Hub.Presentation.Hubs
 
         private static readonly SemaphoreSlim _aiLaunchSemaphore = new(1, 1);
 
-        public async Task<int?> StartNewAiSession(string? workspace = null)
+        public async Task<int?> StartNewAiSession(string? workspace = null, string? model = null)
         {
             if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
             {
                 await _aiLaunchSemaphore.WaitAsync();
                 try
                 {
-                    _logger.LogInformation($"[RpcApiHub][INIT_DEBUG] StartNewAiSession requested by {Context.ConnectionId} (Workspace: {workspace}). Broadcasting status...");
-                    AnyCommandReceived?.Invoke(this, $"StartNewAiSession requested (Workspace: {workspace})");
+                    _logger.LogInformation($"[RpcApiHub][INIT_DEBUG] StartNewAiSession requested by {Context.ConnectionId} (Workspace: {workspace}, Model: {model}). Broadcasting status...");
+                    AnyCommandReceived?.Invoke(this, $"StartNewAiSession requested (Workspace: {workspace}, Model: {model})");
                     await Clients.All.SendAsync("ReceiveAiHistory", "[]", -1);
                     await Clients.All.SendAsync("ReceiveAiStatus", "Starting session...", -1);
                     
@@ -1076,7 +1076,7 @@ namespace OmniSync.Hub.Presentation.Hubs
                     var result = await _aiCliService.LaunchSessionAsync(workspace, (status) => 
                     {
                         AnyCommandReceived?.Invoke(this, $"AI Launch: {status}");
-                    });
+                    }, model);
                     
                     _logger.LogInformation($"[RpcApiHub][INIT_DEBUG] StartNewAiSession result: {result}");
 
@@ -1109,15 +1109,15 @@ namespace OmniSync.Hub.Presentation.Hubs
             return null;
         }
 
-        public async Task<int?> StartCliAtWorkspace(string path)
+        public async Task<int?> StartCliAtWorkspace(string path, string? model = null)
         {
             if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
             {
-                _logger.LogInformation($"[RpcApiHub] StartCliAtWorkspace requested: {path}");
-                AnyCommandReceived?.Invoke(this, $"StartCliAtWorkspace: {path}");
+                _logger.LogInformation($"[RpcApiHub] StartCliAtWorkspace requested: {path} (Model: {model})");
+                AnyCommandReceived?.Invoke(this, $"StartCliAtWorkspace: {path} (Model: {model})");
                 await Clients.All.SendAsync("ReceiveAiHistory", "[]", -1);
                 await Clients.All.SendAsync("ReceiveAiStatus", "Starting session...", -1);
-                var result = await _aiCliService.LaunchSessionAsync(path);
+                var result = await _aiCliService.LaunchSessionAsync(path, null, model);
                 _logger.LogInformation($"[RpcApiHub] StartCliAtWorkspace result: {result}");
                 if (result.HasValue)
                 {
@@ -1382,6 +1382,64 @@ namespace OmniSync.Hub.Presentation.Hubs
             {
                 AnyCommandReceived?.Invoke(this, "ExecuteMacro");
                 await _processService.ExecuteMacro(commands, _inputService, _clipboardService);
+            }
+        }
+
+        public async Task TriggerJarvis()
+        {
+            if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
+            {
+                _logger.LogInformation("[RpcApiHub] TriggerJarvis requested.");
+                AnyCommandReceived?.Invoke(this, "TriggerJarvis");
+
+                string workspace = _settingsService.Settings.JarvisWorkspace;
+                string systemPromptPath = _settingsService.Settings.JarvisSystemContextPath;
+                string model = _settingsService.Settings.JarvisModel;
+
+                await Clients.All.SendAsync("ReceiveAiStatus", "Jarvis: Starting Session...", -1);
+
+                string systemContext = "You are Jarvis.";
+                try
+                {
+                    if (File.Exists(systemPromptPath))
+                    {
+                        systemContext = File.ReadAllText(systemPromptPath);
+                    }
+                    else
+                    {
+                        _logger.LogWarning($"Jarvis preprompt file not found at {systemPromptPath}");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error reading Jarvis preprompt file.");
+                }
+
+                                        _logger.LogInformation($"[RpcApiHub] Launching Jarvis session in workspace: {workspace} (Model: {model})");
+
+                                        
+
+                                        var pid = await _aiCliService.LaunchSessionAsync(workspace, null, model, systemPromptPath);
+
+                            
+
+                                        if (pid.HasValue)                {
+                    _logger.LogInformation($"[RpcApiHub] Jarvis session started with PID {pid.Value}. Sending 'Begin'.");
+                    _aiCliService.SetTellPcContext(pid.Value, systemContext);
+                    await Clients.All.SendAsync("ReceiveNewAiSessionPid", pid.Value);
+                    await Clients.All.SendAsync("ReceiveAiStatus", "FINISHED", pid.Value);
+                    
+                    // Send the "Begin" message to kick off the loop
+                    _ = Task.Run(async () => {
+                        await Task.Delay(2000); // Wait for CLI to settle
+                        await _aiCliService.SendPromptAsync("Begin", pid.Value);
+                    });
+                }
+                else
+                {
+                    _logger.LogWarning("[RpcApiHub] Failed to start Jarvis session.");
+                    await Clients.All.SendAsync("ReceiveAiStatus", "FAILED_TO_START_JARVIS", -1);
+                }
             }
         }
 

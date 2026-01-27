@@ -113,7 +113,7 @@ class MultiInstanceTester:
         self.new_pid_received_event.clear()
         
         for i in range(self.num_instances):
-            self.hub.send("StartCliAtWorkspace", [WORKSPACE])
+            self.hub.send("StartCliAtWorkspace", [WORKSPACE, "JarvisFast"])
             await asyncio.sleep(1)
         
         logger.info(f"Waiting for {self.num_instances} new PIDs from Hub...")

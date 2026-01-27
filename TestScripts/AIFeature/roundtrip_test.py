@@ -116,7 +116,7 @@ class RoundtripTester:
 
         # 2. Launch CLI via Hub
         logger.info(f"Requesting Hub to launch Gemini CLI at {WORKSPACE}...")
-        self.hub.send("StartCliAtWorkspace", [WORKSPACE])
+        self.hub.send("StartCliAtWorkspace", [WORKSPACE, "JarvisFast"])
         
         # 3. Wait for PID
         logger.info("Waiting for new session PID...")

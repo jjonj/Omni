@@ -144,17 +144,38 @@ class CliApiTester:
             logger.error("Timed out waiting for history broadcast.")
             return 1
 
-        # 7. Test REST API: Open Resource
-        target_path = os.path.join(ROOT_DIR, "design.txt")
-        logger.info(f"Testing REST API: Open Resource (File: {target_path})...")
-        payload = {"Path": target_path}
-        resp = requests.post(f"{REST_API_URL}/command", params={"key": API_KEY, "cmd": "OPEN_RESOURCE"}, json=payload)
-        if resp.status_code != 200:
-            logger.error(f"Open Resource API failed: {resp.status_code} {resp.text}")
-            return 1
-        logger.info("Open Resource command accepted. Please check if Notepad++ opened design.txt.")
-        await asyncio.sleep(3)
+        # 7. Test REST API: Open Resource (File, Folder, HTML simultaneously)
+        target_file = os.path.join(ROOT_DIR, "design.txt").replace("/", "\\")
+        target_folder = WORKSPACE.replace("/", "\\")
+        target_html = os.path.join(ROOT_DIR, "OmniSync.Web", "www", "IslandGenerator", "index.html").replace("/", "\\")
 
+        logger.info(f"Testing REST API: Opening 3 resources...")
+        
+        # Open File
+        logger.info(f"Opening File: {target_file}")
+        requests.post(f"{REST_API_URL}/command", params={"key": API_KEY, "cmd": "OPEN_RESOURCE"}, json={"Path": target_file})
+        
+        # Open Folder
+        logger.info(f"Opening Folder: {target_folder}")
+        requests.post(f"{REST_API_URL}/command", params={"key": API_KEY, "cmd": "OPEN_RESOURCE"}, json={"Path": target_folder})
+        
+        # Open HTML
+        logger.info(f"Opening HTML: {target_html}")
+        requests.post(f"{REST_API_URL}/command", params={"key": API_KEY, "cmd": "OPEN_RESOURCE"}, json={"Path": target_html})
+
+        print("\n" + "!"*60)
+        print(" MANUAL VERIFICATION REQUIRED")
+        print("!"*60)
+        
+        opened_file = input(f"1. Did 'design.txt' open in Notepad++? (y/n): ")
+        opened_folder = input(f"2. Did the folder '{target_folder}' open in Explorer? (y/n): ")
+        opened_html = input(f"3. Did the HTML file open in the mapped browser? (y/n): ")
+
+        if opened_file.lower() != 'y' or opened_folder.lower() != 'y' or opened_html.lower() != 'y':
+            logger.error(f"FAIL: Resource opening failed. Results: File={opened_file}, Folder={opened_folder}, HTML={opened_html}")
+            return 1
+
+        logger.info("All resources opened successfully.")
         self.hub.stop()
         return 0
 

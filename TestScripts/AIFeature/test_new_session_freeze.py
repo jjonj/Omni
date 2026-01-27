@@ -51,7 +51,7 @@ def test_freeze():
     logger.info("Requesting new AI session...")
     start_time = time.time()
     try:
-        hub.send("StartNewAiSession", [])
+        hub.send("StartNewAiSession", [None, "JarvisFast"])
         
         for i in range(10):
             time.sleep(2)

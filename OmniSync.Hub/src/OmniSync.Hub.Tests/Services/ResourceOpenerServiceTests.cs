@@ -29,7 +29,7 @@ namespace OmniSync.Hub.Tests.Services
             );
             _settingsServiceMock = new Mock<HubSettingsService>(new Mock<Microsoft.Extensions.Logging.ILogger<HubSettingsService>>().Object);
             
-            _service = new ResourceOpenerService(_processServiceMock.Object, _settingsServiceMock.Object);
+            _service = new ResourceOpenerService(_processServiceMock.Object, _settingsServiceMock.Object, monitorMock.Object);
         }
 
         [Fact]
@@ -42,7 +42,7 @@ namespace OmniSync.Hub.Tests.Services
             await _service.OpenResource(path);
 
             // Assert
-            _processServiceMock.Verify(p => p.ShellExecute(path), Times.Once);
+            _processServiceMock.Verify(p => p.ShellExecute(path, null), Times.Once);
         }
 
         [Fact]
@@ -56,9 +56,7 @@ namespace OmniSync.Hub.Tests.Services
             await _service.OpenResource(url);
 
             // Assert
-            _processServiceMock.Verify(p => p.ExecuteCommand(It.Is<string>(s => 
-                s.Contains("chrome.exe") && 
-                s.Contains(url))), Times.Once);
+            _processServiceMock.Verify(p => p.ShellExecute(It.Is<string>(s => s.Contains("chrome.exe")), It.Is<string>(s => s.Contains(url))), Times.Once);
         }
 
         [Fact]
@@ -72,10 +70,7 @@ namespace OmniSync.Hub.Tests.Services
             await _service.OpenResource(path, lineNumber);
 
             // Assert
-            _processServiceMock.Verify(p => p.ExecuteCommand(It.Is<string>(s => 
-                s.Contains("notepad++.exe") && 
-                s.Contains("-n42") && 
-                s.Contains(path))), Times.Once);
+            _processServiceMock.Verify(p => p.ShellExecute(It.Is<string>(s => s.Contains("notepad++.exe")), It.Is<string>(s => s.Contains("-n42") && s.Contains(path))), Times.Once);
         }
 
         [Fact]
@@ -89,9 +84,7 @@ namespace OmniSync.Hub.Tests.Services
             await _service.OpenResource(path);
 
             // Assert
-            _processServiceMock.Verify(p => p.ExecuteCommand(It.Is<string>(s => 
-                s.Contains("chrome.exe") && 
-                s.Contains(path))), Times.Once);
+            _processServiceMock.Verify(p => p.ShellExecute(It.Is<string>(s => s.Contains("chrome.exe")), It.Is<string>(s => s.Contains(path))), Times.Once);
         }
 
         [Fact]
@@ -104,9 +97,7 @@ namespace OmniSync.Hub.Tests.Services
             await _service.OpenResource(path);
 
             // Assert
-            _processServiceMock.Verify(p => p.ExecuteCommand(It.Is<string>(s => 
-                s.Contains("notepad++.exe") && 
-                s.Contains(path))), Times.Once);
+            _processServiceMock.Verify(p => p.ShellExecute(It.Is<string>(s => s.Contains("notepad++.exe")), It.Is<string>(s => s.Contains(path))), Times.Once);
         }
     }
 }

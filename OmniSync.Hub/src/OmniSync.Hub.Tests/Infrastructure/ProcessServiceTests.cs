@@ -29,7 +29,7 @@ namespace OmniSync.Hub.Tests.Infrastructure
         public void ShellExecute_ShouldNotThrow_WhenPathIsNull()
         {
             // Act & Assert
-            var ex = Record.Exception(() => _service.ShellExecute(null));
+            var ex = Record.Exception(() => _service.ShellExecute(null, null));
             Assert.Null(ex);
         }
 
@@ -37,7 +37,7 @@ namespace OmniSync.Hub.Tests.Infrastructure
         public void ShellExecute_ShouldNotThrow_WhenPathIsEmpty()
         {
             // Act & Assert
-            var ex = Record.Exception(() => _service.ShellExecute(""));
+            var ex = Record.Exception(() => _service.ShellExecute("", ""));
             Assert.Null(ex);
         }
         
@@ -45,7 +45,7 @@ namespace OmniSync.Hub.Tests.Infrastructure
         public void ShellExecute_ShouldLogErrorMessage_WhenProcessStartFails()
         {
             // Act
-            _service.ShellExecute("non_existent_file_that_will_fail_to_start_hopefully_123456.xyz");
+            _service.ShellExecute("non_existent_file_that_will_fail_to_start_hopefully_123456.xyz", null);
 
             // Assert
             _monitorServiceMock.Verify(m => m.AddLogMessage(It.Is<string>(s => s.Contains("ShellExecute failed"))), Times.AtLeastOnce());

@@ -217,7 +217,13 @@ builder.Services.AddSingleton<ProcessService>(provider =>
     return new ProcessService(settingsService, monitorService);
 });
 builder.Services.AddSingleton<ProjectLauncherService>();
-builder.Services.AddSingleton<ResourceOpenerService>();
+builder.Services.AddSingleton<ResourceOpenerService>(provider =>
+{
+    var processService = provider.GetRequiredService<ProcessService>();
+    var settingsService = provider.GetRequiredService<HubSettingsService>();
+    var monitorService = provider.GetRequiredService<HubMonitorService>();
+    return new ResourceOpenerService(processService, settingsService, monitorService);
+});
 builder.Services.AddSingleton<AiCliService>(provider =>
 {
     var logger = provider.GetRequiredService<ILogger<AiCliService>>();
@@ -241,7 +247,9 @@ builder.Services.AddSingleton<QuickActionService>(provider =>
     var configuration = provider.GetRequiredService<IConfiguration>();
     var hubContext = provider.GetRequiredService<IHubContext<RpcApiHub>>();
     var monitorService = provider.GetRequiredService<HubMonitorService>();
-    return new QuickActionService(logger, configuration, provider, hubContext, monitorService);
+    var aiCliService = provider.GetRequiredService<AiCliService>();
+    var settingsService = provider.GetRequiredService<HubSettingsService>();
+    return new QuickActionService(logger, configuration, provider, hubContext, monitorService, aiCliService, settingsService);
 });
 builder.Services.AddSingleton<CommandDispatcher>(provider => {
     var inputService = provider.GetRequiredService<InputService>();

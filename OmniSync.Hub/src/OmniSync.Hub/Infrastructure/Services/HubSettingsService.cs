@@ -66,6 +66,12 @@ namespace OmniSync.Hub.Infrastructure.Services
         public string TellPcWorkspace { get; set; } = @"B:\GDrive\Tools";
         public string TellPcSystemContext { get; set; } = "You are to help the user execute commands and tools on this windows PC. You are an expert assistant with full system access. Be concise and efficient.";
         public bool TellPcSoundEnabled { get; set; } = true;
+
+        // Jarvis Settings
+        public bool JarvisAutoStart { get; set; } = false;
+        public string JarvisWorkspace { get; set; } = @"D:/SSDProjects/";
+        public string JarvisSystemContextPath { get; set; } = @"D:/SSDProjects/Omni/OmniSync.Hub/Voice/MIND/PrePrompt.md";
+        public string JarvisModel { get; set; } = "JarvisFast";
     }
 
     public class HubSettingsService
@@ -284,12 +290,25 @@ namespace OmniSync.Hub.Infrastructure.Services
             SaveSettings();
         }
 
-        public string? GetPath(string key)
+        public virtual string? GetPath(string key)
         {
+            if (string.IsNullOrEmpty(key)) return null;
+            
+            // Try exact match first
             if (_settings.ExeMappings.TryGetValue(key, out var path))
             {
                 return path;
             }
+
+            // Fallback to case-insensitive search
+            foreach (var kvp in _settings.ExeMappings)
+            {
+                if (kvp.Key.Equals(key, StringComparison.OrdinalIgnoreCase))
+                {
+                    return kvp.Value;
+                }
+            }
+
             return null;
         }
 

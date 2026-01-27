@@ -77,7 +77,7 @@ class HookinPathTester:
 
         # 2. Call StartCliAtWorkspace
         logger.info("Step 1: Requesting StartCliAtWorkspace...")
-        self.hub.send("StartCliAtWorkspace", [target_workspace])
+        self.hub.send("StartCliAtWorkspace", [target_workspace, "JarvisFast"])
 
         # 3. Wait for PID
         logger.info("Waiting for PID...")

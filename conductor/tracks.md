@@ -48,5 +48,7 @@
 
 ---
 
-- [x] **Track: Megasession Jan 23 2026**
-*Link: [./tracks/megasession_jan23_20260123/](./tracks/megasession_jan23_20260123/)*
+---
+
+- [~] **Track: cli api (Omni Hub Resource Opener & Gemini CLI Extension)**
+*Link: [./tracks/feat_cli_api_20260126/](./tracks/feat_cli_api_20260126/)*

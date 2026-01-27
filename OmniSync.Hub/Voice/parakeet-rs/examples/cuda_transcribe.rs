@@ -25,8 +25,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("CUDA feature not enabled, using CPU.");
     }
 
+    let load_start = Instant::now();
     let mut parakeet = ParakeetTDT::from_pretrained("./tdt", Some(config))?;
+    let load_duration = load_start.elapsed();
+    println!("[TIMER] Model Load took {:.2}s", load_duration.as_secs_f32());
+
+    let transcribe_start = Instant::now();
     let result = parakeet.transcribe_file(audio_path, Some(TimestampMode::Sentences))?;
+    let transcribe_duration = transcribe_start.elapsed();
+    println!("[TIMER] Transcription Work took {:.2}s", transcribe_duration.as_secs_f32());
     
     println!("\nTranscription:\n{}", result.text);
 
