@@ -19,13 +19,14 @@ namespace OmniSync.Hub.Logic.Services
         private readonly NodeRedService _nodeRedService;
         private readonly ProjectLauncherService _projectLauncherService;
         private readonly ResourceOpenerService _resourceOpenerService;
+        private readonly AiCliService _aiCliService;
         private readonly IHostApplicationLifetime _appLifetime;
         private readonly Dictionary<string, Action<JsonElement>> _commandMap;
 
         public event EventHandler<string>? AddCleanupPatternRequested;
         public event EventHandler<(string Command, JsonElement Payload)>? ExternalCommandDispatched;
 
-        public CommandDispatcher(InputService inputService, FileService fileService, AudioService audioService, ProcessService processService, ShutdownService shutdownService, HubSettingsService settingsService, PcgPersistentService pcgService, NodeRedService nodeRedService, ProjectLauncherService projectLauncherService, ResourceOpenerService resourceOpenerService, IHostApplicationLifetime appLifetime)
+        public CommandDispatcher(InputService inputService, FileService fileService, AudioService audioService, ProcessService processService, ShutdownService shutdownService, HubSettingsService settingsService, PcgPersistentService pcgService, NodeRedService nodeRedService, ProjectLauncherService projectLauncherService, ResourceOpenerService resourceOpenerService, AiCliService aiCliService, IHostApplicationLifetime appLifetime)
         {
             _inputService = inputService;
             _fileService = fileService;
@@ -37,6 +38,7 @@ namespace OmniSync.Hub.Logic.Services
             _nodeRedService = nodeRedService;
             _projectLauncherService = projectLauncherService;
             _resourceOpenerService = resourceOpenerService;
+            _aiCliService = aiCliService;
             _appLifetime = appLifetime;
             _commandMap = new Dictionary<string, Action<JsonElement>>
             {
@@ -90,27 +92,39 @@ namespace OmniSync.Hub.Logic.Services
                         }
                     }
                 }},
-                { "OPEN_RESOURCE", payload => {
-                    string? path = null;
-                    if (payload.TryGetProperty("Path", out var pathProp)) {
-                        path = pathProp.GetString();
-                    }
-                    
-                    int? lineNumber = null;
-                    if (payload.TryGetProperty("LineNumber", out var lineProp)) {
-                        if (lineProp.ValueKind == JsonValueKind.Number) {
-                            lineNumber = lineProp.GetInt32();
-                        } else if (lineProp.ValueKind == JsonValueKind.String && int.TryParse(lineProp.GetString(), out var line)) {
-                            lineNumber = line;
-                        }
-                    }
-
-                    if (!string.IsNullOrEmpty(path)) {
-                        _ = _resourceOpenerService.OpenResource(path, lineNumber);
-                    }
-                }},
-                { "SCHEDULE_SHUTDOWN", payload => _shutdownService.ScheduleShutdown(payload.GetProperty("Minutes").GetInt32()) },
-                { "ADDCLEANUPPATTERN", payload => AddCleanupPatternRequested?.Invoke(this, payload.GetString() ?? "") },
+                                { "OPEN_RESOURCE", payload => {
+                                    string? path = null;
+                                    if (payload.TryGetProperty("Path", out var pathProp)) {        
+                                        path = pathProp.GetString();
+                                    }
+                
+                                    int? lineNumber = null;
+                                    if (payload.TryGetProperty("LineNumber", out var lineProp)) {  
+                                        if (lineProp.ValueKind == JsonValueKind.Number) {
+                                            lineNumber = lineProp.GetInt32();
+                                        } else if (lineProp.ValueKind == JsonValueKind.String && int.TryParse(lineProp.GetString(), out var line)) {
+                                            lineNumber = line;
+                                        }
+                                    }
+                
+                                    if (!string.IsNullOrEmpty(path)) {
+                                        _ = _resourceOpenerService.OpenResource(path, lineNumber); 
+                                    }
+                                }},
+                                { "LIST_CLI_SESSIONS", payload => {
+                                    // This is handled by OmniHubApiController directly for returning data
+                                }},
+                                { "SEND_CLI_MESSAGE", payload => {
+                                    int pid = payload.GetProperty("Pid").GetInt32();
+                                    string message = payload.GetProperty("Message").GetString() ?? "";
+                                    _ = _aiCliService.SendPromptAsync(message, pid);
+                                }},
+                                { "GET_CLI_HISTORY", payload => {
+                                    int pid = payload.GetProperty("Pid").GetInt32();
+                                    int maxChars = payload.TryGetProperty("MaxChars", out var m) ? m.GetInt32() : 0;
+                                    _ = _aiCliService.GetHistoryAsync(pid, maxChars);
+                                }},
+                                { "SCHEDULE_SHUTDOWN", payload => _shutdownService.ScheduleShutdown(payload.GetProperty("Minutes").GetInt32()) },                { "ADDCLEANUPPATTERN", payload => AddCleanupPatternRequested?.Invoke(this, payload.GetString() ?? "") },
                 { "HUB_EXIT", payload => _appLifetime.StopApplication() },
                 { "WIN_MINIMIZE", payload => _processService.WinMinimize(payload.GetProperty("Title").GetString() ?? "") },
                 { "WIN_MAXIMIZE", payload => _processService.WinMaximize(payload.GetProperty("Title").GetString() ?? "") },
