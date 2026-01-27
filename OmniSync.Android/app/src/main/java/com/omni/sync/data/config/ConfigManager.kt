@@ -24,7 +24,9 @@ data class AppConfig(
     var subnetBroadcastIp: String = "192.168.1.255",
     var streamFps: Int = 10,
     var streamResolution: Int = 100, // Percentage
-    var maxAiHistory: Int = 10000 // characters per session default
+    var maxAiHistory: Int = 10000, // characters per session default
+    var keyboardSoundEnabled: Boolean = true,
+    var showKeyboardNumberRow: Boolean = true
 )
 
 class ConfigManager(private val context: Context) {
@@ -139,6 +141,8 @@ class ConfigManager(private val context: Context) {
         config.autosaveEnabled = filesPrefs.getBoolean("autosave_enabled", false)
         config.streamFps = settingsPrefs.getInt("stream_fps", config.streamFps)
         config.streamResolution = settingsPrefs.getInt("stream_resolution", config.streamResolution)
+        config.keyboardSoundEnabled = settingsPrefs.getBoolean("keyboard_sound_enabled", config.keyboardSoundEnabled)
+        config.showKeyboardNumberRow = settingsPrefs.getBoolean("show_keyboard_number_row", config.showKeyboardNumberRow)
         
         val actionsJson = settingsPrefs.getString("notification_actions", null)
         if (actionsJson != null) {

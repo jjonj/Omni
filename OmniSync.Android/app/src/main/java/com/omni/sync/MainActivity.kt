@@ -130,12 +130,21 @@ class MainActivity : ComponentActivity() {
         }
 
         setContent {
-            val isConnected by mainViewModel.isConnected.collectAsState()
-            OmniSyncTheme(isConnected = isConnected) {
-                val currentScreen by mainViewModel.currentScreen.collectAsState()
-                val canGoBack by mainViewModel.canGoBack.collectAsState()
-                val signalRClient = omniSyncApplication.signalRClient
-                
+                            val isConnected by mainViewModel.isConnected.collectAsState()
+                            OmniSyncTheme(isConnected = isConnected) {
+                                val currentScreen by mainViewModel.currentScreen.collectAsState()
+                                val canGoBack by mainViewModel.canGoBack.collectAsState()
+            
+                                // Handle Orientation for Remote Control
+                                LaunchedEffect(currentScreen) {
+                                    requestedOrientation = if (currentScreen == AppScreen.REMOTECONTROL) {
+                                        android.content.pm.ActivityInfo.SCREEN_ORIENTATION_USER
+                                    } else {
+                                        android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                                    }
+                                }
+            
+                                val signalRClient = omniSyncApplication.signalRClient                
                 val context = LocalContext.current
                 val isKeyboardVisible = androidx.compose.foundation.layout.WindowInsets.ime.getBottom(androidx.compose.ui.platform.LocalDensity.current) > 0
 
@@ -237,31 +246,33 @@ class MainActivity : ComponentActivity() {
                     androidx.compose.material3.Scaffold(
                         modifier = if (!isLandscape) Modifier.systemBarsPadding() else Modifier,
                         bottomBar = {
-                            val coroutineScope = androidx.compose.runtime.rememberCoroutineScope()
-                            OmniBottomNavigation(
-                                currentScreen = currentScreen,
-                                onNavigate = { screen -> 
-                                    if (screen == AppScreen.FILES) {
-                                        if (filesViewModel.editingFile.value != null) {
-                                            if (currentScreen == AppScreen.EDITOR) {
-                                                mainViewModel.navigateTo(AppScreen.FILES)
+                            if (!isLandscape) {
+                                val coroutineScope = androidx.compose.runtime.rememberCoroutineScope()
+                                OmniBottomNavigation(
+                                    currentScreen = currentScreen,
+                                    onNavigate = { screen -> 
+                                        if (screen == AppScreen.FILES) {
+                                            if (filesViewModel.editingFile.value != null) {
+                                                if (currentScreen == AppScreen.EDITOR) {
+                                                    mainViewModel.navigateTo(AppScreen.FILES)
+                                                } else {
+                                                    mainViewModel.navigateTo(AppScreen.EDITOR)
+                                                }
                                             } else {
-                                                mainViewModel.navigateTo(AppScreen.EDITOR)
+                                                mainViewModel.navigateTo(AppScreen.FILES)
                                             }
                                         } else {
-                                            mainViewModel.navigateTo(AppScreen.FILES)
+                                            mainViewModel.navigateTo(screen)
                                         }
-                                    } else {
-                                        mainViewModel.navigateTo(screen)
+                                    },
+                                    onSwipe = { delta ->
+                                        coroutineScope.launch {
+                                            val next = (pagerState.currentPage + delta).coerceIn(0, swipeableScreens.size - 1)
+                                            pagerState.animateScrollToPage(next)
+                                        }
                                     }
-                                },
-                                onSwipe = { delta ->
-                                    coroutineScope.launch {
-                                        val next = (pagerState.currentPage + delta).coerceIn(0, swipeableScreens.size - 1)
-                                        pagerState.animateScrollToPage(next)
-                                    }
-                                }
-                            )
+                                )
+                            }
                         }
                     ) { innerPadding ->
                         val isSwipeable = currentScreen in swipeableScreens

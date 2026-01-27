@@ -410,7 +410,7 @@ fun AiChatScreen(
                 actions = {
                     if (selectedPid != -1) {
                         IconButton(onClick = { 
-                            val hubUrl = mainViewModel.appConfig.hubUrl
+                            val hubUrl = mainViewModel.appConfig.value.hubUrl
                             val baseUrl = hubUrl.substringBeforeLast("/")
                             mainViewModel.openUrlOnPhone("$baseUrl/Settings.html")
                         }, enabled = isConnected) {

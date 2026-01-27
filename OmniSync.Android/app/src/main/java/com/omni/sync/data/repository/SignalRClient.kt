@@ -71,8 +71,8 @@ class SignalRClient(
     private val mainViewModel: MainViewModel
 ) {
     private var hubConnection: HubConnection? = null
-    private val hubUrl: String get() = mainViewModel.appConfig.hubUrl
-    private val apiKey: String get() = mainViewModel.appConfig.apiKey
+    private val hubUrl: String get() = mainViewModel.appConfig.value.hubUrl
+    private val apiKey: String get() = mainViewModel.appConfig.value.apiKey
 
     private val clipboardManager = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
     private val gson = GsonBuilder()
@@ -230,8 +230,8 @@ class SignalRClient(
         _connectionState.value = "Connecting..."
         mainViewModel.setErrorMessage(null)
 
-        val localUrl = mainViewModel.appConfig.hubUrl
-        val remoteUrl = "http://${mainViewModel.appConfig.wanIp}:5000/signalrhub"
+        val localUrl = mainViewModel.appConfig.value.hubUrl
+        val remoteUrl = "http://${mainViewModel.appConfig.value.wanIp}:5000/signalrhub"
 
         if (isWifiConnected()) {
             mainViewModel.addLog("WiFi detected. Attempting local connection: $localUrl", com.omni.sync.ui.screen.LogType.INFO)
@@ -637,7 +637,7 @@ class SignalRClient(
         var newMessages = block(sessionMessages)
         
         // --- Truncation Logic ---
-        val maxChars = mainViewModel.appConfig.maxAiHistory
+        val maxChars = mainViewModel.appConfig.value.maxAiHistory
         if (maxChars > 0) {
             var currentTotal = newMessages.sumOf { it.text.length }
             if (currentTotal > maxChars) {
@@ -791,9 +791,9 @@ class SignalRClient(
             updateActiveView()
             
             updateSessionStatus(targetPid, "Reloading history...")
-            mainViewModel.addLog("[AI] Requesting history for PID $targetPid (max: ${mainViewModel.appConfig.maxAiHistory} chars)", com.omni.sync.ui.screen.LogType.INFO)
+            mainViewModel.addLog("[AI] Requesting history for PID $targetPid (max: ${mainViewModel.appConfig.value.maxAiHistory} chars)", com.omni.sync.ui.screen.LogType.INFO)
             val hubPid = if (targetPid == -1) null else targetPid
-            hubConnection?.send("RequestAiHistory", hubPid, mainViewModel.appConfig.maxAiHistory)
+            hubConnection?.send("RequestAiHistory", hubPid, mainViewModel.appConfig.value.maxAiHistory)
         }
     }
 
@@ -806,7 +806,7 @@ class SignalRClient(
             mainViewModel.addLog("[AI] Switching to session PID $pid", com.omni.sync.ui.screen.LogType.INFO)
             setSelectedPid(pid)
             updateSessionStatus(pid, "Switching session...")
-            hubConnection?.send("SwitchAiSession", pid, mainViewModel.appConfig.maxAiHistory)
+            hubConnection?.send("SwitchAiSession", pid, mainViewModel.appConfig.value.maxAiHistory)
         }
     }
 

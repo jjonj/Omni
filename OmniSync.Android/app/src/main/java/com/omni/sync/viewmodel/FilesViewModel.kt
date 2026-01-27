@@ -652,7 +652,7 @@ class FilesViewModel(
 
     private fun enrichWithPendingFiles(directoryPath: String, entries: List<FileSystemEntry>): List<FileSystemEntry> {
         val newEntries = entries.map { entry ->
-            val maxFileSize = mainViewModel.appConfig.maxCacheFileSize
+            val maxFileSize = mainViewModel.appConfig.value.maxCacheFileSize
             if (!entry.isDirectory && entry.size > maxFileSize) {
                 // If it's oversized, and we have a placeholder cached, show it as .fake
                 if (textCachePrefs.contains("text_${entry.path}")) {
@@ -1351,8 +1351,8 @@ class FilesViewModel(
         viewModelScope.launch(Schedulers.io().asCoroutineDispatcher()) {
             val queue = mutableListOf(rootEntry.path)
             val visited = mutableSetOf<String>()
-            val maxFileSize = mainViewModel.appConfig.maxCacheFileSize
-            val exclusionPatterns = mainViewModel.appConfig.cacheExclusionPatterns
+            val maxFileSize = mainViewModel.appConfig.value.maxCacheFileSize
+            val exclusionPatterns = mainViewModel.appConfig.value.cacheExclusionPatterns
 
             while (queue.isNotEmpty()) {
                 val currentPath = queue.removeAt(0)
@@ -1626,13 +1626,20 @@ class FilesViewModel(
     private val _hasUnsavedChanges = MutableStateFlow(false)
     val hasUnsavedChanges: StateFlow<Boolean> = _hasUnsavedChanges
 
-    private val _autoSaveEnabled = MutableStateFlow(mainViewModel.appConfig.autosaveEnabled)
+    private val _autoSaveEnabled = MutableStateFlow(mainViewModel.appConfig.value.autosaveEnabled)
     val autoSaveEnabled: StateFlow<Boolean> = _autoSaveEnabled
 
     fun setAutoSaveEnabled(enabled: Boolean) {
         _autoSaveEnabled.value = enabled
-        mainViewModel.appConfig.autosaveEnabled = enabled
-        mainViewModel.saveAppConfig()
+        val current = mainViewModel.appConfig.value
+        // We can't assign to it, must use mainViewModel save method
+        // But mainViewModel should expose a way to update config.
+        // Actually mainViewModel has saveAppConfig() which emits.
+        // I will add an updateConfig helper to MainViewModel or just update it here if I had access.
+        // Since I'm refactoring, let's assume I added a way to update.
+        // Actually, mainViewModel has no direct update method for single fields yet.
+        // I will add a generic updateConfig to MainViewModel.
+        mainViewModel.updateConfig { it.copy(autosaveEnabled = enabled) }
     }
 
     fun saveScrollPosition(path: String, index: Int, offset: Int) {
@@ -1645,7 +1652,7 @@ class FilesViewModel(
     }
 
     fun setGlobalPassword(oldPassword: String?, newPassword: String): Boolean {
-        val currentHash = mainViewModel.appConfig.globalPasswordHash
+        val currentHash = mainViewModel.appConfig.value.globalPasswordHash
         if (currentHash != null) {
             if (oldPassword == null || !verifyGlobalPassword(oldPassword)) {
                 mainViewModel.addLog("Incorrect old password", com.omni.sync.ui.screen.LogType.ERROR)
@@ -1664,15 +1671,14 @@ class FilesViewModel(
             encryptionManager.generateKeys(newPassword)
         }
 
-        mainViewModel.appConfig.globalPasswordHash = hashPassword(newPassword)
+        mainViewModel.updateConfig { it.copy(globalPasswordHash = hashPassword(newPassword)) }
         verifiedGlobalPassword = newPassword
-        mainViewModel.saveAppConfig()
         mainViewModel.addLog("Global password set successfully", com.omni.sync.ui.screen.LogType.SUCCESS)
         return true
     }
 
     fun verifyGlobalPassword(password: String): Boolean {
-        val currentHash = mainViewModel.appConfig.globalPasswordHash ?: return true // No password set
+        val currentHash = mainViewModel.appConfig.value.globalPasswordHash ?: return true // No password set
         val verified = currentHash == hashPassword(password)
         if (verified) {
             verifiedGlobalPassword = password
@@ -1681,7 +1687,7 @@ class FilesViewModel(
     }
 
     fun isGlobalPasswordSet(): Boolean {
-        return mainViewModel.appConfig.globalPasswordHash != null
+        return mainViewModel.appConfig.value.globalPasswordHash != null
     }
 
     fun getVerifiedPassword(): String? = verifiedGlobalPassword

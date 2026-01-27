@@ -62,9 +62,9 @@ fun MacroManagerScreen(
     mainViewModel: MainViewModel,
     onBack: () -> Unit
 ) {
-    val appConfig = mainViewModel.appConfig
+    val appConfig by mainViewModel.appConfig.collectAsState()
     val context = mainViewModel.applicationContext
-    var macros by remember { mutableStateOf(appConfig.macros) }
+    var macros by remember(appConfig.macros) { mutableStateOf(appConfig.macros) }
     var showHelpDialog by remember { mutableStateOf(false) }
     val coroutineScope = rememberCoroutineScope()
 
@@ -139,8 +139,7 @@ fun MacroManagerScreen(
 
     fun saveMacros(newMacros: List<Macro>) {
         macros = newMacros
-        appConfig.macros = newMacros
-        mainViewModel.saveAppConfig()
+        mainViewModel.updateMacros(newMacros)
     }
 
     fun resetEditor() {

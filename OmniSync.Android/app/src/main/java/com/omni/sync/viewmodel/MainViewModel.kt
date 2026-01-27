@@ -45,7 +45,8 @@ enum class AppScreen {
 class MainViewModel(application: Application) : AndroidViewModel(application) {
     val applicationContext: Context = application.applicationContext
     val configManager = com.omni.sync.data.config.ConfigManager(applicationContext)
-    val appConfig = configManager.loadConfig()
+    private val _appConfig = MutableStateFlow(configManager.loadConfig())
+    val appConfig: StateFlow<com.omni.sync.data.config.AppConfig> = _appConfig
     
     private val _isConnected = MutableStateFlow(false)
     val isConnected: StateFlow<Boolean> = _isConnected
@@ -212,7 +213,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     // Helper to extract the base URL (http://10.0.0.37:5000) from the specific Hub URL
     fun getBaseUrl(): String {
         return if (_activeBaseUrl.value.isNotEmpty()) _activeBaseUrl.value 
-               else appConfig.hubUrl.substringBefore("/signalrhub")
+               else _appConfig.value.hubUrl.substringBefore("/signalrhub")
     }
 
     fun getWebServerUrl(): String {
@@ -228,7 +229,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun saveAppConfig() {
-        configManager.saveConfig(appConfig)
+        configManager.saveConfig(_appConfig.value)
+        // Force emission of new state if object reference hasn't changed but content has
+        _appConfig.value = _appConfig.value.copy() 
+    }
+
+    fun updateMacros(macros: List<com.omni.sync.data.model.Macro>) {
+        val current = _appConfig.value
+        _appConfig.value = current.copy(macros = macros)
+        saveAppConfig()
+    }
+
+    fun updateConfig(update: (com.omni.sync.data.config.AppConfig) -> com.omni.sync.data.config.AppConfig) {
+        _appConfig.value = update(_appConfig.value)
+        saveAppConfig()
     }
 
     fun playVideo(remotePath: String, playlist: List<String> = emptyList()) {
@@ -482,8 +496,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun sendWakeOnLan(macAddress: String, port: Int = 9) {
-        val wanIp = appConfig.wanIp
-        val broadcastIp = appConfig.subnetBroadcastIp
+        val wanIp = _appConfig.value.wanIp
+        val broadcastIp = _appConfig.value.subnetBroadcastIp
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 addLog("Sending WOL to $macAddress (Local & Remote)...", LogType.INFO)

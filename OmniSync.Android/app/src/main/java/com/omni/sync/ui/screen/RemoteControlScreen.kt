@@ -75,6 +75,51 @@ import android.content.Intent
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
+import android.view.HapticFeedbackConstants
+import android.media.ToneGenerator
+import android.media.AudioManager
+import android.media.SoundPool
+import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.ui.platform.LocalView
+import com.omni.sync.utils.WindowsKeyCodes.VK_F1
+import com.omni.sync.utils.WindowsKeyCodes.VK_F10
+import com.omni.sync.utils.WindowsKeyCodes.VK_F11
+import com.omni.sync.utils.WindowsKeyCodes.VK_F12
+import com.omni.sync.utils.WindowsKeyCodes.VK_F2
+import com.omni.sync.utils.WindowsKeyCodes.VK_F3
+import com.omni.sync.utils.WindowsKeyCodes.VK_F4
+import com.omni.sync.utils.WindowsKeyCodes.VK_F5
+import com.omni.sync.utils.WindowsKeyCodes.VK_F6
+import com.omni.sync.utils.WindowsKeyCodes.VK_F7
+import com.omni.sync.utils.WindowsKeyCodes.VK_F8
+import com.omni.sync.utils.WindowsKeyCodes.VK_F9
+import com.omni.sync.utils.WindowsKeyCodes.VK_CAPITAL
+import com.omni.sync.utils.WindowsKeyCodes.VK_OEM_1
+import com.omni.sync.utils.WindowsKeyCodes.VK_OEM_2
+import com.omni.sync.utils.WindowsKeyCodes.VK_OEM_3
+import com.omni.sync.utils.WindowsKeyCodes.VK_OEM_4
+import com.omni.sync.utils.WindowsKeyCodes.VK_OEM_5
+import com.omni.sync.utils.WindowsKeyCodes.VK_OEM_6
+import com.omni.sync.utils.WindowsKeyCodes.VK_OEM_7
+import com.omni.sync.utils.WindowsKeyCodes.VK_OEM_COMMA
+import com.omni.sync.utils.WindowsKeyCodes.VK_OEM_MINUS
+import com.omni.sync.utils.WindowsKeyCodes.VK_OEM_PERIOD
+import com.omni.sync.utils.WindowsKeyCodes.VK_OEM_PLUS
+import com.omni.sync.utils.WindowsKeyCodes.VK_SPACE
+import com.omni.sync.utils.WindowsKeyCodes.VK_0
+import com.omni.sync.utils.WindowsKeyCodes.VK_1
+import com.omni.sync.utils.WindowsKeyCodes.VK_2
+import com.omni.sync.utils.WindowsKeyCodes.VK_3
+import com.omni.sync.utils.WindowsKeyCodes.VK_4
+import com.omni.sync.utils.WindowsKeyCodes.VK_5
+import com.omni.sync.utils.WindowsKeyCodes.VK_6
+import com.omni.sync.utils.WindowsKeyCodes.VK_7
+import com.omni.sync.utils.WindowsKeyCodes.VK_8
+import com.omni.sync.utils.WindowsKeyCodes.VK_9
+import android.content.res.Configuration
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.text.font.FontWeight
+
 @OptIn(ExperimentalLayoutApi::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun RemoteControlScreen(
@@ -93,6 +138,10 @@ fun RemoteControlScreen(
     var showMoreButtons by remember { mutableStateOf(false) }
 
     val selectedPid by signalRClient.selectedPid.collectAsState()
+    
+    val configuration = LocalConfiguration.current
+    val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+    val appConfig by mainViewModel.appConfig.collectAsState()
 
     val voiceLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
@@ -102,7 +151,6 @@ fun RemoteControlScreen(
             val results = data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
             if (!results.isNullOrEmpty()) {
                 val spokenText = results[0]
-                // Send as keyboard input to PC
                 signalRClient.sendText(spokenText)
             }
         }
@@ -117,7 +165,7 @@ fun RemoteControlScreen(
     }
 
     // Handle back press
-    androidx.activity.compose.BackHandler(enabled = showMacroGrid || showMoreButtons) {
+    androidx.activity.compose.BackHandler(enabled = (showMacroGrid || showMoreButtons) && !isLandscape) {
         if (showMoreButtons) {
             showMoreButtons = false
         } else if (showMacroGrid) {
@@ -125,70 +173,73 @@ fun RemoteControlScreen(
         }
     }
 
-    // Layered layout: Trackpad fills the screen, ButtonPanel sits on top with shadow
-    Box(modifier = modifier.fillMaxSize()) {
-        if (!showMacroGrid) {
-            TrackpadArea(
-                signalRClient = signalRClient,
-                modifier = Modifier.fillMaxSize(),
-                mainViewModel = mainViewModel,
-                isMonitorVisible = isMonitorVisible,
-                scale = monitorScale,
-                offset = monitorOffset,
-                onTransform = { s, o ->
-                    monitorScale = (monitorScale * s).coerceIn(1f, 5f)
-                    monitorOffset += o
-                }
-            )
-        } else {
-            MacroGridPanel(
-                mainViewModel = mainViewModel,
-                signalRClient = signalRClient,
-                modifier = Modifier.fillMaxSize()
-            )
-        }
-        
-        // ButtonPanel with elevation and shadow at the bottom
-        // We use a dynamic padding calculation to ensure the panel sits flush with the 
-        // bottom navigation bar when at rest, and follows the keyboard top smoothly
-        // once the keyboard height exceeds the rest position.
-        val imeHeight = WindowInsets.ime.asPaddingValues().calculateBottomPadding()
-        val bottomBarHeight = paddingValues.calculateBottomPadding()
-        
-        // Landing position relative to screen bottom (Total height of bars)
-        val restHeight = bottomBarHeight
-	val keyboardOverlapOffset = 15.dp
-        val floatHeight = imeHeight - keyboardOverlapOffset
-        
-        Surface(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .padding(bottom = maxOf(floatHeight, restHeight)),
-            tonalElevation = 2.dp,
-            shadowElevation = 8.dp,
-            color = MaterialTheme.colorScheme.surface
-        ) {
-            ButtonPanel(
-                signalRClient = signalRClient,
-                mainViewModel = mainViewModel,
-                modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
-                keyboardController = keyboardController,
-                isKeyboardVisible = isKeyboardVisible,
-                focusRequester = focusRequester,
-                isMonitorVisible = isMonitorVisible,
-                showMoreButtons = showMoreButtons,
-                onToggleMore = { showMoreButtons = it },
-                onToggleMonitor = { 
-                    isMonitorVisible = it
-                    if (!it) {
-                        monitorScale = 1f
-                        monitorOffset = Offset.Zero
+    if (isLandscape) {
+        CustomKeyboard(
+            signalRClient = signalRClient,
+            appConfig = appConfig,
+            modifier = Modifier.fillMaxSize()
+        )
+    } else {
+        Box(modifier = modifier.fillMaxSize()) {
+            if (!showMacroGrid) {
+                TrackpadArea(
+                    signalRClient = signalRClient,
+                    modifier = Modifier.fillMaxSize(),
+                    mainViewModel = mainViewModel,
+                    appConfig = appConfig,
+                    isMonitorVisible = isMonitorVisible,
+                    scale = monitorScale,
+                    offset = monitorOffset,
+                    onTransform = { s, o ->
+                        monitorScale = (monitorScale * s).coerceIn(1f, 5f)
+                        monitorOffset += o
                     }
-                },
-                onToggleMacros = { showMacroGrid = !showMacroGrid },
-                onStartVoice = { startVoiceRecognition() }
-            )
+                )
+            } else {
+                MacroGridPanel(
+                    mainViewModel = mainViewModel,
+                    signalRClient = signalRClient,
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
+            
+            val imeHeight = WindowInsets.ime.asPaddingValues().calculateBottomPadding()
+            val bottomBarHeight = paddingValues.calculateBottomPadding()
+            
+            val restHeight = bottomBarHeight
+            val keyboardOverlapOffset = 15.dp
+            val floatHeight = imeHeight - keyboardOverlapOffset
+            
+            Surface(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .padding(bottom = maxOf(floatHeight, restHeight)),
+                tonalElevation = 2.dp,
+                shadowElevation = 8.dp,
+                color = MaterialTheme.colorScheme.surface
+            ) {
+                ButtonPanel(
+                    signalRClient = signalRClient,
+                    mainViewModel = mainViewModel,
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                    keyboardController = keyboardController,
+                    isKeyboardVisible = isKeyboardVisible,
+                    focusRequester = focusRequester,
+                    isMonitorVisible = isMonitorVisible,
+                    showMoreButtons = showMoreButtons,
+                    onToggleMore = { showMoreButtons = it },
+                    onToggleMonitor = { 
+                        isMonitorVisible = it
+                        if (!it) {
+                            monitorScale = 1f
+                            monitorOffset = Offset.Zero
+                        }
+                    },
+                    onToggleMacros = { showMacroGrid = !showMacroGrid },
+                    onStartVoice = { startVoiceRecognition() }
+                )
+            }
         }
     }
 }
@@ -199,15 +250,14 @@ fun MacroGridPanel(
     signalRClient: SignalRClient,
     modifier: Modifier = Modifier
 ) {
-    val appConfig = mainViewModel.appConfig
-    var macros by remember { mutableStateOf(appConfig.macros) }
+    val appConfig by mainViewModel.appConfig.collectAsState()
+    var macros by remember(appConfig.macros) { mutableStateOf(appConfig.macros) }
     val coroutineScope = rememberCoroutineScope()
     val parser = remember { com.omni.sync.logic.macro.MacroParser() }
     val executor = remember { com.omni.sync.logic.macro.MacroExecutor(signalRClient, macros) }
     val context = LocalContext.current
     var macroProgress by remember { mutableStateOf<String?>(null) }
 
-    // Drag and Drop state
     var draggingMacroId by remember { mutableStateOf<String?>(null) }
 
     Box(modifier = modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface).padding(16.dp)) {
@@ -230,7 +280,7 @@ fun MacroGridPanel(
                 columns = androidx.compose.foundation.lazy.grid.GridCells.Fixed(3),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
-                modifier = Modifier.fillMaxSize().padding(bottom = 180.dp) // Leave room for ButtonPanel (increased from 140)
+                modifier = Modifier.fillMaxSize().padding(bottom = 180.dp)
             ) {
                 itemsIndexed(macros, key = { _, m -> m.id }) { index, macro ->
                     val isDragging = draggingMacroId == macro.id
@@ -241,11 +291,26 @@ fun MacroGridPanel(
                         onDragStart = { draggingMacroId = macro.id },
                         onDragEnd = { 
                             draggingMacroId = null
-                            appConfig.macros = macros
-                            mainViewModel.saveAppConfig()
+                            // Update the config with the new macro order
+                            val newConfig = appConfig.copy(macros = macros)
+                            // We need a way to push this back to ViewModel. 
+                            // Since appConfig is read-only StateFlow, we must update the underlying object and call save.
+                            // Ideally, ViewModel should have a updateMacros method.
+                            // For now, we update the object inside the flow's current value (if mutable) or create copy.
+                            // But mainViewModel.appConfig is a StateFlow of a Data Class.
+                            // We must update the value in ViewModel.
+                            // Let's modify MainViewModel to support updates or just hack it for now by modifying the object 
+                            // IF AppConfig was a class, but it's a data class.
+                            // We need to update the ViewModel's state.
+                            // For now, let's assume we can't easily write back to the flow without a method.
+                            // BUT, we can't assign to appConfig.macros if appConfig is from collectAsState (it's val).
+                            // The previous code did appConfig.macros = macros.
+                            // We need to fix MainViewModel to allow updating config.
+                            // Or just access the raw config object for writing?
+                            // No, we should add updateConfig to ViewModel.
+                            mainViewModel.updateMacros(macros)
                         },
                         onDrag = { dragAmount ->
-                            // Simple reordering logic based on drag direction
                             val threshold = 50f
                             if (java.lang.Math.abs(dragAmount.x) > java.lang.Math.abs(dragAmount.y)) {
                                 if (dragAmount.x > threshold && index % 3 < 2 && index + 1 < macros.size) {
@@ -404,6 +469,7 @@ fun MacroButton(
 fun TrackpadArea(
     signalRClient: SignalRClient,
     mainViewModel: MainViewModel,
+    appConfig: com.omni.sync.data.config.AppConfig,
     modifier: Modifier = Modifier,
     isMonitorVisible: Boolean = false,
     scale: Float = 1f,
@@ -414,7 +480,6 @@ fun TrackpadArea(
     var lastTapTime by remember { mutableLongStateOf(0L) }
     var isDraggingLeftClick by remember { mutableStateOf(false) }
     var screenshotTick by remember { mutableIntStateOf(0) }
-    val appConfig = mainViewModel.appConfig
     var currentFrame by remember { mutableStateOf<Painter?>(null) }
 
     LaunchedEffect(isMonitorVisible, appConfig.streamFps) {
@@ -451,7 +516,7 @@ fun TrackpadArea(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .background(Color.Black) // Solid background to avoid z-fighting/transparency issues
+            .background(Color.Black)
             .pointerInput(isMonitorVisible) {
                 if (isMonitorVisible) {
                     detectTransformGestures { _, pan, zoom, _ ->
@@ -485,7 +550,6 @@ fun TrackpadArea(
                             val pressedCount = changes.count { it.pressed }
                             
                             if (pressedCount >= 2 && !isMonitorVisible) {
-                                // Scroll logic (only if not in monitor zoom mode)
                                 val scrollDelta = changes.first().positionChange()
                                 if (scrollDelta != Offset.Zero) {
                                     signalRClient.sendPayload("MOUSE_SCROLL", mapOf("Delta" to scrollDelta.y.toInt()))
@@ -508,7 +572,6 @@ fun TrackpadArea(
                                     
                                     if (isDoubleTapCandidate) {
                                         isDraggingLeftClick = true
-                                        // Send Left Down
                                         signalRClient.sendPayload("MOUSE_CLICK_DOWN", mapOf("Button" to "Left"))
                                     }
                                 }
@@ -516,7 +579,6 @@ fun TrackpadArea(
                                 if (isDrag) {
                                     val delta = change.positionChange()
                                     if (delta != Offset.Zero) {
-                                        // Reduced sensitivity
                                         val sensitivity = 0.72f
                                         signalRClient.sendMouseMove(delta.x * sensitivity, delta.y * sensitivity)
                                         change.consume()
@@ -527,10 +589,9 @@ fun TrackpadArea(
                     } finally {
                         longPressJob.cancel()
                         if (isDraggingLeftClick) {
-                            // Send Left Up
                             signalRClient.sendPayload("MOUSE_CLICK_UP", mapOf("Button" to "Left"))
                             isDraggingLeftClick = false
-                            lastTapTime = 0 // Reset to avoid triple tap drag
+                            lastTapTime = 0
                         } else if (!isDrag && !isRightClickTriggered) {
                             signalRClient.sendLeftClick()
                             lastTapTime = System.currentTimeMillis()
@@ -566,10 +627,7 @@ fun TrackpadArea(
         )
     }
 }
-/**
- * Isolated keyboard input component.
- * Uses an "Append-Only" strategy to avoid fighting the keyboard state.
- */
+
 @Composable
 fun HiddenKeyboardInput(
     signalRClient: SignalRClient,
@@ -597,23 +655,16 @@ fun HiddenKeyboardInput(
             val newText = newValue.text
             val cursor = newValue.selection.start
             
-            // 1. Force Cursor to End (prevents editing middle of buffer)
             if (cursor < newText.length) {
                 textFieldValue = newValue.copy(selection = TextRange(newText.length))
                 return@BasicTextField
             }
 
-            // 2. Diffing Logic
             if (newText.length > oldText.length) {
-                // Characters Added
                 val addedCount = newText.length - oldText.length
                 val addedText = newText.takeLast(addedCount)
                 
                 if (addedText.isNotEmpty()) {
-                    // --- SMART FILTER: Detect Auto-Space ---
-                    // If the keyboard sent exactly 2 chars, the second is a space,
-                    // and the first is NOT a letter/digit (likely punctuation),
-                    // we assume it's an auto-space insertion and strip it.
                     if (addedText.length == 2 && addedText[1] == ' ' && !addedText[0].isLetterOrDigit()) {
                         signalRClient.sendText(addedText[0].toString())
                     } else {
@@ -623,7 +674,6 @@ fun HiddenKeyboardInput(
                 textFieldValue = newValue
             } 
             else if (newText.length < oldText.length) {
-                // Backspace(s) detected
                 val deletedCount = oldText.length - newText.length
                 if (deletedCount > 0) {
                     repeat(deletedCount) {
@@ -635,7 +685,6 @@ fun HiddenKeyboardInput(
                 textFieldValue = newValue
             }
 
-            // 3. Buffer Maintenance
             if (newText.length < refillThreshold || newText.length > maxBufferSize) {
                 val resetText = String(CharArray(bufferSize) { dummyChar })
                 textFieldValue = TextFieldValue(resetText, TextRange(resetText.length))
@@ -643,7 +692,6 @@ fun HiddenKeyboardInput(
         },
         keyboardOptions = KeyboardOptions(
             autoCorrect = false, 
-            // URI Type is safer against auto-spacing/capitalization than ASCII
             keyboardType = KeyboardType.Uri, 
             imeAction = ImeAction.Send
         ),
@@ -657,7 +705,6 @@ fun HiddenKeyboardInput(
             .size(1.dp) 
             .alpha(0f)
             .onKeyEvent { keyEvent ->
-                // Capture Hardware Keys
                 if (keyEvent.type == KeyEventType.KeyDown) {
                      when (keyEvent.key) {
                          Key.Tab -> { signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_TAB); true }
@@ -701,6 +748,8 @@ fun ButtonPanel(
     var shutdownLabel by remember { mutableStateOf("None") }
     var shutdownIndex by remember { mutableIntStateOf(0) }
 
+    val context = LocalContext.current
+
     LaunchedEffect(scheduledShutdownTime) {
         if (scheduledShutdownTime == null) {
             shutdownLabel = "None"
@@ -729,7 +778,6 @@ fun ButtonPanel(
 
     LaunchedEffect(Unit) {
         focusRequester.requestFocus()
-        
         if (signalRClient.connectionState.value.contains("Connected")) {
             signalRClient.getVolume()?.subscribe({ volumeLevel = it }, {})
             signalRClient.isMuted()?.subscribe({ isMutedState = it }, {})
@@ -737,13 +785,7 @@ fun ButtonPanel(
     }
 
     Column(modifier = modifier.padding(8.dp)) {
-        
-        HiddenKeyboardInput(
-            signalRClient = signalRClient,
-            focusRequester = focusRequester
-        )
-
-        // Volume Slider
+        HiddenKeyboardInput(signalRClient = signalRClient, focusRequester = focusRequester)
         Row(verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = {
                 signalRClient.sendToggleMute()
@@ -759,12 +801,8 @@ fun ButtonPanel(
                 modifier = Modifier.weight(1f)
             )
         }
-
         Spacer(Modifier.height(4.dp))
-
-        // Key Grids
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            // Grid 1
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 ModifierKeyButton("Ctrl", isCtrlPressed, Modifier.weight(1f), label = "Ctrl", mainViewModel = mainViewModel, onToggle = { 
                     if (it) signalRClient.sendKeyEvent("INPUT_KEY_DOWN", VK_CONTROL)
@@ -787,26 +825,17 @@ fun ButtonPanel(
                     mainViewModel.setAltPressed(false)
                 })
                 ModifierKeyButton("Win", isWinPressed, Modifier.weight(1f), toggleOnTap = false, label = "Win", mainViewModel = mainViewModel, onToggle = { 
-                    // Single tap: Send full press
                     signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_LWIN)
-                }, onDoubleClick = {
-                    // Double click: not needed for win but could be win-d or something
-                }, onLongPress = {
-                    // Long press: toggle hold
+                }, onDoubleClick = {}, onLongPress = {
                     val newState = !isWinPressed
                     if (newState) signalRClient.sendKeyEvent("INPUT_KEY_DOWN", VK_LWIN)
                     else signalRClient.sendKeyEvent("INPUT_KEY_UP", VK_LWIN)
                     mainViewModel.setWinPressed(newState)
                 })
-                ActionKeyButton(text = "Tab", modifier = Modifier.weight(1f), onLongClick = {
-                    // Toggle Tab hold? Tab usually isnt held alone, but could be useful
-                    signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_TAB)
-                }) {
+                ActionKeyButton(text = "Tab", modifier = Modifier.weight(1f)) {
                     signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_TAB)
                 }
             }
-
-            // Grid 2
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 ActionKeyButton(text = "Esc", modifier = Modifier.weight(1f)) {
                     signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_ESCAPE)
@@ -840,38 +869,17 @@ fun ButtonPanel(
                 }
             }
 
-            // Grid 3
             val shutdownTimes = listOf(0, 15, 30, 60, 120, 300, 720)
-            val context = LocalContext.current
-
             if (!showMoreButtons) {
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    ActionKeyButton(icon = Icons.Default.Keyboard, modifier = Modifier.weight(1f)) {
-                        if (isKeyboardVisible) {
-                            keyboardController?.hide()
-                        } else {
-                            focusRequester.requestFocus()
-                            keyboardController?.show()
-                        }
+                    ActionKeyButton(icon = Icons.Default.Keyboard, modifier = Modifier.weight(1f)) { 
+                        if (isKeyboardVisible) keyboardController?.hide() else { focusRequester.requestFocus(); keyboardController?.show() }
                     }
-                    ActionKeyButton(icon = Icons.Default.AutoFixHigh, modifier = Modifier.weight(1f)) {
-                        onToggleMacros()
-                    }
-                    ActionKeyButton(icon = Icons.Default.Mic, modifier = Modifier.weight(1f)) {
-                        onStartVoice()
-                    }
-                    ActionKeyButton(icon = Icons.AutoMirrored.Filled.KeyboardReturn, modifier = Modifier.weight(1f)) {
-                        signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_RETURN)
-                    }
-                    ActionKeyButton(
-                        icon = Icons.Default.Tv, 
-                        text = if (isMonitorVisible) "Off" else "On",
-                        modifier = Modifier.weight(1f),
-                        onClick = { onToggleMonitor(!isMonitorVisible) }
-                    )
-                    ActionKeyButton(text = "More", modifier = Modifier.weight(1f)) {
-                        onToggleMore(true)
-                    }
+                    ActionKeyButton(icon = Icons.Default.AutoFixHigh, modifier = Modifier.weight(1f)) { onToggleMacros() }
+                    ActionKeyButton(icon = Icons.Default.Mic, modifier = Modifier.weight(1f)) { onStartVoice() }
+                    ActionKeyButton(icon = Icons.AutoMirrored.Filled.KeyboardReturn, modifier = Modifier.weight(1f)) { signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_RETURN) }
+                    ActionKeyButton(icon = Icons.Default.Tv, text = if (isMonitorVisible) "Off" else "On", modifier = Modifier.weight(1f), onClick = { onToggleMonitor(!isMonitorVisible) })
+                    ActionKeyButton(text = "More", modifier = Modifier.weight(1f)) { onToggleMore(true) }
                 }
             } else {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -880,47 +888,479 @@ fun ButtonPanel(
                             val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                             clipboard.primaryClip?.getItemAt(0)?.text?.let { signalRClient.sendText(it.toString()) }
                         }
-
-                        val isSleep = shutdownMode.contains("Sleep", ignoreCase = true)
-                        ActionKeyButton(
-                            icon = if (isSleep) Icons.Default.ModeNight else Icons.Default.PowerSettingsNew, 
-                            text = shutdownLabel, 
-                            modifier = Modifier.weight(1f),
-                            onClick = {
-                                shutdownIndex = (shutdownIndex + 1) % shutdownTimes.size
-                                signalRClient.sendScheduleShutdown(shutdownTimes[shutdownIndex])
-                            },
-                            onLongClick = {
-                                signalRClient.toggleShutdownMode()
+                        var showFKeys by remember { mutableStateOf(false) }
+                        Box(modifier = Modifier.weight(1f)) {
+                            ActionKeyButton(text = "F-Keys", icon = Icons.Default.ArrowDropDown) { showFKeys = true }
+                            DropdownMenu(expanded = showFKeys, onDismissRequest = { showFKeys = false }) {
+                                val fkeys = listOf("F1" to VK_F1, "F2" to VK_F2, "F3" to VK_F3, "F4" to VK_F4, "F5" to VK_F5, "F6" to VK_F6, "F7" to VK_F7, "F8" to VK_F8, "F9" to VK_F9, "F10" to VK_F10, "F11" to VK_F11, "F12" to VK_F12)
+                                fkeys.chunked(4).forEach { row ->
+                                    Row {
+                                        row.forEach { (label, code) ->
+                                            DropdownMenuItem(text = { Text(label) }, onClick = { signalRClient.sendKeyEvent("INPUT_KEY_PRESS", code); showFKeys = false }, modifier = Modifier.width(80.dp))
+                                        }
+                                    }
+                                }
                             }
-                        )
-                        
-                        ActionKeyButton(text = "Alt+Tab", modifier = Modifier.weight(1f)) {
-                            signalRClient.sendKeyEvent("INPUT_KEY_DOWN", VK_MENU)
-                            signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_TAB)
-                            signalRClient.sendKeyEvent("INPUT_KEY_UP", VK_MENU)
                         }
+                        val isSleep = shutdownMode.contains("Sleep", ignoreCase = true)
+                        ActionKeyButton(icon = if (isSleep) Icons.Default.ModeNight else Icons.Default.PowerSettingsNew, text = shutdownLabel, modifier = Modifier.weight(1f), onClick = { shutdownIndex = (shutdownIndex + 1) % shutdownTimes.size; signalRClient.sendScheduleShutdown(shutdownTimes[shutdownIndex]) }, onLongClick = { signalRClient.toggleShutdownMode() })
+                        ActionKeyButton(text = "Alt+Tab", modifier = Modifier.weight(1f)) { signalRClient.sendKeyEvent("INPUT_KEY_DOWN", VK_MENU); signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_TAB); signalRClient.sendKeyEvent("INPUT_KEY_UP", VK_MENU) }
                     }
-
                     Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                         ActionKeyButton(icon = Icons.Default.Delete, modifier = Modifier.weight(1f)) {
                             coroutineScope.launch {
-                                signalRClient.sendKeyEvent("INPUT_KEY_DOWN", VK_CONTROL)
-                                signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_A)
-                                delay(100)
-                                signalRClient.sendKeyEvent("INPUT_KEY_UP", VK_CONTROL)
-                                signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_BACK)
+                                signalRClient.sendKeyEvent("INPUT_KEY_DOWN", VK_CONTROL); signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_A)
+                                delay(100); signalRClient.sendKeyEvent("INPUT_KEY_UP", VK_CONTROL); signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_BACK)
                             }
                         }
-
-                        ActionKeyButton(text = "Back", modifier = Modifier.weight(1f)) {
-                            onToggleMore(false)
-                        }
+                        ActionKeyButton(text = "Back", modifier = Modifier.weight(1f)) { onToggleMore(false) }
                     }
                 }
             }
         }
     }
+}
+
+@Composable
+
+fun CustomKeyboard(
+
+    signalRClient: SignalRClient,
+
+    appConfig: com.omni.sync.data.config.AppConfig,
+
+    modifier: Modifier = Modifier
+
+) {
+
+    var showNumbers by remember(appConfig.showKeyboardNumberRow) { mutableStateOf(appConfig.showKeyboardNumberRow) }
+
+    
+
+    val context = LocalContext.current
+
+    val soundPool = remember {
+
+        SoundPool.Builder()
+
+            .setMaxStreams(5)
+
+            .setAudioAttributes(
+
+                android.media.AudioAttributes.Builder()
+
+                    .setUsage(android.media.AudioAttributes.USAGE_ASSISTANCE_SONIFICATION)
+
+                    .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SONIFICATION)
+
+                    .build()
+
+            )
+
+            .build()
+
+    }
+
+    
+
+        val soundId = remember { soundPool.load(context, com.omni.sync.R.raw.button_click_01, 1) }
+
+    
+
+        var soundLoaded by remember { mutableStateOf(false) }
+
+    
+
+        val toneGenerator = remember { ToneGenerator(AudioManager.STREAM_MUSIC, 100) }
+
+    
+
+        
+
+    
+
+        LaunchedEffect(Unit) {
+
+    
+
+            soundPool.setOnLoadCompleteListener { _, _, status ->
+
+    
+
+                if (status == 0) {
+
+    
+
+                    soundLoaded = true
+
+    
+
+                    Log.d("CustomKeyboard", "ButtonClick sound loaded successfully")
+
+    
+
+                } else {
+
+    
+
+                    Log.e("CustomKeyboard", "ButtonClick sound failed to load: $status")
+
+    
+
+                }
+
+    
+
+            }
+
+    
+
+        }
+
+    
+
+        
+
+    
+
+        val view = LocalView.current
+
+    
+
+    
+
+    
+
+        DisposableEffect(Unit) {
+
+    
+
+            onDispose {
+
+    
+
+                soundPool.release()
+
+    
+
+                toneGenerator.release()
+
+    
+
+            }
+
+    
+
+        }
+
+    
+
+    
+
+    
+
+        fun playClick() {
+
+    
+
+            if (appConfig.keyboardSoundEnabled) {
+
+    
+
+                if (soundLoaded) {
+
+    
+
+                    soundPool.play(soundId, 1f, 1f, 1, 0, 1f)
+
+    
+
+                } else {
+
+    
+
+                    // Fallback to tone if file not loaded
+
+    
+
+                    toneGenerator.startTone(ToneGenerator.TONE_PROP_BEEP, 50)
+
+    
+
+                }
+
+    
+
+            }
+
+    
+
+            view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+
+    
+
+        }
+
+
+
+    val rows = mutableListOf<List<KeyDef>>()
+
+    rows.add(listOf(
+
+        KeyDef("Esc", VK_ESCAPE, weight = 1.2f, isSystem = true),
+
+        KeyDef("# Row", VK_ESCAPE, weight = 1.2f, isSystem = true, onClick = { showNumbers = !showNumbers; playClick() }),
+
+        KeyDef("[", VK_OEM_4, sub = "{"), KeyDef("]", VK_OEM_6, sub = "}"), KeyDef("'", VK_OEM_7, sub = "\""), KeyDef("\\", VK_OEM_5, sub = "|"), KeyDef("/", VK_OEM_2, sub = "?"), KeyDef("Bksp", VK_BACK, weight = 1.5f, isSystem = true)
+
+    ))
+
+    if (showNumbers) {
+
+        rows.add(listOf(
+
+            KeyDef("1", VK_1, sub = "!"), KeyDef("2", VK_2, sub = "@"), KeyDef("3", VK_3, sub = "#"), KeyDef("4", VK_4, sub = "$"), KeyDef("5", VK_5, sub = "%"), KeyDef("6", VK_6, sub = "^"), KeyDef("7", VK_7, sub = "&"), KeyDef("8", VK_8, sub = "*"), KeyDef("9", VK_9, sub = "("), KeyDef("0", VK_0, sub = ")"), KeyDef("-", VK_OEM_MINUS, sub = "_"), KeyDef("=", VK_OEM_PLUS, sub = "+")
+
+        ))
+
+    }
+
+    rows.add(listOf(
+
+        KeyDef("Tab", VK_TAB, weight = 1.5f, isSystem = true),
+
+        KeyDef("Q", 0x51u.toUShort()), KeyDef("W", 0x57u.toUShort()), KeyDef("E", 0x45u.toUShort()),
+
+        KeyDef("R", 0x52u.toUShort()), KeyDef("T", 0x54u.toUShort()), KeyDef("Y", 0x59u.toUShort()),
+
+        KeyDef("U", 0x55u.toUShort()), KeyDef("I", 0x49u.toUShort()), KeyDef("O", 0x4Fu.toUShort()),
+
+        KeyDef("P", 0x50u.toUShort())
+
+    ))
+
+    rows.add(listOf(
+
+        KeyDef("Caps", VK_CAPITAL, weight = 1.75f, isSystem = true),
+
+        KeyDef("A", 0x41u.toUShort()), KeyDef("S", 0x53u.toUShort()), KeyDef("D", 0x44u.toUShort()),
+
+        KeyDef("F", 0x46u.toUShort()), KeyDef("G", 0x47u.toUShort()), KeyDef("H", 0x48u.toUShort()),
+
+        KeyDef("J", 0x4Au.toUShort()), KeyDef("K", 0x4Bu.toUShort()), KeyDef("L", 0x4Cu.toUShort()),
+
+        KeyDef(";", VK_OEM_1, sub = ":")
+
+    ))
+
+    rows.add(listOf(
+
+        KeyDef("Shift", VK_SHIFT, weight = 2.25f, isSystem = true),
+
+        KeyDef("Z", 0x5Au.toUShort()), KeyDef("X", 0x58u.toUShort()), KeyDef("C", 0x43u.toUShort()),
+
+        KeyDef("V", 0x56u.toUShort()), KeyDef("B", 0x42u.toUShort()), KeyDef("N", 0x4Eu.toUShort()),
+
+        KeyDef("M", 0x4Du.toUShort()),
+
+        KeyDef(",", VK_OEM_COMMA, sub = "<"),
+
+        KeyDef(".", VK_OEM_PERIOD, sub = ">")
+
+    ))
+
+    rows.add(listOf(
+
+        KeyDef("Ctrl", VK_CONTROL, weight = 1.2f, isSystem = true), KeyDef("Win", VK_LWIN, weight = 1.2f, isSystem = true), KeyDef("Alt", VK_MENU, weight = 1.2f, isSystem = true), KeyDef("Space", VK_SPACE, weight = 5f), KeyDef("Enter", VK_RETURN, weight = 3f, isSystem = true)
+
+    ))
+
+
+
+    Column(modifier = modifier.background(Color.Black).padding(4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+
+        rows.forEach { row ->
+
+            Row(modifier = Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+
+                row.forEach { def ->
+
+                    KeyboardKey(
+
+                        def = def, 
+
+                        modifier = Modifier.weight(def.weight), 
+
+                        onDown = { 
+
+                            if (def.onClick != null) {
+
+                                // Special keys like # Row don't have down/up split
+
+                            } else {
+
+                                signalRClient.sendKeyEvent("INPUT_KEY_DOWN", def.code)
+
+                                playClick()
+
+                            }
+
+                        },
+
+                        onUp = {
+
+                            if (def.onClick != null) {
+
+                                def.onClick.invoke()
+
+                            } else {
+
+                                signalRClient.sendKeyEvent("INPUT_KEY_UP", def.code)
+
+                            }
+
+                        }
+
+                    )
+
+                }
+
+            }
+
+        }
+
+    }
+
+}
+
+
+
+data class KeyDef(val label: String, val code: UShort, val sub: String? = null, val weight: Float = 1f, val isSystem: Boolean = false, val onClick: (() -> Unit)? = null)
+
+
+
+@Composable
+
+fun KeyboardKey(
+
+    def: KeyDef, 
+
+    modifier: Modifier = Modifier, 
+
+    onDown: () -> Unit,
+
+    onUp: () -> Unit
+
+) {
+
+    var isPressed by remember { mutableStateOf(false) }
+
+    
+
+        Surface(
+
+    
+
+            modifier = modifier
+
+    
+
+                .fillMaxHeight()
+
+    
+
+                .pointerInput(def.label) {
+
+    
+
+                    awaitEachGesture {
+
+    
+
+                        val down = awaitFirstDown()
+
+    
+
+                        isPressed = true
+
+    
+
+                        onDown()
+
+    
+
+                        
+
+    
+
+                        var pointerId = down.id
+
+    
+
+                        while (true) {
+
+    
+
+                            val event = awaitPointerEvent()
+
+    
+
+                            val isUp = event.changes.any { it.id == pointerId && !it.pressed }
+
+    
+
+                            if (isUp) break
+
+    
+
+                        }
+
+    
+
+                        
+
+    
+
+                        isPressed = false
+
+    
+
+                        onUp()
+
+    
+
+                    }
+
+    
+
+                }, 
+
+    
+
+            shape = RoundedCornerShape(6.dp), 
+
+    
+
+            color = if (isPressed) MaterialTheme.colorScheme.primaryContainer else if (def.isSystem) Color(0xFF444444) else Color(0xFF2C2C2C), 
+
+    
+
+            contentColor = if (isPressed) MaterialTheme.colorScheme.onPrimaryContainer else if (def.isSystem) Color(0xFFBB86FC) else Color.White
+
+    
+
+        ) {
+
+        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+
+            Text(def.label, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+
+            if (def.sub != null) Text(def.sub, fontSize = 10.sp, color = Color.Gray, modifier = Modifier.align(Alignment.TopEnd).padding(end = 4.dp, top = 2.dp))
+
+        }
+
+    }
+
 }
 
 @Composable
@@ -935,19 +1375,10 @@ fun ModifierKeyButton(
     onDoubleClick: () -> Unit,
     onLongPress: (() -> Unit)? = null
 ) {
-    // Local state for instant feedback
     var localToggled by remember { mutableStateOf(isToggled) }
-    
-    // Sync with remote state ONLY when it changes from the server
-    LaunchedEffect(isToggled) {
-        if (localToggled != isToggled) {
-            localToggled = isToggled
-        }
-    }
-    
+    LaunchedEffect(isToggled) { if (localToggled != isToggled) localToggled = isToggled }
     val containerColor = if (localToggled) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainer
     val contentColor = if (localToggled) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
-
     Surface(
         color = containerColor,
         contentColor = contentColor,
@@ -956,40 +1387,10 @@ fun ModifierKeyButton(
             .height(40.dp)
             .pointerInput(Unit) {
                 detectTapGestures(
-                    onDoubleTap = {
-                        mainViewModel?.addLog("[Remote] $label Double-Tapped", com.omni.sync.ui.screen.LogType.INFO)
-                        onDoubleClick()
-                    },
-                    onTap = {
-                         if (toggleOnTap) {
-                             localToggled = !localToggled
-                             mainViewModel?.addLog("[Remote] $label Toggled: $localToggled", com.omni.sync.ui.screen.LogType.INFO)
-                             onToggle(localToggled)
-                         } else {
-                             mainViewModel?.addLog("[Remote] $label Tapped (No toggle)", com.omni.sync.ui.screen.LogType.INFO)
-                             onToggle(localToggled)
-                         }
-                    },
-                    onLongPress = {
-                        localToggled = !localToggled
-                        mainViewModel?.addLog("[Remote] $label Long-Pressed. New state: $localToggled", com.omni.sync.ui.screen.LogType.INFO)
-                        onLongPress?.invoke()
-                    }
+                    onDoubleTap = { mainViewModel?.addLog("[Remote] $label Double-Tapped", LogType.INFO); onDoubleClick() },
+                    onTap = { if (toggleOnTap) { localToggled = !localToggled; mainViewModel?.addLog("[Remote] $label Toggled: $localToggled", LogType.INFO); onToggle(localToggled) } else { mainViewModel?.addLog("[Remote] $label Tapped (No toggle)", LogType.INFO); onToggle(localToggled) } },
+                    onLongPress = { localToggled = !localToggled; mainViewModel?.addLog("[Remote] $label Long-Pressed. New state: $localToggled", LogType.INFO); onLongPress?.invoke() }
                 )
             }
-    ) {
-        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-            Text(text, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Visible, fontSize = 11.sp)
-        }
-    }
-}
-
-@Preview(showBackground = true)
-
-@Composable
-
-fun RemoteControlScreenPreview() {
-
-    // Preview scaffolding
-
+    ) { Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) { Text(text, maxLines = 1, overflow = TextOverflow.Visible, fontSize = 11.sp) } }
 }

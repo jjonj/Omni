@@ -44,7 +44,7 @@ enum class ConnectionStatus {
 @Composable
 fun DashboardScreen(modifier: Modifier = Modifier, signalRClient: SignalRClient, mainViewModel: MainViewModel) {
     val context = LocalContext.current
-    val appConfig = mainViewModel.appConfig
+    val appConfig by mainViewModel.appConfig.collectAsState()
     // Collect connection states
     val connectionStateString by signalRClient.connectionState.collectAsState()
     val isConnected by mainViewModel.isConnected.collectAsState()

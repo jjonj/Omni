@@ -293,7 +293,7 @@ class AlarmService : Service(), android.content.SharedPreferences.OnSharedPrefer
         val app = application as? com.omni.sync.OmniSyncApplication ?: return
         val signalRClient = app.signalRClient
         val parser = com.omni.sync.logic.macro.MacroParser()
-        val executor = com.omni.sync.logic.macro.MacroExecutor(signalRClient, app.mainViewModel.appConfig.macros)
+        val executor = com.omni.sync.logic.macro.MacroExecutor(signalRClient, app.mainViewModel.appConfig.value.macros)
         
         serviceScope.launch {
             executor.execute(parser.parse(script, applicationContext), applicationContext)

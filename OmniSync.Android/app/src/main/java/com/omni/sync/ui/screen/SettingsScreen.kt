@@ -40,7 +40,7 @@ fun SettingsScreen(
     filesViewModel: com.omni.sync.viewmodel.FilesViewModel
 ) {
     val context = mainViewModel.applicationContext
-    val appConfig = mainViewModel.appConfig
+    val appConfig by mainViewModel.appConfig.collectAsState()
     val gson = remember { Gson() }
     
     val voiceLauncher = rememberLauncherForActivityResult(
@@ -248,7 +248,7 @@ fun SettingsScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 TextButton(onClick = {
-                    val hubUrl = mainViewModel.appConfig.hubUrl
+                    val hubUrl = appConfig.hubUrl
                     val baseUrl = hubUrl.substringBeforeLast("/")
                     mainViewModel.openUrlOnPhone("$baseUrl/Settings.html")
                 }) {
@@ -498,6 +498,38 @@ fun SettingsScreen(
             Text("Monitor Streaming", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
             Spacer(modifier = Modifier.height(8.dp))
 
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text("Keyboard Sound")
+                Switch(
+                    checked = appConfig.keyboardSoundEnabled,
+                    onCheckedChange = { 
+                        appConfig.keyboardSoundEnabled = it
+                        mainViewModel.saveAppConfig()
+                    }
+                )
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text("Show Keyboard Number Row")
+                Switch(
+                    checked = appConfig.showKeyboardNumberRow,
+                    onCheckedChange = { 
+                        appConfig.showKeyboardNumberRow = it
+                        mainViewModel.saveAppConfig()
+                    }
+                )
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
             var streamFps by remember { mutableIntStateOf(appConfig.streamFps) }
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -561,7 +593,7 @@ fun SettingsScreen(
             Text("Security", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
             Spacer(modifier = Modifier.height(8.dp))
 
-            val isPasswordSet = mainViewModel.appConfig.globalPasswordHash != null
+            val isPasswordSet = appConfig.globalPasswordHash != null
             var showPasswordDialog by remember { mutableStateOf(false) }
             var oldPassword by remember { mutableStateOf("") }
             var newPassword by remember { mutableStateOf("") }
