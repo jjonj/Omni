@@ -322,8 +322,9 @@ namespace OmniSync.Hub.Infrastructure.Services
                                     int parentPid = parentObj != null ? Convert.ToInt32(parentObj) : 0;
                                     string cmdLower = commandLine.ToLower();
                                     bool isGemini = (cmdLower.Contains("bundle/gemini.js") || 
+                                                     cmdLower.Contains("bundle\\gemini.js") ||
                                                      cmdLower.Contains("omni_gemini") || 
-                                                     (cmdLower.Contains("node") && cmdLower.Contains("gemini") && !cmdLower.Contains("@google") && !cmdLower.Contains("node_modules")));
+                                                     (cmdLower.Contains("node") && cmdLower.Contains("gemini.js") && !cmdLower.Contains("@google") && !cmdLower.Contains("node_modules")));
 
                                     if (isGemini)
                                     {
