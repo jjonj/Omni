@@ -7,13 +7,13 @@ namespace OmniSync.Hub.Presentation.Controllers
 {
     [Route("api/external")]
     [ApiController]
-    public class ExternalCommandController : ControllerBase
+    public class OmniHubApiController : ControllerBase
     {
         private readonly CommandDispatcher _dispatcher;
         private readonly HubMonitorService _monitor;
         private readonly AuthService _authService;
 
-        public ExternalCommandController(CommandDispatcher dispatcher, HubMonitorService monitor, AuthService authService)
+        public OmniHubApiController(CommandDispatcher dispatcher, HubMonitorService monitor, AuthService authService)
         {
             _dispatcher = dispatcher;
             _monitor = monitor;

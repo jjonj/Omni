@@ -12,6 +12,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Configuration;
+using OmniSync.Hub.Logic.Monitoring;
 
 namespace OmniSync.Hub.Infrastructure.Services
 {
@@ -53,6 +54,7 @@ namespace OmniSync.Hub.Infrastructure.Services
         private readonly ILogger<AiCliService> _logger;
         private readonly HubSettingsService _settingsService;
         private readonly ProcessService _processService;
+        private readonly HubMonitorService _hubMonitorService;
         private bool _debugMode;
         private readonly ConcurrentDictionary<int, GeminiSession> _sessions = new();
         private readonly ConcurrentDictionary<int, string> _sessionNames = new();
@@ -75,11 +77,12 @@ namespace OmniSync.Hub.Infrastructure.Services
         public event EventHandler<GeminiResponseEventArgs>? ResponseReceived;
         public event EventHandler<GeminiDialogEventArgs>? DialogReceived;
 
-        public AiCliService(ILogger<AiCliService> logger, HubSettingsService settingsService, ProcessService processService, IConfiguration configuration)
+        public AiCliService(ILogger<AiCliService> logger, HubSettingsService settingsService, ProcessService processService, HubMonitorService hubMonitorService, IConfiguration configuration)
         {
             _logger = logger;
             _settingsService = settingsService;
             _processService = processService;
+            _hubMonitorService = hubMonitorService;
             _debugMode = _settingsService.Settings.AiDebugMode;
 
             _settingsService.SettingsChanged += (s, e) =>
@@ -641,7 +644,7 @@ namespace OmniSync.Hub.Infrastructure.Services
 
         private readonly SemaphoreSlim _launchLock = new(1, 1);
 
-        public async Task<int?> LaunchSessionAsync(string? workspace = null, Action<string>? onProgress = null)
+        public async Task<int?> LaunchSessionAsync(string? workspace = null, Action<string>? onProgress = null, string? model = null)
         {
             await _launchLock.WaitAsync();
             try 
@@ -654,7 +657,7 @@ namespace OmniSync.Hub.Infrastructure.Services
                 }
 
                 _isLaunching = true;
-                _logger.LogInformation($"[AiCliService] LaunchSessionAsync starting (workspace: {workspace ?? "default"})");
+                _logger.LogInformation($"[AiCliService] LaunchSessionAsync starting (workspace: {workspace ?? "default"}, model: {model ?? "default"})");
                 onProgress?.Invoke("Initializing launch sequence...");
                 try
                 {
@@ -666,7 +669,7 @@ namespace OmniSync.Hub.Infrastructure.Services
                 string rootPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", ".."));
                 _logger.LogInformation($"[AiCliService][INIT_DEBUG] Resolved Hub Root Path: {rootPath}");
                 
-                string geminiDir = Path.GetFullPath(Path.Combine(rootPath, "..", "Tools", "gemini-cli"));
+                string geminiDir = Path.GetFullPath(Path.Combine(rootPath, "..", "Tools", "gemini-cli")).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
                 _logger.LogInformation($"[AiCliService][INIT_DEBUG] Resolved Gemini CLI Dir: {geminiDir}");
                 
                 if (!Directory.Exists(geminiDir))
@@ -685,9 +688,11 @@ namespace OmniSync.Hub.Infrastructure.Services
                 {
                     finalWorkspace = Path.GetFullPath(workspace);
                 }
+                finalWorkspace = finalWorkspace.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+                string workspaceArg = finalWorkspace.Replace("\\", "/");
 
-                _logger.LogInformation($"[AiCliService][INIT_DEBUG] Final Workspace: {finalWorkspace}");
-                _logger.LogInformation($"[AiCliService] Launching process: cd /d {geminiDir} && node bundle/gemini.js --workspace {finalWorkspace}");
+                _logger.LogInformation($"[AiCliService][INIT_DEBUG] Final Workspace: {finalWorkspace} (Arg: {workspaceArg})");
+                _logger.LogInformation($"[AiCliService] Launching process: cd /d {geminiDir} && node bundle/gemini.js --workspace {workspaceArg}");
                 onProgress?.Invoke($"Launching process in {finalWorkspace}...");
 
                 string bundlePath = Path.Combine(geminiDir, "bundle", "gemini.js");
@@ -698,16 +703,21 @@ namespace OmniSync.Hub.Infrastructure.Services
                     return null;
                 }
 
-                string command = $"title OMNI_GEMINI_INTERACTIVE && cd /d \"{geminiDir}\" && node bundle/gemini.js --workspace \"{finalWorkspace}\" --yolo";
+                string command = $"title OMNI_GEMINI_INTERACTIVE && cd /d \"{geminiDir}\" && node bundle/gemini.js --workspace \"{workspaceArg}\" --yolo";
+                if (!string.IsNullOrEmpty(model))
+                {
+                    command += $" --model {model}";
+                }
                 string debugLog = Path.Combine(rootPath, "gemini_cli_debug.log");
                 string finalCommand = $"set GEMINI_DEBUG_LOG_FILE={debugLog} && {command}";
                 
                 _logger.LogInformation($"[AiCliService][INIT_DEBUG] Full Command String: {finalCommand}");
+                _hubMonitorService.AddLogMessage($"[AI] Launch Command: {finalCommand}");
 
                 var startInfo = new ProcessStartInfo
                 {
                     FileName = "cmd.exe",
-                    Arguments = $"/K \"{finalCommand}\"", // Changed /C to /K to keep window open on crash
+                    Arguments = $"/K \"{finalCommand}\"", // Reverting to original Arguments
                     UseShellExecute = true,
                     CreateNoWindow = false,
                     WindowStyle = ProcessWindowStyle.Normal

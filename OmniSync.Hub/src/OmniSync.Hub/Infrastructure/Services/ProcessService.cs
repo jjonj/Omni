@@ -52,7 +52,7 @@ namespace OmniSync.Hub.Infrastructure.Services
             _monitorService = monitorService;
         }
 
-        public async Task ExecuteCommand(string command)
+        public virtual async Task ExecuteCommand(string command)
         {
             // Resolve mapping if available
             string finalCommand = command;
@@ -130,6 +130,23 @@ namespace OmniSync.Hub.Infrastructure.Services
                     process.WaitForExit();
                 }
             });
+        }
+
+        public virtual void ShellExecute(string path)
+        {
+            try
+            {
+                var psi = new ProcessStartInfo
+                {
+                    FileName = path,
+                    UseShellExecute = true
+                };
+                Process.Start(psi);
+            }
+            catch (Exception ex)
+            {
+                _monitorService.AddLogMessage($"[ERROR] ShellExecute failed for {path}: {ex.Message}");
+            }
         }
 
         private (string executable, string arguments) FindLongestExistingPath(string command)

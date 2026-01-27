@@ -171,7 +171,7 @@ namespace OmniSync.Hub.Logic.Monitoring
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
         }
 
-        public void AddLogMessage(string message)
+        public virtual void AddLogMessage(string message)
         {
             var logEntry = $"[{DateTime.Now:HH:mm:ss}] (ID: {_instanceId}) {message}";
             

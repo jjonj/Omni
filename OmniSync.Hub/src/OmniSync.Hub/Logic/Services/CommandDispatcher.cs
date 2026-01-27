@@ -18,13 +18,14 @@ namespace OmniSync.Hub.Logic.Services
         private readonly PcgPersistentService _pcgService;
         private readonly NodeRedService _nodeRedService;
         private readonly ProjectLauncherService _projectLauncherService;
+        private readonly ResourceOpenerService _resourceOpenerService;
         private readonly IHostApplicationLifetime _appLifetime;
         private readonly Dictionary<string, Action<JsonElement>> _commandMap;
 
         public event EventHandler<string>? AddCleanupPatternRequested;
         public event EventHandler<(string Command, JsonElement Payload)>? ExternalCommandDispatched;
 
-        public CommandDispatcher(InputService inputService, FileService fileService, AudioService audioService, ProcessService processService, ShutdownService shutdownService, HubSettingsService settingsService, PcgPersistentService pcgService, NodeRedService nodeRedService, ProjectLauncherService projectLauncherService, IHostApplicationLifetime appLifetime)
+        public CommandDispatcher(InputService inputService, FileService fileService, AudioService audioService, ProcessService processService, ShutdownService shutdownService, HubSettingsService settingsService, PcgPersistentService pcgService, NodeRedService nodeRedService, ProjectLauncherService projectLauncherService, ResourceOpenerService resourceOpenerService, IHostApplicationLifetime appLifetime)
         {
             _inputService = inputService;
             _fileService = fileService;
@@ -35,6 +36,7 @@ namespace OmniSync.Hub.Logic.Services
             _pcgService = pcgService;
             _nodeRedService = nodeRedService;
             _projectLauncherService = projectLauncherService;
+            _resourceOpenerService = resourceOpenerService;
             _appLifetime = appLifetime;
             _commandMap = new Dictionary<string, Action<JsonElement>>
             {
@@ -86,6 +88,25 @@ namespace OmniSync.Hub.Logic.Services
                         } catch (Exception ex) {
                             Console.WriteLine($"Error opening on PC: {ex.Message}");
                         }
+                    }
+                }},
+                { "OPEN_RESOURCE", payload => {
+                    string? path = null;
+                    if (payload.TryGetProperty("Path", out var pathProp)) {
+                        path = pathProp.GetString();
+                    }
+                    
+                    int? lineNumber = null;
+                    if (payload.TryGetProperty("LineNumber", out var lineProp)) {
+                        if (lineProp.ValueKind == JsonValueKind.Number) {
+                            lineNumber = lineProp.GetInt32();
+                        } else if (lineProp.ValueKind == JsonValueKind.String && int.TryParse(lineProp.GetString(), out var line)) {
+                            lineNumber = line;
+                        }
+                    }
+
+                    if (!string.IsNullOrEmpty(path)) {
+                        _ = _resourceOpenerService.OpenResource(path, lineNumber);
                     }
                 }},
                 { "SCHEDULE_SHUTDOWN", payload => _shutdownService.ScheduleShutdown(payload.GetProperty("Minutes").GetInt32()) },

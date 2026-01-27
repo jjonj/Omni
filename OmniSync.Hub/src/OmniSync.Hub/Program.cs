@@ -217,7 +217,16 @@ builder.Services.AddSingleton<ProcessService>(provider =>
     return new ProcessService(settingsService, monitorService);
 });
 builder.Services.AddSingleton<ProjectLauncherService>();
-builder.Services.AddSingleton<AiCliService>();
+builder.Services.AddSingleton<ResourceOpenerService>();
+builder.Services.AddSingleton<AiCliService>(provider =>
+{
+    var logger = provider.GetRequiredService<ILogger<AiCliService>>();
+    var settingsService = provider.GetRequiredService<HubSettingsService>();
+    var processService = provider.GetRequiredService<ProcessService>();
+    var monitorService = provider.GetRequiredService<HubMonitorService>();
+    var configuration = provider.GetRequiredService<IConfiguration>();
+    return new AiCliService(logger, settingsService, processService, monitorService, configuration);
+});
 builder.Services.AddSingleton<InputService>(provider =>
 {
     var logger = provider.GetRequiredService<ILogger<InputService>>();
@@ -244,8 +253,9 @@ builder.Services.AddSingleton<CommandDispatcher>(provider => {
     var pcgService = provider.GetRequiredService<PcgPersistentService>();
     var nodeRedService = provider.GetRequiredService<NodeRedService>();
     var projectLauncherService = provider.GetRequiredService<ProjectLauncherService>();
+    var resourceOpenerService = provider.GetRequiredService<ResourceOpenerService>();
     var appLifetime = provider.GetRequiredService<IHostApplicationLifetime>();
-    return new CommandDispatcher(inputService, fileService, audioService, processService, shutdownService, settingsService, pcgService, nodeRedService, projectLauncherService, appLifetime);
+    return new CommandDispatcher(inputService, fileService, audioService, processService, shutdownService, settingsService, pcgService, nodeRedService, projectLauncherService, resourceOpenerService, appLifetime);
 });
 builder.Services.AddSingleton<GlobalHotkeyService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<GlobalHotkeyService>());
