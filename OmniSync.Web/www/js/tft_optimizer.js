@@ -25,7 +25,10 @@ class TFTOptimizer {
         
         // Trait Difficulty Constraints
         this.MAX_TRAIT_COUNT = 7;
-        this.FORBIDDEN_SHURIMA_MIN = 3;
+        this.FORBIDDEN_TRAITS = {
+            "Shurima": 3,
+            "Ixtal": 3
+        };
         
         this.SMALL_TRAIT_BONUS = 1;
         this.BONUS_TRAITS = ["Quickstriker", "Piltover", "Targon"];
@@ -56,13 +59,15 @@ class TFTOptimizer {
         if (!names) return [];
         let namesArray = Array.isArray(names) ? [...names] : [names];
         const expandedNames = new Set(namesArray);
+        
         let added;
         do {
             added = false;
             for (let i = 0; i < this.UNITS.length; i++) {
                 const u = this.UNITS[i];
+                
+                // Forward dependency: If we have forced a unit, we must force what it requires.
                 if (expandedNames.has(u.name)) {
-                    // Data-driven dependency (e.g. Nidalee requires Neeko)
                     if (u.requires && !expandedNames.has(u.requires)) {
                         expandedNames.add(u.requires);
                         added = true;
@@ -134,7 +139,10 @@ class TFTOptimizer {
 
         for (const trait in counts) {
             const count = counts[trait];
-            if (count > this.MAX_TRAIT_COUNT || (trait === "Shurima" && count >= this.FORBIDDEN_SHURIMA_MIN)) {
+            if (count > this.MAX_TRAIT_COUNT) {
+                score -= this.INVALID_COMP_PENALTY;
+            }
+            if (this.FORBIDDEN_TRAITS[trait] !== undefined && count > this.FORBIDDEN_TRAITS[trait]) {
                 score -= this.INVALID_COMP_PENALTY;
             }
             
@@ -162,6 +170,7 @@ class TFTOptimizer {
                         }
                     } else {
                         if (mode === 'bronze-for-life') {
+                            // In bronze mode, non-excluded traits get fixed score per reached breakpoint
                             score += 1 * this.BREAKPOINT_SCORE_MULTIPLIER;
                         } else {
                             score += highest * this.BREAKPOINT_SCORE_MULTIPLIER;
@@ -169,14 +178,17 @@ class TFTOptimizer {
                     }
                 } else {
                     // Penalize units with single traits if that trait breakpoint is not reached.
-                    for (let i = 0; i < board.length; i++) {
-                        const u = board[i];
-                        if (u.traits.length === 1 && u.traits[0] === trait) {
-                            score -= this.MISSING_CARRY_PENALTY;
+                    const isBronzeExclusion = (mode === 'bronze-for-life' && trait === "Targon");
+                    if (!isBronzeExclusion) {
+                        for (let i = 0; i < board.length; i++) {
+                            const u = board[i];
+                            if (u.traits.length === 1 && u.traits[0] === trait) {
+                                score -= this.MISSING_CARRY_PENALTY;
+                            }
                         }
                     }
                 }
-            } else if (count === 1) {
+            } else if (count === 1 && mode !== 'bronze-for-life') {
                 score += this.UNIQUE_TRAIT_SCORE;
             }
         }
@@ -256,7 +268,7 @@ class TFTOptimizer {
                 if (t === "Targon") isTargonUnit = true;
             }
 
-            if (isTargonUnit) {
+            if (isTargonUnit && mode !== 'bronze-for-life') {
                 score += this.BREAKPOINT_SCORE_MULTIPLIER * 0.2; 
             }
 
@@ -465,13 +477,19 @@ class TFTOptimizer {
                 const { score, counts } = this.scoreBoard(currentBoard, emblems, targetSlots, mode, mustIncludeTraits, expandedMustInclude);
                 if (score > -1000000) { 
                     results.push({ score, board: currentBoard, counts });
+                    
+                    // Keep results array small
+                    if (results.length > limit * 50) {
+                        results.sort((a, b) => b.score - a.score);
+                        results = results.slice(0, limit * 10);
+                    }
                 }
             }
             if (onProgress) onProgress(processed, total);
             await new Promise(resolve => setTimeout(resolve, 0));
         }
         results.sort((a, b) => b.score - a.score);
-        const finalResults = results.filter(r => r.score > -1000000).slice(0, limit);
+        const finalResults = results.slice(0, limit);
         return {
             results: finalResults,
             totalProcessed: processed
@@ -555,7 +573,7 @@ class TFTOptimizer {
         }
 
         currentBeams.sort((a, b) => b.score - a.score);
-        const finalResults = currentBeams.filter(r => r.score > -1000000).slice(0, limit);
+        const finalResults = currentBeams.slice(0, limit);
         return {
             results: finalResults,
             totalProcessed: totalEvaluated
@@ -616,7 +634,7 @@ class TFTOptimizer {
         }
 
         currentBeams.sort((a, b) => b.score - a.score);
-        const finalResults = currentBeams.filter(r => r.score > -1000000).slice(0, limit);
+        const finalResults = currentBeams.slice(0, limit);
         return {
             results: finalResults,
             totalProcessed: totalEvaluated

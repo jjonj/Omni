@@ -17,12 +17,12 @@ async function runTest() {
     const level = 8;
     const pool = set16Data.units; 
     const emblems = [];
-    const mustInclude = "Annie";
+    const mustInclude = ["Annie", "Tibbers"];
 
-    console.log(`Running optimization: Level ${level}, Must Include: ${mustInclude}`);
+    console.log(`Running optimization: Level ${level}, Must Include: ${mustInclude.join(", ")}`);
 
     try {
-        const { results } = await optimizer.findBestBoards(pool, level, emblems, mustInclude);
+        const { results } = await optimizer.findBestBoards(pool, level, emblems, mustInclude, 'default', {}, 3, null, 'super');
 
         if (results && results.length > 0) {
             console.log("SUCCESS: Results found!");

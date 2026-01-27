@@ -17,16 +17,17 @@ async function runTest() {
     const level = 9;
     const pool = set16Data.units; 
     const emblems = [];
-    const mustInclude = ["Neeko", "Milio", "Qiyana", "Vi", "Renekton", "Azir", "Brock"];
+    const mustInclude = ["Neeko", "Milio", "Qiyana", "Vi", "Renekton", "Azir", "Diana"];
     const mode = 'ryze-unlock';
     const heuristic = 'super';
+    const mustIncludeTraits = {}; // No longer forcing count via traits, using FORBIDDEN_TRAITS in optimizer
 
     console.log(`Running optimization: Level ${level}`);
     console.log(`Must Include: ${mustInclude.join(", ")}`);
     console.log(`Mode: ${mode}, Heuristic: ${heuristic}`);
 
     try {
-        const { results } = await optimizer.findBestBoards(pool, level, emblems, mustInclude, mode, {}, 3, null, heuristic);
+        const { results } = await optimizer.findBestBoards(pool, level, emblems, mustInclude, mode, mustIncludeTraits, 3, null, heuristic);
 
         if (results && results.length > 0) {
             console.log(`Found ${results.length} results.`);
