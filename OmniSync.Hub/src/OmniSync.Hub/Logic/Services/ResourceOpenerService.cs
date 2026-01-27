@@ -29,6 +29,8 @@ namespace OmniSync.Hub.Logic.Services
             string target = path.Trim();
             _monitorService.AddLogMessage($"[ResourceOpener] Opening resource: '{target}' (Line: {lineNumber})");
             
+            string? focusTarget = null;
+
             // 1. Check for URLs or HTML files (use Chrome mapping)
             if (IsWebResource(target))
             {
@@ -39,6 +41,8 @@ namespace OmniSync.Hub.Logic.Services
                 {
                     chromePath = @"C:\Program Files\Google\Chrome\Application\chrome.exe";
                 }
+
+                focusTarget = DetectProcessName(chromePath) ?? "chrome";
 
                 // If mapping contains arguments (like vivaldi profile), we need to split them
                 if (chromePath.Contains(" --"))
@@ -52,26 +56,54 @@ namespace OmniSync.Hub.Logic.Services
                 {
                     _processService.ShellExecute(chromePath, $"\"{target}\"");
                 }
-                return;
             }
-
             // 2. Check for specialized Notepad++ logic (for code files)
-            if (IsCodeFile(target))
+            else if (IsCodeFile(target))
             {
                 // Default Notepad++ path if not mapped, or use the mapped 'npp' path
                 string nppPath = _settingsService.GetPath("npp") ?? @"C:\Program Files\Notepad++\notepad++.exe";
                 string args = lineNumber.HasValue ? $"-n{lineNumber} " : "";
                 _monitorService.AddLogMessage($"[ResourceOpener] Code file detected. Using NPP: '{nppPath}' Args: '{args}'");
                 
-                // Use ShellExecute directly for NPP - this was the key fix!
+                focusTarget = "notepad++";
+                
+                // Use ShellExecute directly for NPP
                 _processService.ShellExecute(nppPath, $"{args}\"{target}\"");
-                return;
+            }
+            else
+            {
+                // 3. Default: Use ProcessService to open via shell
+                // ShellExecute uses Process.Start with UseShellExecute = true
+                _monitorService.AddLogMessage($"[ResourceOpener] Defaulting to ShellExecute for: '{target}'");
+                _processService.ShellExecute(target);
+                
+                // If it's a directory, we want to focus explorer
+                if (System.IO.Directory.Exists(target))
+                {
+                    focusTarget = "explorer";
+                }
             }
 
-            // 3. Default: Use ProcessService to open via shell
-            // ShellExecute uses Process.Start with UseShellExecute = true
-            _monitorService.AddLogMessage($"[ResourceOpener] Defaulting to ShellExecute for: '{target}'");
-            _processService.ShellExecute(target);
+            if (focusTarget != null)
+            {
+                await Task.Delay(800); // Give app time to start/load
+                _monitorService.AddLogMessage($"[ResourceOpener] Focusing application: '{focusTarget}'");
+                _processService.WinActivate(focusTarget);
+            }
+        }
+
+        private string? DetectProcessName(string path)
+        {
+            try
+            {
+                // Strip arguments if present
+                string cleanPath = path;
+                if (path.Contains(" --")) cleanPath = path.Substring(0, path.IndexOf(" --")).Trim('\"');
+                
+                string fileName = System.IO.Path.GetFileNameWithoutExtension(cleanPath);
+                return string.IsNullOrEmpty(fileName) ? null : fileName;
+            }
+            catch { return null; }
         }
 
         private bool IsWebResource(string path)
