@@ -9,6 +9,7 @@
     <UseWPF>true</UseWPF>
     <UseWindowsForms>true</UseWindowsForms>
     <ApplicationIcon>..\..\..\Resources\OmniIcon.ico</ApplicationIcon>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
   </PropertyGroup>
 
   <ItemGroup>

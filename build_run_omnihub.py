@@ -3,6 +3,7 @@ import time
 import os
 import sys
 import shutil
+import ctypes
 
 # Define directories and executable path
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -105,9 +106,30 @@ def delete_with_retry(path, max_retries=5, delay=1):
             else:
                 print(f"Failed to delete {path} after {max_retries} attempts.")
 
+def is_admin():
+    try:
+        return ctypes.windll.shell32.IsUserAnAdmin()
+    except:
+        return False
+
 def main():
+    if sys.platform == 'win32' and not is_admin():
+        print("Script is not running as admin. Requesting elevation via PowerShell...")
+        script_path = os.path.abspath(__file__)
+        params = " ".join([f'"{arg}"' for arg in sys.argv[1:]])
+        
+        # Use PowerShell's Start-Process with -Verb RunAs to request elevation
+        ps_command = f"Start-Process '{sys.executable}' -ArgumentList '"{script_path}" {params}' -Verb RunAs"
+        
+        try:
+            subprocess.run(["powershell.exe", "-Command", ps_command], check=True)
+            sys.exit(0)
+        except Exception as e:
+            print(f"Elevation request failed: {e}")
+            sys.exit(1)
+
     print(f"HUB_DIR is {HUB_DIR}")
-    hub_log_path = os.path.join(SCRIPT_DIR, "hub_output.log")
+    hub_log_path = os.path.join(SCRIPT_DIR, "hub_build.log")
     cli_log_path = os.path.join(SCRIPT_DIR, "cli_output.log")
 
 
@@ -139,47 +161,55 @@ def main():
         print("\n--- Cleaning OmniSync.Hub ---")
         clean_hub_result = run_command("dotnet clean", cwd=HUB_DIR, log_file=hub_log_path)
         if clean_hub_result is None or clean_hub_result.returncode != 0:
-            print("OmniSync.Hub clean failed. Aborting. Check hub_output.log for details.")
+            print(f"OmniSync.Hub clean failed. Aborting. Check {hub_log_path} for details.")
             return # Exit if clean failed
 
         print("\n--- Clearing NuGet cache (optional) ---")
         clear_nuget_cache_result = run_command("dotnet nuget locals all --clear", cwd=HUB_DIR, log_file=hub_log_path)
         if clear_nuget_cache_result is None or clear_nuget_cache_result.returncode != 0:
-            print("Warning: NuGet cache clear failed. Continuing anyway. Check hub_output.log for details.")
-            # Do not return, continue with the rest of the script
+            print("Warning: NuGet cache clear failed. Continuing anyway.")
 
         print("\n--- Restoring OmniSync.Hub dependencies ---")
         restore_hub_result = run_command(f"dotnet restore \"{HUB_DIR}\"", cwd=HUB_DIR, log_file=hub_log_path)
         if restore_hub_result is None or restore_hub_result.returncode != 0:
-            print("OmniSync.Hub restore failed. Aborting. Check hub_output.log for details.")
+            print(f"OmniSync.Hub restore failed. Aborting. Check {hub_log_path} for details.")
             return # Exit if restore failed
 
         print("\n--- Building OmniSync.Hub ---")
         build_hub_result = run_command("dotnet build", cwd=HUB_DIR, log_file=hub_log_path)
         if build_hub_result is None or build_hub_result.returncode != 0:
-            print("OmniSync.Hub build failed. Aborting. Check hub_output.log for details.")
+            print(f"OmniSync.Hub build failed. Aborting. Check {hub_log_path} for details.")
             return # Exit if build failed
+        
+        # Build successful, delete the build log
+        try:
+            if os.path.exists(hub_log_path):
+                os.remove(hub_log_path)
+                print("Build successful. hub_build.log deleted.")
+        except Exception as e:
+            print(f"Warning: Could not delete {hub_log_path}: {e}")
+
         time.sleep(1) # Give it a moment
 
         print("\n--- Starting OmniSync.Hub in background ---")
         
-        hub_log_file = open(hub_log_path, "a", encoding="utf-8", errors="replace") # Open the file once and keep it open
-        hub_log_file.write(f"\n--- Starting OmniSync.Hub (PID will be known after Popen) ---\\n")
-
         # Ensure the executable exists before trying to run it
         if not os.path.exists(HUB_EXE_PATH):
             print(f"Error: Hub executable not found at {HUB_EXE_PATH}. Did the build fail?")
             return
 
         # Use Popen to start the hub process in a detached way
-        hub_process = subprocess.Popen(
-            [HUB_EXE_PATH], # Run the compiled executable directly
-            cwd=HUB_DIR,
-            stdout=hub_log_file, # Redirect stdout to the open file
-            stderr=hub_log_file, # Redirect stderr to the open file
-            creationflags=subprocess.DETACHED_PROCESS if sys.platform == "win32" else 0, # For Windows, run truly detached
-            shell=False # Don't use shell if running exe directly
-        )
+        # We don't redirect to build log anymore as it's for runtime now
+        hub_runtime_log = os.path.join(SCRIPT_DIR, "hub_runtime.log")
+        with open(hub_runtime_log, "a", encoding="utf-8", errors="replace") as hrl:
+            hub_process = subprocess.Popen(
+                [HUB_EXE_PATH], # Run the compiled executable directly
+                cwd=HUB_DIR,
+                stdout=hrl, 
+                stderr=hrl, 
+                creationflags=subprocess.DETACHED_PROCESS if sys.platform == "win32" else 0, # For Windows, run truly detached
+                shell=False # Don't use shell if running exe directly
+            )
         print(f"OmniSync.Hub started with PID: {hub_process.pid}")
         
         # Wait a few seconds and check if it's still running
@@ -188,7 +218,6 @@ def main():
         # Check if it exited
         if hub_process.poll() is not None:
             print(f"ERROR: OmniSync.Hub crashed immediately after starting with exit code {hub_process.returncode}.")
-            print(f"Check hub_output.log for details.")
             sys.exit(1)
             
         # Check if crash log was updated recently (in case it's stuck on a popup)
@@ -197,18 +226,15 @@ def main():
             mtime = os.path.getmtime(crash_log)
             if time.time() - mtime < 10: # Updated in last 10 seconds
                 print(f"ERROR: OmniSync.Hub seems to have crashed (crash log updated).")
-                with open(crash_log, "r") as f:
-                    print("Last crash log entry:")
-                    print(f.read().split("--- CRASH DETECTED")[-1])
                 # Kill it if it's stuck on a popup
                 hub_process.kill()
                 sys.exit(1)
 
         print("OmniSync.Hub is still running after 3 seconds.")
         
-    finally:
-        if hub_process:
-            print(f"OmniSync.Hub started with PID: {hub_process.pid}")
+finally:
+    if hub_process:
+        print(f"OmniSync.Hub started with PID: {hub_process.pid}")
 
 if __name__ == "__main__":
     main()

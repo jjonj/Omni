@@ -46,7 +46,6 @@ namespace OmniSync.Hub.Presentation
         public ICommand ResetAiSessionsCommand { get; }
         public ICommand SaveAiSettingsCommand { get; }
         public ICommand LaunchJarvisCommand { get; }
-        public ICommand TestAltTabCommand { get; }
 
         public ICommand AddProjectCommand { get; }
         public ICommand DeleteProjectCommand { get; }
@@ -455,7 +454,6 @@ namespace OmniSync.Hub.Presentation
             ResetAiSessionsCommand = new RelayCommand(_ => { });
             SaveAiSettingsCommand = new RelayCommand(_ => { });
             LaunchJarvisCommand = new RelayCommand(_ => { });
-            TestAltTabCommand = new RelayCommand(_ => { });
 
             AddProjectCommand = new RelayCommand(_ => { });
             DeleteProjectCommand = new RelayCommand(_ => { });
@@ -560,8 +558,6 @@ namespace OmniSync.Hub.Presentation
                 _aiCliService.KillAllGeminiProcesses();
                 await _aiCliService.DiscoverSessionsAsync();
             });
-
-            TestAltTabCommand = new RelayCommand(_ => ExecuteTestAltTab());
 
             SaveAiSettingsCommand = new RelayCommand(_ => {
                 _settingsService.SaveSettings();

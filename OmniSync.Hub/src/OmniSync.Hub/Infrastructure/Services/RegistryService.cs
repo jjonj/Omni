@@ -19,14 +19,25 @@ namespace OmniSync.Hub.Infrastructure.Services
         {
             try
             {
-                using (RegistryKey? rk = Registry.CurrentUser.OpenSubKey(RunRegistryPath, false))
+                var startInfo = new System.Diagnostics.ProcessStartInfo
                 {
-                    return rk?.GetValue(AppName) != null;
+                    FileName = "schtasks.exe",
+                    Arguments = $"/Query /TN \"{AppName}\"",
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true
+                };
+
+                using (var process = System.Diagnostics.Process.Start(startInfo))
+                {
+                    process?.WaitForExit();
+                    return process?.ExitCode == 0;
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error checking if run on startup is enabled.");
+                _logger.LogError(ex, "Error checking if run on startup is enabled via schtasks.");
                 return false;
             }
         }
@@ -35,29 +46,73 @@ namespace OmniSync.Hub.Infrastructure.Services
         {
             try
             {
-                using (RegistryKey? rk = Registry.CurrentUser.OpenSubKey(RunRegistryPath, true))
+                if (enable)
                 {
-                    if (rk == null) return;
+                    string? executablePath = GetExecutablePath();
+                    if (executablePath != null)
+                    {
+                        // Delete existing task if it exists to ensure fresh settings
+                        RunSchTasks($"/Delete /TN \"{AppName}\" /F");
 
-                    if (enable)
-                    {
-                        string? executablePath = GetExecutablePath();
-                        if (executablePath != null)
-                        {
-                            rk.SetValue(AppName, executablePath);
-                            _logger.LogInformation($"Enabled '{AppName}' to run on startup.");
-                        }
-                    }
-                    else
-                    {
-                        rk.DeleteValue(AppName, false);
-                        _logger.LogInformation($"Disabled '{AppName}' from running on startup.");
+                        // Create new task:
+                        // /Create - create a new task
+                        // /TN - Task Name
+                        // /TR - Task Run (path to exe)
+                        // /SC ONLOGON - Schedule on logon
+                        // /RL HIGHEST - Run with highest privileges (Admin)
+                        // /F - Force creation (overwrite)
+                        string args = $"/Create /TN \"{AppName}\" /TR \"\\\"{executablePath}\"\" /SC ONLOGON /RL HIGHEST /F";
+                        int exitCode = RunSchTasks(args);
+                        
+                        if (exitCode == 0)
+                            _logger.LogInformation($"Enabled '{AppName}' to run on startup via Scheduled Task.");
+                        else
+                            _logger.LogError($"Failed to enable '{AppName}' on startup. Exit code: {exitCode}");
                     }
                 }
+                else
+                {
+                    int exitCode = RunSchTasks($"/Delete /TN \"{AppName}\" /F");
+                    if (exitCode == 0)
+                        _logger.LogInformation($"Disabled '{AppName}' from running on startup.");
+                }
+
+                // Also clean up old registry key if it exists
+                try
+                {
+                    using (RegistryKey? rk = Registry.CurrentUser.OpenSubKey(RunRegistryPath, true))
+                    {
+                        if (rk?.GetValue(AppName) != null)
+                        {
+                            rk.DeleteValue(AppName, false);
+                            _logger.LogInformation("Cleaned up old registry startup key.");
+                        }
+                    }
+                }
+                catch { /* Ignore registry cleanup errors */ }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, $"Error setting run on startup to {enable}.");
+                _logger.LogError(ex, $"Error setting run on startup to {enable} via schtasks.");
+            }
+        }
+
+        private int RunSchTasks(string arguments)
+        {
+            var startInfo = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "schtasks.exe",
+                Arguments = arguments,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true
+            };
+
+            using (var process = System.Diagnostics.Process.Start(startInfo))
+            {
+                process?.WaitForExit();
+                return process?.ExitCode ?? -1;
             }
         }
 
