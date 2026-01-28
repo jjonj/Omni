@@ -49,6 +49,7 @@ namespace OmniSync.Hub.Presentation
 
         public ICommand AddProjectCommand { get; }
         public ICommand DeleteProjectCommand { get; }
+        public ICommand DuplicateProjectCommand { get; }
         public ICommand EditProjectCommand { get; }
         public ICommand SaveProjectCommand { get; }
         public ICommand AddProjectActionCommand { get; }
@@ -457,6 +458,7 @@ namespace OmniSync.Hub.Presentation
 
             AddProjectCommand = new RelayCommand(_ => { });
             DeleteProjectCommand = new RelayCommand(_ => { });
+            DuplicateProjectCommand = new RelayCommand(_ => { });
             EditProjectCommand = new RelayCommand(_ => { });
             SaveProjectCommand = new RelayCommand(_ => { });
             AddProjectActionCommand = new RelayCommand(_ => { });
@@ -608,6 +610,7 @@ namespace OmniSync.Hub.Presentation
 
             AddProjectCommand = new RelayCommand(_ => ExecuteAddProject());
             DeleteProjectCommand = new RelayCommand(p => ExecuteDeleteProject(p as Project));
+            DuplicateProjectCommand = new RelayCommand(p => ExecuteDuplicateProject(p as Project));
             EditProjectCommand = new RelayCommand(p => ExecuteEditProject(p as Project));
             SaveProjectCommand = new RelayCommand(_ => ExecuteSaveProject());
             AddProjectActionCommand = new RelayCommand(_ => ExecuteAddProjectAction());
@@ -924,6 +927,19 @@ namespace OmniSync.Hub.Presentation
                     CurrentEditingProject = null;
                 }
             }
+        }
+
+        private void ExecuteDuplicateProject(Project? project)
+        {
+            if (project == null) return;
+
+            var duplicated = CloneProject(project);
+            duplicated.Id = Guid.NewGuid();
+            duplicated.Name += " (Copy)";
+            
+            _settingsService.AddProject(duplicated);
+            _hubMonitorService.AddLogMessage($"[Settings] Duplicated project: {project.Name} -> {duplicated.Name}");
+            CurrentEditingProject = CloneProject(duplicated);
         }
 
         private void ExecuteEditProject(Project? project)

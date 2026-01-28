@@ -94,6 +94,7 @@ function renderProjects() {
                 <div style="font-weight: bold; color: var(--accent);">${proj.name}</div>
                 <div>
                     <button class="btn" onclick="editProject(${index})">Edit</button>
+                    <button class="btn" onclick="duplicateProject(${index})">Copy</button>
                     <button class="btn danger" onclick="removeProject(${index})">Delete</button>
                 </div>
             </div>
@@ -113,6 +114,16 @@ function addNewProject() {
         actions: [],
         hotkeyName: ""
     });
+    renderProjects();
+}
+
+function duplicateProject(index) {
+    const source = currentProjects[index];
+    const duplicated = JSON.parse(JSON.stringify(source));
+    duplicated.id = generateGuid();
+    duplicated.name = duplicated.name + " (Copy)";
+    
+    currentProjects.push(duplicated);
     renderProjects();
 }
 
