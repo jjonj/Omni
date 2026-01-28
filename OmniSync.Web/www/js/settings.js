@@ -173,20 +173,69 @@ function renderHotkeys() {
     const list = document.getElementById("hotkeys-list");
     list.innerHTML = "";
     
-    currentHotkeys.forEach((hk, index) => {
-        const row = document.createElement("div");
-        row.className = "hotkey-row";
-        
-        row.innerHTML = `
-            <div class="hotkey-name" onclick="editHotkeyInfo(${index})" style="cursor: pointer; text-decoration: underline;">${hk.name}</div>
-            <input type="text" class="hotkey-input" id="hk-${index}" 
-                value="${hk.key || 'Click to set'}" readonly 
-                onclick="startRecording(${index})"
-                onblur="setTimeout(stopRecording, 200)">
-            <button class="btn danger" onclick="removeHotkey(${index})">Delete</button>
-        `;
-        list.appendChild(row);
+    // Group hotkeys by category
+    const groups = {};
+    currentHotkeys.forEach(hk => {
+        const cat = hk.category || "General";
+        if (!groups[cat]) groups[cat] = [];
+        groups[cat].push(hk);
     });
+
+    Object.keys(groups).sort().forEach(cat => {
+        const catId = `cat-${cat.replace(/\s+/g, '-')}`;
+        const groupContainer = document.createElement("div");
+        groupContainer.className = "hotkey-category";
+        groupContainer.style.marginBottom = "10px";
+        
+        groupContainer.innerHTML = `
+            <div class="category-header" onclick="toggleCategory('${catId}')" 
+                 style="background: #252526; padding: 10px; cursor: pointer; border: 1px solid #3F3F46; font-weight: bold; display: flex; justify-content: space-between;">
+                <span>${cat}</span>
+                <span class="arrow">▶</span>
+            </div>
+            <div id="${catId}" class="category-content" style="display: none; padding: 10px; background: #1e1e1e; border: 1px solid #3F3F46; border-top: none;">
+            </div>
+        `;
+        
+        const content = groupContainer.querySelector(".category-content");
+        
+        groups[cat].forEach((hk) => {
+            const index = currentHotkeys.indexOf(hk);
+            const row = document.createElement("div");
+            row.className = "hotkey-row";
+            row.style.display = "flex";
+            row.style.alignItems = "center";
+            row.style.gap = "10px";
+            row.style.marginBottom = "5px";
+            
+            row.innerHTML = `
+                <div class="hotkey-name" onclick="editHotkeyInfo(${index})" style="cursor: pointer; text-decoration: underline; flex: 1;">${hk.name}</div>
+                <input type="text" class="hotkey-input" id="hk-${index}" 
+                    value="${hk.key || 'Click to set'}" readonly 
+                    onclick="startRecording(${index})"
+                    onblur="setTimeout(stopRecording, 200)"
+                    style="width: 150px;">
+                <button class="btn danger" onclick="removeHotkey(${index})">Delete</button>
+            `;
+            content.appendChild(row);
+        });
+        
+        list.appendChild(groupContainer);
+    });
+}
+
+function toggleCategory(id) {
+    const content = document.getElementById(id);
+    const header = content.previousElementSibling;
+    const arrow = header.querySelector(".arrow");
+    
+    if (content.style.display === "none") {
+        content.style.display = "block";
+        arrow.innerText = "▼";
+    } else {
+        content.style.display = "none";
+        arrow.innerText = "▶";
+    }
 }
 
 function addNewHotkey() {
@@ -194,10 +243,12 @@ function addNewHotkey() {
     if (!name) return;
     const action = prompt("Enter command action (e.g., 'SLEEP_PC', 'TOGGLE_MUTE', or full command):");
     if (!action) return;
+    const category = prompt("Enter category (e.g., 'TFT', 'System', 'General'):", "General") || "General";
     
     currentHotkeys.push({
         name: name,
         action: action,
+        category: category,
         key: ""
     });
     renderHotkeys();

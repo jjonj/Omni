@@ -5,6 +5,7 @@ using System.ComponentModel;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Windows.Threading; // For Dispatcher
+using System.Windows.Data;
 using WpfApp = System.Windows.Application;
 using OmniSync.Hub.Infrastructure.Services;
 using OmniSync.Hub.Logic.Monitoring;
@@ -394,15 +395,21 @@ namespace OmniSync.Hub.Presentation
                             set { if (_newHotkeyName != value) { _newHotkeyName = value; OnPropertyChanged(); } }
                         }
                 
-                        private string _newHotkeyAction = "";
-                        public string NewHotkeyAction
-                        {
-                            get => _newHotkeyAction;
-                            set { if (_newHotkeyAction != value) { _newHotkeyAction = value; OnPropertyChanged(); } }
-                        }
-                
-                        private string _newHotkeyValue = "";
-                        public string NewHotkeyValue
+                                private string _newHotkeyAction = "";
+                                public string NewHotkeyAction
+                                {
+                                    get => _newHotkeyAction;
+                                    set { if (_newHotkeyAction != value) { _newHotkeyAction = value; OnPropertyChanged(); } }
+                                }
+                        
+                                private string _newHotkeyCategory = "General";
+                                public string NewHotkeyCategory
+                                {
+                                    get => _newHotkeyCategory;
+                                    set { if (_newHotkeyCategory != value) { _newHotkeyCategory = value; OnPropertyChanged(); } }
+                                }
+                        
+                                private string _newHotkeyValue = "";                        public string NewHotkeyValue
                         {
                             get => _newHotkeyValue;
                             set { if (_newHotkeyValue != value) { _newHotkeyValue = value; OnPropertyChanged(); } }
@@ -410,6 +417,7 @@ namespace OmniSync.Hub.Presentation
                 
                         public ObservableCollection<KeyValuePair<string, string>> ExeMappings { get; }
                         public ObservableCollection<HotkeyConfig> Hotkeys { get; }
+                        public ICollectionView HotkeyGroups { get; }
                 
                         private bool _isRecordingHotkey;
                 
@@ -441,6 +449,7 @@ namespace OmniSync.Hub.Presentation
             LogMessages = new ObservableCollection<string>();
             ExeMappings = new ObservableCollection<KeyValuePair<string, string>>();
             Hotkeys = new ObservableCollection<HotkeyConfig>();
+            HotkeyGroups = CollectionViewSource.GetDefaultView(Hotkeys);
             Projects = new ObservableCollection<Project>();
 
             ClearLogCommand = new RelayCommand(_ => { });
@@ -507,6 +516,8 @@ namespace OmniSync.Hub.Presentation
             LogMessages.CollectionChanged += (s, e) => OnPropertyChanged(nameof(LogMessagesText));
             ExeMappings = new ObservableCollection<KeyValuePair<string, string>>(_settingsService.Settings.ExeMappings.ToList());
             Hotkeys = new ObservableCollection<HotkeyConfig>(_settingsService.Settings.Hotkeys);
+            HotkeyGroups = CollectionViewSource.GetDefaultView(Hotkeys);
+            HotkeyGroups.GroupDescriptions.Add(new PropertyGroupDescription(nameof(HotkeyConfig.Category)));
             Projects = new ObservableCollection<Project>(_settingsService.Settings.Projects);
 
             // Hook up event handlers
@@ -782,16 +793,22 @@ namespace OmniSync.Hub.Presentation
                 MessageBox.Show("Please enter both a name and an action.", "Missing Data", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
-            
-            _settingsService.AddHotkey(new HotkeyConfig { 
-                Name = NewHotkeyName, 
-                Action = NewHotkeyAction, 
-                Key = NewHotkeyValue 
-            });
-            
+
+            var newHotkey = new HotkeyConfig
+            {
+                Name = NewHotkeyName,
+                Action = NewHotkeyAction,
+                Key = NewHotkeyValue,
+                Category = NewHotkeyCategory
+            };
+
+            _settingsService.AddHotkey(newHotkey);
+            _hubMonitorService.AddLogMessage($"[Settings] Added hotkey: {NewHotkeyName} ({NewHotkeyCategory})");
+
             NewHotkeyName = "";
             NewHotkeyAction = "";
             NewHotkeyValue = "";
+            NewHotkeyCategory = "General";
             RefreshHotkeysGrid();
         }
 
