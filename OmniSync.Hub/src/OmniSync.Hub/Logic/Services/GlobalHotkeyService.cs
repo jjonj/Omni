@@ -68,22 +68,19 @@ namespace OmniSync.Hub.Logic.Services
 
                 // Extra safety: if any modifier key is released, clear our internal tracking for it entirely
                 // This helps recover from "stuck" modifiers if a KeyUp event was missed previously
-                if (e.Key == Keys.LMenu || e.Key == Keys.RMenu || e.Key == Keys.Menu)
+                if (e.Key == Keys.LMenu || e.Key == Keys.Menu)
                 {
                     _pressedKeys.Remove(Keys.LMenu);
-                    _pressedKeys.Remove(Keys.RMenu);
                     _pressedKeys.Remove(Keys.Menu);
                 }
-                if (e.Key == Keys.LControlKey || e.Key == Keys.RControlKey || e.Key == Keys.ControlKey)
+                if (e.Key == Keys.LControlKey || e.Key == Keys.ControlKey)
                 {
                     _pressedKeys.Remove(Keys.LControlKey);
-                    _pressedKeys.Remove(Keys.RControlKey);
                     _pressedKeys.Remove(Keys.ControlKey);
                 }
-                if (e.Key == Keys.LShiftKey || e.Key == Keys.RShiftKey || e.Key == Keys.ShiftKey)
+                if (e.Key == Keys.LShiftKey || e.Key == Keys.ShiftKey)
                 {
                     _pressedKeys.Remove(Keys.LShiftKey);
-                    _pressedKeys.Remove(Keys.RShiftKey);
                     _pressedKeys.Remove(Keys.ShiftKey);
                 }
             }
@@ -93,19 +90,16 @@ namespace OmniSync.Hub.Logic.Services
             if (!e.Alt)
             {
                 _pressedKeys.Remove(Keys.LMenu);
-                _pressedKeys.Remove(Keys.RMenu);
                 _pressedKeys.Remove(Keys.Menu);
             }
             if (!e.Control)
             {
                 _pressedKeys.Remove(Keys.LControlKey);
-                _pressedKeys.Remove(Keys.RControlKey);
                 _pressedKeys.Remove(Keys.ControlKey);
             }
             if (!e.Shift)
             {
                 _pressedKeys.Remove(Keys.LShiftKey);
-                _pressedKeys.Remove(Keys.RShiftKey);
                 _pressedKeys.Remove(Keys.ShiftKey);
             }
 
@@ -258,10 +252,10 @@ namespace OmniSync.Hub.Logic.Services
             bool winReq = parts.Contains("WIN") || parts.Contains("CMD");
 
             // Check modifier states using both hook flags AND tracked keys for maximum reliability
-            bool isCtrl = e.Control || _pressedKeys.Any(k => k == Keys.ControlKey || k == Keys.LControlKey || k == Keys.RControlKey);
-            bool isAlt = e.Alt || _pressedKeys.Any(k => k == Keys.Menu || k == Keys.LMenu || k == Keys.RMenu);
-            bool isShift = e.Shift || _pressedKeys.Any(k => k == Keys.ShiftKey || k == Keys.LShiftKey || k == Keys.RShiftKey);
-            bool isWin = e.Win || _pressedKeys.Any(k => k == Keys.LWin || k == Keys.RWin);
+            bool isCtrl = e.Control || _pressedKeys.Any(k => k == Keys.ControlKey || k == Keys.LControlKey);
+            bool isAlt = e.Alt || _pressedKeys.Any(k => k == Keys.Menu || k == Keys.LMenu);
+            bool isShift = e.Shift || _pressedKeys.Any(k => k == Keys.ShiftKey || k == Keys.LShiftKey);
+            bool isWin = e.Win || _pressedKeys.Any(k => k == Keys.LWin);
 
             string targetKeyName = parts.Last();
             string pressedKeyName = e.Key.ToString().ToUpper();
@@ -291,10 +285,10 @@ namespace OmniSync.Hub.Logic.Services
 
         private bool IsModifier(Keys k)
         {
-            return k == Keys.ControlKey || k == Keys.LControlKey || k == Keys.RControlKey ||
-                   k == Keys.ShiftKey || k == Keys.LShiftKey || k == Keys.RShiftKey ||
-                   k == Keys.Menu || k == Keys.LMenu || k == Keys.RMenu ||
-                   k == Keys.LWin || k == Keys.RWin;
+            return k == Keys.ControlKey || k == Keys.LControlKey ||
+                   k == Keys.ShiftKey || k == Keys.LShiftKey ||
+                   k == Keys.Menu || k == Keys.LMenu ||
+                   k == Keys.LWin;
         }
 
         private void ExecuteHotkeyAction(string action, object? extraPayload = null)

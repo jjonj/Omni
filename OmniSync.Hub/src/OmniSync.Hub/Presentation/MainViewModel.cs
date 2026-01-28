@@ -46,6 +46,7 @@ namespace OmniSync.Hub.Presentation
         public ICommand ResetAiSessionsCommand { get; }
         public ICommand SaveAiSettingsCommand { get; }
         public ICommand LaunchJarvisCommand { get; }
+        public ICommand TestAltTabCommand { get; }
 
         public ICommand AddProjectCommand { get; }
         public ICommand DeleteProjectCommand { get; }
@@ -454,6 +455,7 @@ namespace OmniSync.Hub.Presentation
             ResetAiSessionsCommand = new RelayCommand(_ => { });
             SaveAiSettingsCommand = new RelayCommand(_ => { });
             LaunchJarvisCommand = new RelayCommand(_ => { });
+            TestAltTabCommand = new RelayCommand(_ => { });
 
             AddProjectCommand = new RelayCommand(_ => { });
             DeleteProjectCommand = new RelayCommand(_ => { });
@@ -558,6 +560,8 @@ namespace OmniSync.Hub.Presentation
                 _aiCliService.KillAllGeminiProcesses();
                 await _aiCliService.DiscoverSessionsAsync();
             });
+
+            TestAltTabCommand = new RelayCommand(_ => ExecuteTestAltTab());
 
             SaveAiSettingsCommand = new RelayCommand(_ => {
                 _settingsService.SaveSettings();
@@ -711,10 +715,10 @@ namespace OmniSync.Hub.Presentation
                 var displayKeys = new List<string>();
                 
                 // Keep standard order: Ctrl, Alt, Shift, Win, then the key
-                if (_currentlyPressedKeys.Any(k => k == Keys.ControlKey || k == Keys.LControlKey || k == Keys.RControlKey)) displayKeys.Add("Ctrl");
-                if (_currentlyPressedKeys.Any(k => k == Keys.Menu || k == Keys.LMenu || k == Keys.RMenu)) displayKeys.Add("Alt");
-                if (_currentlyPressedKeys.Any(k => k == Keys.ShiftKey || k == Keys.LShiftKey || k == Keys.RShiftKey)) displayKeys.Add("Shift");
-                if (_currentlyPressedKeys.Any(k => k == Keys.LWin || k == Keys.RWin)) displayKeys.Add("Win");
+                if (_currentlyPressedKeys.Any(k => k == Keys.ControlKey || k == Keys.LControlKey)) displayKeys.Add("Ctrl");
+                if (_currentlyPressedKeys.Any(k => k == Keys.Menu || k == Keys.LMenu)) displayKeys.Add("Alt");
+                if (_currentlyPressedKeys.Any(k => k == Keys.ShiftKey || k == Keys.LShiftKey)) displayKeys.Add("Shift");
+                if (_currentlyPressedKeys.Any(k => k == Keys.LWin)) displayKeys.Add("Win");
 
                 foreach (var k in _currentlyPressedKeys)
                 {
@@ -766,10 +770,10 @@ namespace OmniSync.Hub.Presentation
 
         private bool IsModifier(Keys k)
         {
-            return k == Keys.ControlKey || k == Keys.LControlKey || k == Keys.RControlKey ||
-                   k == Keys.ShiftKey || k == Keys.LShiftKey || k == Keys.RShiftKey ||
-                   k == Keys.Menu || k == Keys.LMenu || k == Keys.RMenu ||
-                   k == Keys.LWin || k == Keys.RWin;
+            return k == Keys.ControlKey || k == Keys.LControlKey ||
+                   k == Keys.ShiftKey || k == Keys.LShiftKey ||
+                   k == Keys.Menu || k == Keys.LMenu ||
+                   k == Keys.LWin;
         }
 
         private void ExecuteAddHotkey()

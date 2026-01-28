@@ -1,0 +1,8 @@
+{
+  "track_id": "feat_tft_hotkey_trainer_20260127",
+  "type": "feature",
+  "status": "new",
+  "created_at": "2026-01-27T23:52:00Z",
+  "updated_at": "2026-01-27T23:52:00Z",
+  "description": "Add a hotkey trainer to tft that gives me challenges, a challenge is simply a random combination goal of must include units, must include traits and selected emblems. I must complete the challenge within 10 seconds by copying the required configuration and running the solver and copying the team planner code from a result. The goal is to train myself in using hotkeys so i can use the solver fast"
+}

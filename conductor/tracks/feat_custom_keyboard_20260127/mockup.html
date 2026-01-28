@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>OmniSync Custom Keyboard Mockup - final-v2</title>
+    <style>
+        :root {
+            --bg-color: #000000;
+            --key-bg: #333333;
+            --key-text: #ffffff;
+            --key-active: #555555;
+            --accent: #bb86fc;
+            --key-radius: 8px;
+            --key-margin: 4px;
+            --phone-width: 844px; 
+            --phone-height: 390px;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #1a1a1a;
+            color: var(--key-text);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        /* Phone Container Mockup */
+        #phone-container {
+            width: var(--phone-width);
+            height: var(--phone-height);
+            background-color: var(--bg-color);
+            border: 12px solid #333;
+            border-radius: 40px;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            padding: 15px 25px; /* Extra side padding for curved corners */
+            box-sizing: border-box;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.8);
+        }
+
+        #keyboard {
+            display: flex;
+            flex-direction: column;
+            flex: 1;
+            justify-content: space-between;
+            padding-top: 10px;
+        }
+
+        .row {
+            display: flex;
+            width: 100%;
+            height: 19%; 
+        }
+
+        .key {
+            background-color: var(--key-bg);
+            margin: var(--key-margin) calc(var(--key-margin) / 2);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            border-radius: var(--key-radius);
+            font-weight: 600;
+            cursor: pointer;
+            user-select: none;
+            flex: 1; /* Standard size */
+            min-width: 0;
+            font-size: 18px;
+            position: relative;
+        }
+
+        .key span.sub {
+            position: absolute;
+            top: 2px;
+            right: 4px;
+            font-size: 10px;
+            color: #888;
+        }
+
+        .key:active {
+            background-color: var(--accent);
+            color: black;
+            transform: scale(0.96);
+        }
+
+        /* Specific widths for alignment and functional keys */
+        .key.sys { background-color: #444; color: var(--accent); font-size: 14px; flex: 1.2; }
+        .key.backspace { flex: 1.5; color: #ff7597; }
+        .key.enter { flex: 3; background-color: #3d5afe; font-size: 16px; }
+        .key.tab { flex: 1.5; font-size: 14px; }
+        .key.caps { flex: 1.75; font-size: 14px; }
+        .key.shift { flex: 2.25; background-color: #555; font-size: 14px; }
+        .key.space { flex: 5; }
+        .key.mod { flex: 1.2; font-size: 14px; }
+
+        .hidden { display: none !important; }
+
+        #output {
+            position: absolute;
+            bottom: 20px;
+            right: 50px;
+            font-family: monospace;
+            color: var(--accent);
+            pointer-events: none;
+            font-size: 12px;
+            z-index: 10;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="phone-container">
+        <div id="keyboard">
+            <!-- Row 0: System & Symbols -->
+            <div class="row" id="sysRow">
+                <div class="key sys">Esc</div>
+                <div class="key sys" onclick="toggleNumbers()"># Row</div>
+                <div class="key">[<span class="sub">{</span></div>
+                <div class="key">]<span class="sub">}</span></div>
+                <div class="key">'<span class="sub">"</span></div>
+                <div class="key">\<span class="sub">|</span></div>
+                <div class="key">/<span class="sub">?</span></div>
+                <div class="key backspace">Bksp</div>
+            </div>
+
+            <!-- Row 1: Numbers -->
+            <div class="row" id="numberRow">
+                <div class="key">1<span class="sub">!</span></div>
+                <div class="key">2<span class="sub">@</span></div>
+                <div class="key">3<span class="sub">#</span></div>
+                <div class="key">4<span class="sub">$</span></div>
+                <div class="key">5<span class="sub">%</span></div>
+                <div class="key">6<span class="sub">^</span></div>
+                <div class="key">7<span class="sub">&</span></div>
+                <div class="key">8<span class="sub">*</span></div>
+                <div class="key">9<span class="sub">(</span></div>
+                <div class="key">0<span class="sub">)</span></div>
+                <div class="key">-<span class="sub">_</span></div>
+                <div class="key">=<span class="sub">+</span></div>
+            </div>
+
+            <!-- Row 2 -->
+            <div class="row">
+                <div class="key tab">Tab</div>
+                <div class="key">Q</div><div class="key">W</div><div class="key">E</div>
+                <div class="key">R</div><div class="key">T</div><div class="key">Y</div>
+                <div class="key">U</div><div class="key">I</div><div class="key">O</div>
+                <div class="key">P</div>
+            </div>
+
+            <!-- Row 3 -->
+            <div class="row">
+                <div class="key caps">Caps</div>
+                <div class="key">A</div><div class="key">S</div><div class="key">D</div>
+                <div class="key">F</div><div class="key">G</div><div class="key">H</div>
+                <div class="key">J</div><div class="key">K</div><div class="key">L</div>
+                <div class="key">;<span class="sub">:</span></div>
+            </div>
+
+            <!-- Row 4 -->
+            <div class="row">
+                <div class="key shift">Shift</div>
+                <div class="key">Z</div><div class="key">X</div><div class="key">C</div>
+                <div class="key">V</div><div class="key">B</div><div class="key">N</div>
+                <div class="key">M</div>
+                <div class="key">,<span class="sub">&lt;</span></div>
+                <div class="key">.<span class="sub">&gt;</span></div>
+            </div>
+
+            <!-- Row 5 (Bottom Modifiers + Space/Enter) -->
+            <div class="row">
+                <div class="key mod">Ctrl</div>
+                <div class="key mod">Win</div>
+                <div class="key mod">Alt</div>
+                <div class="key space">Space</div>
+                <div class="key enter">Enter</div>
+            </div>
+        </div>
+
+        <div id="output">_</div>
+    </div>
+
+    <script>
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+        function playClick() {
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(600, audioCtx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(50, audioCtx.currentTime + 0.04);
+            gain.gain.setValueAtTime(0.05, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.04);
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.start();
+            osc.stop(audioCtx.currentTime + 0.04);
+        }
+
+        function toggleNumbers() {
+            const numRow = document.getElementById('numberRow');
+            numRow.classList.toggle('hidden');
+            
+            // Adjust row heights to fill space
+            const rows = document.querySelectorAll('.row:not(.hidden)');
+            const heightPerc = 100 / rows.length;
+            rows.forEach(r => r.style.height = (heightPerc - 1) + '%');
+        }
+
+        document.querySelectorAll('.key').forEach(key => {
+            key.addEventListener('mousedown', (e) => {
+                if (key.innerText.includes('# Row')) return;
+                const val = key.childNodes[0].textContent;
+                document.getElementById('output').innerText = "Last: " + val;
+                playClick();
+            });
+        });
+
+        window.addEventListener('contextmenu', e => e.preventDefault());
+        
+        // Initial height set
+        toggleNumbers(); 
+        toggleNumbers(); 
+    </script>
+</body>
+</html>

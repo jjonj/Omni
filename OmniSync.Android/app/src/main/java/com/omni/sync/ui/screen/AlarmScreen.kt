@@ -70,7 +70,7 @@ fun AlarmScreen(
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
-    val appConfig = mainViewModel.appConfig
+    val appConfig by mainViewModel.appConfig.collectAsState()
     val prefs = remember { context.getSharedPreferences("alarm_prefs", Context.MODE_PRIVATE) }
     val gson = remember { com.google.gson.Gson() }
 

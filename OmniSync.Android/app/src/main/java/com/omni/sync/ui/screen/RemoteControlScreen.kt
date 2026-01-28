@@ -963,137 +963,76 @@ fun CustomKeyboard(
 
     
 
-        val soundId = remember { soundPool.load(context, com.omni.sync.R.raw.button_click_01, 1) }
-
-    
+        var soundId by remember { mutableIntStateOf(0) }
 
         var soundLoaded by remember { mutableStateOf(false) }
 
-    
-
-        val toneGenerator = remember { ToneGenerator(AudioManager.STREAM_MUSIC, 100) }
-
-    
+        val toneGenerator = remember { ToneGenerator(AudioManager.STREAM_NOTIFICATION, 100) }
 
         
-
-    
 
         LaunchedEffect(Unit) {
 
-    
+            soundId = soundPool.load(context, com.omni.sync.R.raw.button_click_01, 1)
 
             soundPool.setOnLoadCompleteListener { _, _, status ->
 
-    
-
                 if (status == 0) {
-
-    
 
                     soundLoaded = true
 
-    
-
                     Log.d("CustomKeyboard", "ButtonClick sound loaded successfully")
-
-    
 
                 } else {
 
-    
-
                     Log.e("CustomKeyboard", "ButtonClick sound failed to load: $status")
-
-    
 
                 }
 
-    
-
             }
-
-    
 
         }
 
-    
-
         
-
-    
 
         val view = LocalView.current
 
     
 
-    
-
-    
-
         DisposableEffect(Unit) {
-
-    
 
             onDispose {
 
-    
-
                 soundPool.release()
-
-    
 
                 toneGenerator.release()
 
-    
-
             }
-
-    
 
         }
 
     
 
-    
-
-    
-
         fun playClick() {
-
-    
 
             if (appConfig.keyboardSoundEnabled) {
 
-    
-
                 if (soundLoaded) {
-
-    
 
                     soundPool.play(soundId, 1f, 1f, 1, 0, 1f)
 
-    
-
                 } else {
 
-    
+                    // Fallback to tone from functional commit style
 
-                    // Fallback to tone if file not loaded
+                    try {
 
-    
+                        toneGenerator.startTone(ToneGenerator.TONE_PROP_BEEP, 150)
 
-                    toneGenerator.startTone(ToneGenerator.TONE_PROP_BEEP, 50)
-
-    
+                    } catch (e: Exception) {}
 
                 }
-
-    
-
             }
-
-    
 
             view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
 

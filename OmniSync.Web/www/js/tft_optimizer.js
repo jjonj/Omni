@@ -439,6 +439,41 @@ class TFTOptimizer {
         };
     }
 
+    filterAlternatives(results, limit) {
+        if (!results || results.length === 0) return [];
+        
+        const filtered = [];
+        const seenSignatures = new Set();
+        
+        // Sort by score descending first to ensure we keep the best version of each comp
+        results.sort((a, b) => b.score - a.score);
+        
+        for (const res of results) {
+            const activeTraits = Object.keys(res.counts).filter(t => {
+                const meta = this.TRAITS_DATA[t];
+                return meta && (meta.breakpoints.some(b => b <= res.counts[t]) || (t === 'Targon' && res.counts[t] >= 1));
+            });
+            
+            // A unit is "Flex" if it contributes to exactly one active trait.
+            // These are the units that get the star (*) in the UI.
+            const nonStarUnits = res.board.filter(u => {
+                const contributed = u.traits.filter(t => activeTraits.includes(t));
+                return contributed.length !== 1;
+            }).map(u => u.name).sort();
+            
+            const signature = nonStarUnits.join('|');
+            
+            if (!seenSignatures.has(signature)) {
+                seenSignatures.add(signature);
+                filtered.push(res);
+            }
+            
+            if (filtered.length >= limit) break;
+        }
+        
+        return filtered;
+    }
+
     async findBestBoards(pool, size, emblems, mustIncludeNames = [], mode = 'default', mustIncludeTraits = {}, limit = 3, onProgress = null, heuristic = 'standard') {
         this.isCancelled = false;
         
@@ -478,18 +513,18 @@ class TFTOptimizer {
                 if (score > -1000000) { 
                     results.push({ score, board: currentBoard, counts });
                     
-                    // Keep results array small
-                    if (results.length > limit * 50) {
+                    // Keep results array large enough to allow filtering later
+                    if (results.length > limit * 100) {
                         results.sort((a, b) => b.score - a.score);
-                        results = results.slice(0, limit * 10);
+                        results = results.slice(0, limit * 50);
                     }
                 }
             }
             if (onProgress) onProgress(processed, total);
             await new Promise(resolve => setTimeout(resolve, 0));
         }
-        results.sort((a, b) => b.score - a.score);
-        const finalResults = results.slice(0, limit);
+        
+        const finalResults = this.filterAlternatives(results, limit);
         return {
             results: finalResults,
             totalProcessed: processed
@@ -572,8 +607,7 @@ class TFTOptimizer {
             await new Promise(resolve => setTimeout(resolve, 0));
         }
 
-        currentBeams.sort((a, b) => b.score - a.score);
-        const finalResults = currentBeams.slice(0, limit);
+        const finalResults = this.filterAlternatives(currentBeams, limit);
         return {
             results: finalResults,
             totalProcessed: totalEvaluated
@@ -633,8 +667,7 @@ class TFTOptimizer {
             await new Promise(resolve => setTimeout(resolve, 0));
         }
 
-        currentBeams.sort((a, b) => b.score - a.score);
-        const finalResults = currentBeams.slice(0, limit);
+        const finalResults = this.filterAlternatives(currentBeams, limit);
         return {
             results: finalResults,
             totalProcessed: totalEvaluated

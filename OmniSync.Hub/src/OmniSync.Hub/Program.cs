@@ -239,6 +239,7 @@ builder.Services.AddSingleton<InputService>(provider =>
     var keyboardHook = provider.GetRequiredService<KeyboardHook>();
     return new InputService(logger, keyboardHook);
 });
+
 builder.Services.AddSingleton<AudioService>();
 builder.Services.AddSingleton<HubSettingsService>();
 builder.Services.AddSingleton<QuickActionService>(provider =>

@@ -49,3 +49,13 @@
 ---
 
 ---
+
+## [~] Track: Custom Horizontal QWERTY Keyboard & F-Key Support
+*Link: [./tracks/feat_custom_keyboard_20260127/](./tracks/feat_custom_keyboard_20260127/)*
+
+---
+
+---
+
+- [ ] **Track: Add a hotkey trainer to tft that gives me challenges, a challenge is simply a random combination goal of must include units, must include traits and selected emblems. I must complete the challenge within 10 seconds by copying the required configuration and running the solver and copying the team planner code from a result. The goal is to train myself in using hotkeys so i can use the solver fast**
+*Link: [./tracks/feat_tft_hotkey_trainer_20260127/](./tracks/feat_tft_hotkey_trainer_20260127/)*
