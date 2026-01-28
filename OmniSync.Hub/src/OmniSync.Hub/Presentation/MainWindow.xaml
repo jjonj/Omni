@@ -555,18 +555,19 @@
                                             <DataTemplate>
                                                 <Grid Margin="5">
                                                     <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto"/>
-                                <ColumnDefinition Width="Auto"/>
-                                <ColumnDefinition Width="Auto"/>
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Text="{Binding Name}" VerticalAlignment="Center"/>
-                            <Button Grid.Column="1" Content="Launch" Command="{Binding DataContext.LaunchProjectCommand, RelativeSource={RelativeSource AncestorType=Window}}" 
-                                    CommandParameter="{Binding}" Margin="5,0"/>
-                            <Button Grid.Column="2" Content="Copy" Command="{Binding DataContext.DuplicateProjectCommand, RelativeSource={RelativeSource AncestorType=Window}}" 
-                                    CommandParameter="{Binding}" Margin="5,0"/>
-                            <Button Grid.Column="3" Content="Delete" Command="{Binding DataContext.DeleteProjectCommand, RelativeSource={RelativeSource AncestorType=Window}}" 
-                                    CommandParameter="{Binding}" Margin="5,0" Background="#442222"/>
-                        </Grid>
+                                                        <ColumnDefinition Width="*"/>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <TextBlock Text="{Binding Name}" VerticalAlignment="Center"/>
+                                                    <Button Grid.Column="1" Content="Launch" Command="{Binding DataContext.LaunchProjectCommand, RelativeSource={RelativeSource AncestorType=Window}}" 
+                                                            CommandParameter="{Binding}" Margin="5,0"/>
+                                                    <Button Grid.Column="2" Content="Copy" Command="{Binding DataContext.DuplicateProjectCommand, RelativeSource={RelativeSource AncestorType=Window}}" 
+                                                            CommandParameter="{Binding}" Margin="5,0"/>
+                                                    <Button Grid.Column="3" Content="Delete" Command="{Binding DataContext.DeleteProjectCommand, RelativeSource={RelativeSource AncestorType=Window}}" 
+                                                            CommandParameter="{Binding}" Margin="5,0" Background="#442222"/>
+                                                </Grid>
                                             </DataTemplate>
                                         </ListBox.ItemTemplate>
                                     </ListBox>
