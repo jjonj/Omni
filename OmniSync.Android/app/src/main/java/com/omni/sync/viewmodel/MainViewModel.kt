@@ -318,8 +318,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun handleOpenFile(remotePath: String) {
         val extension = remotePath.substringAfterLast(".", "").lowercase()
         when (extension) {
-            "mp4", "mkv", "avi", "mov", "webm" -> playVideo(remotePath)
-            "jpg", "jpeg", "png", "webp", "gif", "bmp" -> viewImages(remotePath)
+            "mp4", "mkv", "avi", "mov", "webm", "m4v", "3gp", "ts" -> playVideo(remotePath)
+            "jpg", "jpeg", "png", "webp", "gif", "bmp", "svg" -> viewImages(remotePath)
+            "mp3", "m4a", "wav", "flac", "ogg", "aac" -> {
+                // For now, treat audio as video (it will play in the video player)
+                playVideo(remotePath)
+            }
             else -> openEditor(remotePath)
         }
     }

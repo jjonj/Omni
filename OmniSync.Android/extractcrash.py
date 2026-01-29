@@ -112,7 +112,7 @@ def capture_crash(device):
                     break
                 # If strictly no line but process running, just continue (readline might block though)
                 continue
-                
+            
             lines.append(line)
 
             # Detect the start of a crash

@@ -29,16 +29,36 @@ def list_devices():
 
 
 def main():
+    # 1. Check if any device is already connected
     devices = list_devices()
     if devices:
-        print(f"Already connected: {devices[0]}")
-        return
+        target = devices[0]
+        try:
+            run(["adb", "-s", target, "shell", "echo", "1"], check=True)
+            print(f"Already connected to responsive device: {target}")
+            return
+        except:
+            print(f"Device {target} is listed but not responsive. Disconnecting...")
+            run(["adb", "disconnect", target], check=False)
 
+    config_path = os.path.join(os.path.dirname(__file__), "last_adb_target.txt")
+    
     if len(sys.argv) >= 4:
         pairing_code = sys.argv[1]
         pairing_port = sys.argv[2]
         connect_port = sys.argv[3]
     else:
+        # Check for last target if no args provided
+        if os.path.exists(config_path):
+            with open(config_path, "r") as f:
+                last_target = f.read().strip()
+                if last_target:
+                    print(f"Attempting to reconnect to last known target: {last_target}...")
+                    run(["adb", "connect", last_target], check=False)
+                    if last_target in list_devices():
+                        print(f"Reconnected to {last_target}")
+                        return
+
         pairing_port = input("Pairing port: ").strip()
         pairing_code = input("Pairing code: ").strip()
         connect_port = input("Connect port: ").strip()
@@ -50,14 +70,17 @@ def main():
         check=False
     )
 
+    target = f"{PHONE_IP}:{connect_port}"
     print(f"Connecting to port {connect_port}...")
-    run(["adb", "connect", f"{PHONE_IP}:{connect_port}"])
+    run(["adb", "connect", target])
 
     devices = list_devices()
     if not devices:
         sys.exit("Connection failed.")
 
     print(f"Connected: {devices[0]}")
+    # Save the successful target
+    with open(config_path, "w") as f: f.write(devices[0])
 
 
 if __name__ == "__main__":

@@ -175,7 +175,7 @@ class FilesViewModel(
         
         // Restore last opened file if any (CONTEXT ONLY, NO NAVIGATION)
         val lastOpenedPath = prefs.getString("last_opened_file_path", null)
-        if (lastOpenedPath != null) {
+        if (lastOpenedPath != null && !isMediaFile(lastOpenedPath)) {
              val cachedContent = textCachePrefs.getString("text_$lastOpenedPath", null)
              if (cachedContent != null) {
                  val name = lastOpenedPath.substringAfterLast("/").substringAfterLast("\\")
@@ -945,6 +945,14 @@ class FilesViewModel(
     }
 
     fun openForEditing(entry: FileSystemEntry) {
+        if (isMediaFile(entry.name)) {
+            Log.w("FilesViewModel", "Blocking openForEditing for media file: ${entry.name}")
+            mainViewModel.addLog("Cannot open media file in editor: ${entry.name}", com.omni.sync.ui.screen.LogType.WARNING)
+            // Redirect to appropriate viewer
+            handleFileOpen(entry)
+            return
+        }
+
         // Track recent files
         val currentRecent = _recentFiles.value.toMutableList()
         currentRecent.removeAll { it.path == entry.path }
@@ -1614,9 +1622,10 @@ class FilesViewModel(
     }
 
     private fun isMediaFile(fileName: String): Boolean {
-        val extension = MimeTypeMap.getFileExtensionFromUrl(fileName)
+        val extension = fileName.substringAfterLast(".", "").lowercase()
         val mimeType = MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension)
-        return mimeType?.startsWith("audio/") == true || mimeType?.startsWith("video/") == true
+        return mimeType?.startsWith("audio/") == true || mimeType?.startsWith("video/") == true ||
+               extension in listOf("m4a", "m4v", "mp4", "mkv", "avi", "mov", "webm", "3gp", "ts", "flv")
     }
     
     // --- UI State Helpers ---

@@ -147,6 +147,54 @@ namespace OmniSync.Hub.Infrastructure.Services
             });
         }
 
+        public virtual async Task ExecuteCommandWithLogging(string command, string logPrefix = "[Process]")
+        {
+            _monitorService.AddLogMessage($"{logPrefix} Execute: '{command}'");
+            
+            await Task.Run(() =>
+            {
+                var processStartInfo = new ProcessStartInfo
+                {
+                    FileName = "cmd.exe",
+                    Arguments = $"/c {command}",
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                };
+
+                using (var process = new Process { StartInfo = processStartInfo })
+                {
+                    process.OutputDataReceived += (sender, args) =>
+                    {
+                        if (!string.IsNullOrEmpty(args.Data))
+                        {
+                            _monitorService.AddLogMessage($"{logPrefix} {args.Data}");
+                        }
+                    };
+                    process.ErrorDataReceived += (sender, args) =>
+                    {
+                        if (!string.IsNullOrEmpty(args.Data))
+                        {
+                            _monitorService.AddLogMessage($"{logPrefix} [ERROR] {args.Data}");
+                        }
+                    };
+
+                    try
+                    {
+                        process.Start();
+                        process.BeginOutputReadLine();
+                        process.BeginErrorReadLine();
+                        process.WaitForExit();
+                    }
+                    catch (Exception ex)
+                    {
+                        _monitorService.AddLogMessage($"{logPrefix} [EXCEPTION] {ex.Message}");
+                    }
+                }
+            });
+        }
+
         public virtual void ShellExecute(string path, string? arguments = null)
         {
             _monitorService.AddLogMessage($"[ProcessService] ShellExecute: '{path}' Args: '{arguments}'");

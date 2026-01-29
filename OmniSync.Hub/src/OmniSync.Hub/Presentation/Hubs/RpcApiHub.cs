@@ -174,7 +174,7 @@ namespace OmniSync.Hub.Presentation.Hubs
                 
                 // Locate connectadb.py - it's in the project root
                 string projectRoot = AppContext.BaseDirectory;
-                for (int i = 0; i < 5; i++)
+                for (int i = 0; i < 10; i++)
                 {
                     if (File.Exists(Path.Combine(projectRoot, "connectadb.py")))
                     {
@@ -187,7 +187,7 @@ namespace OmniSync.Hub.Presentation.Hubs
                 if (File.Exists(scriptPath))
                 {
                     _logger.LogInformation($"[RpcApiHub] Executing: python {scriptPath} {pairingCode} {pairingPort} {connectPort}");
-                    await _processService.ExecuteCommand($"python \"{scriptPath}\" {pairingCode} {pairingPort} {connectPort}");
+                    _ = _processService.ExecuteCommandWithLogging($"python \"{scriptPath}\" {pairingCode} {pairingPort} {connectPort}", "[WIFI-DBG]");
                 }
                 else
                 {
