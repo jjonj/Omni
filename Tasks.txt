@@ -27,9 +27,8 @@ The Omnihub window -> Settings -> Hotkeys needs improvements (Completed)
 ## in OmniSync.Android
 ### General
 
-The remote control screen has a fulscreen keyboard feature in horizontal mode, i want that to activate not only on control screens (but i may exclude certain sc reens in the future)
-
-android app attempts to reconnect only once when disconnected. it needs to try to reconnect after 0, 10, 30, 60, 120, 1800 repeating, seconds as well as whenever the app reopens 
+DONE: Fulscreen keyboard in horizontal mode (Global)
+DONE: Reconnection logic with retry schedule
 
 ### Dashboard
 

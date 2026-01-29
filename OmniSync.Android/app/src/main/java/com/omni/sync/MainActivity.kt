@@ -40,6 +40,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.ime
 import androidx.compose.ui.unit.dp
 import com.omni.sync.ui.components.OmniBottomNavigation
+import com.omni.sync.ui.components.CustomKeyboard
 
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -135,12 +136,13 @@ class MainActivity : ComponentActivity() {
                                 val currentScreen by mainViewModel.currentScreen.collectAsState()
                                 val canGoBack by mainViewModel.canGoBack.collectAsState()
             
-                                // Handle Orientation for Remote Control
+                                // Handle Orientation
                                 LaunchedEffect(currentScreen) {
-                                    requestedOrientation = if (currentScreen == AppScreen.REMOTECONTROL) {
-                                        android.content.pm.ActivityInfo.SCREEN_ORIENTATION_USER
-                                    } else {
-                                        android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                                    requestedOrientation = when (currentScreen) {
+                                        AppScreen.DASHBOARD -> android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                                        AppScreen.SETTINGS -> android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                                        // Add more exclusions here in the future
+                                        else -> android.content.pm.ActivityInfo.SCREEN_ORIENTATION_USER
                                     }
                                 }
             
@@ -283,38 +285,46 @@ class MainActivity : ComponentActivity() {
                         }
                         
                         Box(modifier = Modifier.fillMaxSize()) {
-                            // Always keep pager in composition to avoid state resets and jumpy animations
-                            // Custom touch slop to make paging less sensitive
-                            val viewConfig = androidx.compose.ui.platform.LocalViewConfiguration.current
-                            val customViewConfig = remember {
-                                object : androidx.compose.ui.platform.ViewConfiguration by viewConfig {
-                                    override val touchSlop: Float get() = viewConfig.touchSlop * 6.0f
-                                }
-                            }
-                            
-                            androidx.compose.runtime.CompositionLocalProvider(
-                                androidx.compose.ui.platform.LocalViewConfiguration provides customViewConfig
-                            ) {
-                                HorizontalPager(
-                                    state = pagerState,
-                                    modifier = Modifier.fillMaxSize(),
-                                    userScrollEnabled = canSwipe // Only allow swiping on swipeable screens and editor with word wrap
-                                ) { page ->
-                                    val screenAtPage = swipeableScreens[page]
-                                    val pageModifier = if (screenAtPage == AppScreen.REMOTECONTROL || screenAtPage == AppScreen.FILES || screenAtPage == AppScreen.AI_CHAT || screenAtPage == AppScreen.WEB_SERVER) Modifier else Modifier.padding(innerPadding)
-                                    Box(modifier = pageModifier) {
-                                        MainScreenContent(screenAtPage, signalRClient, browserViewModel, filesViewModel, mainViewModel, innerPadding)
+                            if (isLandscape) {
+                                CustomKeyboard(
+                                    signalRClient = signalRClient,
+                                    appConfig = mainViewModel.appConfig.value,
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                            } else {
+                                // Always keep pager in composition to avoid state resets and jumpy animations
+                                // Custom touch slop to make paging less sensitive
+                                val viewConfig = androidx.compose.ui.platform.LocalViewConfiguration.current
+                                val customViewConfig = remember {
+                                    object : androidx.compose.ui.platform.ViewConfiguration by viewConfig {
+                                        override val touchSlop: Float get() = viewConfig.touchSlop * 6.0f
                                     }
                                 }
-                            }
-
-                            // Overlay non-swipeable screens on top when active
-                            if (!isSwipeable) {
-                                Surface(
-                                    modifier = Modifier.fillMaxSize(),
-                                    color = MaterialTheme.colorScheme.background
+                                
+                            androidx.compose.runtime.CompositionLocalProvider(
+                                    androidx.compose.ui.platform.LocalViewConfiguration provides customViewConfig
                                 ) {
-                                    MainScreenContent(currentScreen, signalRClient, browserViewModel, filesViewModel, mainViewModel, innerPadding)
+                                    HorizontalPager(
+                                        state = pagerState,
+                                        modifier = Modifier.fillMaxSize(),
+                                        userScrollEnabled = canSwipe // Only allow swiping on swipeable screens and editor with word wrap
+                                    ) { page ->
+                                        val screenAtPage = swipeableScreens[page]
+                                        val pageModifier = if (screenAtPage == AppScreen.REMOTECONTROL || screenAtPage == AppScreen.FILES || screenAtPage == AppScreen.AI_CHAT || screenAtPage == AppScreen.WEB_SERVER) Modifier else Modifier.padding(innerPadding)
+                                        Box(modifier = pageModifier) {
+                                            MainScreenContent(screenAtPage, signalRClient, browserViewModel, filesViewModel, mainViewModel, innerPadding)
+                                        }
+                                    }
+                                }
+
+                                // Overlay non-swipeable screens on top when active
+                                if (!isSwipeable) {
+                                    Surface(
+                                        modifier = Modifier.fillMaxSize(),
+                                        color = MaterialTheme.colorScheme.background
+                                    ) {
+                                        MainScreenContent(currentScreen, signalRClient, browserViewModel, filesViewModel, mainViewModel, innerPadding)
+                                    }
                                 }
                             }
                         }

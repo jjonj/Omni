@@ -1,8 +1,7 @@
-feat(hub): Improve Hotkey Settings UI and fix deletion
+feat(android): Robust reconnection and global horizontal keyboard
 
-- Allow inline changing of hotkey categories via ComboBox.
-- Use ReadOnly TextBox for existing hotkey display for better visibility.
-- Fix deletion bug by using RemoveHotkeyByAction instead of RemoveHotkey.
-- Persist expander state across UI refreshes to prevent accidental collapsing.
-- Implement INotifyPropertyChanged for HotkeyConfig to support real-time updates.
-- Update build and run scripts to handle elevated kill of Hub process.
+- Implement exponential-ish backoff retry schedule for SignalR reconnection: 0, 10, 30, 60, 120, 1800s.
+- Extract CustomKeyboard to a shared component for global reuse.
+- Enable landscape orientation globally (except Dashboard/Settings) to show horizontal keyboard overlay.
+- Fix various Kotlin syntax and import errors related to the refactoring.
+- Add unit tests for reconnection delay logic.

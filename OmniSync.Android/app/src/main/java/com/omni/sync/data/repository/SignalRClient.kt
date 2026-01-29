@@ -199,6 +199,17 @@ class SignalRClient(
         const val KEY_LAST_CONNECTED_HUB_URL = "last_connected_hub_url"
     }
 
+    fun getRetryDelay(attempt: Int): Long {
+        return when (attempt) {
+            0 -> 0L
+            1 -> 10000L
+            2 -> 30000L
+            3 -> 60000L
+            4 -> 120000L
+            else -> 1800000L // 30 minutes
+        }
+    }
+
     private fun onConnected(url: String) {
         _connectionState.value = "Connected"
         val baseUrl = url.substringBefore("/signalrhub")
@@ -273,12 +284,25 @@ class SignalRClient(
             if (isReconnecting.compareAndSet(false, true)) {
                 mainViewModel.addLog("Connection closed. Reason: $reason. Starting auto-reconnect...", com.omni.sync.ui.screen.LogType.WARNING)
                 reconnectJob = coroutineScope.launch {
+                    var attempt = 0
                     while (isReconnecting.get()) {
-                        delay(10000)
-                        mainViewModel.addLog("Attempting to reconnect...", com.omni.sync.ui.screen.LogType.INFO)
+                        val delayMs = getRetryDelay(attempt)
+                        if (delayMs > 0) {
+                            mainViewModel.addLog("Reconnecting in ${delayMs / 1000}s (Attempt ${attempt + 1})...", com.omni.sync.ui.screen.LogType.INFO)
+                            delay(delayMs)
+                        } else {
+                            mainViewModel.addLog("Attempting immediate reconnection...", com.omni.sync.ui.screen.LogType.INFO)
+                        }
+                        
+                        // We use startConnection() which handles multiple buildAndStartConnection calls.
+                        // However, startConnection() itself might fail and not trigger onClosed immediately if it's already connecting.
+                        // So we wait until it either connects or fails.
                         startConnection()
-                        // startConnection handles the retry logic, so we break here and let it start a new cycle if needed
-                        break 
+                        
+                        // Wait a bit to see if we connected (which would clear isReconnecting and cancel this job)
+                        // If we didn't connect, we'll try again after the next delay.
+                        delay(5000) 
+                        attempt++
                     }
                 }
             } else {
