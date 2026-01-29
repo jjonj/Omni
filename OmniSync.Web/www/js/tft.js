@@ -364,6 +364,9 @@ function performAdd(item, type) {
         addToSelectedEmblems(item);
         const added = { name: item.name, type: 'emblem', zone: 'emblems' };
         addedItemsHistory.push(added);
+    } else if (type === 'trait') {
+        addToMustIncludeTrait(item.name);
+        addedItemsHistory.push({ name: item.name, type: 'trait', zone: 'must-include' });
     } else {
         if (activeDropZone === 'must-include') {
             addToMustInclude(item);
@@ -387,11 +390,56 @@ function performAdd(item, type) {
 }
 
 function tryProcessBuffer() {
+
     if (!tftData) return false;
+
+    
+
     const query = addModeBuffer.toLowerCase();
+
     if (query.length < 2) return false;
 
+
+
+    // 0. Handle e/t prefixes
+
+    if (query.startsWith('e') && query.length >= 3) {
+
+        const sub = query.substring(1);
+
+        const emblemMatches = tftData.items.filter(i => i.is_emblem && i.trait.toLowerCase().startsWith(sub));
+
+        if (emblemMatches.length === 1) {
+
+            performAdd(emblemMatches[0], 'emblem');
+
+            return true;
+
+        }
+
+    }
+
+    if (query.startsWith('t') && query.length >= 3) {
+
+        const sub = query.substring(1);
+
+        const traitMatches = Object.keys(tftData.trait_metadata).filter(t => t.toLowerCase().startsWith(sub));
+
+        if (traitMatches.length === 1) {
+
+            performAdd({ name: traitMatches[0] }, 'trait');
+
+            return true;
+
+        }
+
+    }
+
+
+
     // 1. Check Custom Shortcuts (2 chars)
+
+
     if (query.length === 2 && CUSTOM_UNIT_SHORTCUTS[query]) {
         const targetName = CUSTOM_UNIT_SHORTCUTS[query];
         // Check if it's an emblem (some shortcuts might be traits)
@@ -439,6 +487,26 @@ function processAddModeBuffer() {
     let matchedItem = null;
     let matchedType = null;
     
+    // 0. Prefixed search
+    if (query.startsWith('e') && query.length >= 2) {
+        const sub = query.substring(1);
+        let emblem = tftData.items.find(i => i.is_emblem && i.trait.toLowerCase().startsWith(sub));
+        if (!emblem) emblem = tftData.items.find(i => i.is_emblem && i.trait.toLowerCase().includes(sub));
+        if (emblem) {
+            performAdd(emblem, 'emblem');
+            return;
+        }
+    }
+    if (query.startsWith('t') && query.length >= 2) {
+        const sub = query.substring(1);
+        let traitName = Object.keys(tftData.trait_metadata).find(t => t.toLowerCase().startsWith(sub));
+        if (!traitName) traitName = Object.keys(tftData.trait_metadata).find(t => t.toLowerCase().includes(sub));
+        if (traitName) {
+            performAdd({ name: traitName }, 'trait');
+            return;
+        }
+    }
+
     // 1. Starts With (Unit)
     let unit = tftData.units.find(u => u.name.toLowerCase().startsWith(query));
     if (unit) {
@@ -1400,6 +1468,22 @@ function addToMustInclude(unit) {
             iconUrl: unit.icon_url,
             type: 'unit',
             cost: unit.cost
+        });
+        renderSelectionZones();
+    }
+}
+
+function addToMustIncludeTrait(traitName) {
+    const meta = tftData.trait_metadata[traitName];
+    if (!meta) return;
+
+    if (!selectedMustInclude.find(item => item.name === traitName && item.type === 'trait')) {
+        selectedMustInclude.push({
+            name: traitName,
+            iconUrl: `assets/tft/${currentConfig.current_set}/traits/${traitName.replace(/ /g, '')}.svg`,
+            type: 'trait',
+            trait: traitName,
+            targetBreakpointIndex: 0
         });
         renderSelectionZones();
     }

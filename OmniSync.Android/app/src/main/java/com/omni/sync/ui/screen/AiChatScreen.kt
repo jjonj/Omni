@@ -901,7 +901,7 @@ fun QuickActionPanel(
                 modifier = Modifier.weight(1f).height(33.dp),
                 onClick = { 
                     if (selectedPid != -1) {
-                        val newLevel = if (!isZoomed) 1.5 else 1.0
+                        val newLevel = if (!isZoomed) 2.0 else 1.0
                         signalRClient.setAiZoom(selectedPid, newLevel)
                         isZoomed = !isZoomed
                     }
@@ -959,9 +959,15 @@ fun QuickActionPanel(
                 modifier = Modifier.weight(1f).height(33.dp),
                 onClick = { onScrollToBottom() }
             )
+
+            ActionKeyButton(
+                text = "Model",
+                icon = Icons.Default.Tune,
+                modifier = Modifier.weight(1f).height(33.dp),
+                onClick = { signalRClient.sendAiMessage("/model", selectedPid) }
+            )
             
             // Fill remaining space
-            Spacer(modifier = Modifier.weight(1f))
         }
     }
 }

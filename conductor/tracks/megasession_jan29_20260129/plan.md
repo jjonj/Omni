@@ -23,23 +23,23 @@ This plan outlines the steps to fulfill the tasks defined in the specification f
 
 ## Phase 3: Android File Explorer & AI Screen Enhancements
 
-- [ ] Task: Implement scaling font size for the path `TextBlock` in the Folder view based on string length.
-- [ ] Task: Add "Copy Path" to the long-press menu for folders in the File Explorer.
-- [ ] Task: Update the Image Viewer to display the current filename at the top or bottom.
-- [ ] Task: Refactor File Screen state management to only restore the text viewer if a file was active upon exit.
-- [ ] Task: Implement auto-scroll to bottom upon entering the AI screen.
-- [ ] Task: Add "Model Select" UI to the AI screen that communicates with the Gemini CLI via the Hub.
-- [ ] Task: Increase the maximum zoom level in the AI screen's zoom logic.
-- [ ] Task: Verify Phase 3 changes.
-- [ ] Task: Conductor - User Manual Verification 'Phase 3: Android UI' (Protocol in workflow.md)
+- [x] Task: Implement scaling font size for the path `TextBlock` in the Folder view based on string length.
+- [x] Task: Add "Copy Path" to the long-press menu for folders in the File Explorer.
+- [x] Task: Update the Image Viewer to display the current filename at the top or bottom.
+- [x] Task: Refactor File Screen state management to only restore the text viewer if a file was active upon exit.
+- [x] Task: Implement auto-scroll to bottom upon entering the AI screen.
+- [x] Task: Add "Model Select" UI to the AI screen that communicates with the Gemini CLI via the Hub.
+- [x] Task: Increase the maximum zoom level in the AI screen's zoom logic.
+- [x] Task: Verify Phase 3 changes.
+- [x] Task: Conductor - User Manual Verification 'Phase 3: Android UI' (Protocol in workflow.md)
 
 ## Phase 4: Omni Web & TFT Updates
 
-- [ ] Task: Update the TFT hotkey scheme in `TFT.html` (or associated JS) to use 'E' and 'T' prefixes for emblems and traits.
-- [ ] Task: Verify Phase 4 changes in a browser.
-- [ ] Task: Conductor - User Manual Verification 'Phase 4: Web/TFT' (Protocol in workflow.md)
+- [x] Task: Update the TFT hotkey scheme in `TFT.html` (or associated JS) to use 'E' and 'T' prefixes for emblems and traits.
+- [x] Task: Verify Phase 4 changes in a browser.
+- [x] Task: Conductor - User Manual Verification 'Phase 4: Web/TFT' (Protocol in workflow.md)
 
 ## Finalization
 
-- [ ] Task: Perform a final build and run of the entire system.
-- [ ] Task: [checkpoint: <sha>] Final project-wide verification.
+- [x] Task: Perform a final build and run of the entire system.
+- [x] Task: [checkpoint: <sha>] Final project-wide verification.

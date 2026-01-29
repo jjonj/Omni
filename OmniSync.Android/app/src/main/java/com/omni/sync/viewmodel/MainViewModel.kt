@@ -206,6 +206,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _pendingNavigationPath = MutableStateFlow<String?>(null)
     val pendingNavigationPath: StateFlow<String?> = _pendingNavigationPath
 
+    private val _lastFilesScreen = MutableStateFlow(AppScreen.FILES)
+    val lastFilesScreen: StateFlow<AppScreen> = _lastFilesScreen
+
     fun setPendingNavigationPath(path: String?) {
         _pendingNavigationPath.value = path
     }
@@ -416,6 +419,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun navigateTo(screen: AppScreen) {
         if (_currentScreen.value == screen) return
+
+        if (screen == AppScreen.FILES || screen == AppScreen.EDITOR) {
+            _lastFilesScreen.value = screen
+        }
 
         // Push current screen to backstack
         backStack.add(_currentScreen.value)

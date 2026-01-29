@@ -1,7 +1,13 @@
-feat(android): Robust reconnection and global horizontal keyboard
+feat(android/web): File explorer, AI screen, and TFT improvements
 
-- Implement exponential-ish backoff retry schedule for SignalR reconnection: 0, 10, 30, 60, 120, 1800s.
-- Extract CustomKeyboard to a shared component for global reuse.
-- Enable landscape orientation globally (except Dashboard/Settings) to show horizontal keyboard overlay.
-- Fix various Kotlin syntax and import errors related to the refactoring.
-- Add unit tests for reconnection delay logic.
+Android:
+- Implement auto-scaling font for path header in FilesScreen.
+- Add state persistence for last active sub-screen (Files vs Editor).
+- Improve AI screen auto-scroll reliability and add a "Model" select button.
+- Increase AI screen zoom level to 2.0x.
+- Verify "Copy Path" in folder dropdown and filename display in Image Viewer.
+
+Web/TFT:
+- Implement 'E' (Emblem) and 'T' (Must-include Trait) hotkey prefixes for Active Mode.
+- Add matched items automatically when a unique prefix-match is found.
+- Support 'contains' matching for prefix searches in processAddModeBuffer.

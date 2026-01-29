@@ -231,13 +231,9 @@ class MainActivity : ComponentActivity() {
                             if (currentScreen !in swipeableScreens) return@collect
                             
                             if (currentScreen != screen) {
-                                if (screen == AppScreen.FILES && filesViewModel.editingFile.value != null) {
-                                    // Only auto-redirect to EDITOR if we are NOT coming from EDITOR
-                                    if (currentScreen != AppScreen.EDITOR) {
-                                        mainViewModel.navigateTo(AppScreen.EDITOR)
-                                    } else {
-                                        mainViewModel.navigateTo(screen)
-                                    }
+                                if (screen == AppScreen.FILES) {
+                                    // Restore the last active sub-screen (FILES or EDITOR)
+                                    mainViewModel.navigateTo(mainViewModel.lastFilesScreen.value)
                                 } else {
                                     mainViewModel.navigateTo(screen)
                                 }

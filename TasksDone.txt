@@ -58,7 +58,16 @@
 
 ### Files & Video Screen
 
-✅ when a file is open the navigation bar gets hidden, change that 
+✅ In folder view Use scaling size font for the path at the top left, longer path should use smaller font 
+✅ when long pressing folder, add option to copy path to clipboard (Verified in dropdown menu)
+✅ Image viewer needs to display the name of the file shown (Verified/Implemented)
+✅ When switching back to file screen, restore the last shown sub-screen (Files vs Editor) correctly.
+
+### AI screen
+
+✅ when going to the ai screen, always scroll to bottom (Improved reliability)
+✅ Add prominent "Model" button to select Gemini CLI models via CLI command.
+✅ change the zoom button to zoom even more (increased from 1.5x to 2.0x)
 ✅ the automatic merge feature does not work well, seems everything is marked as conflict, run some unit tests
 ✅ When any ai session is active, add "AI: Add dir to [SessionName]"...
 ✅ The header at the top showing current path should allow long pressing it...
@@ -164,6 +173,7 @@
 ✅ Repalce feature to hover and select another unit in results tiles is broken
 ✅ Clear log file on startup.
 ✅ Allow seeing git log/commits for folders that are repos, browsing history and seeing the changes of clicked commits.
+✅ Implemented 'E' (Emblem) and 'T' (Must-include Trait) hotkey prefixes for Active Mode.
 
 ## Megasession Jan 21, 2026
 
