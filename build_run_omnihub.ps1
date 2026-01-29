@@ -1,3 +1,4 @@
+# DEPRECATED: Use build_run_omnihub.py instead. This script will be removed in a future update.
 # build_run_omnihub.ps1
 
 # --- Configuration ---
@@ -30,8 +31,12 @@ function Run-Command {
         Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
         $exitCode = -1
     } else {
+        # Give a tiny bit of time for the process object to update
+        Start-Sleep -Milliseconds 100
         $exitCode = $process.ExitCode
+        if ($null -eq $exitCode) { $exitCode = 0 } # Assume 0 if we can't get it but it exited
     }
+    Write-Host "Command '$Command' exited with code: $exitCode"
     
     # Merge temp files into the log file
     Add-Content $LogFile "`n--- Command: $Command ---"

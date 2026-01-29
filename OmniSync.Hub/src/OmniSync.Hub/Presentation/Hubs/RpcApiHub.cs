@@ -166,6 +166,36 @@ namespace OmniSync.Hub.Presentation.Hubs
             return false;
         }
 
+        public async Task ConnectWadb(string pairingCode, string pairingPort, string connectPort)
+        {
+            if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
+            {
+                _hubMonitorService.AddLogMessage($"[RpcApiHub] ConnectWadb requested. Code: {pairingCode}, PPort: {pairingPort}, CPort: {connectPort}");
+                
+                // Locate connectadb.py - it's in the project root
+                string projectRoot = AppContext.BaseDirectory;
+                for (int i = 0; i < 5; i++)
+                {
+                    if (File.Exists(Path.Combine(projectRoot, "connectadb.py")))
+                    {
+                        break;
+                    }
+                    projectRoot = Path.GetDirectoryName(projectRoot) ?? projectRoot;
+                }
+                
+                string scriptPath = Path.Combine(projectRoot, "connectadb.py");
+                if (File.Exists(scriptPath))
+                {
+                    _logger.LogInformation($"[RpcApiHub] Executing: python {scriptPath} {pairingCode} {pairingPort} {connectPort}");
+                    await _processService.ExecuteCommand($"python \"{scriptPath}\" {pairingCode} {pairingPort} {connectPort}");
+                }
+                else
+                {
+                    _logger.LogError($"[RpcApiHub] Could not find connectadb.py in {projectRoot} or parent directories.");
+                }
+            }
+        }
+
         public HubSettings GetSettings()
         {
             if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)

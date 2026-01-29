@@ -419,11 +419,11 @@
                                 <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,10">
                                     <StackPanel Margin="0,0,10,0">
                                         <TextBlock Text="Name" Margin="0,0,0,2" FontSize="12" Opacity="0.7"/>
-                                        <TextBox Text="{Binding NewHotkeyName}" Width="150" Padding="5" />
+                                        <TextBox Text="{Binding NewHotkeyName}" Width="180" Padding="5" />
                                     </StackPanel>
                                     <StackPanel Margin="0,0,10,0">
                                         <TextBlock Text="Action" Margin="0,0,0,2" FontSize="12" Opacity="0.7"/>
-                                        <ComboBox ItemsSource="{Binding AvailableActions}" SelectedValue="{Binding NewHotkeyAction}" Width="200" Padding="5" 
+                                        <ComboBox ItemsSource="{Binding AvailableActions}" SelectedValue="{Binding NewHotkeyAction}" Width="250" Padding="5" 
                                                   Background="#1E1E1E" Foreground="#D4D4D4" BorderBrush="#333337">
                                             <ComboBox.ItemTemplate>
                                                 <DataTemplate>
@@ -441,16 +441,14 @@
                                     </StackPanel>
                                     <StackPanel Margin="0,0,10,0">
                                         <TextBlock Text="Category" Margin="0,0,0,2" FontSize="12" Opacity="0.7"/>
-                                        <TextBox Text="{Binding NewHotkeyCategory}" Width="100" Padding="5" />
+                                        <TextBox Text="{Binding NewHotkeyCategory}" Width="120" Padding="5" />
                                     </StackPanel>
                                     <StackPanel Margin="0,0,10,0">
                                         <TextBlock Text="Key Combo" Margin="0,0,0,2" FontSize="12" Opacity="0.7"/>
-                                        <Grid>
-                                            <TextBox Text="{Binding NewHotkeyValue}" Width="150" Padding="5" IsReadOnly="True" />
-                                            <Button Content="Record" Command="{Binding StartRecordingHotkeyCommand}" 
-                                                    HorizontalAlignment="Right" Padding="5,0" Margin="0" Height="22" FontSize="10"/>
-                                        </Grid>
+                                        <TextBox Text="{Binding NewHotkeyValue}" Width="150" Padding="5" IsReadOnly="True" />
                                     </StackPanel>
+                                    <Button Content="Record" Command="{Binding StartRecordingHotkeyCommand}" 
+                                            VerticalAlignment="Bottom" Padding="10,0" Margin="0,0,10,0" Height="28" FontSize="11"/>
                                     <Button Content="Add Hotkey" Command="{Binding AddHotkeyCommand}" VerticalAlignment="Bottom" Margin="0" Height="28"/>
                                 </StackPanel>
 
@@ -488,10 +486,11 @@
                                                 <DataTemplate>
                                                     <Grid Margin="0,5">
                                                         <Grid.ColumnDefinitions>
-                                                            <ColumnDefinition Width="150"/>
                                                             <ColumnDefinition Width="180"/>
-                                                            <ColumnDefinition Width="100"/>
+                                                            <ColumnDefinition Width="220"/>
+                                                            <ColumnDefinition Width="120"/>
                                                             <ColumnDefinition Width="*"/>
+                                                            <ColumnDefinition Width="Auto"/>
                                                             <ColumnDefinition Width="Auto"/>
                                                         </Grid.ColumnDefinitions>
                                                         <TextBlock Text="{Binding Name}" VerticalAlignment="Center" FontWeight="Bold" Foreground="White"/>
@@ -507,14 +506,12 @@
                                                                   SelectedValue="{Binding Category, UpdateSourceTrigger=PropertyChanged}"
                                                                   VerticalAlignment="Center" Margin="5,0" FontSize="10" Padding="2"
                                                                   Background="#2D2D30" Foreground="White" BorderBrush="#3F3F46"/>
-                                                        <Grid Grid.Column="3">
-                                                            <TextBox Text="{Binding Key}" VerticalAlignment="Center" Margin="5,0" Foreground="White" 
-                                                                     IsReadOnly="True" Background="Transparent" BorderThickness="0"/>
-                                                            <Button Content="Record" Command="{Binding DataContext.StartRecordingHotkeyCommand, RelativeSource={RelativeSource AncestorType=Window}}" 
-                                                                    CommandParameter="{Binding}"
-                                                                    HorizontalAlignment="Right" Padding="5,0" Margin="2" FontSize="9"/>
-                                                        </Grid>
-                                                        <Button Grid.Column="4" Content="Delete" Command="{Binding DataContext.DeleteHotkeyCommand, RelativeSource={RelativeSource AncestorType=Window}}" 
+                                                        <TextBox Grid.Column="3" Text="{Binding Key}" VerticalAlignment="Center" Margin="5,0" Foreground="White" 
+                                                                 IsReadOnly="True" Background="Transparent" BorderThickness="0"/>
+                                                        <Button Grid.Column="4" Content="Record" Command="{Binding DataContext.StartRecordingHotkeyCommand, RelativeSource={RelativeSource AncestorType=Window}}" 
+                                                                CommandParameter="{Binding}"
+                                                                Padding="10,2" Margin="2" FontSize="10"/>
+                                                        <Button Grid.Column="5" Content="Delete" Command="{Binding DataContext.DeleteHotkeyCommand, RelativeSource={RelativeSource AncestorType=Window}}" 
                                                                 CommandParameter="{Binding Action}"
                                                                 Padding="10,2" Margin="5,0,0,0" FontSize="10" Background="#603030"/>
                                                     </Grid>

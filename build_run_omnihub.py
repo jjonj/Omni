@@ -182,50 +182,29 @@ def main():
 
         time.sleep(1) # Give it a moment
 
-        print("\n--- Starting OmniSync.Hub in background ---")
+        print("\n--- Starting OmniSync.Hub in background (Elevated) ---")
         
         # Ensure the executable exists before trying to run it
         if not os.path.exists(HUB_EXE_PATH):
             print(f"Error: Hub executable not found at {HUB_EXE_PATH}. Did the build fail?")
             return
 
-        # Use Popen to start the hub process in a detached way
-        hub_runtime_log = os.path.join(SCRIPT_DIR, "hub_runtime.log")
+        # Use PowerShell to start the hub as admin
         exe_dir = os.path.dirname(HUB_EXE_PATH)
-        with open(hub_runtime_log, "a", encoding="utf-8", errors="replace") as hrl:
-            hub_process = subprocess.Popen(
-                [HUB_EXE_PATH], # Run the compiled executable directly
-                cwd=exe_dir,
-                stdout=hrl, 
-                stderr=hrl, 
-                creationflags=subprocess.DETACHED_PROCESS if sys.platform == "win32" else 0, # For Windows, run truly detached
-                shell=False # Don't use shell if running exe directly
-            )
-        print(f"OmniSync.Hub started with PID: {hub_process.pid}")
-        
-        # Wait a few seconds and check if it's still running
-        time.sleep(3)
-        
-        # Check if it exited
-        if hub_process.poll() is not None:
-            print(f"ERROR: OmniSync.Hub crashed immediately after starting with exit code {hub_process.returncode}.")
+        ps_launch_cmd = f"Start-Process -FilePath '{HUB_EXE_PATH}' -WorkingDirectory '{exe_dir}' -Verb RunAs"
+        try:
+            subprocess.run(["powershell.exe", "-NoProfile", "-Command", ps_launch_cmd], check=True)
+            print("OmniSync.Hub launch command (elevated) sent successfully.")
+        except Exception as e:
+            print(f"Error launching OmniSync.Hub: {e}")
             sys.exit(1)
-            
-        # Check if crash log was updated recently (in case it's stuck on a popup)
-        crash_log = os.path.join(SCRIPT_DIR, "hub_crash_log.log")
-        if os.path.exists(crash_log):
-            mtime = os.path.getmtime(crash_log)
-            if time.time() - mtime < 10: # Updated in last 10 seconds
-                print(f"ERROR: OmniSync.Hub seems to have crashed (crash log updated).")
-                # Kill it if it's stuck on a popup
-                hub_process.kill()
-                sys.exit(1)
-
-        print("OmniSync.Hub is still running after 3 seconds.")
         
-finally:
-    if hub_process:
-        print(f"OmniSync.Hub started with PID: {hub_process.pid}")
+        # We can't easily get the PID or poll when using Start-Process -Verb RunAs 
+        # because the parent process of the elevated hub will be the shell, not this script.
+        print("OmniSync.Hub should now be starting.")
+        
+    finally:
+        pass
 
 if __name__ == "__main__":
     main()

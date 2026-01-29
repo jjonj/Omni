@@ -27,8 +27,7 @@ The Omnihub window -> Settings -> Hotkeys needs improvements (Completed)
 ## in OmniSync.Android
 ### General
 
-DONE: Fulscreen keyboard in horizontal mode (Global)
-DONE: Reconnection logic with retry schedule
+DONE: (Completed)
 
 ### Dashboard
 
@@ -40,13 +39,7 @@ DONE: Reconnection logic with retry schedule
 
 ### Files & Video Screen
  
-DONE: In folder view Use scaling size font for the path at the top left, longer path should use smaller font 
-
-DONE: when long pressing folder, add option to copy path to clipboard 
-
-DONE: Image viewer needs to display the name of the file shown
-
-DONE: when switching to file screen it will show  the last opened text file, that should only happen if a text file was actually open when leaving the screen. in general the file screen should not change what was shown at all when leaving it and coming back, should be simple 
+DONE: (Completed)
 
 
 ### Browser control screen
@@ -60,11 +53,7 @@ DONE: when switching to file screen it will show  the last opened text file, tha
 
 ### AI screen
 
-DONE: when going to the ai screen, always scroll up bottom 
-
-DONE: ask user for access to gemini cli to do model Select
-
-DONE: change the zoom button to zoom even more 
+DONE: (Completed)
 
 
 [BIGTASK] Add a special "Manager Session", a CLI session that is always running with some heavy scaffolding around it.
@@ -93,7 +82,7 @@ DONE: change the zoom button to zoom even more
 
 ### Omni web tft
 
-DONE: Change the hotkey scheme for emblems in active mode, every emblem should add add code prefixed by 'E' to add to selected emblems or 'T' to add to must include traits. E.g. ebi=selected emblem bilgewater, tgu=must include trait gunslinger etc. 
+DONE: (Completed)
 
 
 ## Chrome extension

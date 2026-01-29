@@ -34,18 +34,23 @@ def main():
         print(f"Already connected: {devices[0]}")
         return
 
-    pairing_port = input("Pairing port: ").strip()
-    pairing_code = input("Pairing code: ").strip()
-    connect_port = input("Connect port: ").strip()  # Prompt for connect port
+    if len(sys.argv) >= 4:
+        pairing_code = sys.argv[1]
+        pairing_port = sys.argv[2]
+        connect_port = sys.argv[3]
+    else:
+        pairing_port = input("Pairing port: ").strip()
+        pairing_code = input("Pairing code: ").strip()
+        connect_port = input("Connect port: ").strip()
 
-    print("Pairing...")
+    print(f"Pairing with code {pairing_code} at port {pairing_port}...")
     run(
         ["adb", "pair", f"{PHONE_IP}:{pairing_port}"],
         input_text=pairing_code + "\n",
         check=False
     )
 
-    print("Connecting...")
+    print(f"Connecting to port {connect_port}...")
     run(["adb", "connect", f"{PHONE_IP}:{connect_port}"])
 
     devices = list_devices()

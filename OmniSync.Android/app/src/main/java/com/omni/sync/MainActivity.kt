@@ -281,7 +281,7 @@ class MainActivity : ComponentActivity() {
                         }
                         
                         Box(modifier = Modifier.fillMaxSize()) {
-                            if (isLandscape) {
+                            if (isLandscape && currentScreen != AppScreen.IMAGE_VIEWER && currentScreen != AppScreen.VIDEOPLAYER) {
                                 CustomKeyboard(
                                     signalRClient = signalRClient,
                                     appConfig = mainViewModel.appConfig.value,

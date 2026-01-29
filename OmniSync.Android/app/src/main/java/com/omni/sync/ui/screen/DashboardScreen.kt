@@ -62,6 +62,58 @@ fun DashboardScreen(modifier: Modifier = Modifier, signalRClient: SignalRClient,
     val coroutineScope = rememberCoroutineScope()
     val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
 
+    // WIFI DBG Dialog State
+    var showWadbDialog by remember { mutableStateOf(false) }
+    var pairingCode by remember { mutableStateOf("") }
+    var pairingPort by remember { mutableStateOf("") }
+    var connectPort by remember { mutableStateOf("") }
+
+    if (showWadbDialog) {
+        AlertDialog(
+            onDismissRequest = { showWadbDialog = false },
+            title = { Text("Wireless ADB Debugging") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = pairingCode,
+                        onValueChange = { pairingCode = it },
+                        label = { Text("Pairing Code") },
+                        singleLine = true,
+                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number)
+                    )
+                    OutlinedTextField(
+                        value = pairingPort,
+                        onValueChange = { pairingPort = it },
+                        label = { Text("Pairing Port") },
+                        singleLine = true,
+                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number)
+                    )
+                    OutlinedTextField(
+                        value = connectPort,
+                        onValueChange = { connectPort = it },
+                        label = { Text("Connect Port") },
+                        singleLine = true,
+                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number)
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    showWadbDialog = false
+                    signalRClient.sendCommand("ConnectWadb", pairingCode, pairingPort, connectPort)
+                    mainViewModel.addLog("Requesting WIFI DBG: Code $pairingCode, Port $pairingPort -> Connect $connectPort", LogType.INFO)
+                }) {
+                    Text("OK")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showWadbDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
     // Determine connection status based on actual isConnected state
     val connectionStatus = when {
         isConnected -> ConnectionStatus.CONNECTED
@@ -230,6 +282,20 @@ fun DashboardScreen(modifier: Modifier = Modifier, signalRClient: SignalRClient,
                                 colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
                             ) {
                                 Text("ADB Log")
+                            }
+                        }
+                        
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        Row(modifier = Modifier.fillMaxWidth()) {
+                             Button(
+                                onClick = { showWadbDialog = true },
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
+                            ) {
+                                Icon(Icons.Default.Refresh, null, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(8.dp))
+                                Text("WIFI DBG")
                             }
                         }
                         
