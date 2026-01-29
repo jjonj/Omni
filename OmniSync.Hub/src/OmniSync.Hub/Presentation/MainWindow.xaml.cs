@@ -16,6 +16,7 @@ using System.Windows.Controls; // For Button
 using System.Windows.Input; // Added for MouseButtonEventArgs
 using System.Runtime.InteropServices;
 using System.Windows.Interop;
+using System.Windows.Data;
 
 namespace OmniSync.Hub.Presentation
 {
@@ -104,6 +105,22 @@ namespace OmniSync.Hub.Presentation
             if (sender is System.Windows.Controls.TextBox textBox)
             {
                 textBox.SelectAll();
+            }
+        }
+
+        private void Expander_Expanded(object sender, RoutedEventArgs e)
+        {
+            if (sender is Expander exp && exp.DataContext is CollectionViewGroup group)
+            {
+                _viewModel.ToggleCategoryExpansionCommand.Execute(new object[] { group.Name.ToString() ?? "", true });
+            }
+        }
+
+        private void Expander_Collapsed(object sender, RoutedEventArgs e)
+        {
+            if (sender is Expander exp && exp.DataContext is CollectionViewGroup group)
+            {
+                _viewModel.ToggleCategoryExpansionCommand.Execute(new object[] { group.Name.ToString() ?? "", false });
             }
         }
 

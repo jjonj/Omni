@@ -55,9 +55,9 @@ namespace OmniSync.Hub.Logic.Services
                     }
     
             
-                    public ShutdownMode GetCurrentMode() => _currentMode;
+                    public virtual ShutdownMode GetCurrentMode() => _currentMode;
     
-            public void SetMode(ShutdownMode mode)
+            public virtual void SetMode(ShutdownMode mode)
             {
                 if (_currentMode != mode)
                 {
@@ -67,7 +67,7 @@ namespace OmniSync.Hub.Logic.Services
                 }
             }
     
-            public void ScheduleShutdown(int minutes)
+            public virtual void ScheduleShutdown(int minutes)
             {
                 _shutdownCts?.Cancel();
                 _shutdownCts = null;
@@ -123,6 +123,6 @@ namespace OmniSync.Hub.Logic.Services
                 }, token);
             }
     
-            public DateTime? GetScheduledTime() => _scheduledTime;
+            public virtual DateTime? GetScheduledTime() => _scheduledTime;
         }
 }

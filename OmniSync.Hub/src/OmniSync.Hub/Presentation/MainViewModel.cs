@@ -415,11 +415,15 @@ namespace OmniSync.Hub.Presentation
                             set { if (_newHotkeyValue != value) { _newHotkeyValue = value; OnPropertyChanged(); } }
                         }
                 
-                        public ObservableCollection<KeyValuePair<string, string>> ExeMappings { get; }
-                        public ObservableCollection<HotkeyConfig> Hotkeys { get; }
-                        public ICollectionView HotkeyGroups { get; }
-                
-                        private bool _isRecordingHotkey;
+                                public ObservableCollection<KeyValuePair<string, string>> ExeMappings { get; }
+                                public ObservableCollection<HotkeyConfig> Hotkeys { get; }
+                                public ICollectionView HotkeyGroups { get; }
+                                
+                                public List<string> Categories => Hotkeys.Select(h => h.Category).Distinct().OrderBy(c => c).ToList();
+
+        private readonly Dictionary<string, bool> _categoryExpansionStates = new();
+        public ICommand ToggleCategoryExpansionCommand { get; }
+                                                private bool _isRecordingHotkey;
                 
         public bool IsRecordingHotkey
         {
@@ -516,6 +520,10 @@ namespace OmniSync.Hub.Presentation
             LogMessages.CollectionChanged += (s, e) => OnPropertyChanged(nameof(LogMessagesText));
             ExeMappings = new ObservableCollection<KeyValuePair<string, string>>(_settingsService.Settings.ExeMappings.ToList());
             Hotkeys = new ObservableCollection<HotkeyConfig>(_settingsService.Settings.Hotkeys);
+            foreach (var hk in Hotkeys)
+            {
+                hk.PropertyChanged += OnHotkeyPropertyChanged;
+            }
             HotkeyGroups = CollectionViewSource.GetDefaultView(Hotkeys);
             HotkeyGroups.GroupDescriptions.Add(new PropertyGroupDescription(nameof(HotkeyConfig.Category)));
             Projects = new ObservableCollection<Project>(_settingsService.Settings.Projects);
@@ -563,6 +571,13 @@ namespace OmniSync.Hub.Presentation
             StartRecordingHotkeyCommand = new RelayCommand(p => ExecuteStartRecording(p as HotkeyConfig));
             AddHotkeyCommand = new RelayCommand(_ => ExecuteAddHotkey());
             DeleteHotkeyCommand = new RelayCommand(p => ExecuteDeleteHotkey(p as string));
+            ToggleCategoryExpansionCommand = new RelayCommand(p => {
+                var args = p as object[];
+                if (args != null && args.Length == 2 && args[0] is string cat && args[1] is bool expanded)
+                {
+                    _categoryExpansionStates[cat] = expanded;
+                }
+            });
             ScheduleShutdownCommand = new RelayCommand(_ => ExecuteScheduleShutdown());
             ToggleShutdownModeCommand = new RelayCommand(_ => ExecuteToggleShutdownMode());
             FocusAiSessionsCommand = new RelayCommand(async _ => await ExecuteFocusAiSessions());
@@ -812,10 +827,10 @@ namespace OmniSync.Hub.Presentation
             RefreshHotkeysGrid();
         }
 
-        private void ExecuteDeleteHotkey(string? name)
+        private void ExecuteDeleteHotkey(string? action)
         {
-            if (name == null) return;
-            _settingsService.RemoveHotkey(name);
+            if (action == null) return;
+            _settingsService.RemoveHotkeyByAction(action);
             RefreshHotkeysGrid();
         }
 
@@ -916,10 +931,30 @@ namespace OmniSync.Hub.Presentation
 
         public void RefreshHotkeysGrid()
         {
+            foreach (var hk in Hotkeys) hk.PropertyChanged -= OnHotkeyPropertyChanged;
             Hotkeys.Clear();
             foreach (var hk in _settingsService.Settings.Hotkeys)
             {
+                hk.PropertyChanged += OnHotkeyPropertyChanged;
                 Hotkeys.Add(hk);
+            }
+            OnPropertyChanged(nameof(Categories));
+        }
+
+        public bool GetCategoryExpansionState(string category)
+        {
+            if (string.IsNullOrEmpty(category)) return true;
+            if (!_categoryExpansionStates.ContainsKey(category)) _categoryExpansionStates[category] = true;
+            return _categoryExpansionStates[category];
+        }
+
+        private void OnHotkeyPropertyChanged(object? sender, PropertyChangedEventArgs e)
+        {
+            _settingsService.SaveSettings();
+            if (e.PropertyName == nameof(HotkeyConfig.Category))
+            {
+                HotkeyGroups.Refresh();
+                OnPropertyChanged(nameof(Categories));
             }
         }
 

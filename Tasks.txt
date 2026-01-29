@@ -21,13 +21,15 @@ If a task is prefixed [BIGTASK] You should not do it as part of hte megasession,
 
 ## For the hub
 
-of the conversion is too long it might start lagging. add a setting in settings for the max admin by of history to load, defined in kb or character count, not msg count 
+The Omnihub window -> Settings -> Hotkeys needs improvements (Completed)
 
 
 ## in OmniSync.Android
 ### General
 
-android app attempts to reconnect only once when disconnected. it needs to try to reconnect after 0, 10, 30, 60, 120, 1800 repeating, seconds 
+The remote control screen has a fulscreen keyboard feature in horizontal mode, i want that to activate not only on control screens (but i may exclude certain sc reens in the future)
+
+android app attempts to reconnect only once when disconnected. it needs to try to reconnect after 0, 10, 30, 60, 120, 1800 repeating, seconds as well as whenever the app reopens 
 
 ### Dashboard
 
@@ -96,5 +98,8 @@ change the zoom button to zoom even more
 
 
 ### Omni web tft
+
+Change the hotkey scheme for emblems in active mode, every emblem should add add code prefixed by 'E' to add to selected emblems or 'T' to add to must include traits. E.g. ebi=selected emblem bilgewater, tgu=must include trait gunslinger etc. 
+
 
 ## Chrome extension

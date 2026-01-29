@@ -58,21 +58,25 @@ def run_command(command, cwd=None, shell=False, log_file=None):
 
 def kill_hub_process():
     """
-    Kills any running OmniSync.Hub.exe processes.
+    Kills any running OmniSync.Hub.exe processes using administrative privileges.
     """
-    print("Attempting to kill OmniSync.Hub.exe processes...")
+    print("Attempting to kill OmniSync.Hub.exe processes as admin...")
     if sys.platform == "win32":
-        kill_cmd = "taskkill /IM OmniSync.Hub.exe /F"
-        result = run_command(kill_cmd, shell=True)
-        if result:
-            if "No tasks are running" in result.stdout or "process not found" in result.stderr:
-                print("OmniSync.Hub.exe was not running or could not be found.")
-            elif result.returncode == 0:
-                print("OmniSync.Hub.exe processes killed successfully.")
-            else:
-                print(f"Failed to kill OmniSync.Hub.exe: {result.stderr}")
+        # Check if running before requesting elevation to avoid unnecessary UAC prompts
+        check_cmd = "tasklist /FI \"IMAGENAME eq OmniSync.Hub.exe\" /NH"
+        result = subprocess.run(check_cmd, capture_output=True, text=True, shell=True)
+        
+        if "OmniSync.Hub.exe" in result.stdout:
+            # Use PowerShell's Start-Process with -Verb RunAs for elevation
+            ps_cmd = "Start-Process taskkill -ArgumentList '/IM OmniSync.Hub.exe /F' -Verb RunAs -Wait"
+            try:
+                subprocess.run(["powershell.exe", "-NoProfile", "-Command", ps_cmd], check=True)
+                print("Elevated taskkill command executed.")
+            except Exception as e:
+                print(f"Note: Elevated taskkill attempt failed or was cancelled: {e}")
+        else:
+            print("OmniSync.Hub.exe is not running.")
     else:
-        # For non-Windows, assume 'pkill' or similar if available, or just warn.
         print("Warning: Process killing not implemented for non-Windows platforms.")
 
 def on_rmtree_error(func, path, exc_info):
@@ -113,22 +117,9 @@ def is_admin():
         return False
 
 def main():
-    if sys.platform == 'win32' and not is_admin():
-        print("Script is not running as admin. Requesting elevation via PowerShell...")
-        script_path = os.path.abspath(__file__)
-        params = " ".join([f'"{arg}"' for arg in sys.argv[1:]])
-        
-        # Use PowerShell's Start-Process with -Verb RunAs to request elevation
-        ps_command = f"Start-Process '{sys.executable}' -ArgumentList '"{script_path}" {params}' -Verb RunAs"
-        
-        try:
-            subprocess.run(["powershell.exe", "-Command", ps_command], check=True)
-            sys.exit(0)
-        except Exception as e:
-            print(f"Elevation request failed: {e}")
-            sys.exit(1)
-
+    # Elevation is now handled specifically for the kill command to minimize UAC prompts for the rest of the build
     print(f"HUB_DIR is {HUB_DIR}")
+
     hub_log_path = os.path.join(SCRIPT_DIR, "hub_build.log")
     cli_log_path = os.path.join(SCRIPT_DIR, "cli_output.log")
 

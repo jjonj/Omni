@@ -3,6 +3,8 @@ using Microsoft.Extensions.Configuration;
 using Moq;
 using OmniSync.Hub.Infrastructure.Services;
 using OmniSync.Hub.Logic.Monitoring;
+using OmniSync.Hub.Logic.Services;
+using Microsoft.Extensions.Hosting;
 using System.Diagnostics;
 using System.Management;
 using Xunit;
@@ -20,8 +22,8 @@ namespace OmniSync.Hub.Tests.Services
             
             var loggerMock = new Mock<ILogger<AiCliService>>();
             var settingsMock = new Mock<HubSettingsService>(new Mock<ILogger<HubSettingsService>>().Object);
-            var processServiceMock = new Mock<ProcessService>(new Mock<ILogger<ProcessService>>().Object);
-            var monitorMock = new Mock<HubMonitorService>(new Mock<ILogger<HubMonitorService>>().Object);
+            var monitorMock = new Mock<HubMonitorService>(new Mock<IHostApplicationLifetime>().Object, new Mock<ILogger<HubMonitorService>>().Object);
+            var processServiceMock = new Mock<ProcessService>(settingsMock.Object, monitorMock.Object);
             var configMock = new Mock<IConfiguration>();
 
             // Mock settings to return a default object
@@ -29,19 +31,7 @@ namespace OmniSync.Hub.Tests.Services
 
             var aiCliService = new AiCliService(loggerMock.Object, settingsMock.Object, processServiceMock.Object, monitorMock.Object, configMock.Object);
 
-            // We need to simulate the state where:
-            // 1. A session is being launched (IsLaunching = true)
-            // 2. DiscoverSessionsAsync is called
-            // 3. WMI returns two Gemini processes:
-            //    - The newly launched one (PID A)
-            //    - Another one (PID B)
-            // 4. The logic mistakenly thinks PID A is a parent of PID B
-            
-            // This is hard to unit test directly because DiscoverSessionsAsync uses ManagementObjectSearcher
-            // and Process.GetProcessById internally.
-            
-            // Instead, we will examine the logic in AiCliService.cs and create a fix.
-            // But first, let's see if we can trigger the leaf-process logic error in a controlled way.
+            // ... rest of the test logic ...
         }
     }
 }

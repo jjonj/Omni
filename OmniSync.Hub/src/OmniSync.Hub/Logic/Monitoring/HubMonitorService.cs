@@ -32,8 +32,8 @@ namespace OmniSync.Hub.Logic.Monitoring
         private EventHandler<string>? _clientDisconnectedHandler;
 
         // Data to be exposed to UI
-        public ObservableCollection<string> ActiveConnections { get; } = new ObservableCollection<string>();
-        public ObservableCollection<string> LogMessages { get; } = new ObservableCollection<string>();
+        public virtual ObservableCollection<string> ActiveConnections { get; } = new ObservableCollection<string>();
+        public virtual ObservableCollection<string> LogMessages { get; } = new ObservableCollection<string>();
         
         private bool _isTftActive;
         public bool IsTftActive

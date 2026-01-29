@@ -1,5 +1,8 @@
-fix(android): Correct variable declaration order and syntax errors in screens
+feat(hub): Improve Hotkey Settings UI and fix deletion
 
-- Fixed `AiChatScreen.kt` build error by moving `listState` and `filteredMessages` before their use in `LaunchedEffect`.
-- Fixed `FilesScreen.kt` build error by cleaning up a catastrophic paste error in the `DropdownMenu`.
-- Verified build and deployment to device.
+- Allow inline changing of hotkey categories via ComboBox.
+- Use ReadOnly TextBox for existing hotkey display for better visibility.
+- Fix deletion bug by using RemoveHotkeyByAction instead of RemoveHotkey.
+- Persist expander state across UI refreshes to prevent accidental collapsing.
+- Implement INotifyPropertyChanged for HotkeyConfig to support real-time updates.
+- Update build and run scripts to handle elevated kill of Hub process.

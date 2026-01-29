@@ -82,9 +82,50 @@ namespace OmniSync.Hub.Presentation
             return checkValue.Equals(targetValue, StringComparison.OrdinalIgnoreCase) ? Visibility.Visible : Visibility.Collapsed;
         }
 
-        public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
-        {
-            throw new NotImplementedException();
+                public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+
+                {
+
+                    throw new NotImplementedException();
+
+                }
+
+            }
+
+        
+
+            public class CategoryExpansionConverter : IMultiValueConverter
+
+            {
+
+                public object Convert(object[] values, Type targetType, object parameter, CultureInfo culture)
+
+                {
+
+                    if (values.Length == 2 && values[0] is string category && values[1] is MainViewModel vm)
+
+                    {
+
+                        return vm.GetCategoryExpansionState(category);
+
+                    }
+
+                    return true;
+
+                }
+
+        
+
+                public object[] ConvertBack(object value, Type[] targetTypes, object parameter, CultureInfo culture)
+
+                {
+
+                    throw new NotImplementedException();
+
+                }
+
+            }
+
         }
-    }
-}
+
+        

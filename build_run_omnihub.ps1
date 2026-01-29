@@ -52,32 +52,21 @@ function Run-Command {
     return $exitCode
 }
 
-# --- Step 1: Prepare for build ---
-# We try to rename the existing EXE so dotnet build can create a new one even if the old one is running.
-if (Test-Path $HubExePath) {
-    $oldExe = $HubExePath + ".old"
-    if (Test-Path $oldExe) { Remove-Item $oldExe -Force -ErrorAction SilentlyContinue }
-    Rename-Item $HubExePath (Split-Path $oldExe -Leaf) -ErrorAction SilentlyContinue
-}
+# --- Step 1: Kill existing Hub (Elevated) ---
+Write-Host "Attempting elevated kill of OmniSync.Hub.exe..." -ForegroundColor Yellow
+Start-Process taskkill -ArgumentList "/IM OmniSync.Hub.exe /F" -Verb RunAs -Wait -ErrorAction SilentlyContinue
 
+# --- Step 2: Prepare for build ---
 # Clear previous logs
 if (Test-Path $HubLogPath) { Remove-Item $HubLogPath -Force }
 
-# --- Step 2: Build Process (Non-Elevated) ---
+# --- Step 3: Build Process (Non-Elevated) ---
 Write-Host "`n--- Building OmniSync.Hub ---"
 $exitCode = Run-Command "dotnet build" $HubDir $HubLogPath
 
 if ($exitCode -ne 0) {
-    Write-Host "Build failed. This is likely because the Hub is running and could not be renamed." -ForegroundColor Red
-    Write-Host "Attempting elevated kill to free files..." -ForegroundColor Yellow
-    Start-Process taskkill -ArgumentList "/IM OmniSync.Hub.exe /F" -Verb RunAs -Wait
-    
-    Write-Host "Retrying build..."
-    $exitCode = Run-Command "dotnet build" $HubDir $HubLogPath
-    if ($exitCode -ne 0) {
-        Write-Host "Build failed again. Check $HubLogPath" -ForegroundColor Red
-        exit $exitCode
-    }
+    Write-Host "Build failed. Check $HubLogPath" -ForegroundColor Red
+    exit $exitCode
 }
 
 # If we reached here, build was successful. Delete the log.
@@ -86,7 +75,7 @@ if (Test-Path $HubLogPath) {
     Write-Host "Build successful." -ForegroundColor Green
 }
 
-# --- Step 3: Elevated Run ---
+# --- Step 4: Elevated Run ---
 Write-Host "`n--- Starting OmniSync.Hub as Administrator ---"
 if (-not (Test-Path $HubExePath)) {
     Write-Host "Error: Hub executable not found at $HubExePath" -ForegroundColor Red

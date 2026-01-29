@@ -6,12 +6,41 @@ using Microsoft.Extensions.Logging;
 
 namespace OmniSync.Hub.Infrastructure.Services
 {
-    public class HotkeyConfig
+    public class HotkeyConfig : System.ComponentModel.INotifyPropertyChanged
     {
-        public string Name { get; set; } = string.Empty;
-        public string Key { get; set; } = string.Empty;
-        public string Action { get; set; } = string.Empty;
-        public string Category { get; set; } = "General";
+        private string _name = string.Empty;
+        public string Name
+        {
+            get => _name;
+            set { if (_name != value) { _name = value; OnPropertyChanged(); } }
+        }
+
+        private string _key = string.Empty;
+        public string Key
+        {
+            get => _key;
+            set { if (_key != value) { _key = value; OnPropertyChanged(); } }
+        }
+
+        private string _action = string.Empty;
+        public string Action
+        {
+            get => _action;
+            set { if (_action != value) { _action = value; OnPropertyChanged(); } }
+        }
+
+        private string _category = "General";
+        public string Category
+        {
+            get => _category;
+            set { if (_category != value) { _category = value; OnPropertyChanged(); } }
+        }
+
+        public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
+        protected void OnPropertyChanged([System.Runtime.CompilerServices.CallerMemberName] string? propertyName = null)
+        {
+            PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(propertyName));
+        }
     }
 
     public enum ProjectActionType
@@ -81,7 +110,7 @@ namespace OmniSync.Hub.Infrastructure.Services
         private readonly string _settingsPath;
         private HubSettings _settings = new();
 
-        public HubSettings Settings => _settings;
+        public virtual HubSettings Settings => _settings;
 
         public event EventHandler? SettingsChanged;
 
@@ -269,7 +298,7 @@ namespace OmniSync.Hub.Infrastructure.Services
             }
         }
 
-        public void SaveSettings()
+        public virtual void SaveSettings()
         {
             try
             {
@@ -284,13 +313,13 @@ namespace OmniSync.Hub.Infrastructure.Services
             }
         }
 
-        public void AddMapping(string key, string path)
+        public virtual void AddMapping(string key, string path)
         {
             _settings.ExeMappings[key] = path;
             SaveSettings();
         }
 
-        public void RemoveMapping(string key)
+        public virtual void RemoveMapping(string key)
         {
             if (_settings.ExeMappings.Remove(key))
             {
@@ -298,25 +327,31 @@ namespace OmniSync.Hub.Infrastructure.Services
             }
         }
 
-        public void AddHotkey(HotkeyConfig hotkey)
+        public virtual void AddHotkey(HotkeyConfig hotkey)
         {
             _settings.Hotkeys.Add(hotkey);
             SaveSettings();
         }
 
-        public void RemoveHotkey(string name)
+        public virtual void RemoveHotkey(string name)
         {
             _settings.Hotkeys.RemoveAll(h => h.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
             SaveSettings();
         }
 
-        public void UpdateHotkeys(List<HotkeyConfig> hotkeys)
+        public virtual void RemoveHotkeyByAction(string action)
+        {
+            _settings.Hotkeys.RemoveAll(h => h.Action.Equals(action, StringComparison.OrdinalIgnoreCase));
+            SaveSettings();
+        }
+
+        public virtual void UpdateHotkeys(List<HotkeyConfig> hotkeys)
         {
             _settings.Hotkeys = hotkeys;
             SaveSettings();
         }
 
-        public void UpdateTellPcSettings(string workspace, string systemContext, bool soundEnabled)
+        public virtual void UpdateTellPcSettings(string workspace, string systemContext, bool soundEnabled)
         {
             _settings.TellPcWorkspace = workspace;
             _settings.TellPcSystemContext = systemContext;
@@ -346,24 +381,24 @@ namespace OmniSync.Hub.Infrastructure.Services
             return null;
         }
 
-        public void SetPath(string key, string path)
+        public virtual void SetPath(string key, string path)
         {
             _settings.ExeMappings[key] = path;
             SaveSettings();
         }
 
-        public void SetAiSessionName(string key, string name)
+        public virtual void SetAiSessionName(string key, string name)
         {
             _settings.AiSessionNames[key] = name;
             SaveSettings();
         }
 
-        public string? GetAiSessionName(string key)
+        public virtual string? GetAiSessionName(string key)
         {
             return _settings.AiSessionNames.TryGetValue(key, out var name) ? name : null;
         }
 
-        public void RemoveAiSessionName(string key)
+        public virtual void RemoveAiSessionName(string key)
         {
             if (_settings.AiSessionNames.Remove(key))
             {
@@ -371,12 +406,12 @@ namespace OmniSync.Hub.Infrastructure.Services
             }
         }
 
-        public List<string> GetAiPresets()
+        public virtual List<string> GetAiPresets()
         {
             return _settings.AiPresets ?? new List<string>();
         }
 
-        public void AddAiPreset(string preset)
+        public virtual void AddAiPreset(string preset)
         {
             if (_settings.AiPresets == null) _settings.AiPresets = new List<string>();
             if (!_settings.AiPresets.Contains(preset))
@@ -386,7 +421,7 @@ namespace OmniSync.Hub.Infrastructure.Services
             }
         }
 
-        public void RemoveAiPreset(string preset)
+        public virtual void RemoveAiPreset(string preset)
         {
             if (_settings.AiPresets != null && _settings.AiPresets.Remove(preset))
             {
@@ -394,14 +429,14 @@ namespace OmniSync.Hub.Infrastructure.Services
             }
         }
 
-        public void AddProject(Project project)
+        public virtual void AddProject(Project project)
         {
             if (_settings.Projects == null) _settings.Projects = new();
             _settings.Projects.Add(project);
             SaveSettings();
         }
 
-        public void RemoveProject(Guid id)
+        public virtual void RemoveProject(Guid id)
         {
             if (_settings.Projects != null && _settings.Projects.RemoveAll(p => p.Id == id) > 0)
             {
@@ -409,7 +444,7 @@ namespace OmniSync.Hub.Infrastructure.Services
             }
         }
 
-        public void UpdateProject(Project project)
+        public virtual void UpdateProject(Project project)
         {
             if (_settings.Projects == null) return;
             var index = _settings.Projects.FindIndex(p => p.Id == project.Id);

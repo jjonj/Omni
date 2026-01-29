@@ -53,17 +53,17 @@ namespace OmniSync.Hub.Infrastructure.Services
             }
         }
 
-        public string GetNoteRootPath()
+        public virtual string GetNoteRootPath()
         {
             return _noteRootPath;
         }
 
-        public string GetBrowseRootPath()
+        public virtual string GetBrowseRootPath()
         {
             return _browseRootPath;
         }
 
-        public string GetResourcePath(string relativePath)
+        public virtual string GetResourcePath(string relativePath)
         {
             // Dev: src/OmniSync.Hub -> Root -> relativePath
             string devPath = Path.Combine(Directory.GetCurrentDirectory(), "..", "..", "..", relativePath);
@@ -76,13 +76,13 @@ namespace OmniSync.Hub.Infrastructure.Services
             return relativePath;
         }
 
-        public string ReadFile(string filePath)
+        public virtual string ReadFile(string filePath)
         {
             var fullPath = SanitizeAndGetNoteFullPath(filePath);
             return File.ReadAllText(fullPath);
         }
 
-        public bool WriteFile(string filePath, string content)
+        public virtual bool WriteFile(string filePath, string content)
         {
             try
             {
@@ -97,7 +97,7 @@ namespace OmniSync.Hub.Infrastructure.Services
             }
         }
 
-        public bool WriteBrowseFile(string filePath, string content)
+        public virtual bool WriteBrowseFile(string filePath, string content)
         {
             try
             {
@@ -112,13 +112,13 @@ namespace OmniSync.Hub.Infrastructure.Services
             }
         }
 
-        public void AppendToFile(string filePath, string content)
+        public virtual void AppendToFile(string filePath, string content)
         {
             var fullPath = SanitizeAndGetNoteFullPath(filePath);
             File.AppendAllText(fullPath, content);
         }
 
-        public IEnumerable<FileSystemEntry> GetDrives()
+        public virtual IEnumerable<FileSystemEntry> GetDrives()
         {
             var drives = DriveInfo.GetDrives();
             return drives.Where(d => d.IsReady).Select(d => new FileSystemEntry
@@ -132,7 +132,7 @@ namespace OmniSync.Hub.Infrastructure.Services
             });
         }
 
-        public IEnumerable<FileSystemEntry> ListDirectoryContents(string path)
+        public virtual IEnumerable<FileSystemEntry> ListDirectoryContents(string path)
         {
             // If path is empty, and we are in "Whole Computer" mode, return drives.
             if (string.IsNullOrEmpty(path) && string.IsNullOrEmpty(_browseRootPath))
