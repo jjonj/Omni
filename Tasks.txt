@@ -14,7 +14,7 @@ Do not do batch moving or batch committing, do it between each.
 If told to do a megasession then fix/implement as many issues of the ones below as possible without user intervention and move them to TasksDone.txt as they are completed.
 If necessary you may use AISpeak to ask the user for help/clarifications.
 Only work on subtasks if told to do so or if told explicitly to do a Megasession. Did the user say megasession?
-
+If a task is prefixed [BIGTASK] You should not do it as part of hte megasession, instead when everthing else is done, ask the user if they would like to interactively work on it with you.
 
 ## General
 
@@ -69,6 +69,15 @@ when going to the ai screen, always scroll up bottom
 ask user for access to gemini cli to do model Select
 
 change the zoom button to zoom even more 
+
+
+[BIGTASK] Add a special "Manager Session", a CLI session that is always running with some heavy scaffolding around it.
+ - First step would be to add a "request_user" command to the omni MCP server, that lets gemini CLI instances request feedback from user. 
+ - It will be "woken up" by the scaffolding whenever one of the following happens: request_user command. A Cli instance ends it turn without request_user. 
+ - The management cli instance will be given a snippet of recent messages from both the user and the AI and will be asked to condence down what the status of hte client cli instance is and present the status and options to the user. 
+ - The management cli will have a sort of queue of things to process
+ - The management CLI can resume other client clis by simply sending a "-" character, (which will be interpreted as continue)
+ - ???
 
 
 ### Embedded web screen

@@ -199,12 +199,12 @@ def main():
             return
 
         # Use Popen to start the hub process in a detached way
-        # We don't redirect to build log anymore as it's for runtime now
         hub_runtime_log = os.path.join(SCRIPT_DIR, "hub_runtime.log")
+        exe_dir = os.path.dirname(HUB_EXE_PATH)
         with open(hub_runtime_log, "a", encoding="utf-8", errors="replace") as hrl:
             hub_process = subprocess.Popen(
                 [HUB_EXE_PATH], # Run the compiled executable directly
-                cwd=HUB_DIR,
+                cwd=exe_dir,
                 stdout=hrl, 
                 stderr=hrl, 
                 creationflags=subprocess.DETACHED_PROCESS if sys.platform == "win32" else 0, # For Windows, run truly detached
