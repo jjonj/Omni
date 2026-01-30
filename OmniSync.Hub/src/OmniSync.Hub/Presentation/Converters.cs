@@ -2,6 +2,7 @@ using System;
 using System.Globalization;
 using System.Windows;
 using System.Windows.Data;
+using System.Windows.Controls;
 using System.Collections.Generic;
 using System.Linq;
 using OmniSync.Hub.Infrastructure.Services;
@@ -94,7 +95,40 @@ namespace OmniSync.Hub.Presentation
 
         
 
-            public class CategoryExpansionConverter : IMultiValueConverter
+            public class ProjectIndexConverter : IValueConverter
+    {
+        public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+        {
+            if (value is FrameworkElement element && element.DataContext is Project project)
+            {
+                var itemsControl = FindParent<ItemsControl>(element);
+                if (itemsControl != null)
+                {
+                    int index = itemsControl.Items.IndexOf(project);
+                    if (index >= 0 && index < 9)
+                    {
+                        return (index + 1).ToString();
+                    }
+                }
+            }
+            return "";
+        }
+
+        private T? FindParent<T>(DependencyObject child) where T : DependencyObject
+        {
+            DependencyObject parentObject = System.Windows.Media.VisualTreeHelper.GetParent(child);
+            if (parentObject == null) return null;
+            if (parentObject is T parent) return parent;
+            return FindParent<T>(parentObject);
+        }
+
+        public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        {
+            throw new NotImplementedException();
+        }
+    }
+
+    public class CategoryExpansionConverter : IMultiValueConverter
 
             {
 

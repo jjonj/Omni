@@ -24,6 +24,7 @@ namespace OmniSync.Hub.Logic.Services
         private bool _tftAddModeActive = false;
 
         public event EventHandler? OpenHubWindowRequested;
+        public event EventHandler? ShowProjectSelectorRequested;
 
         public GlobalHotkeyService(
             ILogger<GlobalHotkeyService> logger,
@@ -297,6 +298,12 @@ namespace OmniSync.Hub.Logic.Services
             {
                 // We need to ensure this event is raised, and the receiver (TrayIconManager) handles thread switching
                 OpenHubWindowRequested?.Invoke(this, EventArgs.Empty);
+                return;
+            }
+
+            if (action == "SHOW_PROJECT_SELECTOR")
+            {
+                ShowProjectSelectorRequested?.Invoke(this, EventArgs.Empty);
                 return;
             }
 

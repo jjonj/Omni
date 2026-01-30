@@ -197,8 +197,9 @@ namespace OmniSync.Hub.Infrastructure.Services
                 new HotkeyConfig { Name = "TFT: Cycle Highlights", Key = "Ctrl+Tab", Action = "TFT_CYCLE_UNIT_HIGHLIGHT", Category = "TFT" },
                 new HotkeyConfig { Name = "TFT: Next Result", Key = "Tab", Action = "TFT_CYCLE_RESULT_NEXT", Category = "TFT" },
                 new HotkeyConfig { Name = "TFT: Prev Result", Key = "Shift+Tab", Action = "TFT_CYCLE_RESULT_PREV", Category = "TFT" },
-                new HotkeyConfig { Name = "TFT: POC", Key = "Ctrl+Alt+P", Action = "TFT_POC", Category = "TFT" },
-                new HotkeyConfig { Name = "TFT: Tab Solver", Key = "Alt+B", Action = "TFT_SWITCH_TAB_SOLVER", Category = "TFT" },
+                    new HotkeyConfig { Name = "TFT: Cycle Results", Key = "Alt+W", Action = "TFT_CYCLE_RESULTS", Category = "TFT" },
+                    new HotkeyConfig { Name = "TFT: POC", Key = "Ctrl+Alt+Shift+P", Action = "TFT_POC", Category = "TFT" },
+                    new HotkeyConfig { Name = "TFT: Tab Solver", Key = "Alt+B", Action = "TFT_SWITCH_TAB_SOLVER", Category = "TFT" },
                 new HotkeyConfig { Name = "TFT: Tab Quiz", Key = "Alt+Q", Action = "TFT_SWITCH_TAB_QUIZ", Category = "TFT" },
                 new HotkeyConfig { Name = "TFT: Tab Config", Key = "Alt+K", Action = "TFT_SWITCH_TAB_CONFIG", Category = "TFT" },
                 new HotkeyConfig { Name = "TFT: Tab Director", Key = "Alt+D", Action = "TFT_SWITCH_TAB_DIRECTOR", Category = "TFT" },
@@ -223,9 +224,11 @@ namespace OmniSync.Hub.Infrastructure.Services
                 new HotkeyConfig { Name = "TFT: Copy Solution Code", Key = "", Action = "TFT_COPY_SOLUTION_CODE", Category = "TFT" },
 
                 // System
-                new HotkeyConfig { Name = "Chrome: Reload Extension", Key = "Ctrl+Alt+R", Action = "RELOAD_CHROME_EXTENSION", Category = "System" },
-                new HotkeyConfig { Name = "Open Hub Window", Key = "Ctrl+Alt+H", Action = "OPEN_HUB_WINDOW", Category = "System" },
-                new HotkeyConfig { Name = "Screenshot", Key = "PrintScreen", Action = "SCREENSHOT", Category = "System" },
+                                    new HotkeyConfig { Name = "Chrome: Reload Extension", Key = "Ctrl+Alt+R", Action = "RELOAD_CHROME_EXTENSION", Category = "System" },
+                                    new HotkeyConfig { Name = "Open Hub Window", Key = "Ctrl+Alt+H", Action = "OPEN_HUB_WINDOW", Category = "System" },
+                                    new HotkeyConfig { Name = "Project Selector", Key = "Ctrl+Alt+P", Action = "SHOW_PROJECT_SELECTOR", Category = "System" },
+                                    new HotkeyConfig { Name = "Screenshot", Key = "PrintScreen", Action = "SCREENSHOT", Category = "System" },
+                
                 new HotkeyConfig { Name = "Toggle Mute", Key = "", Action = "TOGGLE_MUTE", Category = "System" },
                 new HotkeyConfig { Name = "Volume Up", Key = "", Action = "VOL_UP", Category = "System" },
                 new HotkeyConfig { Name = "Volume Down", Key = "", Action = "VOL_DOWN", Category = "System" },

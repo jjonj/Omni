@@ -30,11 +30,12 @@ namespace OmniSync.Hub.Presentation
         private readonly AiCliService _aiCliService;
         private readonly LayoutCaptureService _layoutCaptureService;
         private readonly ProjectLauncherService _projectLauncherService;
+        private readonly CommandDispatcher _commandDispatcher;
         private readonly ILogger<TrayIconManager> _logger;
         private TrayApplicationContext _applicationContext;
         private Thread _trayThread;
 
-        public TrayIconManager(IHostApplicationLifetime appLifetime, HubMonitorService hubMonitorService, InputService inputService, ProcessService processService, ShutdownService shutdownService, RegistryService registryService, HubSettingsService settingsService, GlobalHotkeyService hotkeyService, KeyboardHook keyboardHook, AiCliService aiCliService, LayoutCaptureService layoutCaptureService, ProjectLauncherService projectLauncherService, ILogger<TrayIconManager> logger)
+        public TrayIconManager(IHostApplicationLifetime appLifetime, HubMonitorService hubMonitorService, InputService inputService, ProcessService processService, ShutdownService shutdownService, RegistryService registryService, HubSettingsService settingsService, GlobalHotkeyService hotkeyService, KeyboardHook keyboardHook, AiCliService aiCliService, LayoutCaptureService layoutCaptureService, ProjectLauncherService projectLauncherService, CommandDispatcher commandDispatcher, ILogger<TrayIconManager> logger)
         {
             _appLifetime = appLifetime;
             _hubMonitorService = hubMonitorService;
@@ -48,6 +49,7 @@ namespace OmniSync.Hub.Presentation
             _aiCliService = aiCliService;
             _layoutCaptureService = layoutCaptureService;
             _projectLauncherService = projectLauncherService;
+            _commandDispatcher = commandDispatcher;
             _logger = logger;
         }
 
@@ -84,7 +86,7 @@ namespace OmniSync.Hub.Presentation
                 WinFormsApp.SetCompatibleTextRenderingDefault(false); // For WinForms interop
 
                                 _logger.LogInformation("TrayIconManager: Creating TrayApplicationContext.");
-                                _applicationContext = new TrayApplicationContext(_appLifetime, app, _hubMonitorService, _inputService, _processService, _shutdownService, _registryService, _settingsService, _hotkeyService, _keyboardHook, _aiCliService, _layoutCaptureService, _projectLauncherService, _logger); // Pass logger
+                                _applicationContext = new TrayApplicationContext(_appLifetime, app, _hubMonitorService, _inputService, _processService, _shutdownService, _registryService, _settingsService, _hotkeyService, _keyboardHook, _aiCliService, _layoutCaptureService, _projectLauncherService, _commandDispatcher, _logger); // Pass logger
                 
                                 // Add message filter to route messages to WPF's ComponentDispatcher
                                 WinFormsApp.AddMessageFilter(new WpfMessageFilter());
@@ -142,10 +144,11 @@ namespace OmniSync.Hub.Presentation
             private readonly AiCliService _aiCliService;
             private readonly LayoutCaptureService _layoutCaptureService;
             private readonly ProjectLauncherService _projectLauncherService;
+            private readonly CommandDispatcher _commandDispatcher;
             private readonly ILogger _logger;
             private MainWindow _mainWindow;
 
-            public TrayApplicationContext(IHostApplicationLifetime appLifetime, WpfApp wpfApplication, HubMonitorService hubMonitorService, InputService inputService, ProcessService processService, ShutdownService shutdownService, RegistryService registryService, HubSettingsService settingsService, GlobalHotkeyService hotkeyService, KeyboardHook keyboardHook, AiCliService aiCliService, LayoutCaptureService layoutCaptureService, ProjectLauncherService projectLauncherService, ILogger logger)
+            public TrayApplicationContext(IHostApplicationLifetime appLifetime, WpfApp wpfApplication, HubMonitorService hubMonitorService, InputService inputService, ProcessService processService, ShutdownService shutdownService, RegistryService registryService, HubSettingsService settingsService, GlobalHotkeyService hotkeyService, KeyboardHook keyboardHook, AiCliService aiCliService, LayoutCaptureService layoutCaptureService, ProjectLauncherService projectLauncherService, CommandDispatcher commandDispatcher, ILogger logger)
             {
                 _appLifetime = appLifetime;
                 _wpfApplication = wpfApplication; // Store reference to the WPF Application instance
@@ -160,6 +163,7 @@ namespace OmniSync.Hub.Presentation
                 _aiCliService = aiCliService;
                 _layoutCaptureService = layoutCaptureService;
                 _projectLauncherService = projectLauncherService;
+                _commandDispatcher = commandDispatcher;
                 _logger = logger;
                 InitializeComponent();
             }
@@ -210,6 +214,8 @@ namespace OmniSync.Hub.Presentation
                     };
 
                     _hotkeyService.OpenHubWindowRequested += (s, e) => OnShowWindow(null, EventArgs.Empty);
+                    _hotkeyService.ShowProjectSelectorRequested += (s, e) => OnShowProjectSelector();
+                    _commandDispatcher.ShowProjectSelectorRequested += (s, e) => OnShowProjectSelector();
                     
                     // CRITICAL: Set the keyboard hook on the UI thread (this thread has the message pump)
                     _logger.LogInformation("TrayApplicationContext: Setting Global Keyboard Hook on UI Thread...");
@@ -283,6 +289,25 @@ namespace OmniSync.Hub.Presentation
                         catch (InvalidOperationException) { }
                     }));
                 }
+            }
+
+            private void OnShowProjectSelector()
+            {
+                _wpfApplication.Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    try
+                    {
+                        var viewModel = new ProjectSelectorViewModel(_settingsService, _projectLauncherService);
+                        var window = new ProjectSelectorWindow(viewModel);
+                        window.Show();
+                        window.Activate();
+                        window.Focus();
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Error showing Project Selector window");
+                    }
+                }));
             }
 
             private void OnHideWindow(object? sender, EventArgs e)

@@ -24,6 +24,7 @@ namespace OmniSync.Hub.Logic.Services
         private readonly Dictionary<string, Action<JsonElement>> _commandMap;
 
         public event EventHandler<string>? AddCleanupPatternRequested;
+        public event EventHandler? ShowProjectSelectorRequested;
         public event EventHandler<(string Command, JsonElement Payload)>? ExternalCommandDispatched;
 
         public CommandDispatcher(InputService inputService, FileService fileService, AudioService audioService, ProcessService processService, ShutdownService shutdownService, HubSettingsService settingsService, PcgPersistentService pcgService, NodeRedService nodeRedService, ProjectLauncherService projectLauncherService, ResourceOpenerService resourceOpenerService, AiCliService aiCliService, IHostApplicationLifetime appLifetime)
@@ -66,6 +67,7 @@ namespace OmniSync.Hub.Logic.Services
                         }
                     }
                 }},
+                { "SHOW_PROJECT_SELECTOR", payload => ShowProjectSelectorRequested?.Invoke(this, EventArgs.Empty) },
                 { "APPEND_NOTE", payload => _fileService.AppendToFile(payload.GetProperty("filename").GetString(), payload.GetProperty("content").GetString()) },
                 { "SAVE_FILE", payload => _fileService.WriteBrowseFile(payload.GetProperty("Path").GetString(), payload.GetProperty("Content").GetString()) },
                 { "COPY_FILE", payload => _fileService.CopyEntry(payload.GetProperty("Source").GetString(), payload.GetProperty("Dest").GetString()) },
