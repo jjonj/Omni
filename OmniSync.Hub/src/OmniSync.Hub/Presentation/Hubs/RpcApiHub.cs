@@ -492,6 +492,27 @@ namespace OmniSync.Hub.Presentation.Hubs
                         await Clients.All.SendAsync("ReceiveBrowserCommand", "ReloadExtension", "", false);
                         await Clients.Caller.SendAsync("ReceiveCommandOutput", "Reload command sent to Chrome Extension.");
                         break;
+                    case "move_window_opposite":
+                        if (args.Count > 0)
+                        {
+                            var payload = new Dictionary<string, object>();
+                            if (int.TryParse(args[0], out int pid))
+                            {
+                                payload["Pid"] = pid;
+                            }
+                            else
+                            {
+                                payload["Title"] = args[0];
+                            }
+                            _commandDispatcher.Dispatch("MOVE_WINDOW_OPPOSITE", payload);
+                            await Clients.Caller.SendAsync("ReceiveCommandOutput", $"MOVE_WINDOW_OPPOSITE dispatched for: {args[0]}");
+                            await Clients.Caller.SendAsync("CommandExecutionCompleted", command);
+                        }
+                        else
+                        {
+                            await Clients.Caller.SendAsync("ReceiveCommandOutput", "Usage: MOVE_WINDOW_OPPOSITE <PID|Title>");
+                        }
+                        break;
                     // Add other commands here
                     default:
                         // Fallback to process service for unrecognized commands
@@ -1281,16 +1302,19 @@ namespace OmniSync.Hub.Presentation.Hubs
             }
         }
 
-        public async Task MoveAiSessionToMonitor(int pid, int monitorIndex)
-        {
-            if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
-            {
-                _logger.LogInformation($"[RpcApiHub] MoveAiSessionToMonitor: {pid} to monitor {monitorIndex}");
-                AnyCommandReceived?.Invoke(this, $"MoveAiSessionToMonitor: {pid} -> {monitorIndex}");
-                await _aiCliService.MoveSessionToMonitorAsync(pid, monitorIndex);
-            }
-        }
-
+                public async Task MoveAiSessionToMonitor(int pid, int monitorIndex)        
+                {
+                    if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
+                    {
+                        _logger.LogInformation($"[RpcApiHub] MoveAiSessionToMonitor: PID {pid} to monitor {monitorIndex}");
+                        AnyCommandReceived?.Invoke(this, $"MoveAiSessionToMonitor: {pid} -> {monitorIndex}");
+                        await _aiCliService.MoveSessionToMonitorAsync(pid, monitorIndex);  
+                    }
+                    else
+                    {
+                        _logger.LogWarning($"[RpcApiHub] MoveAiSessionToMonitor: Authentication failed for connection {Context.ConnectionId}");
+                    }
+                }
         public async Task SetAiZoom(int pid, double level)
         {
             if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)

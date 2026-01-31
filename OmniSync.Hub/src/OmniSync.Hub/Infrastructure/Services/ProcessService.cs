@@ -28,6 +28,40 @@ namespace OmniSync.Hub.Infrastructure.Services
         [DllImport("user32.dll", SetLastError = true)]
         public static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
 
+        [DllImport("user32.dll")]
+        private static extern IntPtr MonitorFromWindow(IntPtr hwnd, uint dwFlags);
+
+        [DllImport("user32.dll")]
+        private static extern bool GetMonitorInfo(IntPtr hMonitor, ref MONITORINFO lpmi);
+
+        [DllImport("user32.dll")]
+        private static extern bool EnumDisplayMonitors(IntPtr hdc, IntPtr lprcClip, MonitorEnumProc lpfnEnum, IntPtr dwData);
+
+        private delegate bool MonitorEnumProc(IntPtr hMonitor, IntPtr hdcMonitor, ref RECT lprcMonitor, IntPtr dwData);
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct MONITORINFO
+        {
+            public int cbSize;
+            public RECT rcMonitor;
+            public RECT rcWork;
+            public uint dwFlags;
+        }
+
+        [DllImport("user32.dll")]
+        private static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, IntPtr lParam);
+
+        private delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
+
+        [DllImport("user32.dll")]
+        private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
+
+        [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+        private static extern int GetWindowText(IntPtr hWnd, StringBuilder lpString, int nMaxCount);
+
+        [DllImport("user32.dll")]
+        private static extern bool IsWindowVisible(IntPtr hWnd);
+
         [StructLayout(LayoutKind.Sequential)]
         public struct RECT
         {
@@ -39,6 +73,7 @@ namespace OmniSync.Hub.Infrastructure.Services
 
         public const uint SWP_NOZORDER = 0x0004;
         public const uint SWP_SHOWWINDOW = 0x0040;
+        private const uint MONITOR_DEFAULTTONEAREST = 2;
 
         private const int SW_RESTORE = 9;
 
@@ -299,39 +334,25 @@ foreach ($p in $procs) {{
             Action action = () => {
                 try
                 {
-                    // Use synchronous call to ensure activation happens before we return
-                    string script = $@"
-$targetPid = {pid}
-$wshell = New-Object -ComObject WScript.Shell
+                    _monitorService.AddLogMessage($"[ProcessService] WinActivatePid: {pid}");
+                    var treePids = GetProcessTreePids(pid);
+                    var hwnds = GetVisibleWindowsForPids(treePids);
 
-function Try-Activate($targetId) {{
-    $p = Get-Process -Id $targetId -ErrorAction SilentlyContinue
-    if ($null -eq $p) {{ return $false }}
-    if ($wshell.AppActivate($p.Id)) {{ return $true }}
-    return $false
-}}
-
-if (Try-Activate($targetPid)) {{ exit }}
-
-$currPid = $targetPid
-for ($i=0; $i -lt 5; $i++) {{
-    $procInfo = Get-CimInstance Win32_Process -Filter ""ProcessId = $currPid""
-    $parent = $procInfo.ParentProcessId
-    if (!$parent) {{ break }}
-    if (Try-Activate($parent)) {{ exit }}
-    $currPid = $parent
-}}
-";
-                    RunPowerShellSynchronous(script);
-
-                    // C# Fallback attempt using handle if available
-                    var proc = Process.GetProcessById(pid);
-                    if (proc.MainWindowHandle != IntPtr.Zero)
+                    if (hwnds.Any())
                     {
-                        ActivateWindow(proc.MainWindowHandle);
+                        var targetHwnd = hwnds.First();
+                        _monitorService.AddLogMessage($"[ProcessService] Activating HWND {targetHwnd} for PID {pid}");
+                        ActivateWindow(targetHwnd);
+                    }
+                    else
+                    {
+                        _monitorService.AddLogMessage($"[ProcessService] No window found to activate for PID {pid}");
                     }
                 }
-                catch { }
+                catch (Exception ex)
+                {
+                    _monitorService.AddLogMessage($"[ProcessService] Error in WinActivatePid: {ex.Message}");
+                }
             };
 
             if (System.Windows.Application.Current != null)
@@ -697,6 +718,288 @@ Add-Type -MemberDefinition $code -Name Win32 -Namespace Native
             catch
             {
                 return false;
+            }
+        }
+
+        public void MoveWindowOpposite(int pid)
+        {
+            _monitorService.AddLogMessage($"[ProcessService] MoveWindowOpposite for PID: {pid}");
+            var targetPids = GetProcessTreePids(pid);
+            _monitorService.AddLogMessage($"[ProcessService] PIDs in tree: {string.Join(", ", targetPids)}");
+            var hwnds = GetVisibleWindowsForPids(targetPids);
+            _monitorService.AddLogMessage($"[ProcessService] Found {hwnds.Count} visible windows for tree.");
+            MoveHwndsToOppositeMonitor(hwnds);
+        }
+
+        public void MoveWindowOpposite(string titleOrName)
+        {
+            _monitorService.AddLogMessage($"[ProcessService] MoveWindowOpposite for Title/Name: {titleOrName}");
+            var hwnds = GetWindowsByTitleOrProcessName(titleOrName);
+            _monitorService.AddLogMessage($"[ProcessService] Found {hwnds.Count} visible windows for '{titleOrName}'.");
+            MoveHwndsToOppositeMonitor(hwnds);
+        }
+
+        public void MoveWindowToMonitor(int pid, int monitorIndex)
+        {
+            _monitorService.AddLogMessage($"[ProcessService] MoveWindowToMonitor for PID: {pid} to Mon {monitorIndex}");
+            var targetPids = GetProcessTreePids(pid);
+            var hwnds = GetVisibleWindowsForPids(targetPids);
+            
+            if (hwnds.Count == 0)
+            {
+                _monitorService.AddLogMessage("[ProcessService] MoveWindowToMonitor: No valid windows found.");
+                return;
+            }
+
+            var monitors = new List<IntPtr>();
+            EnumDisplayMonitors(IntPtr.Zero, IntPtr.Zero, (IntPtr hMonitor, IntPtr hdcMonitor, ref RECT lprcMonitor, IntPtr dwData) =>
+            {
+                monitors.Add(hMonitor);
+                return true;
+            }, IntPtr.Zero);
+
+            if (monitorIndex < 0 || monitorIndex >= monitors.Count)
+            {
+                _monitorService.AddLogMessage($"[ProcessService] Invalid monitor index {monitorIndex}. Total monitors: {monitors.Count}");
+                return;
+            }
+
+            IntPtr hTargetMonitor = monitors[monitorIndex];
+            MONITORINFO targetInfo = new MONITORINFO { cbSize = Marshal.SizeOf(typeof(MONITORINFO)) };
+            GetMonitorInfo(hTargetMonitor, ref targetInfo);
+
+            foreach (var hWnd in hwnds.Distinct())
+            {
+                IntPtr hCurrentMonitor = MonitorFromWindow(hWnd, MONITOR_DEFAULTTONEAREST);
+                MONITORINFO currentInfo = new MONITORINFO { cbSize = Marshal.SizeOf(typeof(MONITORINFO)) };
+                GetMonitorInfo(hCurrentMonitor, ref currentInfo);
+
+                GetWindowRect(hWnd, out RECT rect);
+                int w = rect.Right - rect.Left;
+                int h = rect.Bottom - rect.Top;
+
+                // Relative position
+                int relX = rect.Left - currentInfo.rcMonitor.Left;
+                int relY = rect.Top - currentInfo.rcMonitor.Top;
+
+                int newX = targetInfo.rcMonitor.Left + relX;
+                int newY = targetInfo.rcMonitor.Top + relY;
+
+                _monitorService.AddLogMessage($"[ProcessService] Moving window to Mon {monitorIndex} ({newX}, {newY})");
+                if (IsIconic(hWnd)) ShowWindow(hWnd, SW_RESTORE);
+                SetWindowPos(hWnd, IntPtr.Zero, newX, newY, w, h, SWP_NOZORDER | SWP_SHOWWINDOW);
+                SetForegroundWindow(hWnd);
+            }
+        }
+
+        private HashSet<int> GetProcessTreePids(int rootPid)
+        {
+            var result = new HashSet<int> { rootPid };
+            try
+            {
+                // 1. Get all processes to build a mapping
+                var allProcs = Process.GetProcesses();
+                var parentMap = new Dictionary<int, int>();
+                var nameMap = new Dictionary<int, string>();
+                
+                using (var searcher = new System.Management.ManagementObjectSearcher("SELECT ProcessId, ParentProcessId, Name FROM Win32_Process"))
+                {
+                    foreach (var obj in searcher.Get())
+                    {
+                        int pId = Convert.ToInt32(obj["ProcessId"]);
+                        int parentId = Convert.ToInt32(obj["ParentProcessId"]);
+                        string name = obj["Name"]?.ToString() ?? "";
+                        parentMap[pId] = parentId;
+                        nameMap[pId] = name;
+                    }
+                }
+
+                // 2. Add children (recursive)
+                void AddChildren(int pId)
+                {
+                    foreach (var kvp in parentMap)
+                    {
+                        if (kvp.Value == pId && !result.Contains(kvp.Key))
+                        {
+                            result.Add(kvp.Key);
+                            AddChildren(kvp.Key);
+                        }
+                    }
+                }
+                AddChildren(rootPid);
+
+                // 3. Add parents up to explorer and their critical children (like conhost)
+                int currentPid = rootPid;
+                while (parentMap.TryGetValue(currentPid, out int parentId) && parentId != 0)
+                {
+                    if (nameMap.TryGetValue(parentId, out string parentName) && parentName.ToLower().Contains("explorer")) 
+                        break;
+                    
+                    result.Add(parentId);
+                    
+                    // Add siblings that are console hosts
+                    foreach (var kvp in parentMap)
+                    {
+                        if (kvp.Value == parentId && !result.Contains(kvp.Key))
+                        {
+                            if (nameMap.TryGetValue(kvp.Key, out string siblingName) && 
+                                siblingName.ToLower().Contains("conhost"))
+                            {
+                                result.Add(kvp.Key);
+                            }
+                        }
+                    }
+                    currentPid = parentId;
+                }
+            }
+            catch (Exception ex)
+            {
+                _monitorService.AddLogMessage($"[ProcessService] Error in GetProcessTreePids: {ex.Message}");
+            }
+            return result;
+        }
+
+        private List<IntPtr> GetVisibleWindowsForPids(HashSet<int> pids)
+        {
+            var candidates = new List<(IntPtr hWnd, int priority, long area)>();
+            
+            EnumWindows((hWnd, lParam) =>
+            {
+                if (IsWindowVisible(hWnd))
+                {
+                    GetWindowThreadProcessId(hWnd, out uint processId);
+                    
+                    var sb = new StringBuilder(256);
+                    GetWindowText(hWnd, sb, sb.Capacity);
+                    string title = sb.ToString();
+
+                    GetWindowRect(hWnd, out RECT rect);
+                    int w = rect.Right - rect.Left;
+                    int h = rect.Bottom - rect.Top;
+
+                    if (w > 10 && h > 10)
+                    {
+                        bool isTreeMatch = pids.Contains((int)processId);
+                        bool isFallbackMatch = !isTreeMatch && (title == "[system32]" || title.Contains("node.exe") || title.Contains("cmd.exe"));
+
+                        if (isTreeMatch)
+                        {
+                            candidates.Add((hWnd, 10, (long)w * h));
+                        }
+                        else if (isFallbackMatch)
+                        {
+                            candidates.Add((hWnd, 0, (long)w * h));
+                        }
+                    }
+                }
+                return true;
+            }, IntPtr.Zero);
+
+            if (candidates.Count == 0) return new List<IntPtr>();
+
+            // Pick the single best window: highest priority, then largest area
+            var best = candidates
+                .OrderByDescending(c => c.priority)
+                .ThenByDescending(c => c.area)
+                .First();
+
+            return new List<IntPtr> { best.hWnd };
+        }
+
+        private List<IntPtr> GetWindowsByTitleOrProcessName(string target)
+        {
+            var results = new List<IntPtr>();
+            var targetLower = target.ToLower();
+            EnumWindows((hWnd, lParam) =>
+            {
+                if (IsWindowVisible(hWnd))
+                {
+                    var sb = new StringBuilder(256);
+                    GetWindowText(hWnd, sb, sb.Capacity);
+                    var title = sb.ToString().ToLower();
+
+                    GetWindowThreadProcessId(hWnd, out uint processId);
+                    string procName = "";
+                    try { procName = Process.GetProcessById((int)processId).ProcessName.ToLower(); } catch { }
+
+                    if (title.Contains(targetLower) || procName.Contains(targetLower))
+                    {
+                        GetWindowRect(hWnd, out RECT rect);
+                        if (rect.Right - rect.Left > 0 && rect.Bottom - rect.Top > 0)
+                        {
+                            results.Add(hWnd);
+                        }
+                    }
+                }
+                return true;
+            }, IntPtr.Zero);
+            return results;
+        }
+
+        private void MoveHwndsToOppositeMonitor(List<IntPtr> hwnds)
+        {
+            if (hwnds.Count == 0)
+            {
+                _monitorService.AddLogMessage("[ProcessService] MoveHwndsToOppositeMonitor: No valid windows found.");
+                return;
+            }
+
+            var monitors = new List<IntPtr>();
+            EnumDisplayMonitors(IntPtr.Zero, IntPtr.Zero, (IntPtr hMonitor, IntPtr hdcMonitor, ref RECT lprcMonitor, IntPtr dwData) =>
+            {
+                monitors.Add(hMonitor);
+                return true;
+            }, IntPtr.Zero);
+
+            if (monitors.Count < 2) 
+            {
+                _monitorService.AddLogMessage("[ProcessService] Only one monitor detected. Cannot toggle.");
+                return;
+            }
+
+            foreach (var hWnd in hwnds.Distinct())
+            {
+                IntPtr hCurrentMonitor = MonitorFromWindow(hWnd, MONITOR_DEFAULTTONEAREST);
+                int currentIndex = -1;
+                for (int i = 0; i < monitors.Count; i++)
+                {
+                    if (monitors[i] == hCurrentMonitor)
+                    {
+                        currentIndex = i;
+                        break;
+                    }
+                }
+
+                if (currentIndex == -1) continue;
+
+                int targetIndex = (currentIndex + 1) % monitors.Count;
+                IntPtr hTargetMonitor = monitors[targetIndex];
+
+                MONITORINFO currentInfo = new MONITORINFO { cbSize = Marshal.SizeOf(typeof(MONITORINFO)) };
+                GetMonitorInfo(hCurrentMonitor, ref currentInfo);
+
+                MONITORINFO targetInfo = new MONITORINFO { cbSize = Marshal.SizeOf(typeof(MONITORINFO)) };
+                GetMonitorInfo(hTargetMonitor, ref targetInfo);
+
+                GetWindowRect(hWnd, out RECT rect);
+                int w = rect.Right - rect.Left;
+                int h = rect.Bottom - rect.Top;
+
+                // Relative position to current monitor's top-left
+                int relX = rect.Left - currentInfo.rcMonitor.Left;
+                int relY = rect.Top - currentInfo.rcMonitor.Top;
+
+                // New absolute position on target monitor
+                int newX = targetInfo.rcMonitor.Left + relX;
+                int newY = targetInfo.rcMonitor.Top + relY;
+
+                _monitorService.AddLogMessage($"[ProcessService] Toggling window to Mon {targetIndex} ({newX}, {newY})");
+                
+                if (IsIconic(hWnd)) ShowWindow(hWnd, SW_RESTORE);
+                
+                // SetWindowPos with SWP_NOSENDCHANGING to be more robust
+                SetWindowPos(hWnd, IntPtr.Zero, newX, newY, w, h, SWP_NOZORDER | SWP_SHOWWINDOW);
+                SetForegroundWindow(hWnd);
             }
         }
     }

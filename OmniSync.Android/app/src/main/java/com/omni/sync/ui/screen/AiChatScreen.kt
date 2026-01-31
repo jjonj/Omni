@@ -895,10 +895,10 @@ fun QuickActionPanel(
             )
 
             ActionKeyButton(
-                text = "Mon 2",
+                text = "Toggle Mon",
                 icon = Icons.Default.Monitor,
                 modifier = Modifier.weight(1f).height(33.dp),
-                onClick = { signalRClient.moveAiSessionToMonitor(selectedPid, 1) }
+                onClick = { if (selectedPid != -1) signalRClient.toggleAiSessionMonitor(selectedPid) } 
             )
         }
 

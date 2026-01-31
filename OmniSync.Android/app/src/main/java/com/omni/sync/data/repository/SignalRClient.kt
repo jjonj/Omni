@@ -760,13 +760,16 @@ class SignalRClient(
     
 
         fun moveAiSessionToMonitor(pid: Int, monitorIndex: Int) {
-
             if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
-
                 hubConnection?.send("MoveAiSessionToMonitor", pid, monitorIndex)
-
             }
+        }
 
+        fun toggleAiSessionMonitor(pid: Int) {
+            if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
+                val payload = mapOf("Pid" to pid)
+                hubConnection?.send("SendPayload", "MOVE_WINDOW_OPPOSITE", payload)
+            }
         }
 
     

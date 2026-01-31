@@ -30,6 +30,8 @@ namespace OmniSync.Hub.Presentation
         private readonly HubMonitorService _hubMonitorService;
         private readonly RegistryService _registryService;
         private readonly HubSettingsService _settingsService;
+        private readonly ProcessService _processService;
+        private readonly AiCliService _aiCliService;
         private readonly MainViewModel _viewModel;
 
         public bool IsInternalClosing { get; set; } = false;
@@ -42,6 +44,8 @@ namespace OmniSync.Hub.Presentation
             _hubMonitorService = hubMonitorService;
             _registryService = registryService;
             _settingsService = settingsService;
+            _processService = processService;
+            _aiCliService = aiCliService;
 
             _viewModel = new MainViewModel(hubMonitorService, inputService, processService, shutdownService, registryService, settingsService, keyboardHook, aiCliService, layoutCaptureService, projectLauncherService);
             DataContext = _viewModel;
@@ -49,6 +53,20 @@ namespace OmniSync.Hub.Presentation
             // Hook up event handlers (now in ViewModel where appropriate)
             _settingsService.SettingsChanged += OnSettingsChanged;
             inputService.ModifierStateChanged += OnModifierStateChanged;
+
+            this.Loaded += OnLoaded;
+        }
+
+        private async void OnLoaded(object sender, RoutedEventArgs e)
+        {
+            var screens = System.Windows.Forms.Screen.AllScreens;
+            if (screens.Length > 1)
+            {
+                _hubMonitorService.AddLogMessage("[MainWindow] Startup: Triggering Python script to move CLI windows...");
+                // Use absolute path for reliability
+                string scriptPath = @"D:\SSDProjects\Omni\TestScripts\System\move_cli_windows.py";
+                _processService.ExecuteCommand($"python \"{scriptPath}\" --delay");
+            }
         }
 
         private void LogTextBox_TextChanged(object sender, System.Windows.Controls.TextChangedEventArgs e)

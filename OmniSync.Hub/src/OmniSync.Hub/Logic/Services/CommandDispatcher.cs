@@ -21,6 +21,7 @@ namespace OmniSync.Hub.Logic.Services
         private readonly ProjectLauncherService _projectLauncherService;
         private readonly ResourceOpenerService _resourceOpenerService;
         private readonly AiCliService _aiCliService;
+        private readonly HubMonitorService _monitorService;
         private readonly IHostApplicationLifetime _appLifetime;
         private readonly Dictionary<string, Action<JsonElement>> _commandMap;
 
@@ -28,7 +29,7 @@ namespace OmniSync.Hub.Logic.Services
         public event EventHandler? ShowProjectSelectorRequested;
         public event EventHandler<(string Command, JsonElement Payload)>? ExternalCommandDispatched;
 
-        public CommandDispatcher(InputService inputService, FileService fileService, AudioService audioService, ProcessService processService, ScreenshotService screenshotService, ShutdownService shutdownService, HubSettingsService settingsService, PcgPersistentService pcgService, NodeRedService nodeRedService, ProjectLauncherService projectLauncherService, ResourceOpenerService resourceOpenerService, AiCliService aiCliService, IHostApplicationLifetime appLifetime)
+        public CommandDispatcher(InputService inputService, FileService fileService, AudioService audioService, ProcessService processService, ScreenshotService screenshotService, ShutdownService shutdownService, HubSettingsService settingsService, PcgPersistentService pcgService, NodeRedService nodeRedService, ProjectLauncherService projectLauncherService, ResourceOpenerService resourceOpenerService, AiCliService aiCliService, HubMonitorService monitorService, IHostApplicationLifetime appLifetime)
         {
             _inputService = inputService;
             _fileService = fileService;
@@ -42,6 +43,7 @@ namespace OmniSync.Hub.Logic.Services
             _projectLauncherService = projectLauncherService;
             _resourceOpenerService = resourceOpenerService;
             _aiCliService = aiCliService;
+            _monitorService = monitorService;
             _appLifetime = appLifetime;
             _commandMap = new Dictionary<string, Action<JsonElement>>
             {
@@ -141,6 +143,15 @@ namespace OmniSync.Hub.Logic.Services
                 { "WIN_MINIMIZE", payload => _processService.WinMinimize(payload.GetProperty("Title").GetString() ?? "") },
                 { "WIN_MAXIMIZE", payload => _processService.WinMaximize(payload.GetProperty("Title").GetString() ?? "") },
                 { "WIN_HIDE", payload => _processService.WinHide(payload.GetProperty("Title").GetString() ?? "") },
+                { "MOVE_WINDOW_OPPOSITE", payload => {
+                    _monitorService.AddLogMessage($"[CommandDispatcher] MOVE_WINDOW_OPPOSITE payload: {payload.GetRawText()}");
+                    if (payload.TryGetProperty("Pid", out var pidProp) || payload.TryGetProperty("pid", out pidProp)) {
+                        _processService.MoveWindowOpposite(pidProp.GetInt32());
+                    }
+                    else if (payload.TryGetProperty("Title", out var titleProp) || payload.TryGetProperty("title", out titleProp)) {
+                        _processService.MoveWindowOpposite(titleProp.GetString() ?? "");
+                    }
+                }},
                 { "WAIT_WIN_ACTIVE", payload => _processService.WaitWinActive(payload.GetProperty("Title").GetString() ?? "", payload.GetProperty("TimeoutMs").GetInt32()) },
                 { "MOUSE_MOVE_ABS", payload => _processService.MouseMoveAbs(payload.GetProperty("X").GetInt32(), payload.GetProperty("Y").GetInt32()) },
                 { "MOUSE_CLICK_AT", payload => _processService.MouseClickAt(payload.GetProperty("Button").GetString() ?? "left", payload.GetProperty("X").GetInt32(), payload.GetProperty("Y").GetInt32()) },

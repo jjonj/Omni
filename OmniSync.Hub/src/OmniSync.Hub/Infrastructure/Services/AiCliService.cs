@@ -101,68 +101,21 @@ namespace OmniSync.Hub.Infrastructure.Services
         {
             _logger.LogInformation($"[AiCliService] Focusing session PID {pid}");
             
-            // 1. Try focusing by known terminal title first (most reliable for terminals)
-            _processService.WinActivate("OMNI_GEMINI_INTERACTIVE");
-
-            if (_sessions.TryGetValue(pid, out var session))
-            {
-                // 2. Try to focus the shell process first (the terminal window)
-                if (session.ShellProcess != null && !session.ShellProcess.HasExited)
-                {
-                    _logger.LogInformation($"[AiCliService] Focusing shell process PID {session.ShellProcess.Id}");
-                    _processService.WinActivatePid(session.ShellProcess.Id);
-                }
-                else
-                {
-                    // 3. Fallback to focusing the node process itself
-                    _logger.LogInformation($"[AiCliService] Focusing node process PID {pid}");
-                    _processService.WinActivatePid(pid);
-                }
-            }
-            else
-            {
-                // Last resort: try to focus the PID directly even if not in our sessions list
-                _logger.LogWarning($"[AiCliService] Session PID {pid} not found in tracked sessions. Attempting direct focus.");
-                _processService.WinActivatePid(pid);
-            }
+            // Use the generalized WinActivatePid which now handles nested processes and terminal hosts
+            _processService.WinActivatePid(pid);
 
             await Task.CompletedTask;
         }
 
         public async Task MoveSessionToMonitorAsync(int pid, int monitorIndex)
         {
-            if (_sessions.TryGetValue(pid, out var session))
-            {
-                var shell = session.ShellProcess;
-                if (shell != null && !shell.HasExited)
-                {
-                    _logger.LogInformation($"[AiCliService] Moving session PID {pid} (Shell: {shell.Id}) to monitor {monitorIndex}");
-
-                    // Use PowerShell to move the window to the correct screen
-                    string script = $@"
-$monitorIndex = {monitorIndex}
-$pid = {shell.Id}
-Add-Type -AssemblyName System.Windows.Forms
-$screens = [System.Windows.Forms.Screen]::AllScreens
-if ($monitorIndex -lt $screens.Count) {{
-    $screen = $screens[$monitorIndex]
-    $proc = Get-Process -Id $pid -ErrorAction SilentlyContinue
-    if ($proc -and $proc.MainWindowHandle -ne 0) {{
-        $code = @'
-[DllImport(""user32.dll"")]
-public static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);     
-[DllImport(""user32.dll"")]
-public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
-'@
-        $type = Add-Type -MemberDefinition $code -Name Win32Utils -Namespace Native -PassThru
-        $type::ShowWindow($proc.MainWindowHandle, 9) # SW_RESTORE
-        $type::SetWindowPos($proc.MainWindowHandle, 0, $screen.Bounds.X + 100, $screen.Bounds.Y + 100, 1200, 800, 0x0040)
-    }}
-}}
-";
-                    _processService.ExecuteCommand($"powershell -Command \"{script.Replace("\"", "\\\"")}\"");
-                }
-            }
+            _logger.LogInformation($"[AiCliService] MoveSessionToMonitorAsync (General): PID {pid}, Monitor {monitorIndex}");
+            
+            // Instead of a python script, we use the Hub's own generalized logic
+            // MoveWindowOpposite is a toggle, but we can easily add a MoveToMonitor(pid, index)
+            _processService.MoveWindowToMonitor(pid, monitorIndex);
+            
+            await Task.CompletedTask;
         }
 
         public Task SetSessionNameAsync(int pid, string name)
