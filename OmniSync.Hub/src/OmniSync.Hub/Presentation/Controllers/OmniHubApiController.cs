@@ -14,13 +14,15 @@ namespace OmniSync.Hub.Presentation.Controllers
         private readonly HubMonitorService _monitor;
         private readonly AuthService _authService;
         private readonly AiCliService _aiCliService;
+        private readonly ScreenshotService _screenshotService;
 
-        public OmniHubApiController(CommandDispatcher dispatcher, HubMonitorService monitor, AuthService authService, AiCliService aiCliService)
+        public OmniHubApiController(CommandDispatcher dispatcher, HubMonitorService monitor, AuthService authService, AiCliService aiCliService, ScreenshotService screenshotService)
         {
             _dispatcher = dispatcher;
             _monitor = monitor;
             _authService = authService;
             _aiCliService = aiCliService;
+            _screenshotService = screenshotService;
         }
 
         [HttpGet("commands")]
@@ -56,6 +58,31 @@ namespace OmniSync.Hub.Presentation.Controllers
             
             await _aiCliService.GetHistoryAsync(pid, maxChars);
             return Ok(new { message = "History request triggered. Results will be broadcast via socket." });
+        }
+
+        [HttpPost("screenshot")]
+        public IActionResult TakeScreenshot([FromQuery] string key)
+        {
+            if (!_authService.Validate(key)) return Unauthorized();
+
+            try
+            {
+                string timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
+                string fileName = $"screenshot_{timestamp}.jpg";
+                // As per user request: D:\SSDProjects\Omni\OmniSync.Hub\Screenshots
+                string screenshotsDir = @"D:\SSDProjects\Omni\OmniSync.Hub\Screenshots";
+                string filePath = System.IO.Path.Combine(screenshotsDir, fileName);
+
+                _screenshotService.CapturePrimaryScreen(filePath);
+                _monitor.AddLogMessage($"[OmniHubAPI] Screenshot captured: {fileName}");
+
+                return Ok(new { filePath = filePath, fileName = fileName });
+            }
+            catch (Exception ex)
+            {
+                _monitor.AddLogMessage($"[OmniHubAPI] Screenshot ERROR: {ex.Message}");
+                return StatusCode(500, ex.Message);
+            }
         }
 
         [HttpPost("command")]

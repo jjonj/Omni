@@ -13,6 +13,7 @@ namespace OmniSync.Hub.Logic.Services
         private readonly FileService _fileService;
         private readonly AudioService _audioService; // Inject AudioService
         private readonly ProcessService _processService; // Inject ProcessService
+        private readonly ScreenshotService _screenshotService;
         private readonly ShutdownService _shutdownService;
         private readonly HubSettingsService _settingsService;
         private readonly PcgPersistentService _pcgService;
@@ -27,12 +28,13 @@ namespace OmniSync.Hub.Logic.Services
         public event EventHandler? ShowProjectSelectorRequested;
         public event EventHandler<(string Command, JsonElement Payload)>? ExternalCommandDispatched;
 
-        public CommandDispatcher(InputService inputService, FileService fileService, AudioService audioService, ProcessService processService, ShutdownService shutdownService, HubSettingsService settingsService, PcgPersistentService pcgService, NodeRedService nodeRedService, ProjectLauncherService projectLauncherService, ResourceOpenerService resourceOpenerService, AiCliService aiCliService, IHostApplicationLifetime appLifetime)
+        public CommandDispatcher(InputService inputService, FileService fileService, AudioService audioService, ProcessService processService, ScreenshotService screenshotService, ShutdownService shutdownService, HubSettingsService settingsService, PcgPersistentService pcgService, NodeRedService nodeRedService, ProjectLauncherService projectLauncherService, ResourceOpenerService resourceOpenerService, AiCliService aiCliService, IHostApplicationLifetime appLifetime)
         {
             _inputService = inputService;
             _fileService = fileService;
             _audioService = audioService;
             _processService = processService;
+            _screenshotService = screenshotService;
             _shutdownService = shutdownService;
             _settingsService = settingsService;
             _pcgService = pcgService;
@@ -121,12 +123,20 @@ namespace OmniSync.Hub.Logic.Services
                                     string message = payload.GetProperty("Message").GetString() ?? "";
                                     _ = _aiCliService.SendPromptAsync(message, pid);
                                 }},
-                                { "GET_CLI_HISTORY", payload => {
-                                    int pid = payload.GetProperty("Pid").GetInt32();
-                                    int maxChars = payload.TryGetProperty("MaxChars", out var m) ? m.GetInt32() : 0;
-                                    _ = _aiCliService.GetHistoryAsync(pid, maxChars);
-                                }},
-                                { "SCHEDULE_SHUTDOWN", payload => _shutdownService.ScheduleShutdown(payload.GetProperty("Minutes").GetInt32()) },                { "ADDCLEANUPPATTERN", payload => AddCleanupPatternRequested?.Invoke(this, payload.GetString() ?? "") },
+                                                                { "GET_CLI_HISTORY", payload => {
+                                                                    int pid = payload.GetProperty("Pid").GetInt32();
+                                                                    int maxChars = payload.TryGetProperty("MaxChars", out var m) ? m.GetInt32() : 0;
+                                                                    _ = _aiCliService.GetHistoryAsync(pid, maxChars);
+                                                                }},
+                                                                { "SCREENSHOT", payload => {
+                                                                    string timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
+                                                                    string fileName = $"screenshot_{timestamp}.jpg";        
+                                                                    string screenshotsDir = @"D:\SSDProjects\Omni\OmniSync.Hub\Screenshots";
+                                                                    string filePath = System.IO.Path.Combine(screenshotsDir, fileName);
+                                                                    _screenshotService.CapturePrimaryScreen(filePath);      
+                                                                }},
+                                                                { "SCHEDULE_SHUTDOWN", payload => _shutdownService.ScheduleShutdown(payload.GetProperty("Minutes").GetInt32()) },
+                                                { "ADDCLEANUPPATTERN", payload => AddCleanupPatternRequested?.Invoke(this, payload.GetString() ?? "") },
                 { "HUB_EXIT", payload => _appLifetime.StopApplication() },
                 { "WIN_MINIMIZE", payload => _processService.WinMinimize(payload.GetProperty("Title").GetString() ?? "") },
                 { "WIN_MAXIMIZE", payload => _processService.WinMaximize(payload.GetProperty("Title").GetString() ?? "") },

@@ -129,6 +129,42 @@ namespace OmniSync.Hub.Infrastructure.Services
             await Task.CompletedTask;
         }
 
+        public async Task MoveSessionToMonitorAsync(int pid, int monitorIndex)
+        {
+            if (_sessions.TryGetValue(pid, out var session))
+            {
+                var shell = session.ShellProcess;
+                if (shell != null && !shell.HasExited)
+                {
+                    _logger.LogInformation($"[AiCliService] Moving session PID {pid} (Shell: {shell.Id}) to monitor {monitorIndex}");
+
+                    // Use PowerShell to move the window to the correct screen
+                    string script = $@"
+$monitorIndex = {monitorIndex}
+$pid = {shell.Id}
+Add-Type -AssemblyName System.Windows.Forms
+$screens = [System.Windows.Forms.Screen]::AllScreens
+if ($monitorIndex -lt $screens.Count) {{
+    $screen = $screens[$monitorIndex]
+    $proc = Get-Process -Id $pid -ErrorAction SilentlyContinue
+    if ($proc -and $proc.MainWindowHandle -ne 0) {{
+        $code = @'
+[DllImport(""user32.dll"")]
+public static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);     
+[DllImport(""user32.dll"")]
+public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+'@
+        $type = Add-Type -MemberDefinition $code -Name Win32Utils -Namespace Native -PassThru
+        $type::ShowWindow($proc.MainWindowHandle, 9) # SW_RESTORE
+        $type::SetWindowPos($proc.MainWindowHandle, 0, $screen.Bounds.X + 100, $screen.Bounds.Y + 100, 1200, 800, 0x0040)
+    }}
+}}
+";
+                    _processService.ExecuteCommand($"powershell -Command \"{script.Replace("\"", "\\\"")}\"");
+                }
+            }
+        }
+
         public Task SetSessionNameAsync(int pid, string name)
         {
             _sessionNames[pid] = name;

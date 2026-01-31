@@ -257,16 +257,18 @@ builder.Services.AddSingleton<CommandDispatcher>(provider => {
     var fileService = provider.GetRequiredService<FileService>();
     var audioService = provider.GetRequiredService<AudioService>();
     var processService = provider.GetRequiredService<ProcessService>();
+    var screenshotService = provider.GetRequiredService<ScreenshotService>();
     var shutdownService = provider.GetRequiredService<ShutdownService>();
     var settingsService = provider.GetRequiredService<HubSettingsService>();
-        var pcgService = provider.GetRequiredService<PcgPersistentService>();
-        var nodeRedService = provider.GetRequiredService<NodeRedService>();
-        var projectLauncherService = provider.GetRequiredService<ProjectLauncherService>();
-        var resourceOpenerService = provider.GetRequiredService<ResourceOpenerService>();
-        var aiCliService = provider.GetRequiredService<AiCliService>();
-        var appLifetime = provider.GetRequiredService<IHostApplicationLifetime>();     
-        return new CommandDispatcher(inputService, fileService, audioService, processService, shutdownService, settingsService, pcgService, nodeRedService, projectLauncherService, resourceOpenerService, aiCliService, appLifetime);
-    });builder.Services.AddSingleton<GlobalHotkeyService>();
+    var pcgService = provider.GetRequiredService<PcgPersistentService>();
+    var nodeRedService = provider.GetRequiredService<NodeRedService>();
+    var projectLauncherService = provider.GetRequiredService<ProjectLauncherService>();
+    var resourceOpenerService = provider.GetRequiredService<ResourceOpenerService>();
+    var aiCliService = provider.GetRequiredService<AiCliService>();
+    var appLifetime = provider.GetRequiredService<IHostApplicationLifetime>();
+    return new CommandDispatcher(inputService, fileService, audioService, processService, screenshotService, shutdownService, settingsService, pcgService, nodeRedService, projectLauncherService, resourceOpenerService, aiCliService, appLifetime);
+});
+builder.Services.AddSingleton<GlobalHotkeyService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<GlobalHotkeyService>());
 
 builder.Services.AddSingleton<ShutdownService>(provider =>

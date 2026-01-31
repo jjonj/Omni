@@ -59,6 +59,7 @@ import androidx.compose.material.icons.filled.Adjust
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Monitor
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.SmartToy
 import androidx.compose.material.icons.filled.SettingsSuggest
@@ -606,8 +607,12 @@ fun AiChatScreen(
                     
                     IconButton(
                         onClick = {
-                            signalRClient.sendAiMessage(inputText, if (selectedPid != -1) selectedPid else null)
-                            signalRClient.updateAiInputText("")
+                            if (inputText.isBlank()) {
+                                signalRClient.sendAiSpecialKey("enter", if (selectedPid != -1) selectedPid else null)
+                            } else {
+                                signalRClient.sendAiMessage(inputText, if (selectedPid != -1) selectedPid else null)
+                                signalRClient.updateAiInputText("")
+                            }
                             scrollToBottom(animate = false) // Instant jump
                         },
                         modifier = Modifier.background(
@@ -617,7 +622,10 @@ fun AiChatScreen(
                         enabled = isConnected,
                         colors = IconButtonDefaults.iconButtonColors(contentColor = MaterialTheme.colorScheme.onPrimary)
                     ) {
-                        Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Send")
+                        Icon(
+                            if (inputText.isBlank()) Icons.AutoMirrored.Filled.KeyboardReturn else Icons.AutoMirrored.Filled.Send,
+                            contentDescription = if (inputText.isBlank()) "Send Enter" else "Send"
+                        )
                     }
                 }
             }
@@ -887,10 +895,10 @@ fun QuickActionPanel(
             )
 
             ActionKeyButton(
-                text = "Enter",
-                icon = Icons.AutoMirrored.Filled.KeyboardReturn,
+                text = "Mon 2",
+                icon = Icons.Default.Monitor,
                 modifier = Modifier.weight(1f).height(33.dp),
-                onClick = { signalRClient.sendAiSpecialKey("enter", selectedPid) }
+                onClick = { signalRClient.moveAiSessionToMonitor(selectedPid, 1) }
             )
         }
 

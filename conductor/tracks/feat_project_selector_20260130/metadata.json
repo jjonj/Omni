@@ -1,0 +1,8 @@
+{
+  "track_id": "feat_project_selector_20260130",
+  "type": "feature",
+  "status": "new",
+  "created_at": "2026-01-30T16:39:00Z",
+  "updated_at": "2026-01-30T16:39:00Z",
+  "description": "Add a new hub hotkey activated Feature called Project Selector that opens a good looking popup with a button per configured project in the omni hub and simply lets you click any nmumber of the projects and it will launch them. Each project ubtton is numbered 1-9 allow user to use keyboard instead"
+}

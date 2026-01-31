@@ -1281,6 +1281,16 @@ namespace OmniSync.Hub.Presentation.Hubs
             }
         }
 
+        public async Task MoveAiSessionToMonitor(int pid, int monitorIndex)
+        {
+            if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
+            {
+                _logger.LogInformation($"[RpcApiHub] MoveAiSessionToMonitor: {pid} to monitor {monitorIndex}");
+                AnyCommandReceived?.Invoke(this, $"MoveAiSessionToMonitor: {pid} -> {monitorIndex}");
+                await _aiCliService.MoveSessionToMonitorAsync(pid, monitorIndex);
+            }
+        }
+
         public async Task SetAiZoom(int pid, double level)
         {
             if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)

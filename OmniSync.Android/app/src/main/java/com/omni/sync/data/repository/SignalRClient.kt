@@ -745,14 +745,35 @@ class SignalRClient(
         }
     }
 
-    fun sendAiYolo(pid: Int? = null) {
-        if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
-            val targetPid = pid ?: _selectedPid.value
-            hubConnection?.send("SendAiYolo", targetPid)
-        }
-    }    
+        fun sendAiYolo(pid: Int? = null) {
 
-    fun sendAiDialogResponse(response: String, pid: Int? = null) {
+            if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
+
+                val targetPid = pid ?: _selectedPid.value
+
+                hubConnection?.send("SendAiYolo", targetPid)
+
+            }
+
+        }
+
+    
+
+        fun moveAiSessionToMonitor(pid: Int, monitorIndex: Int) {
+
+            if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
+
+                hubConnection?.send("MoveAiSessionToMonitor", pid, monitorIndex)
+
+            }
+
+        }
+
+    
+
+        fun sendAiDialogResponse(response: String, pid: Int? = null) {
+
+    
         if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
             val targetPid = pid ?: _selectedPid.value
             hubConnection?.send("SendAiDialogResponse", response, targetPid)
