@@ -1391,62 +1391,69 @@ function renderUnitPools() {
     const referenceTraits = new Set();
     referenceUnits.forEach(u => u.traits.forEach(t => referenceTraits.add(t)));
 
+    const roles = ["Tank", "AP Carry", "AD Carry", "Fighter"];
+
     for (let cost = 1; cost <= 5; cost++) {
-        const pool = document.getElementById(`unit-pool-${cost}`);
-        if (!pool) continue;
-        pool.innerHTML = '';
-        
-        const units = tftData.units.filter(u => {
-            if (u.cost !== cost) return false;
-            if (unitAlphaFilter && !u.name.toUpperCase().startsWith(unitAlphaFilter)) return false;
+        roles.forEach(role => {
+            const poolId = `unit-pool-${cost}-${role}`;
+            const pool = document.getElementById(poolId);
+            if (!pool) return;
+            pool.innerHTML = '';
             
-            // In smart sort mode, hide units already in the active input field (must include or current team)
-            if (unitSortMode === 'smart') {
-                const inMustInclude = selectedMustInclude.some(item => item.type === 'unit' && item.name === u.name);
-                const inCurrentTeam = selectedCurrentTeam.some(u_on_board => u_on_board.name === u.name);
-                if (inMustInclude || inCurrentTeam) return false;
-            }
-
-            return true;
-        })
-            .sort((a, b) => {
-                const aDisabled = activeDisabledUnits.includes(a.name);
-                const bDisabled = activeDisabledUnits.includes(b.name);
-                if (aDisabled !== bDisabled) return aDisabled - bDisabled;
-
-                if (unitSortMode === 'smart' && referenceTraits.size > 0) {
-                    const aMatches = a.traits.filter(t => referenceTraits.has(t)).length;
-                    const bMatches = b.traits.filter(t => referenceTraits.has(t)).length;
-                    if (aMatches !== bMatches) return bMatches - aMatches;
+            const units = tftData.units.filter(u => {
+                if (u.cost !== cost) return false;
+                if (u.role !== role) return false;
+                if (unitAlphaFilter && !u.name.toUpperCase().startsWith(unitAlphaFilter)) return false;
+                
+                // In smart sort mode, hide units already in the active input field (must include or current team)
+                if (unitSortMode === 'smart') {
+                    const inMustInclude = selectedMustInclude.some(item => item.type === 'unit' && item.name === u.name);
+                    const inCurrentTeam = selectedCurrentTeam.some(u_on_board => u_on_board.name === u.name);
+                    if (inMustInclude || inCurrentTeam) return false;
                 }
 
-                return a.name.localeCompare(b.name);
-            });
+                return true;
+            })
+                .sort((a, b) => {
+                    const aDisabled = activeDisabledUnits.includes(a.name);
+                    const bDisabled = activeDisabledUnits.includes(b.name);
+                    if (aDisabled !== bDisabled) return aDisabled - bDisabled;
 
-        units.forEach(u => {
-            const item = createDraggableItem(u.name, u.icon_url, 'unit', u.cost, null, false, 0, false, null, u.traits);
-            item.classList.add('unit-node');
+                    if (unitSortMode === 'smart' && referenceTraits.size > 0) {
+                        const aMatches = a.traits.filter(t => referenceTraits.has(t)).length;
+                        const bMatches = b.traits.filter(t => referenceTraits.has(t)).length;
+                        if (aMatches !== bMatches) return bMatches - aMatches;
+                    }
 
-            if (activeDisabledUnits.includes(u.name)) {
-                item.style.opacity = '0.55';
-                item.style.filter = 'grayscale(0.7)';
-            }
-            
-            item.addEventListener('click', (e) => {
-                if (activeDropZone === 'must-include') {
-                    addToMustInclude(u);
-                } else {
-                    addToCurrentTeam(u);
+                    return a.name.localeCompare(b.name);
+                });
+
+            units.forEach(u => {
+                const item = createDraggableItem(u.name, u.icon_url, 'unit', u.cost, null, false, 0, false, null, u.traits);
+                // Ensure it has the right class for the matrix cell
+                item.classList.add('unit-node');
+
+                if (activeDisabledUnits.includes(u.name)) {
+                    item.style.opacity = '0.55';
+                    item.style.filter = 'grayscale(0.7)';
                 }
-            });
+                
+                item.addEventListener('click', (e) => {
+                    if (activeDropZone === 'must-include') {
+                        addToMustInclude(u);
+                    } else {
+                        addToCurrentTeam(u);
+                    }
+                });
 
-            item.addEventListener('contextmenu', (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                toggleActiveDisableUnit(u.name);
-            });
+                item.addEventListener('contextmenu', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    toggleActiveDisableUnit(u.name);
+                });
 
-            pool.appendChild(item);
+                pool.appendChild(item);
+            });
         });
     }
     applyTraitHighlight();

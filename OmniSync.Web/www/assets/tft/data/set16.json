@@ -351,7 +351,7 @@
       "is_carry": false,
       "locked": false,
       "icon_url": "assets/tft/set16/champions/Vi.png",
-      "role": "Tank"
+      "role": "Fighter"
     },
     {
       "name": "Xin Zhao",
@@ -436,7 +436,7 @@
       "is_carry": true,
       "locked": false,
       "icon_url": "assets/tft/set16/champions/Draven.png",
-      "role": "Fighter"
+      "role": "AD Carry"
     },
     {
       "name": "Gangplank",
@@ -653,7 +653,7 @@
       "is_carry": true,
       "locked": false,
       "icon_url": "assets/tft/set16/champions/Diana.png",
-      "role": "Fighter"
+      "role": "AP Carry"
     },
     {
       "name": "Fizz",
@@ -759,7 +759,7 @@
       "is_carry": false,
       "locked": true,
       "icon_url": "assets/tft/set16/champions/Renekton.png",
-      "role": "Tank"
+      "role": "Fighter"
     },
     {
       "name": "Rift Herald",
@@ -965,7 +965,7 @@
       "is_carry": true,
       "locked": true,
       "icon_url": "assets/tft/set16/champions/Mel.png",
-      "role": "Fighter"
+      "role": "AP Carry"
     },
     {
       "name": "Ornn",
@@ -999,7 +999,7 @@
       "is_carry": true,
       "locked": true,
       "icon_url": "assets/tft/set16/champions/Sett.png",
-      "role": "Fighter"
+      "role": "AP Carry"
     },
     {
       "name": "Shyvana",
@@ -1168,7 +1168,7 @@
       "is_carry": false,
       "locked": false,
       "icon_url": "assets/tft/set16/champions/BaronNashor.png",
-      "role": "Tank"
+      "role": "Fighter"
     },
     {
       "name": "Brock",
@@ -1180,7 +1180,7 @@
       "is_carry": false,
       "locked": false,
       "icon_url": "assets/tft/set16/champions/Brock.png",
-      "role": "Tank"
+      "role": "Fighter"
     },
     {
       "name": "Galio",
@@ -1204,7 +1204,7 @@
       "is_carry": false,
       "locked": false,
       "icon_url": "assets/tft/set16/champions/THex.png",
-      "role": "Tank"
+      "role": "Fighter"
     },
     {
       "name": "Zaahen",

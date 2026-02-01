@@ -405,8 +405,6 @@ class TFTTester {
         this.assert(demaciaCount >= 7, `Board only has ${demaciaCount} Demacia (expected >= 7). Board: ${res.board.map(u=>u.name).join(',')}`);
         console.log("[Test] Found Demacia 7 board:", res.board.map(u => u.name).join(', '));
     }
-
-    }
 }
 
     

@@ -185,21 +185,55 @@
             overflow-y: auto;
         }
 
+        .role-columns-header {
+            display: grid;
+            grid-template-columns: 24px repeat(4, 1fr);
+            gap: 0;
+            padding: 0 4px;
+            margin-bottom: 4px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .role-header-label {
+            font-size: 8px;
+            font-weight: 900;
+            color: var(--text-bright);
+            text-transform: uppercase;
+            text-align: center;
+            letter-spacing: 0.5px;
+            border-right: 1px solid var(--border);
+            padding: 2px 0;
+        }
+
+        .role-header-label:last-child {
+            border-right: none;
+        }
+
         .cost-group {
-            display: flex;
-            gap: 8px;
-            align-items: flex-start;
-            padding-bottom: 4px;
+            display: grid;
+            grid-template-columns: 24px repeat(4, minmax(0, 1fr));
+            gap: 0;
+            align-items: stretch;
             border-bottom: 1px solid var(--border-light);
         }
 
-        .cost-group .item-grid {
-            flex: 1;
-            overflow: visible;
+        .cost-group .role-cell {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(40px, 1fr));
+            gap: 4px;
+            min-height: 44px;
+            padding: 4px;
+            background: rgba(255, 255, 255, 0.01);
+            border-right: 1px solid var(--border);
+            align-content: start;
         }
 
-        .cost-group:last-child {
-            border-bottom: none;
+        .cost-group .role-cell:last-child {
+            border-right: none;
+        }
+
+        .cost-group .role-cell:nth-child(even) {
+            background: rgba(255, 255, 255, 0.02);
         }
 
         .cost-label {
@@ -214,7 +248,9 @@
             flex-shrink: 0;
             border: 1px solid;
             color: white;
-            margin-top: 2px;
+            margin-top: 12px;
+            justify-self: center;
+            border-right: none;
         }
 
         .draggable-item {
@@ -651,6 +687,28 @@
                 flex-direction: column;
                 gap: 24px;
             }
+
+            .role-columns-header, .cost-group {
+                grid-template-columns: 20px repeat(4, 1fr) !important;
+            }
+
+            .role-header-label {
+                font-size: 7px;
+            }
+
+            .cost-group .role-cell {
+                grid-template-columns: repeat(auto-fill, minmax(32px, 1fr));
+                padding: 1px;
+            }
+
+            .draggable-item {
+                width: 32px;
+            }
+
+            .draggable-item .item-icon {
+                width: 28px;
+                height: 28px;
+            }
             
             .pool-container {
                 height: auto !important; /* Override inline heights */
@@ -836,26 +894,48 @@
                                     <div id="saved-comps-container" class="saved-comps-container" style="flex: 1; min-height: 0; padding: 0; border: none; margin: 0; align-items: center;"></div>
                                     <div id="alpha-filter" class="alpha-filter-container" style="flex-basis: 100%; margin-top: 4px;"></div>
                                 </div>
+                                <div class="role-columns-header">
+                                    <div></div> <!-- Cost Spacer -->
+                                    <div class="role-header-label">Tank</div>
+                                    <div class="role-header-label">AP Carry</div>
+                                    <div class="role-header-label">AD Carry</div>
+                                    <div class="role-header-label">Fighter</div>
+                                </div>
                                 <div class="unit-cost-groups">
-                                    <div class="cost-group">
+                                    <div class="cost-group" id="cost-group-1">
                                         <div class="cost-label cost-1">1</div>
-                                        <div id="unit-pool-1" class="item-grid small"></div>
+                                        <div id="unit-pool-1-Tank" class="role-cell"></div>
+                                        <div id="unit-pool-1-AP Carry" class="role-cell"></div>
+                                        <div id="unit-pool-1-AD Carry" class="role-cell"></div>
+                                        <div id="unit-pool-1-Fighter" class="role-cell"></div>
                                     </div>
-                                    <div class="cost-group">
+                                    <div class="cost-group" id="cost-group-2">
                                         <div class="cost-label cost-2">2</div>
-                                        <div id="unit-pool-2" class="item-grid small"></div>
+                                        <div id="unit-pool-2-Tank" class="role-cell"></div>
+                                        <div id="unit-pool-2-AP Carry" class="role-cell"></div>
+                                        <div id="unit-pool-2-AD Carry" class="role-cell"></div>
+                                        <div id="unit-pool-2-Fighter" class="role-cell"></div>
                                     </div>
-                                    <div class="cost-group">
+                                    <div class="cost-group" id="cost-group-3">
                                         <div class="cost-label cost-3">3</div>
-                                        <div id="unit-pool-3" class="item-grid small"></div>
+                                        <div id="unit-pool-3-Tank" class="role-cell"></div>
+                                        <div id="unit-pool-3-AP Carry" class="role-cell"></div>
+                                        <div id="unit-pool-3-AD Carry" class="role-cell"></div>
+                                        <div id="unit-pool-3-Fighter" class="role-cell"></div>
                                     </div>
-                                    <div class="cost-group">
+                                    <div class="cost-group" id="cost-group-4">
                                         <div class="cost-label cost-4">4</div>
-                                        <div id="unit-pool-4" class="item-grid small"></div>
+                                        <div id="unit-pool-4-Tank" class="role-cell"></div>
+                                        <div id="unit-pool-4-AP Carry" class="role-cell"></div>
+                                        <div id="unit-pool-4-AD Carry" class="role-cell"></div>
+                                        <div id="unit-pool-4-Fighter" class="role-cell"></div>
                                     </div>
-                                    <div class="cost-group">
+                                    <div class="cost-group" id="cost-group-5">
                                         <div class="cost-label cost-5">5</div>
-                                        <div id="unit-pool-5" class="item-grid small"></div>
+                                        <div id="unit-pool-5-Tank" class="role-cell"></div>
+                                        <div id="unit-pool-5-AP Carry" class="role-cell"></div>
+                                        <div id="unit-pool-5-AD Carry" class="role-cell"></div>
+                                        <div id="unit-pool-5-Fighter" class="role-cell"></div>
                                     </div>
                                 </div>
                             </div>
