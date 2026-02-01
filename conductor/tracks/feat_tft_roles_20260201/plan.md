@@ -19,4 +19,4 @@
     - [ ] Test drag and drop functionality.
     - [ ] Test context menu (disable unit).
 - [x] Task: Refine mobile responsiveness for the matrix layout.
-- [~] Task: Conductor - User Manual Verification 'Final Integration & Cleanup' (Protocol in workflow.md)
+- [x] Task: Conductor - User Manual Verification 'Final Integration & Cleanup' (Protocol in workflow.md)

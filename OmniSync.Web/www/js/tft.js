@@ -39,8 +39,10 @@ const CUSTOM_UNIT_SHORTCUTS = {
     "le": "Leona", "mi": "Milio", "mf": "Miss Fortune", "na": "Nautilus",
     "ns": "Nasus", "se": "Sejuani", "sp": "Seraphine", "st": "Sett",
     "fi": "Fizz", "fs": "Fiddlesticks", "ks": "Kai'Sa", "ka": "Kalista",
-    "tc": "Taric", "tk": "Tahm Kench", "zi": "Ziggs", "zn": "Zilean",
-    "ba": "Bard", "bn": "Baron Naashor"
+    "ta": "Taric", "tk": "Tahm Kench", "zi": "Ziggs", "zn": "Zilean",
+    "ba": "Bard", "bn": "Baron Naashor",
+    "rn": "Renekton", "wa": "Warwick", "vo": "Volibear", "re": "Rek'Sai",
+    "va": "Vayne", "za": "Zaahen", "di": "Diana", "lo": "Loris"
 };
 
 function cycleUnitHighlight() {
@@ -1428,6 +1430,25 @@ function renderUnitPools() {
                     return a.name.localeCompare(b.name);
                 });
 
+            // Balance row lengths for multi-row cells
+            if (units.length > 0) {
+                let maxRowWidth = 6;
+
+                const rowsNeeded = Math.ceil(units.length / maxRowWidth);
+                if (rowsNeeded > 1) {
+                    const balancedWidth = Math.ceil(units.length / rowsNeeded);
+                    pool.style.display = 'grid';
+                    pool.style.gridTemplateColumns = `repeat(${balancedWidth}, auto)`;
+                    pool.style.justifyContent = 'start';
+                    pool.style.justifyItems = 'start';
+                } else {
+                    pool.style.display = 'flex';
+                    pool.style.gridTemplateColumns = '';
+                    pool.style.justifyContent = '';
+                    pool.style.justifyItems = '';
+                }
+            }
+
             units.forEach(u => {
                 const item = createDraggableItem(u.name, u.icon_url, 'unit', u.cost, null, false, 0, false, null, u.traits);
                 // Ensure it has the right class for the matrix cell
@@ -1678,8 +1699,9 @@ function createDraggableItem(name, iconUrl, type, cost, trait, isSelected = fals
                  onerror="this.src='data:image/svg+xml;base64,PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHdpZHRoPSc0OCcgaGVpZ2h0PSc0OCcgc3R5bGU9J2JhY2tncm91bmQ6IzIyMjsnPjx0ZXh0IHg9JzUwJScgeT0nNTAlJyBkb20tYmFzZWxpbmU9J21pZGRsZScgdGV4dC1hbmNob3I9J21pZGRsZScgZmlsbD0nI2ZmZicgZm9udC1zaXplPScxMic+PyA8L3RleHQ+PC9zdmc+'">
             ${(type === 'emblem' && isMustInclude) ? `<div style="position: absolute; bottom: 2px; right: 2px; background: rgba(0,0,0,0.7); color: white; padding: 1px 4px; border-radius: 3px; font-size: 10px; font-weight: bold; border: 1px solid ${borderColor}">${badgeText}</div>` : ''}
             ${type === 'unit' ? `<div class="unit-shortcut-badge" id="shortcut-${name.replace(/\s+/g, '')}"></div>` : ''}
+            ${type === 'unit' ? `<div class="item-name overlay">${name}</div>` : ''}
         </div>
-        <div class="item-name">${name}</div>
+        ${type !== 'unit' ? `<div class="item-name">${name}</div>` : ''}
     `;
 
     // Tooltip logic

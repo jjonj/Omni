@@ -108,8 +108,8 @@
         .pools-zone {
             display: flex;
             flex-direction: column;
-            gap: 8px;
-            padding-top: 8px;
+            gap: 4px;
+            padding-top: 4px;
             overflow: hidden;
         }
 
@@ -117,7 +117,7 @@
             background: var(--bg-elevated);
             border: 1px solid var(--border);
             border-radius: 8px;
-            padding: 8px;
+            padding: 4px 8px;
             display: flex;
             flex-direction: column;
             overflow: hidden;
@@ -128,9 +128,9 @@
             flex-wrap: wrap;
             align-items: center;
             gap: 8px;
-            padding: 0 4px 4px 4px;
+            padding: 0 4px 2px 4px;
             border-bottom: 1px solid var(--border-light);
-            margin-bottom: 8px;
+            margin-bottom: 4px;
         }
 
         .drop-zone {
@@ -178,20 +178,17 @@
         }
 
         .unit-cost-groups {
-            display: flex;
-            flex-direction: column;
-            gap: 4px;
+            display: grid;
+            grid-template-columns: 24px repeat(4, auto);
+            gap: 0;
             flex: 1;
             overflow-y: auto;
+            align-content: start;
+            justify-content: start;
         }
 
         .role-columns-header {
-            display: grid;
-            grid-template-columns: 24px repeat(4, 1fr);
-            gap: 0;
-            padding: 0 4px;
-            margin-bottom: 4px;
-            border-bottom: 1px solid var(--border);
+            display: contents;
         }
 
         .role-header-label {
@@ -202,7 +199,12 @@
             text-align: center;
             letter-spacing: 0.5px;
             border-right: 1px solid var(--border);
-            padding: 2px 0;
+            padding: 4px 8px;
+            background: var(--bg-elevated);
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            border-bottom: 1px solid var(--border);
         }
 
         .role-header-label:last-child {
@@ -210,21 +212,18 @@
         }
 
         .cost-group {
-            display: grid;
-            grid-template-columns: 24px repeat(4, minmax(0, 1fr));
-            gap: 0;
-            align-items: stretch;
-            border-bottom: 1px solid var(--border-light);
+            display: contents;
         }
 
         .cost-group .role-cell {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(40px, 1fr));
+            display: flex;
+            flex-wrap: wrap;
             gap: 4px;
-            min-height: 44px;
-            padding: 4px;
+            min-height: 36px;
+            padding: 6px 4px;
             background: rgba(255, 255, 255, 0.01);
             border-right: 1px solid var(--border);
+            border-bottom: 1px solid var(--border-light);
             align-content: start;
         }
 
@@ -248,9 +247,9 @@
             flex-shrink: 0;
             border: 1px solid;
             color: white;
-            margin-top: 12px;
+            margin: 14px 2px;
             justify-self: center;
-            border-right: none;
+            border-bottom: 1px solid var(--border-light);
         }
 
         .draggable-item {
@@ -260,6 +259,7 @@
             align-items: center;
             cursor: grab;
             transition: transform var(--transition-fast);
+            position: relative;
         }
 
         .draggable-item .item-icon {
@@ -267,8 +267,29 @@
             height: 36px;
         }
 
+        .draggable-item .item-name.overlay {
+            font-size: 8px;
+            position: absolute;
+            bottom: 4px;
+            left: 0;
+            right: 0;
+            color: white;
+            text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000;
+            pointer-events: none;
+            z-index: 5;
+            text-align: center;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            padding: 0 2px;
+        }
+
         .draggable-item .item-name {
             font-size: 8px;
+            color: var(--text-dim);
+            text-align: center;
+            width: 100%;
+            margin-top: 2px;
         }
 
         .draggable-item.highlighted {
@@ -886,7 +907,7 @@
 
                         <!-- Right Column: Pools -->
                         <div class="pools-zone" ondrop="dropOnPools(event)" ondragover="allowDrop(event)">
-                            <div class="pool-container" style="flex: 2; min-height: 0;">
+                            <div class="pool-container" style="flex: 2.5; min-height: 0;">
                                 <div class="pool-header">
                                     <label class="hub-status-label" style="text-transform: none; font-size: 10px; display: flex; align-items: center; gap: 4px; cursor: pointer; margin: 0;">
                                         <input type="checkbox" id="smart-sort-toggle" onchange="toggleUnitSortMode(this.checked)" style="width: 14px; height: 14px;"> Smart Sort
@@ -894,14 +915,14 @@
                                     <div id="saved-comps-container" class="saved-comps-container" style="flex: 1; min-height: 0; padding: 0; border: none; margin: 0; align-items: center;"></div>
                                     <div id="alpha-filter" class="alpha-filter-container" style="flex-basis: 100%; margin-top: 4px;"></div>
                                 </div>
-                                <div class="role-columns-header">
-                                    <div></div> <!-- Cost Spacer -->
-                                    <div class="role-header-label">Tank</div>
-                                    <div class="role-header-label">AP Carry</div>
-                                    <div class="role-header-label">AD Carry</div>
-                                    <div class="role-header-label">Fighter</div>
-                                </div>
                                 <div class="unit-cost-groups">
+                                    <div class="role-columns-header">
+                                        <div class="role-header-label" style="border-bottom: none;"></div> <!-- Cost Spacer -->
+                                        <div class="role-header-label">Tank</div>
+                                        <div class="role-header-label">AP Carry</div>
+                                        <div class="role-header-label">AD Carry</div>
+                                        <div class="role-header-label">Fighter</div>
+                                    </div>
                                     <div class="cost-group" id="cost-group-1">
                                         <div class="cost-label cost-1">1</div>
                                         <div id="unit-pool-1-Tank" class="role-cell"></div>
