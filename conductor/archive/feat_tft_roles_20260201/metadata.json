@@ -1,0 +1,8 @@
+{
+  "track_id": "feat_tft_roles_20260201",
+  "type": "feature",
+  "status": "new",
+  "created_at": "2026-02-01T12:46:00Z",
+  "updated_at": "2026-02-01T12:46:00Z",
+  "description": "Next for the units list, we currently have rows based on unit cost. I want to also have columns based on unit role. Roles are Tank, AP carry, AD Carry, Fighter"
+}
