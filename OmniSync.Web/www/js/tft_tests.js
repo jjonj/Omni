@@ -405,6 +405,67 @@ class TFTTester {
         this.assert(demaciaCount >= 7, `Board only has ${demaciaCount} Demacia (expected >= 7). Board: ${res.board.map(u=>u.name).join(',')}`);
         console.log("[Test] Found Demacia 7 board:", res.board.map(u => u.name).join(', '));
     }
+
+    async testTrainerChallengeGeneration() {
+        console.log("[Test] Verifying Trainer challenge generation...");
+        const challenge = generateChallenge();
+        this.assert(challenge !== null, "Challenge should not be null");
+        this.assert(challenge.units.length >= 1 && challenge.units.length <= 2, "Should have 1-2 units");
+        this.assert(challenge.traits.length >= 0 && challenge.traits.length <= 1, "Should have 0-1 trait");
+        this.assert(challenge.level >= 6 && challenge.level <= 9, "Level should be between 6 and 9");
+        console.log("[Test] Trainer challenge generated validly.");
+    }
+
+    async testTrainerVerification() {
+        console.log("[Test] Verifying Trainer input verification...");
+        
+        // Mock state
+        trainerState.isActive = true;
+        trainerState.currentChallenge = {
+            level: 8,
+            units: [{ name: "Ahri", type: 'unit' }],
+            traits: [{ name: "Ionia", value: 3 }],
+            emblems: [{ trait: "Void" }]
+        };
+        
+        // 1. Test Empty/Wrong State
+        selectedMustInclude = [];
+        selectedEmblems = [];
+        document.querySelectorAll('.lvl-cb').forEach(cb => cb.checked = false);
+        this.assert(verifyChallengeInputs() === false, "Should fail on empty state");
+        
+        // 2. Test Partial State (Units only)
+        selectedMustInclude = [{ name: "Ahri", type: 'unit' }];
+        this.assert(verifyChallengeInputs() === false, "Should fail on partial state");
+        
+        // 3. Test Full Correct State
+        // Level
+        const lvl8 = document.querySelector('.lvl-cb[value="8"]');
+        if (lvl8) lvl8.checked = true;
+        
+        // Traits
+        // Need to find Ahri's traits to mock correctly? No, verifyChallengeInputs uses selectedMustInclude directly for units.
+        // For traits, we need to push a trait object.
+        // Assuming Ionia breakpoint 3 is index 0.
+        const ioniaMeta = this.data.trait_metadata["Ionia"];
+        let ioniaIdx = 0;
+        if (ioniaMeta) {
+            ioniaIdx = ioniaMeta.breakpoints.indexOf(3);
+        }
+        selectedMustInclude.push({ name: "Ionia", type: 'trait', targetBreakpointIndex: ioniaIdx });
+        
+        // Emblems
+        selectedEmblems = [{ name: "Void Emblem", trait: "Void" }];
+        
+        this.assert(verifyChallengeInputs() === true, "Should pass on correct state");
+        
+        // Cleanup
+        trainerState.isActive = false;
+        trainerState.currentChallenge = null;
+        selectedMustInclude = [];
+        selectedEmblems = [];
+        console.log("[Test] Trainer verification logic passed.");
+    }
 }
 
     

@@ -1081,6 +1081,9 @@ async function handleTftHotkey(command, payload) {
         case "TFT_SWITCH_TAB_CONFIG":
             switchTab('config');
             break;
+        case "TFT_TOGGLE_TRAINER":
+            toggleTrainer();
+            break;
         case "TFT_TOGGLE_COST_1":
             toggleActiveDisableUnitByCost(1);
             break;
@@ -1322,6 +1325,7 @@ function renderHotkeysButton() {
             <span style="color: var(--text-dim);">Cycle Units</span> <span style="text-align: right; font-family: monospace;">Ctrl+Tab</span>
             <span style="color: var(--text-dim);">Cycle Results</span> <span style="text-align: right; font-family: monospace;">Tab</span>
             <span style="color: var(--text-dim);">Cost Filter</span> <span style="text-align: right; font-family: monospace;">Alt+1-5</span>
+            <span style="color: var(--text-dim);">Toggle Trainer</span> <span style="text-align: right; font-family: monospace;">Ctrl+T</span>
         </div>
     `;
     
@@ -2701,7 +2705,7 @@ async function runLogicTests() {
                 runner.testNidaleeRequiresNeeko, runner.testSuperHeuristicPoppyLevel6, runner.testSuperHeuristicKobukoLevel6,
                 runner.testWorldRunesLogic, runner.testRuneSolverLevel5, runner.testRuneSolverLevel5PiltoverDemacia,
                 runner.testRyzeUnlockSolver, runner.testSaveLoadComps, runner.testFullLoadFlow,
-                runner.testDemacia7AtLevel8
+                runner.testDemacia7AtLevel8, runner.testTrainerChallengeGeneration, runner.testTrainerVerification
             ];    for (const test of tests) {
         const statusEl = document.createElement('div');
         statusEl.style.color = "#aaa";
@@ -2892,6 +2896,13 @@ function importTeamPlannerCode() {
 }
 
 function copyResultCode(target) {
+    // Trainer Verification Hook
+    if (trainerState.isActive && trainerState.currentChallenge) {
+        if (verifyChallengeInputs()) {
+            handleTrainerSuccess();
+        }
+    }
+
     let card;
     if (typeof target === 'number') {
         const cards = document.querySelectorAll('.result-card');
@@ -3908,74 +3919,275 @@ function renderSingleResult(res, container, level, solverMode, isHighlighted = f
     container.appendChild(card);
 }
 
-function renderSingleResult(res, container, level, solverMode, isHighlighted = false) {
-    const emblemTraits = selectedEmblems.map(e => e.trait);
-    const card = document.createElement('div');
-    card.className = 'result-card';
-    card.style.padding = '8px 12px';
-    card.style.marginBottom = '0';
-    if (isHighlighted) {
-        card.style.borderColor = 'var(--accent)';
-        card.style.boxShadow = '0 0 15px rgba(10, 132, 255, 0.1)';
-        card.style.background = 'rgba(255,255,255,0.03)';
+/* =========================================
+   HOTKEY TRAINER
+   ========================================= */
+let trainerState = {
+    isActive: false,
+    currentChallenge: null,
+    timer: null,
+    startTime: 0,
+    secondsLeft: 10.0,
+    score: 0,
+    total: 0,
+    highScore: parseInt(localStorage.getItem('tft_trainer_high_score') || '0')
+};
+
+function toggleTrainer() {
+    trainerState.isActive = !trainerState.isActive;
+    const layout = document.querySelector('.optimizer-layout');
+    if (!layout) return;
+
+    if (trainerState.isActive) {
+        layout.classList.add('has-trainer');
+        switchTab('solver');
+    } else {
+        layout.classList.remove('has-trainer');
+        stopTrainer();
+    }
+    updateTrainerUI();
+}
+
+function updateTrainerUI() {
+    const scoreEl = document.getElementById('trainer-score');
+    const highscoreEl = document.getElementById('trainer-high-score');
+    if (scoreEl) scoreEl.innerText = trainerState.score;
+    if (highscoreEl) highscoreEl.innerText = trainerState.highScore;
+    
+    const tabs = document.querySelectorAll('.tft-tab');
+    tabs.forEach(tab => {
+        if (tab.innerText === 'Trainer') {
+            tab.classList.toggle('active', trainerState.isActive);
+        }
+    });
+}
+
+function startTrainerChallenge() {
+    stopTrainer();
+    resetAll(); // Clear existing solver state
+    
+    const challenge = generateChallenge();
+    if (!challenge) return;
+    
+    trainerState.currentChallenge = challenge;
+    trainerState.secondsLeft = 10.0;
+    
+    document.getElementById('trainer-idle-msg').style.display = 'none';
+    const briefMsg = document.getElementById('brief-msg');
+    if (briefMsg) briefMsg.remove();
+    
+    document.getElementById('trainer-challenge-box').style.display = 'flex';
+    document.getElementById('trainer-start-btn').innerText = 'NEXT CHALLENGE';
+    document.getElementById('trainer-stop-btn').style.display = 'block';
+    
+    renderChallengeRequirements(challenge);
+    
+    trainerState.startTime = Date.now();
+    trainerState.timer = setInterval(updateTrainerTimer, 100);
+    
+    if (typeof CortexAudio !== 'undefined') CortexAudio.playTone('league');
+}
+
+function stopTrainer() {
+    if (trainerState.timer) {
+        clearInterval(trainerState.timer);
+        trainerState.timer = null;
+    }
+    trainerState.currentChallenge = null;
+    const box = document.getElementById('trainer-challenge-box');
+    if (box) box.style.display = 'none';
+    const idle = document.getElementById('trainer-idle-msg');
+    if (idle) idle.style.display = 'block';
+    const startBtn = document.getElementById('trainer-start-btn');
+    if (startBtn) startBtn.innerText = 'START CHALLENGE';
+    const stopBtn = document.getElementById('trainer-stop-btn');
+    if (stopBtn) stopBtn.style.display = 'none';
+}
+
+function updateTrainerTimer() {
+    const elapsed = (Date.now() - trainerState.startTime) / 1000;
+    trainerState.secondsLeft = Math.max(0, 10.0 - elapsed);
+    
+    const timerEl = document.getElementById('trainer-timer');
+    if (timerEl) {
+        timerEl.innerText = trainerState.secondsLeft.toFixed(1);
+        if (trainerState.secondsLeft <= 3) {
+            timerEl.style.color = 'var(--danger)';
+        } else {
+            timerEl.style.color = 'var(--accent)';
+        }
     }
     
-    // Store board for copy support
-    card.dataset.board = JSON.stringify(res.board);
+    if (trainerState.secondsLeft <= 0) {
+        handleTrainerFailure();
+    }
+}
 
-    card.innerHTML = `<div style="display: flex; justify-content: space-between; margin-bottom: 4px; align-items: center;">
-            <div style="display: flex; align-items: center; gap: 8px;">
-                <button class="icon-btn" onclick="copyCardBoard(this.closest('.result-card'), this)" title="Copy Team Code" style="background: none; border: none; cursor: pointer; padding: 2px; display: flex; align-items: center; color: var(--text-dimer); transition: color 0.2s;">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-                </button>
-                <span style="font-size: 10px; color: var(--text-dim); font-weight: 600;">Score: ${Math.floor(res.score)}</span>
-            </div>
-        </div>`;
+function handleTrainerFailure() {
+    clearInterval(trainerState.timer);
+    trainerState.timer = null;
+    trainerState.total++;
     
-    const list = document.createElement('div');
-    list.className = 'unit-list';
-    list.style.marginTop = '0';
-    list.style.gap = '4px';
-    const sortedBoard = [...res.board].sort((a, b) => a.cost - b.cost || a.name.localeCompare(b.name));
-    sortedBoard.forEach((u) => {
-        const unitItem = document.createElement('div');
-        unitItem.className = 'unit-item';
-        unitItem.style.width = '36px';
+    if (typeof CortexAudio !== 'undefined') CortexAudio.playTone('chaos');
+    
+    const timerEl = document.getElementById('trainer-timer');
+    if (timerEl) {
+        timerEl.innerText = "FAIL";
+        timerEl.style.color = 'var(--danger)';
+    }
+}
+
+function handleTrainerSuccess() {
+    if (!trainerState.timer) return; // Already failed or stopped
+
+    clearInterval(trainerState.timer);
+    trainerState.timer = null;
+    trainerState.score++;
+    trainerState.total++;
+    
+    if (trainerState.score > trainerState.highScore) {
+        trainerState.highScore = trainerState.score;
+        localStorage.setItem('tft_trainer_high_score', trainerState.highScore);
+    }
+    
+    if (typeof CortexAudio !== 'undefined') CortexAudio.playTone('success');
+    
+    const timerEl = document.getElementById('trainer-timer');
+    if (timerEl) {
+        timerEl.innerText = "SUCCESS";
+        timerEl.style.color = 'var(--success)';
+    }
+    
+    updateTrainerUI();
+}
+
+function generateChallenge() {
+    if (!tftData) return null;
+    
+    // 1-2 units
+    const numUnits = Math.floor(Math.random() * 2) + 1;
+    const units = [];
+    const unitPool = tftData.units.filter(u => u.cost <= 5);
+    while (units.length < numUnits) {
+        const u = unitPool[Math.floor(Math.random() * unitPool.length)];
+        if (!units.find(x => x.name === u.name)) units.push(u);
+    }
+    
+    // 1 trait
+    const traits = [];
+    const traitNames = Object.keys(tftData.trait_metadata).filter(t => !tftData.trait_metadata[t].ignored);
+    if (traitNames.length > 0) {
+        const tName = traitNames[Math.floor(Math.random() * traitNames.length)];
+        const meta = tftData.trait_metadata[tName];
+        if (meta && meta.breakpoints && meta.breakpoints.length > 0) {
+            const bp = meta.breakpoints[Math.floor(Math.random() * meta.breakpoints.length)];
+            traits.push({ name: tName, value: bp });
+        }
+    }
+    
+    // 0-1 emblems
+    const emblems = [];
+    if (Math.random() > 0.5) {
+        const emblemPool = tftData.items.filter(i => i.is_emblem);
+        if (emblemPool.length > 0) {
+            const e = emblemPool[Math.floor(Math.random() * emblemPool.length)];
+            emblems.push(e);
+        }
+    }
+    
+    const level = Math.floor(Math.random() * 4) + 6;
+    
+    return { units, traits, emblems, level };
+}
+
+function verifyChallengeInputs() {
+    if (!trainerState.isActive || !trainerState.currentChallenge) return false;
+    
+    const challenge = trainerState.currentChallenge;
+    
+    // 1. Verify Level
+    const levelCbs = document.querySelectorAll('.lvl-cb:checked');
+    if (levelCbs.length !== 1 || parseInt(levelCbs[0].value) !== challenge.level) return false;
+    
+    // 2. Verify Units (Must Include)
+    const currentUnits = selectedMustInclude.filter(i => i.type === 'unit').map(u => u.name);
+    if (currentUnits.length !== challenge.units.length) return false;
+    for (const u of challenge.units) {
+        if (!currentUnits.includes(u.name)) return false;
+    }
+    
+    // 3. Verify Traits (Must Include)
+    const currentTraits = selectedMustInclude.filter(i => i.type === 'trait');
+    if (currentTraits.length !== challenge.traits.length) return false;
+    for (const t of challenge.traits) {
+        // Find trait in selected that matches name
+        const match = currentTraits.find(ct => ct.name === t.name);
+        if (!match) return false;
+        
+        // Verify breakpoint (targetBreakpointIndex logic from drag_drop)
+        // challenge.traits has {name, value (breakpoint number)}
+        // selectedMustInclude has {name, targetBreakpointIndex}
+        // Need to resolve targetBreakpointIndex to value
+        const meta = tftData.trait_metadata[t.name];
+        if (!meta) return false;
+        
+        let selectedValue = 0;
+        if (match.hasOwnProperty('targetBreakpointIndex')) {
+             selectedValue = meta.breakpoints[match.targetBreakpointIndex];
+        } else {
+             // Default if not cycled? usually index 0
+             selectedValue = meta.breakpoints[0];
+        }
+        
+        if (selectedValue !== t.value) return false;
+    }
+    
+    // 4. Verify Emblems
+    const currentEmblems = selectedEmblems.map(e => e.trait);
+    if (currentEmblems.length !== challenge.emblems.length) return false;
+    for (const e of challenge.emblems) {
+        if (!currentEmblems.includes(e.trait)) return false;
+    }
+    
+    return true;
+}
+
+function renderChallengeRequirements(challenge) {
+    const container = document.getElementById('trainer-requirements');
+    if (!container) return;
+    container.innerHTML = '';
+    
+    // Level
+    const lvlItem = document.createElement('div');
+    lvlItem.className = 'trainer-req-item';
+    lvlItem.style.color = 'var(--accent)';
+    lvlItem.style.fontWeight = 'bold';
+    lvlItem.innerText = `LEVEL ${challenge.level}`;
+    container.appendChild(lvlItem);
+    
+    // Units
+    challenge.units.forEach(u => {
+        const item = document.createElement('div');
+        item.className = 'trainer-req-item';
         const costColors = { 1: '#808080', 2: '#11b288', 3: '#207ac7', 4: '#c440da', 5: '#ffb93b' };
-        const borderColor = costColors[u.cost] || '#ccc';
-        unitItem.innerHTML = `<img src="${u.icon_url}" class="unit-icon" style="width: 32px; height: 32px; border-color: ${borderColor};" onerror="this.src='data:image/svg+xml;base64,PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHdpZHRoPSczNicgaGVpZ2h0PSczNicgc3R5bGU9J2JhY2tncm91bmQ6IzIyMjsnPjx0ZXh0IHg9JzUwJScgeT0nNTAlJyBkb20tYmFzZWxpbmU9J21pZGRsZScgdGV4dC1hbmNob3I9J21pZGRsZScgZmlsbD0nI2ZmZicgZm9udC1zaXplPSc4Jz4/IDwvdGV4dD48L3N2Zz4='">
-            <div class="unit-name" style="font-size: 7px;">${u.name}</div>`;
-        list.appendChild(unitItem);
+        item.innerHTML = `<img src="${u.icon_url}" style="width: 20px; height: 20px; border: 1px solid ${costColors[u.cost] || '#ccc'}; border-radius: 4px;"> <span>${u.name}</span>`;
+        container.appendChild(item);
     });
-    card.appendChild(list);
-
-    const traitsList = document.createElement('div');
-    traitsList.className = 'trait-summary';
-    traitsList.style.display = 'flex';
-    traitsList.style.flexWrap = 'wrap';
-    traitsList.style.gap = '6px';
-    traitsList.style.marginTop = '6px';
-    traitsList.style.paddingTop = '4px';
-    traitsList.style.borderTop = '1px solid var(--border-light)';
     
-    const sortedTraits = Object.entries(res.counts).sort((a, b) => b[1] - a[1]);
-    sortedTraits.forEach(([trait, count]) => {
-        const traitInfo = (tftData.trait_metadata && tftData.trait_metadata[trait]) ? tftData.trait_metadata[trait] : null;
-        const breakpoints = traitInfo ? traitInfo.breakpoints : null;
-        const isActive = (breakpoints && breakpoints.some(b => b <= count)) || (trait === 'Targon' && count >= 1);
-        
-        if (!isActive && trait !== 'Targon') return;
-
-        const traitItem = document.createElement('div');
-        traitItem.style.display = 'flex';
-        traitItem.style.alignItems = 'center';
-        traitItem.style.gap = '2px';
-        traitItem.style.fontSize = '9px';
-        
-        const iconUrl = `assets/tft/${currentConfig.current_set}/traits/${trait.replace(/ /g, '')}.svg`;
-        traitItem.innerHTML = `<img src="${iconUrl}" style="width: 12px; height: 12px;" title="${trait}" onerror="this.style.display='none'"><span>${count}</span>`;
-        traitsList.appendChild(traitItem);
+    // Traits
+    challenge.traits.forEach(t => {
+        const item = document.createElement('div');
+        item.className = 'trainer-req-item';
+        const iconUrl = `assets/tft/${currentConfig.current_set}/traits/${t.name.replace(/ /g, '')}.svg`;
+        item.innerHTML = `<img src="${iconUrl}" style="width: 18px; height: 18px;" onerror="this.style.display='none'"> <span>${t.value} ${t.name}</span>`;
+        container.appendChild(item);
     });
-    card.appendChild(traitsList);
-    container.appendChild(card);
+    
+    // Emblems
+    challenge.emblems.forEach(e => {
+        const item = document.createElement('div');
+        item.className = 'trainer-req-item';
+        item.innerHTML = `<img src="${e.icon_url}" style="width: 18px; height: 18px;"> <span>${e.name.replace(' Emblem', '')}</span>`;
+        container.appendChild(item);
+    });
 }
