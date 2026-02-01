@@ -59,14 +59,6 @@ namespace OmniSync.Hub.Presentation
 
         private async void OnLoaded(object sender, RoutedEventArgs e)
         {
-            var screens = System.Windows.Forms.Screen.AllScreens;
-            if (screens.Length > 1)
-            {
-                _hubMonitorService.AddLogMessage("[MainWindow] Startup: Triggering Python script to move CLI windows...");
-                // Use absolute path for reliability
-                string scriptPath = @"D:\SSDProjects\Omni\TestScripts\System\move_cli_windows.py";
-                _processService.ExecuteCommand($"python \"{scriptPath}\" --delay");
-            }
         }
 
         private void LogTextBox_TextChanged(object sender, System.Windows.Controls.TextChangedEventArgs e)
