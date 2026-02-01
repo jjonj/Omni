@@ -20,11 +20,11 @@ Implement the countdown mechanics and the hook-based verification system.
 - [x] Task: Implement Success/Failure feedback (visual cues and sound effects if applicable).
 - [~] Task: Conductor - User Manual Verification 'Phase 2: Timer & Verification Logic' (Protocol in workflow.md) ab09ffb
 
-## Phase 3: Integration & Polish [checkpoint: ab09ffb]
+## Phase 3: Integration & Polish [checkpoint: fcb5410]
 Refine the user experience and ensure the trainer integrates smoothly with existing hotkeys.
 
 - [x] Task: Ensure all UI interactions (sidebar toggle, button clicks) work seamlessly.
 - [x] Task: Display session statistics (Success/Total) in the sidebar.
 - [x] Task: Add a keyboard shortcut to toggle the Trainer sidebar.
 - [x] Task: Final end-to-end testing of the challenge flow (Start -> Configure -> Solve -> Copy -> Result).
-- [~] Task: Conductor - User Manual Verification 'Phase 3: Integration & Polish' (Protocol in workflow.md) ab09ffb
+- [x] Task: Conductor - User Manual Verification 'Phase 3: Integration & Polish' (Protocol in workflow.md) fcb5410
