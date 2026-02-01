@@ -8,7 +8,7 @@
     <meta http-equiv="Expires" content="0">
     <title>OmniSync - TFT Helper</title>
     <link rel="icon" type="image/png" href="favicon.png">
-    <link rel="stylesheet" href="css/style.css?v=2026.01.29.23.12">
+    <link rel="stylesheet" href="css/style.css?v=2026.01.31.19.03">
     <style>
         .tft-container {
             display: flex;
@@ -24,13 +24,18 @@
             border-bottom: 1px solid var(--border);
             padding: 0 24px;
             gap: 16px;
+            height: 32px;
+            align-items: center;
         }
 
         .tft-tab {
-            padding: 12px 20px;
+            padding: 0 12px;
+            height: 100%;
+            display: flex;
+            align-items: center;
             color: var(--text-dim);
             text-decoration: none;
-            font-size: 13px;
+            font-size: 11px;
             font-weight: 600;
             cursor: pointer;
             border-bottom: 2px solid transparent;
@@ -50,7 +55,7 @@
 
         .tft-content {
             flex: 1;
-            padding: 16px;
+            padding: 0 8px 8px 8px;
             overflow-y: auto;
         }
 
@@ -68,7 +73,7 @@
         .optimizer-layout {
             display: grid;
             grid-template-columns: 272px 1fr 320px;
-            gap: 16px;
+            gap: 8px;
             height: 100%;
             transition: grid-template-columns 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         }
@@ -80,8 +85,9 @@
         .selection-zone, .results-zone, .evolution-zone {
             display: flex;
             flex-direction: column;
-            gap: 16px;
+            gap: 8px;
             overflow-y: auto;
+            padding-top: 8px;
         }
 
         .evolution-zone {
@@ -102,12 +108,29 @@
         .pools-zone {
             display: flex;
             flex-direction: column;
-            gap: 16px;
+            gap: 8px;
+            padding-top: 8px;
+            overflow: hidden;
+        }
+
+        .pool-container {
             background: var(--bg-elevated);
             border: 1px solid var(--border);
             border-radius: 8px;
-            padding: 16px;
+            padding: 8px;
+            display: flex;
+            flex-direction: column;
             overflow: hidden;
+        }
+
+        .pool-header {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 8px;
+            padding: 0 4px 4px 4px;
+            border-bottom: 1px solid var(--border-light);
+            margin-bottom: 8px;
         }
 
         .drop-zone {
@@ -137,7 +160,7 @@
 
         .placeholder-text {
             color: var(--text-dimmer);
-            font-size: 12px;
+            font-size: 11px;
             pointer-events: none;
         }
 
@@ -150,23 +173,23 @@
         }
 
         .item-grid.small {
-            grid-template-columns: repeat(auto-fill, minmax(50px, 1fr));
-            gap: 6px;
+            grid-template-columns: repeat(auto-fill, minmax(44px, 1fr));
+            gap: 4px;
         }
 
         .unit-cost-groups {
             display: flex;
             flex-direction: column;
-            gap: 12px;
+            gap: 4px;
             flex: 1;
             overflow-y: auto;
         }
 
         .cost-group {
             display: flex;
-            gap: 12px;
+            gap: 8px;
             align-items: flex-start;
-            padding-bottom: 8px;
+            padding-bottom: 4px;
             border-bottom: 1px solid var(--border-light);
         }
 
@@ -180,22 +203,22 @@
         }
 
         .cost-label {
-            width: 24px;
-            height: 24px;
+            width: 20px;
+            height: 20px;
             border-radius: 50%;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 12px;
+            font-size: 11px;
             font-weight: 700;
             flex-shrink: 0;
-            border: 2px solid;
+            border: 1px solid;
             color: white;
-            margin-top: 4px;
+            margin-top: 2px;
         }
 
         .draggable-item {
-            width: 50px;
+            width: 44px;
             display: flex;
             flex-direction: column;
             align-items: center;
@@ -204,8 +227,8 @@
         }
 
         .draggable-item .item-icon {
-            width: 40px;
-            height: 40px;
+            width: 36px;
+            height: 36px;
         }
 
         .draggable-item .item-name {
@@ -237,9 +260,9 @@
             background: var(--panel);
             border: 1px solid var(--border);
             color: var(--text-dim);
-            padding: 2px 8px;
+            padding: 2px 6px;
             border-radius: 4px;
-            font-size: 11px;
+            font-size: 10px;
             cursor: pointer;
         }
 
@@ -259,10 +282,10 @@
             background: var(--bg);
             border: 1px solid var(--border);
             color: var(--text-bright);
-            padding: 4px 8px;
+            padding: 2px 8px;
             border-radius: 4px;
             font-size: 11px;
-            width: 120px;
+            width: 100px;
         }
 
         .results-list {
@@ -275,8 +298,8 @@
             background: var(--panel);
             border: 1px solid var(--border);
             border-radius: 8px;
-            padding: 12px;
-            font-size: 12px;
+            padding: 8px;
+            font-size: 11px;
         }
 
         .unit-list {
@@ -665,9 +688,9 @@
     <div class="app-layout">
         <!-- Navigation -->
         <nav class="nav-menu">
-            <span class="nav-version" style="display:none;">2026.01.29.23.12</span>
+            <span class="nav-version" style="display:none;">2026.01.31.19.03</span>
         </nav>
-        <script src="js/nav.js?v=2026.01.29.23.12"></script>
+        <script src="js/nav.js?v=2026.01.31.19.03"></script>
 
         <div class="tft-container">
             <!-- Secondary Navigation Tabs -->
@@ -805,15 +828,13 @@
 
                         <!-- Right Column: Pools -->
                         <div class="pools-zone" ondrop="dropOnPools(event)" ondragover="allowDrop(event)">
-                            <div class="pool-container">
-                                <div class="pool-header" style="flex-direction: column; align-items: flex-start; gap: 8px;">
-                                    <div style="display: flex; justify-content: space-between; width: 100%; align-items: center;">
-                                        <label class="hub-status-label" style="text-transform: none; font-size: 9px; display: flex; align-items: center; gap: 4px; cursor: pointer; margin: 0;">
-                                            <input type="checkbox" id="smart-sort-toggle" onchange="toggleUnitSortMode(this.checked)" style="width: 12px; height: 12px;"> Smart Sort
-                                        </label>
-                                    </div>
-                                    <div id="saved-comps-container" class="saved-comps-container"></div>
-                                    <div id="alpha-filter" class="alpha-filter-container"></div>
+                            <div class="pool-container" style="flex: 2; min-height: 0;">
+                                <div class="pool-header">
+                                    <label class="hub-status-label" style="text-transform: none; font-size: 10px; display: flex; align-items: center; gap: 4px; cursor: pointer; margin: 0;">
+                                        <input type="checkbox" id="smart-sort-toggle" onchange="toggleUnitSortMode(this.checked)" style="width: 14px; height: 14px;"> Smart Sort
+                                    </label>
+                                    <div id="saved-comps-container" class="saved-comps-container" style="flex: 1; min-height: 0; padding: 0; border: none; margin: 0; align-items: center;"></div>
+                                    <div id="alpha-filter" class="alpha-filter-container" style="flex-basis: 100%; margin-top: 4px;"></div>
                                 </div>
                                 <div class="unit-cost-groups">
                                     <div class="cost-group">
@@ -840,14 +861,14 @@
                             </div>
 
                             <!-- Emblem Pool -->
-                            <div class="pool-container" style="height: 40%;">
-                                <div class="pool-header">
-                                    <h2>Emblems</h2>
-                                    <input type="text" placeholder="Search..." onkeyup="filterEmblems(this.value)" class="search-input">
+                            <div class="pool-container" style="flex: 1; min-height: 0;">
+                                <div class="pool-header" style="justify-content: space-between;">
+                                    <h2 style="font-size: 10px; border: none; padding: 0; margin: 0;">Emblems</h2>
+                                    <input type="text" placeholder="Search..." onkeyup="filterEmblems(this.value)" class="search-input" style="height: 22px; width: 120px;">
                                 </div>
-                                <div style="display: flex; flex-direction: column; gap: 10px; overflow-y: auto;">
+                                <div style="display: flex; flex-direction: column; gap: 8px; overflow-y: auto;">
                                     <div id="emblem-pool-origins" class="item-grid small"></div>
-                                    <div style="border-top: 1px solid var(--border-light); margin: 4px 0;"></div>
+                                    <div style="border-top: 1px solid var(--border-light); margin: 2px 0;"></div>
                                     <div id="emblem-pool-classes" class="item-grid small"></div>
                                 </div>
                             </div>
@@ -876,14 +897,6 @@
                                        style="margin: 8px 0 0 0;">
                             </div>
                             
-                            <!-- Final combinations count (Styled like Results per Level) -->
-                            <div id="final-combinations-display" class="control-box" style="display: none; margin-bottom: 10px; padding: 10px;">
-                                <div style="display: flex; justify-content: space-between; align-items: center;">
-                                    <h2 style="margin: 0; border: none; padding: 0;">Explored Combinations</h2>
-                                    <span id="final-combinations-text" class="hub-status-value">0</span>
-                                </div>
-                            </div>
-
                             <div id="results-container"></div>
                         </div>
                     </div>
@@ -1049,9 +1062,9 @@
         </div>
     </div>
 
-    <script src="js/signalr.min.js?v=2026.01.29.23.12"></script>
-    <script src="js/drag_drop_touch.js?v=2026.01.29.23.12"></script>
-    <script src="js/config.js?v=2026.01.29.23.12"></script>
+    <script src="js/signalr.min.js?v=2026.01.31.19.03"></script>
+    <script src="js/drag_drop_touch.js?v=2026.01.31.19.03"></script>
+    <script src="js/config.js?v=2026.01.31.19.03"></script>
     <script>
         function hardRefresh() {
             if (confirm("This will clear local settings (except persistent quiz progress) and force a full reload. Continue?")) {
@@ -1068,12 +1081,13 @@
             }
         }
     </script>
-    <script src="js/tft_optimizer.js?v=2026.01.29.23.12"></script>
-    <script src="js/TeamPlannerCode.js?v=2026.01.29.23.12"></script>
-        <script src="js/tft_tests.js?v=2026.01.29.23.12"></script>
-        <script src="js/tft_filter_test.js?v=2026.01.29.23.12"></script>
-        <script src="js/tft_evolution_test.js?v=2026.01.29.23.12"></script>
-        <script src="js/tft.js?v=2026.01.29.23.12"></script>
+    <script src="js/tft_optimizer.js?v=2026.01.31.19.03"></script>
+    <script src="js/TeamPlannerCode.js?v=2026.01.31.19.03"></script>
+        <script src="js/tft_tests.js?v=2026.01.31.19.03"></script>
+        <script src="js/tft_filter_test.js?v=2026.01.31.19.03"></script>
+        <script src="js/tft_role_test.js?v=2026.01.31.19.03"></script>
+        <script src="js/tft_evolution_test.js?v=2026.01.31.19.03"></script>
+        <script src="js/tft.js?v=2026.01.31.19.03"></script>
     
         <div id="dev-console" class="hidden">
             <div class="dev-console-header">
@@ -1082,7 +1096,7 @@
             </div>
             <div id="console-output"></div>
         </div>
-        <script src="js/dev-console.js?v=2026.01.29.23.12"></script>
+        <script src="js/dev-console.js?v=2026.01.31.19.03"></script>
     </body>
     </html>
     
