@@ -318,7 +318,8 @@ class SignalRClient(
                 mainViewModel.addLog("Connected successfully to: $url", com.omni.sync.ui.screen.LogType.SUCCESS)
             }
             ?.doOnError { error ->
-                mainViewModel.addLog("Attempt failed for $url: ${error.message}", com.omni.sync.ui.screen.LogType.INFO)
+                Log.e("SignalRClient", "Connection error for $url: ${error.message}")
+                mainViewModel.addLog("Connection error ($url): ${error.message}", com.omni.sync.ui.screen.LogType.ERROR)
                 onFailure(error)
             }
             ?.subscribe({
@@ -479,11 +480,11 @@ class SignalRClient(
         }, List::class.java)
 
                   hubConnection?.on("ReceiveNewAiSessionPid", { pid: Int ->
-                      Log.d("SignalRClient", "ReceiveNewAiSessionPid: $pid")
-                      // mainViewModel.addLog("[AI] New session reported by Hub: PID $pid", com.omni.sync.ui.screen.LogType.SUCCESS) // REMOVED redundant log
+                      Log.e("SignalRClient", "DEBUG: Received ReceiveNewAiSessionPid: $pid")
                       getAiSessions()
                       val wasStartingOurOwn = _isStartingSession
                       val wasTellPc = _isTriggeringTellPcLocal
+                      Log.e("SignalRClient", "DEBUG: wasStartingOurOwn=$wasStartingOurOwn, wasTellPc=$wasTellPc")
                       
                       if (wasTellPc) {
                           _latestTellPcPid = pid
@@ -493,7 +494,9 @@ class SignalRClient(
                       _isStartingSession = false
                       isStartingSessionFlow.value = false
                       _isTriggeringTellPcLocal = false
-                      updateSessionStatus(pid, null)            
+                      updateSessionStatus(pid, null)
+                      updateSessionStatus(-1, null) // Clear the "starting" session status too
+                      Log.e("SignalRClient", "DEBUG: Reset session flags and updated statuses.")
             if (wasStartingOurOwn || wasTellPc) {
                 // mainViewModel.addLog("[AI] Switching to new session PID $pid", com.omni.sync.ui.screen.LogType.INFO) // REMOVED redundant log
                 switchAiSession(pid) // Notifies Hub AND updates local state
@@ -689,8 +692,9 @@ class SignalRClient(
     }
 
     private fun updateSessionStatus(pid: Int, status: String?) {
+        val effectiveStatus = if (status == "FINISHED") null else status
         val currentMap = _aiStatusMap.value
-        _aiStatusMap.value = currentMap + (pid to status)
+        _aiStatusMap.value = currentMap + (pid to effectiveStatus)
         updateActiveView()
     }
 
@@ -859,6 +863,8 @@ class SignalRClient(
     }
 
     fun startNewAiSession(workspace: String? = null) {
+        Log.e("SignalRClient", "DEBUG: startNewAiSession CALLED with workspace: $workspace")
+        android.widget.Toast.makeText(context, "AI Launching: $workspace", android.widget.Toast.LENGTH_SHORT).show()
         if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {       
             if (_isStartingSession) {
                 Log.d("SignalRClient", "Already starting a session, ignoring request.")
@@ -874,14 +880,25 @@ class SignalRClient(
             setSelectedPid(-1)
             updateSessionStatus(-1, "Starting new session...")
 
-            hubConnection?.send("StartNewAiSession", workspace)
+            try {
+                Log.e("SignalRClient", "DEBUG: Sending StartNewAiSessionAndroid to Hub with workspace: $workspace")
+                hubConnection?.send("StartNewAiSessionAndroid", workspace)
+                Log.e("SignalRClient", "DEBUG: StartNewAiSessionAndroid send call completed successfully.")
+            } catch (e: Exception) {
+                Log.e("SignalRClient", "ERROR: Failed to send StartNewAiSessionAndroid: ${e.message}")
+                android.widget.Toast.makeText(context, "SignalR Send Error: ${e.message}", android.widget.Toast.LENGTH_LONG).show()
+            }
         }
     }
 
     fun stopAiSession(pid: Int) {
         if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {       
             updateSessionStatus(pid, "Closing session...")
-            hubConnection?.send("StopAiSession", pid)
+            try {
+                hubConnection?.send("StopAiSession", pid)
+            } catch (e: Exception) {
+                Log.e("SignalRClient", "ERROR: Failed to send StopAiSession: ${e.message}")
+            }
         }
     }
 
@@ -967,9 +984,18 @@ class SignalRClient(
     }
 
     fun startCliAtWorkspace(path: String) {
+        Log.e("SignalRClient", "DEBUG: startCliAtWorkspace CALLED with path: $path")
+        android.widget.Toast.makeText(context, "AI Workspace: $path", android.widget.Toast.LENGTH_SHORT).show()
         if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
             _aiStatus.value = "Starting session at workspace..."
-            hubConnection?.send("StartCliAtWorkspace", path)
+            try {
+                Log.e("SignalRClient", "DEBUG: Sending StartCliAtWorkspaceAndroid to Hub with path: $path")
+                hubConnection?.send("StartCliAtWorkspaceAndroid", path)
+                Log.e("SignalRClient", "DEBUG: StartCliAtWorkspaceAndroid send call completed.")
+            } catch (e: Exception) {
+                Log.e("SignalRClient", "ERROR: Failed to send StartCliAtWorkspaceAndroid: ${e.message}")
+                android.widget.Toast.makeText(context, "SignalR Error: ${e.message}", android.widget.Toast.LENGTH_LONG).show()
+            }
         }
     }
 

@@ -336,10 +336,10 @@ namespace OmniSync.Hub.Infrastructure.Services
                                 }
 
                                 // 2. If this process is a PARENT of another gemini process in our list, it's likely a wrapper (prefer the leaf)
-                                // CRITICAL: Only skip if we ARE NOT currently launching, otherwise we might kill the session we just started.
                                 var child = rawGeminiProcesses.FirstOrDefault(other => other.Parent == gp.Pid);
-                                if (!_isLaunching && child.Pid != 0)
+                                if (child.Pid != 0)
                                 {
+                                    _logger.LogInformation($"[AiCliService] Discovery: Skipping wrapper PID {gp.Pid} (child {child.Pid} found)");
                                     parentPids[gp.Pid] = child.Pid;
                                     continue;
                                 }
@@ -347,8 +347,14 @@ namespace OmniSync.Hub.Infrastructure.Services
                                 // Skip if failed too many times
                                 if (_failedPids.TryGetValue(gp.Pid, out var failInfo))
                                 {
-                                    if (failInfo.FailCount >= 3 && (now - failInfo.LastAttempt).TotalMinutes < 1) continue;
-                                    if ((now - failInfo.LastAttempt).TotalSeconds < 10) continue;
+                                    if (failInfo.FailCount >= 3 && (now - failInfo.LastAttempt).TotalMinutes < 1) {
+                                        _logger.LogDebug($"[AiCliService] Discovery: Skipping PID {gp.Pid} (failed {failInfo.FailCount} times recently)");
+                                        continue;
+                                    }
+                                    if ((now - failInfo.LastAttempt).TotalSeconds < 10) {
+                                        _logger.LogDebug($"[AiCliService] Discovery: Skipping PID {gp.Pid} (cooldown)");
+                                        continue;
+                                    }
                                 }
 
                                 _logger.LogInformation($"[AiCliService] Found verified Gemini process: PID {gp.Pid}");
@@ -361,26 +367,21 @@ namespace OmniSync.Hub.Infrastructure.Services
                             }
                             
                             // Explicitly remove sessions that we now know are parents (wrappers)
-                            // SKIP this cleanup if we are currently launching to avoid race conditions
-                            if (!_isLaunching)
+                            foreach (var kvp in parentPids)
                             {
-                                foreach (var kvp in parentPids)
-                                {
-                                    int parentPid = kvp.Key;
-                                    int childPid = kvp.Value;
+                                int parentPid = kvp.Key;
+                                int childPid = kvp.Value;
 
-                                    if (_sessions.TryRemove(parentPid, out var session))
-                                    {
-                                        _logger.LogInformation($"[AiCliService] Removing wrapper session PID {parentPid} because leaf process PID {childPid} was discovered.");
-                                        session.Dispose();
-                                        _sessionNames.TryRemove(parentPid, out _);
-                                        _workspaces.TryRemove(parentPid, out _);
-                                    }
+                                if (_sessions.TryRemove(parentPid, out var session))
+                                {
+                                    _logger.LogInformation($"[AiCliService] Removing wrapper session PID {parentPid} because leaf process PID {childPid} was discovered.");
+                                    session.Dispose();
+                                    _sessionNames.TryRemove(parentPid, out _);
+                                    _workspaces.TryRemove(parentPid, out _);
                                 }
-                            }
-                            else if (parentPids.Any())
-                            {
-                                _logger.LogInformation($"[AiCliService] Launch in progress. Skipping cleanup of {parentPids.Count} potential wrapper PIDs: {string.Join(", ", parentPids.Keys)}");
+                                
+                                // ALSO remove from the return list 'pids' so the Diff logic doesn't see them
+                                pids.Remove(parentPid);
                             }
 
                             _lastWmiDiscovery = now;
@@ -653,18 +654,13 @@ namespace OmniSync.Hub.Infrastructure.Services
                 {
                     // Capture ALL existing Gemini PIDs before launch (even if not yet connected)
                     onProgress?.Invoke("Scanning for existing sessions...");
-                    var initialPids = await GetAllGeminiPidsAsync(); 
-                _logger.LogInformation($"[AiCliService][INIT_DEBUG] Baseline Gemini PIDs: {string.Join(", ", initialPids)}");
+                    var initialPids = await GetAllGeminiPidsAsync();
 
                 string rootPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", ".."));
-                _logger.LogInformation($"[AiCliService][INIT_DEBUG] Resolved Hub Root Path: {rootPath}");
-                
                 string geminiDir = Path.GetFullPath(Path.Combine(rootPath, "..", "Tools", "gemini-cli")).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-                _logger.LogInformation($"[AiCliService][INIT_DEBUG] Resolved Gemini CLI Dir: {geminiDir}");
                 
                 if (!Directory.Exists(geminiDir))
                 {
-                    _logger.LogError($"[AiCliService][INIT_DEBUG] CRITICAL: Gemini CLI directory does not exist: {geminiDir}");
                     onProgress?.Invoke("Error: Gemini CLI directory not found.");
                     return null;
                 }
@@ -681,14 +677,12 @@ namespace OmniSync.Hub.Infrastructure.Services
                 finalWorkspace = finalWorkspace.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
                 string workspaceArg = finalWorkspace.Replace("\\", "/");
 
-                _logger.LogInformation($"[AiCliService][INIT_DEBUG] Final Workspace: {finalWorkspace} (Arg: {workspaceArg})");
                 _logger.LogInformation($"[AiCliService] Launching process: cd /d {geminiDir} && node bundle/gemini.js --workspace {workspaceArg}");
                 onProgress?.Invoke($"Launching process in {finalWorkspace}...");
 
                 string bundlePath = Path.Combine(geminiDir, "bundle", "gemini.js");
                 if (!File.Exists(bundlePath))
                 {
-                    _logger.LogError($"[AiCliService][INIT_DEBUG] CRITICAL: bundle/gemini.js not found at {bundlePath}");
                     onProgress?.Invoke("Error: bundle/gemini.js not found.");
                     return null;
                 }
@@ -706,29 +700,16 @@ namespace OmniSync.Hub.Infrastructure.Services
                 string debugLog = Path.Combine(rootPath, "gemini_cli_debug.log");
                 string finalCommand = $"set GEMINI_DEBUG_LOG_FILE={debugLog} && {command}";
                 
-                _logger.LogInformation($"[AiCliService][INIT_DEBUG] Full Command String: {finalCommand}");
                 _hubMonitorService.AddLogMessage($"[AI] Launch Command: {finalCommand}");
 
-                var startInfo = new ProcessStartInfo
-                {
-                    FileName = "cmd.exe",
-                    Arguments = $"/K \"{finalCommand}\"", // Reverting to original Arguments
-                    UseShellExecute = true,
-                    CreateNoWindow = false,
-                    WindowStyle = ProcessWindowStyle.Normal
-                };
-
-                _logger.LogInformation($"[AiCliService][INIT_DEBUG] Starting shell process (using /K to preserve window)...");
-                var shellProcess = Process.Start(startInfo);
-                if (shellProcess == null)
-                {
-                    _logger.LogError("[AiCliService][INIT_DEBUG] CRITICAL: Process.Start returned null for shell process.");
-                    return null;
-                }
-                _logger.LogInformation($"[AiCliService] Process started (Shell PID: {shellProcess.Id}). Waiting for node child process...");
+                _processService.ExecuteCommandNonAdmin("cmd.exe", $"/K \"{finalCommand}\"");
+                
+                // We don't have shellProcess.Id with ShellExecute, so we rely on Diff strategy
+                _logger.LogInformation($"[AiCliService] Process started via ShellExecute. Waiting for node process via Diff...");
                     onProgress?.Invoke("Process started. Waiting for connection...");
 
                     int? launchedPid = null;
+                    int? candidatePid = null;
 
                     // Wait for the process and its pipe
                     for (int i = 0; i < 40; i++) 
@@ -736,38 +717,17 @@ namespace OmniSync.Hub.Infrastructure.Services
                         _logger.LogInformation($"[AiCliService] Launch check iteration {i+1}/40...");
                         await Task.Delay(1000);
                         
-                        // Strategy 1: Look for child process (Most robust)
-                        int? childPid = GetNodeProcessIdByParent(shellProcess.Id);
-                        if (childPid.HasValue)
-                        {
-                            _logger.LogInformation($"[AiCliService] Found Node child process PID: {childPid.Value}");
-                            
-                            await EnsureSessionAsync(childPid.Value, 2000);
-                            
-                            if (_sessions.ContainsKey(childPid.Value))
-                            {
-                                if (_sessions.TryGetValue(childPid.Value, out var session))
-                                {
-                                    session.SetShellProcess(shellProcess);
-                                }
-                                launchedPid = childPid.Value;
-                                break;
-                            }
-                        }
-
-                        // Strategy 2: Fallback to Diff
+                        // Strategy 2: Diff (Essential since we don't have parent PID)
                         _lastWmiDiscovery = DateTime.MinValue;
                         var currentSessions = await DiscoverSessionsAsync(1000, 5000); 
-                        var newPid = currentSessions.Except(initialPids).FirstOrDefault();
+                        var diffPids = currentSessions.Except(initialPids).ToList();
                         
-                        if (newPid != 0)
+                        if (candidatePid == null && diffPids.Any())
                         {
-                            if (_sessions.TryGetValue(newPid, out var session))
-                            {
-                                session.SetShellProcess(shellProcess);
-                            }
-                            launchedPid = newPid;
-                            break;
+                            candidatePid = diffPids.First();
+                            _logger.LogInformation($"[AiCliService] Identified Candidate PID via Diff: {candidatePid}");
+                            launchedPid = candidatePid;
+                            break; // EXIT LOOP IMMEDIATELY once we have the PID
                         }
                         
                         onProgress?.Invoke($"Waiting for startup... (Iter {i+1}/40)");
@@ -775,59 +735,82 @@ namespace OmniSync.Hub.Infrastructure.Services
 
                     if (launchedPid.HasValue)
                     {
-                        // AUTO-NAME based on workspace
+                        int pid = launchedPid.Value;
+                        try {
+                            File.AppendAllText(@"D:\SSDProjects\Omni\pipe_debug.log", $"[{DateTime.Now:HH:mm:ss}] LAUNCH: PID DETECTED {pid}\n");
+                        } catch {}
+
+                        // AUTO-NAME based on workspace (Fast path)
                         try 
                         {
                             string dirName = Path.GetFileName(finalWorkspace.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
                             if (string.IsNullOrEmpty(dirName)) dirName = "Root";
-                            
-                            await SetSessionNameAsync(launchedPid.Value, GetUniqueSessionName(dirName, launchedPid.Value));
-                            
-                            // SET TARGET PID to the new session
-                            _targetPid = launchedPid.Value;
-                            _logger.LogInformation($"[AiCliService] Set target PID to new session {launchedPid.Value}");
+                            await SetSessionNameAsync(pid, GetUniqueSessionName(dirName, pid));
+                            _targetPid = pid;
                         }
-                        catch (Exception ex)
+                        catch {}
+
+                        // NON-BLOCKING Connection, Readiness & Prompt Flushing
+                        _ = Task.Run(async () => 
                         {
-                            _logger.LogWarning($"Failed to auto-name session for workspace {workspace}: {ex.Message}");
-                        }
-
-                        string msg = $"Successfully connected to new session PID {launchedPid.Value}.";
-                        onProgress?.Invoke(msg);
-
-                        // Give the CLI a moment to settle (e.g. complete initial auth checks) before dumping the queue
-                        // This prevents prompts from being swallowed if the CLI is in an early startup state
-                        await Task.Delay(2000);
-
-                        // Process pending prompts if any
-                        _logger.LogInformation($"[AiCliService] Processing {_pendingPrompts.Count} pending prompts for PID {launchedPid.Value}...");
-                        while (_pendingPrompts.TryDequeue(out var pending))
-                        {
-                            await _sessionLock.WaitAsync();
-                            try 
+                            _logger.LogInformation($"[AiCliService] [BG] Starting connection monitor for PID {pid}...");
+                            
+                            // 1. Wait for pipe connection (Iterative because DiscoverSessionsAsync might have failed it initially)
+                            GeminiSession? session = null;
+                            for (int retry = 0; retry < 20; retry++)
                             {
-                                if (_sessions.TryGetValue(launchedPid.Value, out var session))
+                                if (_sessions.TryGetValue(pid, out session) && session.IsConnected)
+                                    break;
+                                
+                                _logger.LogInformation($"[AiCliService] [BG] Waiting for pipe connection for PID {pid} (Attempt {retry+1})...");
+                                await DiscoverSessionsAsync(1000, 5000);
+                                await Task.Delay(1000);
+                            }
+
+                            if (session == null || !session.IsConnected)
+                            {
+                                _logger.LogError($"[AiCliService] [BG] Failed to establish pipe connection for PID {pid} after retries.");
+                                return;
+                            }
+
+                            // 2. Wait for readiness handshake
+                            _logger.LogInformation($"[AiCliService] [BG] PID {pid} connected. Waiting for handshake...");
+                            bool ready = await session.WaitUntilReadyAsync(15000);
+                            if (ready)
+                            {
+                                _logger.LogInformation($"[AiCliService] [BG] PID {pid} is ready for prompts.");
+                            }
+                            else
+                            {
+                                _logger.LogWarning($"[AiCliService] [BG] PID {pid} timed out waiting for 'ready' handshake. Proceeding anyway.");
+                            }
+
+                            // 3. Flush pending prompts
+                            _logger.LogInformation($"[AiCliService] [BG] Processing {_pendingPrompts.Count} pending prompts for PID {pid}...");
+                            while (_pendingPrompts.TryDequeue(out var pending))
+                            {
+                                await _sessionLock.WaitAsync();
+                                try 
                                 {
                                     string textToSend = pending.Text;
                                     if (_isTriggeringTellPcFromHub && _pendingTellPcContext != null)
                                     {
-                                        _logger.LogInformation($"[AiCliService] Applying PENDING Tell PC context to queued prompt for PID {launchedPid.Value}");
                                         textToSend = $"[SYSTEM_CONTEXT: {_pendingTellPcContext}]\n\nUser Request: {pending.Text}";
                                         _isTriggeringTellPcFromHub = false;
                                         _pendingTellPcContext = null;
                                     }
 
-                                    _logger.LogInformation($"[AiCliService] Sending pending prompt directly to PID {launchedPid.Value}: {textToSend.Take(30)}...");
+                                    _logger.LogInformation($"[AiCliService] [BG] Sending pending prompt directly to PID {pid}: {textToSend.Take(30)}...");
                                     await session.SendPromptAsync(textToSend);
                                 }
+                                finally
+                                {
+                                    _sessionLock.Release();
+                                }
                             }
-                            finally
-                            {
-                                _sessionLock.Release();
-                            }
-                        }
+                        });
 
-                        return launchedPid.Value;
+                        return pid;
                     }
 
                     string errorMsg = "Failed to find new Gemini session after 40 seconds.";
@@ -836,7 +819,7 @@ namespace OmniSync.Hub.Infrastructure.Services
                     
                     // Cleanup removed: We keep the shell process alive because we used /K 
                     // and we want the user to be able to see any errors in the console.
-                    _logger.LogInformation($"[AiCliService][INIT_DEBUG] Launch failed. Leaving shell process {shellProcess.Id} alive for user inspection (due to /K).");
+                    _logger.LogInformation($"[AiCliService][INIT_DEBUG] Launch failed. Leaving shell process alive for user inspection (due to /K).");
 
                     return null;
                 }
@@ -889,8 +872,9 @@ namespace OmniSync.Hub.Infrastructure.Services
                             int pid = Convert.ToInt32(pidObj);
                             string cmdLower = commandLine.ToLower();
                             bool isGemini = (cmdLower.Contains("bundle/gemini.js") || 
+                                             cmdLower.Contains("bundle\\gemini.js") ||
                                              cmdLower.Contains("omni_gemini") || 
-                                             (cmdLower.Contains("node") && cmdLower.Contains("gemini") && !cmdLower.Contains("@google") && !cmdLower.Contains("node_modules")));
+                                             (cmdLower.Contains("node") && cmdLower.Contains("gemini.js") && !cmdLower.Contains("@google") && !cmdLower.Contains("node_modules")));
 
                             if (isGemini)
                             {
@@ -1066,8 +1050,9 @@ namespace OmniSync.Hub.Infrastructure.Services
                             int parentPid = parentObj != null ? Convert.ToInt32(parentObj) : 0;
                             string cmdLower = commandLine.ToLower();
                             bool isGemini = (cmdLower.Contains("bundle/gemini.js") || 
+                                             cmdLower.Contains("bundle\\gemini.js") ||
                                              cmdLower.Contains("omni_gemini") || 
-                                             (cmdLower.Contains("node") && cmdLower.Contains("gemini") && !cmdLower.Contains("@google") && !cmdLower.Contains("node_modules")));
+                                             (cmdLower.Contains("node") && cmdLower.Contains("gemini.js") && !cmdLower.Contains("@google") && !cmdLower.Contains("node_modules")));
 
                             if (isGemini)
                             {
@@ -1100,9 +1085,10 @@ namespace OmniSync.Hub.Infrastructure.Services
             
             if (_isLaunching)
             {
-                _logger.LogInformation("[AiCliService] Launch in progress. Queuing prompt.");
-                _pendingPrompts.Enqueue((text, pid));
-                return true; 
+                _logger.LogInformation("[AiCliService] Launch in progress. Waiting for launch to complete...");
+                await _launchLock.WaitAsync();
+                _launchLock.Release();
+                _logger.LogInformation("[AiCliService] Launch completed. Proceeding with SendPromptAsync.");
             }
 
             int target = pid;
@@ -1183,6 +1169,16 @@ namespace OmniSync.Hub.Infrastructure.Services
             {
                 if (_sessions.TryGetValue(target, out var session))
                 {
+                    if (!session.IsReady)
+                    {
+                        _logger.LogInformation($"[AiCliService] Session {target} not ready yet. Waiting for handshake...");
+                        bool ready = await session.WaitUntilReadyAsync(30000);
+                        if (!ready)
+                        {
+                            _logger.LogWarning($"[AiCliService] Session {target} timed out waiting for handshake. Proceeding anyway.");
+                        }
+                    }
+
                     bool result = await session.SendPromptAsync(finalPrompt);
                     _logger.LogInformation($"[AiCliService] SendPromptAsync result for PID {target}: {result}");
                     return result;
@@ -1304,12 +1300,24 @@ namespace OmniSync.Hub.Infrastructure.Services
         private Process? _shellProcess;
         private string? _lastHistoryJson;
         private int _pendingMaxChars = 0;
+        private bool _isReady = false;
+        private readonly TaskCompletionSource<bool> _readyTcs = new();
 
         public bool IsConnected => _pipeClient?.IsConnected ?? false;
+        public bool IsReady => _isReady;
         public int Pid => _pid;
         public string Sid => _sid;
         public DateTime StartTime => _startTime;
         public Process? ShellProcess => _shellProcess;
+
+        public async Task<bool> WaitUntilReadyAsync(int timeoutMs)
+        {
+            if (_isReady) return true;
+            
+            var timeoutTask = Task.Delay(timeoutMs);
+            var completedTask = await Task.WhenAny(_readyTcs.Task, timeoutTask);
+            return completedTask == _readyTcs.Task || _isReady;
+        }
 
         public GeminiSession(int pid, DateTime startTime, ILogger logger, bool debugMode, Action<int, string, bool, bool, bool, bool> onResponse, Action<int, string, string, List<string>?> onDialog)
         {
@@ -1334,11 +1342,11 @@ namespace OmniSync.Hub.Infrastructure.Services
             try
             {
                 _pipeClient = new NamedPipeClientStream(".", $"gemini-cli-{_pid}", PipeDirection.InOut, PipeOptions.Asynchronous);
-                _logger.LogInformation($"[GeminiSession][INIT_DEBUG] SID: {_sid} | NamedPipeClientStream object created. Waiting for connection...");
                 
                 await _pipeClient.ConnectAsync(timeoutMs);
 
-                _logger.LogInformation($"[GeminiSession][INIT_DEBUG] SID: {_sid} | Pipe connected! Setting up writer and starting read loop.");
+                _logger.LogInformation($"[GeminiSession] Pipe connected! Setting up writer and starting read loop.");
+                
                 _writer = new StreamWriter(_pipeClient) { AutoFlush = true };
                 _cts = new CancellationTokenSource();
                 _ = Task.Run(() => ReadLoopAsync(_cts.Token));
@@ -1348,10 +1356,10 @@ namespace OmniSync.Hub.Infrastructure.Services
             }
             catch (Exception ex)
             {
-                _logger.LogWarning($"[GeminiSession][INIT_DEBUG] SID: {_sid} | CONNECTION FAILED for PID {_pid}: {ex.Message} (Type: {ex.GetType().Name})");
+                _logger.LogWarning($"[GeminiSession] CONNECTION FAILED for PID {_pid}: {ex.Message} (Type: {ex.GetType().Name})");
                 if (ex.InnerException != null)
                 {
-                    _logger.LogDebug($"[GeminiSession][INIT_DEBUG] SID: {_sid} | Inner Exception: {ex.InnerException.Message}");
+                    _logger.LogDebug($"[GeminiSession] Inner Exception: {ex.InnerException.Message}");
                 }
                 return false;
             }
@@ -1415,6 +1423,10 @@ namespace OmniSync.Hub.Infrastructure.Services
                         var payload = JsonSerializer.Serialize(payloadObj);
                         Console.WriteLine($"[GeminiPipe WRITE] PID {_pid}: {payload}");
                         _logger.LogInformation($"[GeminiSession] Sending to PID {_pid}: {payload}");
+                        
+                        try {
+                            File.AppendAllText(@"D:\SSDProjects\Omni\pipe_debug.log", $"[{DateTime.Now:HH:mm:ss}] WRITE PID {_pid}: {payload}\n");
+                        } catch {}
         
                         // Add to sent prompts to prevent echo ghosting
                         if (command == "prompt" && !string.IsNullOrEmpty(text))
@@ -1452,21 +1464,17 @@ namespace OmniSync.Hub.Infrastructure.Services
             {
                 while (!token.IsCancellationRequested)
                 {
-                    _logger.LogDebug($"[GeminiSession][INIT_DEBUG] SID: {_sid} | Waiting for line from PID {_pid}...");
+                    _logger.LogDebug($"[GeminiSession] Waiting for line from PID {_pid}...");
                     var line = await reader.ReadLineAsync(token);
+
                     if (line == null) 
                     {
-                        _logger.LogInformation($"[GeminiSession][INIT_DEBUG] SID: {_sid} | Read NULL from PID {_pid}. Pipe closed by remote side.");
+                        _logger.LogInformation($"[GeminiSession] Read NULL from PID {_pid}. Pipe closed by remote side.");
                         break;
                     }
 
-                    if (_debugMode)
-                    {
-                        // _logger.LogInformation($"[GeminiPipe DEBUG] SID: {_sid} | PID {_pid} RAW: {line}");
-                    }
-
-                    Console.WriteLine($"[GeminiPipe RAW] PID {_pid}: {line}");
                     _logger.LogDebug($"[GeminiSession] SID: {_sid} | Received from PID {_pid}: {line}");
+                    
                     try
                     {
                         var msg = JsonDocument.Parse(line);
@@ -1617,6 +1625,20 @@ namespace OmniSync.Hub.Infrastructure.Services
                                     JsonSerializer.Deserialize<List<string>>(op.GetRawText()) : null;
 
                                 _logger.LogInformation($"[GeminiSession] SID: {_sid} | Received dialog from PID {_pid}: {dialogType}");
+                                try {
+                                    File.AppendAllText(@"D:\SSDProjects\Omni\pipe_debug.log", $"[{DateTime.Now:HH:mm:ss}] DIALOG PID {_pid}: {dialogType}\n");
+                                } catch {}
+                                
+                                if (dialogType == "ready")
+                                {
+                                    _isReady = true;
+                                    _readyTcs.TrySetResult(true);
+                                    _logger.LogInformation($"[GeminiSession] SID: {_sid} | CLI is READY (handshake received).");
+                                    try {
+                                        File.AppendAllText(@"D:\SSDProjects\Omni\pipe_debug.log", $"[{DateTime.Now:HH:mm:ss}] HANDSHAKE_SUCCESS PID {_pid}\n");
+                                    } catch {}
+                                }
+
                                 _lastDialogType = dialogType;
                                 _onDialog(_pid, dialogType ?? "unknown", prompt ?? "", options);
                             }

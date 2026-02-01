@@ -146,23 +146,16 @@ namespace OmniSync.Hub.Presentation.Hubs
             return false;
         }
 
-        public bool Authenticate(string apiKey)
+        public async Task<bool> Authenticate(string apiKey)
         {
-            var ip = Context.GetHttpContext()?.Connection.RemoteIpAddress?.ToString();
-            var isAuthenticated = _authService.Validate(apiKey);
-            if (isAuthenticated)
+            _logger.LogInformation($"[RpcApiHub] Authenticate requested by {Context.ConnectionId}");
+            if (_authService.Validate(apiKey))
             {
                 Context.Items["IsAuthenticated"] = true;
-                _logger.LogInformation($"[RpcApiHub][INIT_DEBUG] Client AUTHENTICATED: {Context.ConnectionId} from IP: {ip}");
-                
-                // Immediately send current states after successful authentication
-                _ = SendCurrentState();
-                
+                _logger.LogInformation($"[RpcApiHub] Connection {Context.ConnectionId} authenticated successfully.");
                 return true;
             }
-
-            _logger.LogWarning($"[RpcApiHub][INIT_DEBUG] Client FAILED AUTHENTICATION: {Context.ConnectionId} from IP: {ip}");
-            Context.Abort();
+            _logger.LogWarning($"[RpcApiHub] Connection {Context.ConnectionId} failed authentication. Provided key length: {apiKey?.Length ?? 0}");
             return false;
         }
 
@@ -1110,8 +1103,10 @@ namespace OmniSync.Hub.Presentation.Hubs
 
         private static readonly SemaphoreSlim _aiLaunchSemaphore = new(1, 1);
 
+        [HubMethodName("StartNewAiSession")]
         public async Task<int?> StartNewAiSession(string? workspace = null, string? model = null)
         {
+            _logger.LogInformation($"[RpcApiHub] StartNewAiSession call received. Workspace={workspace}, Model={model}, Authenticated={Context.Items.ContainsKey("IsAuthenticated")}");
             if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
             {
                 await _aiLaunchSemaphore.WaitAsync();
@@ -1160,8 +1155,17 @@ namespace OmniSync.Hub.Presentation.Hubs
             return null;
         }
 
+        [HubMethodName("StartNewAiSessionAndroid")]
+        public async Task<int?> StartNewAiSessionAndroid(string? workspace)
+        {
+            _logger.LogInformation($"[RpcApiHub] StartNewAiSessionAndroid hit. Calling main method...");
+            return await StartNewAiSession(workspace, null);
+        }
+
+        [HubMethodName("StartCliAtWorkspace")]
         public async Task<int?> StartCliAtWorkspace(string path, string? model = null)
         {
+            _logger.LogInformation($"[RpcApiHub] StartCliAtWorkspace call received. Path={path}, Model={model}, Authenticated={Context.Items.ContainsKey("IsAuthenticated")}");
             if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
             {
                 _logger.LogInformation($"[RpcApiHub] StartCliAtWorkspace requested: {path} (Model: {model})");
@@ -1179,6 +1183,13 @@ namespace OmniSync.Hub.Presentation.Hubs
                 return result;
             }
             return null;
+        }
+
+        [HubMethodName("StartCliAtWorkspaceAndroid")]
+        public async Task<int?> StartCliAtWorkspaceAndroid(string path)
+        {
+            _logger.LogInformation($"[RpcApiHub] StartCliAtWorkspaceAndroid hit. Calling main method...");
+            return await StartCliAtWorkspace(path, null);
         }
 
         public async Task StopAiSession(int pid)
@@ -1262,7 +1273,7 @@ namespace OmniSync.Hub.Presentation.Hubs
         {
             if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
             {
-                _logger.LogInformation("[RpcApiHub] GetAiSessions requested");
+                _logger.LogInformation($"[RpcApiHub] GetAiSessions requested by {Context.ConnectionId}");
                 // Request from legacy Python listeners (optional, but keep for compatibility)
                 await Clients.All.SendAsync("RequestAiSessions");
 

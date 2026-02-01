@@ -174,26 +174,29 @@ def main():
     
     # Ensure device is connected with timeout
     print("\n=== Connecting to Device ===")
-    print("Waiting for device connection (3 minute timeout)...")
+    print("Waiting for device connection (5 minute timeout)...")
     device_queue = queue.Queue()
     
     def connect_worker():
         try:
+            print("Connection worker started...")
             dev = ensure_device(args.device)
+            print(f"Connection worker finished. Result: {dev}")
             device_queue.put(dev)
-        except SystemExit:
+        except SystemExit as e:
+            print(f"Connection worker exited with SystemExit: {e}")
             device_queue.put(None)
         except Exception as e:
-            print(f"\nConnection error: {e}")
+            print(f"\nConnection error in worker: {e}")
             device_queue.put(None)
 
     connect_thread = threading.Thread(target=connect_worker, daemon=True)
     connect_thread.start()
     
     try:
-        device = device_queue.get(timeout=180)
+        device = device_queue.get(timeout=300)
     except queue.Empty:
-        print("\n[TIMEOUT] Device connection timed out after 5 seconds (readline did not evaluate).")
+        print("\n[TIMEOUT] Device connection timed out after 5 minutes.")
         print("Proceeding without installation. You can run with --no-install to skip deployment.")
         print("\n" + "=" * 60)
         print("[OK] Build successful, deployment skipped due to connection timeout.")

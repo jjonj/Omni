@@ -262,6 +262,44 @@ namespace OmniSync.Hub.Infrastructure.Services
             }
         }
 
+        public virtual void ExecuteCommandNonAdmin(string command, string? arguments = null)
+        {
+            _monitorService.AddLogMessage($"[ProcessService] ExecuteCommandNonAdmin: '{command}' Args: '{arguments}'");
+            
+            Action action = () => {
+                try
+                {
+                    // Use Shell.Application COM object to start a non-elevated process from an elevated one
+                    Type shellType = Type.GetTypeFromProgID("Shell.Application");
+                    if (shellType != null)
+                    {
+                        dynamic shell = Activator.CreateInstance(shellType);
+                        // ShellExecute(file, vArgs, vDir, vOperation, vShow)
+                        // vOperation: "open", vShow: 1 (Normal)
+                        shell.ShellExecute(command, arguments ?? "", "", "open", 1);
+                        _monitorService.AddLogMessage($"[ProcessService] ExecuteCommandNonAdmin started via Shell.Application: {command}");
+                    }
+                    else
+                    {
+                        _monitorService.AddLogMessage("[ERROR] Could not get Type for Shell.Application");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _monitorService.AddLogMessage($"[ERROR] ExecuteCommandNonAdmin failed: {ex.Message}");
+                }
+            };
+
+            if (System.Windows.Application.Current != null)
+            {
+                System.Windows.Application.Current.Dispatcher.Invoke(action);
+            }
+            else
+            {
+                action();
+            }
+        }
+
         private (string executable, string arguments) FindLongestExistingPath(string command)
         {
             if (string.IsNullOrWhiteSpace(command)) return ("", "");
