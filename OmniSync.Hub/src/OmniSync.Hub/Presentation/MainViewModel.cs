@@ -29,6 +29,7 @@ namespace OmniSync.Hub.Presentation
         private readonly AiCliService _aiCliService;
         private readonly LayoutCaptureService _layoutCaptureService;
         private readonly ProjectLauncherService _projectLauncherService;
+        private readonly CommandDispatcher _commandDispatcher;
         private readonly DispatcherTimer _uiUpdateTimer;
         private DispatcherTimer _longPressTimer;
         private bool _isLongPress;
@@ -57,6 +58,7 @@ namespace OmniSync.Hub.Presentation
         public ICommand DeleteProjectActionCommand { get; }
         public ICommand CaptureLayoutCommand { get; }
         public ICommand LaunchProjectCommand { get; }
+        public ICommand ShowOmniSweepCommand { get; }
 
         public ICommand AddProjectRootCommand { get; }
         public ICommand DeleteProjectRootCommand { get; }
@@ -524,7 +526,7 @@ namespace OmniSync.Hub.Presentation
             set { _isAltPressed = value; OnPropertyChanged(); }
         }
 
-        public MainViewModel(HubMonitorService hubMonitorService, InputService inputService, ProcessService processService, ShutdownService shutdownService, RegistryService registryService, HubSettingsService settingsService, KeyboardHook keyboardHook, AiCliService aiCliService, LayoutCaptureService layoutCaptureService, ProjectLauncherService projectLauncherService)
+        public MainViewModel(HubMonitorService hubMonitorService, InputService inputService, ProcessService processService, ShutdownService shutdownService, RegistryService registryService, HubSettingsService settingsService, KeyboardHook keyboardHook, AiCliService aiCliService, LayoutCaptureService layoutCaptureService, ProjectLauncherService projectLauncherService, CommandDispatcher commandDispatcher)
         {
             _hubMonitorService = hubMonitorService;
             _inputService = inputService;
@@ -536,6 +538,7 @@ namespace OmniSync.Hub.Presentation
             _aiCliService = aiCliService;
             _layoutCaptureService = layoutCaptureService;
             _projectLauncherService = projectLauncherService;
+            _commandDispatcher = commandDispatcher;
 
             // Initialize collections
             ActiveConnections = _hubMonitorService.ActiveConnections;
@@ -608,6 +611,7 @@ namespace OmniSync.Hub.Presentation
             StartRecordingHotkeyCommand = new RelayCommand(p => ExecuteStartRecording(p as HotkeyConfig));
             AddHotkeyCommand = new RelayCommand(_ => ExecuteAddHotkey());
             DeleteHotkeyCommand = new RelayCommand(p => ExecuteDeleteHotkey(p as string));
+            ShowOmniSweepCommand = new RelayCommand(_ => _commandDispatcher.RequestShowProjectSelector());
             
             AddProjectRootCommand = new RelayCommand(_ => ExecuteAddProjectRoot());
             DeleteProjectRootCommand = new RelayCommand(p => ExecuteDeleteProjectRoot(p as string));

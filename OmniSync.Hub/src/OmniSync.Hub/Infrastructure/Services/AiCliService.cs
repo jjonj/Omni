@@ -215,7 +215,9 @@ namespace OmniSync.Hub.Infrastructure.Services
 
         public string GetSessionName(int pid)
         {
-            return _sessionNames.TryGetValue(pid, out var name) ? name : $"Session {pid}";
+            if (_sessionNames.TryGetValue(pid, out var name)) return name;
+            if (_workspaces.TryGetValue(pid, out var ws) && !string.IsNullOrEmpty(ws)) return ws;
+            return $"Session {pid}";
         }
 
         public IDictionary<int, string> GetSessionsWithNames()
@@ -978,6 +980,42 @@ namespace OmniSync.Hub.Infrastructure.Services
                             if (isGemini)
                             {
                                 rawGeminiProcesses.Add((foundPid, commandLine, parentPid));
+
+                                // Extract workspace from command line
+                                string workspace = "";
+                                if (commandLine.Contains("--workspace"))
+                                {
+                                    var parts = commandLine.Split(new[] { "--workspace" }, StringSplitOptions.None);
+                                    if (parts.Length > 1)
+                                    {
+                                        var wsPath = parts[1].Trim();
+                                        if (wsPath.StartsWith("\""))
+                                        {
+                                            var endQuote = wsPath.IndexOf("\"", 1);
+                                            if (endQuote != -1) wsPath = wsPath.Substring(1, endQuote - 1);
+                                        }
+                                        else if (wsPath.StartsWith("'"))
+                                        {
+                                            var endQuote = wsPath.IndexOf("'", 1);
+                                            if (endQuote != -1) wsPath = wsPath.Substring(1, endQuote - 1);
+                                        }
+                                        else
+                                        {
+                                            wsPath = wsPath.Split(' ')[0];
+                                        }
+
+                                        try
+                                        {
+                                            workspace = Path.GetFileName(wsPath.TrimEnd('\\', '/'));
+                                        }
+                                        catch { workspace = wsPath; }
+                                    }
+                                }
+                                
+                                if (!string.IsNullOrEmpty(workspace))
+                                {
+                                    _workspaces[foundPid] = workspace;
+                                }
                             }
                         }
                     }

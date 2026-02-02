@@ -208,5 +208,10 @@ namespace OmniSync.Hub.Logic.Services
                     {
                         return _commandMap.Keys;
                     }
+
+                    public void RequestShowProjectSelector()
+                    {
+                        ShowProjectSelectorRequested?.Invoke(this, EventArgs.Empty);
+                    }
                 }
             }

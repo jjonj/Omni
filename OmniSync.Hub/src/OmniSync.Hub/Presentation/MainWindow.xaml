@@ -288,6 +288,11 @@
                                 <Button Content="Focus AI Sessions" 
                                         Command="{Binding FocusAiSessionsCommand}"
                                         MinWidth="120"/>
+                                <Button Content="Omni Sweep" 
+                                        Command="{Binding ShowOmniSweepCommand}"
+                                        MinWidth="120"
+                                        Background="#007ACC"
+                                        FontWeight="Bold"/>
                                 <Button x:Name="ShutdownButton" 
                                         Content="{Binding ScheduledShutdownTimeLabel}" 
                                         PreviewMouseDown="ShutdownButton_MouseDown"
@@ -506,14 +511,45 @@
                                             Background="#007ACC" FontWeight="Bold" Height="35" Margin="0,10,0,0"/>
 
                                     <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="250"/>
+                                        </Grid.ColumnDefinitions>
                                         <Grid.RowDefinitions>
                                             <RowDefinition Height="Auto"/>
                                             <RowDefinition Height="*"/>
                                         </Grid.RowDefinitions>
-                                        <TextBlock Grid.Row="0" Text="Script" FontWeight="Bold" Margin="0,0,0,5"/>
-                                        <TextBox Grid.Row="1" Text="{Binding CurrentEditingMacro.Script, UpdateSourceTrigger=PropertyChanged}" 
+                                        
+                                        <TextBlock Grid.Row="0" Grid.Column="0" Text="Script" FontWeight="Bold" Margin="0,0,0,5"/>
+                                        <TextBox Grid.Row="1" Grid.Column="0" Text="{Binding CurrentEditingMacro.Script, UpdateSourceTrigger=PropertyChanged}" 
                                                  AcceptsReturn="True" VerticalScrollBarVisibility="Auto" 
                                                  FontFamily="Consolas" FontSize="12" Padding="5"/>
+
+                                        <Border Grid.Row="0" Grid.RowSpan="2" Grid.Column="1" Background="#252526" Margin="10,0,0,0" Padding="10">
+                                            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                                <StackPanel>
+                                                    <TextBlock Text="Syntax Help" FontWeight="Bold" Foreground="#007ACC" Margin="0,0,0,10"/>
+                                                    
+                                                    <TextBlock Text="Commands:" FontWeight="Bold" FontSize="11" Margin="0,5"/>
+                                                    <TextBlock Text="send &lt;keys&gt; - send Hello, send ^w" FontSize="10" Opacity="0.8" TextWrapping="Wrap"/>
+                                                    <TextBlock Text="sleep &lt;ms&gt; - sleep 1000" FontSize="10" Opacity="0.8" Margin="0,2"/>
+                                                    <TextBlock Text="run &lt;path&gt; - run notepad.exe" FontSize="10" Opacity="0.8" Margin="0,2"/>
+                                                    <TextBlock Text="winactivate &lt;title&gt; - winactivate Chrome" FontSize="10" Opacity="0.8" Margin="0,2"/>
+                                                    <TextBlock Text="winclose &lt;title&gt; - winclose current" FontSize="10" Opacity="0.8" Margin="0,2"/>
+                                                    <TextBlock Text="volup / voldown / volmute" FontSize="10" Opacity="0.8" Margin="0,2"/>
+                                                    <TextBlock Text="screenshot - Capture screen" FontSize="10" Opacity="0.8" Margin="0,2"/>
+                                                    <TextBlock Text="powershell &lt;cmd&gt; - ps ls" FontSize="10" Opacity="0.8" Margin="0,2"/>
+                                                    <TextBlock Text="clipboard &lt;text&gt; - set PC clip" FontSize="10" Opacity="0.8" Margin="0,2"/>
+
+                                                    <TextBlock Text="Special Keys:" FontWeight="Bold" FontSize="11" Margin="0,10,0,5"/>
+                                                    <TextBlock Text="^=Ctrl, !=Alt, +=Shift, #=Win" FontSize="10" Opacity="0.8"/>
+                                                    <TextBlock Text="(Enter), (Tab), (Esc), (F1)-(F12), (Up), (Down), (Left), (Right), (Space), (Backspace), (Delete)" FontSize="9" Opacity="0.6" TextWrapping="Wrap"/>
+
+                                                    <TextBlock Text="Variables:" FontWeight="Bold" FontSize="11" Margin="0,10,0,5"/>
+                                                    <TextBlock Text="{DATE}, {TIME}, {PC_UPTIME}, {ACTIVE_WINDOW_TITLE}" FontSize="10" Opacity="0.8" TextWrapping="Wrap"/>
+                                                </StackPanel>
+                                            </ScrollViewer>
+                                        </Border>
                                     </Grid>
                                 </DockPanel>
                             </Border>

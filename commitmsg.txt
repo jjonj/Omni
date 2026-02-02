@@ -1,13 +1,5 @@
-feat(android/web): File explorer, AI screen, and TFT improvements
+feat: implement rapid dialog loop protection in Hub
 
-Android:
-- Implement auto-scaling font for path header in FilesScreen.
-- Add state persistence for last active sub-screen (Files vs Editor).
-- Improve AI screen auto-scroll reliability and add a "Model" select button.
-- Increase AI screen zoom level to 2.0x.
-- Verify "Copy Path" in folder dropdown and filename display in Image Viewer.
-
-Web/TFT:
-- Implement 'E' (Emblem) and 'T' (Must-include Trait) hotkey prefixes for Active Mode.
-- Add matched items automatically when a unique prefix-match is found.
-- Support 'contains' matching for prefix searches in processAddModeBuffer.
+- Added tracking of dialog frequency per PID in HubEventSender.
+- Implement auto-response with 'retry_later' if more than 4 dialogs occur within 30 seconds for the same PID.
+- Fixed compilation errors in MacroService.cs and RpcApiHub.cs related to recent changes.

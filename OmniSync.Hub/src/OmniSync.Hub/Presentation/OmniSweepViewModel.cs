@@ -11,6 +11,7 @@ using OmniSync.Hub.Infrastructure;
 using OmniSync.Hub.Infrastructure.Services;
 using OmniSync.Hub.Logic;
 using OmniSync.Hub.Logic.Services;
+using OmniSync.Hub.Logic.Monitoring;
 
 namespace OmniSync.Hub.Presentation
 {
@@ -31,6 +32,7 @@ namespace OmniSync.Hub.Presentation
         private readonly ProjectSearchService _searchService;
         private readonly IMacroService _macroService;
         private readonly ResourceOpenerService _resourceOpenerService;
+        private readonly HubMonitorService _monitorService;
 
         public event EventHandler? RequestClose;
 
@@ -75,7 +77,8 @@ namespace OmniSync.Hub.Presentation
             CalendarService calendarService,
             ProjectSearchService searchService,
             IMacroService macroService,
-            ResourceOpenerService resourceOpenerService)
+            ResourceOpenerService resourceOpenerService,
+            HubMonitorService monitorService)
         {
             _settingsService = settingsService;
             _projectLauncherService = projectLauncherService;
@@ -83,6 +86,7 @@ namespace OmniSync.Hub.Presentation
             _searchService = searchService;
             _macroService = macroService;
             _resourceOpenerService = resourceOpenerService;
+            _monitorService = monitorService;
 
             ExecuteCommand = new RelayCommand(async p => await ExecuteItem(p as OmniSweepItem ?? SelectedItem));
             RunMacroCommand = new RelayCommand(async p => 
@@ -99,13 +103,16 @@ namespace OmniSync.Hub.Presentation
 
         private async void InitializeAsync()
         {
+            _monitorService.AddLogMessage("!!! [OmniSweep] InitializeAsync started.");
             await _calendarService.RefreshCalendarAsync();
             NextEvent = _calendarService.GetNextEvent();
+            _monitorService.AddLogMessage($"!!! [OmniSweep] Next Event: {NextEvent?.Summary ?? "None"}");
             UpdateResults();
         }
 
         private async void UpdateResults()
         {
+            _monitorService.AddLogMessage("!!! [OmniSweep] UpdateResults triggered.");
             Results.Clear();
             PinnedMacros.Clear();
 
@@ -113,10 +120,13 @@ namespace OmniSync.Hub.Presentation
             if (string.IsNullOrWhiteSpace(SearchText))
             {
                 var pinned = _settingsService.Settings.Macros.Where(m => m.IsPinned).ToList();
+                _monitorService.AddLogMessage($"!!! [OmniSweep] Found {pinned.Count} pinned macros.");
                 foreach (var m in pinned) PinnedMacros.Add(m);
 
                 // Show Recent Workspaces
-                foreach (var ws in _searchService.GetRecentWorkspaces())
+                var recents = _searchService.GetRecentWorkspaces();
+                _monitorService.AddLogMessage($"!!! [OmniSweep] Found {recents.Count} recent workspaces.");
+                foreach (var ws in recents)
                 {
                     Results.Add(new OmniSweepItem
                     {
@@ -128,6 +138,7 @@ namespace OmniSync.Hub.Presentation
                 }
 
                 // Show Projects
+                _monitorService.AddLogMessage($"!!! [OmniSweep] Found {_settingsService.Settings.Projects.Count} projects.");
                 foreach (var project in _settingsService.Settings.Projects)
                 {
                     Results.Add(new OmniSweepItem

@@ -207,7 +207,7 @@ namespace OmniSync.Hub.Presentation
 
                     _logger.LogInformation("TrayApplicationContext: Creating MainWindow.");
                     // Create and store the WPF main window, passing the HubMonitorService
-                    _mainWindow = new MainWindow(_hubMonitorService, _inputService, _processService, _shutdownService, _registryService, _settingsService, _keyboardHook, _aiCliService, _layoutCaptureService, _projectLauncherService);
+                    _mainWindow = new MainWindow(_hubMonitorService, _inputService, _processService, _shutdownService, _registryService, _settingsService, _keyboardHook, _aiCliService, _layoutCaptureService, _projectLauncherService, _commandDispatcher);
                     _logger.LogInformation("TrayApplicationContext: MainWindow created.");
 
                     // Create Context Menu
@@ -319,7 +319,7 @@ namespace OmniSync.Hub.Presentation
                 {
                     try
                     {
-                        var viewModel = new OmniSweepViewModel(_settingsService, _projectLauncherService, _calendarService, _searchService, _macroService, _resourceOpenerService);
+                        var viewModel = new OmniSweepViewModel(_settingsService, _projectLauncherService, _calendarService, _searchService, _macroService, _resourceOpenerService, _hubMonitorService);
                         var window = new OmniSweepWindow(viewModel);
                         window.Show();
                         window.Activate();

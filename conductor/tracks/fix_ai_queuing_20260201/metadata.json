@@ -1,0 +1,8 @@
+{
+  "track_id": "fix_ai_queuing_20260201",
+  "type": "bug",
+  "status": "new",
+  "created_at": "2026-02-01T14:45:00Z",
+  "updated_at": "2026-02-01T14:45:00Z",
+  "description": "Fix AI Message Queuing during Launch"
+}

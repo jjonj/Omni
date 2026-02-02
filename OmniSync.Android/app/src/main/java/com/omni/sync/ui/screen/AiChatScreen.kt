@@ -103,6 +103,7 @@ fun AiChatScreen(
     val aiThought by signalRClient.aiThought.collectAsState()
     val aiDialog by signalRClient.aiDialog.collectAsState()
     val sessions by signalRClient.aiSessions.collectAsState()
+    val workspaces by signalRClient.aiWorkspaces.collectAsState()
     val inputText by signalRClient.aiInputText.collectAsState()
     var showSessionMenu by remember { mutableStateOf(false) }
     val selectedPid by signalRClient.selectedPid.collectAsState()
@@ -332,7 +333,12 @@ fun AiChatScreen(
                                 )
                             ) {
                                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                    val currentName = if (!isConnected) "Disconnected" else if (isStartingSession) "Creating Session..." else (sessions[selectedPid] ?: "Select Session")
+                                    val currentName = if (!isConnected) "Disconnected" 
+                                        else if (isStartingSession) "Creating Session..." 
+                                        else {
+                                            val ws = workspaces[selectedPid]
+                                            if (!ws.isNullOrBlank()) ws else (sessions[selectedPid] ?: "Select Session")
+                                        }
                                     Text(currentName, style = MaterialTheme.typography.titleMedium)
                                     if (isConnected) {
                                         if (aiStatus != null) {
@@ -358,13 +364,14 @@ fun AiChatScreen(
                                 )
                             }
                             sessions.forEach { (pid, name) ->
+                                val displayName = workspaces[pid].takeIf { !it.isNullOrBlank() } ?: name
                                 DropdownMenuItem(
                                     text = { 
                                         Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Text(name, modifier = Modifier.weight(1f))
+                                            Text(displayName, modifier = Modifier.weight(1f))
                                             IconButton(onClick = { 
                                                 pidToRename = pid
-                                                renameText = name
+                                                renameText = displayName
                                                 showRenameDialog = true
                                                 showSessionMenu = false
                                             }) {
