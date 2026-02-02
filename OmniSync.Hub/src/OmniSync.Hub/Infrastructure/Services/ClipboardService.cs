@@ -67,7 +67,7 @@ namespace OmniSync.Hub.Infrastructure.Services
         [DllImport("user32.dll")]
         private static extern IntPtr SetClipboardData(uint uFormat, IntPtr hMem);
 
-        public void SetClipboardText(string text)
+        public virtual void SetClipboardText(string text)
         {
             Thread staThread = new Thread(() =>
             {

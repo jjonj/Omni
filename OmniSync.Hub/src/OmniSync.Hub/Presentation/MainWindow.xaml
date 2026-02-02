@@ -5,6 +5,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:vm="clr-namespace:OmniSync.Hub.Presentation"
         xmlns:infra="clr-namespace:OmniSync.Hub.Infrastructure.Services"
+        xmlns:sys="clr-namespace:System;assembly=mscorlib"
         mc:Ignorable="d"
         Title="OmniSync Hub Control" Height="650" Width="1000"
         Background="#1E1E1E" Foreground="#D4D4D4">
@@ -359,6 +360,47 @@
                             </DockPanel>
                         </Grid>
                     </TabItem>
+                    <TabItem Header="Search Roots">
+                        <Grid Margin="15">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+                            <TextBlock Grid.Row="0" Text="Omni Sweep Search Roots" FontSize="18" FontWeight="Bold" Margin="0,0,0,5"/>
+                            <TextBlock Grid.Row="1" Text="Configure directories where Omni Sweep will search for projects and files." FontSize="12" Opacity="0.7" Margin="0,0,0,15"/>
+                            
+                            <DockPanel Grid.Row="2">
+                                <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,10">
+                                    <StackPanel Margin="0,0,10,0">
+                                        <TextBlock Text="Root Directory Path" Margin="0,0,0,2" FontSize="12" Opacity="0.7"/>
+                                        <TextBox Text="{Binding NewProjectRootPath}" Width="500" Padding="5" />
+                                    </StackPanel>
+                                    <Button Content="Add Root" Command="{Binding AddProjectRootCommand}" VerticalAlignment="Bottom" Margin="0" Height="28"/>
+                                </StackPanel>
+
+                                <Border>
+                                    <ListBox ItemsSource="{Binding ProjectRoots}">
+                                        <ListBox.ItemTemplate>
+                                            <DataTemplate>
+                                                <Grid Margin="5">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*"/>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <TextBlock Text="{Binding Path}" VerticalAlignment="Center" FontSize="14"/>
+                                                    <CheckBox Grid.Column="1" IsChecked="{Binding IsEnabled}" Content="Enabled" VerticalAlignment="Center" Margin="15,0"/>
+                                                    <Button Grid.Column="2" Content="Remove" Command="{Binding DataContext.DeleteProjectRootCommand, RelativeSource={RelativeSource AncestorType=Window}}" 
+                                                            CommandParameter="{Binding Path}" Background="#603030" Padding="10,2"/>
+                                                </Grid>
+                                            </DataTemplate>
+                                        </ListBox.ItemTemplate>
+                                    </ListBox>
+                                </Border>
+                            </DockPanel>
+                        </Grid>
+                    </TabItem>
                     <TabItem Header="AI / Tell PC">
                         <Grid Margin="15">
                             <Grid.RowDefinitions>
@@ -404,6 +446,175 @@
 
                             <Button Grid.Row="3" Content="Save AI Configuration" Command="{Binding SaveAiSettingsCommand}" 
                                     HorizontalAlignment="Right" Background="#007ACC" FontWeight="Bold" Height="35" Padding="20,0"/>
+                        </Grid>
+                    </TabItem>
+                    <TabItem Header="Macros">
+                        <Grid Margin="15">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="250"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+
+                            <TextBlock Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="2" Text="Macro Management" FontSize="18" FontWeight="Bold" Margin="0,0,0,15"/>
+
+                            <!-- Macro List -->
+                            <DockPanel Grid.Row="1" Grid.Column="0" Margin="0,0,10,0">
+                                <Button DockPanel.Dock="Top" Content="Create New Macro" Command="{Binding AddMacroCommand}" HorizontalAlignment="Left" Margin="0,0,0,10"/>
+                                <Border>
+                                    <ListBox ItemsSource="{Binding Macros}" SelectedItem="{Binding CurrentEditingMacro}">
+                                        <ListBox.ItemTemplate>
+                                            <DataTemplate>
+                                                <Grid Margin="5">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*"/>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <TextBlock Text="{Binding Name}" VerticalAlignment="Center"/>
+                                                    <Button Grid.Column="1" Content="X" Command="{Binding DataContext.DeleteMacroCommand, RelativeSource={RelativeSource AncestorType=Window}}" 
+                                                            CommandParameter="{Binding}" Background="#603030" Padding="5,0"/>
+                                                </Grid>
+                                            </DataTemplate>
+                                        </ListBox.ItemTemplate>
+                                    </ListBox>
+                                </Border>
+                            </DockPanel>
+
+                            <!-- Edit Macro Panel -->
+                            <Border Grid.Row="1" Grid.Column="1" Visibility="{Binding IsEditingMacro, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                <DockPanel Margin="15">
+                                    <StackPanel DockPanel.Dock="Top" Margin="0,0,0,15">
+                                        <TextBlock Text="Edit Macro" FontSize="16" FontWeight="Bold" Margin="0,0,0,10"/>
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel>
+                                                <TextBlock Text="Macro Name" Opacity="0.7" FontSize="12"/>
+                                                <TextBox Text="{Binding CurrentEditingMacro.Name, UpdateSourceTrigger=PropertyChanged}" Padding="5"/>
+                                            </StackPanel>
+                                            <CheckBox Grid.Column="1" IsChecked="{Binding CurrentEditingMacro.IsPinned}" Content="Pinned to Sweep" 
+                                                      VerticalAlignment="Bottom" Margin="15,0,0,5"/>
+                                        </Grid>
+                                    </StackPanel>
+
+                                    <Button DockPanel.Dock="Bottom" Content="Save Macro" Command="{Binding SaveMacroCommand}" 
+                                            Background="#007ACC" FontWeight="Bold" Height="35" Margin="0,10,0,0"/>
+
+                                    <Grid>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="*"/>
+                                            <RowDefinition Height="Auto"/>
+                                        </Grid.RowDefinitions>
+                                        <TextBlock Grid.Row="0" Text="Commands" FontWeight="Bold" Margin="0,0,0,5"/>
+                                        <Border Grid.Row="1">
+                                            <ListBox ItemsSource="{Binding CurrentEditingMacro.Commands}">
+                                                <ListBox.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <Border Background="#2D2D30" Margin="0,0,0,5" Padding="5">
+                                                            <StackPanel>
+                                                                <Grid>
+                                                                    <Grid.ColumnDefinitions>
+                                                                        <ColumnDefinition Width="Auto"/>
+                                                                        <ColumnDefinition Width="*"/>
+                                                                        <ColumnDefinition Width="Auto"/>
+                                                                    </Grid.ColumnDefinitions>
+                                                                    <ComboBox Grid.Column="0" SelectedValue="{Binding Type}" Width="100">
+                                                                        <sys:String>send</sys:String>
+                                                                        <sys:String>run</sys:String>
+                                                                        <sys:String>sleep</sys:String>
+                                                                        <sys:String>winactivate</sys:String>
+                                                                        <sys:String>clipboard</sys:String>
+                                                                        <sys:String>powershell</sys:String>
+                                                                    </ComboBox>
+                                                                    
+                                                                    <!-- Contextual Inputs based on Type -->
+                                                                    <ContentControl Grid.Column="1" Margin="5,0" Content="{Binding}">
+                                                                        <ContentControl.Style>
+                                                                            <Style TargetType="ContentControl">
+                                                                                <Style.Triggers>
+                                                                                    <DataTrigger Binding="{Binding Type}" Value="send">
+                                                                                        <Setter Property="ContentTemplate">
+                                                                                            <Setter.Value>
+                                                                                                <DataTemplate>
+                                                                                                    <TextBox Text="{Binding Keys, UpdateSourceTrigger=PropertyChanged}" />
+                                                                                                </DataTemplate>
+                                                                                            </Setter.Value>
+                                                                                        </Setter>
+                                                                                    </DataTrigger>
+                                                                                    <DataTrigger Binding="{Binding Type}" Value="run">
+                                                                                        <Setter Property="ContentTemplate">
+                                                                                            <Setter.Value>
+                                                                                                <DataTemplate>
+                                                                                                    <TextBox Text="{Binding Path, UpdateSourceTrigger=PropertyChanged}" />
+                                                                                                </DataTemplate>
+                                                                                            </Setter.Value>
+                                                                                        </Setter>
+                                                                                    </DataTrigger>
+                                                                                    <DataTrigger Binding="{Binding Type}" Value="sleep">
+                                                                                        <Setter Property="ContentTemplate">
+                                                                                            <Setter.Value>
+                                                                                                <DataTemplate>
+                                                                                                    <TextBox Text="{Binding DurationMs, UpdateSourceTrigger=PropertyChanged}" />
+                                                                                                </DataTemplate>
+                                                                                            </Setter.Value>
+                                                                                        </Setter>
+                                                                                    </DataTrigger>
+                                                                                    <DataTrigger Binding="{Binding Type}" Value="winactivate">
+                                                                                        <Setter Property="ContentTemplate">
+                                                                                            <Setter.Value>
+                                                                                                <DataTemplate>
+                                                                                                    <TextBox Text="{Binding Title, UpdateSourceTrigger=PropertyChanged}" />
+                                                                                                </DataTemplate>
+                                                                                            </Setter.Value>
+                                                                                        </Setter>
+                                                                                    </DataTrigger>
+                                                                                    <DataTrigger Binding="{Binding Type}" Value="clipboard">
+                                                                                        <Setter Property="ContentTemplate">
+                                                                                            <Setter.Value>
+                                                                                                <DataTemplate>
+                                                                                                    <TextBox Text="{Binding Text, UpdateSourceTrigger=PropertyChanged}" />
+                                                                                                </DataTemplate>
+                                                                                            </Setter.Value>
+                                                                                        </Setter>
+                                                                                    </DataTrigger>
+                                                                                    <DataTrigger Binding="{Binding Type}" Value="powershell">
+                                                                                        <Setter Property="ContentTemplate">
+                                                                                            <Setter.Value>
+                                                                                                <DataTemplate>
+                                                                                                    <TextBox Text="{Binding Code, UpdateSourceTrigger=PropertyChanged}" />
+                                                                                                </DataTemplate>
+                                                                                            </Setter.Value>
+                                                                                        </Setter>
+                                                                                    </DataTrigger>
+                                                                                </Style.Triggers>
+                                                                            </Style>
+                                                                        </ContentControl.Style>
+                                                                    </ContentControl>
+
+                                                                    <Button Grid.Column="2" Content="X" Command="{Binding DataContext.DeleteMacroCommandItemCommand, RelativeSource={RelativeSource AncestorType=Window}}" 
+                                                                            CommandParameter="{Binding}" Background="#603030" Margin="0" Width="25"/>
+                                                                </Grid>
+                                                            </StackPanel>
+                                                        </Border>
+                                                    </DataTemplate>
+                                                </ListBox.ItemTemplate>
+                                            </ListBox>
+                                        </Border>
+                                        <Button Grid.Row="2" Content="+ Add Command" Command="{Binding AddMacroCommandItemCommand}" 
+                                                HorizontalAlignment="Left" Margin="0,5,0,0"/>
+                                    </Grid>
+                                </DockPanel>
+                            </Border>
+
+                            <TextBlock Grid.Row="1" Grid.Column="1" Text="Select a macro to edit or create a new one." 
+                                       VerticalAlignment="Center" HorizontalAlignment="Center" Opacity="0.5"
+                                       Visibility="{Binding IsEditingMacro, Converter={StaticResource InverseBooleanToVisibilityConverter}, ConverterParameter=Inverse}"/>
                         </Grid>
                     </TabItem>
                     <TabItem Header="Hotkeys">

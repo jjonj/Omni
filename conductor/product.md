@@ -25,6 +25,8 @@ The primary user is the developer/creator themselves—a power user who demands:
 -   **Custom Macros:** A dedicated Macro system using AHK-like syntax to automate complex PC tasks from a customizable grid on the phone.
 
 ### 3. Automation & Monitoring
+-   **Omni Sweep (Central Command Palette):** A unified Windows command palette (Ctrl+Alt+P) for instant access to recent workspaces, pinned macros, and a high-performance smart file search.
+-   **Calendar Integration:** Real-time synchronization with Google Calendar to display the next scheduled event within the Hub and command palette.
 -   **Macro Triggers:** Hardware button mapping (e.g., volume keys) on Android to trigger PC scripts.
 -   **System Health:** Real-time monitoring of PC status (active window, processes) from the mobile dashboard.
 -   **Startup Routines:** A "QuickActionService" framework that executes once-per-day maintenance tasks (e.g., browser tab cleanup based on title patterns) upon Hub initialization.

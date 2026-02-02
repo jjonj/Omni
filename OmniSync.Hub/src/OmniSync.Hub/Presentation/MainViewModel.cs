@@ -58,13 +58,38 @@ namespace OmniSync.Hub.Presentation
         public ICommand CaptureLayoutCommand { get; }
         public ICommand LaunchProjectCommand { get; }
 
+        public ICommand AddProjectRootCommand { get; }
+        public ICommand DeleteProjectRootCommand { get; }
+        public ICommand AddMacroCommand { get; }
+        public ICommand DeleteMacroCommand { get; }
+        public ICommand SaveMacroCommand { get; }
+        public ICommand AddMacroCommandItemCommand { get; }
+        public ICommand DeleteMacroCommandItemCommand { get; }
+
         // --- Properties bound in XAML ---
         public ObservableCollection<string> ActiveConnections { get; }
         public ObservableCollection<string> LogMessages { get; }
         public string LogMessagesText => string.Join(Environment.NewLine, LogMessages);
 
         public ObservableCollection<Project> Projects { get; }
-        
+        public ObservableCollection<ProjectRoot> ProjectRoots { get; }
+        public ObservableCollection<MacroConfig> Macros { get; }
+
+        private MacroConfig? _currentEditingMacro;
+        public MacroConfig? CurrentEditingMacro
+        {
+            get => _currentEditingMacro;
+            set { _currentEditingMacro = value; OnPropertyChanged(); OnPropertyChanged(nameof(IsEditingMacro)); }
+        }
+        public bool IsEditingMacro => CurrentEditingMacro != null;
+
+        private string _newProjectRootPath = "";
+        public string NewProjectRootPath
+        {
+            get => _newProjectRootPath;
+            set { _newProjectRootPath = value; OnPropertyChanged(); }
+        }
+
         public List<string> AvailableActions
         {
             get
@@ -527,6 +552,8 @@ namespace OmniSync.Hub.Presentation
             HotkeyGroups = CollectionViewSource.GetDefaultView(Hotkeys);
             HotkeyGroups.GroupDescriptions.Add(new PropertyGroupDescription(nameof(HotkeyConfig.Category)));
             Projects = new ObservableCollection<Project>(_settingsService.Settings.Projects);
+            ProjectRoots = new ObservableCollection<ProjectRoot>(_settingsService.Settings.ProjectRoots);
+            Macros = new ObservableCollection<MacroConfig>(_settingsService.Settings.Macros);
 
             // Hook up event handlers
             _hubMonitorService.PropertyChanged += (s, e) =>
@@ -560,6 +587,18 @@ namespace OmniSync.Hub.Presentation
                     {
                         Projects.Add(p);
                     }
+
+                    ProjectRoots.Clear();
+                    foreach (var r in _settingsService.Settings.ProjectRoots)
+                    {
+                        ProjectRoots.Add(r);
+                    }
+
+                    Macros.Clear();
+                    foreach (var m in _settingsService.Settings.Macros)
+                    {
+                        Macros.Add(m);
+                    }
                 }));
             };
 
@@ -571,6 +610,15 @@ namespace OmniSync.Hub.Presentation
             StartRecordingHotkeyCommand = new RelayCommand(p => ExecuteStartRecording(p as HotkeyConfig));
             AddHotkeyCommand = new RelayCommand(_ => ExecuteAddHotkey());
             DeleteHotkeyCommand = new RelayCommand(p => ExecuteDeleteHotkey(p as string));
+            
+            AddProjectRootCommand = new RelayCommand(_ => ExecuteAddProjectRoot());
+            DeleteProjectRootCommand = new RelayCommand(p => ExecuteDeleteProjectRoot(p as string));
+            AddMacroCommand = new RelayCommand(_ => ExecuteAddMacro());
+            DeleteMacroCommand = new RelayCommand(p => ExecuteDeleteMacro(p as MacroConfig));
+            SaveMacroCommand = new RelayCommand(_ => ExecuteSaveMacro());
+            AddMacroCommandItemCommand = new RelayCommand(_ => ExecuteAddMacroCommandItem());
+            DeleteMacroCommandItemCommand = new RelayCommand(p => ExecuteDeleteMacroCommandItem(p as MacroCommand));
+
             ToggleCategoryExpansionCommand = new RelayCommand(p => {
                 var args = p as object[];
                 if (args != null && args.Length == 2 && args[0] is string cat && args[1] is bool expanded)
@@ -939,6 +987,54 @@ namespace OmniSync.Hub.Presentation
                 Hotkeys.Add(hk);
             }
             OnPropertyChanged(nameof(Categories));
+        }
+
+        private void ExecuteAddProjectRoot()
+        {
+            if (string.IsNullOrWhiteSpace(NewProjectRootPath)) return;
+            _settingsService.AddProjectRoot(NewProjectRootPath);
+            NewProjectRootPath = "";
+        }
+
+        private void ExecuteDeleteProjectRoot(string? path)
+        {
+            if (path == null) return;
+            _settingsService.RemoveProjectRoot(path);
+        }
+
+        private void ExecuteAddMacro()
+        {
+            var newMacro = new MacroConfig { Name = "New Macro" };
+            _settingsService.AddMacro(newMacro);
+            CurrentEditingMacro = newMacro;
+        }
+
+        private void ExecuteDeleteMacro(MacroConfig? macro)
+        {
+            if (macro == null) return;
+            _settingsService.RemoveMacro(macro.Id);
+            if (CurrentEditingMacro == macro) CurrentEditingMacro = null;
+        }
+
+        private void ExecuteSaveMacro()
+        {
+            if (CurrentEditingMacro == null) return;
+            _settingsService.UpdateMacro(CurrentEditingMacro);
+            CurrentEditingMacro = null;
+        }
+
+        private void ExecuteAddMacroCommandItem()
+        {
+            if (CurrentEditingMacro == null) return;
+            CurrentEditingMacro.Commands.Add(new MacroCommand { Type = "send" });
+            OnPropertyChanged(nameof(CurrentEditingMacro));
+        }
+
+        private void ExecuteDeleteMacroCommandItem(MacroCommand? cmd)
+        {
+            if (CurrentEditingMacro == null || cmd == null) return;
+            CurrentEditingMacro.Commands.Remove(cmd);
+            OnPropertyChanged(nameof(CurrentEditingMacro));
         }
 
         public bool GetCategoryExpansionState(string category)

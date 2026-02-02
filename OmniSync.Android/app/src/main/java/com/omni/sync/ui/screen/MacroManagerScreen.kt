@@ -183,6 +183,9 @@ fun MacroManagerScreen(
                     }
                 },
                 actions = {
+                    IconButton(onClick = { mainViewModel.fetchMacros() }) {
+                        Icon(Icons.Default.Refresh, contentDescription = "Sync with Hub")
+                    }
                     IconButton(onClick = { showHelpDialog = true }) {
                         Icon(Icons.Default.HelpOutline, contentDescription = "Syntax Help")
                     }
@@ -462,7 +465,7 @@ fun MacroManagerScreen(
                                 }
 
                                 IconButton(onClick = {
-                                    saveMacros(macros.filter { it.id != macro.id })
+                                    mainViewModel.deleteMacro(macro)
                                     if (editingMacroId == macro.id) resetEditor()
                                 }, modifier = Modifier.size(32.dp)) {
                                     Icon(Icons.Default.Delete, contentDescription = "Delete", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(20.dp))

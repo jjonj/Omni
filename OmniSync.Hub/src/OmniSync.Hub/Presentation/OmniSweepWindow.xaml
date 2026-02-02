@@ -1,0 +1,116 @@
+<Window x:Class="OmniSync.Hub.Presentation.OmniSweepWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="clr-namespace:OmniSync.Hub.Presentation"
+        Title="Omni Sweep" Height="600" Width="600"
+        WindowStyle="None" AllowsTransparency="True" Background="Transparent"
+        WindowStartupLocation="CenterScreen" Topmost="True" ShowInTaskbar="False"
+        Deactivated="Window_Deactivated">
+    <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
+        
+        <Style x:Key="CategoryHeaderStyle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="10"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="Foreground" Value="#007ACC"/>
+            <Setter Property="Margin" Value="5,10,0,5"/>
+            <Setter Property="Opacity" Value="0.8"/>
+        </Style>
+    </Window.Resources>
+
+    <Border Background="#1E1E1E" BorderBrush="#333337" BorderThickness="1" CornerRadius="12" Padding="0">
+        <Border.Effect>
+            <DropShadowEffect BlurRadius="20" ShadowDepth="0" Opacity="0.5"/>
+        </Border.Effect>
+        
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/> <!-- Next Event -->
+                <RowDefinition Height="Auto"/> <!-- Search Bar -->
+                <RowDefinition Height="*"/>    <!-- Results -->
+                <RowDefinition Height="Auto"/> <!-- Help / Footer -->
+            </Grid.RowDefinitions>
+
+            <!-- Next Event Header -->
+            <Border Grid.Row="0" Background="#252526" CornerRadius="12,12,0,0" Padding="15,10" 
+                    Visibility="{Binding NextEvent, Converter={StaticResource BooleanToVisibilityConverter}}">
+                <DockPanel>
+                    <TextBlock Text="NEXT EVENT" FontSize="10" FontWeight="Bold" Foreground="#007ACC" VerticalAlignment="Center" Margin="0,0,15,0"/>
+                    <TextBlock Text="{Binding NextEvent.Summary}" FontWeight="SemiBold" Foreground="White" VerticalAlignment="Center"/>
+                    <TextBlock Text="{Binding NextEvent.Start, StringFormat='at {0:HH:mm}'}" Foreground="#D4D4D4" Opacity="0.6" Margin="10,0,0,0" VerticalAlignment="Center"/>
+                </DockPanel>
+            </Border>
+
+            <!-- Search Bar -->
+            <Grid Grid.Row="1" Margin="15,15,15,10">
+                <TextBox x:Name="SearchInput" Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}" 
+                         FontSize="20" Padding="10" Background="#2D2D30" Foreground="White" 
+                         BorderThickness="0" CaretBrush="#007ACC"
+                         PreviewKeyDown="SearchInput_PreviewKeyDown"/>
+                <TextBlock IsHitTestVisible="False" Text="Search for projects, files, or macros..." 
+                           VerticalAlignment="Center" HorizontalAlignment="Left" Margin="12,0,0,0"
+                           Foreground="#D4D4D4" Opacity="0.3" FontSize="18">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock">
+                            <Setter Property="Visibility" Value="Collapsed"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding Text, ElementName=SearchInput}" Value="">
+                                    <Setter Property="Visibility" Value="Visible"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
+            </Grid>
+
+            <!-- Results List -->
+            <ListBox Grid.Row="2" ItemsSource="{Binding Results}" SelectedItem="{Binding SelectedItem}" 
+                     Background="Transparent" BorderThickness="0" Margin="10,0"
+                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                     x:Name="ResultsList">
+                <ListBox.ItemContainerStyle>
+                    <Style TargetType="ListBoxItem">
+                        <Setter Property="Background" Value="Transparent"/>
+                        <Setter Property="Template">
+                            <Setter.Value>
+                                <ControlTemplate TargetType="ListBoxItem">
+                                    <Border Background="{TemplateBinding Background}" CornerRadius="6" Padding="10,8" Margin="0,2">
+                                        <ContentPresenter />
+                                    </Border>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsSelected" Value="True">
+                                            <Setter Property="Background" Value="#3E3E42"/>
+                                        </Trigger>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter Property="Background" Value="#2D2D30"/>
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </Setter.Value>
+                        </Setter>
+                    </Style>
+                </ListBox.ItemContainerStyle>
+                <ListBox.ItemTemplate>
+                    <DataTemplate>
+                        <DockPanel>
+                            <TextBlock Text="{Binding Category}" DockPanel.Dock="Right" FontSize="10" 
+                                       VerticalAlignment="Center" Opacity="0.4" Foreground="#007ACC"/>
+                            <StackPanel>
+                                <TextBlock Text="{Binding Title}" FontSize="14" Foreground="White" FontWeight="SemiBold"/>
+                                <TextBlock Text="{Binding Subtitle}" FontSize="11" Foreground="#D4D4D4" Opacity="0.6" TextTrimming="CharacterEllipsis"/>
+                            </StackPanel>
+                        </DockPanel>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+
+            <!-- Footer -->
+            <Border Grid.Row="3" Background="#252526" CornerRadius="0,0,12,12" Padding="15,8">
+                <DockPanel Opacity="0.5">
+                    <TextBlock Text="↑↓ to navigate • Enter to execute • Esc to close" FontSize="10" Foreground="White"/>
+                    <TextBlock Text="OMNI SWEEP" HorizontalAlignment="Right" FontSize="10" FontWeight="Bold" Foreground="#007ACC"/>
+                </DockPanel>
+            </Border>
+        </Grid>
+    </Border>
+</Window>

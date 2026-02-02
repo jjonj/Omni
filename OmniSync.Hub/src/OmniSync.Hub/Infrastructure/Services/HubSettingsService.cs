@@ -80,6 +80,52 @@ namespace OmniSync.Hub.Infrastructure.Services
         public System.Collections.ObjectModel.ObservableCollection<ProjectAction> Actions { get; set; } = new();
     }
 
+    public class MacroCommand
+    {
+        public string Type { get; set; } = "";
+        public string? Keys { get; set; }
+        public long? DurationMs { get; set; }
+        public string? Path { get; set; }
+        public string? Title { get; set; }
+        public int? TimeoutMs { get; set; }
+        public string? Key { get; set; }
+        public string? Text { get; set; }
+        public string? Code { get; set; }
+        public int? X { get; set; }
+        public int? Y { get; set; }
+        public string? Button { get; set; }
+    }
+
+    public class MacroConfig : System.ComponentModel.INotifyPropertyChanged
+    {
+        private Guid _id = Guid.NewGuid();
+        public Guid Id { get => _id; set { _id = value; OnPropertyChanged(); } }
+
+        private string _name = "";
+        public string Name { get => _name; set { _name = value; OnPropertyChanged(); } }
+
+        private string _category = "General";
+        public string Category { get => _category; set { _category = value; OnPropertyChanged(); } }
+
+        private bool _isPinned = false;
+        public bool IsPinned { get => _isPinned; set { _isPinned = value; OnPropertyChanged(); } }
+
+        private List<MacroCommand> _commands = new();
+        public List<MacroCommand> Commands { get => _commands; set { _commands = value; OnPropertyChanged(); } }
+
+        public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
+        protected void OnPropertyChanged([System.Runtime.CompilerServices.CallerMemberName] string? propertyName = null)
+        {
+            PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(propertyName));
+        }
+    }
+
+    public class ProjectRoot
+    {
+        public string Path { get; set; } = "";
+        public bool IsEnabled { get; set; } = true;
+    }
+
     public class HubSettings
     {
         public bool UseOneCommander { get; set; } = false;
@@ -91,6 +137,8 @@ namespace OmniSync.Hub.Infrastructure.Services
         public List<string> AiPresets { get; set; } = new List<string>();
         public List<Project> Projects { get; set; } = new List<Project>();
         public List<string> BrowserCleanupPatterns { get; set; } = new List<string>();
+        public List<MacroConfig> Macros { get; set; } = new();
+        public List<ProjectRoot> ProjectRoots { get; set; } = new();
 
         // Tell PC Settings
         public string TellPcWorkspace { get; set; } = @"B:\GDrive\Tools";
@@ -131,7 +179,56 @@ namespace OmniSync.Hub.Infrastructure.Services
             InitializeDefaultAutoApprovals();
             InitializeDefaultPresets();
             InitializeDefaultProjects();
+            InitializeDefaultProjectRoots();
+            InitializeDefaultMacros();
             InitializeTellPcSettings();
+        }
+
+        private void InitializeDefaultMacros()
+        {
+            if (_settings.Macros == null) _settings.Macros = new();
+            if (_settings.Macros.Count == 0)
+            {
+                _settings.Macros.Add(new MacroConfig 
+                { 
+                    Name = "Lock PC", 
+                    IsPinned = true,
+                    Commands = new List<MacroCommand> 
+                    { 
+                        new MacroCommand { Type = "send", Keys = "#l" } 
+                    } 
+                });
+                _settings.Macros.Add(new MacroConfig 
+                { 
+                    Name = "Open Notepad", 
+                    IsPinned = true,
+                    Commands = new List<MacroCommand> 
+                    { 
+                        new MacroCommand { Type = "run", Path = "notepad.exe" } 
+                    } 
+                });
+                _settings.Macros.Add(new MacroConfig 
+                { 
+                    Name = "Unlock", 
+                    IsPinned = true,
+                    Commands = new List<MacroCommand> 
+                    { 
+                        new MacroCommand { Type = "powershell", Code = "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait('{SCROLLLOCK}')" } 
+                    } 
+                });
+                SaveSettings();
+            }
+        }
+
+        private void InitializeDefaultProjectRoots()
+        {
+            if (_settings.ProjectRoots == null) _settings.ProjectRoots = new();
+            if (_settings.ProjectRoots.Count == 0)
+            {
+                _settings.ProjectRoots.Add(new ProjectRoot { Path = @"D:\SSDProjects", IsEnabled = true });
+                _settings.ProjectRoots.Add(new ProjectRoot { Path = @"B:\GDrive\ProjectsG", IsEnabled = true });
+                SaveSettings();
+            }
         }
 
         private void InitializeTellPcSettings()
@@ -286,7 +383,7 @@ namespace OmniSync.Hub.Infrastructure.Services
                     string json = File.ReadAllText(_settingsPath);
                     _settings = JsonSerializer.Deserialize<HubSettings>(json) ?? new HubSettings();
                     if (_settings.AiSessionNames == null) _settings.AiSessionNames = new();
-                    _logger.LogInformation("Settings loaded successfully.");
+                    _logger?.LogInformation("Settings loaded successfully.");
                 }
                 else
                 {
@@ -296,7 +393,7 @@ namespace OmniSync.Hub.Infrastructure.Services
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error loading settings.");
+                _logger?.LogError(ex, "Error loading settings.");
                 _settings = new HubSettings();
             }
         }
@@ -307,12 +404,12 @@ namespace OmniSync.Hub.Infrastructure.Services
             {
                 string json = JsonSerializer.Serialize(_settings, new JsonSerializerOptions { WriteIndented = true });
                 File.WriteAllText(_settingsPath, json);
-                _logger.LogInformation("Settings saved successfully.");
+                _logger?.LogInformation("Settings saved successfully.");
                 OnSettingsChanged();
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error saving settings.");
+                _logger?.LogError(ex, "Error saving settings.");
             }
         }
 
@@ -454,6 +551,61 @@ namespace OmniSync.Hub.Infrastructure.Services
             if (index != -1)
             {
                 _settings.Projects[index] = project;
+                SaveSettings();
+            }
+        }
+
+        public virtual void AddMacro(MacroConfig macro)
+        {
+            if (_settings.Macros == null) _settings.Macros = new();
+            _settings.Macros.Add(macro);
+            SaveSettings();
+        }
+
+        public virtual void RemoveMacro(Guid id)
+        {
+            if (_settings.Macros != null && _settings.Macros.RemoveAll(m => m.Id == id) > 0)
+            {
+                SaveSettings();
+            }
+        }
+
+        public virtual void UpdateMacro(MacroConfig macro)
+        {
+            if (_settings.Macros == null) return;
+            var index = _settings.Macros.FindIndex(m => m.Id == macro.Id);
+            if (index != -1)
+            {
+                _settings.Macros[index] = macro;
+                SaveSettings();
+            }
+        }
+
+        public virtual void AddProjectRoot(string path)
+        {
+            if (_settings.ProjectRoots == null) _settings.ProjectRoots = new();
+            if (!_settings.ProjectRoots.Exists(r => r.Path.Equals(path, StringComparison.OrdinalIgnoreCase)))
+            {
+                _settings.ProjectRoots.Add(new ProjectRoot { Path = path, IsEnabled = true });
+                SaveSettings();
+            }
+        }
+
+        public virtual void RemoveProjectRoot(string path)
+        {
+            if (_settings.ProjectRoots != null && _settings.ProjectRoots.RemoveAll(r => r.Path.Equals(path, StringComparison.OrdinalIgnoreCase)) > 0)
+            {
+                SaveSettings();
+            }
+        }
+
+        public virtual void UpdateProjectRoot(ProjectRoot root)
+        {
+            if (_settings.ProjectRoots == null) return;
+            var index = _settings.ProjectRoots.FindIndex(r => r.Path.Equals(root.Path, StringComparison.OrdinalIgnoreCase));
+            if (index != -1)
+            {
+                _settings.ProjectRoots[index] = root;
                 SaveSettings();
             }
         }

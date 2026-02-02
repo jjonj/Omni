@@ -208,7 +208,12 @@ builder.Services.AddSingleton<FileService>(provider =>
     
     return new FileService(noteRootPath, browseRootPath);
 });
+builder.Services.AddHttpClient();
+builder.Services.AddSingleton<CalendarService>();
+builder.Services.AddSingleton<ProjectSearchService>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<CalendarService>());
 builder.Services.AddSingleton<GitService>();
+builder.Services.AddSingleton<IMacroService, MacroService>();
 builder.Services.AddSingleton<ClipboardService>();
 builder.Services.AddSingleton<ProcessService>(provider =>
 {
@@ -318,8 +323,12 @@ builder.Services.AddSingleton<TrayIconManager>(provider =>
     var layoutCaptureService = provider.GetRequiredService<LayoutCaptureService>();
     var projectLauncherService = provider.GetRequiredService<ProjectLauncherService>();
     var commandDispatcher = provider.GetRequiredService<CommandDispatcher>();
+    var calendarService = provider.GetRequiredService<CalendarService>();
+    var searchService = provider.GetRequiredService<ProjectSearchService>();
+    var macroService = provider.GetRequiredService<IMacroService>();
+    var resourceOpenerService = provider.GetRequiredService<ResourceOpenerService>();
     var logger = provider.GetRequiredService<ILogger<TrayIconManager>>();
-    return new TrayIconManager(appLifetime, hubMonitorService, inputService, processService, shutdownService, registryService, settingsService, hotkeyService, keyboardHook, aiCliService, layoutCaptureService, projectLauncherService, commandDispatcher, logger);
+    return new TrayIconManager(appLifetime, hubMonitorService, inputService, processService, shutdownService, registryService, settingsService, hotkeyService, keyboardHook, aiCliService, layoutCaptureService, projectLauncherService, commandDispatcher, calendarService, searchService, macroService, resourceOpenerService, logger);
 });
 builder.Services.AddHostedService<TrayIconManager>(provider => provider.GetRequiredService<TrayIconManager>());
 

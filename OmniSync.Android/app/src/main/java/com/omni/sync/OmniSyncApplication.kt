@@ -32,6 +32,7 @@ class OmniSyncApplication : Application() {
             context = applicationContext,
             mainViewModel = mainViewModel
         )
+        mainViewModel.signalRClient = signalRClient
 
         clipboardWatcher = ClipboardWatcher(applicationContext, signalRClient)
         clipboardWatcher.startWatching()

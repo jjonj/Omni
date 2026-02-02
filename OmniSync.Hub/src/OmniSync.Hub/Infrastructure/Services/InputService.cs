@@ -451,7 +451,7 @@ namespace OmniSync.Hub.Infrastructure.Services
             SendInputWithLogging(inputs.ToArray());
         }
 
-        public void SendKeys(string keys)
+        public virtual void SendKeys(string keys)
         {
             if (string.IsNullOrEmpty(keys)) return;
             
@@ -480,7 +480,7 @@ namespace OmniSync.Hub.Infrastructure.Services
             SendKeyPress(volumeKeyCode);
         }
 
-        public string GetActiveWindowTitle()
+        public virtual string GetActiveWindowTitle()
         {
             // P/Invoke to get the handle of the foreground window
             IntPtr foregroundWindowHandle = GetForegroundWindow();

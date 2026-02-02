@@ -12,6 +12,10 @@ OmniSync is a multi-platform ecosystem utilizing native technologies for maximum
 -   **System Integration:** P/Invoke (`user32.dll`, `ole32.dll`) for low-level input injection and clipboard management.
 -   **Instance Management:** Global Mutex (`Global\OmniSyncHubSingleInstance`) for single-instance enforcement with SignalR-based cross-process window restoration.
 -   **Architecture:** Modular Monolith using Dependency Injection (Microsoft.Extensions.DependencyInjection) and a daily "QuickAction" routine framework.
+-   **Omni Sweep Logic:**
+    -   `IMacroService`: Shared execution engine for cross-platform automation scripts.
+    -   `CalendarService`: Background ICS synchronization and parsing.
+    -   `ProjectSearchService`: High-performance filesystem crawler for workspace discovery.
 
 ### 2. Android Client (Remote & Sensor)
 -   **Language:** Kotlin (Native)

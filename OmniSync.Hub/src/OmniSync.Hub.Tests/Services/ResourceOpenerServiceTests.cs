@@ -1,8 +1,12 @@
 using Moq;
 using OmniSync.Hub.Infrastructure.Services;
 using OmniSync.Hub.Logic.Services;
+using OmniSync.Hub.Logic.Monitoring;
 using Xunit;
 using System.Text.Json;
+using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Hosting;
 
 namespace OmniSync.Hub.Tests.Services
 {
@@ -14,20 +18,21 @@ namespace OmniSync.Hub.Tests.Services
 
         public ResourceOpenerServiceTests()
         {
-            var loggerFactory = new Mock<Microsoft.Extensions.Logging.ILoggerFactory>();
-            var hubMonitorLogger = new Mock<Microsoft.Extensions.Logging.ILogger<Logic.Monitoring.HubMonitorService>>();
-            var appLifetimeMock = new Mock<Microsoft.Extensions.Hosting.IHostApplicationLifetime>();
+            var hubMonitorLogger = new Mock<ILogger<HubMonitorService>>();
+            var appLifetimeMock = new Mock<IHostApplicationLifetime>();
             
-            var monitorMock = new Mock<Logic.Monitoring.HubMonitorService>(
+            var monitorMock = new Mock<HubMonitorService>(
                 appLifetimeMock.Object,
                 hubMonitorLogger.Object
             );
 
+            var settingsLoggerMock = new Mock<ILogger<HubSettingsService>>();
+            _settingsServiceMock = new Mock<HubSettingsService>(settingsLoggerMock.Object);
+            
             _processServiceMock = new Mock<ProcessService>(
-                new Mock<HubSettingsService>(new Mock<Microsoft.Extensions.Logging.ILogger<HubSettingsService>>().Object).Object,
+                _settingsServiceMock.Object,
                 monitorMock.Object
             );
-            _settingsServiceMock = new Mock<HubSettingsService>(new Mock<Microsoft.Extensions.Logging.ILogger<HubSettingsService>>().Object);
             
             _service = new ResourceOpenerService(_processServiceMock.Object, _settingsServiceMock.Object, monitorMock.Object);
         }

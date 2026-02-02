@@ -18,7 +18,7 @@ namespace OmniSync.Hub.Logic
             _settingsService = settingsService;
         }
 
-        public async Task LaunchProject(Project project)
+        public virtual async Task LaunchProject(Project project)
         {
             foreach (var action in project.Actions)
             {

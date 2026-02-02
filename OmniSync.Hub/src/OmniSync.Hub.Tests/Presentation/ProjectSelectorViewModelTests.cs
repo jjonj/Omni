@@ -2,6 +2,7 @@ using Moq;
 using OmniSync.Hub.Infrastructure.Services;
 using OmniSync.Hub.Logic;
 using OmniSync.Hub.Presentation;
+using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -16,8 +17,11 @@ namespace OmniSync.Hub.Tests.Presentation
 
         public ProjectSelectorViewModelTests()
         {
-            _mockSettingsService = new Mock<HubSettingsService>(null);
-            _mockProjectLauncherService = new Mock<ProjectLauncherService>(null, null);
+            var settingsLoggerMock = new Mock<ILogger<HubSettingsService>>();
+            _mockSettingsService = new Mock<HubSettingsService>(settingsLoggerMock.Object);
+            
+            var processServiceMock = new Mock<ProcessService>(_mockSettingsService.Object, new Mock<Logic.Monitoring.HubMonitorService>(new Mock<Microsoft.Extensions.Hosting.IHostApplicationLifetime>().Object, new Mock<ILogger<Logic.Monitoring.HubMonitorService>>().Object).Object);
+            _mockProjectLauncherService = new Mock<ProjectLauncherService>(processServiceMock.Object, _mockSettingsService.Object);
 
             var settings = new HubSettings
             {

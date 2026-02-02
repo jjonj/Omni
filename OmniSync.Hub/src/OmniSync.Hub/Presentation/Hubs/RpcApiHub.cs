@@ -37,9 +37,10 @@ namespace OmniSync.Hub.Presentation.Hubs
         private readonly HubSettingsService _settingsService;
         private readonly GitService _gitService;
         private readonly GlobalHotkeyService _hotkeyService;
+        private readonly IMacroService _macroService;
         private readonly ILogger<RpcApiHub> _logger; // Added for logging
 
-        public RpcApiHub(AuthService authService, FileService fileService, ClipboardService clipboardService, CommandDispatcher commandDispatcher, ProcessService processService, HubEventSender hubEventSender, InputService inputService, AudioService audioService, ShutdownService shutdownService, RegistryService registryService, HubMonitorService hubMonitorService, AiCliService aiCliService, PcgPersistentService pcgService, HubSettingsService settingsService, GitService gitService, GlobalHotkeyService hotkeyService, ILogger<RpcApiHub> logger)
+        public RpcApiHub(AuthService authService, FileService fileService, ClipboardService clipboardService, CommandDispatcher commandDispatcher, ProcessService processService, HubEventSender hubEventSender, InputService inputService, AudioService audioService, ShutdownService shutdownService, RegistryService registryService, HubMonitorService hubMonitorService, AiCliService aiCliService, PcgPersistentService pcgService, HubSettingsService settingsService, GitService gitService, GlobalHotkeyService hotkeyService, IMacroService macroService, ILogger<RpcApiHub> logger)
         {
             _authService = authService;
             _fileService = fileService;
@@ -57,6 +58,7 @@ namespace OmniSync.Hub.Presentation.Hubs
             _settingsService = settingsService;
             _gitService = gitService;
             _hotkeyService = hotkeyService;
+            _macroService = macroService;
             _logger = logger;
         }
 
@@ -1451,12 +1453,59 @@ namespace OmniSync.Hub.Presentation.Hubs
             return new List<PcgObjectState>();
         }
 
-        public async Task ExecuteMacro(JsonElement commands)
+        public async Task ExecuteMacro(object input)
         {
             if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
             {
                 AnyCommandReceived?.Invoke(this, "ExecuteMacro");
-                await _processService.ExecuteMacro(commands, _inputService, _clipboardService);
+                if (input is JsonElement json)
+                {
+                    if (json.ValueKind == JsonValueKind.String)
+                    {
+                        await _macroService.ExecuteMacroAsync(json.GetString() ?? "");
+                    }
+                    else
+                    {
+                        await _macroService.ExecuteMacroAsync(json);
+                    }
+                }
+                else if (input is string script)
+                {
+                    await _macroService.ExecuteMacroAsync(script);
+                }
+            }
+        }
+
+        public List<MacroConfig> GetMacros()
+        {
+            if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
+            {
+                return _settingsService.Settings.Macros;
+            }
+            return new List<MacroConfig>();
+        }
+
+        public void SaveMacro(MacroConfig macro)
+        {
+            if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
+            {
+                var existing = _settingsService.Settings.Macros.FirstOrDefault(m => m.Id == macro.Id);
+                if (existing != null)
+                {
+                    _settingsService.UpdateMacro(macro);
+                }
+                else
+                {
+                    _settingsService.AddMacro(macro);
+                }
+            }
+        }
+
+        public void DeleteMacro(Guid id)
+        {
+            if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
+            {
+                _settingsService.RemoveMacro(id);
             }
         }
 

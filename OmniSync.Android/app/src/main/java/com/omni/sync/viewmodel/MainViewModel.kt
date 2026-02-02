@@ -48,6 +48,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _appConfig = MutableStateFlow(configManager.loadConfig())
     val appConfig: StateFlow<com.omni.sync.data.config.AppConfig> = _appConfig
     
+    // Injected manually from Application onCreate
+    lateinit var signalRClient: com.omni.sync.data.repository.SignalRClient
+
     private val _isConnected = MutableStateFlow(false)
     val isConnected: StateFlow<Boolean> = _isConnected
 
@@ -241,6 +244,52 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val current = _appConfig.value
         _appConfig.value = current.copy(macros = macros)
         saveAppConfig()
+        
+        // Sync to Hub
+        if (isConnected.value) {
+            macros.forEach { signalRClient.saveMacro(it) }
+        }
+    }
+
+    fun deleteMacro(macro: com.omni.sync.data.model.Macro) {
+        val currentMacros = _appConfig.value.macros.filter { it.id != macro.id }
+        updateMacros(currentMacros)
+        if (isConnected.value) {
+            signalRClient.deleteMacro(macro.id)
+        }
+    }
+
+    fun fetchMacros() {
+        if (!isConnected.value) return
+        
+        viewModelScope.launch {
+            try {
+                signalRClient.getMacros()
+                    ?.subscribeOn(io.reactivex.rxjava3.schedulers.Schedulers.io())
+                    ?.observeOn(io.reactivex.rxjava3.android.schedulers.AndroidSchedulers.mainThread())
+                    ?.subscribe({ hubMacros ->
+                        // Merge logic: Hub is source of truth for overlapping IDs
+                        val localMacros = _appConfig.value.macros
+                        val merged = localMacros.toMutableList()
+                        
+                        hubMacros.forEach { hm ->
+                            val existingIndex = merged.indexOfFirst { it.id == hm.id }
+                            if (existingIndex != -1) {
+                                merged[existingIndex] = hm
+                            } else {
+                                merged.add(hm)
+                            }
+                        }
+                        
+                        updateMacros(merged)
+                        addLog("Synced ${hubMacros.size} macros from Hub.", LogType.SUCCESS)
+                    }, { error ->
+                        addLog("Failed to fetch macros: ${error.message}", LogType.ERROR)
+                    })
+            } catch (e: Exception) {
+                addLog("Error syncing macros: ${e.message}", LogType.ERROR)
+            }
+        }
     }
 
     fun updateConfig(update: (com.omni.sync.data.config.AppConfig) -> com.omni.sync.data.config.AppConfig) {
@@ -386,6 +435,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             showToast("Hub Connected")
             sleepTracker.pauseTracking()
             _isSleeping.value = false
+            fetchMacros()
         } else {
             addLog("Hub Disconnected", LogType.ERROR)
             showToast("Hub Disconnected")

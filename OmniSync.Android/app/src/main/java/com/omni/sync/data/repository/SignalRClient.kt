@@ -999,6 +999,30 @@ class SignalRClient(
         }
     }
 
+    fun getMacros(): Single<List<com.omni.sync.data.model.Macro>>? {
+        if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
+            return hubConnection?.invoke(List::class.java, "GetMacros")
+                ?.map { rawList ->
+                    val jsonElement = gson.toJsonTree(rawList)
+                    val listType = object : TypeToken<List<com.omni.sync.data.model.Macro>>() {}.type
+                    gson.fromJson(jsonElement, listType)
+                } as? Single<List<com.omni.sync.data.model.Macro>>
+        }
+        return null
+    }
+
+    fun saveMacro(macro: com.omni.sync.data.model.Macro) {
+        if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
+            hubConnection?.send("SaveMacro", macro)
+        }
+    }
+
+    fun deleteMacro(id: String) {
+        if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
+            hubConnection?.send("DeleteMacro", id)
+        }
+    }
+
     fun clearAiMessages(pid: Int? = null) {
         val targetPid = pid ?: _selectedPid.value
         if (hubConnection != null && hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED && aiSessions.value.containsKey(targetPid)) {

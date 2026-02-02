@@ -31,11 +31,15 @@ namespace OmniSync.Hub.Presentation
         private readonly LayoutCaptureService _layoutCaptureService;
         private readonly ProjectLauncherService _projectLauncherService;
         private readonly CommandDispatcher _commandDispatcher;
+        private readonly CalendarService _calendarService;
+        private readonly ProjectSearchService _searchService;
+        private readonly IMacroService _macroService;
+        private readonly ResourceOpenerService _resourceOpenerService;
         private readonly ILogger<TrayIconManager> _logger;
         private TrayApplicationContext _applicationContext;
         private Thread _trayThread;
 
-        public TrayIconManager(IHostApplicationLifetime appLifetime, HubMonitorService hubMonitorService, InputService inputService, ProcessService processService, ShutdownService shutdownService, RegistryService registryService, HubSettingsService settingsService, GlobalHotkeyService hotkeyService, KeyboardHook keyboardHook, AiCliService aiCliService, LayoutCaptureService layoutCaptureService, ProjectLauncherService projectLauncherService, CommandDispatcher commandDispatcher, ILogger<TrayIconManager> logger)
+        public TrayIconManager(IHostApplicationLifetime appLifetime, HubMonitorService hubMonitorService, InputService inputService, ProcessService processService, ShutdownService shutdownService, RegistryService registryService, HubSettingsService settingsService, GlobalHotkeyService hotkeyService, KeyboardHook keyboardHook, AiCliService aiCliService, LayoutCaptureService layoutCaptureService, ProjectLauncherService projectLauncherService, CommandDispatcher commandDispatcher, CalendarService calendarService, ProjectSearchService searchService, IMacroService macroService, ResourceOpenerService resourceOpenerService, ILogger<TrayIconManager> logger)
         {
             _appLifetime = appLifetime;
             _hubMonitorService = hubMonitorService;
@@ -50,6 +54,10 @@ namespace OmniSync.Hub.Presentation
             _layoutCaptureService = layoutCaptureService;
             _projectLauncherService = projectLauncherService;
             _commandDispatcher = commandDispatcher;
+            _calendarService = calendarService;
+            _searchService = searchService;
+            _macroService = macroService;
+            _resourceOpenerService = resourceOpenerService;
             _logger = logger;
         }
 
@@ -86,7 +94,7 @@ namespace OmniSync.Hub.Presentation
                 WinFormsApp.SetCompatibleTextRenderingDefault(false); // For WinForms interop
 
                                 _logger.LogInformation("TrayIconManager: Creating TrayApplicationContext.");
-                                _applicationContext = new TrayApplicationContext(_appLifetime, app, _hubMonitorService, _inputService, _processService, _shutdownService, _registryService, _settingsService, _hotkeyService, _keyboardHook, _aiCliService, _layoutCaptureService, _projectLauncherService, _commandDispatcher, _logger); // Pass logger
+                                _applicationContext = new TrayApplicationContext(_appLifetime, app, _hubMonitorService, _inputService, _processService, _shutdownService, _registryService, _settingsService, _hotkeyService, _keyboardHook, _aiCliService, _layoutCaptureService, _projectLauncherService, _commandDispatcher, _calendarService, _searchService, _macroService, _resourceOpenerService, _logger); // Pass logger
                 
                                 // Add message filter to route messages to WPF's ComponentDispatcher
                                 WinFormsApp.AddMessageFilter(new WpfMessageFilter());
@@ -145,10 +153,14 @@ namespace OmniSync.Hub.Presentation
             private readonly LayoutCaptureService _layoutCaptureService;
             private readonly ProjectLauncherService _projectLauncherService;
             private readonly CommandDispatcher _commandDispatcher;
+            private readonly CalendarService _calendarService;
+            private readonly ProjectSearchService _searchService;
+            private readonly IMacroService _macroService;
+            private readonly ResourceOpenerService _resourceOpenerService;
             private readonly ILogger _logger;
             private MainWindow _mainWindow;
 
-            public TrayApplicationContext(IHostApplicationLifetime appLifetime, WpfApp wpfApplication, HubMonitorService hubMonitorService, InputService inputService, ProcessService processService, ShutdownService shutdownService, RegistryService registryService, HubSettingsService settingsService, GlobalHotkeyService hotkeyService, KeyboardHook keyboardHook, AiCliService aiCliService, LayoutCaptureService layoutCaptureService, ProjectLauncherService projectLauncherService, CommandDispatcher commandDispatcher, ILogger logger)
+            public TrayApplicationContext(IHostApplicationLifetime appLifetime, WpfApp wpfApplication, HubMonitorService hubMonitorService, InputService inputService, ProcessService processService, ShutdownService shutdownService, RegistryService registryService, HubSettingsService settingsService, GlobalHotkeyService hotkeyService, KeyboardHook keyboardHook, AiCliService aiCliService, LayoutCaptureService layoutCaptureService, ProjectLauncherService projectLauncherService, CommandDispatcher commandDispatcher, CalendarService calendarService, ProjectSearchService searchService, IMacroService macroService, ResourceOpenerService resourceOpenerService, ILogger logger)
             {
                 _appLifetime = appLifetime;
                 _wpfApplication = wpfApplication; // Store reference to the WPF Application instance
@@ -164,6 +176,10 @@ namespace OmniSync.Hub.Presentation
                 _layoutCaptureService = layoutCaptureService;
                 _projectLauncherService = projectLauncherService;
                 _commandDispatcher = commandDispatcher;
+                _calendarService = calendarService;
+                _searchService = searchService;
+                _macroService = macroService;
+                _resourceOpenerService = resourceOpenerService;
                 _logger = logger;
                 InitializeComponent();
             }
@@ -198,10 +214,13 @@ namespace OmniSync.Hub.Presentation
                     var contextMenu = new ContextMenuStrip();
                     var showWindowMenuItem = new ToolStripMenuItem("S&how Window", null, OnShowWindow);
                     var hideWindowMenuItem = new ToolStripMenuItem("H&ide Window", null, OnHideWindow);
+                    var refreshCalendarMenuItem = new ToolStripMenuItem("&Refresh Calendar", null, (s, e) => _ = _calendarService.RefreshCalendarAsync());
                     var exitMenuItem = new ToolStripMenuItem("E&xit", null, OnExit);
 
                     contextMenu.Items.Add(showWindowMenuItem);
                     contextMenu.Items.Add(hideWindowMenuItem);
+                    contextMenu.Items.Add(new ToolStripSeparator());
+                    contextMenu.Items.Add(refreshCalendarMenuItem);
                     contextMenu.Items.Add(new ToolStripSeparator()); // Separator
                     contextMenu.Items.Add(exitMenuItem);
 
@@ -217,6 +236,9 @@ namespace OmniSync.Hub.Presentation
                     _hotkeyService.ShowProjectSelectorRequested += (s, e) => OnShowProjectSelector();
                     _commandDispatcher.ShowProjectSelectorRequested += (s, e) => OnShowProjectSelector();
                     
+                    // Trigger initial calendar refresh
+                    _ = _calendarService.RefreshCalendarAsync();
+
                     // CRITICAL: Set the keyboard hook on the UI thread (this thread has the message pump)
                     _logger.LogInformation("TrayApplicationContext: Setting Global Keyboard Hook on UI Thread...");
                     _keyboardHook.SetHook();
@@ -297,15 +319,15 @@ namespace OmniSync.Hub.Presentation
                 {
                     try
                     {
-                        var viewModel = new ProjectSelectorViewModel(_settingsService, _projectLauncherService);
-                        var window = new ProjectSelectorWindow(viewModel);
+                        var viewModel = new OmniSweepViewModel(_settingsService, _projectLauncherService, _calendarService, _searchService, _macroService, _resourceOpenerService);
+                        var window = new OmniSweepWindow(viewModel);
                         window.Show();
                         window.Activate();
                         window.Focus();
                     }
                     catch (Exception ex)
                     {
-                        _logger.LogError(ex, "Error showing Project Selector window");
+                        _logger.LogError(ex, "Error showing Omni Sweep window");
                     }
                 }));
             }
