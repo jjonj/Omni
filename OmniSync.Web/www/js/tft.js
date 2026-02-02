@@ -1222,6 +1222,11 @@ function setupSolverListeners() {
 
                     // Add Ryze to must-include
                     forceAddMustIncludeUnit("Ryze");
+                } else if (e.target.value === 'bronze-for-life') {
+                    // Auto-select level 9
+                    document.querySelectorAll('.lvl-cb').forEach(cb => {
+                        cb.checked = (cb.value === "9");
+                    });
                 }
             }
         });
@@ -1861,7 +1866,17 @@ function renderTraitsSummary(counts, displayBoard, container, mode = 'default') 
     traitsList.style.marginTop = '8px';
     
     const emblemTraits = selectedEmblems.map(e => e.trait);
-    const sortedTraits = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+    const sortedTraits = Object.entries(counts).sort((a, b) => {
+        const traitA = a[0], countA = a[1];
+        const traitB = b[0], countB = b[1];
+        const metaA = tftData.trait_metadata[traitA];
+        const metaB = tftData.trait_metadata[traitB];
+        const activeA = (metaA && metaA.breakpoints.some(bp => bp <= countA)) || (traitA === 'Targon' && countA >= 1);
+        const activeB = (metaB && metaB.breakpoints.some(bp => bp <= countB)) || (traitB === 'Targon' && countB >= 1);
+        if (activeA && !activeB) return -1;
+        if (!activeA && activeB) return 1;
+        return countB - countA;
+    });
     
     sortedTraits.forEach(([trait, count]) => {
         const traitInfo = (tftData.trait_metadata && tftData.trait_metadata[trait]) ? tftData.trait_metadata[trait] : null;
@@ -2630,8 +2645,18 @@ function renderImproveResults(suggestions, container, currentCounts) {
         traitsList.style.marginTop = '10px';
         traitsList.style.paddingTop = '8px';
         traitsList.style.borderTop = '1px solid var(--border-light)';
-        const allTraitNames = new Set([...Object.keys(currentDisplayCounts), ...Object.keys(displayCounts)]);
-                Array.from(allTraitNames).sort().forEach(trait => {
+        const allTraitNames = Array.from(new Set([...Object.keys(currentDisplayCounts), ...Object.keys(displayCounts)]));
+        allTraitNames.sort((traitA, traitB) => {
+            const countA = displayCounts[traitA] || 0;
+            const countB = displayCounts[traitB] || 0;
+            const metaA = tftData.trait_metadata[traitA];
+            const metaB = tftData.trait_metadata[traitB];
+            const activeA = (metaA && metaA.breakpoints.some(bp => bp <= countA)) || (traitA === 'Targon' && countA >= 1);
+            const activeB = (metaB && metaB.breakpoints.some(bp => bp <= countB)) || (traitB === 'Targon' && countB >= 1);
+            if (activeA && !activeB) return -1;
+            if (!activeA && activeB) return 1;
+            return traitA.localeCompare(traitB);
+        }).forEach(trait => {
                     const count = displayCounts[trait] || 0;
                     const prevCount = currentDisplayCounts[trait] || 0;
                     const traitInfo = (tftData.trait_metadata && tftData.trait_metadata[trait]) ? tftData.trait_metadata[trait] : null;
@@ -3230,7 +3255,17 @@ function renderQuizTraits() {
     }
 
     const countsToUse = quizState.isAnswered ? quizState.finalCounts : quizState.baseCounts;
-    const sortedTraits = Object.entries(countsToUse).sort((a, b) => b[1] - a[1]);
+    const sortedTraits = Object.entries(countsToUse).sort((a, b) => {
+        const traitA = a[0], countA = a[1];
+        const traitB = b[0], countB = b[1];
+        const metaA = tftData.trait_metadata[traitA];
+        const metaB = tftData.trait_metadata[traitB];
+        const activeA = (metaA && metaA.breakpoints.some(bp => bp <= countA)) || (traitA === 'Targon' && countA >= 1);
+        const activeB = (metaB && metaB.breakpoints.some(bp => bp <= countB)) || (traitB === 'Targon' && countB >= 1);
+        if (activeA && !activeB) return -1;
+        if (!activeA && activeB) return 1;
+        return countB - countA;
+    });
 
     sortedTraits.forEach(([trait, count]) => {
         const traitInfo = tftData.trait_metadata[trait];
@@ -3900,7 +3935,18 @@ function renderSingleResult(res, container, level, solverMode, isHighlighted = f
     traitsList.style.paddingTop = '2px';
     traitsList.style.borderTop = '1px solid var(--border-light)';
     
-    const sortedTraits = Object.entries(res.counts).sort((a, b) => b[1] - a[1]);
+    const sortedTraits = Object.entries(res.counts).sort((a, b) => {
+        const traitA = a[0], countA = a[1];
+        const traitB = b[0], countB = b[1];
+        const metaA = tftData.trait_metadata[traitA];
+        const metaB = tftData.trait_metadata[traitB];
+        const activeA = (metaA && metaA.breakpoints.some(bp => bp <= countA)) || (traitA === 'Targon' && countA >= 1);
+        const activeB = (metaB && metaB.breakpoints.some(bp => bp <= countB)) || (traitB === 'Targon' && countB >= 1);
+        if (activeA && !activeB) return -1;
+        if (!activeA && activeB) return 1;
+        return countB - countA;
+    });
+
     sortedTraits.forEach(([trait, count]) => {
         const traitInfo = (tftData.trait_metadata && tftData.trait_metadata[trait]) ? tftData.trait_metadata[trait] : null;
         const breakpoints = traitInfo ? traitInfo.breakpoints : null;

@@ -177,6 +177,11 @@ class TFTOptimizer {
                         }
                     }
                 } else {
+                    if (mode === 'bronze-for-life' && trait !== "Targon") {
+                        // Guidance for bronze mode: reward partial progress
+                        score += count * 100;
+                    }
+
                     // Penalize units with single traits if that trait breakpoint is not reached.
                     const isBronzeExclusion = (mode === 'bronze-for-life' && trait === "Targon");
                     if (!isBronzeExclusion) {
@@ -371,7 +376,14 @@ class TFTOptimizer {
                     }
                 }
             }
-            score += u.cost * 2;
+            
+            if (mode === 'bronze-for-life') {
+                score += u.traits.length * 15; // Stronger preference for multi-trait units
+                score += (6 - u.cost) * 2;     // Prefer lower cost units as they are "efficient" bronze fillers
+            } else {
+                score += u.cost * 2;
+            }
+            
             if (u.is_carry) score += 10;
             unitScores.set(u.name, score);
         }
@@ -407,7 +419,7 @@ class TFTOptimizer {
         });
         
         let poolSize = 40;
-        if (mode === 'world-runes' || mode === 'ryze-unlock') poolSize = 100;
+        if (mode === 'world-runes' || mode === 'ryze-unlock' || mode === 'bronze-for-life') poolSize = 100;
         else if (heuristic === 'none') poolSize = 100;
         else if (heuristic === 'aggressive') poolSize = 30;
         else if (heuristic === 'blitz') poolSize = 22;
@@ -479,7 +491,7 @@ class TFTOptimizer {
         
         const expandedMustInclude = this.expandMustInclude(mustIncludeNames);
 
-        if (mode === 'world-runes' || mode === 'ryze-unlock') {
+        if (mode === 'world-runes' || mode === 'ryze-unlock' || mode === 'bronze-for-life') {
             return this.runeSearch(pool, size, emblems, expandedMustInclude, mode, mustIncludeTraits, limit, onProgress);
         }
 
@@ -562,31 +574,39 @@ class TFTOptimizer {
                     const { score, counts } = this.scoreBoard(nextBoard, emblems, targetSize, mode, mustIncludeTraits, mustIncludeNames);
                     totalEvaluated++;
 
-                    const activeOrigins = Object.keys(counts).filter(t => {
+                    const activeTraits = Object.keys(counts).filter(t => {
                         const meta = this.TRAITS_DATA[t];
-                        if (!meta || meta.type !== 'origin') return false;
+                        if (!meta) return false;
                         const breakpoints = meta.breakpoints;
                         
-                        // Origin is active if it has a breakpoint met OR it is Targon with 1 unit
+                        // Trait is active if it has a breakpoint met OR it is Targon with 1 unit
                         const hasBreakpoint = breakpoints && breakpoints.some(b => b <= counts[t]);
                         const isTargonActive = (t === 'Targon' && counts[t] >= 1);
                         
                         return hasBreakpoint || isTargonActive;
                     });
                     
-                    const originCount = activeOrigins.length;
-                    if (!nextBeamsByOriginCount[originCount]) nextBeamsByOriginCount[originCount] = [];
+                    let diversityCount = 0;
+                    if (mode === 'bronze-for-life') {
+                        // Count all active traits for diversity
+                        diversityCount = activeTraits.filter(t => t !== "Targon").length;
+                    } else {
+                        // Count only origins for diversity (world-runes/ryze-unlock)
+                        diversityCount = activeTraits.filter(t => this.TRAITS_DATA[t].type === 'origin').length;
+                    }
+
+                    if (!nextBeamsByOriginCount[diversityCount]) nextBeamsByOriginCount[diversityCount] = [];
                     
-                    nextBeamsByOriginCount[originCount].push({ 
+                    nextBeamsByOriginCount[diversityCount].push({ 
                         board: nextBoard, 
                         score, 
                         counts,
-                        originCount
+                        diversityCount
                     });
                 }
             }
 
-            // Keep top N for each origin count to maintain diversity
+            // Keep top N for each diversity count to maintain diversity
             currentBeams = [];
             for (const count in nextBeamsByOriginCount) {
                 const sorted = nextBeamsByOriginCount[count].sort((a, b) => b.score - a.score);
@@ -630,7 +650,7 @@ class TFTOptimizer {
         }
 
         const { candidates } = this.getCandidates(pool, targetSize, emblems, mustIncludeNames, mustIncludeTraits, 'super', mode);
-        const BEAM_WIDTH = (mode === 'world-runes' || mode === 'ryze-unlock') ? 2000 : 200; 
+        const BEAM_WIDTH = (mode === 'world-runes' || mode === 'ryze-unlock' || mode === 'bronze-for-life') ? 2000 : 200; 
         let totalEvaluated = 0;
 
         for (let step = 0; step < neededSlots; step++) {

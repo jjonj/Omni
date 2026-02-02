@@ -466,6 +466,26 @@ class TFTTester {
         selectedEmblems = [];
         console.log("[Test] Trainer verification logic passed.");
     }
+
+    async testBronzeAzirRenektonLvl9() {
+        console.log("[Test] Finding Bronze Level 9 board with Azir & Renekton...");
+        const pool = this.data.units;
+        const mustIncludeNames = ["Azir", "Renekton"];
+        const { results } = await this.optimizer.findBestBoards(pool, 9, [], mustIncludeNames, 'bronze-for-life', {}, 3, null, 'super');
+        
+        this.assert(results.length > 0, "No results found for Bronze Lvl 9 Azir/Renekton");
+        
+        const topResult = results[0];
+        const activeTraitsCount = Object.keys(topResult.counts).filter(t => {
+            const traitInfo = this.data.trait_metadata[t];
+            // In bronze-for-life mode, Targon is excluded from active count
+            if (t === "Targon") return false;
+            return traitInfo && traitInfo.breakpoints.some(b => b <= topResult.counts[t]);
+        }).length;
+
+        this.assert(activeTraitsCount >= 9, `Top board only has ${activeTraitsCount} active traits (expected >= 9). Board: ${topResult.board.map(u=>u.name).join(', ')}`);
+        console.log(`[Test] Found board with ${activeTraitsCount} traits: ${topResult.board.map(u=>u.name).join(', ')}`);
+    }
 }
 
     
