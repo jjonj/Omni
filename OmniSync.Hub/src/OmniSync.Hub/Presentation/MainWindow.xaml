@@ -546,7 +546,7 @@
                                                     <TextBlock Text="(Enter), (Tab), (Esc), (F1)-(F12), (Up), (Down), (Left), (Right), (Space), (Backspace), (Delete)" FontSize="9" Opacity="0.6" TextWrapping="Wrap"/>
 
                                                     <TextBlock Text="Variables:" FontWeight="Bold" FontSize="11" Margin="0,10,0,5"/>
-                                                    <TextBlock Text="{DATE}, {TIME}, {PC_UPTIME}, {ACTIVE_WINDOW_TITLE}" FontSize="10" Opacity="0.8" TextWrapping="Wrap"/>
+                                                    <TextBlock Text="{}{DATE}, {TIME}, {PC_UPTIME}, {ACTIVE_WINDOW_TITLE}" FontSize="10" Opacity="0.8" TextWrapping="Wrap"/>
                                                 </StackPanel>
                                             </ScrollViewer>
                                         </Border>
