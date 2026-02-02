@@ -33,6 +33,7 @@ namespace OmniSync.Hub.Logic.Services
         private readonly HubMonitorService _monitorService;
         private string? _lastPlayedDialogPrompt;
         private DateTime _lastPlayedDialogTime = DateTime.MinValue;
+        private readonly Dictionary<int, List<DateTime>> _dialogHistoryPerPid = new Dictionary<int, List<DateTime>>();
         private readonly Dictionary<string, string> _clientCommandOutputSubscriptions = new Dictionary<string, string>(); // ClientId -> ConnectionId for command output
 
         public HubEventSender(ILogger<HubEventSender> logger, IHubContext<RpcApiHub> hubContext, ProcessService processService, InputService inputService, AudioService audioService, ShutdownService shutdownService, CommandDispatcher commandDispatcher, FileService fileService, AiCliService aiCliService, HubSettingsService settingsService, HubMonitorService monitorService) // Added AiCliService
@@ -89,6 +90,26 @@ namespace OmniSync.Hub.Logic.Services
             // 1. Mandatory 5s gap between ANY two blips (to stop rapid spam).
             // 2. 30s cooldown if it's the same prompt.
             var now = DateTime.Now;
+
+            // Track dialog frequency per PID to prevent rapid loops
+            if (!_dialogHistoryPerPid.TryGetValue(e.Pid, out var timestamps))
+            {
+                timestamps = new List<DateTime>();
+                _dialogHistoryPerPid[e.Pid] = timestamps;
+            }
+
+            timestamps.Add(now);
+            timestamps.RemoveAll(t => (now - t).TotalSeconds > 30); // Keep only last 30s
+
+            if (timestamps.Count > 4)
+            {
+                _logger.LogWarning($"[HubEventSender] PID {e.Pid} triggered more than 4 dialogs in 30s. Auto-selecting 'retry_later' to break loop.");
+                _monitorService.AddLogMessage($"Rapid dialog detected for PID {e.Pid}. Auto-selecting 'retry_later' in 5s...");
+                await Task.Delay(5000);
+                await _aiCliService.SendDialogResponseAsync("retry_later", e.Pid);
+                return;
+            }
+
             double secondsSinceLastBlip = (now - _lastPlayedDialogTime).TotalSeconds;
             bool isNewPrompt = !string.Equals(_lastPlayedDialogPrompt, e.Prompt, StringComparison.OrdinalIgnoreCase);
 

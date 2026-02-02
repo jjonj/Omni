@@ -80,22 +80,6 @@ namespace OmniSync.Hub.Infrastructure.Services
         public System.Collections.ObjectModel.ObservableCollection<ProjectAction> Actions { get; set; } = new();
     }
 
-    public class MacroCommand
-    {
-        public string Type { get; set; } = "";
-        public string? Keys { get; set; }
-        public long? DurationMs { get; set; }
-        public string? Path { get; set; }
-        public string? Title { get; set; }
-        public int? TimeoutMs { get; set; }
-        public string? Key { get; set; }
-        public string? Text { get; set; }
-        public string? Code { get; set; }
-        public int? X { get; set; }
-        public int? Y { get; set; }
-        public string? Button { get; set; }
-    }
-
     public class MacroConfig : System.ComponentModel.INotifyPropertyChanged
     {
         private Guid _id = Guid.NewGuid();
@@ -110,8 +94,8 @@ namespace OmniSync.Hub.Infrastructure.Services
         private bool _isPinned = false;
         public bool IsPinned { get => _isPinned; set { _isPinned = value; OnPropertyChanged(); } }
 
-        private List<MacroCommand> _commands = new();
-        public List<MacroCommand> Commands { get => _commands; set { _commands = value; OnPropertyChanged(); } }
+        private string _script = "";
+        public string Script { get => _script; set { _script = value; OnPropertyChanged(); } }
 
         public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
         protected void OnPropertyChanged([System.Runtime.CompilerServices.CallerMemberName] string? propertyName = null)
@@ -193,28 +177,19 @@ namespace OmniSync.Hub.Infrastructure.Services
                 { 
                     Name = "Lock PC", 
                     IsPinned = true,
-                    Commands = new List<MacroCommand> 
-                    { 
-                        new MacroCommand { Type = "send", Keys = "#l" } 
-                    } 
+                    Script = "send #l"
                 });
                 _settings.Macros.Add(new MacroConfig 
                 { 
                     Name = "Open Notepad", 
                     IsPinned = true,
-                    Commands = new List<MacroCommand> 
-                    { 
-                        new MacroCommand { Type = "run", Path = "notepad.exe" } 
-                    } 
+                    Script = "run notepad.exe"
                 });
                 _settings.Macros.Add(new MacroConfig 
                 { 
                     Name = "Unlock", 
                     IsPinned = true,
-                    Commands = new List<MacroCommand> 
-                    { 
-                        new MacroCommand { Type = "powershell", Code = "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait('{SCROLLLOCK}')" } 
-                    } 
+                    Script = "powershell Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait('{SCROLLLOCK}')"
                 });
                 SaveSettings();
             }

@@ -57,6 +57,7 @@ namespace OmniSync.Hub.Presentation
         }
 
         public ObservableCollection<OmniSweepItem> Results { get; } = new();
+        public ObservableCollection<MacroConfig> PinnedMacros { get; } = new();
 
         private OmniSweepItem? _selectedItem;
         public OmniSweepItem? SelectedItem
@@ -66,6 +67,7 @@ namespace OmniSync.Hub.Presentation
         }
 
         public ICommand ExecuteCommand { get; }
+        public ICommand RunMacroCommand { get; }
 
         public OmniSweepViewModel(
             HubSettingsService settingsService,
@@ -83,6 +85,14 @@ namespace OmniSync.Hub.Presentation
             _resourceOpenerService = resourceOpenerService;
 
             ExecuteCommand = new RelayCommand(async p => await ExecuteItem(p as OmniSweepItem ?? SelectedItem));
+            RunMacroCommand = new RelayCommand(async p => 
+            {
+                if (p is MacroConfig m)
+                {
+                    await _macroService.ExecuteMacroAsync(m);
+                    RequestClose?.Invoke(this, EventArgs.Empty);
+                }
+            });
 
             InitializeAsync();
         }
@@ -97,9 +107,14 @@ namespace OmniSync.Hub.Presentation
         private async void UpdateResults()
         {
             Results.Clear();
+            PinnedMacros.Clear();
 
+            // Always show pinned macros in their own section if no search text
             if (string.IsNullOrWhiteSpace(SearchText))
             {
+                var pinned = _settingsService.Settings.Macros.Where(m => m.IsPinned).ToList();
+                foreach (var m in pinned) PinnedMacros.Add(m);
+
                 // Show Recent Workspaces
                 foreach (var ws in _searchService.GetRecentWorkspaces())
                 {
@@ -109,19 +124,6 @@ namespace OmniSync.Hub.Presentation
                         Subtitle = ws,
                         Category = "Recent Workspace",
                         Data = ws
-                    });
-                }
-
-                // Show Pinned Macros
-                var pinnedMacros = _settingsService.Settings.Macros.Where(m => m.IsPinned);
-                foreach (var macro in pinnedMacros)
-                {
-                    Results.Add(new OmniSweepItem
-                    {
-                        Title = macro.Name,
-                        Subtitle = $"Macro • {macro.Commands.Count} steps",
-                        Category = "Pinned Macro",
-                        Data = macro
                     });
                 }
 

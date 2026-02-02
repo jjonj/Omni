@@ -63,8 +63,6 @@ namespace OmniSync.Hub.Presentation
         public ICommand AddMacroCommand { get; }
         public ICommand DeleteMacroCommand { get; }
         public ICommand SaveMacroCommand { get; }
-        public ICommand AddMacroCommandItemCommand { get; }
-        public ICommand DeleteMacroCommandItemCommand { get; }
 
         // --- Properties bound in XAML ---
         public ObservableCollection<string> ActiveConnections { get; }
@@ -616,8 +614,6 @@ namespace OmniSync.Hub.Presentation
             AddMacroCommand = new RelayCommand(_ => ExecuteAddMacro());
             DeleteMacroCommand = new RelayCommand(p => ExecuteDeleteMacro(p as MacroConfig));
             SaveMacroCommand = new RelayCommand(_ => ExecuteSaveMacro());
-            AddMacroCommandItemCommand = new RelayCommand(_ => ExecuteAddMacroCommandItem());
-            DeleteMacroCommandItemCommand = new RelayCommand(p => ExecuteDeleteMacroCommandItem(p as MacroCommand));
 
             ToggleCategoryExpansionCommand = new RelayCommand(p => {
                 var args = p as object[];
@@ -1021,20 +1017,6 @@ namespace OmniSync.Hub.Presentation
             if (CurrentEditingMacro == null) return;
             _settingsService.UpdateMacro(CurrentEditingMacro);
             CurrentEditingMacro = null;
-        }
-
-        private void ExecuteAddMacroCommandItem()
-        {
-            if (CurrentEditingMacro == null) return;
-            CurrentEditingMacro.Commands.Add(new MacroCommand { Type = "send" });
-            OnPropertyChanged(nameof(CurrentEditingMacro));
-        }
-
-        private void ExecuteDeleteMacroCommandItem(MacroCommand? cmd)
-        {
-            if (CurrentEditingMacro == null || cmd == null) return;
-            CurrentEditingMacro.Commands.Remove(cmd);
-            OnPropertyChanged(nameof(CurrentEditingMacro));
         }
 
         public bool GetCategoryExpansionState(string category)

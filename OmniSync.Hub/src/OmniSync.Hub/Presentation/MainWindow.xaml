@@ -509,105 +509,11 @@
                                         <Grid.RowDefinitions>
                                             <RowDefinition Height="Auto"/>
                                             <RowDefinition Height="*"/>
-                                            <RowDefinition Height="Auto"/>
                                         </Grid.RowDefinitions>
-                                        <TextBlock Grid.Row="0" Text="Commands" FontWeight="Bold" Margin="0,0,0,5"/>
-                                        <Border Grid.Row="1">
-                                            <ListBox ItemsSource="{Binding CurrentEditingMacro.Commands}">
-                                                <ListBox.ItemTemplate>
-                                                    <DataTemplate>
-                                                        <Border Background="#2D2D30" Margin="0,0,0,5" Padding="5">
-                                                            <StackPanel>
-                                                                <Grid>
-                                                                    <Grid.ColumnDefinitions>
-                                                                        <ColumnDefinition Width="Auto"/>
-                                                                        <ColumnDefinition Width="*"/>
-                                                                        <ColumnDefinition Width="Auto"/>
-                                                                    </Grid.ColumnDefinitions>
-                                                                    <ComboBox Grid.Column="0" SelectedValue="{Binding Type}" Width="100">
-                                                                        <sys:String>send</sys:String>
-                                                                        <sys:String>run</sys:String>
-                                                                        <sys:String>sleep</sys:String>
-                                                                        <sys:String>winactivate</sys:String>
-                                                                        <sys:String>clipboard</sys:String>
-                                                                        <sys:String>powershell</sys:String>
-                                                                    </ComboBox>
-                                                                    
-                                                                    <!-- Contextual Inputs based on Type -->
-                                                                    <ContentControl Grid.Column="1" Margin="5,0" Content="{Binding}">
-                                                                        <ContentControl.Style>
-                                                                            <Style TargetType="ContentControl">
-                                                                                <Style.Triggers>
-                                                                                    <DataTrigger Binding="{Binding Type}" Value="send">
-                                                                                        <Setter Property="ContentTemplate">
-                                                                                            <Setter.Value>
-                                                                                                <DataTemplate>
-                                                                                                    <TextBox Text="{Binding Keys, UpdateSourceTrigger=PropertyChanged}" />
-                                                                                                </DataTemplate>
-                                                                                            </Setter.Value>
-                                                                                        </Setter>
-                                                                                    </DataTrigger>
-                                                                                    <DataTrigger Binding="{Binding Type}" Value="run">
-                                                                                        <Setter Property="ContentTemplate">
-                                                                                            <Setter.Value>
-                                                                                                <DataTemplate>
-                                                                                                    <TextBox Text="{Binding Path, UpdateSourceTrigger=PropertyChanged}" />
-                                                                                                </DataTemplate>
-                                                                                            </Setter.Value>
-                                                                                        </Setter>
-                                                                                    </DataTrigger>
-                                                                                    <DataTrigger Binding="{Binding Type}" Value="sleep">
-                                                                                        <Setter Property="ContentTemplate">
-                                                                                            <Setter.Value>
-                                                                                                <DataTemplate>
-                                                                                                    <TextBox Text="{Binding DurationMs, UpdateSourceTrigger=PropertyChanged}" />
-                                                                                                </DataTemplate>
-                                                                                            </Setter.Value>
-                                                                                        </Setter>
-                                                                                    </DataTrigger>
-                                                                                    <DataTrigger Binding="{Binding Type}" Value="winactivate">
-                                                                                        <Setter Property="ContentTemplate">
-                                                                                            <Setter.Value>
-                                                                                                <DataTemplate>
-                                                                                                    <TextBox Text="{Binding Title, UpdateSourceTrigger=PropertyChanged}" />
-                                                                                                </DataTemplate>
-                                                                                            </Setter.Value>
-                                                                                        </Setter>
-                                                                                    </DataTrigger>
-                                                                                    <DataTrigger Binding="{Binding Type}" Value="clipboard">
-                                                                                        <Setter Property="ContentTemplate">
-                                                                                            <Setter.Value>
-                                                                                                <DataTemplate>
-                                                                                                    <TextBox Text="{Binding Text, UpdateSourceTrigger=PropertyChanged}" />
-                                                                                                </DataTemplate>
-                                                                                            </Setter.Value>
-                                                                                        </Setter>
-                                                                                    </DataTrigger>
-                                                                                    <DataTrigger Binding="{Binding Type}" Value="powershell">
-                                                                                        <Setter Property="ContentTemplate">
-                                                                                            <Setter.Value>
-                                                                                                <DataTemplate>
-                                                                                                    <TextBox Text="{Binding Code, UpdateSourceTrigger=PropertyChanged}" />
-                                                                                                </DataTemplate>
-                                                                                            </Setter.Value>
-                                                                                        </Setter>
-                                                                                    </DataTrigger>
-                                                                                </Style.Triggers>
-                                                                            </Style>
-                                                                        </ContentControl.Style>
-                                                                    </ContentControl>
-
-                                                                    <Button Grid.Column="2" Content="X" Command="{Binding DataContext.DeleteMacroCommandItemCommand, RelativeSource={RelativeSource AncestorType=Window}}" 
-                                                                            CommandParameter="{Binding}" Background="#603030" Margin="0" Width="25"/>
-                                                                </Grid>
-                                                            </StackPanel>
-                                                        </Border>
-                                                    </DataTemplate>
-                                                </ListBox.ItemTemplate>
-                                            </ListBox>
-                                        </Border>
-                                        <Button Grid.Row="2" Content="+ Add Command" Command="{Binding AddMacroCommandItemCommand}" 
-                                                HorizontalAlignment="Left" Margin="0,5,0,0"/>
+                                        <TextBlock Grid.Row="0" Text="Script" FontWeight="Bold" Margin="0,0,0,5"/>
+                                        <TextBox Grid.Row="1" Text="{Binding CurrentEditingMacro.Script, UpdateSourceTrigger=PropertyChanged}" 
+                                                 AcceptsReturn="True" VerticalScrollBarVisibility="Auto" 
+                                                 FontFamily="Consolas" FontSize="12" Padding="5"/>
                                     </Grid>
                                 </DockPanel>
                             </Border>

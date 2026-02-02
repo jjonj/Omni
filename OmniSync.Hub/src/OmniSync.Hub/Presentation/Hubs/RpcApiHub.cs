@@ -1466,7 +1466,8 @@ namespace OmniSync.Hub.Presentation.Hubs
                     }
                     else
                     {
-                        await _macroService.ExecuteMacroAsync(json);
+                        var macro = json.Deserialize<MacroConfig>();
+                        if (macro != null) await _macroService.ExecuteMacroAsync(macro);
                     }
                 }
                 else if (input is string script)

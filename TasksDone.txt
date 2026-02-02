@@ -202,5 +202,8 @@
 ### Hub Startup Routines
 ? QuickActionService: Framework for once-per-day maintenance tasks (e.g., daily tab cleanup).
 
+### Hub AI Dialogs
+✅ Auto-respond with 'retry_later' if more than 4 dialogs are received within 30 seconds from the same PID to break rapid loops.
+
 ### Web UI
 ? Quick Nav: Restricted site selector dropdown to WebServerScreen context and fixed style leaks.

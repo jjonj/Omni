@@ -9,12 +9,41 @@
     <Window.Resources>
         <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
         
+        <vm:InverseBooleanToVisibilityConverter x:Key="InverseBooleanToVisibilityConverter" />
+        
         <Style x:Key="CategoryHeaderStyle" TargetType="TextBlock">
             <Setter Property="FontSize" Value="10"/>
             <Setter Property="FontWeight" Value="Bold"/>
             <Setter Property="Foreground" Value="#007ACC"/>
             <Setter Property="Margin" Value="5,10,0,5"/>
             <Setter Property="Opacity" Value="0.8"/>
+        </Style>
+
+        <Style x:Key="MacroTileStyle" TargetType="Button">
+            <Setter Property="Width" Value="80"/>
+            <Setter Property="Height" Value="80"/>
+            <Setter Property="Background" Value="#2D2D30"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="Margin" Value="5"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}" CornerRadius="8" BorderThickness="1" BorderBrush="#3F3F46">
+                            <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+                                <Path Data="M12,2L4.5,20.29L5.21,21L12,18L18.79,21L19.5,20.29L12,2Z" 
+                                      Fill="#007ACC" Width="24" Height="24" Stretch="Uniform" Margin="0,0,0,5"/>
+                                <TextBlock Text="{Binding Name}" FontSize="10" TextAlignment="Center" TextWrapping="Wrap" MaxWidth="70"/>
+                            </StackPanel>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background" Value="#3E3E42"/>
+                                <Setter Property="BorderBrush" Value="#007ACC"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
         </Style>
     </Window.Resources>
 
@@ -27,8 +56,8 @@
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/> <!-- Next Event -->
                 <RowDefinition Height="Auto"/> <!-- Search Bar -->
-                <RowDefinition Height="*"/>    <!-- Results -->
-                <RowDefinition Height="Auto"/> <!-- Help / Footer -->
+                <RowDefinition Height="*"/>    <!-- Content -->
+                <RowDefinition Height="Auto"/> <!-- Footer -->
             </Grid.RowDefinitions>
 
             <!-- Next Event Header -->
@@ -47,7 +76,7 @@
                          FontSize="20" Padding="10" Background="#2D2D30" Foreground="White" 
                          BorderThickness="0" CaretBrush="#007ACC"
                          PreviewKeyDown="SearchInput_PreviewKeyDown"/>
-                <TextBlock IsHitTestVisible="False" Text="Search for projects, files, or macros..." 
+                <TextBlock IsHitTestVisible="False" Text="Search projects or files..." 
                            VerticalAlignment="Center" HorizontalAlignment="Left" Margin="12,0,0,0"
                            Foreground="#D4D4D4" Opacity="0.3" FontSize="18">
                     <TextBlock.Style>
@@ -63,46 +92,71 @@
                 </TextBlock>
             </Grid>
 
-            <!-- Results List -->
-            <ListBox Grid.Row="2" ItemsSource="{Binding Results}" SelectedItem="{Binding SelectedItem}" 
-                     Background="Transparent" BorderThickness="0" Margin="10,0"
-                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                     x:Name="ResultsList">
-                <ListBox.ItemContainerStyle>
-                    <Style TargetType="ListBoxItem">
-                        <Setter Property="Background" Value="Transparent"/>
-                        <Setter Property="Template">
-                            <Setter.Value>
-                                <ControlTemplate TargetType="ListBoxItem">
-                                    <Border Background="{TemplateBinding Background}" CornerRadius="6" Padding="10,8" Margin="0,2">
-                                        <ContentPresenter />
-                                    </Border>
-                                    <ControlTemplate.Triggers>
-                                        <Trigger Property="IsSelected" Value="True">
-                                            <Setter Property="Background" Value="#3E3E42"/>
-                                        </Trigger>
-                                        <Trigger Property="IsMouseOver" Value="True">
-                                            <Setter Property="Background" Value="#2D2D30"/>
-                                        </Trigger>
-                                    </ControlTemplate.Triggers>
-                                </ControlTemplate>
-                            </Setter.Value>
-                        </Setter>
-                    </Style>
-                </ListBox.ItemContainerStyle>
-                <ListBox.ItemTemplate>
-                    <DataTemplate>
-                        <DockPanel>
-                            <TextBlock Text="{Binding Category}" DockPanel.Dock="Right" FontSize="10" 
-                                       VerticalAlignment="Center" Opacity="0.4" Foreground="#007ACC"/>
-                            <StackPanel>
-                                <TextBlock Text="{Binding Title}" FontSize="14" Foreground="White" FontWeight="SemiBold"/>
-                                <TextBlock Text="{Binding Subtitle}" FontSize="11" Foreground="#D4D4D4" Opacity="0.6" TextTrimming="CharacterEllipsis"/>
-                            </StackPanel>
-                        </DockPanel>
-                    </DataTemplate>
-                </ListBox.ItemTemplate>
-            </ListBox>
+            <!-- Content Area -->
+            <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto" Margin="10,0">
+                <StackPanel>
+                    <!-- Pinned Macros Section -->
+                    <StackPanel Visibility="{Binding SearchText, Converter={StaticResource InverseBooleanToVisibilityConverter}, ConverterParameter=Inverse}">
+                        <TextBlock Text="PINNED MACROS" Style="{StaticResource CategoryHeaderStyle}"/>
+                        <ItemsControl ItemsSource="{Binding PinnedMacros}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <WrapPanel />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Button Style="{StaticResource MacroTileStyle}" 
+                                            Command="{Binding DataContext.RunMacroCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                            CommandParameter="{Binding}"/>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+
+                    <!-- Main Results List -->
+                    <TextBlock Text="RESULTS" Style="{StaticResource CategoryHeaderStyle}"/>
+                    <ListBox ItemsSource="{Binding Results}" SelectedItem="{Binding SelectedItem}" 
+                             Background="Transparent" BorderThickness="0"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                             x:Name="ResultsList">
+                        <ListBox.ItemContainerStyle>
+                            <Style TargetType="ListBoxItem">
+                                <Setter Property="Background" Value="Transparent"/>
+                                <Setter Property="Template">
+                                    <Setter.Value>
+                                        <ControlTemplate TargetType="ListBoxItem">
+                                            <Border Background="{TemplateBinding Background}" CornerRadius="6" Padding="10,8" Margin="0,2">
+                                                <ContentPresenter />
+                                            </Border>
+                                            <ControlTemplate.Triggers>
+                                                <Trigger Property="IsSelected" Value="True">
+                                                    <Setter Property="Background" Value="#3E3E42"/>
+                                                </Trigger>
+                                                <Trigger Property="IsMouseOver" Value="True">
+                                                    <Setter Property="Background" Value="#2D2D30"/>
+                                                </Trigger>
+                                            </ControlTemplate.Triggers>
+                                        </ControlTemplate>
+                                    </Setter.Value>
+                                </Setter>
+                            </Style>
+                        </ListBox.ItemContainerStyle>
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <DockPanel>
+                                    <TextBlock Text="{Binding Category}" DockPanel.Dock="Right" FontSize="10" 
+                                               VerticalAlignment="Center" Opacity="0.4" Foreground="#007ACC"/>
+                                    <StackPanel>
+                                        <TextBlock Text="{Binding Title}" FontSize="14" Foreground="White" FontWeight="SemiBold"/>
+                                        <TextBlock Text="{Binding Subtitle}" FontSize="11" Foreground="#D4D4D4" Opacity="0.6" TextTrimming="CharacterEllipsis"/>
+                                    </StackPanel>
+                                </DockPanel>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </StackPanel>
+            </ScrollViewer>
 
             <!-- Footer -->
             <Border Grid.Row="3" Background="#252526" CornerRadius="0,0,12,12" Padding="15,8">
@@ -114,3 +168,4 @@
         </Grid>
     </Border>
 </Window>
+
