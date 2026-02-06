@@ -96,7 +96,7 @@ class TFTTester {
         const tibbers = this.data.units.find(u => u.name === "Tibbers");
         const board = [annie, tibbers];
         const res = this.optimizer.scoreBoard(board, [], 8);
-        this.assert(res.counts["Arcanist"] === 1, `Annie should only provide 1 Arcanist, but provided ${res.counts["Arcanist"]}`);
+        this.assert(res.counts["Arcanist"] === 2, `Annie and Tibbers together should provide 2 Arcanist, but provided ${res.counts["Arcanist"]}`);
     }
 
     async testTargonSpecialLogic() {

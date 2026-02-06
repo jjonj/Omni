@@ -878,7 +878,7 @@
       "is_carry": true,
       "locked": false,
       "icon_url": "assets/tft/set16/champions/Yunara.png",
-      "role": "Fighter"
+      "role": "AD Carry"
     },
     {
       "name": "Aatrox",
@@ -1104,7 +1104,8 @@
       "name": "Tibbers",
       "cost": 5,
       "traits": [
-        "Dark Child"
+        "Dark Child",
+        "Arcanist"
       ],
       "is_carry": false,
       "locked": false,

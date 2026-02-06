@@ -1426,6 +1426,10 @@ function renderUnitPools() {
                 return true;
             })
                 .sort((a, b) => {
+                    // Special handling for Tibbers - always last in his pool
+                    if (a.name === 'Tibbers') return 1;
+                    if (b.name === 'Tibbers') return -1;
+
                     const aDisabled = activeDisabledUnits.includes(a.name);
                     const bDisabled = activeDisabledUnits.includes(b.name);
                     if (aDisabled !== bDisabled) return aDisabled - bDisabled;
