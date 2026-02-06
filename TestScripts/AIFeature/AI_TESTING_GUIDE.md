@@ -38,7 +38,7 @@ The AI is non-deterministic and often uses **multiple turns** to complete a task
 The Hub now takes a baseline of **all** existing Gemini processes (even those not yet connected) before launching a new one.
 - **Zombie Prevention:** This ensures the Hub doesn't accidentally connect to a "zombie" process from a previous crashed test.
 - **Cleanup:** Always use the `cleanup_gemini_windows.py` script at the start of your test to ensure a clean state.
-- **Early Startup:** The Gemini CLI starts its Named Pipe server (`\\.\pipe\omni-omni-gemini-cli-<PID>`) almost immediately upon launch. If discovery fails, check if `patchStdio` or an early crash is preventing the process from reaching the `main()` function.
+- **Early Startup:** The Gemini CLI starts its Named Pipe server (`\\.\pipe\omni-gemini-cli-<PID>`) almost immediately upon launch. If discovery fails, check if `patchStdio` or an early crash is preventing the process from reaching the `main()` function.
 
 ## 6. Context Management
 AI context pollution is a common source of flaky tests.

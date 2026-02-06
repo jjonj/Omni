@@ -627,6 +627,8 @@ namespace OmniSync.Hub.Presentation
                         ProjectRoots.Add(r);
                     }
 
+                    var selectedMacroId = CurrentEditingMacro?.Id;
+
                     foreach (var existing in Macros)
                     {
                         existing.PropertyChanged -= OnMacroPropertyChanged;
@@ -636,6 +638,11 @@ namespace OmniSync.Hub.Presentation
                     {
                         m.PropertyChanged += OnMacroPropertyChanged;
                         Macros.Add(m);
+                    }
+
+                    if (selectedMacroId.HasValue)
+                    {
+                        CurrentEditingMacro = Macros.FirstOrDefault(m => m.Id == selectedMacroId.Value);
                     }
                 }));
             };
@@ -1062,15 +1069,7 @@ namespace OmniSync.Hub.Presentation
 
         private void OnMacroPropertyChanged(object? sender, PropertyChangedEventArgs e)
         {
-            // Persist immediately for toggles like IsPinned
-            if (sender is MacroConfig macro)
-            {
-                _settingsService.UpdateMacro(macro);
-            }
-            else
-            {
-                _settingsService.SaveSettings();
-            }
+            _settingsService.SaveSettings();
         }
 
         public bool GetCategoryExpansionState(string category)

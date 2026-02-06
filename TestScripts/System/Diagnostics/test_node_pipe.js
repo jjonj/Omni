@@ -1,5 +1,5 @@
 const net = require('net');
-const pipeName = '\\.\pipe\omni-omni-gemini-cli-test-' + process.pid;
+const pipeName = '\\.\pipe\omni-gemini-cli-test-' + process.pid;
 
 console.log(`Attempting to create pipe: ${pipeName}`);
 

@@ -354,7 +354,7 @@ namespace OmniSync.Hub.Infrastructure.Services
                 // Filter pidsToConnect to ONLY those where the pipe actually exists to avoid timeout penalties
                 var pidsToConnect = pids.Where(p => 
                     (!_sessions.ContainsKey(p) || !_sessions[p].IsConnected) && 
-                    File.Exists($@"\\.\pipe\omni-omni-gemini-cli-{p}")
+                    File.Exists($@"\\.\pipe\omni-gemini-cli-{p}")
                 ).ToList();
 
                 if (pidsToConnect.Any())
@@ -1135,7 +1135,7 @@ namespace OmniSync.Hub.Infrastructure.Services
             if (!session.IsReady)
             {
                 _logger.LogInformation($"[AiCliService] Session {target} not ready. Waiting for handshake (up to 5s)...");
-                await session.WaitUntilReadyAsync(5000);
+                await session.WaitUntilReadyAsync(30000);
             }
 
             await _sessionLock.WaitAsync();
@@ -1307,10 +1307,10 @@ namespace OmniSync.Hub.Infrastructure.Services
 
         public async Task<bool> ConnectAsync(int timeoutMs)
         {
-            _logger.LogInformation($"[GeminiSession] SID: {_sid} | Attempting connection to pipe 'omni-omni-gemini-cli-{_pid}' (timeout: {timeoutMs}ms)");
+            _logger.LogInformation($"[GeminiSession] SID: {_sid} | Attempting connection to pipe 'omni-gemini-cli-{_pid}' (timeout: {timeoutMs}ms)");
             try
             {
-                _pipeClient = new NamedPipeClientStream(".", $"omni-omni-gemini-cli-{_pid}", PipeDirection.InOut, PipeOptions.Asynchronous);
+                _pipeClient = new NamedPipeClientStream(".", $"omni-gemini-cli-{_pid}", PipeDirection.InOut, PipeOptions.Asynchronous);
                 
                 await _pipeClient.ConnectAsync(timeoutMs);
 

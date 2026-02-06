@@ -230,9 +230,9 @@ namespace OmniSync.Hub.Infrastructure.Services
             });
         }
 
-        public virtual void ShellExecute(string path, string? arguments = null)
+        public virtual void ShellExecute(string path, string? arguments = null, string? workingDirectory = null)
         {
-            _monitorService.AddLogMessage($"[ProcessService] ShellExecute: '{path}' Args: '{arguments}'");
+            _monitorService.AddLogMessage($"[ProcessService] ShellExecute: '{path}' Args: '{arguments}' Dir: '{workingDirectory}'");
             
             Action action = () => {
                 try
@@ -241,7 +241,8 @@ namespace OmniSync.Hub.Infrastructure.Services
                     {
                         FileName = path,
                         Arguments = arguments ?? "",
-                        UseShellExecute = true
+                        UseShellExecute = true,
+                        WorkingDirectory = workingDirectory ?? ""
                     };
                     Process.Start(psi);
                     _monitorService.AddLogMessage($"[ProcessService] ShellExecute started process for '{path}'");
@@ -262,9 +263,9 @@ namespace OmniSync.Hub.Infrastructure.Services
             }
         }
 
-        public virtual void ExecuteCommandNonAdmin(string command, string? arguments = null)
+        public virtual void ExecuteCommandNonAdmin(string command, string? arguments = null, string? workingDirectory = null)
         {
-            _monitorService.AddLogMessage($"[ProcessService] ExecuteCommandNonAdmin: '{command}' Args: '{arguments}'");
+            _monitorService.AddLogMessage($"[ProcessService] ExecuteCommandNonAdmin: '{command}' Args: '{arguments}' Dir: '{workingDirectory}'");
             
             Action action = () => {
                 try
@@ -276,7 +277,7 @@ namespace OmniSync.Hub.Infrastructure.Services
                         dynamic shell = Activator.CreateInstance(shellType);
                         // ShellExecute(file, vArgs, vDir, vOperation, vShow)
                         // vOperation: "open", vShow: 1 (Normal)
-                        shell.ShellExecute(command, arguments ?? "", "", "open", 1);
+                        shell.ShellExecute(command, arguments ?? "", workingDirectory ?? "", "open", 1);
                         _monitorService.AddLogMessage($"[ProcessService] ExecuteCommandNonAdmin started via Shell.Application: {command}");
                     }
                     else

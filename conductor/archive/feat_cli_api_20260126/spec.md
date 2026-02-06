@@ -22,7 +22,7 @@ This feature enables the Gemini CLI to interact with the Omni Hub to open files,
 - **REST API:** Leverage `OmniHubApiController` to accept the new commands.
 
 ### 2.2. Gemini CLI Extension (`omni`)
-- **Location:** `D:\SSDProjects\Tools\omni-omni-gemini-cli\extensions\omni\`
+- **Location:** `D:\SSDProjects\Tools\omni-gemini-cli\extensions\omni\`
 - **Interface:** Provide a unified tool for the AI to interact with the Hub.
 - **Tools:**
     - `open_resource(path, line_number?)`: Sends an authenticated POST request to the Hub to open the specified target.

@@ -7,7 +7,7 @@ import win32file
 import win32pipe
 import pywintypes
 
-GEMINI_DIR = r"D:\SSDProjects\Tools\omni-omni-gemini-cli"
+GEMINI_DIR = r"D:\SSDProjects\Tools\omni-gemini-cli"
 BUNDLE_PATH = os.path.join(GEMINI_DIR, "bundle", "gemini.js")
 WORKSPACE = r"D:\SSDProjects"
 STDOUT_LOG = r"D:\SSDProjects\Omni\cli_stdout.log"
@@ -33,7 +33,7 @@ def test_pipe():
         )
     
     print(f"CLI launched. PID: {proc.pid}")
-    pipe_name = f"\\\\.\\pipe\\omni-omni-omni-gemini-cli-{proc.pid}"
+    pipe_name = f"\\\\.\\pipe\\omni-gemini-cli-{proc.pid}"
     
     print(f"Waiting for pipe {pipe_name}...")
     

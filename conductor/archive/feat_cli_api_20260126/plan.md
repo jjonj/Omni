@@ -17,7 +17,7 @@ Implement the core logic in the Omni Hub to handle resource opening and rename t
 ## Phase 2: Gemini CLI Extension
 Build the client-side extension that allows the AI to call the new Hub API.
 
-- [x] Task: Scaffold the `omni` extension in `D:\SSDProjects\Tools\omni-omni-gemini-cli\extensions\omni\`.
+- [x] Task: Scaffold the `omni` extension in `D:\SSDProjects\Tools\omni-gemini-cli\extensions\omni\`.
 - [x] Task: Implement the `open_resource` tool in the extension.
     - [x] Logic to read Hub URL and API Key from environment or config.
     - [x] Logic to send HTTP POST request to the renamed Hub API.

@@ -4,7 +4,7 @@ import pyperclip
 import time
 
 def test_pyautogui_alt():
-    title = "Gemini - omni-omni-gemini-cli"
+    title = "Gemini - omni-gemini-cli"
     try:
         window = gw.getWindowsWithTitle(title)[0]
     except:

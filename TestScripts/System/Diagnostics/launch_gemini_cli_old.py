@@ -3,7 +3,7 @@ import os
 import sys
 
 def launch_gemini():
-    gemini_dir = r"D:\SSDProjects\Tools\omni-omni-gemini-cli"
+    gemini_dir = r"D:\SSDProjects\Tools\omni-gemini-cli"
     log_file = os.path.join(os.getcwd(), "gemini_cli_debug.log")
     if os.path.exists(log_file):
         try: os.remove(log_file)
