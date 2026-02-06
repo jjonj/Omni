@@ -277,7 +277,8 @@ fun AlarmScreen(
                         onClick = { 
                             // Try to find the actual ringing alarm from service if possible, 
                             // or fallback to the one enabled in UI
-                            AlarmService.stopAlarm(context, activeAlarmId, isActiveAlarmRepeating) 
+                            AlarmService.stopAlarm(context, activeAlarmId, isActiveAlarmRepeating)
+                            mainViewModel.resetSleep()
                         },
                         modifier = Modifier.fillMaxWidth().height(64.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)

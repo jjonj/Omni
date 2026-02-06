@@ -175,6 +175,7 @@ namespace OmniSync.Hub.Logic.Monitoring
         {
             var logEntry = $"[{DateTime.Now:HH:mm:ss}] (ID: {_instanceId}) {message}";
             Console.WriteLine(logEntry);
+            _logger.LogInformation(message);
             
             // WPF Compatibility: Ensure ObservableCollection is updated on the UI thread if we are in a WPF context
             if (System.Windows.Application.Current != null)

@@ -6,7 +6,7 @@ import os
 import subprocess
 
 def test_read_gemini_cli():
-    gemini_dir = r"D:\SSDProjects\Tools\gemini-cli"
+    gemini_dir = r"D:\SSDProjects\Tools\omni-omni-gemini-cli"
     print("Launching new Gemini CLI...")
     cmd = f'start cmd.exe /K "title GEMINI_TARGET && cd /d {gemini_dir} && node bundle/gemini.js"'
     os.system(cmd)

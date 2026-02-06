@@ -110,6 +110,8 @@ class ForegroundService : Service() {
             AlarmService.ACTION_DISMISS -> {
                 statusMessage = null
                 AlarmService.stopAlarm(this)
+                val app = application as OmniSyncApplication
+                app.mainViewModel.resetSleep()
                 updateNotification()
             }
         }

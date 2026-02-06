@@ -3,7 +3,7 @@ import os
 import sys
 
 def launch_gemini(workspace=None):
-    gemini_dir = r"D:\SSDProjects\Tools\gemini-cli"
+    gemini_dir = r"D:\SSDProjects\Tools\omni-omni-gemini-cli"
     
     if not workspace or workspace.strip() == "":
         workspace = r"D:\SSDProjects"

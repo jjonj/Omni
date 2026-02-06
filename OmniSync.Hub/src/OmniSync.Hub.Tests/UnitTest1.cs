@@ -1,4 +1,4 @@
-﻿namespace OmniSync.Hub.Tests;
+namespace OmniSync.Hub.Tests;
 
 public class UnitTest1
 {

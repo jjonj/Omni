@@ -21,9 +21,9 @@ namespace OmniSync.Hub.Logic.Services
 
     public class CalendarService : IHostedService, IDisposable
     {
-        private const string ICS_URL = "https://calendar.google.com/calendar/ical/jjonjex%40gmail.com/public/basic.ics";
         private readonly HttpClient _httpClient;
         private readonly HubMonitorService _monitorService;
+        private readonly HubSettingsService _settingsService;
         private readonly ILogger<CalendarService> _logger;
         private System.Threading.Timer? _timer;
         private List<CalendarEvent> _events = new();
@@ -31,11 +31,18 @@ namespace OmniSync.Hub.Logic.Services
         public CalendarService(
             HttpClient httpClient,
             HubMonitorService monitorService,
+            HubSettingsService settingsService,
             ILogger<CalendarService> logger)
         {
             _httpClient = httpClient;
             _monitorService = monitorService;
+            _settingsService = settingsService;
             _logger = logger;
+
+            _settingsService.SettingsChanged += (s, e) =>
+            {
+                _ = RefreshCalendarAsync();
+            };
         }
 
         public Task StartAsync(CancellationToken cancellationToken)
@@ -57,62 +64,42 @@ namespace OmniSync.Hub.Logic.Services
             }
         }
 
-                public async Task RefreshCalendarAsync()
-
+        public async Task RefreshCalendarAsync()
+        {
+            try
+            {
+                string url = _settingsService.Settings.CalendarUrl;
+                if (string.IsNullOrEmpty(url))
                 {
-
-                    try
-
-                    {
-
-                        _logger.LogInformation($"[CalendarService] Refreshing from: {ICS_URL}");
-
-                        var icsData = await _httpClient.GetStringAsync(ICS_URL);
-
-                        _logger.LogInformation($"[CalendarService] Received {icsData.Length} bytes of ICS data.");
-                _logger.LogInformation($"[CalendarService] Raw ICS Prefix: {new string(icsData.Take(500).ToArray())}");
-
-                        
-
-                        var events = ParseIcs(icsData);
-
-                        _logger.LogInformation($"[CalendarService] Parsed {events.Count} total events from ICS.");
-
-                        
-
-                        _events = FilterToday(events);
-
-                        _logger.LogInformation($"[CalendarService] Found {_events.Count} events for today.");
-
-                        
-
-                        foreach(var e in _events)
-
-                        {
-
-                            _logger.LogInformation($"[CalendarService] Today's Event: {e.Summary} at {e.Start}");
-
-                        }
-
-        
-
-                        _monitorService.AddLogMessage($"[Calendar] Refreshed. Found {_events.Count} events for today.");
-
-                    }
-
-                    catch (Exception ex)
-
-                    {
-
-                        _logger.LogError(ex, "[CalendarService] Error during RefreshCalendarAsync");
-
-                        _monitorService.AddLogMessage($"[Calendar] Refresh Failed: {ex.Message}");
-
-                    }
-
+                    _logger.LogWarning("[CalendarService] No Calendar URL configured.");
+                    return;
                 }
 
-        public List<CalendarEvent> GetTodayEvents() => _events.OrderBy(e => e.Start).ToList();
+                _logger.LogInformation($"[CalendarService] Refreshing from: {url}");
+                var icsData = await _httpClient.GetStringAsync(url);
+                _logger.LogInformation($"[CalendarService] Received {icsData.Length} bytes of ICS data.");
+
+                var events = ParseIcs(icsData);
+                _logger.LogInformation($"[CalendarService] Parsed {events.Count} total events from ICS.");
+
+                _events = FilterToday(events);
+                _logger.LogInformation($"[CalendarService] Found {_events.Count} valid events for today/future.");
+
+                _monitorService.AddLogMessage($"[Calendar] Refreshed. Found {_events.Count} events.");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "[CalendarService] Error during RefreshCalendarAsync");
+                _monitorService.AddLogMessage($"[Calendar] Refresh Failed: {ex.Message}");
+            }
+        }
+
+        public List<CalendarEvent> GetTodayEvents() 
+        {
+            var today = DateTime.Today;
+            var tomorrow = today.AddDays(1);
+            return _events.Where(e => e.Start >= today && e.Start < tomorrow).OrderBy(e => e.Start).ToList();
+        }
 
         public CalendarEvent? GetNextEvent()
         {
@@ -215,49 +202,75 @@ namespace OmniSync.Hub.Logic.Services
 
         private List<CalendarEvent> FilterToday(List<CalendarEvent> events)
         {
+            var now = DateTime.Now;
             var today = DateTime.Today;
-            var endOfToday = today.AddDays(1).AddSeconds(-1);
             
             var results = new List<CalendarEvent>();
 
             foreach(var e in events)
             {
-                // 1. Direct match for today
-                if (e.Start >= today && e.Start <= endOfToday)
+                // 1. Non-recurring: Include if it's in the future or today
+                if (string.IsNullOrEmpty(e.RRule))
                 {
-                    results.Add(e);
+                    if (e.Start >= today || (e.IsAllDay && e.Start.Date == today))
+                    {
+                        results.Add(e);
+                    }
                     continue;
                 }
 
-                // 2. Basic Recurring (RRULE)
-                if (!string.IsNullOrEmpty(e.RRule))
+                // 2. Recurring (RRULE) - Expand for the next 14 days
+                if (e.RRule.Contains("UNTIL="))
                 {
-                    if (e.RRule.Contains("FREQ=YEARLY"))
+                    var untilPart = e.RRule.Split(';').FirstOrDefault(p => p.StartsWith("UNTIL="));
+                    if (untilPart != null)
                     {
-                        if (e.Start.Month == today.Month && e.Start.Day == today.Day)
+                        var untilDate = ParseIcsDate(untilPart.Substring(6));
+                        if (untilDate != DateTime.MinValue && untilDate < today)
                         {
-                            var cloned = CloneForToday(e, today);
-                            results.Add(cloned);
+                            continue; // Recurrence ended in the past
                         }
                     }
-                    else if (e.RRule.Contains("FREQ=DAILY"))
+                }
+
+                // Simplified recurrence expansion for 14 days
+                for (int i = 0; i < 14; i++)
+                {
+                    var day = today.AddDays(i);
+                    bool match = false;
+
+                    if (e.RRule.Contains("FREQ=DAILY"))
                     {
-                        if (e.Start < today)
-                        {
-                            results.Add(CloneForToday(e, today));
-                        }
+                        if (e.Start.Date <= day) match = true;
                     }
                     else if (e.RRule.Contains("FREQ=WEEKLY"))
                     {
-                        if (e.Start < today && e.Start.DayOfWeek == today.DayOfWeek)
+                        if (e.Start.Date <= day && e.Start.DayOfWeek == day.DayOfWeek) match = true;
+                    }
+                    else if (e.RRule.Contains("FREQ=YEARLY"))
+                    {
+                        if (e.Start.Month == day.Month && e.Start.Day == day.Day) match = true;
+                    }
+
+                    if (match)
+                    {
+                        results.Add(new CalendarEvent
                         {
-                            results.Add(CloneForToday(e, today));
-                        }
+                            Summary = e.Summary,
+                            IsAllDay = e.IsAllDay,
+                            Start = new DateTime(day.Year, day.Month, day.Day, e.Start.Hour, e.Start.Minute, e.Start.Second),
+                            RRule = e.RRule
+                        });
                     }
                 }
             }
 
-            return results.OrderBy(e => e.Start).ToList();
+            // Final filter: only return events that haven't ended yet
+            return results.Where(e => e.IsAllDay || e.Start > now.AddMinutes(-5))
+                          .OrderBy(e => e.Start)
+                          .GroupBy(e => new { e.Summary, e.Start }) // Deduplicate instances
+                          .Select(g => g.First())
+                          .ToList();
         }
 
         private CalendarEvent CloneForToday(CalendarEvent e, DateTime today)

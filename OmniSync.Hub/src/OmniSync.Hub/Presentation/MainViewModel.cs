@@ -79,7 +79,20 @@ namespace OmniSync.Hub.Presentation
         public MacroConfig? CurrentEditingMacro
         {
             get => _currentEditingMacro;
-            set { _currentEditingMacro = value; OnPropertyChanged(); OnPropertyChanged(nameof(IsEditingMacro)); }
+            set 
+            {
+                if (_currentEditingMacro != null)
+                {
+                    _currentEditingMacro.PropertyChanged -= OnMacroPropertyChanged;
+                }
+                _currentEditingMacro = value; 
+                if (_currentEditingMacro != null)
+                {
+                    _currentEditingMacro.PropertyChanged += OnMacroPropertyChanged;
+                }
+                OnPropertyChanged(); 
+                OnPropertyChanged(nameof(IsEditingMacro)); 
+            }
         }
         public bool IsEditingMacro => CurrentEditingMacro != null;
 
@@ -252,6 +265,21 @@ namespace OmniSync.Hub.Presentation
                                         if (_settingsService.Settings.TellPcSoundEnabled != value)
                                         {
                                             _settingsService.Settings.TellPcSoundEnabled = value;
+                                            _settingsService.SaveSettings();
+                                            OnPropertyChanged();
+                                        }
+                                    }
+                                }
+
+                                public string CalendarUrl
+                                {
+                                    get => _settingsService.Settings.CalendarUrl;
+                                    set
+                                    {
+                                        if (_settingsService.Settings.CalendarUrl != value)
+                                        {
+                                            _settingsService.Settings.CalendarUrl = value;
+                                            _settingsService.SaveSettings();
                                             OnPropertyChanged();
                                         }
                                     }
@@ -555,6 +583,10 @@ namespace OmniSync.Hub.Presentation
             Projects = new ObservableCollection<Project>(_settingsService.Settings.Projects);
             ProjectRoots = new ObservableCollection<ProjectRoot>(_settingsService.Settings.ProjectRoots);
             Macros = new ObservableCollection<MacroConfig>(_settingsService.Settings.Macros);
+            foreach (var macro in Macros)
+            {
+                macro.PropertyChanged += OnMacroPropertyChanged;
+            }
 
             // Hook up event handlers
             _hubMonitorService.PropertyChanged += (s, e) =>
@@ -595,9 +627,14 @@ namespace OmniSync.Hub.Presentation
                         ProjectRoots.Add(r);
                     }
 
+                    foreach (var existing in Macros)
+                    {
+                        existing.PropertyChanged -= OnMacroPropertyChanged;
+                    }
                     Macros.Clear();
                     foreach (var m in _settingsService.Settings.Macros)
                     {
+                        m.PropertyChanged += OnMacroPropertyChanged;
                         Macros.Add(m);
                     }
                 }));
@@ -1021,6 +1058,19 @@ namespace OmniSync.Hub.Presentation
             if (CurrentEditingMacro == null) return;
             _settingsService.UpdateMacro(CurrentEditingMacro);
             CurrentEditingMacro = null;
+        }
+
+        private void OnMacroPropertyChanged(object? sender, PropertyChangedEventArgs e)
+        {
+            // Persist immediately for toggles like IsPinned
+            if (sender is MacroConfig macro)
+            {
+                _settingsService.UpdateMacro(macro);
+            }
+            else
+            {
+                _settingsService.SaveSettings();
+            }
         }
 
         public bool GetCategoryExpansionState(string category)

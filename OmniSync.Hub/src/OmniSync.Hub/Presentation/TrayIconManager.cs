@@ -159,6 +159,7 @@ namespace OmniSync.Hub.Presentation
             private readonly ResourceOpenerService _resourceOpenerService;
             private readonly ILogger _logger;
             private MainWindow _mainWindow;
+            private OmniSweepWindow? _omniSweepWindow;
 
             public TrayApplicationContext(IHostApplicationLifetime appLifetime, WpfApp wpfApplication, HubMonitorService hubMonitorService, InputService inputService, ProcessService processService, ShutdownService shutdownService, RegistryService registryService, HubSettingsService settingsService, GlobalHotkeyService hotkeyService, KeyboardHook keyboardHook, AiCliService aiCliService, LayoutCaptureService layoutCaptureService, ProjectLauncherService projectLauncherService, CommandDispatcher commandDispatcher, CalendarService calendarService, ProjectSearchService searchService, IMacroService macroService, ResourceOpenerService resourceOpenerService, ILogger logger)
             {
@@ -319,11 +320,24 @@ namespace OmniSync.Hub.Presentation
                 {
                     try
                     {
+                        if (_omniSweepWindow != null && _omniSweepWindow.IsVisible)
+                        {
+                            _omniSweepWindow.Close();
+                            return;
+                        }
+
                         var viewModel = new OmniSweepViewModel(_settingsService, _projectLauncherService, _calendarService, _searchService, _macroService, _resourceOpenerService, _hubMonitorService);
                         var window = new OmniSweepWindow(viewModel);
+                        _omniSweepWindow = window;
+                        window.Closed += (s, e) =>
+                        {
+                            if (ReferenceEquals(_omniSweepWindow, window))
+                            {
+                                _omniSweepWindow = null;
+                            }
+                        };
                         window.Show();
                         window.Activate();
-                        window.Focus();
                     }
                     catch (Exception ex)
                     {

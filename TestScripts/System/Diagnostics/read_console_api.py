@@ -59,7 +59,7 @@ def read_console_by_title(window_title):
     return result
 
 if __name__ == "__main__":
-    content = read_console_by_title("Gemini - gemini-cli")
+    content = read_console_by_title("Gemini - omni-omni-gemini-cli")
     # After AllocConsole, we might need to reopen stdout
     sys.stdout = open('CONOUT$', 'w')
     print("--- CAPTURE ---")

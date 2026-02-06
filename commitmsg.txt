@@ -1,5 +1,0 @@
-feat: implement rapid dialog loop protection in Hub
-
-- Added tracking of dialog frequency per PID in HubEventSender.
-- Implement auto-response with 'retry_later' if more than 4 dialogs occur within 30 seconds for the same PID.
-- Fixed compilation errors in MacroService.cs and RpcApiHub.cs related to recent changes.

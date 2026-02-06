@@ -1,4 +1,4 @@
-﻿namespace OmniNPP;
+namespace OmniNPP;
 
 public class Class1
 {

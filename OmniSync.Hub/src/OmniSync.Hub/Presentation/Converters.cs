@@ -73,6 +73,67 @@ namespace OmniSync.Hub.Presentation
         }
     }
 
+    public class NullToVisibilityConverter : IValueConverter
+    {
+        public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+        {
+            bool isNull = value == null;
+            if (parameter?.ToString() == "Inverse")
+            {
+                return isNull ? Visibility.Visible : Visibility.Collapsed;
+            }
+            return isNull ? Visibility.Collapsed : Visibility.Visible;
+        }
+
+        public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        {
+            throw new NotImplementedException();
+        }
+    }
+
+    public class StringNullOrWhiteSpaceToVisibilityConverter : IValueConverter
+    {
+        public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+        {
+            var text = value as string;
+            bool isEmpty = string.IsNullOrWhiteSpace(text);
+            if (parameter?.ToString() == "Inverse")
+            {
+                return isEmpty ? Visibility.Visible : Visibility.Collapsed;
+            }
+            return isEmpty ? Visibility.Collapsed : Visibility.Visible;
+        }
+
+        public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        {
+            throw new NotImplementedException();
+        }
+    }
+
+    public class CollectionCountToVisibilityConverter : IValueConverter
+    {
+        public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+        {
+            int count = 0;
+            if (value is System.Collections.ICollection collection)
+            {
+                count = collection.Count;
+            }
+
+            bool hasItems = count > 0;
+            if (parameter?.ToString() == "Inverse")
+            {
+                return hasItems ? Visibility.Collapsed : Visibility.Visible;
+            }
+            return hasItems ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        {
+            throw new NotImplementedException();
+        }
+    }
+
     public class EnumToVisibilityConverter : IValueConverter
     {
         public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
@@ -129,37 +190,53 @@ namespace OmniSync.Hub.Presentation
     }
 
     public class CategoryExpansionConverter : IMultiValueConverter
-
+    {
+        public object Convert(object[] values, Type targetType, object parameter, CultureInfo culture)
+        {
+            if (values.Length == 2 && values[0] is string category && values[1] is MainViewModel vm)
             {
-
-                public object Convert(object[] values, Type targetType, object parameter, CultureInfo culture)
-
-                {
-
-                    if (values.Length == 2 && values[0] is string category && values[1] is MainViewModel vm)
-
-                    {
-
-                        return vm.GetCategoryExpansionState(category);
-
-                    }
-
-                    return true;
-
-                }
-
-        
-
-                public object[] ConvertBack(object value, Type[] targetTypes, object parameter, CultureInfo culture)
-
-                {
-
-                    throw new NotImplementedException();
-
-                }
-
+                return vm.GetCategoryExpansionState(category);
             }
-
+            return true;
         }
+
+        public object[] ConvertBack(object value, Type[] targetTypes, object parameter, CultureInfo culture)
+        {
+            throw new NotImplementedException();
+        }
+    }
+
+    public class CalendarEventDateConverter : IValueConverter
+    {
+        public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+        {
+            if (value is DateTime dt)
+            {
+                var today = DateTime.Today;
+                var tomorrow = today.AddDays(1);
+                var timeStr = dt.ToString("HH:mm");
+
+                if (dt.Date == today)
+                {
+                    return $"at {timeStr}";
+                }
+                else if (dt.Date == tomorrow)
+                {
+                    return $"Tomorrow at {timeStr}";
+                }
+                else
+                {
+                    return $"{dt:MMM dd} at {timeStr}";
+                }
+            }
+            return "";
+        }
+
+        public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        {
+            throw new NotImplementedException();
+        }
+    }
+}
 
         

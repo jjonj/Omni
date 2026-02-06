@@ -19,7 +19,7 @@ This track focuses on diagnosing and fixing an inconsistent issue where the Gemi
 The Hub launches the CLI using the following command pattern (via `Process.Start` with `UseShellExecute = true`):
 
 ```bash
-cmd.exe /K "set GEMINI_DEBUG_LOG_FILE=[root]\gemini_cli_debug.log && title OMNI_GEMINI_INTERACTIVE && cd /d "[gemini-cli-dir]" && node bundle/gemini.js --workspace "[workspace]" --yolo"
+cmd.exe /K "set GEMINI_DEBUG_LOG_FILE=[root]\gemini_cli_debug.log && title OMNI_GEMINI_INTERACTIVE && cd /d "[omni-omni-gemini-cli-dir]" && node bundle/gemini.js --workspace "[workspace]" --yolo"
 ```
 
 - **Binary:** `node` (v20+)

@@ -61,12 +61,22 @@ namespace OmniSync.Hub.Logic.Services
                     switch (command)
                     {
                         case "send":
-                            _inputService.SendKeys(ExpandVariables(args));
+                            _inputService.SendKeys(NormalizeSendKeys(ExpandVariables(args)));
                             break;
                         case "sleep":
                             if (int.TryParse(args, out var ms)) await Task.Delay(ms);
                             break;
                         case "run":
+                            {
+                                var expanded = ExpandVariables(args);
+                                var (exe, runArgs) = SplitCommand(expanded);
+                                if (!string.IsNullOrWhiteSpace(exe))
+                                {
+                                    _processService.ShellExecute(exe, runArgs);
+                                }
+                            }
+                            break;
+                        case "runwait":
                             await _processService.ExecuteCommand(ExpandVariables(args));
                             break;
                         case "winactivate":
@@ -138,6 +148,39 @@ namespace OmniSync.Hub.Logic.Services
                 .Replace("{TIME}", DateTime.Now.ToString("HH:mm:ss"))
                 .Replace("{PC_UPTIME}", (DateTime.Now - Process.GetCurrentProcess().StartTime).ToString(@"dd\.hh\:mm\:ss"))
                 .Replace("{ACTIVE_WINDOW_TITLE}", _inputService.GetActiveWindowTitle());
+        }
+
+        private static (string exe, string args) SplitCommand(string command)
+        {
+            if (string.IsNullOrWhiteSpace(command)) return ("", "");
+
+            if (command.StartsWith("\""))
+            {
+                int nextQuote = command.IndexOf("\"", 1);
+                if (nextQuote != -1)
+                {
+                    var exe = command.Substring(1, nextQuote - 1);
+                    var args = command.Substring(nextQuote + 1).Trim();
+                    return (exe, args);
+                }
+            }
+
+            var parts = command.Split(' ', 2);
+            var executable = parts[0];
+            var arguments = parts.Length > 1 ? parts[1] : "";
+            return (executable, arguments);
+        }
+
+        private static string NormalizeSendKeys(string keys)
+        {
+            if (string.IsNullOrWhiteSpace(keys)) return keys;
+
+            // Support common (Key) style tokens.
+            return keys
+                .Replace("(Tab)", "{TAB}", StringComparison.OrdinalIgnoreCase)
+                .Replace("(Enter)", "{ENTER}", StringComparison.OrdinalIgnoreCase)
+                .Replace("(Esc)", "{ESC}", StringComparison.OrdinalIgnoreCase)
+                .Replace("(Escape)", "{ESC}", StringComparison.OrdinalIgnoreCase);
         }
     }
 }

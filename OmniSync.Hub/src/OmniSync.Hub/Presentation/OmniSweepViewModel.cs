@@ -60,6 +60,7 @@ namespace OmniSync.Hub.Presentation
 
         public ObservableCollection<OmniSweepItem> Results { get; } = new();
         public ObservableCollection<MacroConfig> PinnedMacros { get; } = new();
+        public ObservableCollection<MacroConfig> MacroTiles { get; } = new();
 
         private OmniSweepItem? _selectedItem;
         public OmniSweepItem? SelectedItem
@@ -115,6 +116,7 @@ namespace OmniSync.Hub.Presentation
             _monitorService.AddLogMessage("!!! [OmniSweep] UpdateResults triggered.");
             Results.Clear();
             PinnedMacros.Clear();
+            MacroTiles.Clear();
 
             // Always show pinned macros in their own section if no search text
             if (string.IsNullOrWhiteSpace(SearchText))
@@ -149,6 +151,11 @@ namespace OmniSync.Hub.Presentation
                         Data = project
                     });
                 }
+                
+                foreach (var macro in _settingsService.Settings.Macros.Where(m => !m.IsPinned))
+                {
+                    MacroTiles.Add(macro);
+                }
             }
             else
             {
@@ -160,29 +167,40 @@ namespace OmniSync.Hub.Presentation
                     {
                         Title = res.Name,
                         Subtitle = res.Path,
-                        Category = res.IsGitRepo ? "Git Repository" : "Directory",
+                        Category = res.IsGitRepo ? "Git Repository" : (res.IsFile ? "File" : "Directory"),
                         Data = res.Path
                     });
                 }
 
                 // Filter Macros
-                var matchingMacros = _settingsService.Settings.Macros.Where(m => m.Name.Contains(SearchText, StringComparison.OrdinalIgnoreCase));
+                var matchingMacros = _settingsService.Settings.Macros.Where(m => MacroMatches(m.Name, SearchText));
                 foreach (var macro in matchingMacros)
                 {
-                    Results.Add(new OmniSweepItem
-                    {
-                        Title = macro.Name,
-                        Subtitle = "Macro",
-                        Category = "Macro",
-                        Data = macro
-                    });
+                    MacroTiles.Add(macro);
                 }
             }
 
-            if (Results.Count > 0 && SelectedItem == null)
+            if (Results.Count == 0)
+            {
+                SelectedItem = null;
+            }
+            else if (SelectedItem == null || !Results.Contains(SelectedItem))
             {
                 SelectedItem = Results[0];
             }
+        }
+
+        private static bool MacroMatches(string name, string query)
+        {
+            if (query.IndexOfAny(new[] { '*', '?' }) >= 0)
+            {
+                var escaped = System.Text.RegularExpressions.Regex.Escape(query)
+                    .Replace("\\*", ".*")
+                    .Replace("\\?", ".");
+                return System.Text.RegularExpressions.Regex.IsMatch(name, escaped, System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            }
+
+            return name.Contains(query, StringComparison.OrdinalIgnoreCase);
         }
 
         private async Task ExecuteItem(OmniSweepItem? item)

@@ -137,7 +137,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             while (true) {
                 _sleepDuration.value = sleepTracker.getFormattedSleepDuration()
-                _isSleeping.value = sleepTracker.isSleeping() && !_isConnected.value
+                _isSleeping.value = sleepTracker.isSleeping()
                 delay(60000) // Update every minute
             }
         }
@@ -160,12 +160,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun startSleep() {
         sleepTracker.recordPotentialSleepStart()
-        if (_isConnected.value) {
-            sleepTracker.pauseTracking()
-            _isSleeping.value = false
-        } else {
-            _isSleeping.value = true
-        }
+        _isSleeping.value = true
         _sleepDuration.value = sleepTracker.getFormattedSleepDuration()
     }
 
@@ -433,13 +428,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         if (connected) {
             addLog("Hub Connected", LogType.SUCCESS)
             showToast("Hub Connected")
-            sleepTracker.pauseTracking()
-            _isSleeping.value = false
+            resetSleep()
             fetchMacros()
         } else {
             addLog("Hub Disconnected", LogType.ERROR)
             showToast("Hub Disconnected")
-            sleepTracker.resumeTracking()
             _isSleeping.value = sleepTracker.isSleeping()
         }
     }

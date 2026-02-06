@@ -1,7 +1,7 @@
 import os
 import re
 
-GEMINI_CLI_DIR = r"D:\\SSDProjects\\Tools\\gemini-cli"
+GEMINI_CLI_DIR = r"D:\\SSDProjects\\Tools\\omni-omni-gemini-cli"
 
 def modify_file(rel_path, search_pattern, replacement, use_re=False):
     full_path = os.path.join(GEMINI_CLI_DIR, rel_path)

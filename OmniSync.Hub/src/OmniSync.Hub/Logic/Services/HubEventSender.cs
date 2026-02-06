@@ -5,6 +5,7 @@ using OmniSync.Hub.Logic.Monitoring;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 
@@ -35,6 +36,9 @@ namespace OmniSync.Hub.Logic.Services
         private DateTime _lastPlayedDialogTime = DateTime.MinValue;
         private readonly Dictionary<int, List<DateTime>> _dialogHistoryPerPid = new Dictionary<int, List<DateTime>>();
         private readonly Dictionary<string, string> _clientCommandOutputSubscriptions = new Dictionary<string, string>(); // ClientId -> ConnectionId for command output
+
+        private readonly SemaphoreSlim _autoResponseSemaphore = new SemaphoreSlim(1, 1);
+        private DateTime _lastAutoResponseTime = DateTime.MinValue;
 
         public HubEventSender(ILogger<HubEventSender> logger, IHubContext<RpcApiHub> hubContext, ProcessService processService, InputService inputService, AudioService audioService, ShutdownService shutdownService, CommandDispatcher commandDispatcher, FileService fileService, AiCliService aiCliService, HubSettingsService settingsService, HubMonitorService monitorService) // Added AiCliService
         {
@@ -81,6 +85,30 @@ namespace OmniSync.Hub.Logic.Services
             _monitorService.ConnectionRemoved += (s, id) => _ = BroadcastConnectionRemoved(id);
         }
 
+        private async Task ProcessAutoResponseAsync(int pid, string response, string logReason)
+        {
+            await _autoResponseSemaphore.WaitAsync();
+            try
+            {
+                var now = DateTime.Now;
+                var elapsed = (now - _lastAutoResponseTime).TotalMilliseconds;
+                if (elapsed < 6000)
+                {
+                    int delay = 6000 - (int)elapsed;
+                    _logger.LogInformation($"[HubEventSender] Throttling auto-response for PID {pid} ({logReason}). Waiting {delay}ms...");
+                    await Task.Delay(delay);
+                }
+
+                _logger.LogInformation($"[HubEventSender] Sending auto-response '{response}' for PID {pid} ({logReason})");
+                await _aiCliService.SendDialogResponseAsync(response, pid);
+                _lastAutoResponseTime = DateTime.Now;
+            }
+            finally
+            {
+                _autoResponseSemaphore.Release();
+            }
+        }
+
         private async void OnAiCliDialogReceived(object? sender, GeminiDialogEventArgs e)
         {
             _logger.LogInformation($"[HubEventSender] Received Dialog from PID {e.Pid}. Type: {e.Type}, Prompt: {e.Prompt}");
@@ -104,9 +132,8 @@ namespace OmniSync.Hub.Logic.Services
             if (timestamps.Count > 4)
             {
                 _logger.LogWarning($"[HubEventSender] PID {e.Pid} triggered more than 4 dialogs in 30s. Auto-selecting 'retry_later' to break loop.");
-                _monitorService.AddLogMessage($"Rapid dialog detected for PID {e.Pid}. Auto-selecting 'retry_later' in 5s...");
-                await Task.Delay(5000);
-                await _aiCliService.SendDialogResponseAsync("retry_later", e.Pid);
+                _monitorService.AddLogMessage($"Rapid dialog detected for PID {e.Pid}. Auto-selecting 'retry_later'...");
+                await ProcessAutoResponseAsync(e.Pid, "retry_later", "Rapid dialog loop");
                 return;
             }
 
@@ -123,18 +150,17 @@ namespace OmniSync.Hub.Logic.Services
             // Special handling for pro_quota
             if (e.Type == "pro_quota")
             {
-                await Task.Delay(5000);
                 if (e.Prompt.Contains("flash", StringComparison.OrdinalIgnoreCase))
                 {
                     _logger.LogInformation($"[HubEventSender] Handling pro_quota dialog for PID {e.Pid} (Flash Model). Auto-retrying later...");
-                    _monitorService.AddLogMessage("Quota reached (Flash). Auto-selecting 'retry_later' in 5s...");
-                    await _aiCliService.SendDialogResponseAsync("retry_later", e.Pid);
+                    _monitorService.AddLogMessage("Quota reached (Flash). Auto-selecting 'retry_later'...");
+                    await ProcessAutoResponseAsync(e.Pid, "retry_later", "Pro quota reached (Flash)");
                 }
                 else
                 {
                     _logger.LogInformation($"[HubEventSender] Handling pro_quota dialog for PID {e.Pid} (Standard). Auto-retrying always...");
-                    _monitorService.AddLogMessage("Quota reached. Auto-selecting 'retry_always' in 5s...");
-                    await _aiCliService.SendDialogResponseAsync("retry_always", e.Pid);
+                    _monitorService.AddLogMessage("Quota reached. Auto-selecting 'retry_always'...");
+                    await ProcessAutoResponseAsync(e.Pid, "retry_always", "Pro quota reached");
                 }
                 return;
             }
@@ -148,7 +174,7 @@ namespace OmniSync.Hub.Logic.Services
                     {
                         _logger.LogInformation($"[HubEventSender] Auto-approving '{pattern}' for PID {e.Pid}");
                         _monitorService.AddLogMessage($"Auto-approving dialog pattern: {pattern}");
-                        await _aiCliService.SendDialogResponseAsync("yes", e.Pid);
+                        await ProcessAutoResponseAsync(e.Pid, "yes", $"Auto-approve pattern: {pattern}");
                         return;
                     }
                 }

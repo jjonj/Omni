@@ -5,11 +5,17 @@
         Title="Omni Sweep" Height="600" Width="600"
         WindowStyle="None" AllowsTransparency="True" Background="Transparent"
         WindowStartupLocation="CenterScreen" Topmost="True" ShowInTaskbar="False"
-        Deactivated="Window_Deactivated">
+        ShowActivated="True" Focusable="True"
+        FocusManager.FocusedElement="{Binding ElementName=SearchInput}"
+        Deactivated="Window_Deactivated" Activated="Window_Activated" PreviewKeyDown="Window_PreviewKeyDown">
     <Window.Resources>
         <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
         
         <vm:InverseBooleanToVisibilityConverter x:Key="InverseBooleanToVisibilityConverter" />
+        <vm:NullToVisibilityConverter x:Key="NullToVisibilityConverter" />
+        <vm:StringNullOrWhiteSpaceToVisibilityConverter x:Key="StringNullOrWhiteSpaceToVisibilityConverter" />
+        <vm:CollectionCountToVisibilityConverter x:Key="CollectionCountToVisibilityConverter" />
+        <vm:CalendarEventDateConverter x:Key="CalendarEventDateConverter" />
         
         <Style x:Key="CategoryHeaderStyle" TargetType="TextBlock">
             <Setter Property="FontSize" Value="10"/>
@@ -62,11 +68,11 @@
 
             <!-- Next Event Header -->
             <Border Grid.Row="0" Background="#252526" CornerRadius="12,12,0,0" Padding="15,10" 
-                    Visibility="{Binding NextEvent, Converter={StaticResource BooleanToVisibilityConverter}}">
+                    Visibility="{Binding NextEvent, Converter={StaticResource NullToVisibilityConverter}}">
                 <DockPanel>
                     <TextBlock Text="NEXT EVENT" FontSize="10" FontWeight="Bold" Foreground="#007ACC" VerticalAlignment="Center" Margin="0,0,15,0"/>
                     <TextBlock Text="{Binding NextEvent.Summary}" FontWeight="SemiBold" Foreground="White" VerticalAlignment="Center"/>
-                    <TextBlock Text="{Binding NextEvent.Start, StringFormat='at {0:HH:mm}'}" Foreground="#D4D4D4" Opacity="0.6" Margin="10,0,0,0" VerticalAlignment="Center"/>
+                    <TextBlock Text="{Binding NextEvent.Start, Converter={StaticResource CalendarEventDateConverter}}" Foreground="#D4D4D4" Opacity="0.6" Margin="10,0,0,0" VerticalAlignment="Center"/>
                 </DockPanel>
             </Border>
 
@@ -74,8 +80,7 @@
             <Grid Grid.Row="1" Margin="15,15,15,10">
                 <TextBox x:Name="SearchInput" Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}" 
                          FontSize="20" Padding="10" Background="#2D2D30" Foreground="White" 
-                         BorderThickness="0" CaretBrush="#007ACC"
-                         PreviewKeyDown="SearchInput_PreviewKeyDown"/>
+                         BorderThickness="0" CaretBrush="#007ACC"/>
                 <TextBlock IsHitTestVisible="False" Text="Search projects or files..." 
                            VerticalAlignment="Center" HorizontalAlignment="Left" Margin="12,0,0,0"
                            Foreground="#D4D4D4" Opacity="0.3" FontSize="18">
@@ -93,12 +98,31 @@
             </Grid>
 
             <!-- Content Area -->
-            <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto" Margin="10,0">
+            <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto" Margin="10,0" Focusable="False">
                 <StackPanel>
                     <!-- Pinned Macros Section -->
-                    <StackPanel Visibility="{Binding SearchText, Converter={StaticResource InverseBooleanToVisibilityConverter}, ConverterParameter=Inverse}">
+                    <StackPanel Visibility="{Binding SearchText, Converter={StaticResource StringNullOrWhiteSpaceToVisibilityConverter}, ConverterParameter=Inverse}">
                         <TextBlock Text="PINNED MACROS" Style="{StaticResource CategoryHeaderStyle}"/>
                         <ItemsControl ItemsSource="{Binding PinnedMacros}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <WrapPanel />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Button Style="{StaticResource MacroTileStyle}" 
+                                            Command="{Binding DataContext.RunMacroCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                            CommandParameter="{Binding}"/>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+
+                    <!-- Macros Section -->
+                    <StackPanel Visibility="{Binding MacroTiles, Converter={StaticResource CollectionCountToVisibilityConverter}}">
+                        <TextBlock Text="MACROS" Style="{StaticResource CategoryHeaderStyle}"/>
+                        <ItemsControl ItemsSource="{Binding MacroTiles}">
                             <ItemsControl.ItemsPanel>
                                 <ItemsPanelTemplate>
                                     <WrapPanel />
@@ -119,7 +143,8 @@
                     <ListBox ItemsSource="{Binding Results}" SelectedItem="{Binding SelectedItem}" 
                              Background="Transparent" BorderThickness="0"
                              ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                             x:Name="ResultsList">
+                             x:Name="ResultsList" MouseDoubleClick="ResultsList_MouseDoubleClick"
+                             Focusable="False">
                         <ListBox.ItemContainerStyle>
                             <Style TargetType="ListBoxItem">
                                 <Setter Property="Background" Value="Transparent"/>
@@ -161,7 +186,7 @@
             <!-- Footer -->
             <Border Grid.Row="3" Background="#252526" CornerRadius="0,0,12,12" Padding="15,8">
                 <DockPanel Opacity="0.5">
-                    <TextBlock Text="↑↓ to navigate • Enter to execute • Esc to close" FontSize="10" Foreground="White"/>
+                    <TextBlock Text="Up/Down to navigate - Enter to execute - Esc to close" FontSize="10" Foreground="White"/>
                     <TextBlock Text="OMNI SWEEP" HorizontalAlignment="Right" FontSize="10" FontWeight="Bold" Foreground="#007ACC"/>
                 </DockPanel>
             </Border>

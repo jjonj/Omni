@@ -3,7 +3,7 @@ import sys
 import time
 
 def check_gemini_help_visible():
-    gemini_dir = r"D:\SSDProjects\Tools\gemini-cli"
+    gemini_dir = r"D:\SSDProjects\Tools\omni-omni-gemini-cli"
     print(f"Checking Gemini CLI help in visible window...")
     
     if sys.platform == "win32":

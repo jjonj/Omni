@@ -28,7 +28,7 @@ def cleanup_gemini_windows():
     
     all_windows = gw.getAllWindows()
     
-    # We want to identify windows with "Gemini CLI" or "gemini-cli" in title
+    # We want to identify windows with "Gemini CLI" or "omni-omni-gemini-cli" in title
     # EXCEPT the one we are in.
     # AND we want to exclude Explorer windows (Class CabinetWClass)
     

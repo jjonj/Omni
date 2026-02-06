@@ -354,7 +354,7 @@ namespace OmniSync.Hub.Infrastructure.Services
                 // Filter pidsToConnect to ONLY those where the pipe actually exists to avoid timeout penalties
                 var pidsToConnect = pids.Where(p => 
                     (!_sessions.ContainsKey(p) || !_sessions[p].IsConnected) && 
-                    File.Exists($@"\\.\pipe\gemini-cli-{p}")
+                    File.Exists($@"\\.\pipe\omni-omni-gemini-cli-{p}")
                 ).ToList();
 
                 if (pidsToConnect.Any())
@@ -581,12 +581,14 @@ namespace OmniSync.Hub.Infrastructure.Services
                     onProgress?.Invoke("Scanning for existing sessions...");
                     var initialPids = await GetAllGeminiPidsAsync();
 
-                string rootPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", ".."));
-                string geminiDir = Path.GetFullPath(Path.Combine(rootPath, "..", "Tools", "gemini-cli")).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+                                string rootPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", ".."));
+                                _logger.LogInformation($"[AiCliService] Computed rootPath: {rootPath}");
+                                string geminiDir = Path.GetFullPath(Path.Combine(rootPath, "..", "Tools", "omni-gemini-cli")).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+                                _logger.LogInformation($"[AiCliService] Resolved geminiDir: {geminiDir}");
                 
-                if (!Directory.Exists(geminiDir))
-                {
-                    onProgress?.Invoke("Error: Gemini CLI directory not found.");
+                                if (!Directory.Exists(geminiDir))                {
+                    _logger.LogError($"[AiCliService] Gemini CLI directory NOT FOUND at: {geminiDir}");
+                    onProgress?.Invoke($"Error: Gemini CLI directory not found at {geminiDir}");
                     return null;
                 }
 
@@ -1305,10 +1307,10 @@ namespace OmniSync.Hub.Infrastructure.Services
 
         public async Task<bool> ConnectAsync(int timeoutMs)
         {
-            _logger.LogInformation($"[GeminiSession] SID: {_sid} | Attempting connection to pipe 'gemini-cli-{_pid}' (timeout: {timeoutMs}ms)");
+            _logger.LogInformation($"[GeminiSession] SID: {_sid} | Attempting connection to pipe 'omni-omni-gemini-cli-{_pid}' (timeout: {timeoutMs}ms)");
             try
             {
-                _pipeClient = new NamedPipeClientStream(".", $"gemini-cli-{_pid}", PipeDirection.InOut, PipeOptions.Asynchronous);
+                _pipeClient = new NamedPipeClientStream(".", $"omni-omni-gemini-cli-{_pid}", PipeDirection.InOut, PipeOptions.Asynchronous);
                 
                 await _pipeClient.ConnectAsync(timeoutMs);
 

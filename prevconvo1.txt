@@ -114,7 +114,7 @@
 │ 194         {                                                                               │
 │ 195             try                                                                         │
 │ 196             {                                                                           │
-│ 197                 _pipeClient = new NamedPipeClientStream(".", $"gemini-cli-{_pid}",      │
+│ 197                 _pipeClient = new NamedPipeClientStream(".", $"omni-omni-gemini-cli-{_pid}",      │
 │     PipeDirection.InOut, PipeOptions.Asynchronous);                                         │
 │ 198                 await _pipeClient.ConnectAsync(5000);                                   │
 │ 199                                                                                         │
@@ -466,7 +466,7 @@
 │                                                                                             │
 │ ProcessId   : 30920                                                                         │
 │ CommandLine : "B:\Program Files\nodejs\node.exe" C:\Users\crovea\AppData\Roaming\np         │
-│               m\node_modules\@google\gemini-cli\dist\index.js                               │
+│               m\node_modules\@google\omni-omni-gemini-cli\dist\index.js                               │
 │                                                                                             │
 │ ProcessId   : 29328                                                                         │
 │ CommandLine : node  bundle/gemini.js                                                        │
@@ -474,7 +474,7 @@
 │ ProcessId   : 13128                                                                         │
 │ CommandLine : node  bundle/gemini.js                                                        │
 ╰─────────────────────────────────────────────────────────────────────────────────────────────╯
-✦ I've identified four gemini-cli instances, two global and two from this project, all matched
+✦ I've identified four omni-omni-gemini-cli instances, two global and two from this project, all matched
   by my filter. The integrated C# AI listener is working and verified. I'll now update
   AIFeatureProgress.md to document this integration into the Hub, and then run
   OmniSync.Android/build_and_deploy.py for final synchronization and user validation.
@@ -492,7 +492,7 @@
 │ 13   1.  **Mobile Client (Android)**: Sends prompts via SignalR to the Hub.                 │
 │ 14 - 2.  **Omni Hub (C#)**: Broadcasts prompts to all authenticated listeners.              │
 │ 15 - 3.  **AI Listener (Python)**: Discovers running Gemini instances, connects to their    │
-│    unique named pipes (\\.\pipe\gemini-cli-<pid>), and injects prompts.                     │
+│    unique named pipes (\\.\pipe\omni-omni-gemini-cli-<pid>), and injects prompts.                     │
 │ 16 - 4.  **Gemini CLI (Node/React)**: A custom `remoteControl.ts` server listens for        │
 │    `RemotePrompt` events, submits them to the model, and emits `RemoteResponse` events upon │
 │    completion.                                                                              │
@@ -534,7 +534,7 @@
 │ 33 + - **Multi-Session**: Supports discovering, switching between, and targeting specific   │
 │    Gemini instances by PID.                                                                 │
 │ 34                                                                                          │
-│ 35   #### `gemini-cli` Customizations                                                       │
+│ 35   #### `omni-omni-gemini-cli` Customizations                                                       │
 │ 36   - **`remoteControl.ts`**: Implements the IPC server. Supports `prompt` and             │
 │      `getHistory` commands.                                                                 │
 │ 42   ### 2. Testing & Validation (`TestScripts/AIFeature`)                                  │
@@ -658,7 +658,7 @@
 │                                                                                             │
 │ [0/5] Thoroughly cleaning up all Gemini windows...                                          │
 │ Current PID: 29756                                                                          │
-│ KILLING TARGET WINDOW: Gemini - gemini-cli (PID: 19544, Class:                              │
+│ KILLING TARGET WINDOW: Gemini - omni-omni-gemini-cli (PID: 19544, Class:                              │
 │ CASCADIA_HOSTING_WINDOW_CLASS)                                                              │
 │ Total target windows found: 1                                                               │
 │ [1/5] Checking OmniSync Hub status...                                                       │
@@ -725,7 +725,7 @@
 │                                                                                             │
 │ [0/5] Thoroughly cleaning up all Gemini windows...                                          │
 │ Current PID: 29992                                                                          │
-│ KILLING TARGET WINDOW: Gemini - gemini-cli (PID: 19544, Class:                              │
+│ KILLING TARGET WINDOW: Gemini - omni-omni-gemini-cli (PID: 19544, Class:                              │
 │ CASCADIA_HOSTING_WINDOW_CLASS)                                                              │
 │ Total target windows found: 1                                                               │
 │ Killing processes matching: ai_listener.py, avoiding ancestors...                           │
@@ -1170,15 +1170,15 @@
   mention of "native" in the codebase to understand what the "Final Native Test" refers to.".
   It seems you failed to pickup responses with this way of launching the CLI
 
-✦ I will search for remoteControl.ts in the gemini-cli directory to understand the
+✦ I will search for remoteControl.ts in the omni-omni-gemini-cli directory to understand the
   communication protocol and identify why the Hub isn't picking up responses.
 ╭─────────────────────────────────────────────────────────────────────────────────────────────╮
-│ ✓  FindFiles 'D:/SSDProjects/Tools/gemini-cli/**/remoteControl.ts'                          │
+│ ✓  FindFiles 'D:/SSDProjects/Tools/omni-omni-gemini-cli/**/remoteControl.ts'                          │
 │                                                                                             │
 │ Found 1 matching file(s)                                                                    │
 ╰─────────────────────────────────────────────────────────────────────────────────────────────╯
 ╭─────────────────────────────────────────────────────────────────────────────────────────────╮
-│ x  ReadFile {"file_path":"D:/SSDProjects/Tools/gemini-cli/packages/cli/src/utils/remoteCon… │
+│ x  ReadFile {"file_path":"D:/SSDProjects/Tools/omni-omni-gemini-cli/packages/cli/src/utils/remoteCon… │
 │                                                                                             │
 │ File path must be within one of the workspace directories: D:\SSDProjects\Omni or within    │
 │ the project temp directory:                                                                 │
@@ -1626,11 +1626,11 @@
 │ ✓  Shell Get-Content ai_listener.log -Tail 50 [current working directory D:\SSDProjects\Om… │
 │                                                                                             │
 │ 2025-12-22 14:49:59,609 - INFO - Switched to Gemini PID: 4304                               │
-│ 2025-12-22 14:49:59,609 - INFO - Connecting to pipe: \\.\pipe\gemini-cli-4304 for           │
+│ 2025-12-22 14:49:59,609 - INFO - Connecting to pipe: \\.\pipe\omni-omni-gemini-cli-4304 for           │
 │ getHistory                                                                                  │
 │ 2025-12-22 14:50:01,611 - INFO - Received AI Message: Confirming multi-instance test. You   │
 │ are designated...                                                                           │
-│ 2025-12-22 14:50:01,611 - INFO - Connecting to pipe: \\.\pipe\gemini-cli-4304 for prompt    │
+│ 2025-12-22 14:50:01,611 - INFO - Connecting to pipe: \\.\pipe\omni-omni-gemini-cli-4304 for prompt    │
 │ 2025-12-22 14:54:21,034 - INFO - Connecting to http://127.0.0.1:5000/signalrhub...          │
 │ 2025-12-22 14:54:21,041 - INFO - Connection opened.                                         │
 │ 2025-12-22 14:54:21,553 - INFO - Authenticated. Listening for AI messages via Named Pipe    │
@@ -1696,7 +1696,7 @@
 │ 2025-12-22 15:04:05,371 - INFO - Searching for Gemini processes...                          │
 │ 2025-12-22 15:04:05,381 - INFO - MATCH (Low Priority): Found dist process: PID 9564         │
 │ 2025-12-22 15:04:05,388 - INFO - MATCH (Medium Priority): Found bundle process: PID 26848   │
-│ 2025-12-22 15:04:05,390 - INFO - Connecting to pipe: \\.\pipe\gemini-cli-26848 for prompt   │
+│ 2025-12-22 15:04:05,390 - INFO - Connecting to pipe: \\.\pipe\omni-omni-gemini-cli-26848 for prompt   │
 ╰─────────────────────────────────────────────────────────────────────────────────────────────╯
 ✦ ai_listener.py got the message and connected to the pipe, but failed to send the response.
   I'll check gemini_cli_debug.log to see if the CLI actually responded.
@@ -1749,9 +1749,9 @@
 │   ]                                                                                         │
 │ }                                                                                           │
 │ [2025-12-22T14:04:05.391Z] [LOG] Remote control client connected on                         │
-│ \\.\pipe\gemini-cli-26848                                                                   │
+│ \\.\pipe\omni-omni-gemini-cli-26848                                                                   │
 │ [2025-12-22T14:04:05.502Z] [LOG] Remote control client connected on                         │
-│ \\.\pipe\gemini-cli-26848                                                                   │
+│ \\.\pipe\omni-omni-gemini-cli-26848                                                                   │
 │ [2025-12-22T14:04:09.845Z] [LOG] Remote control sending response: I understand. I am ready  │
 │ to assist with your autom...                                                                │
 │ [2025-12-22T14:04:09.845Z] [LOG] Remote control sending response: I understand. I am ready  │

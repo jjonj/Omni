@@ -123,6 +123,7 @@ namespace OmniSync.Hub.Infrastructure.Services
         public List<string> BrowserCleanupPatterns { get; set; } = new List<string>();
         public List<MacroConfig> Macros { get; set; } = new();
         public List<ProjectRoot> ProjectRoots { get; set; } = new();
+        public string CalendarUrl { get; set; } = "https://calendar.google.com/calendar/ical/jjonjex%40gmail.com/public/basic.ics";
 
         // Tell PC Settings
         public string TellPcWorkspace { get; set; } = @"B:\GDrive\Tools";
@@ -378,6 +379,7 @@ namespace OmniSync.Hub.Infrastructure.Services
             try
             {
                 string json = JsonSerializer.Serialize(_settings, new JsonSerializerOptions { WriteIndented = true });
+                _logger?.LogInformation($"[Settings] Saving settings to {_settingsPath}. Macros: {_settings.Macros.Count}, Pinned: {_settings.Macros.Count(m => m.IsPinned)}");
                 File.WriteAllText(_settingsPath, json);
                 _logger?.LogInformation("Settings saved successfully.");
                 OnSettingsChanged();
@@ -553,6 +555,10 @@ namespace OmniSync.Hub.Infrastructure.Services
             {
                 _settings.Macros[index] = macro;
                 SaveSettings();
+            }
+            else
+            {
+                AddMacro(macro);
             }
         }
 
