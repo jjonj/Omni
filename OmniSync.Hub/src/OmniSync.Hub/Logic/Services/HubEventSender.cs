@@ -265,6 +265,11 @@ namespace OmniSync.Hub.Logic.Services
             await _hubContext.Clients.All.SendAsync("ReceiveAiSessions", sessions);
         }
 
+        public async Task BroadcastCleanupPatterns(List<string> patterns)
+        {
+            await _hubContext.Clients.All.SendAsync("ReceiveCleanupPatterns", patterns);
+        }
+
         public async Task BroadcastLogEntryAdded(string message)
         {
             await _hubContext.Clients.All.SendAsync("LogEntryAdded", message);

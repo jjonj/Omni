@@ -153,29 +153,7 @@ function urlMatchesPattern(url, pattern) {
 function shouldCleanTab(tabUrl, tabTitle) {
     if (!tabUrl) return false;
     
-    // Twitch following directory
-    if (tabUrl.includes("twitch.tv/directory/following")) return true;
-    
-    // YouTube tabs that are NOT watch pages or channel pages
-    if (tabUrl.includes("youtube.com") && !tabUrl.includes("/watch?v=") && !tabUrl.includes("/@")) return true;
-    
-    // Google.com pages
-    if (tabUrl.includes("google.com/")) return true;
-    
-    // Local file URLs
-    if (tabUrl.startsWith("file:///")) return true;
-    
-    // Chrome start page / new tab
-    if (tabUrl === "chrome://newtab/" || tabUrl === "about:blank" || tabUrl === "edge://newtab/") return true;
-    
-    // Default title-based patterns (case-insensitive)
-    const lowerTitle = tabTitle ? tabTitle.toLowerCase() : "";
-    if (lowerTitle.includes("inbox")) return true;
-    if (lowerTitle.includes("messenger")) return true;
-    if (lowerTitle.includes("chatgpt")) return true;
-    if (lowerTitle.includes("discord |")) return true;
-
-    // Check custom patterns
+    // Check custom patterns (now contains all built-in ones too)
     for (const pattern of customCleanupPatterns) {
         if (pattern.toLowerCase().startsWith("title:")) {
             const titlePattern = pattern.substring(6).toLowerCase();
@@ -427,8 +405,24 @@ chrome.runtime.onInstalled.addListener(() => {
         contexts: ["action", "page"]
     });
 
+    chrome.contextMenus.create({
+        id: "addCoreUrlToCleanup",
+        title: "Add core URL for cleanup",
+        contexts: ["action", "page"]
+    });
+
     start();
 });
+
+// Helper function to extract base URL pattern (e.g. https://github.com/*)
+function getCoreUrlPattern(url) {
+    try {
+        const urlObj = new URL(url);
+        return `${urlObj.protocol}//${urlObj.hostname}/*`;
+    } catch (e) {
+        return url; // Fallback
+    }
+}
 
 // Handle Context Menu Clicks
 chrome.contextMenus.onClicked.addListener((info, tab) => {
@@ -454,6 +448,17 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
             console.log(`Cleaning ${tabsToClose.length} tabs via context menu`);
             tabsToClose.forEach(tab => chrome.tabs.remove(tab.id));
         });
+    } else if (info.menuItemId === "addCoreUrlToCleanup") {
+        if (tab && tab.url) {
+            const pattern = getCoreUrlPattern(tab.url);
+            if (!customCleanupPatterns.includes(pattern)) {
+                customCleanupPatterns.push(pattern);
+                chrome.storage.local.set({ customCleanupPatterns });
+                console.log("Added core URL pattern to cleanup:", pattern);
+                // Notify hub of updated patterns
+                connection.invoke("SendCleanupPatterns", customCleanupPatterns);
+            }
+        }
     }
 });
 

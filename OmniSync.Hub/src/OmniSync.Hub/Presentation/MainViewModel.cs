@@ -30,6 +30,7 @@ namespace OmniSync.Hub.Presentation
         private readonly LayoutCaptureService _layoutCaptureService;
         private readonly ProjectLauncherService _projectLauncherService;
         private readonly CommandDispatcher _commandDispatcher;
+        private readonly HubEventSender _hubEventSender;
         private readonly DispatcherTimer _uiUpdateTimer;
         private DispatcherTimer _longPressTimer;
         private bool _isLongPress;
@@ -65,6 +66,8 @@ namespace OmniSync.Hub.Presentation
         public ICommand AddMacroCommand { get; }
         public ICommand DeleteMacroCommand { get; }
         public ICommand SaveMacroCommand { get; }
+        public ICommand AddCleanupPatternCommand { get; }
+        public ICommand DeleteCleanupPatternCommand { get; }
 
         // --- Properties bound in XAML ---
         public ObservableCollection<string> ActiveConnections { get; }
@@ -74,6 +77,14 @@ namespace OmniSync.Hub.Presentation
         public ObservableCollection<Project> Projects { get; }
         public ObservableCollection<ProjectRoot> ProjectRoots { get; }
         public ObservableCollection<MacroConfig> Macros { get; }
+        public ObservableCollection<string> BrowserCleanupPatterns { get; }
+
+        private string _newCleanupPattern = "";
+        public string NewCleanupPattern
+        {
+            get => _newCleanupPattern;
+            set { _newCleanupPattern = value; OnPropertyChanged(); }
+        }
 
         private MacroConfig? _currentEditingMacro;
         public MacroConfig? CurrentEditingMacro
@@ -554,7 +565,7 @@ namespace OmniSync.Hub.Presentation
             set { _isAltPressed = value; OnPropertyChanged(); }
         }
 
-        public MainViewModel(HubMonitorService hubMonitorService, InputService inputService, ProcessService processService, ShutdownService shutdownService, RegistryService registryService, HubSettingsService settingsService, KeyboardHook keyboardHook, AiCliService aiCliService, LayoutCaptureService layoutCaptureService, ProjectLauncherService projectLauncherService, CommandDispatcher commandDispatcher)
+        public MainViewModel(HubMonitorService hubMonitorService, InputService inputService, ProcessService processService, ShutdownService shutdownService, RegistryService registryService, HubSettingsService settingsService, KeyboardHook keyboardHook, AiCliService aiCliService, LayoutCaptureService layoutCaptureService, ProjectLauncherService projectLauncherService, CommandDispatcher commandDispatcher, HubEventSender hubEventSender)
         {
             _hubMonitorService = hubMonitorService;
             _inputService = inputService;
@@ -567,6 +578,7 @@ namespace OmniSync.Hub.Presentation
             _layoutCaptureService = layoutCaptureService;
             _projectLauncherService = projectLauncherService;
             _commandDispatcher = commandDispatcher;
+            _hubEventSender = hubEventSender;
 
             // Initialize collections
             ActiveConnections = _hubMonitorService.ActiveConnections;
@@ -587,6 +599,7 @@ namespace OmniSync.Hub.Presentation
             {
                 macro.PropertyChanged += OnMacroPropertyChanged;
             }
+            BrowserCleanupPatterns = new ObservableCollection<string>(_settingsService.Settings.BrowserCleanupPatterns);
 
             // Hook up event handlers
             _hubMonitorService.PropertyChanged += (s, e) =>
@@ -644,6 +657,12 @@ namespace OmniSync.Hub.Presentation
                     {
                         CurrentEditingMacro = Macros.FirstOrDefault(m => m.Id == selectedMacroId.Value);
                     }
+
+                    BrowserCleanupPatterns.Clear();
+                    foreach (var pattern in _settingsService.Settings.BrowserCleanupPatterns)
+                    {
+                        BrowserCleanupPatterns.Add(pattern);
+                    }
                 }));
             };
 
@@ -662,6 +681,8 @@ namespace OmniSync.Hub.Presentation
             AddMacroCommand = new RelayCommand(_ => ExecuteAddMacro());
             DeleteMacroCommand = new RelayCommand(p => ExecuteDeleteMacro(p as MacroConfig));
             SaveMacroCommand = new RelayCommand(_ => ExecuteSaveMacro());
+            AddCleanupPatternCommand = new RelayCommand(_ => ExecuteAddCleanupPattern());
+            DeleteCleanupPatternCommand = new RelayCommand(p => ExecuteDeleteCleanupPattern(p as string));
 
             ToggleCategoryExpansionCommand = new RelayCommand(p => {
                 var args = p as object[];
@@ -1065,6 +1086,35 @@ namespace OmniSync.Hub.Presentation
             if (CurrentEditingMacro == null) return;
             _settingsService.UpdateMacro(CurrentEditingMacro);
             CurrentEditingMacro = null;
+        }
+
+        private void ExecuteAddCleanupPattern()
+        {
+            if (string.IsNullOrWhiteSpace(NewCleanupPattern)) return;
+            if (BrowserCleanupPatterns.Contains(NewCleanupPattern)) return;
+
+            BrowserCleanupPatterns.Add(NewCleanupPattern);
+            _settingsService.UpdateBrowserCleanupPatterns(BrowserCleanupPatterns.ToList());
+            _hubMonitorService.AddLogMessage($"[Settings] Added browser cleanup pattern: {NewCleanupPattern}");
+            
+            // Trigger SignalR broadcast
+            _ = _hubEventSender.BroadcastCleanupPatterns(BrowserCleanupPatterns.ToList());
+            
+            NewCleanupPattern = "";
+        }
+
+        private void ExecuteDeleteCleanupPattern(string? pattern)
+        {
+            if (string.IsNullOrEmpty(pattern)) return;
+            
+            if (BrowserCleanupPatterns.Remove(pattern))
+            {
+                _settingsService.UpdateBrowserCleanupPatterns(BrowserCleanupPatterns.ToList());
+                _hubMonitorService.AddLogMessage($"[Settings] Removed browser cleanup pattern: {pattern}");
+                
+                // Trigger SignalR broadcast
+                _ = _hubEventSender.BroadcastCleanupPatterns(BrowserCleanupPatterns.ToList());
+            }
         }
 
         private void OnMacroPropertyChanged(object? sender, PropertyChangedEventArgs e)

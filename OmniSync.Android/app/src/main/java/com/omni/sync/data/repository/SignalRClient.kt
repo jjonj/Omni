@@ -1239,6 +1239,12 @@ class SignalRClient(
         }
     }
 
+    fun sendCleanupPatterns(patterns: List<String>) {
+        if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
+            hubConnection?.send("SendCleanupPatterns", patterns)
+        }
+    }
+
     fun sendCommand(command: String, vararg args: Any?) {
         if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
             try {

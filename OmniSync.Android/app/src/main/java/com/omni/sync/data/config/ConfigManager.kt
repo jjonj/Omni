@@ -26,7 +26,8 @@ data class AppConfig(
     var streamResolution: Int = 100, // Percentage
     var maxAiHistory: Int = 10000, // characters per session default
     var keyboardSoundEnabled: Boolean = true,
-    var showKeyboardNumberRow: Boolean = true
+    var showKeyboardNumberRow: Boolean = true,
+    var browserCleanupPatterns: List<String> = emptyList()
 )
 
 class ConfigManager(private val context: Context) {
@@ -148,6 +149,23 @@ class ConfigManager(private val context: Context) {
         if (actionsJson != null) {
             val type = object : com.google.gson.reflect.TypeToken<List<NotificationAction>>() {}.type
             config.notificationActions = gson.fromJson(actionsJson, type)
+        }
+
+        // Migrate cleanup patterns from old file if exists
+        val dir = context.getExternalFilesDir(null)
+        val oldPatternsFile = File(dir, "cleanup_patterns.json")
+        if (oldPatternsFile.exists()) {
+            try {
+                val json = oldPatternsFile.readText()
+                val type = object : com.google.gson.reflect.TypeToken<List<String>>() {}.type
+                val oldPatterns: List<String> = gson.fromJson(json, type)
+                if (oldPatterns.isNotEmpty()) {
+                    config.browserCleanupPatterns = (config.browserCleanupPatterns + oldPatterns).distinct()
+                    oldPatternsFile.delete()
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("ConfigManager", "Error migrating patterns", e)
+            }
         }
     }
 }

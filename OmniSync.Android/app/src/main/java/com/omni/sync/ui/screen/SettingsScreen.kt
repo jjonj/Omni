@@ -94,6 +94,16 @@ fun SettingsScreen(
     val predefinedActions = remember { mainViewModel.configManager.getPredefinedActions() }
     val bookmarkActions = remember { mainViewModel.configManager.getBookmarks() }
 
+    val cleanupPatterns by signalRClient.cleanupPatterns.collectAsState()
+    
+    // Sync Hub patterns to AppConfig when they change via SignalR
+    LaunchedEffect(cleanupPatterns) {
+        if (cleanupPatterns.isNotEmpty() && cleanupPatterns != appConfig.browserCleanupPatterns) {
+            appConfig.browserCleanupPatterns = cleanupPatterns
+            mainViewModel.saveAppConfig()
+        }
+    }
+
     fun saveActions(actions: List<NotificationAction>) {
         notificationActions = actions
         appConfig.notificationActions = actions
@@ -422,6 +432,37 @@ fun SettingsScreen(
             ) {
                 Text("Sync to Cortex")
             }
+
+            Spacer(modifier = Modifier.height(24.dp))
+            HorizontalDivider()
+            Spacer(modifier = Modifier.height(24.dp))
+
+            Text("Browser Tab Cleanup", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+            Spacer(modifier = Modifier.height(8.dp))
+
+            var cleanupPatternsStr by remember { mutableStateOf(appConfig.browserCleanupPatterns.joinToString("\n")) }
+            
+            // Local state needs to update when appConfig changes (e.g. from Hub)
+            LaunchedEffect(appConfig.browserCleanupPatterns) {
+                cleanupPatternsStr = appConfig.browserCleanupPatterns.joinToString("\n")
+            }
+
+            OutlinedTextField(
+                value = cleanupPatternsStr,
+                onValueChange = { 
+                    cleanupPatternsStr = it
+                    val newPatterns = it.lines().filter { line -> line.isNotBlank() }
+                    if (newPatterns != appConfig.browserCleanupPatterns) {
+                        appConfig.browserCleanupPatterns = newPatterns
+                        mainViewModel.saveAppConfig()
+                        signalRClient.sendCleanupPatterns(newPatterns)
+                    }
+                },
+                label = { Text("Cleanup Patterns (one per line)") },
+                modifier = Modifier.fillMaxWidth().height(120.dp),
+                placeholder = { Text("e.g. https://github.com/*\n*stack overflow*") }
+            )
+            Text("Patterns support * wildcard. Use 'title:text' for title matching.", fontSize = 10.sp, color = Color.Gray, modifier = Modifier.padding(top = 4.dp))
 
             Spacer(modifier = Modifier.height(24.dp))
             HorizontalDivider()

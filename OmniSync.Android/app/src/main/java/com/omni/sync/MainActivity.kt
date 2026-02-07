@@ -172,10 +172,9 @@ class MainActivity : ComponentActivity() {
                     val filesViewModel: FilesViewModel = viewModel(
                         factory = FilesViewModelFactory(application, signalRClient, mainViewModel)
                     )
-                    val browserViewModel: BrowserViewModel = viewModel(
-                        factory = BrowserViewModelFactory(application, signalRClient)
-                    )
-
+                            val browserViewModel: BrowserViewModel = viewModel(
+                                factory = BrowserViewModelFactory(application, signalRClient, mainViewModel)
+                            )
                     val pagerState = rememberPagerState(pageCount = { swipeableScreens.size })
 
                     val configuration = LocalConfiguration.current

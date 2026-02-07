@@ -104,15 +104,6 @@ fun BrowserControlScreen(
     var showTabList by remember { mutableStateOf(false) }
     val context = LocalContext.current
 
-    val defaultPatterns = listOf(
-        "twitch.tv/directory/following",
-        "youtube.com (not watch/channel)",
-        "google.com/*",
-        "file:///*",
-        "chrome://newtab/",
-        "about:blank"
-    )
-
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -390,17 +381,9 @@ fun BrowserControlScreen(
                     }
                     
                     Spacer(modifier = Modifier.height(8.dp))
-                    
-                    Text("Built-in (Non-removable):", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
-                    defaultPatterns.forEach { pattern ->
-                        Text("• $pattern", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(PaddingValues(start = 8.dp, top = 1.dp, bottom = 1.dp)))
-                    }
-
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text("Custom:", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
 
                     if (customCleanupPatterns.isEmpty()) {
-                        Text("No custom patterns", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(PaddingValues(start = 8.dp, top = 4.dp, bottom = 4.dp)))
+                        Text("No patterns defined", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(PaddingValues(start = 8.dp, top = 4.dp, bottom = 4.dp)))
                     }
 
                     customCleanupPatterns.forEach { pattern ->

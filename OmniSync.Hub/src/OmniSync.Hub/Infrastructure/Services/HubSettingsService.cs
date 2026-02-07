@@ -166,7 +166,42 @@ namespace OmniSync.Hub.Infrastructure.Services
             InitializeDefaultProjects();
             InitializeDefaultProjectRoots();
             InitializeDefaultMacros();
+            InitializeDefaultCleanupPatterns();
             InitializeTellPcSettings();
+        }
+
+        private void InitializeDefaultCleanupPatterns()
+        {
+            if (_settings.BrowserCleanupPatterns == null) _settings.BrowserCleanupPatterns = new();
+            
+            var defaults = new[] 
+            {
+                "*twitch.tv/directory/following*",
+                "*youtube.com*",
+                "https://www.google.com/*",
+                "file:///*",
+                "chrome://newtab/",
+                "about:blank",
+                "title:inbox",
+                "title:messenger",
+                "title:chatgpt",
+                "title:discord |"
+            };
+
+            bool changed = false;
+            foreach (var d in defaults)
+            {
+                if (!_settings.BrowserCleanupPatterns.Contains(d))
+                {
+                    _settings.BrowserCleanupPatterns.Add(d);
+                    changed = true;
+                }
+            }
+
+            if (changed)
+            {
+                SaveSettings();
+            }
         }
 
         private void InitializeDefaultMacros()
@@ -560,6 +595,12 @@ namespace OmniSync.Hub.Infrastructure.Services
             {
                 AddMacro(macro);
             }
+        }
+
+        public virtual void UpdateBrowserCleanupPatterns(List<string> patterns)
+        {
+            _settings.BrowserCleanupPatterns = patterns;
+            SaveSettings();
         }
 
         public virtual void AddProjectRoot(string path)

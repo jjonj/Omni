@@ -327,8 +327,9 @@ builder.Services.AddSingleton<TrayIconManager>(provider =>
     var searchService = provider.GetRequiredService<ProjectSearchService>();
     var macroService = provider.GetRequiredService<IMacroService>();
     var resourceOpenerService = provider.GetRequiredService<ResourceOpenerService>();
+    var hubEventSender = provider.GetRequiredService<HubEventSender>();
     var logger = provider.GetRequiredService<ILogger<TrayIconManager>>();
-    return new TrayIconManager(appLifetime, hubMonitorService, inputService, processService, shutdownService, registryService, settingsService, hotkeyService, keyboardHook, aiCliService, layoutCaptureService, projectLauncherService, commandDispatcher, calendarService, searchService, macroService, resourceOpenerService, logger);
+    return new TrayIconManager(appLifetime, hubMonitorService, inputService, processService, shutdownService, registryService, settingsService, hotkeyService, keyboardHook, aiCliService, layoutCaptureService, projectLauncherService, commandDispatcher, calendarService, searchService, macroService, resourceOpenerService, hubEventSender, logger);
 });
 builder.Services.AddHostedService<TrayIconManager>(provider => provider.GetRequiredService<TrayIconManager>());
 
