@@ -30,7 +30,7 @@ namespace OmniSync.Hub.Logic.Services
         private static readonly HashSet<string> IgnoredDirectoryNames = new(StringComparer.OrdinalIgnoreCase)
         {
             "bin", "obj", "dist", "build", "out", "target", "node_modules", ".git", ".vs", ".idea",
-            ".vscode", ".gradle", "packages", "coverage", "artifacts", "logs", "tmp", "temp", ".cache"
+            ".vscode", ".gradle", "coverage", "artifacts", "logs", "tmp", "temp", ".cache"
         };
 
         public ProjectSearchService(HubSettingsService settingsService, ILogger<ProjectSearchService> logger)

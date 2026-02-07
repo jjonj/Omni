@@ -17,6 +17,7 @@ import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.omni.sync.R
 import com.omni.sync.MainActivity
+import com.omni.sync.OmniSyncApplication
 import com.omni.sync.utils.AlarmScheduler
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -337,6 +338,11 @@ class AlarmService : Service(), android.content.SharedPreferences.OnSharedPrefer
     }
 
     private fun createNotification(): Notification {
+        val app = application as OmniSyncApplication
+        val mainViewModel = app.mainViewModel
+        val isSleeping = mainViewModel.isSleeping.value
+        val sleepDuration = mainViewModel.sleepDuration.value
+
         val dismissIntent = Intent(this, AlarmService::class.java).apply { 
             action = ACTION_DISMISS 
             putExtra("ALARM_ID", currentAlarmId)
@@ -350,7 +356,10 @@ class AlarmService : Service(), android.content.SharedPreferences.OnSharedPrefer
         }
         val pendingFullScreen = PendingIntent.getActivity(this, currentAlarmId, fullScreenIntent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
 
-        val content = if (!dismissText.isNullOrBlank()) dismissText else "Volume: $currentVolume% | Tap to Dismiss"
+        var content = if (!dismissText.isNullOrBlank()) dismissText!! else "Volume: $currentVolume% | Tap to Dismiss"
+        if (isSleeping) {
+            content = "$content (Asleep for $sleepDuration)"
+        }
 
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Alarm")

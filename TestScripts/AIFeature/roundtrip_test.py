@@ -135,7 +135,7 @@ class RoundtripTester:
         # Reset response flag to ignore startup 'FINISHED' event
         self.response_received = False 
         test_msg = "Hello AI, this is an automated roundtrip test. Please respond."
-        logger.info("SANITY CHECK: Sleeping 10s before sending..."); time.sleep(10); logger.info(f"Sending message via Hub to PID {target_pid}: {test_msg}")
+        logger.info(f"Sending message via Hub to PID {target_pid}: {test_msg}")
         self.hub.send("SendAiMessage", [test_msg, target_pid])
 
 

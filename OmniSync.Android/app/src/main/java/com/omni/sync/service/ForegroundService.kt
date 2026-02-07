@@ -294,8 +294,9 @@ class ForegroundService : Service() {
         customLayout.setOnClickPendingIntent(R.id.notification_root, pendingIntent)
         
         if (statusMessage != null) {
+            val displayStatus = if (isSleeping) "$statusMessage (Asleep for $sleepDuration)" else statusMessage
             customLayout.setViewVisibility(R.id.notification_status, android.view.View.VISIBLE)
-            customLayout.setTextViewText(R.id.notification_status, statusMessage)
+            customLayout.setTextViewText(R.id.notification_status, displayStatus)
             
             customLayout.setViewVisibility(R.id.btn_dismiss_alarm, android.view.View.VISIBLE)
             val dismissIntent = Intent(this, ForegroundService::class.java).apply {
