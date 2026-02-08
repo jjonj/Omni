@@ -629,8 +629,11 @@ namespace OmniSync.Hub.Infrastructure.Services
                 
                 _hubMonitorService.AddLogMessage($"[AI] Launch Command: {finalCommand}");
 
+                // Use Shell.Application technique in ProcessService to drop privileges if Hub is running as Admin
                 _processService.ExecuteCommandNonAdmin("cmd.exe", $"/K \"{finalCommand}\"");
                 
+                await Task.Delay(2000); // Give it a moment to actually spawn before we start discovery
+
                 // We don't have shellProcess.Id with ShellExecute, so we rely on Diff strategy
                 _logger.LogInformation($"[AiCliService] Process started via ShellExecute. Waiting for node process via Diff...");
                     onProgress?.Invoke("Process started. Waiting for connection...");
@@ -1209,6 +1212,26 @@ namespace OmniSync.Hub.Infrastructure.Services
                     var process = Process.GetProcessById(target);
                     if (!process.HasExited)
                     {
+                        // Try to find and kill the parent cmd.exe if it exists
+                        try 
+                        {
+                            using var searcher = new ManagementObjectSearcher($"SELECT ParentProcessId FROM Win32_Process WHERE ProcessId = {target}");
+                            foreach (var obj in searcher.Get())
+                            {
+                                int parentPid = Convert.ToInt32(obj["ParentProcessId"]);
+                                var parentProc = Process.GetProcessById(parentPid);
+                                if (parentProc.ProcessName.Equals("cmd", StringComparison.OrdinalIgnoreCase))
+                                {
+                                    parentProc.Kill(true);
+                                    _logger.LogInformation($"Killed parent cmd.exe process {parentPid} for AI session {target}");
+                                }
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogDebug($"Could not find/kill parent cmd.exe for {target}: {ex.Message}");
+                        }
+
                         process.Kill(true);
                         _logger.LogInformation($"Killed AI process {target}");
                     }
