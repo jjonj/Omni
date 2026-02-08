@@ -27,8 +27,6 @@ The Omnihub window -> Settings -> Hotkeys needs improvements (Completed)
 ## in OmniSync.Android
 ### General
 
-DONE: (Completed)
-
 ### Dashboard
 
 
@@ -39,8 +37,6 @@ DONE: (Completed)
 
 ### Files & Video Screen
  
-DONE: (Completed)
-
 
 ### Browser control screen
 
@@ -53,7 +49,9 @@ DONE: (Completed)
 
 ### AI screen
 
-DONE: (Completed)
+I tried to add omni-gemini-cli to the workspace of the AI using the browse to add from android app but it gave the following error when i tried to add D:\SSDProjects\Tools\omni-gemini-cli. It shouldnt add .\
+✕ Error adding '.\"D:\SSDProjects\Tools\omni-gemini-cli"': Directory does not exist: D:\SSDProjects\Omni\"D:\SSDProjects\Tools\omni-gemini-cli"
+
 
 
 [BIGTASK] Add a special "Manager Session", a CLI session that is always running with some heavy scaffolding around it.
@@ -81,8 +79,5 @@ DONE: (Completed)
 
 
 ### Omni web tft
-
-DONE: (Completed)
-
 
 ## Chrome extension

@@ -275,10 +275,41 @@ namespace OmniSync.Hub.Infrastructure.Services
                     if (shellType != null)
                     {
                         dynamic shell = Activator.CreateInstance(shellType);
-                        // ShellExecute(file, vArgs, vDir, vOperation, vShow)
-                        // vOperation: "open", vShow: 1 (Normal)
-                        shell.ShellExecute(command, arguments ?? "", workingDirectory ?? "", "open", 1);
-                        _monitorService.AddLogMessage($"[ProcessService] ExecuteCommandNonAdmin started via Shell.Application: {command}");
+                        dynamic windows = shell.Windows();
+                        bool started = false;
+
+                        // Try to find an existing explorer window to use as a launch proxy
+                        for (int i = 0; i < windows.Count; i++)
+                        {
+                            try
+                            {
+                                dynamic window = windows.Item(i);
+                                if (window != null && ((string)window.FullName).EndsWith("explorer.exe", StringComparison.OrdinalIgnoreCase))
+                                {
+                                    window.Document.Application.ShellExecute(command, arguments ?? "", workingDirectory ?? "", "open", 1);
+                                    _monitorService.AddLogMessage($"[ProcessService] ExecuteCommandNonAdmin started via existing Explorer window: {command}");
+                                    started = true;
+                                    break;
+                                }
+                            }
+                            catch { /* Skip windows that don't support the expected properties */ }
+                        }
+
+                        if (!started)
+                        {
+                            _monitorService.AddLogMessage("[ProcessService] No Explorer window found. Using explorer.exe as a launcher fallback.");
+                            
+                            // Create a temporary batch file to launch the command. 
+                            // explorer.exe <path_to_file> always launches as a non-elevated process if explorer itself is non-elevated.
+                            string tempBat = Path.Combine(Path.GetTempPath(), $"launch_non_admin_{Guid.NewGuid():N}.bat");
+                            string cdCmd = !string.IsNullOrEmpty(workingDirectory) ? $"cd /d \"{workingDirectory}\"\r\n" : "";
+                            File.WriteAllText(tempBat, $"@echo off\r\n{cdCmd}\"{command}\" {arguments}");
+                            
+                            Process.Start("explorer.exe", $"\"{tempBat}\"");
+                            
+                            // Delete the temp file after a delay to ensure explorer had time to read it
+                            Task.Delay(5000).ContinueWith(_ => { try { File.Delete(tempBat); } catch {} });
+                        }
                     }
                     else
                     {
