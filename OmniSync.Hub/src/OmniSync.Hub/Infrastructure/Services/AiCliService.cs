@@ -102,8 +102,12 @@ namespace OmniSync.Hub.Infrastructure.Services
         {
             _logger.LogInformation($"[AiCliService] Focusing session PID {pid}");
             
+            string? hint = null;
+            if (_sessionNames.TryGetValue(pid, out var name)) hint = name;
+            else if (_workspaces.TryGetValue(pid, out var ws)) hint = ws;
+
             // Use the generalized WinActivatePid which now handles nested processes and terminal hosts
-            _processService.WinActivatePid(pid);
+            _processService.WinActivatePid(pid, hint);
 
             await Task.CompletedTask;
         }

@@ -972,7 +972,10 @@ namespace OmniSync.Hub.Presentation.Hubs
         {
             if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
             {
-                _processService.WinActivatePid(pid);
+                string? hint = null;
+                if (_aiCliService.GetSessionsWithNames().TryGetValue(pid, out var name)) hint = name;
+                
+                _processService.WinActivatePid(pid, hint);
                 await Task.Delay(100);
                 
                 if (ctrl) _inputService.KeyDown(0x11);

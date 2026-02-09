@@ -399,14 +399,15 @@ foreach ($p in $procs) {{
             }
         }
 
-        public void WinActivatePid(int pid)
+        public void WinActivatePid(int pid, string? titleHint = null)
         {
             Action action = () => {
                 try
                 {
-                    _monitorService.AddLogMessage($"[ProcessService] WinActivatePid: {pid}");
+                    _monitorService.AddLogMessage($"[ProcessService] WinActivatePid: {pid} (Hint: {titleHint ?? "None"})");
                     var treePids = GetProcessTreePids(pid);
-                    var hwnds = GetVisibleWindowsForPids(treePids);
+                    _monitorService.AddLogMessage($"[ProcessService] Found {treePids.Count} PIDs in tree for root {pid}: {string.Join(", ", treePids)}");
+                    var hwnds = GetVisibleWindowsForPids(treePids, titleHint);
 
                     if (hwnds.Any())
                     {
@@ -435,10 +436,34 @@ foreach ($p in $procs) {{
             }
         }
 
+        [DllImport("user32.dll")]
+        private static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, int dwExtraInfo);
+
+        private const byte VK_MENU = 0x12;
+        private const uint KEYEVENTF_KEYUP = 0x0002;
+
+        [DllImport("user32.dll")]
+        private static extern bool BringWindowToTop(IntPtr hWnd);
+
         private void ActivateWindow(IntPtr handle)
         {
             if (handle == IntPtr.Zero) return;
+            
+            _monitorService.AddLogMessage($"[ProcessService] Activating window {handle} aggressively...");
+
             if (IsIconic(handle)) ShowWindow(handle, SW_RESTORE);
+            
+            // Force focus bypass: tap the Alt key. 
+            // This is a common trick to make Windows believe the user is interacting with the system,
+            // which often allows SetForegroundWindow to work from background processes.
+            keybd_event(VK_MENU, 0, 0, 0);
+            keybd_event(VK_MENU, 0, KEYEVENTF_KEYUP, 0);
+            
+            SetForegroundWindow(handle);
+            BringWindowToTop(handle);
+            
+            // Second attempt after a tiny delay if needed, but for now just try once more
+            ShowWindow(handle, 5); // SW_SHOW
             SetForegroundWindow(handle);
         }
 
@@ -803,6 +828,7 @@ Add-Type -MemberDefinition $code -Name Win32 -Namespace Native
                         if (kvp.Value == pId && !result.Contains(kvp.Key))
                         {
                             result.Add(kvp.Key);
+                            _monitorService.AddLogMessage($"[ProcessService] Tree: Found child PID {kvp.Key} for parent {pId}");
                             AddChildren(kvp.Key);
                         }
                     }
@@ -840,7 +866,7 @@ Add-Type -MemberDefinition $code -Name Win32 -Namespace Native
             return result;
         }
 
-        private List<IntPtr> GetVisibleWindowsForPids(HashSet<int> pids)
+        private List<IntPtr> GetVisibleWindowsForPids(HashSet<int> pids, string? titleHint = null)
         {
             var candidates = new List<(IntPtr hWnd, int priority, long area)>();
             
@@ -861,15 +887,48 @@ Add-Type -MemberDefinition $code -Name Win32 -Namespace Native
                     if (w > 10 && h > 10)
                     {
                         bool isTreeMatch = pids.Contains((int)processId);
-                        bool isFallbackMatch = !isTreeMatch && (title == "[system32]" || title.Contains("node.exe") || title.Contains("cmd.exe"));
+                        bool isTitleMatch = !string.IsNullOrEmpty(titleHint) && title.Contains(titleHint, StringComparison.OrdinalIgnoreCase);
 
                         if (isTreeMatch)
                         {
+                            _monitorService.AddLogMessage($"[ProcessService] Windows: Found visible window HWND {hWnd} for matching PID {processId}. Title: '{title}' ({w}x{h})");
                             candidates.Add((hWnd, 10, (long)w * h));
                         }
-                        else if (isFallbackMatch)
+                        else if (isTitleMatch)
                         {
-                            candidates.Add((hWnd, 0, (long)w * h));
+                            // If title matches, check if it's a terminal process to prioritize it over generic matches (like Explorer)
+                            string procName = "";
+                            try { procName = Process.GetProcessById((int)processId).ProcessName; } catch { }
+
+                            bool isTerminal = procName.Contains("Terminal", StringComparison.OrdinalIgnoreCase) || 
+                                              procName.Contains("cmd", StringComparison.OrdinalIgnoreCase) || 
+                                              procName.Contains("powershell", StringComparison.OrdinalIgnoreCase) ||
+                                              procName.Contains("conhost", StringComparison.OrdinalIgnoreCase);
+
+                            if (isTerminal)
+                            {
+                                _monitorService.AddLogMessage($"[ProcessService] Windows: Found TERMINAL window HWND {hWnd} via Title Hint match '{titleHint}'. Title: '{title}' ({w}x{h})");
+                                candidates.Add((hWnd, 8, (long)w * h));
+                            }
+                            else if (!procName.Contains("explorer", StringComparison.OrdinalIgnoreCase))
+                            {
+                                _monitorService.AddLogMessage($"[ProcessService] Windows: Found non-terminal window HWND {hWnd} via Title Hint match '{titleHint}'. Title: '{title}' ({w}x{h})");
+                                candidates.Add((hWnd, 5, (long)w * h));
+                            }
+                            else
+                            {
+                                _monitorService.AddLogMessage($"[ProcessService] Windows: Found EXPLORER window HWND {hWnd} matching hint '{titleHint}' (deprioritizing). Title: '{title}' ({w}x{h})");
+                                candidates.Add((hWnd, 1, (long)w * h));
+                            }
+                        }
+                        else 
+                        {
+                            bool isFallbackMatch = (title == "[system32]" || title.Contains("node.exe") || title.Contains("cmd.exe") || title.Contains("WindowsTerminal"));
+                            if (isFallbackMatch)
+                            {
+                                // Lower priority fallback
+                                candidates.Add((hWnd, 0, (long)w * h));
+                            }
                         }
                     }
                 }
