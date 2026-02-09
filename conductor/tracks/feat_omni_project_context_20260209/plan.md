@@ -1,6 +1,6 @@
 # Implementation Plan: OmniProjectContext (OPC)
 
-## Phase 1: Project Scaffolding & Core Infrastructure
+## Phase 1: Project Scaffolding & Core Infrastructure [checkpoint: 416e4c4]
 - [x] Task: Initialize OPC CLI project (C# .NET 9) in `OmniSync.Cli/OmniProjectContext` c9c0c3e
 - [x] Task: Implement Command Line Parser for `session`, `context`, and `sync` commands 4b936a9
 - [x] Task: Implement `FileSystemService` with aggressive exclusion logic (Conductor, Assets, etc.) cbb7747
