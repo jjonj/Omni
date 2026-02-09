@@ -14,11 +14,11 @@
 - [x] Task: Conductor - User Manual Verification 'Phase 2' (Protocol in workflow.md) bbb6384
 
 ## Phase 3: Context Generation & Expansion Logic
-- [ ] Task: Implement `ContextEngine` to generate the file tree (respecting exclusions)
-- [ ] Task: Implement "Skeleton" extractor for C# and Python (signatures only for large files)
-- [ ] Task: Implement the `opc context` command output formatter
-- [ ] Task: Verify token/size management to keep context within reasonable limits
-- [ ] Task: Conductor - User Manual Verification 'Phase 3' (Protocol in workflow.md)
+- [x] Task: Implement `ContextEngine` to generate the file tree (respecting exclusions) 42c2e7a
+- [x] Task: Implement "Skeleton" extractor for C# and Python (signatures only for large files) 42c2e7a
+- [x] Task: Implement the `opc context` command output formatter 42c2e7a
+- [x] Task: Verify token/size management to keep context within reasonable limits 42c2e7a
+- [x] Task: Conductor - User Manual Verification 'Phase 3' (Protocol in workflow.md) 42c2e7a
 
 ## Phase 4: Gemini CLI Integration & Verification
 - [ ] Task: Create `opc session` JSON response for `SessionStart` hook
