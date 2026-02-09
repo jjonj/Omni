@@ -807,16 +807,19 @@ Add-Type -MemberDefinition $code -Name Win32 -Namespace Native
                 var allProcs = Process.GetProcesses();
                 var parentMap = new Dictionary<int, int>();
                 var nameMap = new Dictionary<int, string>();
+                var cmdMap = new Dictionary<int, string>();
                 
-                using (var searcher = new System.Management.ManagementObjectSearcher("SELECT ProcessId, ParentProcessId, Name FROM Win32_Process"))
+                using (var searcher = new System.Management.ManagementObjectSearcher("SELECT ProcessId, ParentProcessId, Name, CommandLine FROM Win32_Process"))
                 {
                     foreach (var obj in searcher.Get())
                     {
                         int pId = Convert.ToInt32(obj["ProcessId"]);
                         int parentId = Convert.ToInt32(obj["ParentProcessId"]);
                         string name = obj["Name"]?.ToString() ?? "";
+                        string cmd = obj["CommandLine"]?.ToString() ?? "";
                         parentMap[pId] = parentId;
                         nameMap[pId] = name;
+                        cmdMap[pId] = cmd;
                     }
                 }
 
@@ -850,13 +853,35 @@ Add-Type -MemberDefinition $code -Name Win32 -Namespace Native
                         if (kvp.Value == parentId && !result.Contains(kvp.Key))
                         {
                             if (nameMap.TryGetValue(kvp.Key, out string siblingName) && 
-                                siblingName.ToLower().Contains("conhost"))
+                                (siblingName.ToLower().Contains("conhost") || siblingName.ToLower().Contains("openconsole")))
                             {
                                 result.Add(kvp.Key);
+                                _monitorService.AddLogMessage($"[ProcessService] Tree: Added sibling console host PID {kvp.Key} ({siblingName})");
                             }
                         }
                     }
                     currentPid = parentId;
+                }
+
+                // 4. Special Terminal Search: If we found OpenConsole or Conhost but didn't find its hosting Terminal
+                // because Terminal isn't a direct parent, we look for ALL WindowsTerminal processes 
+                // and see if any of them are 'responsible' for this tree.
+                var consoles = result.Where(p => nameMap.ContainsKey(p) && 
+                                                (nameMap[p].ToLower().Contains("openconsole") || 
+                                                 nameMap[p].ToLower().Contains("conhost"))).ToList();
+                if (consoles.Any())
+                {
+                    foreach (var termPid in nameMap.Where(kvp => kvp.Value.ToLower().Contains("windowsterminal") || 
+                                                               kvp.Value.ToLower().Contains("conhost")).Select(kvp => kvp.Key))
+                    {
+                        // In modern Windows Terminal, OpenConsole.exe is launched by svchost but linked via some magic.
+                        // However, WindowsTerminal.exe is the one with the window.
+                        // Since we can't perfectly link them via PID, we add ALL Terminal PIDs to the candidate list
+                        // if we detect we are in an OpenConsole environment.
+                        // The GetVisibleWindowsForPids will then find the one with the window.
+                        result.Add(termPid);
+                        _monitorService.AddLogMessage($"[ProcessService] Tree: Added potential Terminal PID {termPid} due to console host presence.");
+                    }
                 }
             }
             catch (Exception ex)
@@ -893,33 +918,6 @@ Add-Type -MemberDefinition $code -Name Win32 -Namespace Native
                         {
                             _monitorService.AddLogMessage($"[ProcessService] Windows: Found visible window HWND {hWnd} for matching PID {processId}. Title: '{title}' ({w}x{h})");
                             candidates.Add((hWnd, 10, (long)w * h));
-                        }
-                        else if (isTitleMatch)
-                        {
-                            // If title matches, check if it's a terminal process to prioritize it over generic matches (like Explorer)
-                            string procName = "";
-                            try { procName = Process.GetProcessById((int)processId).ProcessName; } catch { }
-
-                            bool isTerminal = procName.Contains("Terminal", StringComparison.OrdinalIgnoreCase) || 
-                                              procName.Contains("cmd", StringComparison.OrdinalIgnoreCase) || 
-                                              procName.Contains("powershell", StringComparison.OrdinalIgnoreCase) ||
-                                              procName.Contains("conhost", StringComparison.OrdinalIgnoreCase);
-
-                            if (isTerminal)
-                            {
-                                _monitorService.AddLogMessage($"[ProcessService] Windows: Found TERMINAL window HWND {hWnd} via Title Hint match '{titleHint}'. Title: '{title}' ({w}x{h})");
-                                candidates.Add((hWnd, 8, (long)w * h));
-                            }
-                            else if (!procName.Contains("explorer", StringComparison.OrdinalIgnoreCase))
-                            {
-                                _monitorService.AddLogMessage($"[ProcessService] Windows: Found non-terminal window HWND {hWnd} via Title Hint match '{titleHint}'. Title: '{title}' ({w}x{h})");
-                                candidates.Add((hWnd, 5, (long)w * h));
-                            }
-                            else
-                            {
-                                _monitorService.AddLogMessage($"[ProcessService] Windows: Found EXPLORER window HWND {hWnd} matching hint '{titleHint}' (deprioritizing). Title: '{title}' ({w}x{h})");
-                                candidates.Add((hWnd, 1, (long)w * h));
-                            }
                         }
                         else 
                         {
