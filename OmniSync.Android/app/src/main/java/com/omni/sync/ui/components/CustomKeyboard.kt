@@ -43,6 +43,12 @@ fun CustomKeyboard(
 ) {
     var showNumbers by remember(appConfig.showKeyboardNumberRow) { mutableStateOf(appConfig.showKeyboardNumberRow) }
     
+    // Track modifier states locally to handle character mapping
+    var isShiftActive by remember { mutableStateOf(false) }
+    var isCtrlActive by remember { mutableStateOf(false) }
+    var isAltActive by remember { mutableStateOf(false) }
+    var isWinActive by remember { mutableStateOf(false) }
+
     val context = LocalContext.current
     val soundPool = remember {
         SoundPool.Builder()
@@ -175,22 +181,91 @@ fun CustomKeyboard(
         rows.forEach { row ->
             Row(modifier = Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 row.forEach { def ->
+                    val isModifier = def.code == WindowsKeyCodes.VK_SHIFT || 
+                                    def.code == WindowsKeyCodes.VK_CONTROL || 
+                                    def.code == WindowsKeyCodes.VK_MENU || 
+                                    def.code == WindowsKeyCodes.VK_LWIN
+                    
+                    val isToggled = when(def.code) {
+                        WindowsKeyCodes.VK_SHIFT -> isShiftActive
+                        WindowsKeyCodes.VK_CONTROL -> isCtrlActive
+                        WindowsKeyCodes.VK_MENU -> isAltActive
+                        WindowsKeyCodes.VK_LWIN -> isWinActive
+                        else -> false
+                    }
+
                     KeyboardKey(
                         def = def, 
-                        modifier = Modifier.weight(def.weight), 
+                        modifier = Modifier.weight(def.weight),
+                        isToggled = isToggled,
                         onDown = { 
                             if (def.onClick != null) {
-                                // Special keys like # Row don't have down/up split
-                            } else {
+                                // Handled in onUp
+                            } else if (isModifier) {
+                                when(def.code) {
+                                    WindowsKeyCodes.VK_SHIFT -> isShiftActive = true
+                                    WindowsKeyCodes.VK_CONTROL -> isCtrlActive = true
+                                    WindowsKeyCodes.VK_MENU -> isAltActive = true
+                                    WindowsKeyCodes.VK_LWIN -> isWinActive = true
+                                }
                                 signalRClient.sendKeyEvent("INPUT_KEY_DOWN", def.code)
+                                playClick()
+                            } else if (def.isSystem) {
+                                signalRClient.sendKeyEvent("INPUT_KEY_DOWN", def.code)
+                                playClick()
+                            } else {
+                                // Character key - send as Unicode DOWN to support repeat and layout independence
+                                val charToSend = if (isShiftActive && def.sub != null && def.sub.length == 1) {
+                                    def.sub[0]
+                                } else if (isShiftActive && def.label.length == 1) {
+                                    def.label.uppercase()[0]
+                                } else if (!isShiftActive && def.label.length == 1) {
+                                    def.label.lowercase()[0]
+                                } else if (def.label == "Space") {
+                                    ' '
+                                } else if (def.label.length == 1) {
+                                    def.label[0]
+                                } else null
+                                
+                                if (charToSend != null) {
+                                    signalRClient.sendUnicodeEvent("INPUT_UNICODE_DOWN", charToSend)
+                                } else {
+                                    // Fallback for multi-char labels if any
+                                    signalRClient.sendText(def.label)
+                                }
                                 playClick()
                             }
                         },
                         onUp = {
                             if (def.onClick != null) {
                                 def.onClick.invoke()
-                            } else {
+                            } else if (isModifier) {
+                                when(def.code) {
+                                    WindowsKeyCodes.VK_SHIFT -> isShiftActive = false
+                                    WindowsKeyCodes.VK_CONTROL -> isCtrlActive = false
+                                    WindowsKeyCodes.VK_MENU -> isAltActive = false
+                                    WindowsKeyCodes.VK_LWIN -> isWinActive = false
+                                }
                                 signalRClient.sendKeyEvent("INPUT_KEY_UP", def.code)
+                            } else if (def.isSystem) {
+                                signalRClient.sendKeyEvent("INPUT_KEY_UP", def.code)
+                            } else {
+                                // Character key - send as Unicode UP
+                                val charToSend = if (isShiftActive && def.sub != null && def.sub.length == 1) {
+                                    def.sub[0]
+                                } else if (isShiftActive && def.label.length == 1) {
+                                    def.label.uppercase()[0]
+                                } else if (!isShiftActive && def.label.length == 1) {
+                                    def.label.lowercase()[0]
+                                } else if (def.label == "Space") {
+                                    ' '
+                                } else if (def.label.length == 1) {
+                                    def.label[0]
+                                } else null
+                                
+                                if (charToSend != null) {
+                                    signalRClient.sendUnicodeEvent("INPUT_UNICODE_UP", charToSend)
+                                }
                             }
                         }
                     )
@@ -204,6 +279,7 @@ fun CustomKeyboard(
 fun KeyboardKey(
     def: KeyDef, 
     modifier: Modifier = Modifier, 
+    isToggled: Boolean = false,
     onDown: () -> Unit,
     onUp: () -> Unit
 ) {
@@ -230,8 +306,8 @@ fun KeyboardKey(
                 }
             }, 
         shape = RoundedCornerShape(6.dp), 
-        color = if (isPressed) MaterialTheme.colorScheme.primaryContainer else if (def.isSystem) Color(0xFF444444) else Color(0xFF2C2C2C), 
-        contentColor = if (isPressed) MaterialTheme.colorScheme.onPrimaryContainer else if (def.isSystem) Color(0xFFBB86FC) else Color.White
+        color = if (isPressed || isToggled) MaterialTheme.colorScheme.primaryContainer else if (def.isSystem) Color(0xFF444444) else Color(0xFF2C2C2C), 
+        contentColor = if (isPressed || isToggled) MaterialTheme.colorScheme.onPrimaryContainer else if (def.isSystem) Color(0xFFBB86FC) else Color.White
     ) {
         Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
             Text(def.label, fontSize = 16.sp, fontWeight = FontWeight.Bold)

@@ -1070,28 +1070,41 @@ fun Dot(alpha: Float) {
 @Composable
 fun ToolCallBubble(content: String) {
     val toolData = remember(content) {
-        val jsonStr = content.removePrefix("Tool Call:").trim()
+        val raw = content.removePrefix("Tool Call:").trim()
         try {
-            // Support both "Name{...}" and "Name(...)"
-            val toolName = when {
-                jsonStr.contains("{") -> jsonStr.substringBefore("{").trim()
-                jsonStr.contains("(") -> jsonStr.substringBefore("(").trim()
-                else -> "Tool"
+            val gson = com.google.gson.Gson()
+            if (raw.startsWith("{")) {
+                val map = gson.fromJson(raw, Map::class.java)
+                val name = map["name"] as? String
+                val args = map["args"]
+                if (name != null) {
+                    val argsStr = if (args != null) {
+                        if (args is String) args else gson.toJson(args)
+                    } else raw
+                    name to argsStr
+                } else {
+                    // Legacy/Fallback parsing: "Name { ... }"
+                    val namePart = raw.substringBefore("{").trim().ifBlank { "Tool" }
+                    val argsPart = raw.substring(raw.indexOf("{"))
+                    namePart to argsPart
+                }
+            } else if (raw.contains("(")) {
+                // Legacy/Fallback parsing: "Name( ... )"
+                val namePart = raw.substringBefore("(").trim().ifBlank { "Tool" }
+                val argsPart = raw.substringAfter("(").substringBeforeLast(")")
+                namePart to argsPart
+            } else {
+                "Tool" to raw
             }
-            val rawArgs = when {
-                jsonStr.contains("{") -> jsonStr.substring(jsonStr.indexOf("{"))
-                jsonStr.contains("(") -> jsonStr.substringAfter("(").substringBeforeLast(")")
-                else -> jsonStr
-            }
-            toolName to rawArgs
         } catch (e: Exception) {
-            "Tool" to jsonStr
+            "Tool" to raw
         }
     }
 
     val isEditOrReplace = toolData.first.equals("Edit", ignoreCase = true) || 
                          toolData.first.equals("Replace", ignoreCase = true) ||
-                         toolData.first.equals("patch", ignoreCase = true)
+                         toolData.first.equals("patch", ignoreCase = true) ||
+                         toolData.first.equals("replace", ignoreCase = true)
 
     Column(
         modifier = Modifier.padding(8.dp).fillMaxWidth()
@@ -1170,7 +1183,7 @@ fun ToolCallBubble(content: String) {
                                 }
                             }
                         } else {
-                            Text(text = toolData.second, style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace), color = Color(0xFF333333))
+                            ToolCallRawArgs(toolData.second)
                         }
                     }
                 }
@@ -1222,15 +1235,34 @@ fun computeInterleavedDiff(old: String, new: String): List<Pair<String, String>>
 
 @Composable
 fun ToolCallRawArgs(args: String) {
+    val prettyArgs = remember(args) {
+        try {
+            if (args.trim().startsWith("{") || args.trim().startsWith("[")) {
+                val gson = com.google.gson.GsonBuilder().setPrettyPrinting().create()
+                val parser = com.google.gson.JsonParser()
+                val element = parser.parse(args)
+                gson.toJson(element)
+            } else {
+                args
+            }
+        } catch (e: Exception) {
+            args
+        }
+    }
+    
     Surface(
         color = Color.White.copy(alpha = 0.5f),
         shape = RoundedCornerShape(4.dp),
         modifier = Modifier.fillMaxWidth()
     ) {
         Text(
-            text = args,
+            text = prettyArgs,
             modifier = Modifier.padding(6.dp),
-            style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+            style = MaterialTheme.typography.bodySmall.copy(
+                fontFamily = FontFamily.Monospace,
+                fontSize = 10.sp,
+                lineHeight = 12.sp
+            ),
             color = Color(0xFF333333)
         )
     }

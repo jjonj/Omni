@@ -59,7 +59,21 @@ public class FileSystemService
 
     public bool IsHighValueFile(string filePath)
     {
-        var ext = Path.GetExtension(filePath);
-        return HighValueExtensions.Contains(ext);
+        var ext = Path.GetExtension(filePath).ToLower();
+        
+        // Root-only .txt files
+        if (ext == ".txt")
+        {
+            var dir = Path.GetDirectoryName(filePath);
+            return string.IsNullOrEmpty(dir);
+        }
+
+        var highValueExts = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ".cs", ".py", ".js", ".ts", ".html", ".css", ".md", ".json", 
+            ".xml", ".xaml", ".kt", ".kts", ".java", ".sh", ".ps1", ".bat", ".csproj", ".sln"
+        };
+
+        return highValueExts.Contains(ext);
     }
 }

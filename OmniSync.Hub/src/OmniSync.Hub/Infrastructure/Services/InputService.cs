@@ -451,6 +451,24 @@ namespace OmniSync.Hub.Infrastructure.Services
             SendInputWithLogging(inputs.ToArray());
         }
 
+        public void UnicodeDown(char c)
+        {
+            IntPtr extraInfo = GetMessageExtraInfo();
+            INPUT[] inputs = new INPUT[1];
+            inputs[0].type = INPUT_KEYBOARD;
+            inputs[0].U.ki = new KEYBDINPUT { wVk = 0, wScan = c, dwFlags = KEYEVENTF_UNICODE, dwExtraInfo = extraInfo };
+            SendInputWithLogging(inputs);
+        }
+
+        public void UnicodeUp(char c)
+        {
+            IntPtr extraInfo = GetMessageExtraInfo();
+            INPUT[] inputs = new INPUT[1];
+            inputs[0].type = INPUT_KEYBOARD;
+            inputs[0].U.ki = new KEYBDINPUT { wVk = 0, wScan = c, dwFlags = KEYEVENTF_UNICODE | KEYEVENTF_KEYUP, dwExtraInfo = extraInfo };
+            SendInputWithLogging(inputs);
+        }
+
         public virtual void SendKeys(string keys)
         {
             if (string.IsNullOrEmpty(keys)) return;

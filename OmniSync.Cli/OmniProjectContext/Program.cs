@@ -62,9 +62,8 @@ public class Program
     private static void HandleContext()
     {
         var projectRoot = Directory.GetCurrentDirectory();
-        var fileSystemService = new FileSystemService();
-        var engine = new ContextEngine(projectRoot, fileSystemService);
-        var skeletonExtractor = new SkeletonExtractor();
+        var stateService = new StateService(projectRoot);
+        var files = stateService.LoadState();
         var gitHistoryService = new GitHistoryService(projectRoot);
 
         Console.WriteLine("<system-reminder>");
@@ -82,89 +81,139 @@ public class Program
             }
         }
 
-        Console.WriteLine("\n[STRUCTURE]");
-        var files = engine.GenerateFileTree();
-        int id = 1;
-
-        var groupedFiles = files.GroupBy(f => Path.GetDirectoryName(f))
-                                .OrderBy(g => g.Key);
-
-        foreach (var group in groupedFiles)
+        if (!files.Any())
         {
-            var dir = group.Key;
-            if (!string.IsNullOrEmpty(dir))
-            {
-                Console.WriteLine($"{dir}\\");
-            }
-
-            foreach (var file in group)
-            {
-                var fileName = Path.GetFileName(file);
-                var ext = Path.GetExtension(file).ToLower();
-                var indent = string.IsNullOrEmpty(dir) ? "" : "  ";
-                var outputLine = $"{indent}{fileName}#{id++}";
-
-                if (ext == ".cs" || ext == ".py")
-                {
-                    try
-                    {
-                        var content = File.ReadAllText(Path.Combine(projectRoot, file));
-                        var imports = skeletonExtractor.GetImports(content, ext);
-                        if (imports.Any())
-                        {
-                            outputLine += "→" + string.Join("→", imports.Take(5));
-                        }
-                    }
-                    catch { }
-                }
-                Console.WriteLine(outputLine);
-            }
+            Console.WriteLine("\n[STRUCTURE]\n(No index found. Run 'opc sync' to generate context.)");
         }
-
-        Console.WriteLine("\n[SKELETONS]");
-        foreach (var file in files)
+        else
         {
-            var ext = Path.GetExtension(file).ToLower();
-            if (ext == ".cs" || ext == ".py" || ext == ".kt")
+            Console.WriteLine("\n[STRUCTURE]");
+            int id = 1;
+            var groupedFiles = files.GroupBy(f => Path.GetDirectoryName(f.Path))
+                                    .OrderBy(g => g.Key);
+
+            foreach (var group in groupedFiles)
             {
-                try
+                var dir = group.Key;
+                if (!string.IsNullOrEmpty(dir))
                 {
-                    var fullPath = Path.Combine(projectRoot, file);
-                    var content = File.ReadAllText(fullPath);
-                    if (content.Length > 1000)
-                    {
-                        var skeleton = skeletonExtractor.Extract(content, ext);
-                        if (!string.IsNullOrWhiteSpace(skeleton))
-                        {
-                            Console.WriteLine($"\nFILE: {file}");
-                            Console.WriteLine(skeleton.Trim());
-                        }
-                    }
+                    Console.WriteLine($"{dir}\\");
                 }
-                catch { }
+
+                foreach (var file in group)
+                {
+                    var fileName = Path.GetFileName(file.Path);
+                    var indent = string.IsNullOrEmpty(dir) ? "" : "  ";
+                    Console.WriteLine($"{indent}{fileName}#{id++}");
+                }
+            }
+
+            Console.WriteLine("\n[SKELETONS]");
+            foreach (var file in files)
+            {
+                if (!string.IsNullOrWhiteSpace(file.Skeleton))
+                {
+                    Console.WriteLine($"\nFILE: {file.Path}");
+                    Console.WriteLine(file.Skeleton.Trim());
+                }
             }
         }
 
         Console.WriteLine("</system-reminder>");
     }
 
-    private static void HandleSync()
-    {
-        var projectRoot = Directory.GetCurrentDirectory();
-        var stateService = new StateService(projectRoot);
-        stateService.Initialize();
-        
-        var fileSystemService = new FileSystemService();
-        var engine = new ContextEngine(projectRoot, fileSystemService);
-        var files = engine.GenerateFileTree();
-        
-        var syncData = new
+        private static void HandleSync()
+
         {
-            lastSync = DateTime.Now,
-            fileCount = files.Count
-        };
-        
-        var statePath = Path.Combine(stateService.GetStatePath(), "sync_state.json");
-        File.WriteAllText(statePath, JsonSerializer.Serialize(syncData));
+
+            var projectRoot = Directory.GetCurrentDirectory();
+
+            var stateService = new StateService(projectRoot);
+
+            stateService.Initialize();
+
+    
+
+            var fileSystemService = new FileSystemService();
+
+            var engine = new ContextEngine(projectRoot, fileSystemService);
+
+            var skeletonExtractor = new SkeletonExtractor();
+
+    
+
+            var files = engine.GenerateFileTree();
+
+            var newList = new List<FileContext>();
+
+    
+
+            foreach (var relativePath in files)
+
+            {
+
+                var fullPath = Path.Combine(projectRoot, relativePath);
+
+                var fileInfo = new FileInfo(fullPath);
+
+                // Use milliseconds of the day as a compact hash
+
+                var lastModifiedMs = (long)fileInfo.LastWriteTimeUtc.TimeOfDay.TotalMilliseconds;
+
+                var ext = Path.GetExtension(relativePath).ToLower();
+
+    
+
+                var fileContext = new FileContext
+
+                {
+
+                    Path = relativePath,
+
+                    LastModifiedMs = lastModifiedMs
+
+                };
+
+    
+
+                if (ext == ".cs" || ext == ".py" || ext == ".kt")
+
+                {
+
+                    try
+
+                    {
+
+                        var content = File.ReadAllText(fullPath);
+
+                        if (content.Length > 500)
+
+                        {
+
+                            fileContext.Skeleton = skeletonExtractor.Extract(content, ext);
+
+                        }
+
+                    }
+
+                    catch { }
+
+                }
+
+    
+
+                newList.Add(fileContext);
+
+            }
+
+    
+
+            stateService.SaveState(newList);
+
+            Console.WriteLine($"Sync complete. Indexed {newList.Count} files.");
+
+        }
+
     }
-}
+
+    

@@ -56,6 +56,8 @@ namespace OmniSync.Hub.Logic.Services
                 { "INPUT_KEY_PRESS", payload => _inputService.SendKeyPress(payload.GetProperty("KeyCode").GetUInt16()) },
                 { "INPUT_KEY_DOWN", payload => _inputService.KeyDown(payload.GetProperty("KeyCode").GetUInt16()) },
                 { "INPUT_KEY_UP", payload => _inputService.KeyUp(payload.GetProperty("KeyCode").GetUInt16()) },
+                { "INPUT_UNICODE_DOWN", payload => _inputService.UnicodeDown(payload.GetProperty("Char").GetString()[0]) },
+                { "INPUT_UNICODE_UP", payload => _inputService.UnicodeUp(payload.GetProperty("Char").GetString()[0]) },
                 { "INPUT_TEXT", payload => _inputService.SendText(payload.GetProperty("Text").GetString()) },
                 { "SEND_KEYS", payload => _inputService.SendKeys(payload.GetProperty("Keys").GetString()) },
                 { "VOLUME_CONTROL", payload => _inputService.SendVolumeKey(payload.GetProperty("KeyCode").GetUInt16()) },

@@ -440,7 +440,7 @@ fun MacroButton(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            val icon = when (macro.iconName.lowercase()) {
+            val icon = when (macro.iconName?.lowercase() ?: "") {
                 "browser" -> Icons.Default.Language
                 "folder" -> Icons.Default.Folder
                 "ai" -> Icons.Default.SmartToy
@@ -456,7 +456,7 @@ fun MacroButton(
             Icon(icon, null, modifier = Modifier.size(24.dp))
             Spacer(Modifier.height(4.dp))
             Text(
-                macro.name, 
+                macro.name ?: "Unknown", 
                 style = MaterialTheme.typography.labelMedium, 
                 textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                 maxLines = 2,

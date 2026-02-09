@@ -1181,6 +1181,20 @@ class SignalRClient(
         }
     }
 
+    fun sendUnicodeEvent(command: String, char: Char) {
+        if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
+            val payload = mapOf("Char" to char.toString())
+            hubConnection?.send("SendPayload", command, payload)
+        }
+    }
+
+    fun sendUnicodePress(char: Char) {
+        if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
+            sendUnicodeEvent("INPUT_UNICODE_DOWN", char)
+            sendUnicodeEvent("INPUT_UNICODE_UP", char)
+        }
+    }
+
     fun sendText(text: String) {
         if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
             val payload = mapOf("Text" to text)

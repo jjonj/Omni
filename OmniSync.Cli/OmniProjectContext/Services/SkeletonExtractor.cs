@@ -59,35 +59,36 @@ public class SkeletonExtractor
     {
         var sb = new StringBuilder();
         var lines = content.Split(new[] { "\r\n", "\n" }, StringSplitOptions.None);
-        var signatureRegex = new Regex(@"^\s*(public|private|protected|internal|static|class|interface|namespace|enum|struct|void|string|int|bool|Task|async).*", RegexOptions.Compiled);
+        // Only include high-level structural declarations (namespace, class, interface, enum, struct)
+        var structureKeywords = new[] { "namespace ", "class ", "interface ", "enum ", "struct " };
 
         foreach (var line in lines)
         {
-            var trimmedStart = line.TrimStart();
-            if (signatureRegex.IsMatch(trimmedStart) && !trimmedStart.StartsWith("//"))
+            var trimmedLine = line.Trim();
+            if (string.IsNullOrWhiteSpace(trimmedLine) || trimmedLine.StartsWith("//")) continue;
+
+            if (structureKeywords.Any(kw => trimmedLine.StartsWith(kw) || trimmedLine.Contains(" " + kw)))
             {
-                if (!trimmedStart.Contains(" = ") && !trimmedStart.StartsWith("return ") && !trimmedStart.StartsWith("throw "))
+                // Ensure it's a declaration, not a method, property, or assignment
+                if (!trimmedLine.Contains("(") && !trimmedLine.Contains(")") && 
+                    !trimmedLine.Contains("{ get;") && !trimmedLine.Contains(" = ") &&
+                    !trimmedLine.Contains("return ") && !trimmedLine.Contains("=>"))
                 {
-                    sb.AppendLine(line.TrimEnd());
+                    // Clean up trailing structural characters
+                    var cleanLine = trimmedLine.TrimEnd(' ', '{', ';');
+                    if (!string.IsNullOrWhiteSpace(cleanLine))
+                    {
+                        sb.Append(cleanLine).Append("¶");
+                    }
                 }
             }
         }
-        return sb.ToString();
+        return sb.ToString().TrimEnd('¶');
     }
 
     private List<string> GetCSharpImports(string content)
     {
-        var imports = new List<string>();
-        var matches = Regex.Matches(content, @"^\s*using\s+([\w\.]+);", RegexOptions.Multiline);
-        foreach (Match match in matches)
-        {
-            var imp = match.Groups[1].Value;
-            if (IgnoredNamespaces.Any(n => imp.StartsWith(n, StringComparison.OrdinalIgnoreCase))) continue;
-
-            var parts = imp.Split('.');
-            imports.Add(parts.Last());
-        }
-        return imports;
+        return new List<string>(); // Imports no longer wanted
     }
 
     private string ExtractPython(string content)
@@ -97,31 +98,17 @@ public class SkeletonExtractor
         foreach (var line in lines)
         {
             var trimmed = line.Trim();
-            if ((trimmed.StartsWith("class ") || trimmed.StartsWith("def ")) && trimmed.EndsWith(":"))
+            // Only include class declarations for Python, remove all function defs
+            if (trimmed.StartsWith("class ") && trimmed.EndsWith(":"))
             {
-                sb.AppendLine(line.TrimEnd());
+                sb.Append(trimmed.TrimEnd(':')).Append("¶");
             }
         }
-        return sb.ToString();
+        return sb.ToString().TrimEnd('¶');
     }
 
     private List<string> GetPythonImports(string content)
     {
-        var imports = new List<string>();
-        var matches = Regex.Matches(content, @"^\s*(?:from\s+([\w\.]+)\s+import|import\s+([\w\.]+))", RegexOptions.Multiline);
-        foreach (Match match in matches)
-        {
-            string imp = "";
-            if (match.Groups[1].Success) imp = match.Groups[1].Value;
-            else if (match.Groups[2].Success) imp = match.Groups[2].Value;
-
-            if (!string.IsNullOrEmpty(imp))
-            {
-                if (IgnoredPythonModules.Contains(imp)) continue;
-                var parts = imp.Split('.');
-                imports.Add(parts.Last());
-            }
-        }
-        return imports;
+        return new List<string>(); // Imports no longer wanted
     }
 }
