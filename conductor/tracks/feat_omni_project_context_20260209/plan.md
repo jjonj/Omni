@@ -20,8 +20,9 @@
 - [x] Task: Verify token/size management to keep context within reasonable limits 42c2e7a
 - [x] Task: Conductor - User Manual Verification 'Phase 3' (Protocol in workflow.md) 42c2e7a
 
-## Phase 4: Gemini CLI Integration & Verification
-- [ ] Task: Create `opc session` JSON response for `SessionStart` hook
-- [ ] Task: Implement `opc sync` incremental scanning logic
-- [ ] Task: Final verification of `opc.exe` when called via Gemini CLI hooks in `.gemini/settings.json`
-- [ ] Task: Conductor - User Manual Verification 'Phase 4' (Protocol in workflow.md)
+## Phase 4: Gemini CLI Integration & Verification [checkpoint: 4ddd452]
+- [x] Task: Create `opc session` JSON response for `SessionStart` hook 4ddd452
+- [x] Task: Implement `opc sync` incremental scanning logic 4ddd452
+- [x] Task: Create `setup.py` for automated integration and build 4ddd452
+- [x] Task: Final verification of `opc.exe` when called via Gemini CLI hooks in `.gemini/settings.json` 4ddd452
+- [x] Task: Conductor - User Manual Verification 'Phase 4' (Protocol in workflow.md) 4ddd452

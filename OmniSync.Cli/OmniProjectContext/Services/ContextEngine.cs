@@ -28,8 +28,11 @@ public class ContextEngine
         {
             foreach (var file in Directory.GetFiles(currentPath))
             {
-                // Relative path for the output
-                files.Add(Path.GetRelativePath(_rootPath, file));
+                if (_fileSystemService.IsHighValueFile(file))
+                {
+                    // Relative path for the output
+                    files.Add(Path.GetRelativePath(_rootPath, file));
+                }
             }
 
             foreach (var dir in Directory.GetDirectories(currentPath))

@@ -1,6 +1,9 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Text.Json;
+using System.Collections.Generic;
+using System.Text;
 using OmniProjectContext.Services;
 
 namespace OmniProjectContext;
@@ -45,15 +48,15 @@ public class Program
 
     private static void HandleSession()
     {
-        // Hook: SessionStart. Returns JSON for the CLI banner.
         var projectRoot = Directory.GetCurrentDirectory();
         var projectName = Path.GetFileName(projectRoot);
         
-        Console.WriteLine("{");
-        Console.WriteLine($"  \"projectName\": \"{projectName}\",");
-        Console.WriteLine($"  \"projectRoot\": \"{projectRoot.Replace("\\", "\\\\")}\",");
-        Console.WriteLine("  \"status\": \"Context ready\"");
-        Console.WriteLine("}");
+        var response = new
+        {
+            systemMessage = $"✦ OPC Synced: {projectName} ✦"
+        };
+        
+        Console.WriteLine(JsonSerializer.Serialize(response));
     }
 
     private static void HandleContext()
@@ -64,65 +67,104 @@ public class Program
         var skeletonExtractor = new SkeletonExtractor();
         var gitHistoryService = new GitHistoryService(projectRoot);
 
-        Console.WriteLine("--- OMNI PROJECT CONTEXT ---");
-        
-        // 1. Recent History
+        Console.WriteLine("<system-reminder>");
+        Console.WriteLine("PROJECT CONTEXT:");
+        Console.WriteLine($"Project: {Path.GetFileName(projectRoot)}");
+        Console.WriteLine($"Root: {projectRoot}");
+
         var commits = gitHistoryService.GetRecentCommits(5);
         if (commits.Any())
         {
-            Console.WriteLine("\n[RECENT NARRATIVE]");
+            Console.WriteLine("\n[NARRATIVE]");
             foreach (var commit in commits)
             {
-                Console.WriteLine(commit);
+                Console.WriteLine($"- {commit.Replace("\n", " ").Replace("\r", "")}");
             }
         }
 
-        // 2. File Tree
+        Console.WriteLine("\n[STRUCTURE]");
         var files = engine.GenerateFileTree();
-        Console.WriteLine("\n[FILE TREE]");
-        foreach (var file in files)
+        int id = 1;
+
+        var groupedFiles = files.GroupBy(f => Path.GetDirectoryName(f))
+                                .OrderBy(g => g.Key);
+
+        foreach (var group in groupedFiles)
         {
-            Console.WriteLine(file);
+            var dir = group.Key;
+            if (!string.IsNullOrEmpty(dir))
+            {
+                Console.WriteLine($"{dir}\\");
+            }
+
+            foreach (var file in group)
+            {
+                var fileName = Path.GetFileName(file);
+                var ext = Path.GetExtension(file).ToLower();
+                var indent = string.IsNullOrEmpty(dir) ? "" : "  ";
+                var outputLine = $"{indent}{fileName}#{id++}";
+
+                if (ext == ".cs" || ext == ".py")
+                {
+                    try
+                    {
+                        var content = File.ReadAllText(Path.Combine(projectRoot, file));
+                        var imports = skeletonExtractor.GetImports(content, ext);
+                        if (imports.Any())
+                        {
+                            outputLine += "→" + string.Join("→", imports.Take(5));
+                        }
+                    }
+                    catch { }
+                }
+                Console.WriteLine(outputLine);
+            }
         }
 
-        // 3. Code Skeletons (for large or important files)
-        Console.WriteLine("\n[CODE SKELETONS]");
+        Console.WriteLine("\n[SKELETONS]");
         foreach (var file in files)
         {
             var ext = Path.GetExtension(file).ToLower();
-            if (ext == ".cs" || ext == ".py")
+            if (ext == ".cs" || ext == ".py" || ext == ".kt")
             {
-                var fullPath = Path.Combine(projectRoot, file);
                 try
                 {
+                    var fullPath = Path.Combine(projectRoot, file);
                     var content = File.ReadAllText(fullPath);
-                    if (content.Length > 1000) // Only extract skeleton for larger files
+                    if (content.Length > 1000)
                     {
                         var skeleton = skeletonExtractor.Extract(content, ext);
-                        Console.WriteLine($"\nFILE: {file}");
-                        Console.WriteLine(skeleton);
-                    }
-                    else
-                    {
-                        // Small enough to just include
-                        Console.WriteLine($"\nFILE: {file} (Full Content)");
-                        Console.WriteLine(content);
+                        if (!string.IsNullOrWhiteSpace(skeleton))
+                        {
+                            Console.WriteLine($"\nFILE: {file}");
+                            Console.WriteLine(skeleton.Trim());
+                        }
                     }
                 }
-                catch (Exception)
-                {
-                    // Skip files we can't read
-                }
+                catch { }
             }
         }
 
-        Console.WriteLine("\n--- END CONTEXT ---");
+        Console.WriteLine("</system-reminder>");
     }
 
     private static void HandleSync()
     {
-        // Hook: SessionEnd. Incremental scan.
-        // For now, just a placeholder.
-        Console.WriteLine("Context synchronized.");
+        var projectRoot = Directory.GetCurrentDirectory();
+        var stateService = new StateService(projectRoot);
+        stateService.Initialize();
+        
+        var fileSystemService = new FileSystemService();
+        var engine = new ContextEngine(projectRoot, fileSystemService);
+        var files = engine.GenerateFileTree();
+        
+        var syncData = new
+        {
+            lastSync = DateTime.Now,
+            fileCount = files.Count
+        };
+        
+        var statePath = Path.Combine(stateService.GetStatePath(), "sync_state.json");
+        File.WriteAllText(statePath, JsonSerializer.Serialize(syncData));
     }
 }
