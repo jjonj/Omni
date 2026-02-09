@@ -1,0 +1,27 @@
+# Implementation Plan: OmniProjectContext (OPC)
+
+## Phase 1: Project Scaffolding & Core Infrastructure
+- [x] Task: Initialize OPC CLI project (C# .NET 9) in `OmniSync.Cli/OmniProjectContext` c9c0c3e
+- [ ] Task: Implement Command Line Parser for `session`, `context`, and `sync` commands
+- [ ] Task: Implement `FileSystemService` with aggressive exclusion logic (Conductor, Assets, etc.)
+- [ ] Task: Implement `StateService` for managing storage in `.omni/projectcontext/`
+- [ ] Task: Conductor - User Manual Verification 'Phase 1' (Protocol in workflow.md)
+
+## Phase 2: Git Integration & Analysis
+- [ ] Task: Implement `GitService` to retrieve `git notes` using shell execution (`git notes show`)
+- [ ] Task: Implement `GitHistoryService` to extract recent commit narrative (last 5 commits)
+- [ ] Task: Write tests for Git integration using a temporary mock repository
+- [ ] Task: Conductor - User Manual Verification 'Phase 2' (Protocol in workflow.md)
+
+## Phase 3: Context Generation & Expansion Logic
+- [ ] Task: Implement `ContextEngine` to generate the file tree (respecting exclusions)
+- [ ] Task: Implement "Skeleton" extractor for C# and Python (signatures only for large files)
+- [ ] Task: Implement the `opc context` command output formatter
+- [ ] Task: Verify token/size management to keep context within reasonable limits
+- [ ] Task: Conductor - User Manual Verification 'Phase 3' (Protocol in workflow.md)
+
+## Phase 4: Gemini CLI Integration & Verification
+- [ ] Task: Create `opc session` JSON response for `SessionStart` hook
+- [ ] Task: Implement `opc sync` incremental scanning logic
+- [ ] Task: Final verification of `opc.exe` when called via Gemini CLI hooks in `.gemini/settings.json`
+- [ ] Task: Conductor - User Manual Verification 'Phase 4' (Protocol in workflow.md)
