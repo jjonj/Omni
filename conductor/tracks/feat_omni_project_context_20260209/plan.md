@@ -2,7 +2,7 @@
 
 ## Phase 1: Project Scaffolding & Core Infrastructure
 - [x] Task: Initialize OPC CLI project (C# .NET 9) in `OmniSync.Cli/OmniProjectContext` c9c0c3e
-- [ ] Task: Implement Command Line Parser for `session`, `context`, and `sync` commands
+- [x] Task: Implement Command Line Parser for `session`, `context`, and `sync` commands 4b936a9
 - [ ] Task: Implement `FileSystemService` with aggressive exclusion logic (Conductor, Assets, etc.)
 - [ ] Task: Implement `StateService` for managing storage in `.omni/projectcontext/`
 - [ ] Task: Conductor - User Manual Verification 'Phase 1' (Protocol in workflow.md)
