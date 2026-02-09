@@ -8,10 +8,10 @@
 - [x] Task: Conductor - User Manual Verification 'Phase 1' (Protocol in workflow.md) a31cef3
 
 ## Phase 2: Git Integration & Analysis
-- [ ] Task: Implement `GitService` to retrieve `git notes` using shell execution (`git notes show`)
-- [ ] Task: Implement `GitHistoryService` to extract recent commit narrative (last 5 commits)
-- [ ] Task: Write tests for Git integration using a temporary mock repository
-- [ ] Task: Conductor - User Manual Verification 'Phase 2' (Protocol in workflow.md)
+- [x] Task: Implement `GitService` for base git operations bbb6384
+- [x] Task: Implement `GitHistoryService` to extract recent commit narrative (last 5 commits) bbb6384
+- [x] Task: Write tests for Git integration using a temporary mock repository bbb6384
+- [x] Task: Conductor - User Manual Verification 'Phase 2' (Protocol in workflow.md) bbb6384
 
 ## Phase 3: Context Generation & Expansion Logic
 - [ ] Task: Implement `ContextEngine` to generate the file tree (respecting exclusions)
