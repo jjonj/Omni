@@ -13,7 +13,7 @@
 - [x] Task: Write tests for Git integration using a temporary mock repository bbb6384
 - [x] Task: Conductor - User Manual Verification 'Phase 2' (Protocol in workflow.md) bbb6384
 
-## Phase 3: Context Generation & Expansion Logic
+## Phase 3: Context Generation & Expansion Logic [checkpoint: b369d01]
 - [x] Task: Implement `ContextEngine` to generate the file tree (respecting exclusions) 42c2e7a
 - [x] Task: Implement "Skeleton" extractor for C# and Python (signatures only for large files) 42c2e7a
 - [x] Task: Implement the `opc context` command output formatter 42c2e7a
