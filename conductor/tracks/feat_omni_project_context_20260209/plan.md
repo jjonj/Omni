@@ -7,7 +7,7 @@
 - [x] Task: Implement `StateService` for managing storage in `.omni/projectcontext/` 09183f4
 - [x] Task: Conductor - User Manual Verification 'Phase 1' (Protocol in workflow.md) a31cef3
 
-## Phase 2: Git Integration & Analysis
+## Phase 2: Git Integration & Analysis [checkpoint: 4407467]
 - [x] Task: Implement `GitService` for base git operations bbb6384
 - [x] Task: Implement `GitHistoryService` to extract recent commit narrative (last 5 commits) bbb6384
 - [x] Task: Write tests for Git integration using a temporary mock repository bbb6384
