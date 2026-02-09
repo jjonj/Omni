@@ -62,6 +62,18 @@ namespace OmniSync.Hub.Infrastructure.Services
         [DllImport("user32.dll")]
         private static extern bool IsWindowVisible(IntPtr hWnd);
 
+        [DllImport("user32.dll")]
+        private static extern bool BringWindowToTop(IntPtr hWnd);
+
+        [DllImport("kernel32.dll")]
+        private static extern uint GetCurrentThreadId();
+
+        [DllImport("user32.dll")]
+        private static extern bool AttachThreadInput(uint idAttach, uint idAttachTo, bool fAttach);
+
+        [DllImport("user32.dll")]
+        private static extern IntPtr GetForegroundWindow();
+
         [StructLayout(LayoutKind.Sequential)]
         public struct RECT
         {
@@ -443,7 +455,12 @@ foreach ($p in $procs) {{
         private const uint KEYEVENTF_KEYUP = 0x0002;
 
         [DllImport("user32.dll")]
-        private static extern bool BringWindowToTop(IntPtr hWnd);
+        private static extern bool LockSetForegroundWindow(uint uLockCode);
+
+        [DllImport("user32.dll")]
+        private static extern void SwitchToThisWindow(IntPtr hWnd, bool fAltTab);
+
+        private const uint LSFW_UNLOCK = 2;
 
         private void ActivateWindow(IntPtr handle)
         {
@@ -453,17 +470,39 @@ foreach ($p in $procs) {{
 
             if (IsIconic(handle)) ShowWindow(handle, SW_RESTORE);
             
-            // Force focus bypass: tap the Alt key. 
-            // This is a common trick to make Windows believe the user is interacting with the system,
-            // which often allows SetForegroundWindow to work from background processes.
+            // Allow focus switching
+            LockSetForegroundWindow(LSFW_UNLOCK);
+
+            uint foregroundThreadId = GetWindowThreadProcessId(GetForegroundWindow(), out _);
+            uint targetThreadId = GetWindowThreadProcessId(handle, out _);
+            uint currentThreadId = GetCurrentThreadId();
+
+            if (foregroundThreadId != targetThreadId)
+            {
+                AttachThreadInput(currentThreadId, foregroundThreadId, true);
+                AttachThreadInput(currentThreadId, targetThreadId, true);
+                
+                SetForegroundWindow(handle);
+                BringWindowToTop(handle);
+                ShowWindow(handle, 5); // SW_SHOW
+                
+                AttachThreadInput(currentThreadId, targetThreadId, false);
+                AttachThreadInput(currentThreadId, foregroundThreadId, false);
+            }
+            else
+            {
+                SetForegroundWindow(handle);
+                BringWindowToTop(handle);
+                ShowWindow(handle, 5);
+            }
+            
+            // Nuclear fallback: SwitchToThisWindow
+            SwitchToThisWindow(handle, true);
+
+            // Fallback: tap the Alt key. 
             keybd_event(VK_MENU, 0, 0, 0);
             keybd_event(VK_MENU, 0, KEYEVENTF_KEYUP, 0);
             
-            SetForegroundWindow(handle);
-            BringWindowToTop(handle);
-            
-            // Second attempt after a tiny delay if needed, but for now just try once more
-            ShowWindow(handle, 5); // SW_SHOW
             SetForegroundWindow(handle);
         }
 
@@ -914,10 +953,30 @@ Add-Type -MemberDefinition $code -Name Win32 -Namespace Native
                         bool isTreeMatch = pids.Contains((int)processId);
                         bool isTitleMatch = !string.IsNullOrEmpty(titleHint) && title.Contains(titleHint, StringComparison.OrdinalIgnoreCase);
 
-                        if (isTreeMatch)
+                        if (isTreeMatch && isTitleMatch)
+                        {
+                            _monitorService.AddLogMessage($"[ProcessService] Windows: Found EXACT window HWND {hWnd} (Tree + Title Hint match '{titleHint}'). Title: '{title}' ({w}x{h})");
+                            candidates.Add((hWnd, 20, (long)w * h));
+                        }
+                        else if (isTreeMatch)
                         {
                             _monitorService.AddLogMessage($"[ProcessService] Windows: Found visible window HWND {hWnd} for matching PID {processId}. Title: '{title}' ({w}x{h})");
                             candidates.Add((hWnd, 10, (long)w * h));
+                        }
+                        else if (isTitleMatch)
+                        {
+                            // Title matches but not in tree. Check if it's a terminal to avoid generic explorer stealing focus.
+                            string procName = "";
+                            try { procName = Process.GetProcessById((int)processId).ProcessName; } catch { }
+                            bool isTerminal = procName.Contains("Terminal", StringComparison.OrdinalIgnoreCase) || 
+                                              procName.Contains("cmd", StringComparison.OrdinalIgnoreCase) || 
+                                              procName.Contains("powershell", StringComparison.OrdinalIgnoreCase);
+                            
+                            if (isTerminal)
+                            {
+                                _monitorService.AddLogMessage($"[ProcessService] Windows: Found TERMINAL window HWND {hWnd} via Title Hint match '{titleHint}' (not in tree). Title: '{title}' ({w}x{h})");
+                                candidates.Add((hWnd, 5, (long)w * h));
+                            }
                         }
                         else 
                         {
@@ -934,6 +993,14 @@ Add-Type -MemberDefinition $code -Name Win32 -Namespace Native
             }, IntPtr.Zero);
 
             if (candidates.Count == 0) return new List<IntPtr>();
+
+            // Log all candidates for debugging
+            foreach (var c in candidates.OrderByDescending(x => x.priority).ThenByDescending(x => x.area))
+            {
+                var sb = new StringBuilder(256);
+                GetWindowText(c.hWnd, sb, sb.Capacity);
+                _monitorService.AddLogMessage($"[ProcessService] Candidate: HWND {c.hWnd}, Priority {c.priority}, Area {c.area}, Title '{sb}'");
+            }
 
             // Pick the single best window: highest priority, then largest area
             var best = candidates
