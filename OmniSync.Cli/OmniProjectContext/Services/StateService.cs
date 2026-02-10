@@ -8,7 +8,6 @@ namespace OmniProjectContext.Services;
 public class FileContext
 {
     public string Path { get; set; } = "";
-    public string Skeleton { get; set; } = "";
     public long LastModifiedMs { get; set; }
 }
 
@@ -62,13 +61,7 @@ public class StateService
         foreach (var file in node.Files.OrderBy(f => f.Path))
         {
             var fileName = System.IO.Path.GetFileName(file.Path);
-            var escapedSkeleton = file.Skeleton.Replace("|", "§").Replace("\r", "").Replace("\n", "¶").TrimEnd('¶');
-            var line = $"{file.LastModifiedMs}|{indent}↳{fileName}";
-            if (!string.IsNullOrEmpty(escapedSkeleton))
-            {
-                line += $"|{escapedSkeleton}";
-            }
-            writer.WriteLine(line);
+            writer.WriteLine($"{file.LastModifiedMs}|{indent}↳{fileName}");
         }
 
         foreach (var dir in node.SubDirs.Values.OrderBy(d => d.Name))
@@ -104,7 +97,6 @@ public class StateService
 
             long ms = long.TryParse(parts[0], out var m) ? m : 0;
             string content = parts[1];
-            string skel = parts.Length > 2 ? parts[2].Replace("¶", "\n").Replace("§", "|") : "";
 
             int indent = 0;
             while (indent < content.Length && content[indent] == ' ') indent++;
@@ -126,8 +118,7 @@ public class StateService
                 files.Add(new FileContext
                 {
                     Path = System.IO.Path.Combine(dirPath, fileName),
-                    LastModifiedMs = ms,
-                    Skeleton = skel
+                    LastModifiedMs = ms
                 });
             }
         }

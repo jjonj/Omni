@@ -51,6 +51,7 @@ OmniSync is a multi-platform ecosystem utilizing native technologies for maximum
 
 ### 6. AI & Extension Framework
 -   **Gemini CLI Extensions:** Support for Model Context Protocol (MCP) compatible extensions (e.g., `omni` extension) for host-AI interoperability.
+-   **OmniProjectContext (OPC):** High-performance .NET 9.0 (C#) CLI tool for token-efficient codebase indexing and context injection.
 
 ## Extensibility
 The system is designed to be extensible. New technology stacks and languages (e.g., Python for scripting, Go for specific micro-utilities) can be integrated as needed to support new features or "skills."

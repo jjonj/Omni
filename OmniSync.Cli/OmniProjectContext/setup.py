@@ -24,7 +24,7 @@ def main():
         return
 
     # 2. Path to the built executable
-    opc_exe = os.path.join(project_dir, "bin", "Release", "net9.0", "OmniProjectContext.exe")
+    opc_exe = os.path.join(project_dir, "bin", "Release", "net9.0", "opc.exe")
     if not os.path.exists(opc_exe):
         print(f"Executable not found at: {opc_exe}")
         return
@@ -53,17 +53,7 @@ def main():
                 ]
             }
         ],
-        "BeforeAgent": [
-            {
-                "matcher": "",
-                "hooks": [
-                    {
-                        "type": "command",
-                        "command": f"{opc_exe} context"
-                    }
-                ]
-            }
-        ],
+        "BeforeAgent": [],
         "SessionEnd": [
             {
                 "matcher": "",
@@ -82,6 +72,29 @@ def main():
     # 5. Save updated settings
     with open(gemini_settings_path, 'w', encoding='utf-8') as f:
         json.dump(settings, f, indent=2)
+
+    # Add opc alias to PowerShell profile
+    print("\n--- Registering PowerShell Alias ---")
+    ps_profile_path = os.path.expanduser("~\\Documents\\PowerShell\\Microsoft.PowerShell_profile.ps1")
+    profile_dir = os.path.dirname(ps_profile_path)
+    if not os.path.exists(profile_dir):
+        os.makedirs(profile_dir)
+    
+    alias_cmd = f'\nfunction opc {{ & "{opc_exe}" $args }}\n'
+    try:
+        content = ""
+        if os.path.exists(ps_profile_path):
+            with open(ps_profile_path, "r") as f:
+                content = f.read()
+        
+        if opc_exe not in content:
+            with open(ps_profile_path, "a") as f:
+                f.write(alias_cmd)
+            print(f"Alias 'opc' added to {ps_profile_path}")
+        else:
+            print("Alias 'opc' already exists in profile.")
+    except Exception as e:
+        print(f"Failed to add alias: {e}")
 
     print("\n--- Setup Complete ---")
     print("OPC has been integrated into Gemini CLI hooks.")

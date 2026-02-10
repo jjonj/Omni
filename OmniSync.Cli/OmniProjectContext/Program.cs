@@ -50,44 +50,29 @@ public class Program
     {
         var projectRoot = Directory.GetCurrentDirectory();
         var projectName = Path.GetFileName(projectRoot);
-        
-        var response = new
-        {
-            systemMessage = $"✦ OPC Synced: {projectName} ✦"
-        };
-        
-        Console.WriteLine(JsonSerializer.Serialize(response));
-    }
-
-    private static void HandleContext()
-    {
-        var projectRoot = Directory.GetCurrentDirectory();
         var stateService = new StateService(projectRoot);
         var files = stateService.LoadState();
         var gitHistoryService = new GitHistoryService(projectRoot);
 
-        Console.WriteLine("<system-reminder>");
-        Console.WriteLine("PROJECT CONTEXT:");
-        Console.WriteLine($"Project: {Path.GetFileName(projectRoot)}");
-        Console.WriteLine($"Root: {projectRoot}");
+        var sb = new StringBuilder();
+        sb.AppendLine("<system-reminder>");
+        sb.AppendLine("PROJECT CONTEXT:");
+        sb.AppendLine($"Project: {projectName}");
+        sb.AppendLine($"Root: {projectRoot}");
 
         var commits = gitHistoryService.GetRecentCommits(5);
         if (commits.Any())
         {
-            Console.WriteLine("\n[NARRATIVE]");
+            sb.AppendLine("\n[NARRATIVE]");
             foreach (var commit in commits)
             {
-                Console.WriteLine($"- {commit.Replace("\n", " ").Replace("\r", "")}");
+                sb.AppendLine($"- {commit.Replace("\n", " ").Replace("\r", "")}");
             }
         }
 
-        if (!files.Any())
+        if (files.Any())
         {
-            Console.WriteLine("\n[STRUCTURE]\n(No index found. Run 'opc sync' to generate context.)");
-        }
-        else
-        {
-            Console.WriteLine("\n[STRUCTURE]");
+            sb.AppendLine("\n[STRUCTURE]");
             int id = 1;
             var groupedFiles = files.GroupBy(f => Path.GetDirectoryName(f.Path))
                                     .OrderBy(g => g.Key);
@@ -97,30 +82,165 @@ public class Program
                 var dir = group.Key;
                 if (!string.IsNullOrEmpty(dir))
                 {
-                    Console.WriteLine($"{dir}\\");
+                    sb.AppendLine($"{dir}\\");
                 }
 
                 foreach (var file in group)
                 {
                     var fileName = Path.GetFileName(file.Path);
                     var indent = string.IsNullOrEmpty(dir) ? "" : "  ";
-                    Console.WriteLine($"{indent}{fileName}#{id++}");
-                }
-            }
-
-            Console.WriteLine("\n[SKELETONS]");
-            foreach (var file in files)
-            {
-                if (!string.IsNullOrWhiteSpace(file.Skeleton))
-                {
-                    Console.WriteLine($"\nFILE: {file.Path}");
-                    Console.WriteLine(file.Skeleton.Trim());
+                    sb.AppendLine($"{indent}{fileName}#{id++}");
                 }
             }
         }
+        sb.AppendLine("</system-reminder>");
 
-        Console.WriteLine("</system-reminder>");
+        var response = new
+        {
+            systemMessage = $"✦ OPC Synced: {projectName} ✦",
+            hookSpecificOutput = new
+            {
+                hookEventName = "SessionStart",
+                additionalContext = sb.ToString()
+            }
+        };
+
+        Console.WriteLine(JsonSerializer.Serialize(response));
     }
+
+            private static void HandleContext()
+
+            {
+
+                var projectRoot = Directory.GetCurrentDirectory();
+
+                var stateService = new StateService(projectRoot);
+
+                var files = stateService.LoadState();
+
+                var gitHistoryService = new GitHistoryService(projectRoot);
+
+        
+
+                var sb = new StringBuilder();
+
+                        sb.AppendLine("<system-reminder>");
+
+                        sb.AppendLine("PROJECT CONTEXT:");
+
+                        sb.AppendLine($"Project: {Path.GetFileName(projectRoot)}");
+
+                        sb.AppendLine($"Root: {projectRoot}");
+
+                
+
+                        var commits = gitHistoryService.GetRecentCommits(5);
+
+                
+
+                if (commits.Any())
+
+                {
+
+                    sb.AppendLine("\n[NARRATIVE]");
+
+                    foreach (var commit in commits)
+
+                    {
+
+                        sb.AppendLine($"- {commit.Replace("\n", " ").Replace("\r", "")}");
+
+                    }
+
+                }
+
+        
+
+                if (!files.Any())
+
+                {
+
+                    sb.AppendLine("\n[STRUCTURE]\n(No index found. Run 'opc sync' to generate context.)");
+
+                }
+
+                else
+
+                {
+
+                    sb.AppendLine("\n[STRUCTURE]");
+
+                    int id = 1;
+
+                    var groupedFiles = files.GroupBy(f => Path.GetDirectoryName(f.Path))
+
+                                            .OrderBy(g => g.Key);
+
+        
+
+                    foreach (var group in groupedFiles)
+
+                    {
+
+                        var dir = group.Key;
+
+                        if (!string.IsNullOrEmpty(dir))
+
+                        {
+
+                            sb.AppendLine($"{dir}\\");
+
+                        }
+
+        
+
+                        foreach (var file in group)
+
+                        {
+
+                            var fileName = Path.GetFileName(file.Path);
+
+                            var indent = string.IsNullOrEmpty(dir) ? "" : "  ";
+
+                            sb.AppendLine($"{indent}{fileName}#{id++}");
+
+                        }
+
+                    }
+
+                }
+
+        
+
+                sb.AppendLine("</system-reminder>");
+
+        
+
+                var response = new
+
+                {
+
+                    hookSpecificOutput = new
+
+                    {
+
+                        hookEventName = "BeforeAgent",
+
+                        additionalContext = sb.ToString()
+
+                    }
+
+                };
+
+        
+
+                Console.WriteLine(JsonSerializer.Serialize(response));
+
+            }
+
+        
+
+    
 
         private static void HandleSync()
 
@@ -137,8 +257,6 @@ public class Program
             var fileSystemService = new FileSystemService();
 
             var engine = new ContextEngine(projectRoot, fileSystemService);
-
-            var skeletonExtractor = new SkeletonExtractor();
 
     
 
@@ -160,11 +278,9 @@ public class Program
 
                 var lastModifiedMs = (long)fileInfo.LastWriteTimeUtc.TimeOfDay.TotalMilliseconds;
 
-                var ext = Path.GetExtension(relativePath).ToLower();
-
     
 
-                var fileContext = new FileContext
+                newList.Add(new FileContext
 
                 {
 
@@ -172,37 +288,7 @@ public class Program
 
                     LastModifiedMs = lastModifiedMs
 
-                };
-
-    
-
-                if (ext == ".cs" || ext == ".py" || ext == ".kt")
-
-                {
-
-                    try
-
-                    {
-
-                        var content = File.ReadAllText(fullPath);
-
-                        if (content.Length > 500)
-
-                        {
-
-                            fileContext.Skeleton = skeletonExtractor.Extract(content, ext);
-
-                        }
-
-                    }
-
-                    catch { }
-
-                }
-
-    
-
-                newList.Add(fileContext);
+                });
 
             }
 
@@ -215,5 +301,7 @@ public class Program
         }
 
     }
+
+    
 
     

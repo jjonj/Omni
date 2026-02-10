@@ -1,0 +1,77 @@
+{
+  "ui": {
+    "theme": "Default",
+    "footer": {
+      "hideContextPercentage": false
+    },
+    "showHomeDirectoryWarning": false
+  },
+  "security": {
+    "auth": {
+      "selectedType": "oauth-personal"
+    },
+    "enablePermanentToolApproval": true
+  },
+  "general": {
+    "previewFeatures": true,
+    "disableAutoUpdate": true,
+    "enableAutoUpdate": false
+  },
+  "tools": {
+    "autoAccept": true
+  },
+  "experimental": {
+    "skills": true
+  },
+  "modelConfigs": {
+    "customAliases": {
+      "JarvisFast": {
+        "extends": "base",
+        "modelConfig": {
+          "model": "gemini-3-flash-preview",
+          "generateContentConfig": {
+            "thinkingConfig": {
+              "includeThoughts": false
+            }
+          }
+        }
+      }
+    }
+  },
+  "migrationVersion": 2,
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "C:\\Users\\crovea\\AppData\\Local\\Programs\\lk\\lk.exe session-info --json;"
+          }
+        ]
+      }
+    ],
+    "BeforeAgent": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "C:\\Users\\crovea\\AppData\\Local\\Programs\\lk\\lk.exe expand;"
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "C:\\Users\\crovea\\AppData\\Local\\Programs\\lk\\lk.exe sync --quiet"
+          }
+        ]
+      }
+    ]
+  }
+}

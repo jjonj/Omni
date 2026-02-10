@@ -34,6 +34,7 @@ The primary user is the developer/creator themselves—a power user who demands:
 
 ### 4. AI Integration
 -   **Hybrid AI Ecosystem:** Interaction with local LLMs via Gemini CLI, with deep system integration through custom extensions.
+-   **OmniProjectContext (OPC):** High-performance C# tool providing dense, token-efficient codebase context to AI via lifecycle hooks.
 -   **Interleaved Diffs:** Readable, line-by-line file modification previews (+/-) using a greedy matching algorithm for code changes.
 -   **Remote Execution:** Triggering Hub commands and file modifications through natural language on the phone.
 -   **Cross-Session Intelligence:** Capabilities for the AI to list, interact with, and retrieve history from other active CLI sessions.

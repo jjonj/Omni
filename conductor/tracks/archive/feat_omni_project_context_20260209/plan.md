@@ -25,4 +25,4 @@
 - [x] Task: Implement `opc sync` incremental scanning logic 4ddd452
 - [x] Task: Create `setup.py` for automated integration and build 4ddd452
 - [x] Task: Final verification of `opc.exe` when called via Gemini CLI hooks in `.gemini/settings.json` 4ddd452
-- [~] Task: Conductor - User Manual Verification 'Phase 4' (Protocol in workflow.md) 4ddd452
+- [x] Task: Conductor - User Manual Verification 'Phase 4' (Protocol in workflow.md) 4ddd452
