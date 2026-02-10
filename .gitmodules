@@ -1,7 +1,3 @@
 [submodule "OmniSync.Web/www/IslandGenerator"]
 	path = OmniSync.Web/www/IslandGenerator
 	url = https://github.com/RancorousGames/RancRiverTerrain.git
-[submodule "OmniSync.Web/www/Island2"]
-	path = OmniSync.Web/www/Island2
-	url = https://github.com/RancorousGames/RancRiverTerrain.git
-	branch = master
