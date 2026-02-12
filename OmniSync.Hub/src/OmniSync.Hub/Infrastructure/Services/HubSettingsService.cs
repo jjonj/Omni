@@ -118,7 +118,10 @@ namespace OmniSync.Hub.Infrastructure.Services
         public List<HotkeyConfig> Hotkeys { get; set; } = new();
         public Dictionary<string, string> AiSessionNames { get; set; } = new();
         public List<string> AutoApprovePatterns { get; set; } = new List<string>();
+        public List<string> AutoHandledDialogTypes { get; set; } = new List<string>();
         public List<string> AiPresets { get; set; } = new List<string>();
+        public List<string> AiModels { get; set; } = new List<string>();
+        public string DefaultAiModel { get; set; } = "";
         public List<Project> Projects { get; set; } = new List<Project>();
         public List<string> BrowserCleanupPatterns { get; set; } = new List<string>();
         public List<MacroConfig> Macros { get; set; } = new();
@@ -161,6 +164,7 @@ namespace OmniSync.Hub.Infrastructure.Services
             
             LoadSettings();
             InitializeDefaultHotkeys();
+            InitializeDefaultAutoHandledDialogTypes();
             InitializeDefaultAutoApprovals();
             InitializeDefaultPresets();
             InitializeDefaultProjects();
@@ -168,6 +172,21 @@ namespace OmniSync.Hub.Infrastructure.Services
             InitializeDefaultMacros();
             InitializeDefaultCleanupPatterns();
             InitializeTellPcSettings();
+            InitializeDefaultModels();
+        }
+
+        private void InitializeDefaultModels()
+        {
+            if (_settings.AiModels == null || _settings.AiModels.Count == 0)
+            {
+                _settings.AiModels = new List<string>
+                {
+                    "gemini-2.0-flash-exp",
+                    "gemini-2.0-pro-exp-02-05",
+                    "gemini-2.0-flash-thinking-exp-01-21"
+                };
+                SaveSettings();
+            }
         }
 
         private void InitializeDefaultCleanupPatterns()
@@ -283,6 +302,33 @@ namespace OmniSync.Hub.Infrastructure.Services
             if (_settings.AutoApprovePatterns == null || _settings.AutoApprovePatterns.Count == 0)
             {
                 _settings.AutoApprovePatterns = new List<string> { "aispeak.py" };
+                SaveSettings();
+            }
+        }
+
+        private void InitializeDefaultAutoHandledDialogTypes()
+        {
+            if (_settings.AutoHandledDialogTypes == null)
+            {
+                _settings.AutoHandledDialogTypes = new List<string>();
+            }
+
+            // Explicit whitelist for auto-handled dialogs.
+            // Wildcards are supported in matching (e.g. "tool:*"), but default
+            // is intentionally minimal.
+            var defaults = new[] { "pro_quota" };
+            bool changed = false;
+            foreach (var d in defaults)
+            {
+                if (!_settings.AutoHandledDialogTypes.Any(x => x.Equals(d, StringComparison.OrdinalIgnoreCase)))
+                {
+                    _settings.AutoHandledDialogTypes.Add(d);
+                    changed = true;
+                }
+            }
+
+            if (changed)
+            {
                 SaveSettings();
             }
         }
@@ -539,6 +585,35 @@ namespace OmniSync.Hub.Infrastructure.Services
             {
                 SaveSettings();
             }
+        }
+
+        public virtual List<string> GetAiModels()
+        {
+            return _settings.AiModels ?? new List<string>();
+        }
+
+        public virtual void AddAiModel(string model)
+        {
+            if (_settings.AiModels == null) _settings.AiModels = new List<string>();
+            if (!_settings.AiModels.Contains(model))
+            {
+                _settings.AiModels.Add(model);
+                SaveSettings();
+            }
+        }
+
+        public virtual void RemoveAiModel(string model)
+        {
+            if (_settings.AiModels != null && _settings.AiModels.Remove(model))
+            {
+                SaveSettings();
+            }
+        }
+
+        public virtual void SetDefaultAiModel(string model)
+        {
+            _settings.DefaultAiModel = model;
+            SaveSettings();
         }
 
         public virtual void AddProject(Project project)

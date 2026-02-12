@@ -5,8 +5,8 @@ import sys
 def launch():
     # Define paths
     voice_dir = os.path.dirname(os.path.abspath(__file__))
-    # Assuming omni-gemini-cli is in the sibling Tools directory as seen in AiCliService
-    gemini_cli_dir = r"D:\\SSDProjects\\Tools\\omni-gemini-cli"
+    # Hardcode to main
+    gemini_cli_dir = r"D:\\SSDProjects\\Tools\\omni-gemini-cli\\main"
     bundle_path = os.path.join(gemini_cli_dir, "bundle", "gemini.js")
     preprompt_path = os.path.join(voice_dir, "MIND", "PrePrompt.md")
     log_path = os.path.join(voice_dir, "jarvis_cli_debug.log")

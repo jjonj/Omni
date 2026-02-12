@@ -450,6 +450,45 @@
 
                                 <TextBlock Text="System Prompt Path (.md)" Margin="0,10,0,5" Opacity="0.7"/>
                                 <TextBox Text="{Binding JarvisSystemContextPath, UpdateSourceTrigger=PropertyChanged}" Padding="5"/>
+
+                                <Separator Background="#333337" Margin="0,20,0,20"/>
+                                <TextBlock Text="AI Model Selection" FontSize="18" FontWeight="Bold" Margin="0,0,0,5"/>
+                                <TextBlock Text="Manage models available for selection on Android." FontSize="12" Opacity="0.7" Margin="0,0,0,10"/>
+
+                                <DockPanel Margin="0,0,0,10">
+                                    <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,10">
+                                        <TextBox Text="{Binding NewAiModel, UpdateSourceTrigger=PropertyChanged}" Width="300" Margin="0,0,10,0" VerticalContentAlignment="Center">
+                                            <TextBox.InputBindings>
+                                                <KeyBinding Key="Enter" Command="{Binding AddAiModelCommand}"/>
+                                            </TextBox.InputBindings>
+                                        </TextBox>
+                                        <Button Content="Add Model" Command="{Binding AddAiModelCommand}" Width="100"/>
+                                    </StackPanel>
+
+                                                                    <Border Background="#252526" CornerRadius="4" Padding="5">
+                                                                        <StackPanel>
+                                                                            <RadioButton Content="None (Default)" IsChecked="{Binding IsNoneModelDefault}" Foreground="White" Margin="5"/>
+                                                                            <ListBox ItemsSource="{Binding AiModels}" Background="Transparent" BorderThickness="0" MaxHeight="150">
+                                                                                <ListBox.ItemTemplate>
+                                                                                    <DataTemplate>
+                                                                                        <Grid Margin="0,2">
+                                                                                            <Grid.ColumnDefinitions>
+                                                                                                <ColumnDefinition Width="Auto"/>
+                                                                                                <ColumnDefinition Width="*"/>
+                                                                                                <ColumnDefinition Width="Auto"/>
+                                                                                            </Grid.ColumnDefinitions>
+                                                                                            <RadioButton IsChecked="{Binding IsDefault, UpdateSourceTrigger=PropertyChanged}" VerticalAlignment="Center" Margin="0,0,5,0"/>
+                                                                                            <TextBlock Grid.Column="1" Text="{Binding Name}" VerticalAlignment="Center" FontSize="14"/>
+                                                                                            <Button Grid.Column="2" Content="X" 
+                                                                                                    Command="{Binding DataContext.DeleteAiModelCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                                                                    CommandParameter="{Binding Name}"
+                                                                                                    Padding="10,2" Margin="10,0,0,0" Background="#603030"/>
+                                                                                        </Grid>
+                                                                                    </DataTemplate>
+                                                                                </ListBox.ItemTemplate>
+                                                                            </ListBox>
+                                                                        </StackPanel>
+                                                                    </Border>                                </DockPanel>
                             </StackPanel>
 
                             <Button Grid.Row="3" Content="Save AI Configuration" Command="{Binding SaveAiSettingsCommand}" 

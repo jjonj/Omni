@@ -26,8 +26,9 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import io.reactivex.rxjava3.core.Single
-import io.reactivex.rxjava3.core.Completable
 import java.lang.Exception
 import com.omni.sync.data.model.FileSystemEntry
 import com.google.gson.Gson
@@ -44,6 +45,9 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import android.content.SharedPreferences
 import com.google.gson.annotations.SerializedName
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicLong
+import kotlin.random.Random
 
 data class ProcessInfo(
     @SerializedName("id") val id: Double,
@@ -90,9 +94,17 @@ class SignalRClient(
             }
         })
         .create()
-    private val coroutineScope = CoroutineScope(Dispatchers.IO + SupervisorJob())   
+    private val coroutineScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private val connectionMutex = Mutex()
+    private var connectJob: Job? = null
     private var reconnectJob: Job? = null
-    private val isReconnecting = AtomicBoolean(false)
+    private val connectionToken = AtomicLong(0)
+    private val activeConnectionToken = AtomicLong(0)
+    private val isConnecting = AtomicBoolean(false)
+    private val manualStop = AtomicBoolean(false)
+    private val sharedPrefs: SharedPreferences = context.getSharedPreferences(SHARED_PREFS_NAME, Context.MODE_PRIVATE)
+    @Volatile
+    private var lastSuccessfulHubUrl: String? = sharedPrefs.getString(KEY_LAST_CONNECTED_HUB_URL, null)
     private var handlersRegistered = false
 
     @Volatile
@@ -156,6 +168,12 @@ class SignalRClient(
     private val _aiPresets = MutableStateFlow<List<String>>(emptyList())
     val aiPresets: StateFlow<List<String>> = _aiPresets
 
+    private val _aiModels = MutableStateFlow<List<String>>(emptyList())
+    val aiModels: StateFlow<List<String>> = _aiModels
+
+    private val _defaultAiModel = MutableStateFlow("")
+    val defaultAiModel: StateFlow<String> = _defaultAiModel
+
     private val _aiInputText = MutableStateFlow("")
     val aiInputText: StateFlow<String> = _aiInputText
 
@@ -200,14 +218,12 @@ class SignalRClient(
     }
 
     fun getRetryDelay(attempt: Int): Long {
-        return when (attempt) {
-            0 -> 0L
-            1 -> 10000L
-            2 -> 30000L
-            3 -> 60000L
-            4 -> 120000L
-            else -> 1800000L // 30 minutes
-        }
+        if (attempt <= 0) return 0L
+        val cappedAttempt = attempt.coerceAtMost(5)
+        val baseDelay = 2000L * (1L shl cappedAttempt)
+        val capped = minOf(baseDelay, 60000L)
+        val jitter = Random.nextLong(0, 1500)
+        return capped + jitter
     }
 
     private fun onConnected(url: String) {
@@ -219,13 +235,15 @@ class SignalRClient(
         mainViewModel.recordActivity() // Record activity on connect
         authenticateClient()
         getAiSessions()
-        val sharedPrefs = context.getSharedPreferences(SHARED_PREFS_NAME, Context.MODE_PRIVATE)
-        sharedPrefs.edit().putString(KEY_LAST_CONNECTED_HUB_URL, url).apply()    
+        getAiModels()
+        lastSuccessfulHubUrl = url
+        sharedPrefs.edit().putString(KEY_LAST_CONNECTED_HUB_URL, url).apply()
         mainViewModel.addLog("Connected to hub: $url", com.omni.sync.ui.screen.LogType.SUCCESS)
 
-        if (isReconnecting.compareAndSet(true, false)) {
-            reconnectJob?.cancel()
-            reconnectJob = null
+        val hadReconnect = reconnectJob != null
+        reconnectJob?.cancel()
+        reconnectJob = null
+        if (hadReconnect) {
             mainViewModel.addLog("Reconnection successful!", com.omni.sync.ui.screen.LogType.SUCCESS)
         }
     }
@@ -238,96 +256,201 @@ class SignalRClient(
     }
 
     fun startConnection() {
-        _connectionState.value = "Connecting..."
-        mainViewModel.setErrorMessage(null)
+        requestConnect(force = false, reason = "start")
+    }
 
-        val localUrl = mainViewModel.appConfig.value.hubUrl
-        val remoteUrl = "http://${mainViewModel.appConfig.value.wanIp}:5000/signalrhub"
+    private fun requestConnect(force: Boolean, reason: String) {
+        manualStop.set(false)
+        reconnectJob?.cancel()
+        reconnectJob = null
 
-        if (isWifiConnected()) {
-            mainViewModel.addLog("WiFi detected. Attempting local connection: $localUrl", com.omni.sync.ui.screen.LogType.INFO)
-            buildAndStartConnection(localUrl) { localError ->
-                mainViewModel.addLog("Local connection failed, trying Remote: $remoteUrl", com.omni.sync.ui.screen.LogType.WARNING)
-                buildAndStartConnection(remoteUrl) { remoteError ->
-                    _connectionState.value = "Disconnected (All attempts failed)"
-                    mainViewModel.setConnected(false)
-                    mainViewModel.addLog("All connection attempts failed. Local: ${localError.message}, Remote: ${remoteError.message}", com.omni.sync.ui.screen.LogType.ERROR)
-                }
-            }
-        } else {
-            mainViewModel.addLog("WiFi NOT detected. Skipping local, trying Remote: $remoteUrl", com.omni.sync.ui.screen.LogType.INFO)
-            buildAndStartConnection(remoteUrl) { remoteError ->
-                _connectionState.value = "Disconnected (Remote failed, no WiFi)"
-                mainViewModel.setConnected(false)
-                mainViewModel.addLog("Remote connection failed and WiFi is unavailable: ${remoteError.message}", com.omni.sync.ui.screen.LogType.ERROR)
-            }
+        val token = connectionToken.incrementAndGet()
+        connectJob?.cancel()
+        connectJob = coroutineScope.launch {
+            connectInternal(token, force = force, reason = reason, allowScheduleReconnect = true)
         }
     }
 
-    private fun buildAndStartConnection(url: String, onFailure: (Throwable) -> Unit) {
-        // Stop any current connection attempt
-        hubConnection?.stop()
-        handlersRegistered = false
-        
-        hubConnection = HubConnectionBuilder.create(url)
-            .build()
+    private suspend fun connectInternal(
+        token: Long,
+        force: Boolean,
+        reason: String,
+        allowScheduleReconnect: Boolean
+    ): Boolean {
+        if (!force && hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
+            _connectionState.value = "Connected"
+            return true
+        }
 
-        hubConnection?.onClosed { error ->
-            val reason = error?.message ?: "Unknown reason"
-            _connectionState.value = "Disconnected: $reason"
-            mainViewModel.setConnected(false)
-            mainViewModel.setScheduledShutdownTime(null)
-            
-            // Suspect sleep if disconnected (e.g. PC shutdown at night)
-            mainViewModel.startSleep()
+        while (!isConnecting.compareAndSet(false, true)) {
+            if (token != connectionToken.get()) return false
+            delay(200)
+        }
 
-            if (isReconnecting.compareAndSet(false, true)) {
-                mainViewModel.addLog("Connection closed. Reason: $reason. Starting auto-reconnect...", com.omni.sync.ui.screen.LogType.WARNING)
-                reconnectJob = coroutineScope.launch {
-                    var attempt = 0
-                    while (isReconnecting.get()) {
-                        val delayMs = getRetryDelay(attempt)
-                        if (delayMs > 0) {
-                            mainViewModel.addLog("Reconnecting in ${delayMs / 1000}s (Attempt ${attempt + 1})...", com.omni.sync.ui.screen.LogType.INFO)
-                            delay(delayMs)
-                        } else {
-                            mainViewModel.addLog("Attempting immediate reconnection...", com.omni.sync.ui.screen.LogType.INFO)
-                        }
-                        
-                        // We use startConnection() which handles multiple buildAndStartConnection calls.
-                        // However, startConnection() itself might fail and not trigger onClosed immediately if it's already connecting.
-                        // So we wait until it either connects or fails.
-                        startConnection()
-                        
-                        // Wait a bit to see if we connected (which would clear isReconnecting and cancel this job)
-                        // If we didn't connect, we'll try again after the next delay.
-                        delay(5000) 
-                        attempt++
-                    }
-                }
-            } else {
-                mainViewModel.addLog("Connection closed. Reason: $reason", com.omni.sync.ui.screen.LogType.INFO)
+        try {
+            _connectionState.value = if (allowScheduleReconnect) "Connecting..." else "Reconnecting..."
+            mainViewModel.setErrorMessage(null)
+
+            stopHubConnectionInternal()
+
+            val candidates = resolveCandidateUrls()
+            if (candidates.isEmpty()) {
+                _connectionState.value = "Disconnected (No hub URL)"
+                mainViewModel.setConnected(false)
+                return false
             }
+
+            mainViewModel.addLog("Connecting (reason: $reason). Candidates: ${candidates.joinToString()}", com.omni.sync.ui.screen.LogType.INFO)
+
+            for (url in candidates) {
+                if (token != connectionToken.get()) return false
+                val success = tryConnect(url, token)
+                if (success) return true
+            }
+
+            _connectionState.value = "Disconnected (All attempts failed)"
+            mainViewModel.setConnected(false)
+            if (allowScheduleReconnect && !manualStop.get()) {
+                scheduleReconnect("All attempts failed")
+            }
+            return false
+        } finally {
+            isConnecting.set(false)
+        }
+    }
+
+    private fun resolveCandidateUrls(): List<String> {
+        val localUrl = mainViewModel.appConfig.value.hubUrl.trim()
+        val remoteUrl = "http://${mainViewModel.appConfig.value.wanIp}:5000/signalrhub".trim()
+
+        val ordered = mutableListOf<String>()
+        if (!lastSuccessfulHubUrl.isNullOrBlank()) ordered.add(lastSuccessfulHubUrl!!)
+
+        if (isWifiConnected()) {
+            ordered.add(localUrl)
+            ordered.add(remoteUrl)
+        } else {
+            ordered.add(remoteUrl)
+            ordered.add(localUrl)
+        }
+
+        return ordered.filter { it.isNotBlank() }.distinct()
+    }
+
+    private suspend fun tryConnect(url: String, token: Long): Boolean {
+        _connectionState.value = "Connecting..."
+        mainViewModel.addLog("Attempting connection: $url", com.omni.sync.ui.screen.LogType.INFO)
+
+        val connection = HubConnectionBuilder.create(url).build()
+        hubConnection = connection
+        handlersRegistered = false
+        activeConnectionToken.set(token)
+
+        connection.onClosed { error ->
+            handleConnectionClosed(error, token)
         }
 
         registerHubHandlers()
 
-        hubConnection?.start()
-            ?.doOnComplete { 
-                onConnected(url) 
-                mainViewModel.addLog("Connected successfully to: $url", com.omni.sync.ui.screen.LogType.SUCCESS)
+        return try {
+            connection.start()
+                .timeout(10, TimeUnit.SECONDS)
+                .blockingAwait()
+
+            if (token != connectionToken.get()) {
+                stopHubConnectionInternal(connection)
+                return false
             }
-            ?.doOnError { error ->
-                Log.e("SignalRClient", "Connection error for $url: ${error.message}")
-                mainViewModel.addLog("Connection error ($url): ${error.message}", com.omni.sync.ui.screen.LogType.ERROR)
-                onFailure(error)
+
+            onConnected(url)
+            mainViewModel.addLog("Connected successfully to: $url", com.omni.sync.ui.screen.LogType.SUCCESS)
+            true
+        } catch (e: Exception) {
+            Log.e("SignalRClient", "Connection error for $url: ${e.message}")
+            mainViewModel.addLog("Connection error ($url): ${e.message}", com.omni.sync.ui.screen.LogType.ERROR)
+            stopHubConnectionInternal(connection)
+            false
+        }
+    }
+
+    private fun handleConnectionClosed(error: Throwable?, token: Long) {
+        if (token != activeConnectionToken.get()) {
+            Log.d("SignalRClient", "Ignoring onClosed for stale connection (token $token)")
+            return
+        }
+
+        val reason = error?.message ?: "Unknown reason"
+        _connectionState.value = "Disconnected: $reason"
+        mainViewModel.setConnected(false)
+        mainViewModel.setScheduledShutdownTime(null)
+        try {
+            removeHubHandlers()
+        } catch (_: Exception) {
+        }
+        hubConnection = null
+
+        if (manualStop.get()) {
+            mainViewModel.addLog("Disconnected (manual stop).", com.omni.sync.ui.screen.LogType.INFO)
+            return
+        }
+
+        if (isConnecting.get()) {
+            mainViewModel.addLog("Connection closed during connect: $reason", com.omni.sync.ui.screen.LogType.WARNING)
+            return
+        }
+
+        // Suspect sleep if disconnected (e.g. PC shutdown at night)
+        mainViewModel.startSleep()
+        mainViewModel.addLog("Connection closed. Reason: $reason. Starting auto-reconnect...", com.omni.sync.ui.screen.LogType.WARNING)
+        scheduleReconnect("Closed: $reason")
+    }
+
+    private fun scheduleReconnect(reason: String) {
+        if (manualStop.get()) return
+        if (reconnectJob?.isActive == true) return
+
+        reconnectJob = coroutineScope.launch {
+            var attempt = 0
+            while (!manualStop.get()) {
+                val delayMs = getRetryDelay(attempt)
+                if (delayMs > 0) {
+                    _connectionState.value = "Reconnecting in ${delayMs / 1000}s..."
+                    mainViewModel.addLog("Reconnecting in ${delayMs / 1000}s (Attempt ${attempt + 1})...", com.omni.sync.ui.screen.LogType.INFO)
+                    delay(delayMs)
+                } else {
+                    mainViewModel.addLog("Attempting immediate reconnection...", com.omni.sync.ui.screen.LogType.INFO)
+                }
+
+                val token = connectionToken.incrementAndGet()
+                val success = connectInternal(token, force = true, reason = reason, allowScheduleReconnect = false)
+                if (success) return@launch
+                attempt++
             }
-            ?.subscribe({
-                // Success handled by doOnComplete
-            }, { error ->
-                // Error handled by doOnError
-                Log.e("SignalRClient", "Connection subscription error for $url", error)
-            })
+        }
+    }
+
+    private suspend fun stopHubConnectionInternal(target: HubConnection? = null) {
+        connectionMutex.withLock {
+            val hub = target ?: hubConnection ?: return
+            val isCurrent = hubConnection === hub
+            if (isCurrent) {
+                try {
+                    removeHubHandlers()
+                } catch (_: Exception) {
+                }
+            }
+            try {
+                hub.stop()
+                    .timeout(5, TimeUnit.SECONDS)
+                    .blockingAwait()
+            } catch (e: Exception) {
+                Log.w("SignalRClient", "Error stopping hub connection: ${e.message}")
+            } finally {
+                if (isCurrent) {
+                    hubConnection = null
+                }
+            }
+        }
     }
 
     private fun registerHubHandlers() {
@@ -478,6 +601,14 @@ class SignalRClient(
         hubConnection?.on("ReceiveAiPresets", { presets: List<String> ->
             _aiPresets.value = presets
         }, List::class.java)
+
+        hubConnection?.on("ReceiveAiModels", { models: List<String> ->
+            _aiModels.value = models
+        }, List::class.java)
+
+        hubConnection?.on("ReceiveDefaultAiModel", { model: String ->
+            _defaultAiModel.value = model
+        }, String::class.java)
 
                   hubConnection?.on("ReceiveNewAiSessionPid", { pid: Int ->
                       Log.e("SignalRClient", "DEBUG: Received ReceiveNewAiSessionPid: $pid")
@@ -951,6 +1082,12 @@ class SignalRClient(
         }
     }
 
+    fun getAiModels() {
+        if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
+            hubConnection?.send("GetAiModels")
+        }
+    }
+
     fun addAiPreset(preset: String) {
         if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {       
             hubConnection?.send("AddAiPreset", preset)
@@ -960,6 +1097,12 @@ class SignalRClient(
     fun removeAiPreset(preset: String) {
         if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {       
             hubConnection?.send("RemoveAiPreset", preset)
+        }
+    }
+
+    fun setDefaultAiModel(model: String) {
+        if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
+            hubConnection?.send("SetDefaultAiModel", model)
         }
     }
 
@@ -1040,21 +1183,20 @@ class SignalRClient(
     }
 
     fun stopConnection() {
+        manualStop.set(true)
+        connectJob?.cancel()
         reconnectJob?.cancel()
         reconnectJob = null
-        isReconnecting.set(false)
-        removeHubHandlers()
-        hubConnection?.stop()
-        _connectionState.value = "Disconnected"
-        mainViewModel.setConnected(false)
+        connectionToken.incrementAndGet()
+        coroutineScope.launch {
+            stopHubConnectionInternal()
+            _connectionState.value = "Disconnected"
+            mainViewModel.setConnected(false)
+        }
     }
 
     fun manualReconnect() {
-        coroutineScope.launch {
-            stopConnection()
-            delay(500)
-            startConnection()
-        }
+        requestConnect(force = true, reason = "manual")
     }
 
     fun sendMouseMove(x: Float, y: Float) {

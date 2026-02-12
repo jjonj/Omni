@@ -105,7 +105,10 @@ fun AiChatScreen(
     val sessions by signalRClient.aiSessions.collectAsState()
     val workspaces by signalRClient.aiWorkspaces.collectAsState()
     val inputText by signalRClient.aiInputText.collectAsState()
+    val aiModels by signalRClient.aiModels.collectAsState()
+    val defaultAiModel by signalRClient.defaultAiModel.collectAsState()
     var showSessionMenu by remember { mutableStateOf(false) }
+    var showModelMenu by remember { mutableStateOf(false) }
     val selectedPid by signalRClient.selectedPid.collectAsState()
     var showRenameDialog by remember { mutableStateOf(false) }
     var renameText by remember { mutableStateOf("") }
@@ -417,12 +420,62 @@ fun AiChatScreen(
                 },
                 actions = {
                     if (selectedPid != -1) {
-                        IconButton(onClick = { 
-                            val hubUrl = mainViewModel.appConfig.value.hubUrl
-                            val baseUrl = hubUrl.substringBeforeLast("/")
-                            mainViewModel.openUrlOnPhone("$baseUrl/Settings.html")
-                        }, enabled = isConnected) {
-                            Icon(imageVector = Icons.Default.Settings, contentDescription = "Session Settings")
+                        Box {
+                            IconButton(onClick = { showModelMenu = true }, enabled = isConnected) {
+                                Icon(imageVector = Icons.Default.Tune, contentDescription = "Model Selection")
+                            }
+                            DropdownMenu(
+                                expanded = showModelMenu,
+                                onDismissRequest = { showModelMenu = false }
+                            ) {
+                                DropdownMenuItem(
+                                    text = { 
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            RadioButton(
+                                                selected = defaultAiModel == "",
+                                                onClick = { signalRClient.setDefaultAiModel("") }
+                                            )
+                                            Spacer(Modifier.width(8.dp))
+                                            Text("Default (None)")
+                                        }
+                                    },
+                                    onClick = { 
+                                        signalRClient.sendAiMessage("/model", selectedPid)
+                                        showModelMenu = false 
+                                    },
+                                    leadingIcon = { Icon(Icons.Default.SettingsSuggest, null) }
+                                )
+                                HorizontalDivider()
+                                aiModels.forEach { model ->
+                                    DropdownMenuItem(
+                                        text = { 
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                RadioButton(
+                                                    selected = defaultAiModel == model,
+                                                    onClick = { signalRClient.setDefaultAiModel(model) }
+                                                )
+                                                Spacer(Modifier.width(8.dp))
+                                                Text(model)
+                                            }
+                                        },
+                                        onClick = {
+                                            signalRClient.sendAiMessage("/model $model", selectedPid)
+                                            showModelMenu = false
+                                        }
+                                    )
+                                }
+                                HorizontalDivider()
+                                DropdownMenuItem(
+                                    text = { Text("Hub Settings (Web)") },
+                                    onClick = {
+                                        val hubUrl = mainViewModel.appConfig.value.hubUrl
+                                        val baseUrl = hubUrl.substringBeforeLast("/")
+                                        mainViewModel.openUrlOnPhone("$baseUrl/Settings.html")
+                                        showModelMenu = false
+                                    },
+                                    leadingIcon = { Icon(Icons.Default.Settings, null) }
+                                )
+                            }
                         }
                     }
                     Box {

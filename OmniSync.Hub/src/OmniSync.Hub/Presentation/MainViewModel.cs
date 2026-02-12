@@ -49,6 +49,8 @@ namespace OmniSync.Hub.Presentation
         public ICommand ResetAiSessionsCommand { get; }
         public ICommand SaveAiSettingsCommand { get; }
         public ICommand LaunchJarvisCommand { get; }
+        public ICommand AddAiModelCommand { get; }
+        public ICommand DeleteAiModelCommand { get; }
 
         public ICommand AddProjectCommand { get; }
         public ICommand DeleteProjectCommand { get; }
@@ -78,12 +80,58 @@ namespace OmniSync.Hub.Presentation
         public ObservableCollection<ProjectRoot> ProjectRoots { get; }
         public ObservableCollection<MacroConfig> Macros { get; }
         public ObservableCollection<string> BrowserCleanupPatterns { get; }
+        public ObservableCollection<AiModelEntry> AiModels { get; }
+
+        public class AiModelEntry : INotifyPropertyChanged
+        {
+            private string _name = "";
+            public string Name { get => _name; set { _name = value; OnPropertyChanged(); } }
+
+            private bool _isDefault;
+            public bool IsDefault 
+            { 
+                get => _isDefault; 
+                set 
+                { 
+                    if (_isDefault != value)
+                    {
+                        _isDefault = value; 
+                        OnPropertyChanged();
+                        if (value) OnSelectedAsDefault?.Invoke(this, Name);
+                    }
+                } 
+            }
+
+            public event EventHandler<string>? OnSelectedAsDefault;
+            public event PropertyChangedEventHandler? PropertyChanged;
+            protected void OnPropertyChanged([CallerMemberName] string? propertyName = null) => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+        }
+
+        public bool IsNoneModelDefault
+        {
+            get => string.IsNullOrEmpty(_settingsService.Settings.DefaultAiModel);
+            set
+            {
+                if (value)
+                {
+                    ExecuteSetDefaultAiModel("");
+                    OnPropertyChanged();
+                }
+            }
+        }
 
         private string _newCleanupPattern = "";
         public string NewCleanupPattern
         {
             get => _newCleanupPattern;
             set { _newCleanupPattern = value; OnPropertyChanged(); }
+        }
+
+        private string _newAiModel = "";
+        public string NewAiModel
+        {
+            get => _newAiModel;
+            set { _newAiModel = value; OnPropertyChanged(); }
         }
 
         private MacroConfig? _currentEditingMacro;
@@ -519,6 +567,7 @@ namespace OmniSync.Hub.Presentation
             Hotkeys = new ObservableCollection<HotkeyConfig>();
             HotkeyGroups = CollectionViewSource.GetDefaultView(Hotkeys);
             Projects = new ObservableCollection<Project>();
+            AiModels = new ObservableCollection<AiModelEntry>();
 
             ClearLogCommand = new RelayCommand(_ => { });
             AddMappingCommand = new RelayCommand(_ => { });
@@ -600,6 +649,8 @@ namespace OmniSync.Hub.Presentation
                 macro.PropertyChanged += OnMacroPropertyChanged;
             }
             BrowserCleanupPatterns = new ObservableCollection<string>(_settingsService.Settings.BrowserCleanupPatterns);
+            AiModels = new ObservableCollection<AiModelEntry>();
+            RefreshAiModels();
 
             // Hook up event handlers
             _hubMonitorService.PropertyChanged += (s, e) =>
@@ -663,6 +714,9 @@ namespace OmniSync.Hub.Presentation
                     {
                         BrowserCleanupPatterns.Add(pattern);
                     }
+
+                    RefreshAiModels();
+                    OnPropertyChanged(nameof(IsNoneModelDefault));
                 }));
             };
 
@@ -699,6 +753,9 @@ namespace OmniSync.Hub.Presentation
                 _aiCliService.KillAllGeminiProcesses();
                 await _aiCliService.DiscoverSessionsAsync();
             });
+
+            AddAiModelCommand = new RelayCommand(_ => ExecuteAddAiModel());
+            DeleteAiModelCommand = new RelayCommand(p => ExecuteDeleteAiModel(p as string));
 
             SaveAiSettingsCommand = new RelayCommand(_ => {
                 _settingsService.SaveSettings();
@@ -1115,6 +1172,63 @@ namespace OmniSync.Hub.Presentation
                 // Trigger SignalR broadcast
                 _ = _hubEventSender.BroadcastCleanupPatterns(BrowserCleanupPatterns.ToList());
             }
+        }
+
+        private void ExecuteAddAiModel()
+        {
+            if (string.IsNullOrWhiteSpace(NewAiModel)) return;
+            if (AiModels.Any(m => m.Name == NewAiModel)) return;
+
+            _settingsService.AddAiModel(NewAiModel);
+            RefreshAiModels();
+            _hubMonitorService.AddLogMessage($"[Settings] Added AI model: {NewAiModel}");
+            
+            // Trigger SignalR broadcast
+            _ = _hubEventSender.BroadcastAiModels(_settingsService.Settings.AiModels);
+            
+            NewAiModel = "";
+        }
+
+        private void ExecuteDeleteAiModel(string? model)
+        {
+            if (string.IsNullOrEmpty(model)) return;
+            
+            _settingsService.RemoveAiModel(model);
+            RefreshAiModels();
+            _hubMonitorService.AddLogMessage($"[Settings] Removed AI model: {model}");
+            
+            // Trigger SignalR broadcast
+            _ = _hubEventSender.BroadcastAiModels(_settingsService.Settings.AiModels);
+        }
+
+        private void ExecuteSetDefaultAiModel(string model)
+        {
+            _settingsService.SetDefaultAiModel(model);
+            RefreshAiModels();
+            OnPropertyChanged(nameof(IsNoneModelDefault));
+            _ = _hubEventSender.BroadcastDefaultAiModel(model);
+        }
+
+        private void RefreshAiModels()
+        {
+            var defaultModel = _settingsService.Settings.DefaultAiModel;
+            foreach (var m in AiModels) m.OnSelectedAsDefault -= OnAiModelSelectedAsDefault;
+            AiModels.Clear();
+            foreach (var modelName in _settingsService.Settings.AiModels)
+            {
+                var entry = new AiModelEntry 
+                { 
+                    Name = modelName, 
+                    IsDefault = modelName == defaultModel 
+                };
+                entry.OnSelectedAsDefault += OnAiModelSelectedAsDefault;
+                AiModels.Add(entry);
+            }
+        }
+
+        private void OnAiModelSelectedAsDefault(object? sender, string modelName)
+        {
+            ExecuteSetDefaultAiModel(modelName);
         }
 
         private void OnMacroPropertyChanged(object? sender, PropertyChangedEventArgs e)

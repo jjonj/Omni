@@ -96,6 +96,8 @@ namespace OmniSync.Hub.Presentation.Hubs
             await Clients.Caller.SendAsync("ShutdownModeUpdated", _shutdownService.GetCurrentMode().ToString());
             await Clients.Caller.SendAsync("UpdateRunOnStartup", _registryService.IsRunOnStartupEnabled());
             await Clients.Caller.SendAsync("ReceiveCleanupPatterns", _settingsService.Settings.BrowserCleanupPatterns);
+            await Clients.Caller.SendAsync("ReceiveAiModels", _settingsService.Settings.AiModels);
+            await Clients.Caller.SendAsync("ReceiveDefaultAiModel", _settingsService.Settings.DefaultAiModel);
         }
 
         public void ToggleShutdownMode()
@@ -946,7 +948,8 @@ namespace OmniSync.Hub.Presentation.Hubs
                 _logger.LogInformation($"[RpcApiHub] SendAiDialogResponse: {response} to PID {targetPid}");
                 await _aiCliService.FocusSessionAsync(targetPid);
                 await Task.Delay(150);
-                await _aiCliService.SendDialogResponseAsync(response, targetPid);
+                string? effectiveDialogType = _aiCliService.GetLastDialogType(targetPid);
+                await _aiCliService.SendDialogResponseAsync(response, targetPid, effectiveDialogType);
             }
         }
 
@@ -1388,6 +1391,44 @@ namespace OmniSync.Hub.Presentation.Hubs
                 _settingsService.RemoveAiPreset(preset);
                 var presets = _settingsService.GetAiPresets();
                 await Clients.All.SendAsync("ReceiveAiPresets", presets);
+            }
+        }
+
+        public async Task GetAiModels()
+        {
+            if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
+            {
+                var models = _settingsService.GetAiModels();
+                await Clients.Caller.SendAsync("ReceiveAiModels", models);
+            }
+        }
+
+        public async Task AddAiModel(string model)
+        {
+            if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
+            {
+                _settingsService.AddAiModel(model);
+                var models = _settingsService.GetAiModels();
+                await Clients.All.SendAsync("ReceiveAiModels", models);
+            }
+        }
+
+        public async Task RemoveAiModel(string model)
+        {
+            if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
+            {
+                _settingsService.RemoveAiModel(model);
+                var models = _settingsService.GetAiModels();
+                await Clients.All.SendAsync("ReceiveAiModels", models);
+            }
+        }
+
+        public async Task SetDefaultAiModel(string model)
+        {
+            if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
+            {
+                _settingsService.SetDefaultAiModel(model);
+                await Clients.All.SendAsync("ReceiveDefaultAiModel", model);
             }
         }
 

@@ -77,6 +77,7 @@ namespace OmniSync.Hub.Logic.Services
             
             _aiCliService.ResponseReceived += OnAiCliResponseReceived;
             _aiCliService.DialogReceived += OnAiCliDialogReceived;
+            _aiCliService.TurnEndedReceived += OnAiCliTurnEndedReceived;
 
             // Subscribe to Monitor events
             _monitorService.LogEntryAdded += (s, msg) => _ = BroadcastLogEntryAdded(msg);
@@ -85,7 +86,48 @@ namespace OmniSync.Hub.Logic.Services
             _monitorService.ConnectionRemoved += (s, id) => _ = BroadcastConnectionRemoved(id);
         }
 
-        private async Task ProcessAutoResponseAsync(int pid, string response, string logReason)
+        private bool IsDialogTypeAutoHandled(string dialogType)
+        {
+            if (string.IsNullOrWhiteSpace(dialogType))
+            {
+                return false;
+            }
+
+            var allowList = _settingsService.Settings.AutoHandledDialogTypes;
+            if (allowList == null || allowList.Count == 0)
+            {
+                return false;
+            }
+
+            string normalized = dialogType.Trim().ToLowerInvariant();
+            foreach (var rawPattern in allowList)
+            {
+                if (string.IsNullOrWhiteSpace(rawPattern))
+                {
+                    continue;
+                }
+
+                string pattern = rawPattern.Trim().ToLowerInvariant();
+                if (pattern.EndsWith("*"))
+                {
+                    string prefix = pattern.Substring(0, pattern.Length - 1);
+                    if (normalized.StartsWith(prefix))
+                    {
+                        return true;
+                    }
+                    continue;
+                }
+
+                if (normalized.Equals(pattern, StringComparison.Ordinal))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private async Task ProcessAutoResponseAsync(int pid, string response, string logReason, string? dialogType = null)
         {
             await _autoResponseSemaphore.WaitAsync();
             try
@@ -99,8 +141,8 @@ namespace OmniSync.Hub.Logic.Services
                     await Task.Delay(delay);
                 }
 
-                _logger.LogInformation($"[HubEventSender] Sending auto-response '{response}' for PID {pid} ({logReason})");
-                await _aiCliService.SendDialogResponseAsync(response, pid);
+                _logger.LogInformation($"[HubEventSender] Sending auto-response '{response}' for PID {pid} ({logReason}, dialogType: {dialogType ?? "none"})");
+                await _aiCliService.SendDialogResponseAsync(response, pid, dialogType);
                 _lastAutoResponseTime = DateTime.Now;
             }
             finally
@@ -113,28 +155,32 @@ namespace OmniSync.Hub.Logic.Services
         {
             _logger.LogInformation($"[HubEventSender] Received Dialog from PID {e.Pid}. Type: {e.Type}, Prompt: {e.Prompt}");
             _monitorService.AddLogMessage($"AI Dialog ({e.Type}): {e.Prompt}");
+            bool autoHandledType = IsDialogTypeAutoHandled(e.Type);
 
             // Play sound on Hub with a multi-layered cooldown:
             // 1. Mandatory 5s gap between ANY two blips (to stop rapid spam).
             // 2. 30s cooldown if it's the same prompt.
             var now = DateTime.Now;
 
-            // Track dialog frequency per PID to prevent rapid loops
-            if (!_dialogHistoryPerPid.TryGetValue(e.Pid, out var timestamps))
+            if (autoHandledType)
             {
-                timestamps = new List<DateTime>();
-                _dialogHistoryPerPid[e.Pid] = timestamps;
-            }
+                // Track dialog frequency per PID to prevent rapid loops
+                if (!_dialogHistoryPerPid.TryGetValue(e.Pid, out var timestamps))
+                {
+                    timestamps = new List<DateTime>();
+                    _dialogHistoryPerPid[e.Pid] = timestamps;
+                }
 
-            timestamps.Add(now);
-            timestamps.RemoveAll(t => (now - t).TotalSeconds > 30); // Keep only last 30s
+                timestamps.Add(now);
+                timestamps.RemoveAll(t => (now - t).TotalSeconds > 30); // Keep only last 30s
 
-            if (timestamps.Count > 4)
-            {
-                _logger.LogWarning($"[HubEventSender] PID {e.Pid} triggered more than 4 dialogs in 30s. Auto-selecting 'retry_later' to break loop.");
-                _monitorService.AddLogMessage($"Rapid dialog detected for PID {e.Pid}. Auto-selecting 'retry_later'...");
-                await ProcessAutoResponseAsync(e.Pid, "retry_later", "Rapid dialog loop");
-                return;
+                if (timestamps.Count > 4)
+                {
+                    _logger.LogWarning($"[HubEventSender] PID {e.Pid} triggered more than 4 auto-handled dialogs in 30s. Auto-selecting 'retry_later' to break loop.");
+                    _monitorService.AddLogMessage($"Rapid auto-handled dialog detected for PID {e.Pid}. Auto-selecting 'retry_later'...");
+                    await ProcessAutoResponseAsync(e.Pid, "retry_later", "Rapid dialog loop", e.Type);
+                    return;
+                }
             }
 
             double secondsSinceLastBlip = (now - _lastPlayedDialogTime).TotalSeconds;
@@ -147,6 +193,14 @@ namespace OmniSync.Hub.Logic.Services
                 _lastPlayedDialogTime = now;
             }
 
+            // Auto-response handling is whitelist-only.
+            if (!autoHandledType)
+            {
+                _logger.LogDebug($"[HubEventSender] Dialog type '{e.Type}' is not in AutoHandledDialogTypes. Ignoring for auto-response.");
+                await _hubContext.Clients.All.SendAsync("ReceiveAiDialog", e.Pid, e.Type, e.Prompt, e.Options);
+                return;
+            }
+
             // Special handling for pro_quota
             if (e.Type == "pro_quota")
             {
@@ -154,13 +208,13 @@ namespace OmniSync.Hub.Logic.Services
                 {
                     _logger.LogInformation($"[HubEventSender] Handling pro_quota dialog for PID {e.Pid} (Flash Model). Auto-retrying later...");
                     _monitorService.AddLogMessage("Quota reached (Flash). Auto-selecting 'retry_later'...");
-                    await ProcessAutoResponseAsync(e.Pid, "retry_later", "Pro quota reached (Flash)");
+                    await ProcessAutoResponseAsync(e.Pid, "retry_later", "Pro quota reached (Flash)", e.Type);
                 }
                 else
                 {
                     _logger.LogInformation($"[HubEventSender] Handling pro_quota dialog for PID {e.Pid} (Standard). Auto-retrying always...");
                     _monitorService.AddLogMessage("Quota reached. Auto-selecting 'retry_always'...");
-                    await ProcessAutoResponseAsync(e.Pid, "retry_always", "Pro quota reached");
+                    await ProcessAutoResponseAsync(e.Pid, "retry_always", "Pro quota reached", e.Type);
                 }
                 return;
             }
@@ -174,7 +228,7 @@ namespace OmniSync.Hub.Logic.Services
                     {
                         _logger.LogInformation($"[HubEventSender] Auto-approving '{pattern}' for PID {e.Pid}");
                         _monitorService.AddLogMessage($"Auto-approving dialog pattern: {pattern}");
-                        await ProcessAutoResponseAsync(e.Pid, "yes", $"Auto-approve pattern: {pattern}");
+                        await ProcessAutoResponseAsync(e.Pid, "yes", $"Auto-approve pattern: {pattern}", e.Type);
                         return;
                     }
                 }
@@ -239,6 +293,31 @@ namespace OmniSync.Hub.Logic.Services
             }
         }
 
+        private async void OnAiCliTurnEndedReceived(object? sender, GeminiTurnEndEventArgs e)
+        {
+            string workspace = !string.IsNullOrWhiteSpace(e.WorkspacePath)
+                ? e.WorkspacePath!
+                : (!string.IsNullOrWhiteSpace(e.WorkspaceName) ? e.WorkspaceName! : "unknown");
+            _logger.LogInformation($"[HubEventSender] Turn ended for PID {e.Pid}: reason={e.Reason}, category={e.Category}, finishReason={e.FinishReason ?? "none"}, workspace={workspace}");
+            _monitorService.AddLogMessage($"AI Turn End (PID {e.Pid}, {e.Category}): {e.Reason} [{workspace}]");
+
+            await _hubContext.Clients.All.SendAsync(
+                "ReceiveAiTurnEnd",
+                e.Pid,
+                e.Reason,
+                e.Category,
+                e.FinishReason,
+                e.Message,
+                e.Source,
+                e.PromptId,
+                e.WorkspacePath,
+                e.WorkspaceName,
+                e.Timestamp);
+
+            // Preserve existing FINISHED broadcast behavior, sourced from the new structured event.
+            await _hubContext.Clients.All.SendAsync("ReceiveAiStatus", "FINISHED", e.Pid);
+        }
+
         private async void OnShutdownModeChanged(object? sender, ShutdownMode mode)
         {
             await _hubContext.Clients.All.SendAsync("ShutdownModeUpdated", mode.ToString());
@@ -268,6 +347,16 @@ namespace OmniSync.Hub.Logic.Services
         public async Task BroadcastCleanupPatterns(List<string> patterns)
         {
             await _hubContext.Clients.All.SendAsync("ReceiveCleanupPatterns", patterns);
+        }
+
+        public async Task BroadcastAiModels(List<string> models)
+        {
+            await _hubContext.Clients.All.SendAsync("ReceiveAiModels", models);
+        }
+
+        public async Task BroadcastDefaultAiModel(string model)
+        {
+            await _hubContext.Clients.All.SendAsync("ReceiveDefaultAiModel", model);
         }
 
         public async Task BroadcastLogEntryAdded(string message)

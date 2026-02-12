@@ -33,6 +33,7 @@ async function loadSettings() {
         renderHotkeys();
         renderProjects();
         renderExeMappings(settings.exeMappings);
+        renderAiModels(settings.aiModels || [], settings.defaultAiModel || "");
         
         // Load Tell PC settings
         const wsInput = document.getElementById("tell-pc-workspace");
@@ -317,6 +318,71 @@ async function removeMapping(key) {
     } catch (err) {
         console.error("Error removing mapping:", err);
         alert("Failed to remove mapping.");
+    }
+}
+
+function renderAiModels(models, defaultModel) {
+    const list = document.getElementById("ai-models-list");
+    if (!list) return;
+    list.innerHTML = "";
+    
+    // Always show a "None (Default)" option
+    const noneRow = document.createElement("div");
+    noneRow.className = "row";
+    noneRow.style.gap = "8px";
+    noneRow.innerHTML = `
+        <input type="radio" name="default-model" value="" ${defaultModel === "" ? "checked" : ""} onchange="setDefaultAiModel('')">
+        <label style="flex: 1; font-size: 13px; cursor: pointer;" onclick="this.previousElementSibling.click()">None (Default)</label>
+    `;
+    list.appendChild(noneRow);
+
+    if (models && models.length > 0) {
+        models.forEach((model) => {
+            const row = document.createElement("div");
+            row.className = "row";
+            row.style.gap = "8px";
+            row.innerHTML = `
+                <input type="radio" name="default-model" value="${model}" ${defaultModel === model ? "checked" : ""} onchange="setDefaultAiModel('${model}')">
+                <input type="text" value="${model}" style="flex: 1; font-size: 11px;" readonly>
+                <button class="btn danger" onclick="removeAiModel('${model}')">Delete</button>
+            `;
+            list.appendChild(row);
+        });
+    }
+}
+
+async function setDefaultAiModel(model) {
+    try {
+        await hubConnection.invoke("SetDefaultAiModel", model);
+        console.log("Default AI model updated:", model);
+    } catch (err) {
+        console.error("Error setting default AI model:", err);
+        alert("Failed to set default AI model.");
+    }
+}
+
+async function promptForAiModel() {
+    const model = prompt("Enter AI model name (e.g. 'gemini-2.0-flash'):");
+    if (!model) return;
+
+    try {
+        await hubConnection.invoke("AddAiModel", model);
+        loadSettings();
+    } catch (err) {
+        console.error("Error adding AI model:", err);
+        alert("Failed to add AI model.");
+    }
+}
+
+async function removeAiModel(model) {
+    if (!confirm(`Delete AI model '${model}'?`)) return;
+
+    try {
+        await hubConnection.invoke("RemoveAiModel", model);
+        loadSettings();
+    } catch (err) {
+        console.error("Error removing AI model:", err);
+        alert("Failed to remove AI model.");
     }
 }
 

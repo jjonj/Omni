@@ -335,7 +335,9 @@ class MainActivity : ComponentActivity() {
     override fun onStart() {
         super.onStart()
         // Retry connection if disconnected when app comes to foreground
-        if (!mainViewModel.isConnected.value && omniSyncApplication.signalRClient.connectionState.value != "Connecting...") {
+        val state = omniSyncApplication.signalRClient.connectionState.value
+        val isConnecting = state.contains("Connecting", ignoreCase = true) || state.contains("Reconnecting", ignoreCase = true)
+        if (!mainViewModel.isConnected.value && !isConnecting) {
             omniSyncApplication.signalRClient.startConnection()
         }
     }

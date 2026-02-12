@@ -199,6 +199,17 @@
                                 <input type="checkbox" id="tell-pc-sound">
                                 Play confirmation sound (blip) on Hub
                             </label>
+
+                            <div style="border-top: 1px solid var(--border); padding-top: 16px; margin-top: 8px;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                                    <h3 style="font-size: 12px; color: var(--text-dim); text-transform: uppercase; margin: 0;">AI Models</h3>
+                                    <button class="modern-btn" style="font-size: 10px; padding: 4px 8px; margin: 0;" onclick="promptForAiModel()">+ Add Model</button>
+                                </div>
+                                <div style="font-size: 11px; color: var(--text-dim); margin-bottom: 8px;">Select which model to use by default for new sessions:</div>
+                                <div id="ai-models-list" style="display: flex; flex-direction: column; gap: 8px;">
+                                    <!-- Populated by JS -->
+                                </div>
+                            </div>
                         </div>
 
                         <div class="save-bar">
