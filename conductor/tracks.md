@@ -7,5 +7,5 @@
 
 ---
 
-- [~] **Track: Integrate Athena into omni, rebrand it Omni.Athena, move files from local .athena folder to .omni investgate and propose more integration work**
+- [x] **Track: Integrate Athena into omni, rebrand it Omni.Athena, move files from local .athena folder to .omni investgate and propose more integration work**
 *Link: [./tracks/feat_omni_athena_integration_20260213/](./tracks/feat_omni_athena_integration_20260213/)*
