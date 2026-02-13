@@ -1,3 +1,6 @@
 [submodule "OmniSync.Web/www/IslandGenerator"]
 	path = OmniSync.Web/www/IslandGenerator
 	url = https://github.com/RancorousGames/RancRiverTerrain.git
+[submodule "OmniSync.Assistant/Omni.Athena"]
+	path = OmniSync.Assistant/Omni.Athena
+	url = https://github.com/jjonj/Omni-Athena.git
