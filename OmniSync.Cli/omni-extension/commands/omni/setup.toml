@@ -1,12 +1,9 @@
-description = "Initialize Omni.Athena and OPC workspace"
+description = "Initialize Omni Assistant workspace"
 prompt = '''
-Initialize the Omni.Athena and Omni Project Context (OPC) workspace by scaffolding the required metadata directories.
-Target Directories: .omni/athena/ and .omni/projectcontext/
+Initialize the Omni Assistant workspace automatically.
 
 Operation:
-1. Ensure the directory '.omni/athena/' exists.
-2. Run 'python -m athena init' in a way that creates the .agent, .framework, and .context directories inside '.omni/athena/'. This consolidates all Athena metadata away from the project root.
-3. Initialize the Omni Project Context (OPC). Run 'python -m athena opc sync' to establish the initial project context tracking in '.omni/projectcontext/'.
-4. Confirm to the user when both Athena and OPC structures are ready.
+1. Run 'python -m athena init' via the Assistant Service. This script is self-contained and will scaffold all required directories (.omni/athena/, .omni/projectcontext/) and template files.
+2. Once initialized, run 'python -m athena omni:sync' to perform the first Project Context scan.
+3. Confirm to the user when the workspace is ready.
 '''
-

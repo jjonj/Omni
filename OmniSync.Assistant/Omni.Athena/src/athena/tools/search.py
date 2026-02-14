@@ -40,7 +40,7 @@ from athena.memory.vectors import (
     search_user_profile,
     search_system_docs,
 )
-from athena.opc.opc_engine import OpcOrchestrator # Import the OPC Orchestrator
+from athena.context_engine.orchestrator import AssistantOrchestrator # Import the Assistant Orchestrator
 from athena.tools.reranker import rerank_results
 
 # Config
@@ -425,10 +425,10 @@ def collect_project_context(query: str, limit: int = 10) -> list[SearchResult]:
     """Collect matches from project context (git history and file skeleton)."""
     results = []
     try:
-        opc_orchestrator = OpcOrchestrator(project_root=PROJECT_ROOT)
+        assistant_orchestrator = AssistantOrchestrator(project_root=PROJECT_ROOT)
         
         # Search git history
-        git_history_results = opc_orchestrator.git_service.search_commits(query, limit=limit)
+        git_history_results = assistant_orchestrator.git_service.search_commits(query, limit=limit)
         for commit in git_history_results:
             results.append(
                 SearchResult(
@@ -442,7 +442,7 @@ def collect_project_context(query: str, limit: int = 10) -> list[SearchResult]:
         
         # Search file skeletons (basic keyword search on extracted content)
         # This will need to be refined for actual semantic search on skeletons
-        file_skeletons = opc_orchestrator.state_service.load_state()
+        file_skeletons = assistant_orchestrator.state_service.load_state()
         for fc in file_skeletons:
             file_path = PROJECT_ROOT / fc.path
             if file_path.exists():

@@ -1,7 +1,7 @@
-description = "Mid-session checkpoint (Omni.Athena Workflow)"
+description = "Mid-session checkpoint (Omni Assistant Workflow)"
 prompt = '''
-1. Read the workflow at .omni/athena/.agent/workflows/save.md.
+1. Read the workflow at .omni/athena/agent/workflows/save.md.
 2. Follow the instructions to perform a mid-session checkpoint.
-3. This involves summarizing recent progress and key decisions, then using the 'quicksave' tool or running 'python -m athena save' to record the checkpoint.
+3. This involves summarizing recent progress and key decisions, then running 'python -m athena save' to record the checkpoint.
 4. Confirm to the user once the checkpoint is logged.
 '''

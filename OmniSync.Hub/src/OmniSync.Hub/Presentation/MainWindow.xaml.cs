@@ -33,11 +33,12 @@ namespace OmniSync.Hub.Presentation
         private readonly ProcessService _processService;
         private readonly AiCliService _aiCliService;
         private readonly HubEventSender _hubEventSender;
+        private readonly AssistantService _assistantService;
         private readonly MainViewModel _viewModel;
 
         public bool IsInternalClosing { get; set; } = false;
 
-        public MainWindow(HubMonitorService hubMonitorService, InputService inputService, ProcessService processService, ShutdownService shutdownService, RegistryService registryService, HubSettingsService settingsService, KeyboardHook keyboardHook, AiCliService aiCliService, LayoutCaptureService layoutCaptureService, ProjectLauncherService projectLauncherService, CommandDispatcher commandDispatcher, HubEventSender hubEventSender)
+        public MainWindow(HubMonitorService hubMonitorService, InputService inputService, ProcessService processService, ShutdownService shutdownService, RegistryService registryService, HubSettingsService settingsService, KeyboardHook keyboardHook, AiCliService aiCliService, LayoutCaptureService layoutCaptureService, ProjectLauncherService projectLauncherService, CommandDispatcher commandDispatcher, HubEventSender hubEventSender, AssistantService assistantService)
         {
             InitializeComponent();
             EnableDarkModeTitleBar();
@@ -48,8 +49,9 @@ namespace OmniSync.Hub.Presentation
             _processService = processService;
             _aiCliService = aiCliService;
             _hubEventSender = hubEventSender;
+            _assistantService = assistantService;
 
-            _viewModel = new MainViewModel(hubMonitorService, inputService, processService, shutdownService, registryService, settingsService, keyboardHook, aiCliService, layoutCaptureService, projectLauncherService, commandDispatcher, hubEventSender);
+            _viewModel = new MainViewModel(hubMonitorService, inputService, processService, shutdownService, registryService, settingsService, keyboardHook, aiCliService, layoutCaptureService, projectLauncherService, commandDispatcher, hubEventSender, assistantService);
             DataContext = _viewModel;
 
             // Hook up event handlers (now in ViewModel where appropriate)

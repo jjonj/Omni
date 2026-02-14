@@ -76,13 +76,17 @@ namespace OmniSync.Hub.Logic.Services
             var startInfo = new ProcessStartInfo
             {
                 FileName = paths.PythonExecutable,
-                Arguments = string.Join(" ", EscapeArgs(processArgs)),
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 UseShellExecute = false,
                 CreateNoWindow = true,
                 WorkingDirectory = projectRoot
             };
+
+            foreach (var arg in processArgs)
+            {
+                startInfo.ArgumentList.Add(arg);
+            }
 
             // Set PYTHONPATH
             startInfo.EnvironmentVariables["PYTHONPATH"] = paths.AthenaSrc;
@@ -125,17 +129,6 @@ namespace OmniSync.Hub.Logic.Services
                 current = current.Parent;
             }
             return startDir;
-        }
-
-        private IEnumerable<string> EscapeArgs(IEnumerable<string> args)
-        {
-            foreach (var arg in args)
-            {
-                if (arg.Contains(" "))
-                    yield return $"\"{arg}\"";
-                else
-                    yield return arg;
-            }
         }
     }
 }

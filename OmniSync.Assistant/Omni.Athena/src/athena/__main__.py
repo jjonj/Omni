@@ -125,6 +125,12 @@ def main():
         nargs="*",
         help="Brief summary of the checkpoint",
     )
+    save_parser.add_argument(
+        "--bullets",
+        "-b",
+        action="append",
+        help="Detail bullets for the checkpoint",
+    )
 
     # omni:search subcommand
     search_parser = subparsers.add_parser("omni:search", help="Hybrid Brain Search")
@@ -192,7 +198,7 @@ def main():
         from athena.cli.save import run_quicksave
 
         summary = " ".join(args.summary) if args.summary else "Checkpoint"
-        success = run_quicksave(summary, project_root=args.root)
+        success = run_quicksave(summary, bullets=args.bullets, project_root=args.root)
         sys.exit(0 if success else 1)
 
     if args.command == "omni:search":
@@ -202,9 +208,9 @@ def main():
         sys.exit(0)
 
     if args.command == "omni:context":
-        from athena.opc.opc_engine import OpcOrchestrator
+        from athena.context_engine.orchestrator import AssistantOrchestrator
 
-        orchestrator = OpcOrchestrator(project_root=args.root)
+        orchestrator = AssistantOrchestrator(project_root=args.root)
         if args.omni_context_cmd == "sync":
             print(orchestrator.handle_sync())
         elif args.omni_context_cmd == "session":

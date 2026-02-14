@@ -133,7 +133,7 @@ def create_functional_orchestrator(project_root: Optional[Path] = None) -> BootO
 
     # --- Phase 2: System Sync ---
     def system_sync():
-        """Ensure directory structure exists (prefers centralized .athena folder)."""
+        """Ensure directory structure exists (prefers centralized .omni/athena folder)."""
         dirs = [
             orchestrator.athena_dir,
             orchestrator.session_logs_dir,

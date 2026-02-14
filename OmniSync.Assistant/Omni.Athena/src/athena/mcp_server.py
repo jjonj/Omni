@@ -38,10 +38,10 @@ from athena.core.permissions import (
 # ---------------------------------------------------------------------------
 
 mcp = FastMCP(
-    name="athena",
+    name="omni-assistant",
     version="1.1.0",
     instructions=(
-        "Project Athena MCP Server — a sovereign personal intelligence "
+        "Project Omni Assistant MCP Server — a sovereign personal intelligence "
         "infrastructure. Use these tools to search memory, save checkpoints, "
         "check system health, and manage sessions.\n\n"
         "All tools are gated by the Permissioning Layer. Use permission_status "
@@ -49,25 +49,28 @@ mcp = FastMCP(
     ),
 )
 
-logger = logging.getLogger("athena.mcp")
+logger = logging.getLogger("omni-assistant.mcp")
 
 # ---------------------------------------------------------------------------
-# TOOL: smart_search
+# TOOL: omni:search (formerly smart_search)
 # ---------------------------------------------------------------------------
 
 
 @mcp.tool(
+    name="omni:search",
     tags={"read", "memory", "search"},
 )
-def smart_search(
+def omni_search(
     query: str,
     limit: int = 10,
     strict: bool = False,
     rerank: bool = False,
 ) -> dict:
     """
-    Search Athena's knowledge base using hybrid RAG (Canonical + Tags +
+    Search Omni Assistant's knowledge base using hybrid RAG (Canonical + Tags +
     Vectors + GraphRAG + SQLite + Filenames) with RRF fusion.
+    This is a 'Global Brain Search' that queries everything: code, filenames,
+    session logs, and vector memory.
 
     Args:
         query: The search query string.
@@ -83,7 +86,7 @@ def smart_search(
 
     # Permission gate
     perms = get_permissions()
-    perms.gate("smart_search")
+    perms.gate("omni:search")
 
     # Governance: Mark search as performed
     get_governance().mark_search_performed(query)
@@ -125,14 +128,15 @@ def smart_search(
 
 
 # ---------------------------------------------------------------------------
-# TOOL: agentic_search (RAG v2)
+# TOOL: omni:research (formerly agentic_search)
 # ---------------------------------------------------------------------------
 
 
 @mcp.tool(
+    name="omni:research",
     tags={"read", "memory", "search", "admin"},
 )
-def agentic_search(
+def omni_research(
     query: str,
     limit: int = 10,
     validate: bool = True,
@@ -155,7 +159,7 @@ def agentic_search(
 
     # Permission gate
     perms = get_permissions()
-    perms.gate("agentic_search")
+    perms.gate("omni:research")
 
     result = _agentic_search(query=query, limit=limit, validate=validate)
 
@@ -171,14 +175,15 @@ def agentic_search(
 
 
 # ---------------------------------------------------------------------------
-# TOOL: quicksave
+# TOOL: omni:quicksave (formerly quicksave)
 # ---------------------------------------------------------------------------
 
 
 @mcp.tool(
+    name="omni:quicksave",
     tags={"write", "session", "checkpoint"},
 )
-def quicksave(
+def omni_quicksave(
     summary: str,
     bullets: list[str] | None = None,
 ) -> dict:
@@ -198,7 +203,7 @@ def quicksave(
 
     # Permission gate
     perms = get_permissions()
-    perms.gate("quicksave")
+    perms.gate("omni:quicksave")
 
     # Governance: Check Triple-Lock compliance
     gov = get_governance()
@@ -233,16 +238,17 @@ def quicksave(
 
 
 # ---------------------------------------------------------------------------
-# TOOL: health_check
+# TOOL: omni:status (formerly health_check)
 # ---------------------------------------------------------------------------
 
 
 @mcp.tool(
+    name="omni:status",
     tags={"read", "system", "health"},
 )
-def health_check() -> dict:
+def omni_status() -> dict:
     """
-    Run a health audit of Athena's core services (Vector API, Database).
+    Run a health audit of Omni Assistant's core services (Vector API, Database).
 
     Returns:
         dict with check results for each subsystem.
@@ -250,7 +256,7 @@ def health_check() -> dict:
     from athena.core.health import HealthCheck
 
     # Permission gate
-    get_permissions().gate("health_check")
+    get_permissions().gate("omni:status")
 
     vector = HealthCheck.check_vector_api()
     db = HealthCheck.check_database()
@@ -264,14 +270,15 @@ def health_check() -> dict:
 
 
 # ---------------------------------------------------------------------------
-# TOOL: recall_session
+# TOOL: omni:recall (formerly recall_session)
 # ---------------------------------------------------------------------------
 
 
 @mcp.tool(
+    name="omni:recall",
     tags={"read", "session", "memory"},
 )
-def recall_session(lines: int = 50) -> dict:
+def omni_recall(lines: int = 50) -> dict:
     """
     Retrieve the most recent session log content.
 
@@ -285,7 +292,7 @@ def recall_session(lines: int = 50) -> dict:
 
     # Permission gate
     perms = get_permissions()
-    perms.gate("recall_session")
+    perms.gate("omni:recall")
 
     log_path = recall_last_session()
 
@@ -316,14 +323,15 @@ def recall_session(lines: int = 50) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# TOOL: governance_status
+# TOOL: omni:governance_status (formerly governance_status)
 # ---------------------------------------------------------------------------
 
 
 @mcp.tool(
+    name="omni:governance_status",
     tags={"read", "system", "governance"},
 )
-def governance_status() -> dict:
+def omni_governance_status() -> dict:
     """
     Check the current Triple-Lock governance state. Shows whether semantic
     search and web search have been performed in the current exchange.
@@ -334,7 +342,7 @@ def governance_status() -> dict:
     from athena.core.governance import get_governance
 
     # Permission gate
-    get_permissions().gate("governance_status")
+    get_permissions().gate("omni:governance_status")
 
     gov = get_governance()
     state = gov._state.copy()
@@ -350,16 +358,17 @@ def governance_status() -> dict:
 
 
 # ---------------------------------------------------------------------------
-# TOOL: list_memory_paths
+# TOOL: omni:memory_paths (formerly list_memory_paths)
 # ---------------------------------------------------------------------------
 
 
 @mcp.tool(
+    name="omni:memory_paths",
     tags={"read", "system", "config"},
 )
-def list_memory_paths() -> dict:
+def omni_memory_paths() -> dict:
     """
-    List all active memory directories that Athena searches over.
+    List all active memory directories that Omni Assistant searches over.
     Useful for understanding what knowledge domains are indexed.
 
     Returns:
@@ -372,7 +381,7 @@ def list_memory_paths() -> dict:
     )
 
     # Permission gate
-    get_permissions().gate("list_memory_paths")
+    get_permissions().gate("omni:memory_paths")
 
     core = {k: str(v) for k, v in CORE_DIRS.items()}
     extended = [{"path": str(p), "maps_to": t} for p, t in EXTENDED_DIRS]
@@ -391,7 +400,7 @@ def list_memory_paths() -> dict:
 
 
 @mcp.resource(
-    uri="athena://session/current",
+    uri="omni://session/current",
     name="Current Session Log",
     description="The full content of the active session log file.",
 )
@@ -411,9 +420,9 @@ def current_session_resource() -> str:
 
 
 @mcp.resource(
-    uri="athena://memory/canonical",
+    uri="omni://memory/canonical",
     name="Canonical Memory",
-    description="The Canonical Memory (CANONICAL.md) — Athena's constitution.",
+    description="The Canonical Memory (CANONICAL.md) — Omni Assistant's constitution.",
 )
 def canonical_memory_resource() -> str:
     """Return the Canonical Memory content."""
@@ -433,14 +442,15 @@ def canonical_memory_resource() -> str:
 
 
 # ---------------------------------------------------------------------------
-# TOOL: set_secret_mode
+# TOOL: omni:set_secret_mode (formerly set_secret_mode)
 # ---------------------------------------------------------------------------
 
 
 @mcp.tool(
+    name="omni:set_secret_mode",
     tags={"admin", "security", "mode"},
 )
-def set_secret_mode(enabled: bool) -> dict:
+def omni_set_secret_mode(enabled: bool) -> dict:
     """
     Toggle Secret Mode (demo/external mode). When active, only PUBLIC
     tools are accessible and sensitive content is redacted.
@@ -456,14 +466,15 @@ def set_secret_mode(enabled: bool) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# TOOL: permission_status
+# TOOL: omni:permission_status (formerly permission_status)
 # ---------------------------------------------------------------------------
 
 
 @mcp.tool(
+    name="omni:permission_status",
     tags={"read", "system", "security"},
 )
-def permission_status() -> dict:
+def omni_permission_status() -> dict:
     """
     Show the current permission state: caller level, secret mode,
     accessible/blocked tools, and tool manifest.
@@ -484,7 +495,7 @@ def permission_status() -> dict:
 if __name__ == "__main__":
     import argparse
 
-    parser = argparse.ArgumentParser(description="Athena MCP Server")
+    parser = argparse.ArgumentParser(description="Omni Assistant MCP Server")
     parser.add_argument("--sse", action="store_true", help="Use SSE transport")
     parser.add_argument("--port", type=int, default=8765, help="SSE port")
     args = parser.parse_args()

@@ -1,6 +1,10 @@
-description = "Start a new Omni.Athena session"
+description = "Start a new Omni Assistant session"
 prompt = '''
-1. Read the workflow at .omni/athena/.agent/workflows/start.md.
+1. Read the workflow at .omni/athena/agent/workflows/start.md.
 2. Follow the instructions in that workflow to boot the session.
-3. This involves running the Omni.Athena boot command and initializing the session log within .omni/athena/.
+3. This involves running the 'python -m athena omni:start' command which:
+   - Scaffolds the session log in .omni/athena/session_logs/
+   - Performs an initial Project Context sync (omni:sync)
+   - Primes the AI with the project structure and git narrative.
+4. Confirm to the user when the session is active and the context is synced.
 '''

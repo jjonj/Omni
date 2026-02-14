@@ -1,6 +1,6 @@
-description = "Synchronize Omni Project Context (OPC) tracking"
+description = "Synchronize Project Context tracking"
 prompt = '''
-Run the Omni Project Context synchronization command to update project tracking metadata.
-Run: python -m athena opc sync
+Run the Project Context synchronization command to update project tracking metadata.
+Run: python -m athena omni:sync
 This updates the tracking state in .omni/projectcontext/.
 '''

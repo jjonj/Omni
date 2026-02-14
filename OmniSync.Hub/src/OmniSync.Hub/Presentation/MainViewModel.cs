@@ -31,6 +31,7 @@ namespace OmniSync.Hub.Presentation
         private readonly ProjectLauncherService _projectLauncherService;
         private readonly CommandDispatcher _commandDispatcher;
         private readonly HubEventSender _hubEventSender;
+        private readonly AssistantService _assistantService;
         private readonly DispatcherTimer _uiUpdateTimer;
         private DispatcherTimer _longPressTimer;
         private bool _isLongPress;
@@ -614,7 +615,7 @@ namespace OmniSync.Hub.Presentation
             set { _isAltPressed = value; OnPropertyChanged(); }
         }
 
-        public MainViewModel(HubMonitorService hubMonitorService, InputService inputService, ProcessService processService, ShutdownService shutdownService, RegistryService registryService, HubSettingsService settingsService, KeyboardHook keyboardHook, AiCliService aiCliService, LayoutCaptureService layoutCaptureService, ProjectLauncherService projectLauncherService, CommandDispatcher commandDispatcher, HubEventSender hubEventSender)
+        public MainViewModel(HubMonitorService hubMonitorService, InputService inputService, ProcessService processService, ShutdownService shutdownService, RegistryService registryService, HubSettingsService settingsService, KeyboardHook keyboardHook, AiCliService aiCliService, LayoutCaptureService layoutCaptureService, ProjectLauncherService projectLauncherService, CommandDispatcher commandDispatcher, HubEventSender hubEventSender, AssistantService assistantService)
         {
             _hubMonitorService = hubMonitorService;
             _inputService = inputService;
@@ -628,6 +629,7 @@ namespace OmniSync.Hub.Presentation
             _projectLauncherService = projectLauncherService;
             _commandDispatcher = commandDispatcher;
             _hubEventSender = hubEventSender;
+            _assistantService = assistantService;
 
             // Initialize collections
             ActiveConnections = _hubMonitorService.ActiveConnections;

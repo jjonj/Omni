@@ -288,28 +288,28 @@ async function main() {
             sendResponse(req.id, { isError: true, content: [{ type: "text", text: `Error: ${error.message}` }] });
           }
         } else if (toolName === "quicksave") {
-          const { summary, bullets } = args;
+          const { summary, bullets, project_root } = args;
           try {
             const cmdArgs = ["save", summary];
             if (bullets && bullets.length > 0) {
               bullets.forEach(b => { cmdArgs.push("--bullets"); cmdArgs.push(b); });
             }
-            const output = await runPythonAthenaCommand(cmdArgs);
+            const output = await runPythonAthenaCommand(cmdArgs, project_root);
             sendResponse(req.id, { content: [{ type: "text", text: output }] });
           } catch (error) {
-            sendResponse(req.id, { isError: true, content: [{ type: "text", text: `Athena Error: ${error.message}` }] });
+            sendResponse(req.id, { isError: true, content: [{ type: "text", text: `Quicksave Error: ${error.message}` }] });
           }
         } else if (toolName === "smart_search") {
           const { query, limit } = args;
           try {
-            const output = await runPythonAthenaCommand(["search", query, "--limit", (limit || 10).toString(), "--json"]);
+            const output = await runPythonAthenaCommand(["omni:search", query, "--limit", (limit || 10).toString(), "--json"]);
             sendResponse(req.id, { content: [{ type: "text", text: output }] });
           } catch (error) {
-            sendResponse(req.id, { isError: true, content: [{ type: "text", text: `Athena Search Error: ${error.message}` }] });
+            sendResponse(req.id, { isError: true, content: [{ type: "text", text: `Omni Search Error: ${error.message}` }] });
           }
         } else if (toolName === "opc_sync") {
           try {
-            const output = await runPythonAthenaCommand(["opc", "sync"], args.project_root);
+            const output = await runPythonAthenaCommand(["omni:sync"], args.project_root);
             sendResponse(req.id, { content: [{ type: "text", text: output }] });
           } catch (error) {
             sendResponse(req.id, { isError: true, content: [{ type: "text", text: `OPC Sync Error: ${error.message}` }] });

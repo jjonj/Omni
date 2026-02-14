@@ -233,7 +233,7 @@ This is an Assistant workspace. Key directories:
 
 
 def init_workspace(target_dir: Path = None, ide: str = None) -> bool:
-    \"\"\"
+    """
     Initialize an Assistant workspace with the required directory structure.
 
     Args:
@@ -242,7 +242,7 @@ def init_workspace(target_dir: Path = None, ide: str = None) -> bool:
 
     Returns:
         True if successful, False otherwise.
-    \"\"\"
+    """
     root = target_dir or Path.cwd()
     root = Path(root).resolve()
 
@@ -315,7 +315,7 @@ def init_workspace(target_dir: Path = None, ide: str = None) -> bool:
 
 
 def _create_ide_config(root: Path, ide: str) -> None:
-    \"\"\"Create IDE-specific configuration files.\"\"\"
+    """Create IDE-specific configuration files."""
 
     if ide == "antigravity":
         # Antigravity uses AGENTS.md convention

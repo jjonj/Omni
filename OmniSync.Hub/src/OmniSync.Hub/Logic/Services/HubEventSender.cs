@@ -5,6 +5,7 @@ using OmniSync.Hub.Logic.Monitoring;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
@@ -30,6 +31,7 @@ namespace OmniSync.Hub.Logic.Services
         private readonly CommandDispatcher _commandDispatcher;
         private readonly FileService _fileService; // Added FileService dependency
         private readonly AiCliService _aiCliService; // Added AiCliService
+        private readonly AssistantService _assistantService;
         private readonly HubSettingsService _settingsService;
         private readonly HubMonitorService _monitorService;
         private string? _lastPlayedDialogPrompt;
@@ -40,7 +42,7 @@ namespace OmniSync.Hub.Logic.Services
         private readonly SemaphoreSlim _autoResponseSemaphore = new SemaphoreSlim(1, 1);
         private DateTime _lastAutoResponseTime = DateTime.MinValue;
 
-        public HubEventSender(ILogger<HubEventSender> logger, IHubContext<RpcApiHub> hubContext, ProcessService processService, InputService inputService, AudioService audioService, ShutdownService shutdownService, CommandDispatcher commandDispatcher, FileService fileService, AiCliService aiCliService, HubSettingsService settingsService, HubMonitorService monitorService) // Added AiCliService
+        public HubEventSender(ILogger<HubEventSender> logger, IHubContext<RpcApiHub> hubContext, ProcessService processService, InputService inputService, AudioService audioService, ShutdownService shutdownService, CommandDispatcher commandDispatcher, FileService fileService, AiCliService aiCliService, HubSettingsService settingsService, HubMonitorService monitorService, AssistantService assistantService) // Added AiCliService
         {
             _logger = logger;
             _hubContext = hubContext;
@@ -53,6 +55,7 @@ namespace OmniSync.Hub.Logic.Services
             _aiCliService = aiCliService;
             _settingsService = settingsService;
             _monitorService = monitorService;
+            _assistantService = assistantService;
 
             _processService.CommandOutputReceived += OnCommandOutputReceived;
             _inputService.ModifierStateChanged += OnModifierStateChanged;
@@ -219,6 +222,15 @@ namespace OmniSync.Hub.Logic.Services
                 return;
             }
 
+            // Auto-response for tool approvals
+            if (e.Type.StartsWith("omni:"))
+            {
+                _logger.LogInformation($"[HubEventSender] Auto-approving Omni tool: {e.Type} for PID {e.Pid}");
+                _monitorService.AddLogMessage($"Auto-approving Omni tool: {e.Type}");
+                await ProcessAutoResponseAsync(e.Pid, "yes", $"Auto-approve Omni tool: {e.Type}", e.Type);
+                return;
+            }
+
             // Auto-approve based on settings
             if (_settingsService.Settings.AutoApprovePatterns != null)
             {
@@ -313,6 +325,23 @@ namespace OmniSync.Hub.Logic.Services
                 e.WorkspacePath,
                 e.WorkspaceName,
                 e.Timestamp);
+
+            // Automatically inject project context for the next turn if appropriate
+            if (e.Category != "forced" && !string.IsNullOrWhiteSpace(e.WorkspacePath) && Directory.Exists(e.WorkspacePath))
+            {
+                _ = Task.Run(async () => {
+                    try {
+                        _logger.LogInformation($"[HubEventSender] Auto-injecting context for PID {e.Pid} in {e.WorkspacePath}");
+                        var result = await _assistantService.ExecuteAsync("omni:context", new[] { "session" }, e.WorkspacePath);
+                        if (result.Success && !string.IsNullOrWhiteSpace(result.Output))
+                        {
+                            await _aiCliService.SendPromptAsync(result.Output, e.Pid);
+                        }
+                    } catch (Exception ex) {
+                        _logger.LogError(ex, $"[HubEventSender] Failed to auto-inject context for PID {e.Pid}");
+                    }
+                });
+            }
 
             // Preserve existing FINISHED broadcast behavior, sourced from the new structured event.
             await _hubContext.Clients.All.SendAsync("ReceiveAiStatus", "FINISHED", e.Pid);

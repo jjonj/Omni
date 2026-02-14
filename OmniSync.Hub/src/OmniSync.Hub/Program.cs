@@ -306,8 +306,9 @@ builder.Services.AddSingleton<HubEventSender>(provider =>
     var aiCliService = provider.GetRequiredService<AiCliService>(); // Get AiCliService
     var settingsService = provider.GetRequiredService<HubSettingsService>();
     var monitorService = provider.GetRequiredService<HubMonitorService>();
+    var assistantService = provider.GetRequiredService<AssistantService>();
 
-    return new HubEventSender(logger, hubContext, processService, inputService, audioService, shutdownService, commandDispatcher, fileService, aiCliService, settingsService, monitorService);
+    return new HubEventSender(logger, hubContext, processService, inputService, audioService, shutdownService, commandDispatcher, fileService, aiCliService, settingsService, monitorService, assistantService);
 });
 builder.Services.AddSingleton<TrayIconManager>(provider =>
 {
@@ -329,8 +330,9 @@ builder.Services.AddSingleton<TrayIconManager>(provider =>
     var macroService = provider.GetRequiredService<IMacroService>();
     var resourceOpenerService = provider.GetRequiredService<ResourceOpenerService>();
     var hubEventSender = provider.GetRequiredService<HubEventSender>();
+    var assistantService = provider.GetRequiredService<AssistantService>();
     var logger = provider.GetRequiredService<ILogger<TrayIconManager>>();
-    return new TrayIconManager(appLifetime, hubMonitorService, inputService, processService, shutdownService, registryService, settingsService, hotkeyService, keyboardHook, aiCliService, layoutCaptureService, projectLauncherService, commandDispatcher, calendarService, searchService, macroService, resourceOpenerService, hubEventSender, logger);
+    return new TrayIconManager(appLifetime, hubMonitorService, inputService, processService, shutdownService, registryService, settingsService, hotkeyService, keyboardHook, aiCliService, layoutCaptureService, projectLauncherService, commandDispatcher, calendarService, searchService, macroService, resourceOpenerService, hubEventSender, logger, assistantService);
 });
 builder.Services.AddHostedService<TrayIconManager>(provider => provider.GetRequiredService<TrayIconManager>());
 
