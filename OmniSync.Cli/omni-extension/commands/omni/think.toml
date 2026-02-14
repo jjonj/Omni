@@ -1,0 +1,35 @@
+description = "Exhaustive reasoning mode (Phases 0-VII)"
+prompt = '''
+# /think — Execution Script
+
+## Behavior
+
+When `/think` is invoked:
+
+1. **All Phases Mandatory**: Execute Phase 0 through Phase VII.
+2. **Counterfactual Required**: Phase 3F (Upward/Lateral/Downward) always included.
+3. **Confrontation Required**: Phase VII always included.
+4. **Multi-Path Reasoning**: 2-3 branches minimum, including dead ends.
+5. **Stress-Test**: Phase 5E robustness check mandatory.
+6. **No Shortcuts**: Even if query seems simple, go full depth.
+
+## Phase Sequence (Mandatory)
+
+- [ ] Phase 0: Graph of Thought
+- [ ] Phase I: Upstream Tracing
+- [ ] Phase II: Validation
+- [ ] Phase III: Analysis
+- [ ] Phase IV: Probabilistic Modeling
+- [ ] Phase V: Strategic Advice
+- [ ] Phase VI: Final Thoughts
+- [ ] Phase VII: Confrontation
+
+## Use Cases
+
+- High-stakes decisions (>$10K or >6 months impact)
+- When user explicitly wants exhaustive analysis
+- Complex multi-variable problems
+- When destruction risk (C1) is suspected
+
+# workflow #automation #think
+'''

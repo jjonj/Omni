@@ -90,6 +90,7 @@ namespace OmniSync.Hub.Logic.Services
 
             // Set PYTHONPATH
             startInfo.EnvironmentVariables["PYTHONPATH"] = paths.AthenaSrc;
+            startInfo.EnvironmentVariables["PYTHONIOENCODING"] = "utf-8";
 
             using var process = new Process { StartInfo = startInfo };
             

@@ -94,6 +94,7 @@ def run_shutdown(project_root: Optional[Path] = None) -> bool:
 
     # Check multiple possible session log locations
     possible_dirs = [
+        project_root / ".omni" / "athena" / "session_logs",
         project_root / "session_logs",
         project_root / ".context" / "memories" / "session_logs",
     ]

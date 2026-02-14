@@ -253,6 +253,16 @@ async function main() {
                 },
                 required: ["project_root"]
               }
+            },
+            {
+              name: "omni_boot",
+              description: "Boot the Omni Assistant session (initialize log, prime context)",
+              inputSchema: {
+                type: "object",
+                properties: {
+                  project_root: { type: "string", description: "Optional project root override" }
+                }
+              }
             }
           ]
         });
@@ -331,6 +341,13 @@ async function main() {
             sendResponse(req.id, { content: [{ type: "text", text: output }] });
           } catch (error) {
             sendResponse(req.id, { isError: true, content: [{ type: "text", text: `Setup Error: ${error.message}` }] });
+          }
+        } else if (toolName === "omni_boot") {
+          try {
+            const output = await runPythonAthenaCommand(["start"], args.project_root);
+            sendResponse(req.id, { content: [{ type: "text", text: output }] });
+          } catch (error) {
+            sendResponse(req.id, { isError: true, content: [{ type: "text", text: `Boot Error: ${error.message}` }] });
           }
         } else {
           sendError(req.id, -32601, `Tool not found: ${toolName}`);

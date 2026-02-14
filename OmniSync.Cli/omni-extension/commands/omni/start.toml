@@ -1,2 +1,4 @@
 description = "Boot the Omni Assistant session"
-prompt = "Boot the Omni Assistant session by running 'python -m athena --boot' via the Assistant Service. This will initialize the session log and prime the AI with the core identity and recent context."
+prompt = '''
+Boot the Omni Assistant session by calling the 'omni_boot' tool passing the current 'project_root'. This will initialize the session log and prime the AI with the core identity and recent context. After booting, run '/omni:sync' to synchronize the project context."
+'''
