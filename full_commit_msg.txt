@@ -1,0 +1,18 @@
+feat: comprehensive update of Omni Hub, Android, and Web components
+
+Hub:
+- Enhanced AiCliService with workspace extraction from command lines.
+- Updated OmniSweepViewModel and UI with logging and visibility improvements.
+- Added RequestShowProjectSelector to CommandDispatcher.
+- Fixed dependency injection in MainWindow and MainViewModel for new components.
+
+Android:
+- Optimized AiChatScreen to display session names and workspaces more effectively.
+
+Web:
+- Batch version update for all HTML pages to v2026.02.02.10.51.
+- Updated SignalR, audio, and app script references.
+
+Other:
+- Added comprehensive TestScripts for AI pipe, window movement, and TFT testing.
+- Track updates: Removed tft_roles plan and added ai_queuing track.

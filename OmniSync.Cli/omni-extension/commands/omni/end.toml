@@ -1,0 +1,6 @@
+description = "End the current Omni.Athena session"
+prompt = '''
+1. Read the workflow at .omni/athena/.agent/workflows/end.md.
+2. Follow the instructions in that workflow to close the session.
+3. Perform maintenance audits as defined in the Omni.Athena protocols.
+'''

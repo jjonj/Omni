@@ -1,0 +1,16 @@
+{
+  "name": "omni",
+  "version": "1.0.0",
+  "description": "Interfaces with the omni system.",
+  "contextFiles": [
+    "GEMINI.md"
+  ],
+  "mcpServers": {
+    "omni": {
+      "command": "node",
+      "args": [
+        "${extensionPath}/scripts/omni-server.cjs"
+      ]
+    }
+  }
+}

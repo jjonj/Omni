@@ -1,0 +1,8 @@
+{
+  "track_id": "unify_omni_assistant_20260214",
+  "type": "feature",
+  "status": "new",
+  "created_at": "2026-02-14T13:13:00Z",
+  "updated_at": "2026-02-14T13:13:00Z",
+  "description": "Unify OmniProjectContext (C#) and Omni.Athena (Python) into a single Assistant ecosystem managed by the C# Hub."
+}

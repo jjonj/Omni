@@ -1,0 +1,8 @@
+D:\SSDProjects\Omni\artifacts\testobj2\Debug\net9.0-windows\OmniSync.Hub.csproj.AssemblyReference.cache
+D:\SSDProjects\Omni\artifacts\testobj2\Debug\net9.0-windows\Presentation\MainWindow.g.cs
+D:\SSDProjects\Omni\artifacts\testobj2\Debug\net9.0-windows\Presentation\OmniSweepWindow.g.cs
+D:\SSDProjects\Omni\artifacts\testobj2\Debug\net9.0-windows\Presentation\ProjectSelectorWindow.g.cs
+D:\SSDProjects\Omni\artifacts\testobj2\Debug\net9.0-windows\OmniSync.Hub_Content.g.cs
+D:\SSDProjects\Omni\artifacts\testobj2\Debug\net9.0-windows\GeneratedInternalTypeHelper.g.cs
+D:\SSDProjects\Omni\artifacts\testobj2\Debug\net9.0-windows\OmniSync.Hub_MarkupCompile.cache
+D:\SSDProjects\Omni\artifacts\testobj2\Debug\net9.0-windows\OmniSync.Hub_MarkupCompile.lref

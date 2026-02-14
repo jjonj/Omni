@@ -1,0 +1,6 @@
+{
+  "version": "2.0",
+  "project_name": "AssistantIntegrationTestProject",
+  "last_sync_ms": 1771071846421,
+  "data": "1771071732435|\u21b3main.py\n1771071732434|\u21b3readme.md"
+}

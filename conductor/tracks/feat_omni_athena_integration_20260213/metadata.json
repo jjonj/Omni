@@ -1,0 +1,8 @@
+{
+  "track_id": "feat_omni_athena_integration_20260213",
+  "type": "feature",
+  "status": "new",
+  "created_at": "2026-02-13T16:30:00Z",
+  "updated_at": "2026-02-13T16:30:00Z",
+  "description": "Integrate Athena into omni, rebrand it Omni.Athena, move files from local .athena folder to .omni investgate and propose more integration work"
+}
