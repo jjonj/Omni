@@ -111,14 +111,6 @@ response.wav
 OmniSync.Hub/Voice/MIND/Diary/*
 /OmniSync.Hub/Screenshots
 
-# OmniSync.Web/www/ Whitelist
-OmniSync.Web/www/*
-!OmniSync.Web/www/*/
-!OmniSync.Web/www/*
-
-# Exclusions from whitelist (Always Ignored)
-OmniSync.Web/www/js/
-OmniSync.Web/www/assets/
-OmniSync.Web/www/css/
-OmniSync.Web/www/Alt1/
+# OmniSync.Web/www/ Management
+OmniSync.Web/www/worktrees/
 OmniSync.Web/www/worktrees.json
