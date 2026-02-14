@@ -150,16 +150,19 @@ def create_functional_orchestrator(project_root: Optional[Path] = None) -> BootO
     # --- Phase 3: Semantic Prime Verification ---
     def semantic_prime():
         """Check integrity of core identity."""
-        from athena.core.config import FRAMEWORK_DIR
+        # Check local .omni location first, then fallback to global framework
+        identity_file = orchestrator.athena_dir / "framework" / "modules" / "Core_Identity.md"
         
-        identity_file = FRAMEWORK_DIR / "v8.2-stable" / "modules" / "Core_Identity.md"
+        if not identity_file.exists():
+            from athena.core.config import FRAMEWORK_DIR
+            identity_file = FRAMEWORK_DIR / "v8.2-stable" / "modules" / "Core_Identity.md"
 
         if identity_file.exists():
             content = identity_file.read_text(encoding="utf-8")
             hash_val = hashlib.sha256(content.encode()).hexdigest()[:12]
             print(f"   🔐 Identity hash: {hash_val}")
         else:
-            print("   ⚠️  Core_Identity.md not found in framework")
+            print("   ⚠️  Core_Identity.md not found")
         return True
 
     orchestrator.register_phase("Semantic prime verified", semantic_prime)
@@ -246,15 +249,17 @@ def create_functional_orchestrator(project_root: Optional[Path] = None) -> BootO
 
     # --- Phase 7: Identity Loading ---
     def load_identity():
-        """Load core identity principles from the framework repo."""
-        from athena.core.config import FRAMEWORK_DIR
+        """Load core identity principles."""
+        identity_file = orchestrator.athena_dir / "framework" / "modules" / "Core_Identity.md"
         
-        identity_file = FRAMEWORK_DIR / "v8.2-stable" / "modules" / "Core_Identity.md"
+        if not identity_file.exists():
+            from athena.core.config import FRAMEWORK_DIR
+            identity_file = FRAMEWORK_DIR / "v8.2-stable" / "modules" / "Core_Identity.md"
 
         if identity_file.exists():
-            print(f"   🏛️  Identity loaded from framework: {identity_file.name}")
+            print(f"   🏛️  Identity loaded: {identity_file.name}")
         else:
-            print("   ⚠️  Core_Identity.md not found in framework repo")
+            print("   ⚠️  Core_Identity.md not found")
         return True
 
     orchestrator.register_phase("Identity loaded", load_identity)
