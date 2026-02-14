@@ -13,7 +13,7 @@ class StateService:
     def __init__(self, project_root: Path):
         self.project_root = project_root
         self.state_dir = project_root / ".omni" / "projectcontext"
-        self.state_file = self.state_dir / "sync_state.txt"
+        self.state_file = self.state_dir / "project_files.json"
 
     def initialize(self):
         self.state_dir.mkdir(parents=True, exist_ok=True)
@@ -24,18 +24,8 @@ class StateService:
         
         try:
             with open(self.state_file, "r", encoding="utf-8") as f:
-                content = f.read()
+                text_data = f.read()
                 
-            # Check if it's the new JSON-wrapped format
-            if content.strip().startswith("{"):
-                try:
-                    wrapper = json.loads(content)
-                    text_data = wrapper.get("data", "")
-                except Exception:
-                    text_data = ""
-            else:
-                text_data = content
-
             return self._parse_compact_text(text_data)
         except Exception:
             return []
@@ -92,15 +82,8 @@ class StateService:
         
         compact_text = self._generate_compact_text(files)
         
-        wrapper = {
-            "version": "2.0",
-            "project_name": self.project_root.name,
-            "last_sync_ms": int(Path(self.state_file).stat().st_mtime * 1000) if self.state_file.exists() else 0,
-            "data": compact_text
-        }
-        
         with open(self.state_file, "w", encoding="utf-8") as f:
-            json.dump(wrapper, f, indent=2)
+            f.write(compact_text)
 
     def _generate_compact_text(self, files: List[FileContext]) -> str:
         class Node:
