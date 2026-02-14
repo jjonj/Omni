@@ -170,10 +170,12 @@ def main():
     if args.command == "init":
         from athena.cli.init import init_workspace
 
-        # Handle --here flag
+        # Handle --here flag or use the global --root
         target = args.target
         if args.here:
             target = Path.cwd()
+        elif target is None and args.root:
+            target = args.root
 
         success = init_workspace(target, ide=args.ide)
         sys.exit(0 if success else 1)
