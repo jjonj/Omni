@@ -1,0 +1,10 @@
+# Athena SDK Dependencies
+# Generated from pyproject.toml
+#
+# Install: pip install -r requirements.txt
+# For full functionality: pip install -r requirements.txt -r requirements-full.txt
+
+# Core dependencies (minimal for basic usage)
+python-dotenv>=1.0.0
+requests>=2.31.0
+google-generativeai>=0.3.0
