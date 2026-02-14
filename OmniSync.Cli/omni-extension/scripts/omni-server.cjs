@@ -236,7 +236,12 @@ async function main() {
             {
               name: "opc_sync",
               description: "Synchronize Omni Project Context (OPC) tracking",
-              inputSchema: { type: "object", properties: {} }
+              inputSchema: {
+                type: "object",
+                properties: {
+                  project_root: { type: "string", description: "Optional project root override" }
+                }
+              }
             }
           ]
         });
@@ -304,7 +309,7 @@ async function main() {
           }
         } else if (toolName === "opc_sync") {
           try {
-            const output = await runPythonAthenaCommand(["opc", "sync"]);
+            const output = await runPythonAthenaCommand(["opc", "sync"], args.project_root);
             sendResponse(req.id, { content: [{ type: "text", text: output }] });
           } catch (error) {
             sendResponse(req.id, { isError: true, content: [{ type: "text", text: `OPC Sync Error: ${error.message}` }] });

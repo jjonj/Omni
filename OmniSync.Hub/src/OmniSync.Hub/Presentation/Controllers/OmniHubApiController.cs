@@ -99,7 +99,7 @@ namespace OmniSync.Hub.Presentation.Controllers
         {
             if (!_authService.Validate(key)) return Unauthorized();
 
-            _monitor.AddLogMessage($"[OmniHubAPI] Executing Assistant Command: '{request.Command}' (Args: {string.Join(" ", request.Args)})");
+            _monitor.AddLogMessage($"[OmniHubAPI] Executing Assistant Command: '{request.Command}' (Args: {string.Join(" ", request.Args)}) (Root: {request.ProjectRoot})");
 
             try
             {

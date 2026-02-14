@@ -56,7 +56,7 @@ namespace OmniSync.Hub.Logic.Services
         public async Task<AssistantExecutionResult> ExecuteAsync(string command, IEnumerable<string> args, string? projectRoot = null)
         {
             var paths = GetAthenaPaths();
-            projectRoot ??= @"D:\SSDProjects\Omni";
+            projectRoot = DiscoverProjectRoot(projectRoot ?? Directory.GetCurrentDirectory());
 
             var processArgs = new List<string> { "-m", "athena" };
             
@@ -108,6 +108,23 @@ namespace OmniSync.Hub.Logic.Services
                 Error = error.Trim(),
                 ExitCode = process.ExitCode
             };
+        }
+
+        private string DiscoverProjectRoot(string startDir)
+        {
+            var current = new DirectoryInfo(startDir);
+            while (current != null)
+            {
+                if (current.GetDirectories(".omni").Length > 0 ||
+                    current.GetDirectories(".athena").Length > 0 ||
+                    current.GetDirectories(".git").Length > 0 ||
+                    current.GetFiles(".athena_root").Length > 0)
+                {
+                    return current.FullName;
+                }
+                current = current.Parent;
+            }
+            return startDir;
         }
 
         private IEnumerable<string> EscapeArgs(IEnumerable<string> args)
