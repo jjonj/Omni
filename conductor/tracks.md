@@ -9,3 +9,8 @@
 
 - [x] **Track: Integrate Athena into omni, rebrand it Omni.Athena, move files from local .athena folder to .omni investgate and propose more integration work**
 *Link: [./tracks/feat_omni_athena_integration_20260213/](./tracks/feat_omni_athena_integration_20260213/)*
+
+---
+
+- [ ] **Track: Unify OmniProjectContext (C#) and Omni.Athena (Python) into a single Assistant ecosystem managed by the C# Hub.**
+*Link: [./tracks/unify_omni_assistant_20260214/](./tracks/unify_omni_assistant_20260214/)*
