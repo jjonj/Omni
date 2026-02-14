@@ -19,6 +19,7 @@ def find_current_session(logs_dir: Path) -> Optional[Path]:
 def run_quicksave(summary: str, bullets: Optional[list[str]] = None, project_root: Optional[Path] = None) -> bool:
     """
     Append a checkpoint to the current session log.
+    If no session log exists, create one.
     """
     if project_root is None:
         # Auto-discover project root
@@ -37,22 +38,27 @@ def run_quicksave(summary: str, bullets: Optional[list[str]] = None, project_roo
             project_root = current
 
     # Check multiple possible session log locations
-    possible_dirs = [
-        project_root / ".omni" / "athena" / "session_logs", # New centralized location
-        project_root / ".athena" / "session_logs",         # Transition location
-        project_root / "session_logs",                     # Legacy root location
-    ]
+    # Prefer .omni/athena/session_logs
+    logs_dir = project_root / ".omni" / "athena" / "session_logs"
+    if not logs_dir.exists():
+        # Fallback to check if legacy exists, else create the new one
+        legacy_dir = project_root / ".athena" / "session_logs"
+        if legacy_dir.exists():
+            logs_dir = legacy_dir
+        else:
+            logs_dir.mkdir(parents=True, exist_ok=True)
 
-    session_file = None
-    for logs_dir in possible_dirs:
-        if logs_dir.exists():
-            session_file = find_current_session(logs_dir)
-            if session_file:
-                break
+    session_file = find_current_session(logs_dir)
 
     if not session_file:
-        print("(!) No session log found for today")
-        return False
+        # Create a fresh session log for today
+        today = datetime.now().strftime("%Y-%m-%d")
+        session_id = f"{today}-session-01"
+        session_file = logs_dir / f"{session_id}.md"
+        
+        initial_content = f"# Session Log: {session_id}\n\n> **Created**: {datetime.now().isoformat()}\n> **Status**: Active\n\n(Auto-initialized via quicksave)\n"
+        session_file.write_text(initial_content, encoding="utf-8")
+        print(f"   📝 Initialized new session: {session_file.name}")
 
     timestamp = datetime.now().strftime("%H:%M")
     checkpoint = f"\n\n### [Checkpoint {timestamp}]\n{summary}\n"

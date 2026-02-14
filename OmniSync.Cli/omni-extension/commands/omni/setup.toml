@@ -1,9 +1,2 @@
 description = "Initialize Omni Assistant workspace"
-prompt = '''
-Initialize the Omni Assistant workspace automatically.
-
-Operation:
-1. Run 'python -m athena init' via the Assistant Service. This script is self-contained and will scaffold all required directories (.omni/athena/, .omni/projectcontext/) and template files.
-2. Once initialized, run 'python -m athena omni:sync' to perform the first Project Context scan.
-3. Confirm to the user when the workspace is ready.
-'''
+prompt = "Initialize the Omni Assistant workspace automatically by calling the 'omni_setup' tool with the current project root. This will scaffold all required directories (.omni/athena/, .omni/projectcontext/) and template files via the Assistant Service. After setup, call 'opc_sync' to perform the first Project Context scan."

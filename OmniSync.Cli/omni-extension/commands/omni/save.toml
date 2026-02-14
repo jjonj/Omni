@@ -1,7 +1,2 @@
-description = "Mid-session checkpoint (Omni Assistant Workflow)"
-prompt = '''
-1. Read the workflow at .omni/athena/agent/workflows/save.md.
-2. Follow the instructions to perform a mid-session checkpoint.
-3. This involves summarizing recent progress and key decisions, then running 'python -m athena save' to record the checkpoint.
-4. Confirm to the user once the checkpoint is logged.
-'''
+description = "Save a checkpoint to the session log"
+prompt = "Generate a comprehensive summary of the recent work, capturing all key technical details, architectural decisions, and progress (avoid being overly brief). Then, execute 'python -m athena save \"summary\"' via the Assistant Service, using --bullets for specific atomic items."

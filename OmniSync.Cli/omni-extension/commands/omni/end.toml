@@ -1,9 +1,2 @@
 description = "End the current Omni Assistant session"
-prompt = '''
-1. Read the workflow at .omni/athena/agent/workflows/end.md.
-2. Follow the instructions in that workflow to close the session.
-3. This involves running 'python -m athena omni:end' which:
-   - Updates the lineage of session logs.
-   - Calculates cognitive load (Lambda) and token usage.
-   - Summarizes the session's key findings.
-'''
+prompt = "Finalize the current Omni Assistant session by running 'python -m athena omni:end' via the Assistant Service. This will calculate session stats (Lambda/tokens) and close the session log. Follow any additional summary instructions in .omni/athena/agent/workflows/end.md if present."

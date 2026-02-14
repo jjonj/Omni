@@ -326,23 +326,6 @@ namespace OmniSync.Hub.Logic.Services
                 e.WorkspaceName,
                 e.Timestamp);
 
-            // Automatically inject project context for the next turn if appropriate
-            if (e.Category != "forced" && !string.IsNullOrWhiteSpace(e.WorkspacePath) && Directory.Exists(e.WorkspacePath))
-            {
-                _ = Task.Run(async () => {
-                    try {
-                        _logger.LogInformation($"[HubEventSender] Auto-injecting context for PID {e.Pid} in {e.WorkspacePath}");
-                        var result = await _assistantService.ExecuteAsync("omni:context", new[] { "session" }, e.WorkspacePath);
-                        if (result.Success && !string.IsNullOrWhiteSpace(result.Output))
-                        {
-                            await _aiCliService.SendPromptAsync(result.Output, e.Pid);
-                        }
-                    } catch (Exception ex) {
-                        _logger.LogError(ex, $"[HubEventSender] Failed to auto-inject context for PID {e.Pid}");
-                    }
-                });
-            }
-
             // Preserve existing FINISHED broadcast behavior, sourced from the new structured event.
             await _hubContext.Clients.All.SendAsync("ReceiveAiStatus", "FINISHED", e.Pid);
         }

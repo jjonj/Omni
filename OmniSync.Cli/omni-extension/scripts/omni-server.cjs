@@ -242,6 +242,17 @@ async function main() {
                   project_root: { type: "string", description: "Optional project root override" }
                 }
               }
+            },
+            {
+              name: "omni_setup",
+              description: "Initialize the Omni Assistant workspace (scaffold .omni and templates)",
+              inputSchema: {
+                type: "object",
+                properties: {
+                  project_root: { type: "string", description: "The project root to initialize" }
+                },
+                required: ["project_root"]
+              }
             }
           ]
         });
@@ -313,6 +324,13 @@ async function main() {
             sendResponse(req.id, { content: [{ type: "text", text: output }] });
           } catch (error) {
             sendResponse(req.id, { isError: true, content: [{ type: "text", text: `OPC Sync Error: ${error.message}` }] });
+          }
+        } else if (toolName === "omni_setup") {
+          try {
+            const output = await runPythonAthenaCommand(["init"], args.project_root);
+            sendResponse(req.id, { content: [{ type: "text", text: output }] });
+          } catch (error) {
+            sendResponse(req.id, { isError: true, content: [{ type: "text", text: `Setup Error: ${error.message}` }] });
           }
         } else {
           sendError(req.id, -32601, `Tool not found: ${toolName}`);

@@ -74,34 +74,34 @@ class BootOrchestrator:
         start_time = time.time()
         parallel_phases = parallel_phases or []
 
-        print("━" * 60)
-        print("⚡ ATHENA BOOT SEQUENCE")
-        print("━" * 60)
+        print("-" * 60)
+        print("ATHENA BOOT SEQUENCE")
+        print("-" * 60)
 
         for i, (name, executor) in enumerate(self.phases):
             phase_num = i + 1
             try:
                 if i in parallel_phases:
-                    print(f"[{phase_num}/{len(self.phases)}] ⚡ {name} (parallel)")
+                    print(f"[{phase_num}/{len(self.phases)}] (>>) {name} (parallel)")
                 else:
-                    print(f"[{phase_num}/{len(self.phases)}] ⏳ {name}")
+                    print(f"[{phase_num}/{len(self.phases)}] (..) {name}")
 
                 result = executor()
 
                 if result is False:
-                    print(f"❌ Boot failed at phase: {name}")
+                    print(f"(!) Boot failed at phase: {name}")
                     return False
 
-                print(f"[{phase_num}/{len(self.phases)}] ✅ {name}")
+                print(f"[{phase_num}/{len(self.phases)}] (OK) {name}")
 
             except Exception as e:
-                print(f"❌ Boot error in {name}: {e}")
+                print(f"(!) Boot error in {name}: {e}")
                 return False
 
         self.boot_time = time.time() - start_time
-        print("━" * 60)
-        print(f"⚡ ATHENA ONLINE | Session: {self.session_id} | Boot: {self.boot_time:.1f}s")
-        print("━" * 60)
+        print("-" * 60)
+        print(f"ATHENA ONLINE | Session: {self.session_id} | Boot: {self.boot_time:.1f}s")
+        print("-" * 60)
 
         return True
 
