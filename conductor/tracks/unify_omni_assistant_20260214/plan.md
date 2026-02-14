@@ -28,10 +28,10 @@
     - [x] Write integration tests for `omni:search` retrieving results from multiple sources.
 - [x] Task: Conductor - User Manual Verification 'Phase 3: Logic Unification' (Protocol in workflow.md)
 
-## Phase 4: Final Workflow Integration
-- [ ] Task: Refactor Extension Slash Commands.
-    - [ ] Update `.toml` files in `omni-extension/commands` to use the new names.
-    - [ ] Ensure `/omni:start` triggers both the boot orchestrator and the initial context sync.
-- [ ] Task: Update System Hooks.
-    - [ ] Ensure `SessionStart` and `BeforeAgent` hooks correctly call the Hub's assistant execution.
-- [ ] Task: Conductor - User Manual Verification 'Phase 4: Final Integration' (Protocol in workflow.md)
+## Phase 4: Final Workflow Integration [checkpoint: 53a7fb5]
+- [x] Task: Refactor Extension Slash Commands.
+    - [x] Update `.toml` files in `omni-extension/commands` to use the new names.
+    - [x] Ensure `/omni:start` triggers both the boot orchestrator and the initial context sync.
+- [x] Task: Update System Hooks.
+    - [x] Ensure `SessionStart` and `BeforeAgent` hooks correctly call the Hub's assistant execution.
+- [x] Task: Conductor - User Manual Verification 'Phase 4: Final Integration' (Protocol in workflow.md)
