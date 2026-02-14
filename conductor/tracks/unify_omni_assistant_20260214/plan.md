@@ -19,14 +19,14 @@
     - [x] Update Hub discovery logic to identify `.omni/` as the project root marker. d4c2328
 - [x] Task: Conductor - User Manual Verification 'Phase 2: Standardization' (Protocol in workflow.md) d4c2328
 
-## Phase 3: Logic Unification & Rename
-- [ ] Task: Unify OPC and Athena logic in Python.
-    - [ ] Port remaining C# context logic (e.g., skeleton refinement) to Python `athena.opc`.
-    - [ ] Rename commands/tools to the new `omni:*` scheme in `mcp_server.py` and `__main__.py`.
-- [ ] Task: Implement Hybrid Brain Search.
-    - [ ] Update `smart_search.py` to query current project structure, session logs, and vector memory in parallel.
-    - [ ] Write integration tests for `omni:search` retrieving results from multiple sources.
-- [ ] Task: Conductor - User Manual Verification 'Phase 3: Logic Unification' (Protocol in workflow.md)
+## Phase 3: Logic Unification & Rename [checkpoint: f5e6d08]
+- [x] Task: Unify OPC and Athena logic in Python.
+    - [x] Port remaining C# context logic (e.g., skeleton refinement) to Python `athena.opc`.
+    - [x] Rename commands/tools to the new `omni:*` scheme in `mcp_server.py` and `__main__.py`.
+- [x] Task: Implement Hybrid Brain Search.
+    - [x] Update `smart_search.py` to query current project structure, session logs, and vector memory in parallel.
+    - [x] Write integration tests for `omni:search` retrieving results from multiple sources.
+- [x] Task: Conductor - User Manual Verification 'Phase 3: Logic Unification' (Protocol in workflow.md)
 
 ## Phase 4: Final Workflow Integration
 - [ ] Task: Refactor Extension Slash Commands.
