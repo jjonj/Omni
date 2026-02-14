@@ -28,10 +28,15 @@
     - [x] Write integration tests for `omni:search` retrieving results from multiple sources.
 - [x] Task: Conductor - User Manual Verification 'Phase 3: Logic Unification' (Protocol in workflow.md)
 
-## Phase 4: Final Workflow Integration [checkpoint: 53a7fb5]
-- [x] Task: Refactor Extension Slash Commands.
-    - [x] Update `.toml` files in `omni-extension/commands` to use the new names.
-    - [x] Ensure `/omni:start` triggers both the boot orchestrator and the initial context sync.
-- [x] Task: Update System Hooks.
-    - [x] Ensure `SessionStart` and `BeforeAgent` hooks correctly call the Hub's assistant execution.
-- [x] Task: Conductor - User Manual Verification 'Phase 4: Final Integration' (Protocol in workflow.md)
+## Phase 4: Final Workflow Integration [checkpoint: a1c53e6]
+- [x] Task: Refactor Extension Slash Commands. a1c53e6
+    - [x] Update `.toml` files in `omni-extension/commands` to use the new names. a1c53e6
+    - [x] Ensure `/omni:start` triggers both the boot orchestrator and the initial context sync. a1c53e6
+- [x] Task: Update System Hooks. a1c53e6
+    - [x] Ensure `SessionStart` and `BeforeAgent` hooks correctly call the Hub's assistant execution. a1c53e6
+- [x] Task: Conductor - User Manual Verification 'Phase 4: Final Integration' (Protocol in workflow.md) a1c53e6
+
+## Final Bug Fixes [checkpoint: e287e88]
+- [x] Fix NameError in search.py. e287e88
+- [x] Implement search_commits in GitHistoryService. e287e88
+- [x] Update settings.json hooks to use unified commands. e287e88
