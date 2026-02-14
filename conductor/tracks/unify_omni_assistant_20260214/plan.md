@@ -10,14 +10,14 @@
     - [x] Implement `callHubAssistantApi` in `omni-server.cjs` to route commands through the Hub. 33c03c9
 - [x] Task: Conductor - User Manual Verification 'Phase 1: Hub Orchestration' (Protocol in workflow.md) 33c03c9
 
-## Phase 2: Metadata Standardization & Path Discovery
-- [ ] Task: Standardize OPC State Format.
-    - [ ] Update Python `StateService` to support compact text format (wrapped in JSON).
-    - [ ] Update C# `StateService` to match the new unified format.
-- [ ] Task: Update Athena Initialization logic.
-    - [ ] Modify `athena init` to strictly scaffold into `.omni/athena` and `.omni/projectcontext`.
-    - [ ] Update Hub discovery logic to identify `.omni/` as the project root marker.
-- [ ] Task: Conductor - User Manual Verification 'Phase 2: Standardization' (Protocol in workflow.md)
+## Phase 2: Metadata Standardization & Path Discovery [checkpoint: d4c2328]
+- [x] Task: Standardize OPC State Format. d4c2328
+    - [x] Update Python `StateService` to support compact text format (wrapped in JSON). d4c2328
+    - [x] Update C# `StateService` to match the new unified format. d4c2328
+- [x] Task: Update Athena Initialization logic. d4c2328
+    - [x] Modify `athena init` to strictly scaffold into `.omni/athena` and `.omni/projectcontext`. d4c2328
+    - [x] Update Hub discovery logic to identify `.omni/` as the project root marker. d4c2328
+- [x] Task: Conductor - User Manual Verification 'Phase 2: Standardization' (Protocol in workflow.md) d4c2328
 
 ## Phase 3: Logic Unification & Rename
 - [ ] Task: Unify OPC and Athena logic in Python.
