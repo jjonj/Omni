@@ -39,3 +39,31 @@ class GitHistoryService:
             pass
             
         return commits
+
+    def search_commits(self, query: str, limit: int = 10) -> List[str]:
+        """Search commit messages for a query."""
+        commits = []
+        try:
+            # git log -n limit --grep=query --format="%B%n---"
+            cmd = ["git", "log", "-n", str(limit), f"--grep={query}", "--format=%B%n---"]
+            
+            result = subprocess.run(
+                cmd, 
+                capture_output=True, 
+                text=True, 
+                cwd=self.working_directory,
+                encoding='utf-8',
+                errors='ignore'
+            )
+            
+            if result.returncode == 0 and result.stdout:
+                parts = result.stdout.split("\n---\n")
+                for part in parts:
+                    trimmed = part.strip()
+                    if trimmed:
+                        commits.append(trimmed)
+                        
+        except Exception:
+            pass
+            
+        return commits

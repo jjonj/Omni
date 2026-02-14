@@ -40,6 +40,7 @@ from athena.memory.vectors import (
     search_user_profile,
     search_system_docs,
 )
+from athena.opc.opc_engine import OpcOrchestrator # Import the OPC Orchestrator
 from athena.tools.reranker import rerank_results
 
 # Config
@@ -64,6 +65,7 @@ WEIGHTS = {
     "system_doc": 1.8,  # System docs (vector search)
     "sqlite": 1.5,  # The Sovereign Fallback (Local DB)
     "filename": 1.0,  # The Map (filesystem filename match)
+    "project_context": 2.0, # New: Project context (files and git history)
 }
 RRF_K = 60
 CONFIDENCE_HIGH = 0.03
@@ -419,6 +421,54 @@ def collect_sqlite(query: str, limit: int = 10) -> list[SearchResult]:
     return results
 
 
+def collect_project_context(query: str, limit: int = 10) -> list[SearchResult]:
+    """Collect matches from project context (git history and file skeleton)."""
+    results = []
+    try:
+        opc_orchestrator = OpcOrchestrator(project_root=PROJECT_ROOT)
+        
+        # Search git history
+        git_history_results = opc_orchestrator.git_service.search_commits(query, limit=limit)
+        for commit in git_history_results:
+            results.append(
+                SearchResult(
+                    id=f"GitCommit:{commit.splitlines()[0]}",
+                    content=commit,
+                    source="project_context",
+                    score=1.0,
+                    metadata={"type": "git_commit"},
+                )
+            )
+        
+        # Search file skeletons (basic keyword search on extracted content)
+        # This will need to be refined for actual semantic search on skeletons
+        file_skeletons = opc_orchestrator.state_service.load_state()
+        for fc in file_skeletons:
+            file_path = PROJECT_ROOT / fc.path
+            if file_path.exists():
+                ext = file_path.suffix
+                # This needs to be improved to actually search the *skeleton*
+                # For now, a simple filename match or content check (if content was in state)
+                if query.lower() in file_path.name.lower():
+                     results.append(
+                        SearchResult(
+                            id=f"FileSkeleton:{file_path.name}",
+                            content=f"Path: {fc.path}",
+                            source="project_context",
+                            score=0.8,
+                            metadata={"type": "file_skeleton", "path": str(fc.path)},
+                        )
+                    )
+                # If content was extracted and stored, search that
+                # Placeholder for future:
+                # if query.lower() in extracted_skeleton_content.lower():
+                #    results.append(...)
+
+    except Exception as e:
+        print(f"   ⚠️ Project context search failed: {e}", file=sys.stderr)
+        
+    return results[:limit]
+
 # --- Fusion Logic ---
 
 
@@ -495,7 +545,7 @@ def run_search(
             # Fallback to full search
             if not json_output:
                 print(
-                    f'\n🔍 SMART SEARCH (Parallel Hybrid RRF{" + Rerank" if rerank else ""}): "{query}"'
+                    f'\n🔍 OMNI SEARCH (Parallel Hybrid RRF{" + Rerank" if rerank else ""}): "{query}"'
                 )
                 print("=" * 60)
 
@@ -507,6 +557,7 @@ def run_search(
                 "vector": lambda: collect_vectors(query, embedding=query_embedding),
                 "sqlite": lambda: collect_sqlite(query),
                 "filename": lambda: collect_filenames(query),
+                "project_context": lambda: collect_project_context(query)
             }
 
             lists = {}

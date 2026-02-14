@@ -32,19 +32,19 @@ def run_check():
     """Run system health diagnostics."""
     from athena import __version__
 
-    print("🩺 ATHENA SYSTEM CHECK")
+    print("🩺 OMNI ASSISTANT SYSTEM CHECK")
     print("=" * 60)
     print(f"   CLI Version: {__version__}")
 
     # Check for .athena_root marker
-    root_marker = Path.cwd() / ".athena_root"
+    root_marker = Path.cwd() / ".athena_root" # Still using .athena_root for backwards compatibility
     if root_marker.exists():
         print("   ✅ Workspace marker: Found")
     else:
         print("   ⚠️  Workspace marker: Missing (run `athena init .` first)")
 
     # Check key directories
-    dirs_to_check = [".agent", ".context", ".framework"]
+    dirs_to_check = [".omni/athena/agent", ".omni/athena/context", ".omni/athena/framework"]
     for d in dirs_to_check:
         if (Path.cwd() / d).exists():
             print(f"   ✅ {d}/: Found")
@@ -69,8 +69,8 @@ def run_check():
 
 def main():
     parser = argparse.ArgumentParser(
-        prog="athena",
-        description="Athena Bionic OS — Build Your Own AI Agent in 5 Minutes",
+        prog="omni",
+        description="Omni Assistant — Build Your Own AI Agent in 5 Minutes",
     )
     parser.add_argument("--version", "-v", action="store_true", help="Show version and exit")
     parser.add_argument(
@@ -94,7 +94,7 @@ def main():
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
 
     # init subcommand
-    init_parser = subparsers.add_parser("init", help="Initialize a new Athena workspace")
+    init_parser = subparsers.add_parser("init", help="Initialize a new Assistant workspace")
     init_parser.add_argument(
         "target",
         nargs="?",
@@ -126,20 +126,34 @@ def main():
         help="Brief summary of the checkpoint",
     )
 
-    # opc subcommand
-    opc_parser = subparsers.add_parser("opc", help="OmniProjectContext (OPC) tools")
+    # omni:search subcommand
+    search_parser = subparsers.add_parser("omni:search", help="Hybrid Brain Search")
+    search_parser.add_argument("query", help="Search query")
+    search_parser.add_argument("--limit", type=int, default=10)
+    search_parser.add_argument("--json", action="store_true")
+
+    # omni:context subcommand (formerly opc)
+    opc_parser = subparsers.add_parser("omni:context", help="Project Context tools")
     opc_parser.add_argument(
-        "opc_cmd",
+        "omni_context_cmd",
         choices=["sync", "session", "context"],
-        help="OPC command to run",
+        help="Project Context command to run",
     )
+
+    # Aliases for slash commands
+    subparsers.add_parser("start", help="Alias for --boot")
+    subparsers.add_parser("end", help="Alias for --end")
+    subparsers.add_parser("omni:start", help="Alias for --boot")
+    subparsers.add_parser("omni:end", help="Alias for --end")
+    subparsers.add_parser("omni:sync", help="Alias for omni:context sync")
+
 
     args = parser.parse_args()
 
     if args.version:
         from athena import __version__
 
-        print(f"athena-cli v{__version__}")
+        print(f"omni-assistant-cli v{__version__}")
         sys.exit(0)
 
     # check subcommand or --doctor flag
@@ -157,13 +171,23 @@ def main():
 
         success = init_workspace(target, ide=args.ide)
         sys.exit(0 if success else 1)
+    
+    # Handle aliases
+    if args.command == "start" or args.command == "omni:start":
+        args.boot = True
+    if args.command == "end" or args.command == "omni:end":
+        args.end = True
+    if args.command == "omni:sync":
+        args.command = "omni:context"
+        args.omni_context_cmd = "sync"
+
 
     if args.end:
         from athena.boot.shutdown import run_shutdown
 
         success = run_shutdown(project_root=args.root)
         sys.exit(0 if success else 1)
-
+    
     if args.command == "save":
         from athena.cli.save import run_quicksave
 
@@ -171,15 +195,21 @@ def main():
         success = run_quicksave(summary, project_root=args.root)
         sys.exit(0 if success else 1)
 
-    if args.command == "opc":
+    if args.command == "omni:search":
+        from athena.tools.search import run_search
+
+        run_search(args.query, limit=args.limit, json_output=args.json)
+        sys.exit(0)
+
+    if args.command == "omni:context":
         from athena.opc.opc_engine import OpcOrchestrator
 
         orchestrator = OpcOrchestrator(project_root=args.root)
-        if args.opc_cmd == "sync":
+        if args.omni_context_cmd == "sync":
             print(orchestrator.handle_sync())
-        elif args.opc_cmd == "session":
+        elif args.omni_context_cmd == "session":
             print(orchestrator.handle_session())
-        elif args.opc_cmd == "context":
+        elif args.omni_context_cmd == "context":
             print(orchestrator.handle_context())
         sys.exit(0)
 
