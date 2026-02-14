@@ -13,7 +13,7 @@ class StateService:
     def __init__(self, project_root: Path):
         self.project_root = project_root
         self.state_dir = project_root / ".omni" / "projectcontext"
-        self.state_file = self.state_dir / "project_files.json"
+        self.state_file = self.state_dir / "project_files.txt"
 
     def initialize(self):
         self.state_dir.mkdir(parents=True, exist_ok=True)
@@ -64,8 +64,9 @@ class StateService:
                 parent_path = dir_stack[-1][1]
                 full_path = os.path.join(parent_path, dir_name) if parent_path else dir_name
                 dir_stack.append((indent, full_path))
-            elif label.startswith("↳"):
-                file_name = label[1:]
+            else:
+                # File (no arrow prefix)
+                file_name = label
                 while len(dir_stack) > 1 and dir_stack[-1][0] >= indent:
                     dir_stack.pop()
                 
@@ -110,7 +111,7 @@ class StateService:
         # Files first, sorted
         for f in sorted(node.files, key=lambda x: x.path):
             file_name = Path(f.path).name
-            lines.append(f"{f.last_modified_ms}|{indent}↳{file_name}")
+            lines.append(f"{f.last_modified_ms}|{indent}{file_name}")
 
         # Subdirectories, sorted
         for dir_name in sorted(node.sub_dirs.keys()):
