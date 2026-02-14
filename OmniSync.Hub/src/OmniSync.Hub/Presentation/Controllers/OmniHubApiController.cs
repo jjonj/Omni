@@ -15,14 +15,16 @@ namespace OmniSync.Hub.Presentation.Controllers
         private readonly AuthService _authService;
         private readonly AiCliService _aiCliService;
         private readonly ScreenshotService _screenshotService;
+        private readonly AssistantService _assistantService;
 
-        public OmniHubApiController(CommandDispatcher dispatcher, HubMonitorService monitor, AuthService authService, AiCliService aiCliService, ScreenshotService screenshotService)
+        public OmniHubApiController(CommandDispatcher dispatcher, HubMonitorService monitor, AuthService authService, AiCliService aiCliService, ScreenshotService screenshotService, AssistantService assistantService)
         {
             _dispatcher = dispatcher;
             _monitor = monitor;
             _authService = authService;
             _aiCliService = aiCliService;
             _screenshotService = screenshotService;
+            _assistantService = assistantService;
         }
 
         [HttpGet("commands")]
@@ -81,6 +83,40 @@ namespace OmniSync.Hub.Presentation.Controllers
             catch (Exception ex)
             {
                 _monitor.AddLogMessage($"[OmniHubAPI] Screenshot ERROR: {ex.Message}");
+                return StatusCode(500, ex.Message);
+            }
+        }
+
+        public class AssistantRequest
+        {
+            public string Command { get; set; } = "";
+            public List<string> Args { get; set; } = new();
+            public string? ProjectRoot { get; set; }
+        }
+
+        [HttpPost("assistant/execute")]
+        public async Task<IActionResult> ExecuteAssistant([FromQuery] string key, [FromBody] AssistantRequest request)
+        {
+            if (!_authService.Validate(key)) return Unauthorized();
+
+            _monitor.AddLogMessage($"[OmniHubAPI] Executing Assistant Command: '{request.Command}' (Args: {string.Join(" ", request.Args)})");
+
+            try
+            {
+                var result = await _assistantService.ExecuteAsync(request.Command, request.Args, request.ProjectRoot);
+                if (result.Success)
+                {
+                    return Ok(result);
+                }
+                else
+                {
+                    _monitor.AddLogMessage($"[OmniHubAPI] Assistant ERROR: {result.Error}");
+                    return StatusCode(500, result);
+                }
+            }
+            catch (Exception ex)
+            {
+                _monitor.AddLogMessage($"[OmniHubAPI] Assistant Exception: {ex.Message}");
                 return StatusCode(500, ex.Message);
             }
         }

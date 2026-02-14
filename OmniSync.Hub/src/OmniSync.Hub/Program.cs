@@ -288,6 +288,7 @@ builder.Services.AddSingleton<ShutdownService>(provider =>
 builder.Services.AddSingleton<RegistryService>();
 builder.Services.AddSingleton<ScreenshotService>();
 builder.Services.AddSingleton<LayoutCaptureService>();
+builder.Services.AddSingleton<AssistantService>();
 builder.Services.AddSingleton<PcgPersistentService>();
 builder.Services.AddSingleton<NodeRedService>();
 builder.Services.AddSingleton<HubMonitorService>();
