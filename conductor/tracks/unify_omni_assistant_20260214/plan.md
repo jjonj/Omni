@@ -1,0 +1,37 @@
+# Implementation Plan: Omni Assistant Unification
+
+## Phase 1: Hub Orchestration & Proxying [checkpoint: 33c03c9]
+- [x] Task: Implement `AssistantService` in C# Hub to manage Python environment and execution. 33c03c9
+    - [x] Write tests for `AssistantService` path resolution and command execution. 33c03c9
+    - [x] Implement `AssistantService` with logic to discover `venv` and set `PYTHONPATH`. 33c03c9
+    - [x] Create Hub API endpoint `/api/external/assistant/execute` in `ExternalApiController`. 33c03c9
+- [x] Task: Refactor Gemini CLI Extension to proxy via Hub. 33c03c9
+    - [x] Update `omni-server.cjs` to remove hardcoded paths. 33c03c9
+    - [x] Implement `callHubAssistantApi` in `omni-server.cjs` to route commands through the Hub. 33c03c9
+- [x] Task: Conductor - User Manual Verification 'Phase 1: Hub Orchestration' (Protocol in workflow.md) 33c03c9
+
+## Phase 2: Metadata Standardization & Path Discovery
+- [ ] Task: Standardize OPC State Format.
+    - [ ] Update Python `StateService` to support compact text format (wrapped in JSON).
+    - [ ] Update C# `StateService` to match the new unified format.
+- [ ] Task: Update Athena Initialization logic.
+    - [ ] Modify `athena init` to strictly scaffold into `.omni/athena` and `.omni/projectcontext`.
+    - [ ] Update Hub discovery logic to identify `.omni/` as the project root marker.
+- [ ] Task: Conductor - User Manual Verification 'Phase 2: Standardization' (Protocol in workflow.md)
+
+## Phase 3: Logic Unification & Rename
+- [ ] Task: Unify OPC and Athena logic in Python.
+    - [ ] Port remaining C# context logic (e.g., skeleton refinement) to Python `athena.opc`.
+    - [ ] Rename commands/tools to the new `omni:*` scheme in `mcp_server.py` and `__main__.py`.
+- [ ] Task: Implement Hybrid Brain Search.
+    - [ ] Update `smart_search.py` to query current project structure, session logs, and vector memory in parallel.
+    - [ ] Write integration tests for `omni:search` retrieving results from multiple sources.
+- [ ] Task: Conductor - User Manual Verification 'Phase 3: Logic Unification' (Protocol in workflow.md)
+
+## Phase 4: Final Workflow Integration
+- [ ] Task: Refactor Extension Slash Commands.
+    - [ ] Update `.toml` files in `omni-extension/commands` to use the new names.
+    - [ ] Ensure `/omni:start` triggers both the boot orchestrator and the initial context sync.
+- [ ] Task: Update System Hooks.
+    - [ ] Ensure `SessionStart` and `BeforeAgent` hooks correctly call the Hub's assistant execution.
+- [ ] Task: Conductor - User Manual Verification 'Phase 4: Final Integration' (Protocol in workflow.md)
