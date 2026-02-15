@@ -93,6 +93,8 @@ namespace OmniSync.Hub.Infrastructure.Services
         private readonly Logic.Monitoring.HubMonitorService _monitorService;
         public event EventHandler<string> CommandOutputReceived;
 
+        private readonly System.Collections.Concurrent.ConcurrentDictionary<(IntPtr hWnd, IntPtr hMonitor), (float ratioX, float ratioY)> _lastPositions = new();
+
         public ProcessService(HubSettingsService settingsService, Logic.Monitoring.HubMonitorService monitorService)
         {
             _settingsService = settingsService;
@@ -842,20 +844,37 @@ Add-Type -MemberDefinition $code -Name Win32 -Namespace Native
             float relX = rect.Left - currentInfo.rcWork.Left;
             float relY = rect.Top - currentInfo.rcWork.Top;
 
-            // Proportional ratios
+            // Proportional ratios for position
             float ratioX = relX / curW;
             float ratioY = relY / curH;
-            float ratioW = (float)w / curW;
-            float ratioH = (float)h / curH;
 
-            // New position and size
+            // SAVE current position for the current monitor before moving
+            _lastPositions[(hWnd, hCurrentMonitor)] = (ratioX, ratioY);
+
+            // RESTORE position if we have a saved one for the target monitor
+            if (_lastPositions.TryGetValue((hWnd, hTargetMonitor), out var lastPos))
+            {
+                ratioX = lastPos.ratioX;
+                ratioY = lastPos.ratioY;
+                _monitorService.AddLogMessage($"[ProcessService] Restoring saved position for HWND {hWnd} on Mon {targetIndex}");
+            }
+
+            // New position (proportional or restored)
             int newX = targetInfo.rcWork.Left + (int)(ratioX * tarW);
             int newY = targetInfo.rcWork.Top + (int)(ratioY * tarH);
-            int newW = (int)(ratioW * tarW);
-            int newH = (int)(ratioH * tarH);
+
+            // Clamp size if it's larger than the target monitor
+            int newW = Math.Min(w, tarW);
+            int newH = Math.Min(h, tarH);
+
+            // Ensure window stays inside target work area
+            if (newX + newW > targetInfo.rcWork.Right) newX = targetInfo.rcWork.Right - newW;
+            if (newY + newH > targetInfo.rcWork.Bottom) newY = targetInfo.rcWork.Bottom - newH;
+            if (newX < targetInfo.rcWork.Left) newX = targetInfo.rcWork.Left;
+            if (newY < targetInfo.rcWork.Top) newY = targetInfo.rcWork.Top;
 
             _monitorService.AddLogMessage($"[ProcessService] Moving window [HWND {hWnd}] proportionally to Mon {targetIndex}");
-            _monitorService.AddLogMessage($"[ProcessService] Proportional Move: ({newX}, {newY}) {newW}x{newH}");
+            _monitorService.AddLogMessage($"[ProcessService] Move Target: ({newX}, {newY}) {newW}x{newH}");
             
             if (IsIconic(hWnd)) ShowWindow(hWnd, SW_RESTORE);
             
