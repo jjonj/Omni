@@ -148,7 +148,8 @@ namespace OmniSync.Hub.Logic.Services
                 { "MOVE_WINDOW_OPPOSITE", payload => {
                     _monitorService.AddLogMessage($"[CommandDispatcher] MOVE_WINDOW_OPPOSITE payload: {payload.GetRawText()}");
                     if (payload.TryGetProperty("Pid", out var pidProp) || payload.TryGetProperty("pid", out pidProp)) {
-                        _processService.MoveWindowOpposite(pidProp.GetInt32());
+                        int targetPid = pidProp.GetInt32();
+                        _ = _aiCliService.ToggleMonitorSessionAsync(targetPid);
                     }
                     else if (payload.TryGetProperty("Title", out var titleProp) || payload.TryGetProperty("title", out titleProp)) {
                         _processService.MoveWindowOpposite(titleProp.GetString() ?? "");

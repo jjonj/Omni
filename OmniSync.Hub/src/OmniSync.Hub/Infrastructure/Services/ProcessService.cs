@@ -766,12 +766,12 @@ Add-Type -MemberDefinition $code -Name Win32 -Namespace Native
             }
         }
 
-        public void MoveWindowOpposite(int pid)
+        public void MoveWindowOpposite(int pid, string? titleHint = null)
         {
-            _monitorService.AddLogMessage($"[ProcessService] MoveWindowOpposite for PID: {pid}");
+            _monitorService.AddLogMessage($"[ProcessService] MoveWindowOpposite for PID: {pid} (Hint: {titleHint ?? "None"})");
             var targetPids = GetProcessTreePids(pid);
             _monitorService.AddLogMessage($"[ProcessService] PIDs in tree: {string.Join(", ", targetPids)}");
-            var hwnds = GetVisibleWindowsForPids(targetPids);
+            var hwnds = GetVisibleWindowsForPids(targetPids, titleHint);
             _monitorService.AddLogMessage($"[ProcessService] Found {hwnds.Count} visible windows for tree.");
             MoveHwndsToOppositeMonitor(hwnds);
         }
@@ -815,26 +815,52 @@ Add-Type -MemberDefinition $code -Name Win32 -Namespace Native
 
             foreach (var hWnd in hwnds.Distinct())
             {
-                IntPtr hCurrentMonitor = MonitorFromWindow(hWnd, MONITOR_DEFAULTTONEAREST);
-                MONITORINFO currentInfo = new MONITORINFO { cbSize = Marshal.SizeOf(typeof(MONITORINFO)) };
-                GetMonitorInfo(hCurrentMonitor, ref currentInfo);
-
-                GetWindowRect(hWnd, out RECT rect);
-                int w = rect.Right - rect.Left;
-                int h = rect.Bottom - rect.Top;
-
-                // Relative position
-                int relX = rect.Left - currentInfo.rcMonitor.Left;
-                int relY = rect.Top - currentInfo.rcMonitor.Top;
-
-                int newX = targetInfo.rcMonitor.Left + relX;
-                int newY = targetInfo.rcMonitor.Top + relY;
-
-                _monitorService.AddLogMessage($"[ProcessService] Moving window to Mon {monitorIndex} ({newX}, {newY})");
-                if (IsIconic(hWnd)) ShowWindow(hWnd, SW_RESTORE);
-                SetWindowPos(hWnd, IntPtr.Zero, newX, newY, w, h, SWP_NOZORDER | SWP_SHOWWINDOW);
-                SetForegroundWindow(hWnd);
+                MoveHwndProportional(hWnd, hTargetMonitor, monitorIndex);
             }
+        }
+
+        private void MoveHwndProportional(IntPtr hWnd, IntPtr hTargetMonitor, int targetIndex)
+        {
+            IntPtr hCurrentMonitor = MonitorFromWindow(hWnd, MONITOR_DEFAULTTONEAREST);
+            MONITORINFO currentInfo = new MONITORINFO { cbSize = Marshal.SizeOf(typeof(MONITORINFO)) };
+            GetMonitorInfo(hCurrentMonitor, ref currentInfo);
+
+            MONITORINFO targetInfo = new MONITORINFO { cbSize = Marshal.SizeOf(typeof(MONITORINFO)) };
+            GetMonitorInfo(hTargetMonitor, ref targetInfo);
+
+            GetWindowRect(hWnd, out RECT rect);
+            int w = rect.Right - rect.Left;
+            int h = rect.Bottom - rect.Top;
+
+            // Use Work Area for calculations to respect taskbar
+            int curW = currentInfo.rcWork.Right - currentInfo.rcWork.Left;
+            int curH = currentInfo.rcWork.Bottom - currentInfo.rcWork.Top;
+            int tarW = targetInfo.rcWork.Right - targetInfo.rcWork.Left;
+            int tarH = targetInfo.rcWork.Bottom - targetInfo.rcWork.Top;
+
+            // Relative position to current monitor's work area top-left
+            float relX = rect.Left - currentInfo.rcWork.Left;
+            float relY = rect.Top - currentInfo.rcWork.Top;
+
+            // Proportional ratios
+            float ratioX = relX / curW;
+            float ratioY = relY / curH;
+            float ratioW = (float)w / curW;
+            float ratioH = (float)h / curH;
+
+            // New position and size
+            int newX = targetInfo.rcWork.Left + (int)(ratioX * tarW);
+            int newY = targetInfo.rcWork.Top + (int)(ratioY * tarH);
+            int newW = (int)(ratioW * tarW);
+            int newH = (int)(ratioH * tarH);
+
+            _monitorService.AddLogMessage($"[ProcessService] Moving window [HWND {hWnd}] proportionally to Mon {targetIndex}");
+            _monitorService.AddLogMessage($"[ProcessService] Proportional Move: ({newX}, {newY}) {newW}x{newH}");
+            
+            if (IsIconic(hWnd)) ShowWindow(hWnd, SW_RESTORE);
+            
+            SetWindowPos(hWnd, IntPtr.Zero, newX, newY, newW, newH, SWP_NOZORDER | SWP_SHOWWINDOW);
+            SetForegroundWindow(hWnd);
         }
 
         private HashSet<int> GetProcessTreePids(int rootPid)
@@ -843,26 +869,27 @@ Add-Type -MemberDefinition $code -Name Win32 -Namespace Native
             try
             {
                 // 1. Get all processes to build a mapping
-                var allProcs = Process.GetProcesses();
                 var parentMap = new Dictionary<int, int>();
                 var nameMap = new Dictionary<int, string>();
-                var cmdMap = new Dictionary<int, string>();
                 
-                using (var searcher = new System.Management.ManagementObjectSearcher("SELECT ProcessId, ParentProcessId, Name, CommandLine FROM Win32_Process"))
+                using (var searcher = new System.Management.ManagementObjectSearcher("SELECT ProcessId, ParentProcessId, Name FROM Win32_Process"))
                 {
                     foreach (var obj in searcher.Get())
                     {
                         int pId = Convert.ToInt32(obj["ProcessId"]);
                         int parentId = Convert.ToInt32(obj["ParentProcessId"]);
                         string name = obj["Name"]?.ToString() ?? "";
-                        string cmd = obj["CommandLine"]?.ToString() ?? "";
                         parentMap[pId] = parentId;
                         nameMap[pId] = name;
-                        cmdMap[pId] = cmd;
                     }
                 }
 
-                // 2. Add children (recursive)
+                if (nameMap.TryGetValue(rootPid, out var rootName))
+                {
+                    _monitorService.AddLogMessage($"[ProcessTree] Root: PID {rootPid} ({rootName})");
+                }
+
+                // 2. Add children (recursive) - AI processes might spawn children
                 void AddChildren(int pId)
                 {
                     foreach (var kvp in parentMap)
@@ -870,70 +897,83 @@ Add-Type -MemberDefinition $code -Name Win32 -Namespace Native
                         if (kvp.Value == pId && !result.Contains(kvp.Key))
                         {
                             result.Add(kvp.Key);
-                            _monitorService.AddLogMessage($"[ProcessService] Tree: Found child PID {kvp.Key} for parent {pId}");
+                            _monitorService.AddLogMessage($"[ProcessTree] Found child PID {kvp.Key} ({nameMap.GetValueOrDefault(kvp.Key, "Unknown")}) for parent {pId}");
                             AddChildren(kvp.Key);
                         }
                     }
                 }
                 AddChildren(rootPid);
 
-                // 3. Add parents up to explorer and their critical children (like conhost)
+                // 3. Add parents up to explorer and their critical console siblings
                 int currentPid = rootPid;
+                bool foundConsoleHost = false;
                 while (parentMap.TryGetValue(currentPid, out int parentId) && parentId != 0)
                 {
-                    if (nameMap.TryGetValue(parentId, out string parentName) && parentName.ToLower().Contains("explorer")) 
-                        break;
-                    
-                    result.Add(parentId);
-                    
-                    // Add siblings that are console hosts
-                    foreach (var kvp in parentMap)
+                    if (nameMap.TryGetValue(parentId, out string parentName))
                     {
-                        if (kvp.Value == parentId && !result.Contains(kvp.Key))
+                        if (parentName.ToLower().Contains("explorer")) break;
+                        
+                        if (!result.Contains(parentId))
                         {
-                            if (nameMap.TryGetValue(kvp.Key, out string siblingName) && 
-                                (siblingName.ToLower().Contains("conhost") || siblingName.ToLower().Contains("openconsole")))
+                            result.Add(parentId);
+                            _monitorService.AddLogMessage($"[ProcessTree] Found parent PID {parentId} ({parentName}) for {currentPid}");
+                        }
+
+                        if (parentName.ToLower().Contains("conhost") || parentName.ToLower().Contains("openconsole"))
+                        {
+                            foundConsoleHost = true;
+                        }
+                        
+                        // Add siblings that are console hosts
+                        foreach (var kvp in parentMap)
+                        {
+                            if (kvp.Value == parentId && !result.Contains(kvp.Key))
                             {
-                                result.Add(kvp.Key);
-                                _monitorService.AddLogMessage($"[ProcessService] Tree: Added sibling console host PID {kvp.Key} ({siblingName})");
+                                if (nameMap.TryGetValue(kvp.Key, out string siblingName) && 
+                                    (siblingName.ToLower().Contains("conhost") || siblingName.ToLower().Contains("openconsole")))
+                                {
+                                    result.Add(kvp.Key);
+                                    _monitorService.AddLogMessage($"[ProcessTree] Found sibling console host PID {kvp.Key} ({siblingName})");
+                                    foundConsoleHost = true;
+                                }
                             }
                         }
                     }
                     currentPid = parentId;
                 }
 
-                // 4. Special Terminal Search: If we found OpenConsole or Conhost but didn't find its hosting Terminal
-                // because Terminal isn't a direct parent, we look for ALL WindowsTerminal processes 
-                // and see if any of them are 'responsible' for this tree.
-                var consoles = result.Where(p => nameMap.ContainsKey(p) && 
-                                                (nameMap[p].ToLower().Contains("openconsole") || 
-                                                 nameMap[p].ToLower().Contains("conhost"))).ToList();
-                if (consoles.Any())
+                // 4. Special Terminal Search: If we found OpenConsole or Conhost, try to find their parent Terminal
+                if (foundConsoleHost)
                 {
-                    foreach (var termPid in nameMap.Where(kvp => kvp.Value.ToLower().Contains("windowsterminal") || 
-                                                               kvp.Value.ToLower().Contains("conhost")).Select(kvp => kvp.Key))
+                    foreach (var p in result.ToList())
                     {
-                        // In modern Windows Terminal, OpenConsole.exe is launched by svchost but linked via some magic.
-                        // However, WindowsTerminal.exe is the one with the window.
-                        // Since we can't perfectly link them via PID, we add ALL Terminal PIDs to the candidate list
-                        // if we detect we are in an OpenConsole environment.
-                        // The GetVisibleWindowsForPids will then find the one with the window.
-                        result.Add(termPid);
-                        _monitorService.AddLogMessage($"[ProcessService] Tree: Added potential Terminal PID {termPid} due to console host presence.");
+                        if (nameMap.TryGetValue(p, out var name) && (name.ToLower().Contains("openconsole") || name.ToLower().Contains("conhost")))
+                        {
+                            if (parentMap.TryGetValue(p, out var pId) && nameMap.TryGetValue(pId, out var pName))
+                            {
+                                if (pName.ToLower().Contains("windowsterminal"))
+                                {
+                                    result.Add(pId);
+                                    _monitorService.AddLogMessage($"[ProcessTree] Identified specific hosting Terminal PID {pId} for console {p}");
+                                }
+                            }
+                        }
                     }
                 }
             }
             catch (Exception ex)
             {
-                _monitorService.AddLogMessage($"[ProcessService] Error in GetProcessTreePids: {ex.Message}");
+                _monitorService.AddLogMessage($"[ProcessTree] ERROR: {ex.Message}");
             }
             return result;
         }
 
         private List<IntPtr> GetVisibleWindowsForPids(HashSet<int> pids, string? titleHint = null)
         {
-            var candidates = new List<(IntPtr hWnd, int priority, long area)>();
+            var candidates = new List<(IntPtr hWnd, int priority, long area, string title, string procName)>();
             
+            _monitorService.AddLogMessage($"[WindowSearch] Scanning for windows. Hint: '{titleHint ?? "NONE"}' PIDs: {string.Join(",", pids)}");
+
             EnumWindows((hWnd, lParam) =>
             {
                 if (IsWindowVisible(hWnd))
@@ -950,65 +990,84 @@ Add-Type -MemberDefinition $code -Name Win32 -Namespace Native
 
                     if (w > 10 && h > 10)
                     {
+                        string procName = "Unknown";
+                        try { procName = Process.GetProcessById((int)processId).ProcessName; } catch { }
+
                         bool isTreeMatch = pids.Contains((int)processId);
                         bool isTitleMatch = !string.IsNullOrEmpty(titleHint) && title.Contains(titleHint, StringComparison.OrdinalIgnoreCase);
 
-                        if (isTreeMatch && isTitleMatch)
+                        int score = 0;
+                        if (isTreeMatch)
                         {
-                            _monitorService.AddLogMessage($"[ProcessService] Windows: Found EXACT window HWND {hWnd} (Tree + Title Hint match '{titleHint}'). Title: '{title}' ({w}x{h})");
-                            candidates.Add((hWnd, 20, (long)w * h));
+                            // Tree match is highest priority
+                            score += 500;
                         }
-                        else if (isTreeMatch)
+
+                        if (isTitleMatch)
                         {
-                            _monitorService.AddLogMessage($"[ProcessService] Windows: Found visible window HWND {hWnd} for matching PID {processId}. Title: '{title}' ({w}x{h})");
-                            candidates.Add((hWnd, 10, (long)w * h));
-                        }
-                        else if (isTitleMatch)
-                        {
-                            // Title matches but not in tree. Check if it's a terminal to avoid generic explorer stealing focus.
-                            string procName = "";
-                            try { procName = Process.GetProcessById((int)processId).ProcessName; } catch { }
+                            // Bonus for terminal processes matching title
                             bool isTerminal = procName.Contains("Terminal", StringComparison.OrdinalIgnoreCase) || 
                                               procName.Contains("cmd", StringComparison.OrdinalIgnoreCase) || 
-                                              procName.Contains("powershell", StringComparison.OrdinalIgnoreCase);
+                                              procName.Contains("node", StringComparison.OrdinalIgnoreCase) ||
+                                              procName.Contains("PowerShell", StringComparison.OrdinalIgnoreCase);
                             
-                            if (isTerminal)
-                            {
-                                _monitorService.AddLogMessage($"[ProcessService] Windows: Found TERMINAL window HWND {hWnd} via Title Hint match '{titleHint}' (not in tree). Title: '{title}' ({w}x{h})");
-                                candidates.Add((hWnd, 5, (long)w * h));
-                            }
+                            score += (isTerminal ? 100 : 0);
+                            score += CalculateTitleScore(title, titleHint!);
                         }
-                        else 
+
+                        if (score > 0)
                         {
-                            bool isFallbackMatch = (title == "[system32]" || title.Contains("node.exe") || title.Contains("cmd.exe") || title.Contains("WindowsTerminal"));
-                            if (isFallbackMatch)
-                            {
-                                // Lower priority fallback
-                                candidates.Add((hWnd, 0, (long)w * h));
-                            }
+                            candidates.Add((hWnd, score, (long)w * h, title, procName));
                         }
                     }
                 }
                 return true;
             }, IntPtr.Zero);
 
-            if (candidates.Count == 0) return new List<IntPtr>();
-
-            // Log all candidates for debugging
-            foreach (var c in candidates.OrderByDescending(x => x.priority).ThenByDescending(x => x.area))
+            if (candidates.Count == 0)
             {
-                var sb = new StringBuilder(256);
-                GetWindowText(c.hWnd, sb, sb.Capacity);
-                _monitorService.AddLogMessage($"[ProcessService] Candidate: HWND {c.hWnd}, Priority {c.priority}, Area {c.area}, Title '{sb}'");
+                _monitorService.AddLogMessage("[WindowSearch] No candidates found.");
+                return new List<IntPtr>();
             }
 
-            // Pick the single best window: highest priority, then largest area
-            var best = candidates
+            // Sort and log candidates
+            var ordered = candidates
                 .OrderByDescending(c => c.priority)
                 .ThenByDescending(c => c.area)
-                .First();
+                .ToList();
+
+            foreach (var c in ordered)
+            {
+                _monitorService.AddLogMessage($"[WindowSearch] Candidate: [HWND {c.hWnd}] Score {c.priority} Proc '{c.procName}' Title '{c.title}'");
+            }
+
+            var best = ordered.First();
+            _monitorService.AddLogMessage($"[WindowSearch] SELECTED: [HWND {best.hWnd}] Title '{best.title}' Score {best.priority}");
 
             return new List<IntPtr> { best.hWnd };
+        }
+
+        private int CalculateTitleScore(string title, string hint)
+        {
+            if (string.IsNullOrEmpty(hint)) return 0;
+            string t = title.ToLower();
+            string h = hint.ToLower();
+
+            int score = 0;
+            if (t == h) score = 100;
+            else if (t.Contains($"({h})")) score = 95;
+            else if (t.StartsWith(h + " ")) score = 90;
+            else if (System.Text.RegularExpressions.Regex.IsMatch(t, $@"\b{System.Text.RegularExpressions.Regex.Escape(h)}\b")) score = 85;
+            else if (t.Contains(h)) score = 50;
+
+            if (score > 0)
+            {
+                // Tie breaker: prefer shorter titles for the same match level
+                // (e.g. "omni" vs "omni-gemini-cli" when hint is "omni")
+                score -= Math.Min(title.Length, 49);
+            }
+
+            return score;
         }
 
         private List<IntPtr> GetWindowsByTitleOrProcessName(string target)
@@ -1080,31 +1139,7 @@ Add-Type -MemberDefinition $code -Name Win32 -Namespace Native
                 int targetIndex = (currentIndex + 1) % monitors.Count;
                 IntPtr hTargetMonitor = monitors[targetIndex];
 
-                MONITORINFO currentInfo = new MONITORINFO { cbSize = Marshal.SizeOf(typeof(MONITORINFO)) };
-                GetMonitorInfo(hCurrentMonitor, ref currentInfo);
-
-                MONITORINFO targetInfo = new MONITORINFO { cbSize = Marshal.SizeOf(typeof(MONITORINFO)) };
-                GetMonitorInfo(hTargetMonitor, ref targetInfo);
-
-                GetWindowRect(hWnd, out RECT rect);
-                int w = rect.Right - rect.Left;
-                int h = rect.Bottom - rect.Top;
-
-                // Relative position to current monitor's top-left
-                int relX = rect.Left - currentInfo.rcMonitor.Left;
-                int relY = rect.Top - currentInfo.rcMonitor.Top;
-
-                // New absolute position on target monitor
-                int newX = targetInfo.rcMonitor.Left + relX;
-                int newY = targetInfo.rcMonitor.Top + relY;
-
-                _monitorService.AddLogMessage($"[ProcessService] Toggling window to Mon {targetIndex} ({newX}, {newY})");
-                
-                if (IsIconic(hWnd)) ShowWindow(hWnd, SW_RESTORE);
-                
-                // SetWindowPos with SWP_NOSENDCHANGING to be more robust
-                SetWindowPos(hWnd, IntPtr.Zero, newX, newY, w, h, SWP_NOZORDER | SWP_SHOWWINDOW);
-                SetForegroundWindow(hWnd);
+                MoveHwndProportional(hWnd, hTargetMonitor, targetIndex);
             }
         }
     }

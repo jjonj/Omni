@@ -116,17 +116,36 @@ namespace OmniSync.Hub.Infrastructure.Services
 
         public async Task FocusSessionAsync(int pid)
         {
-            _logger.LogInformation($"[AiCliService] Focusing session PID {pid}");
+            string workspace = _workspaces.TryGetValue(pid, out var ws) ? ws : "Unknown";
+            _logger.LogInformation($"[AiCliService] Focusing session PID {pid} (Workspace: {workspace})");
             
-            string? hint = null;
-            // Prefer workspace for window matching as it usually appears in terminal titles like "Ready (WorkspaceName)"
-            if (_workspaces.TryGetValue(pid, out var ws)) hint = ws;
-            else if (_sessionNames.TryGetValue(pid, out var name)) hint = name;
+            string? hint = GetTitleHint(pid);
+            _logger.LogInformation($"[AiCliService] Using title hint '{hint ?? "None"}' for PID {pid}");
 
             // Use the generalized WinActivatePid which now handles nested processes and terminal hosts
             _processService.WinActivatePid(pid, hint);
 
             await Task.CompletedTask;
+        }
+
+        public async Task ToggleMonitorSessionAsync(int pid)
+        {
+            string workspace = _workspaces.TryGetValue(pid, out var ws) ? ws : "Unknown";
+            _logger.LogInformation($"[AiCliService] Toggling monitor for session PID {pid} (Workspace: {workspace})");
+
+            string? hint = GetTitleHint(pid);
+            _logger.LogInformation($"[AiCliService] Using title hint '{hint ?? "None"}' for monitor toggle of PID {pid}");
+
+            _processService.MoveWindowOpposite(pid, hint);
+
+            await Task.CompletedTask;
+        }
+
+        private string? GetTitleHint(int pid)
+        {
+            if (_workspaces.TryGetValue(pid, out var ws) && !string.IsNullOrEmpty(ws)) return ws;
+            if (_sessionNames.TryGetValue(pid, out var name)) return name;
+            return null;
         }
 
         public async Task MoveSessionToMonitorAsync(int pid, int monitorIndex)

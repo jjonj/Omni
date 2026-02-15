@@ -902,7 +902,10 @@ namespace OmniSync.Hub.Presentation.Hubs
                 int targetPid = sessionId ?? _aiCliService.GetTargetPid();
                 if (targetPid == -1) return;
 
-                _logger.LogInformation($"[RpcApiHub] SendAiSpecialKey: {key} to PID {targetPid}");
+                string workspace = _aiCliService.GetActiveSessions().FirstOrDefault(s => s.Pid == targetPid)?.Workspace ?? "Unknown";
+                _logger.LogInformation($"[RpcApiHub] SendAiSpecialKey: '{key}' for PID {targetPid} (Workspace: {workspace})");
+                _hubMonitorService.AddLogMessage($"[AI] Key '{key}' sent to PID {targetPid} ({workspace})");
+
                 await _aiCliService.FocusSessionAsync(targetPid);
                 await Task.Delay(150); // Give OS time to focus
 
@@ -945,7 +948,10 @@ namespace OmniSync.Hub.Presentation.Hubs
                 int targetPid = sessionId ?? _aiCliService.GetTargetPid();
                 if (targetPid == -1) return;
 
-                _logger.LogInformation($"[RpcApiHub] SendAiDialogResponse: {response} to PID {targetPid}");
+                string workspace = _aiCliService.GetActiveSessions().FirstOrDefault(s => s.Pid == targetPid)?.Workspace ?? "Unknown";
+                _logger.LogInformation($"[RpcApiHub] SendAiDialogResponse: {response} to PID {targetPid} ({workspace})");
+                _hubMonitorService.AddLogMessage($"[AI] Dialog response '{response}' sent to PID {targetPid} ({workspace})");
+
                 await _aiCliService.FocusSessionAsync(targetPid);
                 await Task.Delay(150);
                 string? effectiveDialogType = _aiCliService.GetLastDialogType(targetPid);
@@ -960,7 +966,10 @@ namespace OmniSync.Hub.Presentation.Hubs
                 int targetPid = sessionId ?? _aiCliService.GetTargetPid();
                 if (targetPid == -1) return;
 
-                _logger.LogInformation($"[RpcApiHub] Sending YOLO to PID {targetPid}");
+                string workspace = _aiCliService.GetActiveSessions().FirstOrDefault(s => s.Pid == targetPid)?.Workspace ?? "Unknown";
+                _logger.LogInformation($"[RpcApiHub] Sending YOLO to PID {targetPid} ({workspace})");
+                _hubMonitorService.AddLogMessage($"[AI] YOLO sent to PID {targetPid} ({workspace})");
+
                 await _aiCliService.FocusSessionAsync(targetPid);
                 await Task.Delay(150); // Give OS time to focus
 
@@ -1315,7 +1324,9 @@ namespace OmniSync.Hub.Presentation.Hubs
         {
             if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
             {
-                _logger.LogInformation($"[RpcApiHub] FocusAiSession: {pid}");
+                string workspace = _aiCliService.GetActiveSessions().FirstOrDefault(s => s.Pid == pid)?.Workspace ?? "Unknown";
+                _logger.LogInformation($"[RpcApiHub] FocusAiSession: {pid} (Workspace: {workspace})");
+                _hubMonitorService.AddLogMessage($"[AI] Focus requested for PID {pid} ({workspace})");
                 AnyCommandReceived?.Invoke(this, $"FocusAiSession: {pid}");
                 await _aiCliService.FocusSessionAsync(pid);
             }
