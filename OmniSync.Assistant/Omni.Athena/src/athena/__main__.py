@@ -139,11 +139,11 @@ def main():
     search_parser.add_argument("--json", action="store_true")
 
     # omni:context subcommand (formerly opc)
-    opc_parser = subparsers.add_parser("omni:context", help="Project Context tools")
+    opc_parser = subparsers.add_parser("omni:context", help="Project File Index tools")
     opc_parser.add_argument(
         "omni_context_cmd",
         choices=["sync", "session", "context"],
-        help="Project Context command to run",
+        help="Project Index command to run",
     )
 
     # Aliases for slash commands
@@ -151,7 +151,7 @@ def main():
     subparsers.add_parser("end", help="Alias for --end")
     subparsers.add_parser("omni:start", help="Alias for --boot")
     subparsers.add_parser("omni:end", help="Alias for --end")
-    subparsers.add_parser("omni:sync", help="Alias for omni:context sync")
+    subparsers.add_parser("omni:sync", help="Sync Project File Index")
 
 
     args = parser.parse_args()
@@ -210,7 +210,7 @@ def main():
         sys.exit(0)
 
     if args.command == "omni:context":
-        from athena.context_engine.orchestrator import AssistantOrchestrator
+        from athena.context_engine.project_index import AssistantOrchestrator
 
         orchestrator = AssistantOrchestrator(project_root=args.root)
         if args.omni_context_cmd == "sync":
