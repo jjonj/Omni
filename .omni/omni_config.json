@@ -1,0 +1,23 @@
+{
+  "indexing": {
+    "ignored_folders": [
+      "conductor", "docs", "build", "bin", "obj", "assets", "resources", "gradle", "saved"
+    ],
+    "auto_ignored_folders": [
+      "node_modules", "dist", "out", "target", "vendor", "venv", ".venv", "__pycache__",
+      ".gradle", ".idea", ".vs", ".vscode", "debug", "release", "temp", "tmp", "logs",
+      "test-results", "coverage", "publish", "screenshots", "videos", "archives",
+      "packages", "extern"
+    ],
+    "high_value_extensions": [
+      ".cs", ".py", ".js", ".ts", ".html", ".css", ".md", ".json", 
+      ".xml", ".xaml", ".kt", ".kts", ".java", ".sh", ".ps1", ".bat", ".csproj", ".sln"
+    ],
+    "additional_ignored_folders": [],
+    "additional_extensions": []
+  },
+  "ui": {
+    "theme": "dark",
+    "compact_mode": true
+  }
+}

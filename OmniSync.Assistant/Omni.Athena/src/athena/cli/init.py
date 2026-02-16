@@ -7,6 +7,8 @@ import os
 from datetime import datetime
 from pathlib import Path
 
+from athena.core.defaults import OMNI_CONFIG_TEMPLATE
+
 # --- Templates ---
 
 CORE_IDENTITY_TEMPLATE = """# Core Identity: Omni Assistant
@@ -168,6 +170,7 @@ def init_workspace(target_dir: Path = None, ide: str = None) -> bool:
             ".omni/athena/context/project_state.md",
             PROJECT_STATE_TEMPLATE.format(date=today),
         ),
+        (".omni/omni_config.json", OMNI_CONFIG_TEMPLATE),
     ]
 
     print("\nCreating template files...")
