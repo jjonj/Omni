@@ -36,11 +36,23 @@ data class KeyDef(
 )
 
 @Composable
+fun KeepScreenOn() {
+    val view = LocalView.current
+    DisposableEffect(Unit) {
+        view.keepScreenOn = true
+        onDispose {
+            view.keepScreenOn = false
+        }
+    }
+}
+
+@Composable
 fun CustomKeyboard(
     signalRClient: SignalRClient,
     appConfig: com.omni.sync.data.config.AppConfig,
     modifier: Modifier = Modifier
 ) {
+    KeepScreenOn()
     var showNumbers by remember(appConfig.showKeyboardNumberRow) { mutableStateOf(appConfig.showKeyboardNumberRow) }
     
     // Track modifier states locally to handle character mapping

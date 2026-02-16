@@ -4,9 +4,9 @@ prompt = '''
 
 > **Use Case**: Save progress mid-session without closing. Resume immediately after.
 
-## 1. Quick Session Log Update
+## 1. Session Log Update
 
-- [ ] Append current progress to session log in `.omni/athena/session_logs/`
+- [ ] Append current progress to session log in `.omni/athena/session_logs/` (Manually, do not use quicksave)
 - [ ] Format: Checkpoint entry with timestamp and bullet summary
 
 ```markdown
