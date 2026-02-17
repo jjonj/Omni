@@ -1262,6 +1262,7 @@ namespace OmniSync.Hub.Infrastructure.Services
         {
             if (_sessions.TryGetValue(pid, out var session))
             {
+                _logger.LogInformation($"[AiCliService] GetHistoryAsync for PID {pid} (Connected: {session.IsConnected})");
                 if (!session.IsConnected)
                 {
                     _logger.LogInformation($"[AiCliService] Session PID {pid} disconnected. Attempting reconnection for history fetch...");
@@ -1273,6 +1274,10 @@ namespace OmniSync.Hub.Infrastructure.Services
                     }
                 }
                 await session.RequestHistoryAsync(maxChars);
+            }
+            else
+            {
+                _logger.LogWarning($"[AiCliService] GetHistoryAsync failed: Session PID {pid} not found in _sessions dictionary.");
             }
         }
 
@@ -1360,9 +1365,11 @@ namespace OmniSync.Hub.Infrastructure.Services
         private StreamWriter? _writer;
         private CancellationTokenSource? _cts;
         private readonly StringBuilder _currentResponse = new();
+        private readonly StringBuilder _historyBuffer = new();
+        private bool _isCapturingHistory = false;
         private readonly HashSet<string> _recentlyBroadcastMessages = new();
         private readonly HashSet<string> _sentPrompts = new();
-        private readonly SemaphoreSlim _writeLock = new(1, 1);
+        private readonly SemaphoreSlim _writeLock;
         private string? _lastDialogType;
         private Process? _shellProcess;
         private string? _lastHistoryJson;
@@ -1413,6 +1420,7 @@ namespace OmniSync.Hub.Infrastructure.Services
             _onResponse = onResponse;
             _onDialog = onDialog;
             _onTurnEnd = onTurnEnd;
+            _writeLock = new SemaphoreSlim(1, 1);
             _logger.LogInformation($"[GeminiSession] Created new session object for PID {_pid} (SID: {_sid})");
         }
 
@@ -1469,19 +1477,15 @@ namespace OmniSync.Hub.Infrastructure.Services
             return await SendCommandAsync("dialogResponse", response, "response", 0, dialogType);
         }
 
-                public async Task RequestHistoryAsync(int maxChars = 0)
-                {
-                    _logger.LogDebug($"[GeminiSession] RequestHistoryAsync to PID {_pid} (maxChars: {maxChars})");
-                    _pendingMaxChars = maxChars;
-        
-                    // Optional: If we have a cached version and maxChars is the same or larger, we could send it instantly
-                    // but for now let's always fetch the latest from the CLI to ensure consistency.
-                    await SendCommandAsync("getHistory", null, "text", maxChars);
-                }
+        public async Task RequestHistoryAsync(int maxChars = 0)
+        {
+            _logger.LogDebug($"[GeminiSession] RequestHistoryAsync to PID {_pid} (maxChars: {maxChars})");
+            _pendingMaxChars = maxChars;
+            await SendCommandAsync("getHistory", null, "text", maxChars);
+        }
         
         internal static string BuildCommandPayload(string command, string? text, string textPropName = "text", int maxChars = 0, string? dialogType = null)
         {
-            // Normalize path separators in prompt text to avoid double-escaping issues
             string normalizedText = text?.Replace("\\\\", "/") ?? string.Empty;
             var payloadObj = new Dictionary<string, object>
             {
@@ -1503,43 +1507,72 @@ namespace OmniSync.Hub.Infrastructure.Services
         }
 
         private async Task<bool> SendCommandAsync(string command, string? text, string textPropName = "text", int maxChars = 0, string? dialogType = null)
+        {
+            if (!IsConnected || _writer == null) 
+            {
+                _logger.LogWarning($"[GeminiSession] Cannot send command '{command}' to PID {_pid}: Not connected");
+                return false;
+            }
+
+            if (maxChars > 0) _pendingMaxChars = maxChars;
+                
+            if (_writeLock == null) return false;
+            await _writeLock.WaitAsync();
+            try
+            {
+                var payload = BuildCommandPayload(command, text, textPropName, maxChars, dialogType);
+                _logger.LogInformation($"[GeminiSession] Sending to PID {_pid}: {payload}");
+                
+                if (command == "prompt" && !string.IsNullOrEmpty(text))
                 {
-                    if (!IsConnected || _writer == null) 
+                    string normalized = text.Trim().ToLower();
+                    string preview = normalized.Length > 30 ? normalized.Substring(0, 30) + "..." : normalized;
+                    _logger.LogDebug($"[GeminiSession] Adding to _sentPrompts: {preview}");
+                    _sentPrompts.Add(normalized);
+                }
+
+                await _writer.WriteLineAsync(payload);
+                await _writer.FlushAsync();
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"[GeminiSession] Error sending command to PID {_pid}");
+                return false;
+            }
+            finally
+            {
+                _writeLock.Release();
+            }
+        }
+
+        private static string UnescapeHistoryJson(string s)
+        {
+            var sb = new StringBuilder();
+            foreach (char c in s)
+            {
+                if (c < ' ')
+                {
+                    switch (c)
                     {
-                        _logger.LogWarning($"[GeminiSession] Cannot send command '{command}' to PID {_pid}: Not connected");
-                        return false;
-                    }
-        
-                    if (maxChars > 0) _pendingMaxChars = maxChars;
-                        
-                    await _writeLock.WaitAsync();
-                    try
-                    {
-                        var payload = BuildCommandPayload(command, text, textPropName, maxChars, dialogType);
-                                                Console.WriteLine($"[GeminiPipe WRITE] PID {_pid}: {payload}");
-                                                _logger.LogInformation($"[GeminiSession] Sending to PID {_pid}: {payload}");
-                        
-                                                // Add to sent prompts to prevent echo ghosting                        if (command == "prompt" && !string.IsNullOrEmpty(text))
-                        {
-                            string normalized = text.Trim().ToLower();
-                            _logger.LogDebug($"[GeminiSession] Adding to _sentPrompts: {normalized.Take(30)}...");
-                            _sentPrompts.Add(normalized);
-                        }
-        
-                        await _writer.WriteLineAsync(payload);
-                        await _writer.FlushAsync();
-                        return true;
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogError(ex, $"[GeminiSession] Error sending command to PID {_pid}");
-                        return false;
-                    }
-                    finally
-                    {
-                        _writeLock.Release();
+                        case '\b': sb.Append("\\b"); break;
+                        case '\f': sb.Append("\\f"); break;
+                        case '\n': sb.Append("\\n"); break;
+                        case '\r': sb.Append("\\r"); break;
+                        case '\t': sb.Append("\\t"); break;
+                        default:
+                            sb.Append("\\u" + ((int)c).ToString("x4"));
+                            break;
                     }
                 }
+                else
+                {
+                    sb.Append(c);
+                }
+            }
+            return sb.ToString();
+        }
+
         private async Task ReadLoopAsync(CancellationToken token)
         {
             if (_pipeClient == null) 
@@ -1549,23 +1582,21 @@ namespace OmniSync.Hub.Infrastructure.Services
             }
 
             _logger.LogInformation($"[GeminiSession][INIT_DEBUG] SID: {_sid} | Starting read loop for PID {_pid}");
-            using var reader = new StreamReader(_pipeClient, Encoding.UTF8, false, 1024, leaveOpen: true);
+            using var reader = new StreamReader(_pipeClient, Encoding.UTF8, false, 4096, leaveOpen: true);
             try
             {
                 while (!token.IsCancellationRequested)
                 {
-                    _logger.LogDebug($"[GeminiSession] Waiting for line from PID {_pid}...");
                     var line = await reader.ReadLineAsync(token);
 
                     if (line == null) 
                     {
                         _logger.LogInformation($"[GeminiSession] Read NULL from PID {_pid}. Pipe closed by remote side.");
-                        // Small delay to prevent tight loop if Dispose hasn't cleared us yet
                         await Task.Delay(100, token);
                         break;
                     }
 
-                    _logger.LogDebug($"[GeminiSession] SID: {_sid} | Received from PID {_pid}: {line}");
+                    _logger.LogDebug($"[GeminiSession] SID: {_sid} | Received from PID {_pid}: {line.Length} chars");
                     
                     try
                     {
@@ -1575,14 +1606,12 @@ namespace OmniSync.Hub.Infrastructure.Services
                             var typeStr = type.GetString();
                             var text = msg.RootElement.TryGetProperty("text", out var textProp) ? textProp.GetString() : null;
 
-                            // Auto-clear transient status messages like "Authentication in progress..."
-                            // when we receive the first real activity after it.
                             if (typeStr == "response" || typeStr == "thought" || typeStr == "codeDiff" || typeStr == "toolCall" || typeStr == "user")
                             {
                                 if (_lastDialogType == "auth_in_progress")
                                 {
                                     _logger.LogInformation($"[GeminiSession] SID: {_sid} | Activity received after auth. Clearing auth status for PID {_pid}");
-                                    _onResponse(_pid, string.Empty, true, false, false, false); // Sends FINISHED status
+                                    _onResponse(_pid, string.Empty, true, false, false, false);
                                     _lastDialogType = null;
                                 }
                             }
@@ -1593,79 +1622,137 @@ namespace OmniSync.Hub.Infrastructure.Services
 
                                 if (text.Contains("[HISTORY_START]"))
                                 {
-                                    _logger.LogInformation($"[GeminiSession] SID: {_sid} | Received history string from PID {_pid}. Length: {text.Length}");
+                                    _logger.LogInformation($"[GeminiSession] SID: {_sid} | HISTORY_START found. Resetting buffer.");
+                                    _isCapturingHistory = true;
+                                    _historyBuffer.Clear();
                                     _recentlyBroadcastMessages.Clear(); 
                                     _sentPrompts.Clear();
-                                    int startIdx = text.IndexOf("[HISTORY_START]") + "[HISTORY_START]".Length;
-                                    int endIdx = text.IndexOf("[HISTORY_END]", startIdx);
-                                    if (endIdx != -1)
+                                    
+                                    // We need the RAW escaped content of the 'text' property
+                                    var rawText = msg.RootElement.GetProperty("text").GetRawText();
+                                    // rawText is like "[HISTORY_START]..." (with outer quotes and internal escapes)
+                                    // We extract what's after [HISTORY_START]
+                                    string marker = "[HISTORY_START]";
+                                    int startIdx = rawText.IndexOf(marker);
+                                    if (startIdx != -1)
                                     {
-                                        var historyJson = text.Substring(startIdx, endIdx - startIdx);
-                                        _logger.LogInformation($"[GeminiSession] SID: {_sid} | Parsed history JSON. Length: {historyJson.Length}");
+                                        string content = rawText.Substring(startIdx + marker.Length);
+                                        // If it ends with the outer quote from GetRawText, remove it
+                                        if (content.EndsWith("\"")) content = content.Substring(0, content.Length - 1);
+                                        _historyBuffer.Append(content);
+                                    }
+                                }
+                                else if (_isCapturingHistory)
+                                {
+                                    var rawText = msg.RootElement.GetProperty("text").GetRawText();
+                                    // Remove outer quotes from raw text chunk
+                                    if (rawText.Length >= 2 && rawText.StartsWith("\"") && rawText.EndsWith("\""))
+                                    {
+                                        _historyBuffer.Append(rawText.Substring(1, rawText.Length - 2));
+                                    }
+                                    else
+                                    {
+                                        _historyBuffer.Append(rawText);
+                                    }
+                                }
+
+                                if (_isCapturingHistory && text.Contains("[HISTORY_END]"))
+                                {
+                                    _isCapturingHistory = false;
+                                    string fullHistory = _historyBuffer.ToString();
+                                    
+                                    // Find [HISTORY_END] in the escaped buffer
+                                    string endMarker = "[HISTORY_END]";
+                                    int endIdx = fullHistory.IndexOf(endMarker);
+                                    string historyJson = endIdx != -1 ? fullHistory.Substring(0, endIdx) : fullHistory;
+                                    
+                                    _logger.LogInformation($"[GeminiSession] SID: {_sid} | HISTORY_END received. Extracted RAW JSON length: {historyJson.Length}");
+                                    
+                                    try
+                                    {
+                                        // historyJson here is still partially escaped because it came from GetRawText()
+                                        // BUT it's exactly what a JSON parser expects for a nested JSON string that has been un-stringified once.
                                         
-                                        // Server-side truncation to prevent client OOM
-                                        if (_pendingMaxChars > 0)
-                                        {
-                                            try
-                                            {
-                                                var history = JsonSerializer.Deserialize<List<Dictionary<string, string>>>(historyJson);
-                                                if (history != null)
-                                                {
-                                                    _logger.LogInformation($"[GeminiSession] SID: {_sid} | Deserialized history. Item count: {history.Count}");
-                                                    var truncated = new List<Dictionary<string, string>>();
-                                                    long currentTotal = 0;
-                                                    for (int i = history.Count - 1; i >= 0; i--)
-                                                    {
-                                                        var item = history[i];
-                                                        string itemText = item.ContainsKey("text") ? item["text"] : "";
-                                                        if (currentTotal + itemText.Length <= _pendingMaxChars)
-                                                        {
-                                                            truncated.Insert(0, item);
-                                                            currentTotal += itemText.Length;
-                                                        }
-                                                        else break;
-                                                    }
-                                                    historyJson = JsonSerializer.Serialize(truncated);
-                                                    _logger.LogInformation($"[GeminiSession] SID: {_sid} | Truncated history to {truncated.Count} items. Final JSON length: {historyJson.Length} (max: {_pendingMaxChars})");
-                                                }
-                                            }
-                                            catch (Exception ex)
-                                            {
-                                                _logger.LogWarning($"[GeminiSession] SID: {_sid} | Failed to truncate history JSON: {ex.Message}");
-                                            }
+                                        // Wait! GetRawText() on a string property returns the string WITH its escapes.
+                                        // If the CLI did JSON.stringify(historyList), it got a string like "[{\"text\":\"hi\"}]".
+                                        // Then it wrapped it: "[HISTORY_START][{\"text\":\"hi\"}][HISTORY_END]".
+                                        // Then it did JSON.stringify({text: wrapped}).
+                                        // The outer JSON now looks like {"text":"[HISTORY_START][{\\\"text\\\":\\\"hi\\\"}][HISTORY_END]"}.
+                                        // GetRawText() on 'text' gives us "[HISTORY_START][{\\\"text\\\":\\\"hi\\\"}][HISTORY_END]".
+                                        // After removing tags, we have "[{\\\"text\\\":\\\"hi\\\"}]".
+                                        // This has triple backslashes! We need to unescape ONE level to get valid JSON.
+                                        
+                                        // Actually, the easiest way to unescape a JSON-escaped string is to wrap it in quotes and parse it!
+                                        string wrappedForUnescape = "\"" + historyJson + "\"";
+                                        string unescapedJson;
+                                        try {
+                                            using var tempDoc = JsonDocument.Parse(wrappedForUnescape);
+                                            unescapedJson = tempDoc.RootElement.GetString() ?? historyJson;
+                                        } catch {
+                                            unescapedJson = historyJson;
                                         }
 
-                                        _lastHistoryJson = historyJson;
-                                        _onResponse(_pid, historyJson, true, true, false, false);
+                                        var history = JsonSerializer.Deserialize<List<Dictionary<string, string>>>(unescapedJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                                        if (history != null)
+                                        {
+                                            _logger.LogInformation($"[GeminiSession] SID: {_sid} | Deserialized {history.Count} history items.");
+                                            
+                                            if (_pendingMaxChars > 0)
+                                            {
+                                                var truncated = new List<Dictionary<string, string>>();
+                                                long currentTotal = 0;
+                                                for (int i = history.Count - 1; i >= 0; i--)
+                                                {
+                                                    var item = history[i];
+                                                    string itemText = item.ContainsKey("text") ? item["text"] : "";
+                                                    if (currentTotal + itemText.Length <= _pendingMaxChars)
+                                                    {
+                                                        truncated.Insert(0, item);
+                                                        currentTotal += itemText.Length;
+                                                    }
+                                                    else break;
+                                                }
+                                                historyJson = JsonSerializer.Serialize(truncated);
+                                            }
+                                            else
+                                            {
+                                                historyJson = unescapedJson;
+                                            }
+                                        }
+                                        else
+                                        {
+                                            historyJson = "[]";
+                                        }
                                     }
-                                    else
+                                    catch (Exception ex)
                                     {
-                                        _logger.LogWarning($"[GeminiSession] SID: {_sid} | Received malformed history (missing [HISTORY_END]) from PID {_pid}");
-                                    }
-                                }
-                                else if (text == "[Command Handled]")
-                                {
-                                    _logger.LogDebug($"[GeminiSession] SID: {_sid} | Command handled for PID {_pid}");
-                                }
-                                else
-                                {
-                                    _logger.LogDebug($"[GeminiSession] SID: {_sid} | Processing response from PID {_pid}: {text.Take(30)}...");
-                                    // Ghost echo protection: if this matches a prompt we just sent, ignore it
-                                    string normalizedText = text.Trim().ToLower();
-                                    if (_sentPrompts.Contains(normalizedText))
-                                    {
-                                        _logger.LogInformation($"[GeminiSession] SID: {_sid} | IGNORED echo from PID {_pid}: {text.Take(30)}...");
-                                        continue;
+                                        _logger.LogError(ex, $"[GeminiSession] SID: {_sid} | History processing failed: {ex.Message}. Sample: {(historyJson.Length > 100 ? historyJson.Substring(0, 100) : historyJson)}");
+                                        historyJson = "[{\"sender\":\"System\",\"text\":\"Error: Failed to process history. " + ex.Message.Replace("\"", "'") + "\"}]";
                                     }
 
-                                    if (_recentlyBroadcastMessages.Add(text))
+                                    _lastHistoryJson = historyJson;
+                                    _onResponse(_pid, historyJson, true, true, false, false);
+                                    _historyBuffer.Clear();
+                                }
+                                else if (!_isCapturingHistory)
+                                {
+                                    if (text == "[Command Handled]")
                                     {
-                                        _logger.LogDebug($"[GeminiSession] SID: {_sid} | Broadcasting unique response from PID {_pid}");
-                                        _onResponse(_pid, text, false, false, false, false);
+                                        _logger.LogDebug($"[GeminiSession] SID: {_sid} | Command handled");
                                     }
                                     else
                                     {
-                                        _logger.LogDebug($"[GeminiSession] SID: {_sid} | Suppressing already broadcast message from PID {_pid}");
+                                        string normalizedText = text.Trim().ToLower();
+                                        if (_sentPrompts.Contains(normalizedText))
+                                        {
+                                            _logger.LogInformation($"[GeminiSession] SID: {_sid} | IGNORED echo prompt");
+                                            continue;
+                                        }
+
+                                        if (_recentlyBroadcastMessages.Add(text))
+                                        {
+                                            _onResponse(_pid, text, false, false, false, false);
+                                        }
                                     }
                                 }
                             }
@@ -1673,15 +1760,13 @@ namespace OmniSync.Hub.Infrastructure.Services
                             {
                                 if (text != null && _recentlyBroadcastMessages.Add($"user_{text}"))
                                 {
-                                    _logger.LogInformation($"[GeminiSession] SID: {_sid} | Received user input from PID {_pid}");
                                     _onResponse(_pid, text, false, false, false, true);
                                 }
                             }
                             else if (typeStr == "thought")
                             {
-                                if (_recentlyBroadcastMessages.Add($"thought_{text}"))
+                                if (text != null && _recentlyBroadcastMessages.Add($"thought_{text}"))
                                 {
-                                    _logger.LogDebug($"[GeminiSession] SID: {_sid} | Received thought from PID {_pid}: {text}");
                                     _onResponse(_pid, $"Thinking: {text}", false, false, false, false);
                                 }
                             }
@@ -1689,7 +1774,6 @@ namespace OmniSync.Hub.Infrastructure.Services
                             {
                                 if (text != null && _recentlyBroadcastMessages.Add($"diff_{text}"))
                                 {
-                                    _logger.LogInformation($"[GeminiSession] SID: {_sid} | Received codeDiff from PID {_pid}");
                                     _onResponse(_pid, text, false, false, true, false);
                                 }
                             }
@@ -1697,7 +1781,6 @@ namespace OmniSync.Hub.Infrastructure.Services
                             {
                                 if (text != null && _recentlyBroadcastMessages.Add($"tool_{text}"))
                                 {
-                                    _logger.LogInformation($"[GeminiSession] SID: {_sid} | Received toolCall from PID {_pid}");
                                     _onResponse(_pid, text, false, false, false, false);
                                 }
                             }
@@ -1708,76 +1791,45 @@ namespace OmniSync.Hub.Infrastructure.Services
                                 var options = msg.RootElement.TryGetProperty("options", out var op) ? 
                                     JsonSerializer.Deserialize<List<string>>(op.GetRawText()) : null;
 
-                                                                _logger.LogInformation($"[GeminiSession] SID: {_sid} | Received dialog from PID {_pid}: {dialogType}");
-                                
-                                                                if (dialogType == "ready")
-                                                                {
-                                                                    _isReady = true;
-                                                                    _readyTcs.TrySetResult(true);
-                                                                    _logger.LogInformation($"[GeminiSession] SID: {_sid} | CLI is READY (handshake received).");
-                                                                }
+                                if (dialogType == "ready")
+                                {
+                                    _isReady = true;
+                                    _readyTcs.TrySetResult(true);
+                                }
                                 _lastDialogType = dialogType;
                                 _onDialog(_pid, dialogType ?? "unknown", prompt ?? "", options);
                             }
                             else if (typeStr == "turn_end")
                             {
-                                var reason = msg.RootElement.TryGetProperty("reason", out var reasonProp)
-                                    ? reasonProp.GetString() ?? "unknown_turn_end"
-                                    : "unknown_turn_end";
-                                var category = msg.RootElement.TryGetProperty("category", out var categoryProp)
-                                    ? categoryProp.GetString() ?? "unknown"
-                                    : "unknown";
-                                var finishReason = msg.RootElement.TryGetProperty("finishReason", out var finishReasonProp)
-                                    ? finishReasonProp.GetString()
-                                    : null;
-                                var turnMessage = msg.RootElement.TryGetProperty("message", out var messageProp)
-                                    ? messageProp.GetString()
-                                    : null;
-                                var source = msg.RootElement.TryGetProperty("source", out var sourceProp)
-                                    ? sourceProp.GetString()
-                                    : null;
-                                var promptId = msg.RootElement.TryGetProperty("promptId", out var promptIdProp)
-                                    ? promptIdProp.GetString()
-                                    : null;
-                                var workspacePath = msg.RootElement.TryGetProperty("workspacePath", out var workspacePathProp)
-                                    ? workspacePathProp.GetString()
-                                    : null;
-                                var workspaceName = msg.RootElement.TryGetProperty("workspaceName", out var workspaceNameProp)
-                                    ? workspaceNameProp.GetString()
-                                    : null;
-                                var timestamp = msg.RootElement.TryGetProperty("timestamp", out var timestampProp)
-                                    ? timestampProp.GetString()
-                                    : null;
+                                var reason = msg.RootElement.TryGetProperty("reason", out var reasonProp) ? reasonProp.GetString() ?? "unknown" : "unknown";
+                                var category = msg.RootElement.TryGetProperty("category", out var categoryProp) ? categoryProp.GetString() ?? "unknown" : "unknown";
+                                var finishReason = msg.RootElement.TryGetProperty("finishReason", out var finishReasonProp) ? finishReasonProp.GetString() : null;
+                                var turnMessage = msg.RootElement.TryGetProperty("message", out var messageProp) ? messageProp.GetString() : null;
+                                var source = msg.RootElement.TryGetProperty("source", out var sourceProp) ? sourceProp.GetString() : null;
+                                var promptId = msg.RootElement.TryGetProperty("promptId", out var promptIdProp) ? promptIdProp.GetString() : null;
+                                var workspacePath = msg.RootElement.TryGetProperty("workspacePath", out var workspacePathProp) ? workspacePathProp.GetString() : null;
+                                var workspaceName = msg.RootElement.TryGetProperty("workspaceName", out var workspaceNameProp) ? workspaceNameProp.GetString() : null;
+                                var timestamp = msg.RootElement.TryGetProperty("timestamp", out var timestampProp) ? timestampProp.GetString() : null;
 
-                                _logger.LogInformation($"[GeminiSession] SID: {_sid} | Received turn_end from PID {_pid}: reason={reason}, category={category}, finishReason={finishReason ?? "none"}");
-                                _onTurnEnd(
-                                    _pid,
-                                    reason,
-                                    category,
-                                    finishReason,
-                                    turnMessage,
-                                    source,
-                                    promptId,
-                                    workspacePath,
-                                    workspaceName,
-                                    timestamp);
+                                _logger.LogInformation($"[GeminiSession] SID: {_sid} | Received turn_end: reason={reason}, category={category}");
+                                _onTurnEnd(_pid, reason, category, finishReason, turnMessage, source, promptId, workspacePath, workspaceName, timestamp);
                             }
                         }
                     }
                     catch (JsonException ex)
                     {
-                        _logger.LogWarning($"[GeminiSession] SID: {_sid} | Error parsing JSON from PID {_pid}: {ex.Message}. Line: {line}");
+                        _logger.LogWarning($"[GeminiSession] SID: {_sid} | Error parsing JSON: {ex.Message}. Line: {line}");
                     }
                 }
             }
             catch (OperationCanceledException) { }
             catch (Exception ex)
             {
-                _logger.LogError(ex, $"[GeminiSession] SID: {_sid} | Read loop error for PID {_pid}");
+                _logger.LogError(ex, $"[GeminiSession] SID: {_sid} | Read loop error");
             }
             finally
             {
-                _logger.LogInformation($"[GeminiSession] SID: {_sid} | Read loop finished for PID {_pid}");
+                _logger.LogInformation($"[GeminiSession] SID: {_sid} | Read loop finished");
             }
         }
 
@@ -1790,7 +1842,7 @@ namespace OmniSync.Hub.Infrastructure.Services
             _writer = null;
             _pipeClient = null;
             _cts?.Dispose();
-            _writeLock.Dispose();
+            _writeLock?.Dispose();
 
             try
             {

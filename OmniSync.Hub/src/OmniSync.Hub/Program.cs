@@ -353,7 +353,7 @@ builder.Services.AddCors(options =>
 });
 
 builder.Services.AddSignalR(options => {
-    options.MaximumReceiveMessageSize = 1024 * 1024; // 1MB
+    options.MaximumReceiveMessageSize = 10 * 1024 * 1024; // 10MB
 });
 builder.Services.AddControllers();
 

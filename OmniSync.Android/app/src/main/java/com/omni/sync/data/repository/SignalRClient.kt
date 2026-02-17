@@ -563,6 +563,7 @@ class SignalRClient(
         }, String::class.java, Int::class.java)
 
         hubConnection?.on("ReceiveAiStatus", { status: String?, pid: Int ->
+            mainViewModel.addLog("[AI] Status update for PID $pid: ${status ?: "NULL"}", com.omni.sync.ui.screen.LogType.INFO)
             if (status == "FINISHED" || status == "DONE" || status == null || status.isBlank()) {
                 updateSessionStatus(pid, null)
                 updateSessionThought(pid, null)
@@ -712,13 +713,17 @@ class SignalRClient(
         hubConnection?.on("ReceiveAiHistory", { historyJson: String, pid: Int ->
             try {
                 Log.d("SignalRClient", "ReceiveAiHistory from Hub: pid=$pid, json length=${historyJson.length}")
-                mainViewModel.addLog("[AI] History received for PID $pid (${historyJson.length} bytes)", com.omni.sync.ui.screen.LogType.INFO)
+                mainViewModel.addLog("[AI] Received history for PID $pid (${historyJson.length} bytes)", com.omni.sync.ui.screen.LogType.SUCCESS)
+                
                 if (pid == -1 && (historyJson == "[]" || historyJson.isNullOrBlank())) {
+                    mainViewModel.addLog("[AI] History for -1 was empty, ignoring.", com.omni.sync.ui.screen.LogType.INFO)
                     return@on
                 }
 
                 val type = object : TypeToken<List<Map<String, String>>>() {}.type
                 val history: List<Map<String, String>> = gson.fromJson(historyJson, type)
+                mainViewModel.addLog("[AI] Successfully parsed ${history.size} history items for PID $pid", com.omni.sync.ui.screen.LogType.INFO)
+                
                 val mappedHistory = history.map { 
                     val sender = it["sender"] ?: "Unknown"
                     val text = it["text"] ?: ""
@@ -748,6 +753,7 @@ class SignalRClient(
                 updateActiveView()
             } catch (e: Exception) {
                 Log.e("SignalRClient", "Error parsing AI history", e)
+                mainViewModel.addLog("[AI] Failed to parse history for PID $pid: ${e.message}", com.omni.sync.ui.screen.LogType.ERROR)
             }
         }, String::class.java, Int::class.java)
 
