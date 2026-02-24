@@ -32,10 +32,13 @@ fun WebServerScreen(
     signalRClient: SignalRClient,
     mainViewModel: MainViewModel = viewModel()
 ) {
+    val hubApiUrl = mainViewModel.getBaseUrl()
+    val hubWebUrl = mainViewModel.getWebServerUrl()
+    
     val predefinedUrls = listOf(
         "https://www.google.com" to "Google",
-        "http://10.0.0.37:5000" to "Hub API (5000)",
-        "http://10.0.0.37:3333" to "Hub Web (3333)"
+        hubApiUrl to "Hub API (5000)",
+        hubWebUrl to "Hub Web (3333)"
     )
 
     var currentUrl by remember { mutableStateOf(predefinedUrls[0].first) }

@@ -395,6 +395,59 @@ def omni_memory_paths() -> dict:
 
 
 # ---------------------------------------------------------------------------
+# TOOL: omni:browser_refresh
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool(
+    name="omni:browser_refresh",
+    tags={"write", "system", "browser"},
+)
+def omni_browser_refresh(url: str | None = None) -> dict:
+    """
+    Force a browser refresh on all connected clients.
+    If a URL is provided, only pages matching that URL will refresh.
+    Works extensionless via DevSync or via the Omni Chrome Extension.
+
+    Args:
+        url: Optional URL substring to match (e.g. 'index.html').
+    """
+    import subprocess
+    import os
+
+    # Permission gate
+    get_permissions().gate("omni:browser_refresh")
+
+    # Use the omni_cli_script.py to send the command to the Hub
+    # Root: D:\SSDProjects\Omni
+    project_root = "D:\\SSDProjects\\Omni"
+    cli_path = os.path.join(project_root, "OmniSync.Cli", "omni_cli_script.py")
+    
+    command = f"refresh_browser"
+    if url:
+        command += f' "{url}"'
+
+    try:
+        # Run the CLI script to send the command
+        subprocess.run(
+            ["python", cli_path, command],
+            capture_output=True,
+            text=True,
+            check=True
+        )
+        return {
+            "status": "ok",
+            "message": f"Refresh command sent for {url or 'active tab'}.",
+            "timestamp": datetime.now().isoformat(),
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "error": str(e)
+        }
+
+
+# ---------------------------------------------------------------------------
 # RESOURCE: session_log (current)
 # ---------------------------------------------------------------------------
 

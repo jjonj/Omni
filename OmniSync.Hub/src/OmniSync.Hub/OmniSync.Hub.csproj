@@ -19,6 +19,7 @@
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="9.0.0" />
     <PackageReference Include="Microsoft.AspNetCore.SignalR.Common" Version="10.0.1" />
     <PackageReference Include="NAudio" Version="2.2.1" />
+    <PackageReference Include="Open.NAT" Version="2.1.0" />
     <PackageReference Include="System.Management" Version="9.0.0" />
     <PackageReference Include="System.Drawing.Common" Version="9.0.0" />
   </ItemGroup>

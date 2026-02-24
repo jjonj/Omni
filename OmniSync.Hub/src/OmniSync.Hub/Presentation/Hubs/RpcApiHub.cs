@@ -489,6 +489,16 @@ namespace OmniSync.Hub.Presentation.Hubs
                         await Clients.All.SendAsync("ReceiveBrowserCommand", "ReloadExtension", "", false);
                         await Clients.Caller.SendAsync("ReceiveCommandOutput", "Reload command sent to Chrome Extension.");
                         break;
+                    case "refresh_browser":
+                        string targetUrl = args.Count > 0 ? args[0] : "";
+                        // Extensionless (dev-sync.js)
+                        await Clients.All.SendAsync("ReceiveDevRefresh", targetUrl);
+                        // Chrome Extension (background.js)
+                        await Clients.All.SendAsync("ReceiveBrowserCommand", "Refresh", targetUrl, false);
+                        await Clients.Caller.SendAsync("ReceiveCommandOutput", string.IsNullOrEmpty(targetUrl) 
+                            ? "Dev Refresh command sent (active local tab)." 
+                            : $"Dev Refresh command for '{targetUrl}' sent.");
+                        break;
                     case "move_window_opposite":
                         if (args.Count > 0)
                         {

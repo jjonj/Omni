@@ -1,9 +1,12 @@
 using System;
 using System.Collections.Generic;
 using System.Text.Json;
+using System.Linq;
 using OmniSync.Hub.Infrastructure.Services;
 using OmniSync.Hub.Logic.Monitoring;
 using Microsoft.Extensions.Hosting;
+using Microsoft.AspNetCore.SignalR;
+using OmniSync.Hub.Presentation.Hubs;
 
 namespace OmniSync.Hub.Logic.Services
 {
@@ -23,13 +26,14 @@ namespace OmniSync.Hub.Logic.Services
         private readonly AiCliService _aiCliService;
         private readonly HubMonitorService _monitorService;
         private readonly IHostApplicationLifetime _appLifetime;
+        private readonly IHubContext<RpcApiHub> _hubContext;
         private readonly Dictionary<string, Action<JsonElement>> _commandMap;
 
         public event EventHandler<string>? AddCleanupPatternRequested;
         public event EventHandler? ShowProjectSelectorRequested;
         public event EventHandler<(string Command, JsonElement Payload)>? ExternalCommandDispatched;
 
-        public CommandDispatcher(InputService inputService, FileService fileService, AudioService audioService, ProcessService processService, ScreenshotService screenshotService, ShutdownService shutdownService, HubSettingsService settingsService, PcgPersistentService pcgService, NodeRedService nodeRedService, ProjectLauncherService projectLauncherService, ResourceOpenerService resourceOpenerService, AiCliService aiCliService, HubMonitorService monitorService, IHostApplicationLifetime appLifetime)
+        public CommandDispatcher(InputService inputService, FileService fileService, AudioService audioService, ProcessService processService, ScreenshotService screenshotService, ShutdownService shutdownService, HubSettingsService settingsService, PcgPersistentService pcgService, NodeRedService nodeRedService, ProjectLauncherService projectLauncherService, ResourceOpenerService resourceOpenerService, AiCliService aiCliService, HubMonitorService monitorService, IHostApplicationLifetime appLifetime, IHubContext<RpcApiHub> hubContext)
         {
             _inputService = inputService;
             _fileService = fileService;
@@ -45,6 +49,7 @@ namespace OmniSync.Hub.Logic.Services
             _aiCliService = aiCliService;
             _monitorService = monitorService;
             _appLifetime = appLifetime;
+            _hubContext = hubContext;
             _commandMap = new Dictionary<string, Action<JsonElement>>
             {
                 { "LEFT_CLICK", payload => _inputService.LeftClick() },
@@ -63,6 +68,16 @@ namespace OmniSync.Hub.Logic.Services
                 { "VOLUME_CONTROL", payload => _inputService.SendVolumeKey(payload.GetProperty("KeyCode").GetUInt16()) },
                 { "SET_VOLUME", payload => _audioService.SetMasterVolume(payload.GetProperty("VolumePercentage").GetSingle()) },
                 { "TOGGLE_MUTE", payload => _audioService.ToggleMute() },
+                { "REFRESH_BROWSER", payload => {
+                    string url = "";
+                    if (payload.TryGetProperty("Url", out var urlProp) || payload.TryGetProperty("url", out urlProp)) {
+                        url = urlProp.GetString() ?? "";
+                    }
+                    // Extensionless (dev-sync.js)
+                    _ = _hubContext.Clients.All.SendAsync("ReceiveDevRefresh", url);
+                    // Chrome Extension (background.js)
+                    _ = _hubContext.Clients.All.SendAsync("ReceiveBrowserCommand", "Refresh", url, false);
+                }},
                 { "LAUNCH_PROJECT", payload => {
                     if (payload.TryGetProperty("Id", out var idProp)) {
                         if (Guid.TryParse(idProp.GetString(), out var projectId)) {

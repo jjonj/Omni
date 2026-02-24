@@ -272,7 +272,8 @@ builder.Services.AddSingleton<CommandDispatcher>(provider => {
     var aiCliService = provider.GetRequiredService<AiCliService>();
     var monitorService = provider.GetRequiredService<HubMonitorService>();
     var appLifetime = provider.GetRequiredService<IHostApplicationLifetime>();
-    return new CommandDispatcher(inputService, fileService, audioService, processService, screenshotService, shutdownService, settingsService, pcgService, nodeRedService, projectLauncherService, resourceOpenerService, aiCliService, monitorService, appLifetime);
+    var hubContext = provider.GetRequiredService<IHubContext<RpcApiHub>>();
+    return new CommandDispatcher(inputService, fileService, audioService, processService, screenshotService, shutdownService, settingsService, pcgService, nodeRedService, projectLauncherService, resourceOpenerService, aiCliService, monitorService, appLifetime, hubContext);
 });
 builder.Services.AddSingleton<GlobalHotkeyService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<GlobalHotkeyService>());
@@ -338,6 +339,8 @@ builder.Services.AddHostedService<TrayIconManager>(provider => provider.GetRequi
 
 builder.Services.AddHostedService<HubStartupService>(); // Auto-launch AI components
 builder.Services.AddHostedService<ScreenshotHostedService>();
+builder.Services.AddHostedService<WebReloaderService>();
+builder.Services.AddHostedService<UpnpService>();
 builder.Services.AddSingleton<KeyboardHook>(); // Register KeyboardHook
 
 builder.Services.AddCors(options =>

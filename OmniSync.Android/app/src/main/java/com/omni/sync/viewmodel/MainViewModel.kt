@@ -224,7 +224,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         } else {
             // Fallback or if port not specified, append 3333
             val uri = android.net.Uri.parse(baseUrl)
-            val host = uri.host ?: "10.0.0.37"
+            val configUri = android.net.Uri.parse(_appConfig.value.hubUrl)
+            val host = uri.host ?: configUri.host ?: "192.168.0.37"
             "http://$host:3333"
         }
     }

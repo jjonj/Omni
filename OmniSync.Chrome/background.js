@@ -199,9 +199,32 @@ connection.on("ReceiveBrowserCommand", async (command, url, newTab) => {
             });
         }
     } else if (command === "Refresh") {
-        chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-            if (tabs[0]) chrome.tabs.reload(tabs[0].id);
-        });
+        if (url && url.length > 0) {
+            // If a URL is provided, find all tabs matching that URL and reload them
+            chrome.tabs.query({ url: url }, (tabs) => {
+                if (tabs && tabs.length > 0) {
+                    tabs.forEach(tab => chrome.tabs.reload(tab.id));
+                } else {
+                    // Fallback to query with wildcards if exact match fails
+                    try {
+                        const urlObj = new URL(url);
+                        const wildcardUrl = url.includes('*') ? url : `*://${urlObj.hostname}${urlObj.pathname}*`;
+                        chrome.tabs.query({ url: wildcardUrl }, (tabs) => {
+                            tabs.forEach(tab => chrome.tabs.reload(tab.id));
+                        });
+                    } catch (e) {
+                        // If not a full URL, just try a simple search
+                        chrome.tabs.query({ url: `*${url}*` }, (tabs) => {
+                            tabs.forEach(tab => chrome.tabs.reload(tab.id));
+                        });
+                    }
+                }
+            });
+        } else {
+            chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+                if (tabs[0]) chrome.tabs.reload(tabs[0].id);
+            });
+        }
     } else if (command === "Back") {
         chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
             if (tabs[0]) {

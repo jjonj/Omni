@@ -10,9 +10,10 @@
 1770404480692|TasksDone_clean.txt
 1770625980042|build_run_omnihub.py
 1771116788092|commit_msg_athena.txt
+1771272312395|commit_msg_omni_config.txt
 1770404480486|commit_msg_tft.txt
 1770404480487|commit_msg_tft_final.txt
-1771196358866|commitmsg.txt
+1771198250225|commitmsg.txt
 1770404480488|connectadb.py
 1770664982686|crash.txt
 1770625980128|delete_build_dir.py
@@ -20,15 +21,16 @@
 1770404480546|full_commit_msg.txt
 1770404480649|git_diff.txt
 1770404480651|git_status.txt
-1771197219977|hub_log.txt
+1771362736006|hub_log.txt
 1770581121254|last_adb_target.txt
 1770625980135|launch_gemini_cli_hub.py
 1770625980138|launch_gemini_cli_old.py
 1770625980141|modify_gemini_cli.py
 1770404480666|package-lock.json
 1770625980145|temp_launch.bat
-1771197213812|↳\.omni
-1771197213812| ↳\athena
+1771362732070|↳\.omni
+1771252126428| omni_config.json
+1771362732070| ↳\athena
 1771109663989|  ↳\agent
 1771109663989|   ↳\workflows
 1771109663989|    end.md
@@ -38,14 +40,15 @@
 1771087222923|  ↳\framework
 1771087222923|   ↳\modules
 1771087222923|    Core_Identity.md
-1771197213812|  ↳\session_logs
+1771362732070|  ↳\session_logs
 1771107098668|   2026-02-14-session-01.md
 1771110345719|   2026-02-15-session-01.md
 1771111741031|   2026-02-15-session-02.md
 1771115845546|   2026-02-15-session-03.md
 1771117190866|   2026-02-15-session-04.md
 1771186019526|   2026-02-15-session-05.md
-1771197213812|   2026-02-16-session-01.md
+1771200545567|   2026-02-16-session-01.md
+1771362732070|   2026-02-17-session-01.md
 1770625979303|↳\Omni.Other
 1770625979303| ↳\OmniNPP
 1770625979298|  Class1.cs
@@ -53,7 +56,7 @@
 1770404480824|  OmniNPP.cs
 1769812628400|  OmniNPP.csproj
 1770625979303|  deploy.py
-1770893860430|↳\OmniSync.Android
+1771198275844|↳\OmniSync.Android
 1770404480911| BUILD_DEPLOY_README.md
 1770404480913| BUILD_GUIDE.md
 1770404480915| CHANGES_SUMMARY.md
@@ -66,15 +69,15 @@
 1770404481256| gradlew.bat
 1769812628439| settings.gradle.kts
 1770625979342| verify_setup.py
-1770893860430| ↳\app
+1771198275844| ↳\app
 1769812628401|  build.gradle.kts
-1770893860430|  ↳\src
-1770893860430|   ↳\main
+1771198275844|  ↳\src
+1771198275844|   ↳\main
 1769812628401|    AndroidManifest.xml
-1770893860430|    ↳\java
-1770893860430|     ↳\com
-1770893860430|      ↳\omni
-1770893860430|       ↳\sync
+1771198275844|    ↳\java
+1771198275844|     ↳\com
+1771198275844|      ↳\omni
+1771198275844|       ↳\sync
 1770759506440|        MainActivity.kt
 1770030468709|        OmniSyncApplication.kt
 1770893836454|        ↳\data
@@ -102,10 +105,10 @@
 1769812628404|         ClipboardWatcher.kt
 1770626048667|         ForegroundService.kt
 1769812628404|         OmniAccessibilityService.kt
-1770893860430|        ↳\ui
+1771198275844|        ↳\ui
 1769812628405|         WidgetConfigActivity.kt
-1770671175602|         ↳\components
-1770671175602|          CustomKeyboard.kt
+1771198275844|         ↳\components
+1771198275844|          CustomKeyboard.kt
 1769812628405|          DirectoryPickerDialog.kt
 1770127018061|          OmniBottomNavigation.kt
 1769812628405|          SharedComponents.kt
@@ -181,8 +184,8 @@
 1769812628437|         ConflictResolverTest.kt
 1769812628437|         ↳\macro
 1769812628437|          MacroLogicTest.kt
-1771115815450|↳\OmniSync.Assistant
-1771115815450| ↳\Omni.Athena
+1771252114338|↳\OmniSync.Assistant
+1771252114338| ↳\Omni.Athena
 1770991242136|  ↳\examples
 1770991242109|   DEMO_SCRIPT.md
 1770991242112|   demo.html
@@ -253,8 +256,8 @@
 1770991242142|     __init__.py
 1770991242142|     graphrag.py
 1770991242143|     pipeline.py
-1771115815450|  ↳\src
-1771115815450|   ↳\athena
+1771252114338|  ↳\src
+1771252114338|   ↳\athena
 1770991242144|    __init__.py
 1771115815374|    __main__.py
 1771074051077|    mcp_server.py
@@ -273,22 +276,23 @@
 1771115815426|     __init__.py
 1771086606495|     boot_logic.py
 1771111714528|     shutdown.py
-1771087218580|    ↳\cli
+1771252104598|    ↳\cli
 1770991242145|     __init__.py
-1771087218580|     init.py
+1771252104598|     init.py
 1771086596808|     save.py
-1771115815450|    ↳\context_engine
+1771252114338|    ↳\context_engine
 1771115815450|     __init__.py
-1771025221339|     engine.py
+1771252114338|     engine.py
 1771078508526|     git_history.py
 1771081213603|     project_index.py
 1771074021941|     skeleton.py
 1771079793194|     skills.py
 1771084124245|     state.py
-1771001781117|    ↳\core
+1771252092997|    ↳\core
 1770991242147|     __init__.py
 1770991242147|     cache.py
 1771001781117|     config.py
+1771252092997|     defaults.py
 1770991242147|     diagnostic_relay.py
 1770991242147|     governance.py
 1770991242148|     models.py
@@ -577,8 +581,8 @@
 1771071463281|   ↳\Logic
 1771071463281|    ↳\Services
 1771071463281|     AssistantServiceTests.cs
-1771197188759|↳\OmniSync.Web
-1771197188759| ↳\www
+1771362607275|↳\OmniSync.Web
+1771362607275| ↳\www
 1770626048675|  Scheduler.html
 1770893873638|  Settings.html
 1770626048675|  TFT.html
@@ -586,7 +590,7 @@
 1770741276916|  index.html
 1770625979757|  update_web_version.py
 1771185925714|  worktrees.json
-1771196957977|  ↳\IslandGenerator
+1771197994766|  ↳\IslandGenerator
 1770734245917|   COMPLETE_DERIVATION_EXPLAINED.md
 1770734245917|   ELEVATION_SYSTEM_EXPLAINED.md
 1770734245921|   GEMINI.md
@@ -607,7 +611,7 @@
 1770734246460|   fix_variable_renaming.js
 1770734246460|   fix_variable_renaming_v2.js
 1770734246460|   fix_variable_renaming_v3.js
-1771196957977|   index.html
+1771197994766|   index.html
 1770734246461|   island_gen_refactor.md
 1771074306796|   main.js
 1770734246461|   run_ValidationSuite.js
@@ -716,8 +720,8 @@
 1770404486575|   tft_role_test.js
 1770404486578|   tft_smart_sort_test.js
 1770625979753|   tft_tests.js
-1771197188759|  ↳\worktrees
-1771196966455|   ↳\Alt1
+1771362607275|  ↳\worktrees
+1771197524493|   ↳\Alt1
 1770938610944|    COMPLETE_DERIVATION_EXPLAINED.md
 1770938610951|    ELEVATION_SYSTEM_EXPLAINED.md
 1770938610955|    GEMINI.md
@@ -728,7 +732,7 @@
 1770938610991|    TOOLTIP_FIX_PLAN.md
 1770938610991|    TOOLTIP_FIX_SUMMARY.md
 1770938610991|    TOOLTIP_VISUAL_EXAMPLE.md
-1770938611386|    ValidationSuite.js
+1771197524465|    ValidationSuite.js
 1770938611386|    ValidationSuiteConfig.json
 1770938611386|    analyze_bp.py
 1770938611386|    compare_nodes.py
@@ -738,9 +742,9 @@
 1770938611387|    fix_variable_renaming.js
 1770938611387|    fix_variable_renaming_v2.js
 1770938611387|    fix_variable_renaming_v3.js
-1771196966455|    index.html
+1771197524486|    index.html
 1770938611388|    island_gen_refactor.md
-1770938611388|    main.js
+1771197524487|    main.js
 1770938611388|    run_ValidationSuite.js
 1770938611389|    run_fast_validation.py
 1770938611389|    run_validation.py
@@ -761,7 +765,10 @@
 1770938610968|    ↳\RiverInspiration
 1770938610956|     convert_pdf_to_md.py
 1770938610968|     siggraph2013.md
-1770938610994|    ↳\Tests
+1771197524450|    ↳\Tests
+1771197524449|     IslandCreationTestBaseline.js
+1771197524449|     MegaRiverTest.js
+1771197524450|     RiverPriorityVarianceTest.js
 1770938610991|     test_analytic_interpolator.js
 1770938610991|     test_core.js
 1770938610991|     test_height_stages.js
@@ -777,55 +784,53 @@
 1770938610993|     test_shelf.js
 1770938610993|     test_smoothing_network_visual.js
 1770938610994|     test_smoothing_verification.js
-1770938611385|    ↳\ValidationMaps
-1770938611385|     ValidationConfig.json
 1770938611386|    ↳\css
 1770938611386|     styles.css
-1771028767831|    ↳\src
-1771028767831|     ↳\config
-1770938611389|      Config.js
-1771028767831|      Settings.json
-1770938611390|      SettingsRegistry.js
-1770938611394|     ↳\core
-1770938611390|      BiomeData.js
-1770938611391|      BiomeGenerator.js
+1771197524493|    ↳\src
+1771197524488|     ↳\config
+1771197524487|      Config.js
+1771197524487|      Settings.json
+1771197524488|      SettingsRegistry.js
+1771197524490|     ↳\core
+1771197524488|      BiomeData.js
+1771197524489|      BiomeGenerator.js
 1770938611391|      ErosionSystem.js
 1770938611391|      GPUShapeGenerator.js
 1770938611391|      HydrologyGraph.js
 1770938611391|      HydrologySystem.js
-1770938611392|      IslandGenerator.js
+1771197524489|      IslandGenerator.js
 1770938611392|      LakeSystem.js
 1770938611392|      NoiseGenerator.js
 1770938611392|      ShapeProcessor.js
-1770938611394|      ↳\hydrology
+1771197524490|      ↳\hydrology
 1770938611393|       AnalyticInterpolator.js
 1770938611393|       FlowSystem.js
 1770938611393|       HeightInterpolator.js
-1770938611393|       InputGenerator.js
+1771197524490|       InputGenerator.js
 1770938611393|       LakeOutflowOptimizer.js
 1770938611393|       OceanFeatures.js
 1770938611394|       RiverCarver.js
-1770938611394|       RiverGenerator.js
+1771197524490|       RiverGenerator.js
 1770938611394|       TerrainTree.js
 1770938611394|       VoronoiDiagram.js
-1770938611394|       WatershedAnalyzer.js
-1770938611395|     ↳\utils
-1770938611395|      CacheStorage.js
-1770938611395|      HashUtils.js
+1771197524490|       WatershedAnalyzer.js
+1771197524491|     ↳\utils
+1771197524491|      CacheStorage.js
+1771197524491|      HashUtils.js
 1770938611395|      MathUtils.js
 1770938611395|      PriorityQueue.js
 1770938611395|      SpatialIndex.js
-1770938611397|     ↳\view
-1770938611395|      DebugRenderer.js
-1770938611395|      EventManager.js
+1771197524492|     ↳\view
+1771197524491|      DebugRenderer.js
+1771197524491|      EventManager.js
 1770938611396|      LayerRenderer.js
-1770938611396|      Renderer.js
+1771197524492|      Renderer.js
 1770938611396|      ThreeRenderer.js
-1770938611396|      UIComponents.js
-1770938611397|      UIManager.js
-1770938611397|     ↳\worker
-1770938611397|      GenerationWorker.js
-1771196966592|   ↳\gitexplore
+1771197524492|      UIComponents.js
+1771197524492|      UIManager.js
+1771197524493|     ↳\worker
+1771197524493|      GenerationWorker.js
+1771197346944|   ↳\gitexplore
 1770810610712|    COMPLETE_DERIVATION_EXPLAINED.md
 1770810610713|    ELEVATION_SYSTEM_EXPLAINED.md
 1770852528282|    GEMINI.md
@@ -846,7 +851,7 @@
 1770810611406|    fix_variable_renaming.js
 1770810611406|    fix_variable_renaming_v2.js
 1770810611406|    fix_variable_renaming_v3.js
-1771196966592|    index.html
+1771197346944|    index.html
 1770816042612|    island_gen_refactor.md
 1770852817778|    main.js
 1770852817778|    run_ValidationSuite.js
@@ -932,7 +937,7 @@
 1770852817792|      UIManager.js
 1770852817793|     ↳\worker
 1770852817793|      GenerationWorker.js
-1771197188759|   ↳\river_delta_estuary
+1771362607275|   ↳\river_delta_estuary
 1771185925230|    COMPLETE_DERIVATION_EXPLAINED.md
 1771185925231|    ELEVATION_SYSTEM_EXPLAINED.md
 1771185925236|    GEMINI.md
@@ -953,7 +958,7 @@
 1771185925350|    fix_variable_renaming.js
 1771185925350|    fix_variable_renaming_v2.js
 1771185925351|    fix_variable_renaming_v3.js
-1771196966512|    index.html
+1771200042582|    index.html
 1771185925359|    island_gen_refactor.md
 1771185925363|    main.js
 1771197062105|    prototype_delta.js
@@ -977,10 +982,11 @@
 1771185925255|    ↳\RiverInspiration
 1771185925237|     convert_pdf_to_md.py
 1771185925255|     siggraph2013.md
-1771185925302|    ↳\Tests
+1771354227919|    ↳\Tests
 1771185925286|     IslandCreationTestBaseline.js
 1771185925291|     MegaRiverTest.js
 1771185925294|     RiverPriorityVarianceTest.js
+1771341498812|     bezier_delta_designer.html
 1771185925295|     test_analytic_interpolator.js
 1771185925295|     test_core.js
 1771185925295|     test_height_stages.js
@@ -990,39 +996,42 @@
 1771185925296|     test_lake_carving_monotonicity.js
 1771185925296|     test_lake_outflow.js
 1771185925296|     test_river_branching_issue.js
+1771354227919|     test_river_delta_4_cases.js
 1771185925296|     test_river_fix_actual.js
 1771185925296|     test_river_mechanics.js
 1771185925296|     test_river_smoothing.js
 1771185925297|     test_shelf.js
 1771185925301|     test_smoothing_network_visual.js
 1771185925302|     test_smoothing_verification.js
+1771362607275|    ↳\ValidationMaps
+1771362607275|     ValidationConfig.json
 1771185925350|    ↳\css
 1771185925350|     styles.css
-1771197188759|    ↳\src
-1771196425115|     ↳\config
-1771185925368|      Config.js
-1771196425115|      Settings.json
+1771362503094|    ↳\src
+1771354486525|     ↳\config
+1771354486525|      Config.js
+1771354389166|      Settings.json
 1771185925376|      SettingsRegistry.js
-1771197188759|     ↳\core
+1771362503094|     ↳\core
 1771185925380|      BiomeData.js
 1771185925383|      BiomeGenerator.js
 1771185925384|      ErosionSystem.js
 1771185925384|      GPUShapeGenerator.js
-1771185925384|      HydrologyGraph.js
+1771354462583|      HydrologyGraph.js
 1771185925384|      HydrologySystem.js
 1771185925389|      IslandGenerator.js
 1771185925389|      LakeSystem.js
 1771185925389|      NoiseGenerator.js
 1771185925389|      ShapeProcessor.js
-1771197188759|      ↳\hydrology
+1771362503094|      ↳\hydrology
 1771185925395|       AnalyticInterpolator.js
 1771185925395|       FlowSystem.js
 1771185925395|       HeightInterpolator.js
 1771185925400|       InputGenerator.js
 1771185925400|       LakeOutflowOptimizer.js
 1771185925400|       OceanFeatures.js
-1771197188759|       RiverCarver.js
-1771195978273|       RiverGenerator.js
+1771362503094|       RiverCarver.js
+1771354486541|       RiverGenerator.js
 1771185925443|       TerrainTree.js
 1771185925443|       VoronoiDiagram.js
 1771185925447|       WatershedAnalyzer.js
@@ -1032,16 +1041,16 @@
 1771185925456|      MathUtils.js
 1771185925456|      PriorityQueue.js
 1771185925460|      SpatialIndex.js
-1771186184479|     ↳\view
+1771354486544|     ↳\view
 1771185925463|      DebugRenderer.js
 1771185925467|      EventManager.js
-1771185925467|      LayerRenderer.js
-1771185925471|      Renderer.js
+1771203261520|      LayerRenderer.js
+1771354486544|      Renderer.js
 1771185925476|      ThreeRenderer.js
 1771185925480|      UIComponents.js
-1771186184479|      UIManager.js
-1771185925491|     ↳\worker
-1771185925491|      GenerationWorker.js
+1771354389187|      UIManager.js
+1771359485968|     ↳\worker
+1771359485968|      GenerationWorker.js
 1770897373864|↳\TestScripts
 1770404486605| README.md
 1770628587855| cli_focus_test.py

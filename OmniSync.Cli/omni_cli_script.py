@@ -9,7 +9,7 @@ import traceback
 from signalrcore.hub_connection_builder import HubConnectionBuilder
 
 # --- CONFIGURATION ---
-HUB_URL = "http://10.0.0.37:5000/signalrhub" # Your PC IP
+HUB_URL = "http://localhost:5000/signalrhub" # Local Hub
 API_KEY = "test_api_key"                     # Your Hub Secret
 # ---------------------
 

@@ -410,6 +410,9 @@ class SignalRClient(
         if (reconnectJob?.isActive == true) return
 
         reconnectJob = coroutineScope.launch {
+            // RE-EVALUATE IP ON FAILURE
+            updateHubUrlBasedOnLocalIp()
+            
             var attempt = 0
             while (!manualStop.get()) {
                 val delayMs = getRetryDelay(attempt)
@@ -1612,6 +1615,46 @@ class SignalRClient(
             currentMessages + AiMessage("CodeDiff", diff)
         }
         setIsNextBubble(pid, true)
+    }
+
+    private fun getLocalIpAddress(): String? {
+        try {
+            val interfaces = java.net.NetworkInterface.getNetworkInterfaces()
+            while (interfaces.hasMoreElements()) {
+                val networkInterface = interfaces.nextElement()
+                val addresses = networkInterface.inetAddresses
+                while (addresses.hasMoreElements()) {
+                    val address = addresses.nextElement()
+                    if (!address.isLoopbackAddress && address is java.net.Inet4Address) {
+                        return address.hostAddress
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("SignalRClient", "Error getting local IP address", e)
+        }
+        return null
+    }
+
+    private fun updateHubUrlBasedOnLocalIp() {
+        val localIp = getLocalIpAddress() ?: return
+        mainViewModel.addLog("Local IP detected: $localIp", com.omni.sync.ui.screen.LogType.INFO)
+        
+        val newHubIp = when {
+            localIp.startsWith("192.") -> "192.168.0.37"
+            localIp.startsWith("10.") -> "10.0.0.37"
+            else -> null
+        }
+        
+        if (newHubIp != null) {
+            val currentHubUrl = mainViewModel.appConfig.value.hubUrl
+            val newHubUrl = "http://$newHubIp:5000/signalrhub"
+            
+            if (currentHubUrl != newHubUrl) {
+                mainViewModel.addLog("Updating Hub URL to $newHubUrl based on local IP $localIp", com.omni.sync.ui.screen.LogType.INFO)
+                mainViewModel.updateConfig { it.copy(hubUrl = newHubUrl) }
+            }
+        }
     }
 
     private fun removeHubHandlers() {

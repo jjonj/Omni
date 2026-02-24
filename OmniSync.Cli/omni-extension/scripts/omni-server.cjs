@@ -263,6 +263,16 @@ async function main() {
                   project_root: { type: "string", description: "Optional project root override" }
                 }
               }
+            },
+            {
+              name: "browser_refresh",
+              description: "Force a browser refresh. If url is provided, only matching pages refresh.",
+              inputSchema: {
+                type: "object",
+                properties: {
+                  url: { type: "string", description: "Optional URL substring to match (e.g. 'index.html')" }
+                }
+              }
             }
           ]
         });
@@ -348,6 +358,14 @@ async function main() {
             sendResponse(req.id, { content: [{ type: "text", text: output }] });
           } catch (error) {
             sendResponse(req.id, { isError: true, content: [{ type: "text", text: `Boot Error: ${error.message}` }] });
+          }
+        } else if (toolName === "browser_refresh") {
+          const { url } = args;
+          try {
+            await callHubApi("REFRESH_BROWSER", { Url: url || "" });
+            sendResponse(req.id, { content: [{ type: "text", text: `Refresh command sent ${url ? `for ${url}` : "(active tab)"}` }] });
+          } catch (error) {
+            sendResponse(req.id, { isError: true, content: [{ type: "text", text: `Browser Refresh Error: ${error.message}` }] });
           }
         } else {
           sendError(req.id, -32601, `Tool not found: ${toolName}`);
