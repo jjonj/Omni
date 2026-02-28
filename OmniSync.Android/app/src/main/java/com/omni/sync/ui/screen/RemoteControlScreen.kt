@@ -885,9 +885,12 @@ fun ButtonPanel(
             } else {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        ActionKeyButton(text = "Paste", modifier = Modifier.weight(1f)) {
+                        ActionKeyButton(text = "Clipboard", icon = Icons.Default.ArrowUpward, modifier = Modifier.weight(1.1f)) {
                             val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                             clipboard.primaryClip?.getItemAt(0)?.text?.let { signalRClient.sendText(it.toString()) }
+                        }
+                        ActionKeyButton(text = "Clip", icon = Icons.Default.ArrowDownward, modifier = Modifier.weight(0.9f)) {
+                            signalRClient.requestClipboard()
                         }
                         var showFKeys by remember { mutableStateOf(false) }
                         Box(modifier = Modifier.weight(1f)) {

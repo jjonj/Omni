@@ -1221,6 +1221,29 @@ class SignalRClient(
         }
     }
 
+    fun requestClipboard() {
+        if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
+            hubConnection?.invoke(String::class.java, "GetClipboardText")
+                ?.subscribe({ text ->
+                    if (!text.isNullOrEmpty()) {
+                        coroutineScope.launch(Dispatchers.Main) {
+                            try {
+                                isUpdatingClipboardInternally = true
+                                val clip = ClipData.newPlainText("OmniSyncClipboard", text)
+                                clipboardManager.setPrimaryClip(clip)
+                                mainViewModel.updateClipboardContent(text)
+                                mainViewModel.addLog("Synced clipboard from PC", com.omni.sync.ui.screen.LogType.SUCCESS)
+                            } finally {
+                                isUpdatingClipboardInternally = false
+                            }
+                        }
+                    }
+                }, { error ->
+                    mainViewModel.addLog("Failed to sync clipboard: ${error.message}", com.omni.sync.ui.screen.LogType.ERROR)
+                })
+        }
+    }
+
     fun executeCommand(command: String) {
         if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
             hubConnection?.send("ExecuteCommand", command)

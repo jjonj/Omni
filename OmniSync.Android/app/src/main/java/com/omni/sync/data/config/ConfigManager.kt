@@ -6,9 +6,10 @@ import com.omni.sync.data.model.NotificationAction
 import java.io.File
 
 data class AppConfig(
-    var hubUrl: String = "http://10.0.0.37:5000/signalrhub",
+    var hubUrl: String = "http://192.168.0.37:5000/signalrhub",
     var wanIp: String = "85.80.233.70",
     var apiKey: String = "test_api_key",
+    var syncIntervalMinutes: Long = 15,
     var videoSkipInterval: Int = 10,
     var videoPlaylistRandom: Boolean = false,
     var cortexNotificationsEnabled: Boolean = true,

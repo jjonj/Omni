@@ -40,5 +40,5 @@ npm install @microsoft/signalr
 
 If the extension doesn't connect:
 - Make sure the Hub is running (run_omnihub.py)
-- Check that the IP address in background.js matches your Hub IP (currently set to 10.0.0.37)
+- Check that the HUB_URL in background.js matches your Hub IP (use localhost if on same machine)
 - Check Chrome DevTools console for error messages

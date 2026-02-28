@@ -4,7 +4,7 @@ try {
   console.error(e);
 }
 
-const HUB_URL = "http://10.0.0.37:5000/signalrhub";
+const HUB_URL = "http://localhost:5000/signalrhub";
 const API_KEY = "test_api_key";
 
 // Custom cleanup patterns stored in chrome.storage

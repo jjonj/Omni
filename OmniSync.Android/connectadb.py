@@ -3,7 +3,7 @@ import sys
 import os
 
 # === ثابت values ===
-PHONE_IP = "10.0.0.236"
+PHONE_IP = "192.168.0.236"
 
 ADB_PATH = r"E:\SDKS\AndroidSDK\platform-tools"
 
