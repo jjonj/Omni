@@ -14,6 +14,26 @@ API_KEY = "test_api_key"
 WORKSPACE = r"D:/SSDProjects"
 HUB_PORT = 5000
 
+# ---------------------------------------------------------------------------
+# AI Bridge Test Map (SignalR Hub <-> Named Pipe <-> Gemini CLI)
+#
+# This script is the full end-to-end live roundtrip test.
+# Use it when you want to verify real runtime behavior with real Hub + real CLI.
+#
+# Companion tests in this same folder:
+# 1) api_contract_test.py
+#    - Python wrapper that runs both sides' contract tests.
+#    - Runs Hub tests (dotnet) + CLI pipe contract test (npm).
+#    - Best first step for API shape/contract regressions.
+#
+# Typical debugging order:
+# 1) python TestScripts/AIFeature/api_contract_test.py
+# 2) python TestScripts/AIFeature/Roundtrip_test.py
+#
+# If (1) passes but (2) fails, the issue is usually runtime wiring/lifecycle
+# (startup ordering, handler registration, timing, or process/session state).
+# ---------------------------------------------------------------------------
+
 # Setup Root Directory
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
 if "TestScripts" in ROOT_DIR:

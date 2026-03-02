@@ -14,6 +14,7 @@ using OmniSync.Hub.Logic;
 using System.Windows.Forms; // For MessageBox
 using System.Windows.Input;
 using OmniSync.Hub.Infrastructure;
+using System.Threading;
 
 namespace OmniSync.Hub.Presentation
 {
@@ -635,22 +636,22 @@ namespace OmniSync.Hub.Presentation
             ActiveConnections = _hubMonitorService.ActiveConnections;
             LogMessages = _hubMonitorService.LogMessages;
             LogMessages.CollectionChanged += (s, e) => OnPropertyChanged(nameof(LogMessagesText));
-            ExeMappings = new ObservableCollection<KeyValuePair<string, string>>(_settingsService.Settings.ExeMappings.ToList());
-            Hotkeys = new ObservableCollection<HotkeyConfig>(_settingsService.Settings.Hotkeys);
+            ExeMappings = new ObservableCollection<KeyValuePair<string, string>>(SnapshotDictionary(() => _settingsService.Settings.ExeMappings));
+            Hotkeys = new ObservableCollection<HotkeyConfig>(SnapshotList(() => _settingsService.Settings.Hotkeys));
             foreach (var hk in Hotkeys)
             {
                 hk.PropertyChanged += OnHotkeyPropertyChanged;
             }
             HotkeyGroups = CollectionViewSource.GetDefaultView(Hotkeys);
             HotkeyGroups.GroupDescriptions.Add(new PropertyGroupDescription(nameof(HotkeyConfig.Category)));
-            Projects = new ObservableCollection<Project>(_settingsService.Settings.Projects);
-            ProjectRoots = new ObservableCollection<ProjectRoot>(_settingsService.Settings.ProjectRoots);
-            Macros = new ObservableCollection<MacroConfig>(_settingsService.Settings.Macros);
+            Projects = new ObservableCollection<Project>(SnapshotList(() => _settingsService.Settings.Projects));
+            ProjectRoots = new ObservableCollection<ProjectRoot>(SnapshotList(() => _settingsService.Settings.ProjectRoots));
+            Macros = new ObservableCollection<MacroConfig>(SnapshotList(() => _settingsService.Settings.Macros));
             foreach (var macro in Macros)
             {
                 macro.PropertyChanged += OnMacroPropertyChanged;
             }
-            BrowserCleanupPatterns = new ObservableCollection<string>(_settingsService.Settings.BrowserCleanupPatterns);
+            BrowserCleanupPatterns = new ObservableCollection<string>(SnapshotList(() => _settingsService.Settings.BrowserCleanupPatterns));
             AiModels = new ObservableCollection<AiModelEntry>();
             RefreshAiModels();
 
@@ -669,26 +670,33 @@ namespace OmniSync.Hub.Presentation
             {
                 // Refresh mappings when settings change
                 WpfApp.Current?.Dispatcher.BeginInvoke(new Action(() => {
+                    var exeMappingsSnapshot = SnapshotDictionary(() => _settingsService.Settings.ExeMappings);
+                    var hotkeysSnapshot = SnapshotList(() => _settingsService.Settings.Hotkeys);
+                    var projectsSnapshot = SnapshotList(() => _settingsService.Settings.Projects);
+                    var projectRootsSnapshot = SnapshotList(() => _settingsService.Settings.ProjectRoots);
+                    var macrosSnapshot = SnapshotList(() => _settingsService.Settings.Macros);
+                    var cleanupPatternsSnapshot = SnapshotList(() => _settingsService.Settings.BrowserCleanupPatterns);
+
                     ExeMappings.Clear();
-                    foreach (var mapping in _settingsService.Settings.ExeMappings)
+                    foreach (var mapping in exeMappingsSnapshot)
                     {
                         ExeMappings.Add(mapping);
                     }
                     
                     Hotkeys.Clear();
-                    foreach (var hk in _settingsService.Settings.Hotkeys)
+                    foreach (var hk in hotkeysSnapshot)
                     {
                         Hotkeys.Add(hk);
                     }
 
                     Projects.Clear();
-                    foreach (var p in _settingsService.Settings.Projects)
+                    foreach (var p in projectsSnapshot)
                     {
                         Projects.Add(p);
                     }
 
                     ProjectRoots.Clear();
-                    foreach (var r in _settingsService.Settings.ProjectRoots)
+                    foreach (var r in projectRootsSnapshot)
                     {
                         ProjectRoots.Add(r);
                     }
@@ -700,7 +708,7 @@ namespace OmniSync.Hub.Presentation
                         existing.PropertyChanged -= OnMacroPropertyChanged;
                     }
                     Macros.Clear();
-                    foreach (var m in _settingsService.Settings.Macros)
+                    foreach (var m in macrosSnapshot)
                     {
                         m.PropertyChanged += OnMacroPropertyChanged;
                         Macros.Add(m);
@@ -712,7 +720,7 @@ namespace OmniSync.Hub.Presentation
                     }
 
                     BrowserCleanupPatterns.Clear();
-                    foreach (var pattern in _settingsService.Settings.BrowserCleanupPatterns)
+                    foreach (var pattern in cleanupPatternsSnapshot)
                     {
                         BrowserCleanupPatterns.Add(pattern);
                     }
@@ -1095,7 +1103,7 @@ namespace OmniSync.Hub.Presentation
         public void RefreshMappingsGrid()
         {
             ExeMappings.Clear();
-            foreach(var mapping in _settingsService.Settings.ExeMappings)
+            foreach(var mapping in SnapshotDictionary(() => _settingsService.Settings.ExeMappings))
             {
                 ExeMappings.Add(mapping);
             }
@@ -1105,7 +1113,7 @@ namespace OmniSync.Hub.Presentation
         {
             foreach (var hk in Hotkeys) hk.PropertyChanged -= OnHotkeyPropertyChanged;
             Hotkeys.Clear();
-            foreach (var hk in _settingsService.Settings.Hotkeys)
+            foreach (var hk in SnapshotList(() => _settingsService.Settings.Hotkeys))
             {
                 hk.PropertyChanged += OnHotkeyPropertyChanged;
                 Hotkeys.Add(hk);
@@ -1216,7 +1224,7 @@ namespace OmniSync.Hub.Presentation
             var defaultModel = _settingsService.Settings.DefaultAiModel;
             foreach (var m in AiModels) m.OnSelectedAsDefault -= OnAiModelSelectedAsDefault;
             AiModels.Clear();
-            foreach (var modelName in _settingsService.Settings.AiModels)
+            foreach (var modelName in SnapshotList(() => _settingsService.Settings.AiModels))
             {
                 var entry = new AiModelEntry 
                 { 
@@ -1226,6 +1234,42 @@ namespace OmniSync.Hub.Presentation
                 entry.OnSelectedAsDefault += OnAiModelSelectedAsDefault;
                 AiModels.Add(entry);
             }
+        }
+
+        private static List<T> SnapshotList<T>(Func<IEnumerable<T>?> getSource)
+        {
+            for (int attempt = 0; attempt < 5; attempt++)
+            {
+                try
+                {
+                    var source = getSource();
+                    return source?.ToList() ?? new List<T>();
+                }
+                catch (InvalidOperationException) when (attempt < 4)
+                {
+                    Thread.Sleep(1);
+                }
+            }
+
+            return new List<T>();
+        }
+
+        private static List<KeyValuePair<TKey, TValue>> SnapshotDictionary<TKey, TValue>(Func<IEnumerable<KeyValuePair<TKey, TValue>>?> getSource) where TKey : notnull
+        {
+            for (int attempt = 0; attempt < 5; attempt++)
+            {
+                try
+                {
+                    var source = getSource();
+                    return source?.ToList() ?? new List<KeyValuePair<TKey, TValue>>();
+                }
+                catch (InvalidOperationException) when (attempt < 4)
+                {
+                    Thread.Sleep(1);
+                }
+            }
+
+            return new List<KeyValuePair<TKey, TValue>>();
         }
 
         private void OnAiModelSelectedAsDefault(object? sender, string modelName)

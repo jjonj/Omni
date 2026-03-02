@@ -10,6 +10,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Hosting;
+using OmniSync.Hub.Infrastructure.Services;
 
 namespace OmniSync.Hub.Tests.Services
 {
@@ -18,6 +19,7 @@ namespace OmniSync.Hub.Tests.Services
         private readonly Mock<HubMonitorService> _monitorServiceMock;
         private readonly Mock<ILogger<CalendarService>> _loggerMock;
         private readonly Mock<HttpMessageHandler> _httpMessageHandlerMock;
+        private readonly Mock<HubSettingsService> _settingsServiceMock;
 
         public CalendarServiceTests()
         {
@@ -26,6 +28,7 @@ namespace OmniSync.Hub.Tests.Services
             _monitorServiceMock = new Mock<HubMonitorService>(appLifetimeMock.Object, hubMonitorLogger.Object);
             _loggerMock = new Mock<ILogger<CalendarService>>();
             _httpMessageHandlerMock = new Mock<HttpMessageHandler>();
+            _settingsServiceMock = new Mock<HubSettingsService>(new Mock<ILogger<HubSettingsService>>().Object);
         }
 
         [Fact]
@@ -53,7 +56,8 @@ END:VCALENDAR";
                 });
 
             var httpClient = new HttpClient(_httpMessageHandlerMock.Object);
-            var service = new CalendarService(httpClient, _monitorServiceMock.Object, _loggerMock.Object);
+            _settingsServiceMock.SetupGet(s => s.Settings).Returns(new HubSettings { CalendarUrl = "https://calendar.test/test.ics" });
+            var service = new CalendarService(httpClient, _monitorServiceMock.Object, _settingsServiceMock.Object, _loggerMock.Object);
 
             // Act
             await service.RefreshCalendarAsync();
@@ -99,7 +103,8 @@ END:VCALENDAR";
                 });
 
             var httpClient = new HttpClient(_httpMessageHandlerMock.Object);
-            var service = new CalendarService(httpClient, _monitorServiceMock.Object, _loggerMock.Object);
+            _settingsServiceMock.SetupGet(s => s.Settings).Returns(new HubSettings { CalendarUrl = "https://calendar.test/test.ics" });
+            var service = new CalendarService(httpClient, _monitorServiceMock.Object, _settingsServiceMock.Object, _loggerMock.Object);
 
             // Act
             await service.RefreshCalendarAsync();

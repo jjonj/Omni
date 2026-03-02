@@ -1,0 +1,59 @@
+{
+  "version": "1.0.0",
+  "signalr": {
+    "hubPath": "/signalrhub",
+    "clientToHubMethods": [
+      "Authenticate",
+      "StartCliAtWorkspace",
+      "SendAiMessage",
+      "SendAiDialogResponse",
+      "GetAiSessions"
+    ],
+    "hubToClientEvents": [
+      "ReceiveAiMessage",
+      "ReceiveAiResponse",
+      "ReceiveAiStatus",
+      "ReceiveAiThought",
+      "ReceiveNewAiSessionPid",
+      "ReceiveAiTurnEnd"
+    ]
+  },
+  "pipe": {
+    "commands": [
+      {
+        "name": "prompt",
+        "requiredProperties": ["command", "text"]
+      },
+      {
+        "name": "getHistory",
+        "requiredProperties": ["command", "text"]
+      },
+      {
+        "name": "dialogResponse",
+        "requiredProperties": ["command", "response"]
+      }
+    ],
+    "events": [
+      {
+        "type": "response",
+        "requiredProperties": ["type", "text"]
+      },
+      {
+        "type": "thought",
+        "requiredProperties": ["type", "text"]
+      },
+      {
+        "type": "codeDiff",
+        "requiredProperties": ["type", "text"]
+      },
+      {
+        "type": "dialog",
+        "requiredProperties": ["type", "dialogType", "prompt"]
+      },
+      {
+        "type": "turn_end",
+        "requiredProperties": ["type", "reason", "category"]
+      }
+    ]
+  }
+}

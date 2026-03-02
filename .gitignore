@@ -111,6 +111,9 @@ response.wav
 OmniSync.Hub/Voice/MIND/Diary/*
 /OmniSync.Hub/Screenshots
 
+OmniSync.Hub/src/OmniSync.Hub.Tests/TestResults/
+OmniSync.Hub/temp_test_out/
+
 # OmniSync.Web/www/ Management
 OmniSync.Web/www/worktrees/
 OmniSync.Web/www/worktrees.json

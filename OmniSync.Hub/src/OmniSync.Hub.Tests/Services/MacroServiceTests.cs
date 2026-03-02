@@ -3,7 +3,6 @@ using OmniSync.Hub.Infrastructure.Services;
 using OmniSync.Hub.Logic.Services;
 using OmniSync.Hub.Logic.Monitoring;
 using Xunit;
-using System.Text.Json;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Hosting;
@@ -44,11 +43,10 @@ namespace OmniSync.Hub.Tests.Services
         public async Task ExecuteMacroAsync_ShouldSendKeys()
         {
             // Arrange
-            var json = "[{\"type\": \"send\", \"keys\": \"hello\"}]";
-            var commands = JsonDocument.Parse(json).RootElement;
+            var script = "send hello";
 
             // Act
-            await _service.ExecuteMacroAsync(commands);
+            await _service.ExecuteMacroAsync(script);
 
             // Assert
             _inputServiceMock.Verify(i => i.SendKeys("hello"), Times.Once);
@@ -58,12 +56,11 @@ namespace OmniSync.Hub.Tests.Services
         public async Task ExecuteMacroAsync_ShouldSleep()
         {
             // Arrange
-            var json = "[{\"type\": \"sleep\", \"durationMs\": 10}]";
-            var commands = JsonDocument.Parse(json).RootElement;
+            var script = "sleep 10";
 
             // Act
             var startTime = System.DateTime.Now;
-            await _service.ExecuteMacroAsync(commands);
+            await _service.ExecuteMacroAsync(script);
             var duration = System.DateTime.Now - startTime;
 
             // Assert
@@ -74,25 +71,23 @@ namespace OmniSync.Hub.Tests.Services
         public async Task ExecuteMacroAsync_ShouldRunCommand()
         {
             // Arrange
-            var json = "[{\"type\": \"run\", \"path\": \"notepad.exe\"}]";
-            var commands = JsonDocument.Parse(json).RootElement;
+            var script = "run notepad.exe";
 
             // Act
-            await _service.ExecuteMacroAsync(commands);
+            await _service.ExecuteMacroAsync(script);
 
             // Assert
-            _processServiceMock.Verify(p => p.ExecuteCommand("notepad.exe"), Times.Once);
+            _processServiceMock.Verify(p => p.ShellExecute("notepad.exe", "", null), Times.Once);
         }
 
         [Fact]
         public async Task ExecuteMacroAsync_ShouldSetClipboard()
         {
             // Arrange
-            var json = "[{\"type\": \"clipboard\", \"text\": \"test content\"}]";
-            var commands = JsonDocument.Parse(json).RootElement;
+            var script = "clipboard test content";
 
             // Act
-            await _service.ExecuteMacroAsync(commands);
+            await _service.ExecuteMacroAsync(script);
 
             // Assert
             _clipboardServiceMock.Verify(c => c.SetClipboardText("test content"), Times.Once);
@@ -103,11 +98,10 @@ namespace OmniSync.Hub.Tests.Services
         {
             // Arrange
             _inputServiceMock.Setup(i => i.GetActiveWindowTitle()).Returns("My Window");
-            var json = "[{\"type\": \"send\", \"keys\": \"Title: {ACTIVE_WINDOW_TITLE}\"}]";
-            var commands = JsonDocument.Parse(json).RootElement;
+            var script = "send Title: {ACTIVE_WINDOW_TITLE}";
 
             // Act
-            await _service.ExecuteMacroAsync(commands);
+            await _service.ExecuteMacroAsync(script);
 
             // Assert
             _inputServiceMock.Verify(i => i.SendKeys("Title: My Window"), Times.Once);
