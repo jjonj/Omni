@@ -28,7 +28,10 @@ import androidx.media3.exoplayer.ExoPlayer
 import com.omni.sync.data.model.FileSystemEntry
 import com.omni.sync.utils.*
 import com.omni.sync.viewmodel.MainViewModel
-import com.omni.sync.viewmodel.BookItem
+import com.omni.sync.viewmodel.BooksViewModel
+import com.omni.sync.viewmodel.BooksViewModelFactory
+import com.omni.sync.viewmodel.LibraryState
+import androidx.lifecycle.viewmodel.compose.viewModel
 import io.reactivex.rxjava3.android.schedulers.AndroidSchedulers
 import io.reactivex.rxjava3.schedulers.Schedulers
 import kotlinx.coroutines.delay
@@ -37,11 +40,11 @@ import kotlinx.coroutines.delay
 
 enum class BooksTab { ALL, EBOOKS, AUDIOBOOKS }
 
-fun FileSystemEntry.toBookItemOrNull(): BookItem? {
+fun FileSystemEntry.toBookItemOrNull(): com.omni.sync.viewmodel.BookItem? {
     if (isDirectory) return null
     val type = getBookType(name)
     if (type == BookType.UNKNOWN) return null
-    return BookItem(name = name, path = path, type = type, size = size)
+    return com.omni.sync.viewmodel.BookItem(name = name, path = path, type = type, size = size)
 }
 
 fun bookTypeIcon(type: BookType): ImageVector = when (type) {
@@ -67,47 +70,34 @@ fun BooksScreen(
     mainViewModel: MainViewModel,
     onBack: () -> Unit
 ) {
-    val signalRClient = mainViewModel.signalRClient
+    val booksViewModel: BooksViewModel = viewModel(
+        factory = BooksViewModelFactory(mainViewModel.signalRClient)
+    )
+    
     val isConnected by mainViewModel.isConnected.collectAsState()
     val baseUrl = mainViewModel.getBaseUrl()
+    val libraryState by booksViewModel.libraryState.collectAsState()
+    val allBooks by booksViewModel.allBooks.collectAsState()
 
     var selectedTab by remember { mutableStateOf(BooksTab.ALL) }
     var searchQuery by remember { mutableStateOf("") }
-    var isLoading by remember { mutableStateOf(false) }
-    var allBooks by remember { mutableStateOf<List<BookItem>>(emptyList()) }
-    var errorMsg by remember { mutableStateOf<String?>(null) }
-    var browseStack by remember { mutableStateOf<List<String>>(listOf("")) }
-    var nowPlayingBook by remember { mutableStateOf<BookItem?>(null) }
-    var showFolderPicker by remember { mutableStateOf(false) }
-
-    val currentBrowsePath = browseStack.last()
+    var selectedCategory by remember { mutableStateOf("All") }
+    var nowPlayingBook by remember { mutableStateOf<com.omni.sync.viewmodel.BookItem?>(null) }
 
     BackHandler {
-        if (browseStack.size > 1) browseStack = browseStack.dropLast(1)
-        else onBack()
+        onBack()
     }
 
-    fun loadBooksFromPath(path: String) {
-        if (!isConnected) return
-        isLoading = true
-        errorMsg = null
-        signalRClient.listDirectory(path)
-            ?.subscribeOn(Schedulers.io())
-            ?.observeOn(AndroidSchedulers.mainThread())
-            ?.subscribe({ entries ->
-                val newBooks = entries.mapNotNull { it.toBookItemOrNull() }
-                allBooks = (allBooks + newBooks).distinctBy { it.path }
-                isLoading = false
-            }, { e ->
-                errorMsg = "Error: ${e.message}"
-                isLoading = false
-            })
-    }
-
-    LaunchedEffect(isConnected) {
-        if (isConnected && allBooks.isEmpty()) {
-            loadBooksFromPath("")
+    // Grouping for sub-categories
+    val categories = remember(allBooks, selectedTab) {
+        val filteredByType = allBooks.filter { book ->
+            when (selectedTab) {
+                BooksTab.ALL -> true
+                BooksTab.EBOOKS -> book.type == BookType.PDF || book.type == BookType.EPUB
+                BooksTab.AUDIOBOOKS -> book.type == BookType.AUDIOBOOK
+            }
         }
+        listOf("All") + filteredByType.map { it.category }.distinct().sorted()
     }
 
     val filteredBooks = allBooks.filter { book ->
@@ -116,8 +106,15 @@ fun BooksScreen(
             BooksTab.EBOOKS -> book.type == BookType.PDF || book.type == BookType.EPUB
             BooksTab.AUDIOBOOKS -> book.type == BookType.AUDIOBOOK
         }
+        val matchesCategory = selectedCategory == "All" || book.category == selectedCategory
         val matchesSearch = searchQuery.isBlank() || book.name.contains(searchQuery, ignoreCase = true)
-        matchesTab && matchesSearch
+        matchesTab && matchesCategory && matchesSearch
+    }
+
+    LaunchedEffect(isConnected) {
+        if (isConnected && libraryState is LibraryState.Idle) {
+            booksViewModel.scanLibrary()
+        }
     }
 
     Scaffold(
@@ -125,21 +122,14 @@ fun BooksScreen(
             TopAppBar(
                 title = { Text("Books") },
                 navigationIcon = {
-                    IconButton(onClick = {
-                        if (browseStack.size > 1) browseStack = browseStack.dropLast(1)
-                        else onBack()
-                    }) {
+                    IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
                 actions = {
                     IconButton(onClick = {
-                        allBooks = emptyList()
-                        loadBooksFromPath(currentBrowsePath)
+                        booksViewModel.scanLibrary()
                     }) { Icon(Icons.Default.Refresh, contentDescription = "Refresh") }
-                    IconButton(onClick = { showFolderPicker = !showFolderPicker }) {
-                        Icon(Icons.Default.FolderOpen, contentDescription = "Browse folder")
-                    }
                 }
             )
         }
@@ -151,12 +141,15 @@ fun BooksScreen(
                 BooksTab.entries.forEach { tab ->
                     Tab(
                         selected = selectedTab == tab,
-                        onClick = { selectedTab = tab },
+                        onClick = { 
+                            selectedTab = tab
+                            selectedCategory = "All"
+                        },
                         text = {
                             Text(when (tab) {
                                 BooksTab.ALL -> "All"
                                 BooksTab.EBOOKS -> "eBooks"
-                                BooksTab.AUDIOBOOKS -> "Audiobooks"
+                                BooksTab.AUDIOBOOKS -> "Audio"
                             })
                         },
                         icon = {
@@ -170,12 +163,30 @@ fun BooksScreen(
                 }
             }
 
+            // Sub-category Filter (Scrollable Row)
+            if (categories.size > 1) {
+                ScrollableTabRow(
+                    selectedTabIndex = categories.indexOf(selectedCategory).coerceAtLeast(0),
+                    edgePadding = 8.dp,
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    divider = {}
+                ) {
+                    categories.forEach { cat ->
+                        Tab(
+                            selected = selectedCategory == cat,
+                            onClick = { selectedCategory = cat },
+                            text = { Text(cat) }
+                        )
+                    }
+                }
+            }
+
             // Search bar
             OutlinedTextField(
                 value = searchQuery,
                 onValueChange = { searchQuery = it },
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
-                placeholder = { Text("Search books…") },
+                placeholder = { Text("Search title…") },
                 leadingIcon = { Icon(Icons.Default.Search, null) },
                 trailingIcon = {
                     if (searchQuery.isNotEmpty())
@@ -185,25 +196,7 @@ fun BooksScreen(
                 shape = RoundedCornerShape(12.dp)
             )
 
-            if (isLoading) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-
-            errorMsg?.let {
-                Text(text = it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(8.dp))
-            }
-
-            // Folder-browser chip (path breadcrumb)
-            if (showFolderPicker) {
-                BooksPathBrowser(
-                    signalRClient = signalRClient,
-                    isConnected = isConnected,
-                    onSelectPath = { path ->
-                        browseStack = browseStack + path
-                        loadBooksFromPath(path)
-                        showFolderPicker = false
-                    },
-                    onDismiss = { showFolderPicker = false }
-                )
-            }
+            if (libraryState is LibraryState.Loading) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
 
             if (!isConnected) {
                 Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
@@ -213,13 +206,13 @@ fun BooksScreen(
                         Text("Not connected to Hub", color = MaterialTheme.colorScheme.outline)
                     }
                 }
-            } else if (filteredBooks.isEmpty() && !isLoading) {
+            } else if (filteredBooks.isEmpty() && libraryState !is LibraryState.Loading) {
                 Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Icon(Icons.Default.LibraryBooks, null, Modifier.size(48.dp), tint = MaterialTheme.colorScheme.outline)
                         Spacer(Modifier.height(8.dp))
                         Text(
-                            if (allBooks.isEmpty()) "No books found. Use 📁 to browse a folder."
+                            if (allBooks.isEmpty()) "No books found in B:\\GDrive\\Books"
                             else "No books match your filters.",
                             color = MaterialTheme.colorScheme.outline
                         )
@@ -262,7 +255,7 @@ fun BooksScreen(
 // ─── Book List Item ───────────────────────────────────────────────────────────
 
 @Composable
-fun BookListItem(book: BookItem, onClick: () -> Unit) {
+fun BookListItem(book: com.omni.sync.viewmodel.BookItem, onClick: () -> Unit) {
     Card(
         modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp).clickable { onClick() },
         shape = RoundedCornerShape(10.dp),
@@ -288,13 +281,23 @@ fun BookListItem(book: BookItem, onClick: () -> Unit) {
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
-                Surface(shape = RoundedCornerShape(4.dp), color = MaterialTheme.colorScheme.secondaryContainer) {
-                    Text(
-                        text = bookTypeLabel(book.type),
-                        style = MaterialTheme.typography.labelSmall,
-                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
-                        color = MaterialTheme.colorScheme.onSecondaryContainer
-                    )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Surface(shape = RoundedCornerShape(4.dp), color = MaterialTheme.colorScheme.secondaryContainer) {
+                        Text(
+                            text = bookTypeLabel(book.type),
+                            style = MaterialTheme.typography.labelSmall,
+                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+                            color = MaterialTheme.colorScheme.onSecondaryContainer
+                        )
+                    }
+                    if (book.category != "Unsorted") {
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            text = book.category,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.secondary
+                        )
+                    }
                 }
             }
             Icon(
@@ -397,7 +400,7 @@ fun BooksPathBrowser(
 @OptIn(androidx.annotation.OptIn::class, UnstableApi::class)
 @Composable
 fun AudiobookMiniPlayer(
-    book: BookItem,
+    book: com.omni.sync.viewmodel.BookItem,
     baseUrl: String,
     onClose: () -> Unit
 ) {
