@@ -28,12 +28,33 @@ sealed class LibraryState {
     data class Error(val message: String) : LibraryState()
 }
 
-class BooksViewModel(private val signalRClient: SignalRClient) : ViewModel() {
+class BooksViewModel(
+    private val signalRClient: SignalRClient,
+    val downloadManager: com.omni.sync.logic.BookDownloadManager
+) : ViewModel() {
     private val _libraryState = MutableStateFlow<LibraryState>(LibraryState.Idle)
     val libraryState: StateFlow<LibraryState> = _libraryState
 
     private val _allBooks = MutableStateFlow<List<BookItem>>(emptyList())
     val allBooks: StateFlow<List<BookItem>> = _allBooks
+
+    val downloadStatuses = downloadManager.downloadStatuses
+
+    fun downloadBook(book: BookItem) {
+        val entry = com.omni.sync.data.model.FileSystemEntry(
+            name = book.name,
+            path = book.path,
+            isDirectory = book.isFolder,
+            size = book.size,
+            lastModified = java.util.Date(),
+            entryType = if (book.isFolder) "AudiobookFolder" else "File"
+        )
+        downloadManager.downloadBook(entry)
+    }
+
+    fun isDownloaded(book: BookItem): Boolean {
+        return downloadManager.isDownloaded(book.path)
+    }
 
     fun scanLibrary(rootPath: String = "B:\\\\GDrive\\\\Books") {
         _libraryState.value = LibraryState.Loading
