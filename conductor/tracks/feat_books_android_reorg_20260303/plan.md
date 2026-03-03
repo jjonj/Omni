@@ -9,12 +9,13 @@
 - [x] Task: Conductor - User Manual Verification 'PC Library Reorganization' (Protocol in workflow.md) (5f6aadc)
 
 
-## Phase 2: Hub Backend Enhancements (TDD)
+## Phase 2: Hub Backend Enhancements (TDD) [checkpoint: 4d61c9a]
 - [x] Task: Write failing unit tests for `BookProgressService` (storing and retrieving last position/page). (5d58853)
 - [x] Task: Implement `BookProgressService` in `OmniSync.Hub`. (5d58853)
 - [x] Task: Write failing unit tests for recursive book scanning and metadata extraction in `FileService`. (1690e41)
 - [x] Task: Update `FileService` to support optimized library indexing and cover extraction. (1690e41)
-- [~] Task: Conductor - User Manual Verification 'Hub Backend Enhancements' (Protocol in workflow.md)
+- [x] Task: Conductor - User Manual Verification 'Hub Backend Enhancements' (Protocol in workflow.md) (4d61c9a)
+
 
 ## Phase 3: Android App - Persistent Library & Categories (TDD)
 - [ ] Task: Write failing unit tests for `LibraryViewModel` (fetching and caching the library from the Hub).
