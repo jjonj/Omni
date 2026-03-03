@@ -18,7 +18,8 @@ data class BookItem(
     val type: BookType,
     val size: Long = 0L,
     val category: String = "Unsorted",
-    val isFolder: Boolean = false
+    val isFolder: Boolean = false,
+    val coverPath: String? = null
 )
 
 sealed class LibraryState {
@@ -91,7 +92,8 @@ class BooksViewModel(
                         type = if (entry.entryType == "AudiobookFolder") BookType.AUDIOBOOK else com.omni.sync.utils.getBookType(entry.name),
                         size = entry.size,
                         category = category,
-                        isFolder = entry.entryType == "AudiobookFolder"
+                        isFolder = entry.entryType == "AudiobookFolder",
+                        coverPath = entry.description
                     )
                 }
                 _allBooks.value = books

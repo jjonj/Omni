@@ -8,5 +8,6 @@ data class FileSystemEntry(
     val isDirectory: Boolean,
     val size: Long, // For files
     val lastModified: Date,
-    val entryType: String = if (isDirectory) "Directory" else "File"
+    val entryType: String = if (isDirectory) "Directory" else "File",
+    val description: String? = null
 )

@@ -31,6 +31,7 @@ import com.omni.sync.viewmodel.MainViewModel
 import com.omni.sync.viewmodel.BooksViewModel
 import com.omni.sync.viewmodel.BooksViewModelFactory
 import com.omni.sync.viewmodel.LibraryState
+import coil.compose.AsyncImage
 import androidx.lifecycle.viewmodel.compose.viewModel
 import io.reactivex.rxjava3.android.schedulers.AndroidSchedulers
 import io.reactivex.rxjava3.schedulers.Schedulers
@@ -240,6 +241,7 @@ fun BooksScreen(
                             isDownloaded = booksViewModel.isDownloaded(book),
                             downloadStatus = downloadStatuses[book.path],
                             onDownloadClick = { booksViewModel.downloadBook(book) },
+                            baseUrl = baseUrl,
                             onClick = {
                                 when (book.type) {
                                     BookType.AUDIOBOOK -> nowPlayingBook = book
@@ -298,6 +300,7 @@ fun BookListItem(
     isDownloaded: Boolean,
     downloadStatus: com.omni.sync.logic.DownloadStatus?,
     onDownloadClick: () -> Unit,
+    baseUrl: String,
     onClick: () -> Unit
 ) {
     Card(
@@ -306,17 +309,28 @@ fun BookListItem(
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
         Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Icon(
-                imageVector = bookTypeIcon(book.type),
-                contentDescription = bookTypeLabel(book.type),
-                modifier = Modifier.size(36.dp),
-                tint = when (book.type) {
-                    BookType.PDF -> Color(0xFFE53935)
-                    BookType.EPUB -> Color(0xFF43A047)
-                    BookType.AUDIOBOOK -> Color(0xFF1E88E5)
-                    BookType.UNKNOWN -> MaterialTheme.colorScheme.outline
+            Box(modifier = Modifier.size(48.dp)) {
+                if (book.coverPath != null) {
+                    val encodedCover = java.net.URLEncoder.encode(book.coverPath, "UTF-8")
+                    AsyncImage(
+                        model = "$baseUrl/api/stream?path=$encodedCover",
+                        contentDescription = "Cover",
+                        modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(4.dp))
+                    )
+                } else {
+                    Icon(
+                        imageVector = bookTypeIcon(book.type),
+                        contentDescription = bookTypeLabel(book.type),
+                        modifier = Modifier.size(36.dp).align(Alignment.Center),
+                        tint = when (book.type) {
+                            BookType.PDF -> Color(0xFFE53935)
+                            BookType.EPUB -> Color(0xFF43A047)
+                            BookType.AUDIOBOOK -> Color(0xFF1E88E5)
+                            BookType.UNKNOWN -> MaterialTheme.colorScheme.outline
+                        }
+                    )
                 }
-            )
+            }
             Spacer(Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(

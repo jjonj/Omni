@@ -65,24 +65,81 @@ namespace OmniSync.Hub.Infrastructure.Services
                 return Enumerable.Empty<FileSystemEntry>();
             }
 
-            var bookExtensions = new[] { ".pdf", ".epub", ".mobi", ".azw3", ".m4b", ".mp3", ".aac", ".opus", ".aax", ".aa" };
+            var bookExtensions = new[] { ".pdf", ".epub", ".mobi", ".azw3" };
+            var audioExtensions = new[] { ".m4b", ".mp3", ".aac", ".opus", ".aax", ".aa" };
             
-            var files = Directory.GetFiles(rootPath, "*.*", SearchOption.AllDirectories)
-                .Where(file => bookExtensions.Contains(Path.GetExtension(file).ToLower()));
+            var entries = new List<FileSystemEntry>();
 
-            return files.Select(file =>
+            // 1. Process files directly
+            var files = Directory.GetFiles(rootPath, "*.*", SearchOption.AllDirectories);
+            
+            // Track which files we've already handled as part of a "folder book"
+            var handledFiles = new HashSet<string>();
+
+            // Detect "Folder Books" (folders containing mostly audio files)
+            var allDirs = Directory.GetDirectories(rootPath, "*", SearchOption.AllDirectories);
+            foreach (var dir in allDirs)
             {
-                var info = new FileInfo(file);
-                return new FileSystemEntry
+                var dirFiles = Directory.GetFiles(dir);
+                if (dirFiles.Length == 0) continue;
+
+                var audioFiles = dirFiles.Where(f => audioExtensions.Contains(Path.GetExtension(f).ToLower())).ToList();
+                
+                // If a folder has audio files and they make up the majority of supported files here
+                if (audioFiles.Count > 1)
                 {
-                    Name = info.Name,
-                    Path = info.FullName,
-                    IsDirectory = false,
-                    EntryType = "File",
-                    Size = info.Length,
-                    LastModified = info.LastWriteTime
-                };
-            });
+                    var info = new DirectoryInfo(dir);
+                    var coverFile = dirFiles.FirstOrDefault(f => 
+                        Path.GetFileName(f).ToLower().Equals("cover.jpg") || 
+                        Path.GetFileName(f).ToLower().Equals("cover.png") ||
+                        Path.GetFileNameWithoutExtension(f).ToLower().Equals(info.Name.ToLower()));
+
+                    entries.Add(new FileSystemEntry
+                    {
+                        Name = info.Name,
+                        Path = info.FullName,
+                        IsDirectory = true,
+                        EntryType = "AudiobookFolder",
+                        Size = audioFiles.Sum(f => new FileInfo(f).Length),
+                        LastModified = info.LastWriteTime,
+                        Description = coverFile // Reuse Description field for cover path
+                    });
+
+                    foreach (var f in dirFiles) handledFiles.Add(f);
+                }
+            }
+
+            // Process remaining individual files
+            foreach (var file in files)
+            {
+                if (handledFiles.Contains(file)) continue;
+
+                var ext = Path.GetExtension(file).ToLower();
+                if (bookExtensions.Contains(ext) || audioExtensions.Contains(ext))
+                {
+                    var info = new FileInfo(file);
+                    
+                    // Look for cover in the same folder with same name
+                    var dir = Path.GetDirectoryName(file);
+                    var coverPath = Path.Combine(dir ?? "", Path.GetFileNameWithoutExtension(file) + ".jpg");
+                    if (!File.Exists(coverPath)) coverPath = Path.Combine(dir ?? "", Path.GetFileNameWithoutExtension(file) + ".png");
+                    if (!File.Exists(coverPath)) coverPath = Path.Combine(dir ?? "", "cover.jpg");
+                    if (!File.Exists(coverPath)) coverPath = Path.Combine(dir ?? "", "cover.png");
+
+                    entries.Add(new FileSystemEntry
+                    {
+                        Name = info.Name,
+                        Path = info.FullName,
+                        IsDirectory = false,
+                        EntryType = "File",
+                        Size = info.Length,
+                        LastModified = info.LastWriteTime,
+                        Description = File.Exists(coverPath) ? coverPath : null
+                    });
+                }
+            }
+
+            return entries;
         }
 
         public virtual string GetBrowseRootPath()
