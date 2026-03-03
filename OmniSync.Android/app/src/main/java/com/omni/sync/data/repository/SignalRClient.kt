@@ -1326,6 +1326,18 @@ class SignalRClient(
         return null
     }
 
+    fun scanBooks(path: String): Single<List<FileSystemEntry>>? {
+        if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
+            return hubConnection?.invoke(List::class.java, "ScanBooksRecursive", path)
+                ?.map { rawList ->
+                    val jsonElement = gson.toJsonTree(rawList)
+                    val listType = object : TypeToken<List<FileSystemEntry>>() {}.type
+                    gson.fromJson(jsonElement, listType)
+                } as? Single<List<FileSystemEntry>>
+        }
+        return null
+    }
+
     fun searchFiles(path: String, query: String): Single<List<FileSystemEntry>>? {  
         if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
             return hubConnection?.invoke(List::class.java, "SearchFiles", path, query)

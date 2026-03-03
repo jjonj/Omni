@@ -7,5 +7,6 @@ data class FileSystemEntry(
     val path: String, // Relative path from browse root
     val isDirectory: Boolean,
     val size: Long, // For files
-    val lastModified: Date
+    val lastModified: Date,
+    val entryType: String = if (isDirectory) "Directory" else "File"
 )
