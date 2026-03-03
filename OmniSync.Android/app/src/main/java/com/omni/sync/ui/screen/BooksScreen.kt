@@ -264,10 +264,16 @@ fun BooksScreen(
 
             // Audiobook player docked at bottom
             nowPlayingBook?.let { book ->
+                var lastKnownPos by remember { mutableLongStateOf(0L) }
                 AudiobookMiniPlayer(
                     book = book,
                     baseUrl = baseUrl,
-                    onClose = { nowPlayingBook = null }
+                    booksViewModel = booksViewModel,
+                    onPositionUpdate = { lastKnownPos = it },
+                    onClose = { 
+                        booksViewModel.saveProgress(book.path, lastKnownPos.toString())
+                        nowPlayingBook = null 
+                    }
                 )
             }
         }
@@ -443,6 +449,8 @@ fun BooksPathBrowser(
 fun AudiobookMiniPlayer(
     book: com.omni.sync.viewmodel.BookItem,
     baseUrl: String,
+    booksViewModel: com.omni.sync.viewmodel.BooksViewModel,
+    onPositionUpdate: (Long) -> Unit,
     onClose: () -> Unit
 ) {
     val context = LocalContext.current
@@ -452,17 +460,38 @@ fun AudiobookMiniPlayer(
     var duration by remember { mutableStateOf(0L) }
 
     LaunchedEffect(book) {
-        val encoded = java.net.URLEncoder.encode(book.path, "UTF-8")
-        val mediaItem = MediaItem.fromUri(Uri.parse("$baseUrl/api/stream?path=$encoded"))
-        exoPlayer.setMediaItem(mediaItem)
-        exoPlayer.prepare()
+        // 1. Fetch initial position
+        booksViewModel.getProgress(book.path) { lastPos ->
+            val startMs = lastPos?.toLongOrNull() ?: 0L
+            
+            val path = booksViewModel.downloadManager.getLocalPath(book.path) ?: book.path
+            val isLocal = path != book.path
+            val uri = if (isLocal) Uri.fromFile(java.io.File(path)) 
+                      else {
+                          val encoded = java.net.URLEncoder.encode(book.path, "UTF-8")
+                          Uri.parse("$baseUrl/api/stream?path=$encoded")
+                      }
+            
+            val mediaItem = MediaItem.fromUri(uri)
+            exoPlayer.setMediaItem(mediaItem)
+            if (startMs > 0) exoPlayer.seekTo(startMs)
+            exoPlayer.prepare()
+        }
     }
     LaunchedEffect(exoPlayer) {
+        var lastSavedPos = 0L
         while (true) {
             delay(1000)
             currentPosition = exoPlayer.currentPosition
             duration = exoPlayer.duration.coerceAtLeast(0L)
             isPlaying = exoPlayer.isPlaying
+            onPositionUpdate(currentPosition)
+            
+            // Save position every 10 seconds or when significantly changed
+            if (isPlaying && Math.abs(currentPosition - lastSavedPos) > 10_000) {
+                booksViewModel.saveProgress(book.path, currentPosition.toString())
+                lastSavedPos = currentPosition
+            }
         }
     }
     DisposableEffect(Unit) { onDispose { exoPlayer.release() } }
