@@ -21,3 +21,28 @@ fun isImageFile(filename: String): Boolean {
 fun isPdfFile(filename: String): Boolean {
     return filename.lowercase().endsWith(".pdf")
 }
+
+fun isEpubFile(filename: String): Boolean {
+    return filename.lowercase().endsWith(".epub")
+}
+
+fun isAudiobookFile(filename: String): Boolean {
+    val ext = filename.lowercase()
+    return ext.endsWith(".m4b") || ext.endsWith(".aax") || ext.endsWith(".aa") ||
+           ext.endsWith(".opus")
+}
+
+fun isBookFile(filename: String): Boolean {
+    return isPdfFile(filename) || isEpubFile(filename) || isAudiobookFile(filename)
+}
+
+enum class BookType { PDF, EPUB, AUDIOBOOK, UNKNOWN }
+
+fun getBookType(filename: String): BookType {
+    return when {
+        isPdfFile(filename) -> BookType.PDF
+        isEpubFile(filename) -> BookType.EPUB
+        isAudiobookFile(filename) -> BookType.AUDIOBOOK
+        else -> BookType.UNKNOWN
+    }
+}

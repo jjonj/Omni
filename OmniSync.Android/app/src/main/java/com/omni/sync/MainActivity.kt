@@ -23,6 +23,7 @@ import com.omni.sync.ui.screen.DashboardScreen
 import com.omni.sync.ui.screen.BrowserControlScreen
 import com.omni.sync.ui.screen.ProcessScreen
 import com.omni.sync.ui.screen.RemoteControlScreen
+import com.omni.sync.ui.screen.BooksScreen
 import com.omni.sync.ui.theme.OmniSyncTheme
 import com.omni.sync.viewmodel.AppScreen
 import com.omni.sync.viewmodel.MainViewModel
@@ -91,7 +92,8 @@ class MainActivity : ComponentActivity() {
         AppScreen.AI_CHAT,
         AppScreen.ALARM,
         AppScreen.WEB_SERVER,
-        AppScreen.PROCESS
+        AppScreen.PROCESS,
+        AppScreen.BOOKS
     )
 
     @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
@@ -478,6 +480,10 @@ class MainActivity : ComponentActivity() {
                     )
                 }
             }
+            AppScreen.BOOKS -> BooksScreen(
+                mainViewModel = mainViewModel,
+                onBack = { mainViewModel.goBack() }
+            )
             else -> {} 
         }
     }

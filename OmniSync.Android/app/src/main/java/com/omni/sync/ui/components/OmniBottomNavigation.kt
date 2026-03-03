@@ -15,6 +15,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import com.omni.sync.viewmodel.AppScreen
 
 import androidx.compose.material.icons.filled.SmartToy
+import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.isImeVisible
@@ -52,7 +53,8 @@ val navigationItems = listOf(
 val burgerMenuItems = listOf(
     NavItem(AppScreen.PROCESS, "Process", Icons.Default.Memory),
     NavItem(AppScreen.ALARM, "Alarm", Icons.Default.Alarm),
-    NavItem(AppScreen.WEB_SERVER, "OmniWeb", Icons.Default.Public)
+    NavItem(AppScreen.WEB_SERVER, "OmniWeb", Icons.Default.Public),
+    NavItem(AppScreen.BOOKS, "Books", Icons.Default.MenuBook)
 )
 
 @OptIn(ExperimentalLayoutApi::class)
