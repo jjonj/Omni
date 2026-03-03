@@ -1,0 +1,40 @@
+# Implementation Plan: Android Books Screen & Library Reorganization
+
+## Phase 1: PC Library Reorganization & Code Audit
+- [x] Task: Review existing local changes (`BooksScreen.kt`, `MainActivity.kt`, etc.) and integrate them into the track's baseline. (2b7b99c)
+- [ ] Task: Create a Python script `TestScripts/Books/reorganize_library.py` to dry-run the reorganization of `B:\GDrive\Books`.
+- [ ] Task: Implement keyword-based classification logic (e.g., "manga" -> Manga, "tutorial" -> Technical).
+- [ ] Task: Present the dry-run output to the user and obtain approval for the move operations.
+- [ ] Task: Execute the reorganization script and verify the new folder structure.
+- [ ] Task: Conductor - User Manual Verification 'PC Library Reorganization' (Protocol in workflow.md)
+
+## Phase 2: Hub Backend Enhancements (TDD)
+- [ ] Task: Write failing unit tests for `BookProgressService` (storing and retrieving last position/page).
+- [ ] Task: Implement `BookProgressService` in `OmniSync.Hub`.
+- [ ] Task: Write failing unit tests for recursive book scanning and metadata extraction in `FileService`.
+- [ ] Task: Update `FileService` to support optimized library indexing and cover extraction.
+- [ ] Task: Conductor - User Manual Verification 'Hub Backend Enhancements' (Protocol in workflow.md)
+
+## Phase 3: Android App - Persistent Library & Categories (TDD)
+- [ ] Task: Write failing unit tests for `LibraryViewModel` (fetching and caching the library from the Hub).
+- [ ] Task: Implement persistent library caching and category filtering in the Android app.
+- [ ] Task: Update `BooksScreen.kt` to support top-level categories (Audiobooks/Ebooks) and sub-categories.
+- [ ] Task: Conductor - User Manual Verification 'Android App - Persistent Library & Categories' (Protocol in workflow.md)
+
+## Phase 4: Android App - Downloads & Offline Support (TDD)
+- [ ] Task: Write failing unit tests for `BookDownloadManager` (background transfers and status tracking).
+- [ ] Task: Implement `BookDownloadManager` and local file storage logic on Android.
+- [ ] Task: Add "Offline" filter and download progress indicators to `BooksScreen.kt`.
+- [ ] Task: Conductor - User Manual Verification 'Android App - Downloads & Offline Support' (Protocol in workflow.md)
+
+## Phase 5: Android App - Progress Tracking & Visuals (TDD)
+- [ ] Task: Write failing unit tests for playback/reading position persistence.
+- [ ] Task: Implement position tracking for Audiobooks (ExoPlayer integration).
+- [ ] Task: Implement page tracking for eBooks (PDF/EPUB viewer integration).
+- [ ] Task: Update `BookListItem` to display covers extracted from metadata or fallback to folder covers.
+- [ ] Task: Conductor - User Manual Verification 'Android App - Progress Tracking & Visuals' (Protocol in workflow.md)
+
+## Phase 6: Final Verification & Polish
+- [ ] Task: Perform end-to-end verification of library scanning, downloading, and progress synchronization.
+- [ ] Task: Final UI polish and bug fixing.
+- [ ] Task: Conductor - User Manual Verification 'Final Verification & Polish' (Protocol in workflow.md)
