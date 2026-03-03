@@ -24,6 +24,7 @@ import com.omni.sync.ui.screen.BrowserControlScreen
 import com.omni.sync.ui.screen.ProcessScreen
 import com.omni.sync.ui.screen.RemoteControlScreen
 import com.omni.sync.ui.screen.BooksScreen
+import com.omni.sync.ui.screen.EpubViewerScreen
 import com.omni.sync.ui.screen.PdfViewerScreen
 import com.omni.sync.ui.theme.OmniSyncTheme
 import com.omni.sync.viewmodel.AppScreen
@@ -81,9 +82,25 @@ import android.app.Activity
 import android.media.AudioManager
 import android.media.ToneGenerator
 
+import android.app.DownloadManager
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.IntentFilter
+
 class MainActivity : ComponentActivity() {
     private lateinit var mainViewModel: MainViewModel
     private lateinit var omniSyncApplication: OmniSyncApplication
+    
+    private val downloadReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            val id = intent.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1)
+            if (id != -1L) {
+                // Find the BookDownloadManager and notify it
+                // This is a bit manual since we don't have direct access here easily
+                // but we can trigger a refresh via the ViewModel if we expose it
+            }
+        }
+    }
 
     private val swipeableScreens = listOf(
         AppScreen.DASHBOARD,
@@ -495,6 +512,20 @@ class MainActivity : ComponentActivity() {
                     booksViewModel = booksViewModel,
                     bookPath = path,
                     bookName = name,
+                    onBack = { mainViewModel.goBack() }
+                )
+            }
+            AppScreen.EPUB_VIEWER -> {
+                val path = mainViewModel.appConfig.collectAsState().value.lastOpenedFilePath ?: ""
+                val name = path.substringAfterLast('\\').substringAfterLast('/')
+                val booksViewModel: com.omni.sync.viewmodel.BooksViewModel = viewModel(
+                    factory = com.omni.sync.viewmodel.BooksViewModelFactory(mainViewModel)
+                )
+                EpubViewerScreen(
+                    booksViewModel = booksViewModel,
+                    bookPath = path,
+                    bookName = name,
+                    baseUrl = mainViewModel.getBaseUrl(),
                     onBack = { mainViewModel.goBack() }
                 )
             }

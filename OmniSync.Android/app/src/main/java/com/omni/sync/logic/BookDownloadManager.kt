@@ -31,15 +31,47 @@ class BookDownloadManager(
         context.getSystemService(Context.DOWNLOAD_SERVICE) as? DownloadManager 
     }
 
+    init {
+        refreshDownloads()
+    }
+
+    fun refreshDownloads() {
+        val booksDir = context.getExternalFilesDir("downloaded_books")
+        android.util.Log.d("BookDownload", "Refreshing downloads from: ${booksDir?.absolutePath}")
+        
+        if (booksDir == null || !booksDir.exists()) return
+        val files = booksDir.listFiles() ?: return
+        
+        android.util.Log.d("BookDownload", "Found ${files.size} files on disk")
+        
+        // We don't necessarily have the full remote path here, but we can update 
+        // local checks. The UI relies on isDownloaded(path).
+    }
+
+    fun onDownloadComplete(id: Long) {
+        android.util.Log.d("BookDownload", "Download complete: $id")
+        // Find which book this belongs to
+        val entry = _downloadStatuses.value.entries.find { it.value.downloadId == id }
+        if (entry != null) {
+            android.util.Log.d("BookDownload", "Marking ${entry.value.entry.name} as completed")
+            _downloadStatuses.value += (entry.key to entry.value.copy(isCompleted = true, progress = 100))
+        }
+    }
+
     fun downloadBook(entry: FileSystemEntry) {
-        if (isDownloaded(entry.path)) return
+        if (isDownloaded(entry.path)) {
+            android.util.Log.d("BookDownload", "Already downloaded: ${entry.path}")
+            return
+        }
         if (_downloadStatuses.value.containsKey(entry.path)) return
 
-        val dm = downloadManager ?: return // Skip if service not available (e.g. unit tests)
+        val dm = downloadManager ?: return 
 
         val baseUrl = mainViewModel.getBaseUrl()
         val encodedPath = URLEncoder.encode(entry.path, "UTF-8")
         val downloadUrl = "$baseUrl/api/stream?path=$encodedPath"
+        
+        android.util.Log.d("BookDownload", "Starting download for ${entry.name} from $downloadUrl")
 
         val request = DownloadManager.Request(Uri.parse(downloadUrl))
             .setTitle("Downloading ${entry.name}")
@@ -49,22 +81,39 @@ class BookDownloadManager(
             .setAllowedOverMetered(true)
             .setAllowedOverRoaming(true)
 
-        val id = dm.enqueue(request)
-        _downloadStatuses.value += (entry.path to DownloadStatus(entry, 0, downloadId = id))
-        
-        // In a full implementation, we'd poll the DownloadManager for progress
-        // or use a BroadcastReceiver to update status.
+        try {
+            val id = dm.enqueue(request)
+            _downloadStatuses.value += (entry.path to DownloadStatus(entry, 0, downloadId = id))
+            android.util.Log.d("BookDownload", "Enqueued download ID: $id")
+        } catch (e: Exception) {
+            android.util.Log.e("BookDownload", "Failed to enqueue download", e)
+            _downloadStatuses.value += (entry.path to DownloadStatus(entry, 0, error = e.message))
+        }
+    }
+
+    private fun getFileNameFromPath(path: String): String {
+        // Handle both Windows and Linux separators
+        return path.substringAfterLast('\\').substringAfterLast('/')
     }
 
     fun isDownloaded(path: String): Boolean {
-        val booksDir = File(context.getExternalFilesDir("downloaded_books"), "")
-        val file = File(booksDir, File(path).name)
-        return file.exists()
+        val fileName = getFileNameFromPath(path)
+        val booksDir = context.getExternalFilesDir("downloaded_books")
+        val file = File(booksDir, fileName)
+        val exists = file.exists()
+        if (exists) {
+            val status = _downloadStatuses.value[path]
+            if (status != null && !status.isCompleted) {
+                _downloadStatuses.value += (path to status.copy(isCompleted = true, progress = 100, error = null))
+            }
+        }
+        return exists
     }
 
     fun getLocalPath(path: String): String? {
-        val booksDir = File(context.getExternalFilesDir("downloaded_books"), "")
-        val file = File(booksDir, File(path).name)
+        val fileName = getFileNameFromPath(path)
+        val booksDir = context.getExternalFilesDir("downloaded_books")
+        val file = File(booksDir, fileName)
         return if (file.exists()) file.absolutePath else null
     }
 }

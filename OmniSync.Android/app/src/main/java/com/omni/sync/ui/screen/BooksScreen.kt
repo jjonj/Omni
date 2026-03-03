@@ -22,7 +22,8 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.media3.common.MediaItem
+import androidx.media3.common.PlaybackException
+import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import com.omni.sync.data.model.FileSystemEntry
@@ -36,13 +37,14 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import io.reactivex.rxjava3.android.schedulers.AndroidSchedulers
 import io.reactivex.rxjava3.schedulers.Schedulers
 import kotlinx.coroutines.delay
+import com.google.gson.annotations.SerializedName
 
 // ─── Data & Enums ────────────────────────────────────────────────────────────
 
 data class BookProgress(
-    val bookPath: String,
-    val position: String,
-    val lastUpdated: java.util.Date
+    @SerializedName("BookPath") val bookPath: String,
+    @SerializedName("Position") val position: String,
+    @SerializedName("LastUpdated") val lastUpdated: java.util.Date
 )
 
 enum class BooksTab { ALL, EBOOKS, AUDIOBOOKS, DOWNLOADED }
@@ -87,6 +89,25 @@ fun BooksScreen(
     val allBooks by booksViewModel.allBooks.collectAsState()
     val downloadStatuses by booksViewModel.downloadStatuses.collectAsState()
 
+    val context = LocalContext.current
+
+    // Register download receiver
+    DisposableEffect(Unit) {
+        val receiver = object : android.content.BroadcastReceiver() {
+            override fun onReceive(context: android.content.Context, intent: android.content.Intent) {
+                val id = intent.getLongExtra(android.app.DownloadManager.EXTRA_DOWNLOAD_ID, -1)
+                if (id != -1L) {
+                    booksViewModel.onDownloadCompleted(id)
+                }
+            }
+        }
+        val filter = android.content.IntentFilter(android.app.DownloadManager.ACTION_DOWNLOAD_COMPLETE)
+        context.registerReceiver(receiver, filter, android.content.Context.RECEIVER_EXPORTED)
+        onDispose {
+            context.unregisterReceiver(receiver)
+        }
+    }
+
     var selectedTab by remember { mutableStateOf(BooksTab.ALL) }
     var searchQuery by remember { mutableStateOf("") }
     var selectedCategory by remember { mutableStateOf("All") }
@@ -97,7 +118,7 @@ fun BooksScreen(
     }
 
     // Grouping for sub-categories
-    val categories = remember(allBooks, selectedTab) {
+    val categories = remember(allBooks, selectedTab, downloadStatuses) {
         val filteredByType = allBooks.filter { book ->
             when (selectedTab) {
                 BooksTab.ALL -> true
@@ -109,16 +130,18 @@ fun BooksScreen(
         listOf("All") + filteredByType.map { it.category }.distinct().sorted()
     }
 
-    val filteredBooks = allBooks.filter { book ->
-        val matchesTab = when (selectedTab) {
-            BooksTab.ALL -> true
-            BooksTab.EBOOKS -> book.type == BookType.PDF || book.type == BookType.EPUB
-            BooksTab.AUDIOBOOKS -> book.type == BookType.AUDIOBOOK
-            BooksTab.DOWNLOADED -> booksViewModel.isDownloaded(book)
+    val filteredBooks = remember(allBooks, selectedTab, selectedCategory, searchQuery, downloadStatuses) {
+        allBooks.filter { book ->
+            val matchesTab = when (selectedTab) {
+                BooksTab.ALL -> true
+                BooksTab.EBOOKS -> book.type == BookType.PDF || book.type == BookType.EPUB
+                BooksTab.AUDIOBOOKS -> book.type == BookType.AUDIOBOOK
+                BooksTab.DOWNLOADED -> booksViewModel.isDownloaded(book)
+            }
+            val matchesCategory = selectedCategory == "All" || book.category == selectedCategory
+            val matchesSearch = searchQuery.isBlank() || book.name.contains(searchQuery, ignoreCase = true)
+            matchesTab && matchesCategory && matchesSearch
         }
-        val matchesCategory = selectedCategory == "All" || book.category == selectedCategory
-        val matchesSearch = searchQuery.isBlank() || book.name.contains(searchQuery, ignoreCase = true)
-        matchesTab && matchesCategory && matchesSearch
     }
 
     LaunchedEffect(isConnected) {
@@ -239,7 +262,7 @@ fun BooksScreen(
                         BookListItem(
                             book = book,
                             isDownloaded = booksViewModel.isDownloaded(book),
-                            downloadStatus = downloadStatuses[book.path],
+                            isDownloading = booksViewModel.isDownloading(book),
                             onDownloadClick = { booksViewModel.downloadBook(book) },
                             baseUrl = baseUrl,
                             onClick = {
@@ -247,13 +270,22 @@ fun BooksScreen(
                                     BookType.AUDIOBOOK -> nowPlayingBook = book
                                     BookType.PDF -> {
                                         val localPath = booksViewModel.downloadManager.getLocalPath(book.path)
-                                        if (localPath != null) {
-                                            mainViewModel.updateConfig { it.copy(lastOpenedFilePath = book.path) }
-                                            mainViewModel.navigateTo(com.omni.sync.viewmodel.AppScreen.PDF_VIEWER)
-                                        } else {
-                                            val encoded = java.net.URLEncoder.encode(book.path, "UTF-8")
-                                            mainViewModel.openUrlOnPhone("$baseUrl/api/stream?path=$encoded")
+                                        if (localPath == null) {
+                                            booksViewModel.downloadBook(book)
                                         }
+                                        mainViewModel.updateConfig { it.copy(lastOpenedFilePath = book.path) }
+                                        mainViewModel.navigateTo(com.omni.sync.viewmodel.AppScreen.PDF_VIEWER)
+                                    }
+                                    BookType.EPUB -> {
+                                        val localPath = booksViewModel.downloadManager.getLocalPath(book.path)
+                                        if (localPath == null) {
+                                            booksViewModel.downloadBook(book)
+                                            booksViewModel.log("EPUB not local, opening streamed reader")
+                                        } else {
+                                            booksViewModel.log("Opening local EPUB in app reader")
+                                        }
+                                        mainViewModel.updateConfig { it.copy(lastOpenedFilePath = book.path) }
+                                        mainViewModel.navigateTo(com.omni.sync.viewmodel.AppScreen.EPUB_VIEWER)
                                     }
                                     else -> {
                                         val path = booksViewModel.downloadManager.getLocalPath(book.path) ?: book.path
@@ -276,14 +308,14 @@ fun BooksScreen(
 
             // Audiobook player docked at bottom
             nowPlayingBook?.let { book ->
-                var lastKnownPos by remember { mutableLongStateOf(0L) }
+                var lastKnownPlayback by remember { mutableStateOf("0:0") }
                 AudiobookMiniPlayer(
                     book = book,
                     baseUrl = baseUrl,
                     booksViewModel = booksViewModel,
-                    onPositionUpdate = { lastKnownPos = it },
+                    onPositionUpdate = { lastKnownPlayback = it },
                     onClose = { 
-                        booksViewModel.saveProgress(book.path, lastKnownPos.toString())
+                        booksViewModel.saveProgress(book.path, lastKnownPlayback)
                         nowPlayingBook = null 
                     }
                 )
@@ -298,7 +330,7 @@ fun BooksScreen(
 fun BookListItem(
     book: com.omni.sync.viewmodel.BookItem, 
     isDownloaded: Boolean,
-    downloadStatus: com.omni.sync.logic.DownloadStatus?,
+    isDownloading: Boolean,
     onDownloadClick: () -> Unit,
     baseUrl: String,
     onClick: () -> Unit
@@ -361,7 +393,7 @@ fun BookListItem(
             
             if (isDownloaded) {
                 Icon(Icons.Default.DownloadDone, null, tint = Color(0xFF43A047))
-            } else if (downloadStatus != null) {
+            } else if (isDownloading) {
                 CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
             } else {
                 IconButton(onClick = onDownloadClick) {
@@ -474,7 +506,7 @@ fun AudiobookMiniPlayer(
     book: com.omni.sync.viewmodel.BookItem,
     baseUrl: String,
     booksViewModel: com.omni.sync.viewmodel.BooksViewModel,
-    onPositionUpdate: (Long) -> Unit,
+    onPositionUpdate: (String) -> Unit,
     onClose: () -> Unit
 ) {
     val context = LocalContext.current
@@ -484,37 +516,84 @@ fun AudiobookMiniPlayer(
     var duration by remember { mutableStateOf(0L) }
 
     LaunchedEffect(book) {
-        // 1. Fetch initial position
-        booksViewModel.getProgress(book.path) { lastPos ->
-            val startMs = lastPos?.toLongOrNull() ?: 0L
-            
-            val path = booksViewModel.downloadManager.getLocalPath(book.path) ?: book.path
-            val isLocal = path != book.path
-            val uri = if (isLocal) Uri.fromFile(java.io.File(path)) 
-                      else {
-                          val encoded = java.net.URLEncoder.encode(book.path, "UTF-8")
-                          Uri.parse("$baseUrl/api/stream?path=$encoded")
-                      }
-            
-            val mediaItem = MediaItem.fromUri(uri)
-            exoPlayer.setMediaItem(mediaItem)
-            if (startMs > 0) exoPlayer.seekTo(startMs)
+        // Do not block playback on remote progress RPC.
+        val cached = booksViewModel.getCachedProgress(book.path)
+        val (startIndex, startMs) = if (cached != null && cached.contains(":")) {
+            val parts = cached.split(':', limit = 2)
+            (parts.getOrNull(0)?.toIntOrNull() ?: 0) to (parts.getOrNull(1)?.toLongOrNull() ?: 0L)
+        } else {
+            0 to (cached?.toLongOrNull() ?: 0L)
+        }
+        booksViewModel.log("Audiobook start position (cached): idx=$startIndex ms=$startMs")
+
+        booksViewModel.resolveAudiobookMediaItems(book) { items ->
+            if (items.isEmpty()) {
+                booksViewModel.log("No playable audiobook tracks found for ${book.name}", LogType.ERROR)
+                return@resolveAudiobookMediaItems
+            }
+
+            booksViewModel.log("Preparing ${items.size} media items for ${book.name}")
+            exoPlayer.setMediaItems(items)
+            if (startMs > 0 || startIndex > 0) {
+                if (startIndex in items.indices) {
+                    exoPlayer.seekTo(startIndex, startMs)
+                } else {
+                    exoPlayer.seekTo(startMs)
+                }
+            }
             exoPlayer.prepare()
+            exoPlayer.playWhenReady = true
         }
     }
+    DisposableEffect(exoPlayer) {
+        val listener = object : Player.Listener {
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                val label = when (playbackState) {
+                    Player.STATE_IDLE -> "IDLE"
+                    Player.STATE_BUFFERING -> "BUFFERING"
+                    Player.STATE_READY -> "READY"
+                    Player.STATE_ENDED -> "ENDED"
+                    else -> "UNKNOWN"
+                }
+                booksViewModel.log("Audiobook player state: $label, idx=${exoPlayer.currentMediaItemIndex}, pos=${exoPlayer.currentPosition}, dur=${exoPlayer.duration}")
+            }
+
+            override fun onIsPlayingChanged(isPlayingNow: Boolean) {
+                booksViewModel.log("Audiobook isPlaying=$isPlayingNow, idx=${exoPlayer.currentMediaItemIndex}, pos=${exoPlayer.currentPosition}")
+            }
+
+            override fun onMediaItemTransition(mediaItem: androidx.media3.common.MediaItem?, reason: Int) {
+                booksViewModel.log("Audiobook media transition: reason=$reason, item=${mediaItem?.mediaId ?: mediaItem?.localConfiguration?.uri}")
+            }
+
+            override fun onPlayerError(error: PlaybackException) {
+                booksViewModel.log("Audiobook playback error: ${error.errorCodeName} ${error.message}", LogType.ERROR)
+            }
+        }
+        exoPlayer.addListener(listener)
+        onDispose { exoPlayer.removeListener(listener) }
+    }
     LaunchedEffect(exoPlayer) {
-        var lastSavedPos = 0L
+        var lastSavedPos = -1L
+        var lastSavedIndex = -1
+        var tick = 0
         while (true) {
             delay(1000)
             currentPosition = exoPlayer.currentPosition
             duration = exoPlayer.duration.coerceAtLeast(0L)
             isPlaying = exoPlayer.isPlaying
-            onPositionUpdate(currentPosition)
+            val index = exoPlayer.currentMediaItemIndex.coerceAtLeast(0)
+            onPositionUpdate("$index:$currentPosition")
+            tick += 1
+            if (tick % 5 == 0) {
+                booksViewModel.log("Audiobook heartbeat: playing=${exoPlayer.isPlaying}, state=${exoPlayer.playbackState}, idx=${exoPlayer.currentMediaItemIndex}, pos=${exoPlayer.currentPosition}, dur=${exoPlayer.duration}")
+            }
             
             // Save position every 10 seconds or when significantly changed
-            if (isPlaying && Math.abs(currentPosition - lastSavedPos) > 10_000) {
-                booksViewModel.saveProgress(book.path, currentPosition.toString())
+            if (isPlaying && (index != lastSavedIndex || Math.abs(currentPosition - lastSavedPos) > 10_000)) {
+                booksViewModel.saveProgress(book.path, "$index:$currentPosition")
                 lastSavedPos = currentPosition
+                lastSavedIndex = index
             }
         }
     }

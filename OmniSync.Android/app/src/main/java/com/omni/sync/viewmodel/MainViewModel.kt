@@ -41,7 +41,8 @@ enum class AppScreen {
     MACRO_MANAGER,
     WEB_SERVER,
     BOOKS,
-    PDF_VIEWER
+    PDF_VIEWER,
+    EPUB_VIEWER
 }
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
