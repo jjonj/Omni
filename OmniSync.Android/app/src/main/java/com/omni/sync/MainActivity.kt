@@ -24,6 +24,7 @@ import com.omni.sync.ui.screen.BrowserControlScreen
 import com.omni.sync.ui.screen.ProcessScreen
 import com.omni.sync.ui.screen.RemoteControlScreen
 import com.omni.sync.ui.screen.BooksScreen
+import com.omni.sync.ui.screen.PdfViewerScreen
 import com.omni.sync.ui.theme.OmniSyncTheme
 import com.omni.sync.viewmodel.AppScreen
 import com.omni.sync.viewmodel.MainViewModel
@@ -484,6 +485,19 @@ class MainActivity : ComponentActivity() {
                 mainViewModel = mainViewModel,
                 onBack = { mainViewModel.goBack() }
             )
+            AppScreen.PDF_VIEWER -> {
+                val path = mainViewModel.appConfig.collectAsState().value.lastOpenedFilePath ?: ""
+                val name = path.substringAfterLast('\\').substringAfterLast('/')
+                val booksViewModel: com.omni.sync.viewmodel.BooksViewModel = viewModel(
+                    factory = com.omni.sync.viewmodel.BooksViewModelFactory(mainViewModel)
+                )
+                PdfViewerScreen(
+                    booksViewModel = booksViewModel,
+                    bookPath = path,
+                    bookName = name,
+                    onBack = { mainViewModel.goBack() }
+                )
+            }
             else -> {} 
         }
     }

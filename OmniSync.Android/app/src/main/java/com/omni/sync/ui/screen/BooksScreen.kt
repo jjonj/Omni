@@ -243,6 +243,16 @@ fun BooksScreen(
                             onClick = {
                                 when (book.type) {
                                     BookType.AUDIOBOOK -> nowPlayingBook = book
+                                    BookType.PDF -> {
+                                        val localPath = booksViewModel.downloadManager.getLocalPath(book.path)
+                                        if (localPath != null) {
+                                            mainViewModel.updateConfig { it.copy(lastOpenedFilePath = book.path) }
+                                            mainViewModel.navigateTo(com.omni.sync.viewmodel.AppScreen.PDF_VIEWER)
+                                        } else {
+                                            val encoded = java.net.URLEncoder.encode(book.path, "UTF-8")
+                                            mainViewModel.openUrlOnPhone("$baseUrl/api/stream?path=$encoded")
+                                        }
+                                    }
                                     else -> {
                                         val path = booksViewModel.downloadManager.getLocalPath(book.path) ?: book.path
                                         val isLocal = path != book.path

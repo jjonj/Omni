@@ -28,7 +28,8 @@ data class AppConfig(
     var maxAiHistory: Int = 10000, // characters per session default
     var keyboardSoundEnabled: Boolean = true,
     var showKeyboardNumberRow: Boolean = true,
-    var browserCleanupPatterns: List<String> = emptyList()
+    var browserCleanupPatterns: List<String> = emptyList(),
+    var lastOpenedFilePath: String? = null
 )
 
 class ConfigManager(private val context: Context) {
