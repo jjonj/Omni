@@ -13,6 +13,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -27,18 +28,12 @@ import androidx.media3.exoplayer.ExoPlayer
 import com.omni.sync.data.model.FileSystemEntry
 import com.omni.sync.utils.*
 import com.omni.sync.viewmodel.MainViewModel
+import com.omni.sync.viewmodel.BookItem
 import io.reactivex.rxjava3.android.schedulers.AndroidSchedulers
 import io.reactivex.rxjava3.schedulers.Schedulers
 import kotlinx.coroutines.delay
 
 // ─── Data & Enums ────────────────────────────────────────────────────────────
-
-data class BookItem(
-    val name: String,
-    val path: String,
-    val type: BookType,
-    val size: Long = 0L
-)
 
 enum class BooksTab { ALL, EBOOKS, AUDIOBOOKS }
 
@@ -66,7 +61,7 @@ fun bookTypeLabel(type: BookType): String = when (type) {
 
 // ─── Main Screen ─────────────────────────────────────────────────────────────
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(UnstableApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun BooksScreen(
     mainViewModel: MainViewModel,
