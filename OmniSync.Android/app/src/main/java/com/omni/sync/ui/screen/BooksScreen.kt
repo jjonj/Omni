@@ -38,7 +38,7 @@ import kotlinx.coroutines.delay
 
 // ─── Data & Enums ────────────────────────────────────────────────────────────
 
-enum class BooksTab { ALL, EBOOKS, AUDIOBOOKS }
+enum class BooksTab { ALL, EBOOKS, AUDIOBOOKS, DOWNLOADED }
 
 fun FileSystemEntry.toBookItemOrNull(): com.omni.sync.viewmodel.BookItem? {
     if (isDirectory) return null
@@ -71,13 +71,14 @@ fun BooksScreen(
     onBack: () -> Unit
 ) {
     val booksViewModel: BooksViewModel = viewModel(
-        factory = BooksViewModelFactory(mainViewModel.signalRClient)
+        factory = BooksViewModelFactory(mainViewModel)
     )
     
     val isConnected by mainViewModel.isConnected.collectAsState()
     val baseUrl = mainViewModel.getBaseUrl()
     val libraryState by booksViewModel.libraryState.collectAsState()
     val allBooks by booksViewModel.allBooks.collectAsState()
+    val downloadStatuses by booksViewModel.downloadStatuses.collectAsState()
 
     var selectedTab by remember { mutableStateOf(BooksTab.ALL) }
     var searchQuery by remember { mutableStateOf("") }
@@ -95,6 +96,7 @@ fun BooksScreen(
                 BooksTab.ALL -> true
                 BooksTab.EBOOKS -> book.type == BookType.PDF || book.type == BookType.EPUB
                 BooksTab.AUDIOBOOKS -> book.type == BookType.AUDIOBOOK
+                BooksTab.DOWNLOADED -> booksViewModel.isDownloaded(book)
             }
         }
         listOf("All") + filteredByType.map { it.category }.distinct().sorted()
@@ -105,6 +107,7 @@ fun BooksScreen(
             BooksTab.ALL -> true
             BooksTab.EBOOKS -> book.type == BookType.PDF || book.type == BookType.EPUB
             BooksTab.AUDIOBOOKS -> book.type == BookType.AUDIOBOOK
+            BooksTab.DOWNLOADED -> booksViewModel.isDownloaded(book)
         }
         val matchesCategory = selectedCategory == "All" || book.category == selectedCategory
         val matchesSearch = searchQuery.isBlank() || book.name.contains(searchQuery, ignoreCase = true)
@@ -150,6 +153,7 @@ fun BooksScreen(
                                 BooksTab.ALL -> "All"
                                 BooksTab.EBOOKS -> "eBooks"
                                 BooksTab.AUDIOBOOKS -> "Audio"
+                                BooksTab.DOWNLOADED -> "Offline"
                             })
                         },
                         icon = {
@@ -157,6 +161,7 @@ fun BooksScreen(
                                 BooksTab.ALL -> Icons.Default.LibraryBooks
                                 BooksTab.EBOOKS -> Icons.Default.MenuBook
                                 BooksTab.AUDIOBOOKS -> Icons.Default.Headphones
+                                BooksTab.DOWNLOADED -> Icons.Default.DownloadDone
                             }, contentDescription = null)
                         }
                     )
@@ -226,12 +231,23 @@ fun BooksScreen(
                     items(filteredBooks) { book ->
                         BookListItem(
                             book = book,
+                            isDownloaded = booksViewModel.isDownloaded(book),
+                            downloadStatus = downloadStatuses[book.path],
+                            onDownloadClick = { booksViewModel.downloadBook(book) },
                             onClick = {
                                 when (book.type) {
                                     BookType.AUDIOBOOK -> nowPlayingBook = book
                                     else -> {
-                                        val encoded = java.net.URLEncoder.encode(book.path, "UTF-8")
-                                        mainViewModel.openUrlOnPhone("$baseUrl/api/stream?path=$encoded")
+                                        val path = booksViewModel.downloadManager.getLocalPath(book.path) ?: book.path
+                                        val isLocal = path != book.path
+                                        
+                                        if (isLocal) {
+                                            // Handle local file opening
+                                            mainViewModel.openUrlOnPhone("file://$path")
+                                        } else {
+                                            val encoded = java.net.URLEncoder.encode(book.path, "UTF-8")
+                                            mainViewModel.openUrlOnPhone("$baseUrl/api/stream?path=$encoded")
+                                        }
                                     }
                                 }
                             }
@@ -255,7 +271,13 @@ fun BooksScreen(
 // ─── Book List Item ───────────────────────────────────────────────────────────
 
 @Composable
-fun BookListItem(book: com.omni.sync.viewmodel.BookItem, onClick: () -> Unit) {
+fun BookListItem(
+    book: com.omni.sync.viewmodel.BookItem, 
+    isDownloaded: Boolean,
+    downloadStatus: com.omni.sync.logic.DownloadStatus?,
+    onDownloadClick: () -> Unit,
+    onClick: () -> Unit
+) {
     Card(
         modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp).clickable { onClick() },
         shape = RoundedCornerShape(10.dp),
@@ -300,6 +322,19 @@ fun BookListItem(book: com.omni.sync.viewmodel.BookItem, onClick: () -> Unit) {
                     }
                 }
             }
+            
+            if (isDownloaded) {
+                Icon(Icons.Default.DownloadDone, null, tint = Color(0xFF43A047))
+            } else if (downloadStatus != null) {
+                CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
+            } else {
+                IconButton(onClick = onDownloadClick) {
+                    Icon(Icons.Default.Download, null, tint = MaterialTheme.colorScheme.primary)
+                }
+            }
+            
+            Spacer(Modifier.width(8.dp))
+            
             Icon(
                 imageVector = if (book.type == BookType.AUDIOBOOK) Icons.Default.PlayCircle else Icons.Default.OpenInNew,
                 contentDescription = null,
