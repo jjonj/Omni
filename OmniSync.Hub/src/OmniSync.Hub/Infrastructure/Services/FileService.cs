@@ -58,6 +58,33 @@ namespace OmniSync.Hub.Infrastructure.Services
             return _noteRootPath;
         }
 
+        public virtual IEnumerable<FileSystemEntry> ScanBooksRecursive(string rootPath)
+        {
+            if (!Directory.Exists(rootPath))
+            {
+                return Enumerable.Empty<FileSystemEntry>();
+            }
+
+            var bookExtensions = new[] { ".pdf", ".epub", ".mobi", ".azw3", ".m4b", ".mp3", ".aac", ".opus", ".aax", ".aa" };
+            
+            var files = Directory.GetFiles(rootPath, "*.*", SearchOption.AllDirectories)
+                .Where(file => bookExtensions.Contains(Path.GetExtension(file).ToLower()));
+
+            return files.Select(file =>
+            {
+                var info = new FileInfo(file);
+                return new FileSystemEntry
+                {
+                    Name = info.Name,
+                    Path = info.FullName,
+                    IsDirectory = false,
+                    EntryType = "File",
+                    Size = info.Length,
+                    LastModified = info.LastWriteTime
+                };
+            });
+        }
+
         public virtual string GetBrowseRootPath()
         {
             return _browseRootPath;
