@@ -1,12 +1,13 @@
 # Implementation Plan: Android Books Screen & Library Reorganization
 
-## Phase 1: PC Library Reorganization & Code Audit
+## Phase 1: PC Library Reorganization & Code Audit [checkpoint: 5f6aadc]
 - [x] Task: Review existing local changes (`BooksScreen.kt`, `MainActivity.kt`, etc.) and integrate them into the track's baseline. (2b7b99c)
-- [ ] Task: Create a Python script `TestScripts/Books/reorganize_library.py` to dry-run the reorganization of `B:\GDrive\Books`.
-- [ ] Task: Implement keyword-based classification logic (e.g., "manga" -> Manga, "tutorial" -> Technical).
-- [ ] Task: Present the dry-run output to the user and obtain approval for the move operations.
-- [ ] Task: Execute the reorganization script and verify the new folder structure.
-- [ ] Task: Conductor - User Manual Verification 'PC Library Reorganization' (Protocol in workflow.md)
+- [x] Task: Create a Python script `TestScripts/Books/reorganize_library.py` to dry-run the reorganization of `B:\GDrive\Books`. (d8e3d5a)
+- [x] Task: Implement keyword-based classification logic (e.g., "manga" -> Manga, "tutorial" -> Technical). (d8e3d5a)
+- [x] Task: Present the dry-run output to the user and obtain approval for the move operations. (d8e3d5a)
+- [x] Task: Execute the reorganization script and verify the new folder structure. (d8e3d5a)
+- [x] Task: Conductor - User Manual Verification 'PC Library Reorganization' (Protocol in workflow.md) (5f6aadc)
+
 
 ## Phase 2: Hub Backend Enhancements (TDD)
 - [ ] Task: Write failing unit tests for `BookProgressService` (storing and retrieving last position/page).
