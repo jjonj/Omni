@@ -56,6 +56,21 @@ class BooksViewModel(
         return downloadManager.isDownloaded(book.path)
     }
 
+    fun saveProgress(path: String, position: String) {
+        signalRClient.saveBookProgress(path, position)
+    }
+
+    fun getProgress(path: String, onResult: (String?) -> Unit) {
+        signalRClient.getBookProgress(path)
+            ?.subscribeOn(Schedulers.io())
+            ?.observeOn(AndroidSchedulers.mainThread())
+            ?.subscribe({ progress ->
+                onResult(progress.position)
+            }, { error ->
+                onResult(null)
+            })
+    }
+
     fun scanLibrary(rootPath: String = "B:\\\\GDrive\\\\Books") {
         _libraryState.value = LibraryState.Loading
 

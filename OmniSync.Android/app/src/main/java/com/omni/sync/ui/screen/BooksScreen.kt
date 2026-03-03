@@ -38,6 +38,12 @@ import kotlinx.coroutines.delay
 
 // ─── Data & Enums ────────────────────────────────────────────────────────────
 
+data class BookProgress(
+    val bookPath: String,
+    val position: String,
+    val lastUpdated: java.util.Date
+)
+
 enum class BooksTab { ALL, EBOOKS, AUDIOBOOKS, DOWNLOADED }
 
 fun FileSystemEntry.toBookItemOrNull(): com.omni.sync.viewmodel.BookItem? {

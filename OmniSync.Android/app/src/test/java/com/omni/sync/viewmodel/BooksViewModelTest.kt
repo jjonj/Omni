@@ -23,6 +23,8 @@ class BooksViewModelTest {
 
     @Mock
     private lateinit var signalRClient: SignalRClient
+    @Mock
+    private lateinit var downloadManager: com.omni.sync.logic.BookDownloadManager
     private lateinit var viewModel: BooksViewModel
     private val testDispatcher = UnconfinedTestDispatcher()
 
@@ -36,7 +38,7 @@ class BooksViewModelTest {
         RxJavaPlugins.setNewThreadSchedulerHandler { Schedulers.trampoline() }
         RxAndroidPlugins.setInitMainThreadSchedulerHandler { Schedulers.trampoline() }
         
-        viewModel = BooksViewModel(signalRClient)
+        viewModel = BooksViewModel(signalRClient, downloadManager)
     }
 
     @After
@@ -84,5 +86,16 @@ class BooksViewModelTest {
         assertEquals("Fiction", books[1].category)
         assertEquals(BookType.EPUB, books[0].type)
         assertEquals(BookType.AUDIOBOOK, books[1].type)
+    }
+
+    @Test
+    fun `test saveProgress success`() = runTest {
+        val path = "B:\\Books\\test.epub"
+        val pos = "123"
+        `when`(signalRClient.saveBookProgress(path, pos)).thenReturn(Unit)
+
+        viewModel.saveProgress(path, pos)
+        
+        org.mockito.Mockito.verify(signalRClient).saveBookProgress(path, pos)
     }
 }

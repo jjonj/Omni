@@ -28,6 +28,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import io.reactivex.rxjava3.core.Completable
 import io.reactivex.rxjava3.core.Single
 import java.lang.Exception
 import com.omni.sync.data.model.FileSystemEntry
@@ -1322,6 +1323,25 @@ class SignalRClient(
     fun getFileInfo(path: String): Single<FileSystemEntry>? {
         if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
             return hubConnection?.invoke(FileSystemEntry::class.java, "GetFileInfo", path)
+        }
+        return null
+    }
+
+    fun saveBookProgress(path: String, position: String): Unit? {
+        if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
+            val payload = mapOf(
+                "BookPath" to path,
+                "Position" to position,
+                "LastUpdated" to java.util.Date()
+            )
+            return hubConnection?.send("SaveBookProgress", payload)
+        }
+        return null
+    }
+
+    fun getBookProgress(path: String): Single<com.omni.sync.ui.screen.BookProgress>? {
+        if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
+            return hubConnection?.invoke(com.omni.sync.ui.screen.BookProgress::class.java, "GetBookProgress", path)
         }
         return null
     }
