@@ -653,9 +653,6 @@ namespace OmniSync.Hub.Infrastructure.Services
                 finalWorkspace = finalWorkspace.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
                 string workspaceArg = finalWorkspace.Replace("\\", "/");
 
-                _logger.LogInformation($"[AiCliService] Launching process: cd /d {geminiDir} && node bundle/gemini.js --workspace {workspaceArg}");
-                onProgress?.Invoke($"Launching process in {finalWorkspace}...");
-
                 string bundlePath = Path.Combine(geminiDir, "bundle", "gemini.js");
                 if (!File.Exists(bundlePath))
                 {
@@ -669,7 +666,7 @@ namespace OmniSync.Hub.Infrastructure.Services
                     effectiveModel = _settingsService.Settings.DefaultAiModel;
                 }
 
-                string command = $"title OMNI_GEMINI_INTERACTIVE && cd /d \"{geminiDir}\" && node bundle/gemini.js --workspace \"{workspaceArg}\" --yolo";
+                string command = $"title OMNI_GEMINI_INTERACTIVE && cd /d \"{finalWorkspace}\" && node \"{bundlePath}\" --workspace \"{workspaceArg}\" --yolo";
                 if (!string.IsNullOrEmpty(effectiveModel))
                 {
                     command += $" --model {effectiveModel}";
