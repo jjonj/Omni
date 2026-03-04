@@ -17,5 +17,5 @@
 
 ---
 
-- [ ] **Track: Android Books Screen implementation & library reorganization for B:\GDrive\Books**
+- [~] **Track: Android Books Screen implementation & library reorganization for B:\GDrive\Books**
 *Link: [./tracks/feat_books_android_reorg_20260303/](./tracks/feat_books_android_reorg_20260303/)*

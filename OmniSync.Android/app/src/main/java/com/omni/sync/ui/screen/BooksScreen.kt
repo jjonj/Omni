@@ -280,12 +280,13 @@ fun BooksScreen(
                                         val localPath = booksViewModel.downloadManager.getLocalPath(book.path)
                                         if (localPath == null) {
                                             booksViewModel.downloadBook(book)
-                                            booksViewModel.log("EPUB not local, opening streamed reader")
+                                            booksViewModel.log("EPUB not local; queued download instead of opening viewer")
+                                            mainViewModel.showToast("Downloading EPUB first")
                                         } else {
                                             booksViewModel.log("Opening local EPUB in app reader")
+                                            mainViewModel.updateConfig { it.copy(lastOpenedFilePath = book.path) }
+                                            mainViewModel.navigateTo(com.omni.sync.viewmodel.AppScreen.EPUB_VIEWER)
                                         }
-                                        mainViewModel.updateConfig { it.copy(lastOpenedFilePath = book.path) }
-                                        mainViewModel.navigateTo(com.omni.sync.viewmodel.AppScreen.EPUB_VIEWER)
                                     }
                                     else -> {
                                         val path = booksViewModel.downloadManager.getLocalPath(book.path) ?: book.path

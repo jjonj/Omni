@@ -49,9 +49,6 @@ The Omnihub window -> Settings -> Hotkeys needs improvements (Completed)
 
 ### AI screen
 
-I tried to add omni-gemini-cli to the workspace of the AI using the browse to add from android app but it gave the following error when i tried to add D:\SSDProjects\Tools\omni-gemini-cli. It shouldnt add .\
-✕ Error adding '.\"D:\SSDProjects\Tools\omni-gemini-cli"': Directory does not exist: D:\SSDProjects\Omni\"D:\SSDProjects\Tools\omni-gemini-cli"
-
 
 
 [BIGTASK] Add a special "Manager Session", a CLI session that is always running with some heavy scaffolding around it.
@@ -67,6 +64,30 @@ I tried to add omni-gemini-cli to the workspace of the AI using the browse to ad
 
 
 ### Alarm screen
+
+### Books screen
+
+On the landing page that shows "All" books, add a separate section for books and audiobooks that are in progress. 
+
+In the browse book lists, make a long press menu that has "Set Category" (moves the book to the folder), "Remove Progress", "Hide" and "Delete" to  delete from the remote library (also deletes athe offline version if its downlaoded) with a confirmation popup.
+In offline tab, allow deleting books offline without confirmation (as we can just redownload). 
+
+
+For the text book reader
+add customizable background and text color. (when hte pdf is text based)
+Add invert colors (to automatically let me change a white page black letters to be opposite when the pdf is image based)
+Add pinch to zoom in and out, persist zoom level between pages and even when resuming the book later.
+
+Add playback speed options for audiobooks 
+Add a timer option to audio books that optionally lets the playback stop after 15/30/60/120 minutes OR after current chapter for multifiles.
+ 
+
+When playing multi-file audiobooks implement these:
+1. show the file name of the current file in the player
+2. add next/prev buttons to go between files
+
+
+Epubs still dont work, it shows a black screen with "Loading EPUB..."
 
 
 ### Settings screen

@@ -38,9 +38,10 @@ namespace OmniSync.Hub.Presentation.Hubs
         private readonly GitService _gitService;
         private readonly GlobalHotkeyService _hotkeyService;
         private readonly IMacroService _macroService;
+        private readonly BookProgressService _bookProgressService;
         private readonly ILogger<RpcApiHub> _logger; // Added for logging
 
-        public RpcApiHub(AuthService authService, FileService fileService, ClipboardService clipboardService, CommandDispatcher commandDispatcher, ProcessService processService, HubEventSender hubEventSender, InputService inputService, AudioService audioService, ShutdownService shutdownService, RegistryService registryService, HubMonitorService hubMonitorService, AiCliService aiCliService, PcgPersistentService pcgService, HubSettingsService settingsService, GitService gitService, GlobalHotkeyService hotkeyService, IMacroService macroService, ILogger<RpcApiHub> logger)
+        public RpcApiHub(AuthService authService, FileService fileService, ClipboardService clipboardService, CommandDispatcher commandDispatcher, ProcessService processService, HubEventSender hubEventSender, InputService inputService, AudioService audioService, ShutdownService shutdownService, RegistryService registryService, HubMonitorService hubMonitorService, AiCliService aiCliService, PcgPersistentService pcgService, HubSettingsService settingsService, GitService gitService, GlobalHotkeyService hotkeyService, IMacroService macroService, BookProgressService bookProgressService, ILogger<RpcApiHub> logger)
         {
             _authService = authService;
             _fileService = fileService;
@@ -59,6 +60,7 @@ namespace OmniSync.Hub.Presentation.Hubs
             _gitService = gitService;
             _hotkeyService = hotkeyService;
             _macroService = macroService;
+            _bookProgressService = bookProgressService;
             _logger = logger;
         }
 
@@ -637,6 +639,63 @@ namespace OmniSync.Hub.Presentation.Hubs
             {
                 _logger.LogError(ex, $"Error listing directory '{path}'");
                 throw new HubException($"Error listing directory: {ex.Message}");
+            }
+        }
+
+        public async Task<IEnumerable<FileSystemEntry>> ScanBooksRecursive(string rootPath)
+        {
+            try
+            {
+                if (!Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) || !(bool)isAuthenticated)
+                {
+                    throw new HubException("Unauthorized");
+                }
+
+                AnyCommandReceived?.Invoke(this, $"ScanBooksRecursive: {rootPath}");
+                var contents = _fileService.ScanBooksRecursive(rootPath);
+                return await Task.FromResult(contents);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Error scanning books recursively: {rootPath}");
+                throw new HubException($"Error scanning books: {ex.Message}");
+            }
+        }
+
+        public async Task SaveBookProgress(BookProgress progress)
+        {
+            try
+            {
+                if (!Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) || !(bool)isAuthenticated)
+                {
+                    throw new HubException("Unauthorized");
+                }
+
+                AnyCommandReceived?.Invoke(this, $"SaveBookProgress: {progress.BookPath}");
+                await _bookProgressService.SaveProgressAsync(progress);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Error saving book progress for: {progress.BookPath}");
+            }
+        }
+
+        public async Task<BookProgress?> GetBookProgress(string bookPath)
+        {
+            try
+            {
+                if (!Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) || !(bool)isAuthenticated)
+                {
+                    throw new HubException("Unauthorized");
+                }
+
+                AnyCommandReceived?.Invoke(this, $"GetBookProgress: {bookPath}");
+                return await _bookProgressService.GetProgressAsync(bookPath);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Error getting book progress for: {bookPath}");
+                return null;
             }
         }
 
