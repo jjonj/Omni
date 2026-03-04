@@ -25,6 +25,8 @@ class BooksViewModelTest {
     private lateinit var signalRClient: SignalRClient
     @Mock
     private lateinit var downloadManager: com.omni.sync.logic.BookDownloadManager
+    @Mock
+    private lateinit var mainViewModel: MainViewModel
     private lateinit var viewModel: BooksViewModel
     private val testDispatcher = UnconfinedTestDispatcher()
 
@@ -38,7 +40,7 @@ class BooksViewModelTest {
         RxJavaPlugins.setNewThreadSchedulerHandler { Schedulers.trampoline() }
         RxAndroidPlugins.setInitMainThreadSchedulerHandler { Schedulers.trampoline() }
         
-        viewModel = BooksViewModel(signalRClient, downloadManager)
+        viewModel = BooksViewModel(signalRClient, downloadManager, mainViewModel)
     }
 
     @After

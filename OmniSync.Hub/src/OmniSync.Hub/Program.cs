@@ -293,6 +293,7 @@ builder.Services.AddSingleton<AssistantService>();
 builder.Services.AddSingleton<PcgPersistentService>();
 builder.Services.AddSingleton<NodeRedService>();
 builder.Services.AddSingleton<HubMonitorService>();
+builder.Services.AddSingleton<BookProgressService>();
 builder.Services.AddHostedService<HubMonitorService>(provider => provider.GetRequiredService<HubMonitorService>());
 builder.Services.AddSingleton<HubEventSender>(provider =>
 {

@@ -60,8 +60,10 @@ namespace OmniSync.Hub.Infrastructure.Services
 
         public virtual IEnumerable<FileSystemEntry> ScanBooksRecursive(string rootPath)
         {
+            Console.WriteLine($"[ScanBooksRecursive] Scanning: {rootPath}");
             if (!Directory.Exists(rootPath))
             {
+                Console.WriteLine($"[ScanBooksRecursive] Directory not found: {rootPath}");
                 return Enumerable.Empty<FileSystemEntry>();
             }
 

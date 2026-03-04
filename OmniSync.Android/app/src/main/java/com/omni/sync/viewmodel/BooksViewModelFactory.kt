@@ -13,7 +13,7 @@ class BooksViewModelFactory(
             val context = mainViewModel.getApplication<android.app.Application>()
             val downloadManager = BookDownloadManager(context, mainViewModel)
             @Suppress("UNCHECKED_CAST")
-            return BooksViewModel(mainViewModel.signalRClient, downloadManager) as T
+            return BooksViewModel(mainViewModel.signalRClient, downloadManager, mainViewModel) as T
         }
         throw IllegalArgumentException("Unknown ViewModel class")
     }

@@ -8,5 +8,6 @@ namespace OmniSync.Hub.Models
         public long Size { get; set; } // For files
         public System.DateTime LastModified { get; set; }
         public string EntryType { get; set; } // "Drive", "Directory", "File"
+        public string? Description { get; set; }
     }
 }

@@ -5,8 +5,6 @@ import android.util.Base64
 import android.webkit.WebChromeClient
 import android.webkit.WebView
 import android.webkit.WebViewClient
-import androidx.compose.foundation.border
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -25,8 +23,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.omni.sync.viewmodel.BooksViewModel
 import java.io.File
@@ -46,10 +42,16 @@ fun EpubViewerScreen(
     val loadError = remember { mutableStateOf<String?>(null) }
     val hasLoaded = remember { mutableStateOf(false) }
 
-    val webInterface = remember(base64Data.value) {
+    val webInterface = remember(base64Data.value, bookPath) {
         object {
             @android.webkit.JavascriptInterface
             fun getEpubBase64(): String = base64Data.value ?: ""
+            @android.webkit.JavascriptInterface
+            fun saveLocation(cfi: String) { booksViewModel.saveProgress(bookPath, cfi) }
+            @android.webkit.JavascriptInterface
+            fun getSavedLocation(): String = booksViewModel.getCachedProgress(bookPath) ?: ""
+            @android.webkit.JavascriptInterface
+            fun log(msg: String) { booksViewModel.log("EPUB JS: $msg") }
         }
     }
 
@@ -57,7 +59,6 @@ fun EpubViewerScreen(
         hasLoaded.value = false
         base64Data.value = null
         loadError.value = null
-        
         val localPath = booksViewModel.downloadManager.getLocalPath(bookPath)
         if (localPath == null) {
             loadError.value = "EPUB not downloaded yet."
@@ -66,7 +67,6 @@ fun EpubViewerScreen(
         try {
             val bytes = File(localPath).readBytes()
             base64Data.value = Base64.encodeToString(bytes, Base64.NO_WRAP)
-            booksViewModel.log("Loaded EPUB: ${bytes.size} bytes")
         } catch (e: Exception) {
             loadError.value = "Read error: ${e.message}"
         }
@@ -76,11 +76,10 @@ fun EpubViewerScreen(
         val wv = webViewRef.value
         if (wv != null && !hasLoaded.value) {
             if (loadError.value != null) {
-                wv.loadDataWithBaseURL(null, "<html><body>${loadError.value}</body></html>", "text/html", "utf-8", null)
+                wv.loadDataWithBaseURL(null, "<html><body style='background:#111;color:#eee;'>${loadError.value}</body></html>", "text/html", "utf-8", null)
                 hasLoaded.value = true
             } else if (base64Data.value != null) {
-                booksViewModel.log("WebView: Loading simple skeleton")
-                wv.loadDataWithBaseURL("https://omni.local/", htmlSimple, "text/html", "utf-8", null)
+                wv.loadDataWithBaseURL("https://omni.local/", htmlBulletproof, "text/html", "utf-8", null)
                 hasLoaded.value = true
             }
         }
@@ -105,7 +104,7 @@ fun EpubViewerScreen(
             )
         }
     ) { paddingValues ->
-        Box(modifier = Modifier.fillMaxSize().padding(paddingValues).border(4.dp, Color.Green)) {
+        Column(modifier = Modifier.fillMaxSize().padding(paddingValues)) {
             AndroidView(
                 modifier = Modifier.fillMaxSize(),
                 factory = { context ->
@@ -117,14 +116,10 @@ fun EpubViewerScreen(
                         settings.allowContentAccess = true
                         settings.allowFileAccessFromFileURLs = true
                         settings.allowUniversalAccessFromFileURLs = true
-                        
                         addJavascriptInterface(webInterface, "AndroidApp")
-                        
                         webChromeClient = object : WebChromeClient() {
-                            override fun onConsoleMessage(consoleMessage: android.webkit.ConsoleMessage?): Boolean {
-                                if (consoleMessage != null) {
-                                    booksViewModel.log("JS: ${consoleMessage.message()}")
-                                }
+                            override fun onConsoleMessage(cm: android.webkit.ConsoleMessage?): Boolean {
+                                if (cm != null) booksViewModel.log("JS: ${cm.message()}")
                                 return true
                             }
                         }
@@ -135,29 +130,48 @@ fun EpubViewerScreen(
     }
 }
 
-private val htmlSimple = """
+private val htmlBulletproof = """
     <!doctype html>
     <html>
     <head>
       <meta charset="utf-8" />
+      <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
       <style>
-        body { margin: 0; padding: 0; background: magenta; color: white; font-family: sans-serif; }
-        .box { border: 5px solid black; padding: 10px; margin: 10px; }
-        #status { background: yellow; color: black; min-height: 50px; }
-        #viewer { background: white; color: black; min-height: 200px; border-color: red; }
-        #controls { background: cyan; color: black; height: 60px; }
+        body { 
+            margin: 0; padding: 0; 
+            padding-bottom: 80px; /* Space for fixed controls */
+            background: #111; color: #eee; 
+            font-family: sans-serif; 
+        }
+        #viewer { 
+            width: 100%; 
+            min-height: 500px; /* Safe starting height */
+            background: #111;
+        }
+        #controls { 
+            position: fixed; bottom: 0; left: 0; right: 0; 
+            height: 70px; background: #1a1a1a; 
+            display: flex; align-items: center; justify-content: space-around; 
+            border-top: 1px solid #333; z-index: 1000;
+        }
+        button { 
+            padding: 12px 40px; font-weight: bold; 
+            background: #333; color: #eee; 
+            border: 1px solid #444; border-radius: 8px; 
+            font-size: 16px;
+        }
+        button:active { background: #444; }
+        #loading { padding: 50px; text-align: center; color: #666; }
       </style>
     </head>
     <body>
-      <div id="status" class="box">LOGS WILL APPEAR HERE</div>
-      
-      <div id="viewer" class="box">
-        <h2>VIEWER BOX</h2>
-        <div id="epub-content">WAITING FOR EPUB.JS...</div>
+      <div id="viewer">
+        <div id="loading">Loading book...</div>
       </div>
       
-      <div id="controls" class="box">
-        <button onclick="window.nextPage()" style="padding: 10px;">NEXT PAGE</button>
+      <div id="controls">
+        <button onclick="window.prevPage()">PREV</button>
+        <button onclick="window.nextPage()">NEXT</button>
       </div>
 
       <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
@@ -165,56 +179,58 @@ private val htmlSimple = """
       
       <script>
         (function() {
-          const status = document.getElementById("status");
-          const content = document.getElementById("epub-content");
           let rendition = null;
-
-          const log = (msg) => {
-              status.innerText += "\n> " + msg;
-              console.log("EPUB JS: " + msg);
-          };
+          let book = null;
 
           window.nextPage = () => rendition && rendition.next();
+          window.prevPage = () => rendition && rendition.prev();
 
           async function init() {
-              log("STARTING...");
               if (typeof ePub === 'undefined') {
-                  log("ePub missing, retrying...");
-                  setTimeout(init, 1000);
+                  setTimeout(init, 500);
                   return;
               }
 
               try {
                   const b64 = window.AndroidApp.getEpubBase64();
-                  log("B64 size: " + b64.length);
+                  if (!b64) return;
                   
                   const binary = atob(b64);
                   const bytes = new Uint8Array(binary.length);
                   for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
                   
-                  log("Opening book...");
-                  const book = ePub(bytes.buffer);
+                  book = ePub(bytes.buffer);
                   await book.opened;
-                  log("Spine: " + book.spine.length);
 
                   rendition = book.renderTo("viewer", { 
-                      width: "100%", height: "400px", flow: "scrolled" 
+                      width: "100%", height: "auto", flow: "scrolled", manager: "default"
                   });
                   
                   rendition.themes.default({
-                      "body": { "background": "white !important", "color": "black !important" }
+                      "body": { 
+                        "background": "#111 !important", 
+                        "color": "#ccc !important", 
+                        "padding": "20px !important", 
+                        "font-size": "18px !important"
+                      }
                   });
 
-                  log("Displaying...");
-                  await rendition.display();
-                  log("DONE - Should be visible now!");
+                  rendition.on("relocated", (loc) => {
+                      window.AndroidApp.saveLocation(loc.start.cfi);
+                  });
+
+                  const saved = window.AndroidApp.getSavedLocation();
+                  if (saved) { await rendition.display(saved); } 
+                  else { await rendition.display(); }
+                  
+                  document.getElementById("loading").style.display = "none";
 
               } catch (e) {
-                  log("ERROR: " + e);
+                  window.AndroidApp.log("Error: " + e);
               }
           }
 
-          setTimeout(init, 500);
+          setTimeout(init, 200);
         })();
       </script>
     </body>
