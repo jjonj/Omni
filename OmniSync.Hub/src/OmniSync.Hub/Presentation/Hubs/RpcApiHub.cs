@@ -769,6 +769,15 @@ namespace OmniSync.Hub.Presentation.Hubs
             }
         }
 
+        public void AppendToFile(string path, string content)
+        {
+            if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
+            {
+                AnyCommandReceived?.Invoke(this, $"AppendToFile: {path}");
+                _fileService.AppendToFile(path, content);
+            }
+        }
+
         public void CreateDirectory(string path)
         {
             if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)

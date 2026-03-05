@@ -27,6 +27,9 @@ class BookDownloadManager(
     private val _downloadStatuses = MutableStateFlow<Map<String, DownloadStatus>>(emptyMap())
     val downloadStatuses: StateFlow<Map<String, DownloadStatus>> = _downloadStatuses
 
+    private val _downloadedFiles = MutableStateFlow<Set<String>>(emptySet())
+    val downloadedFiles: StateFlow<Set<String>> = _downloadedFiles
+
     private val downloadManager by lazy { 
         context.getSystemService(Context.DOWNLOAD_SERVICE) as? DownloadManager 
     }
@@ -37,24 +40,19 @@ class BookDownloadManager(
 
     fun refreshDownloads() {
         val booksDir = context.getExternalFilesDir("downloaded_books")
-        android.util.Log.d("BookDownload", "Refreshing downloads from: ${booksDir?.absolutePath}")
-        
         if (booksDir == null || !booksDir.exists()) return
         val files = booksDir.listFiles() ?: return
-        
-        android.util.Log.d("BookDownload", "Found ${files.size} files on disk")
-        
-        // We don't necessarily have the full remote path here, but we can update 
-        // local checks. The UI relies on isDownloaded(path).
+        _downloadedFiles.value = files.map { it.name }.toSet()
     }
 
     fun onDownloadComplete(id: Long) {
-        android.util.Log.d("BookDownload", "Download complete: $id")
-        // Find which book this belongs to
+        android.util.Log.d("BookDownload", "Download complete event for ID: $id")
         val entry = _downloadStatuses.value.entries.find { it.value.downloadId == id }
         if (entry != null) {
-            android.util.Log.d("BookDownload", "Marking ${entry.value.entry.name} as completed")
             _downloadStatuses.value += (entry.key to entry.value.copy(isCompleted = true, progress = 100))
+            _downloadedFiles.value += getFileNameFromPath(entry.key)
+        } else {
+            refreshDownloads()
         }
     }
 
@@ -98,16 +96,7 @@ class BookDownloadManager(
 
     fun isDownloaded(path: String): Boolean {
         val fileName = getFileNameFromPath(path)
-        val booksDir = context.getExternalFilesDir("downloaded_books")
-        val file = File(booksDir, fileName)
-        val exists = file.exists()
-        if (exists) {
-            val status = _downloadStatuses.value[path]
-            if (status != null && !status.isCompleted) {
-                _downloadStatuses.value += (path to status.copy(isCompleted = true, progress = 100, error = null))
-            }
-        }
-        return exists
+        return _downloadedFiles.value.contains(fileName)
     }
 
     fun getLocalPath(path: String): String? {
@@ -124,6 +113,7 @@ class BookDownloadManager(
         if (file.exists()) {
             file.delete()
             _downloadStatuses.value = _downloadStatuses.value - path
+            _downloadedFiles.value = _downloadedFiles.value - fileName
         }
     }
 }

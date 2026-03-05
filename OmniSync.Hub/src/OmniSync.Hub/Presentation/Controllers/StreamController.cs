@@ -11,19 +11,41 @@ namespace OmniSync.Hub.Presentation.Controllers
     public class StreamController : ControllerBase
     {
         private readonly ScreenshotService _screenshotService;
+        private readonly FileService _fileService;
         private readonly ILogger<StreamController> _logger;
 
-        public StreamController(ScreenshotService screenshotService, ILogger<StreamController> logger)
+        public StreamController(ScreenshotService screenshotService, FileService fileService, ILogger<StreamController> logger)
         {
             _screenshotService = screenshotService;
+            _fileService = fileService;
             _logger = logger;
         }
 
         [HttpGet("stream")]
-        public IActionResult GetVideo([FromQuery] string path)
+        public IActionResult GetVideo([FromQuery] string path, [FromQuery] bool thumbnail = false)
         {
-            if (string.IsNullOrEmpty(path) || !System.IO.File.Exists(path))
+            if (string.IsNullOrEmpty(path)) return BadRequest();
+
+            if (thumbnail)
             {
+                var thumb = _fileService.ExtractThumbnail(path);
+                if (thumb != null) return File(thumb, "image/jpeg");
+                
+                // If it doesn't exist but isn't an ebook, it might be a cover.png that is missing.
+                // We just continue to the File.Exists check below which will likely return NotFound.
+            }
+
+            if (!System.IO.File.Exists(path))
+            {
+                // Fallback: If it's a request for an image that doesn't exist,
+                // but the base book file DOES exist, try to extract a thumbnail.
+                var ext = Path.GetExtension(path).ToLower();
+                if (ext == ".pdf" || ext == ".epub")
+                {
+                    var thumb = _fileService.ExtractThumbnail(path);
+                    if (thumb != null) return File(thumb, "image/jpeg");
+                }
+
                 _logger.LogWarning("GetVideo: Path not found: {Path}", path);
                 return NotFound();
             }

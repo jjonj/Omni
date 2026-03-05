@@ -110,7 +110,8 @@ fun BookActionBottomSheet(
     onSetCategory: () -> Unit,
     onRemoveProgress: () -> Unit,
     onHide: () -> Unit,
-    onDelete: () -> Unit
+    onDeleteLocal: () -> Unit,
+    onDeleteRemote: () -> Unit
 ) {
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -132,7 +133,7 @@ fun BookActionBottomSheet(
             ListItem(
                 headlineContent = { Text("Set Category") },
                 leadingContent = { Icon(Icons.Default.FolderOpen, null) },
-                modifier = Modifier.clickable { onSetCategory() } // Don't call onDismiss here yet
+                modifier = Modifier.clickable { onSetCategory() }
             )
             ListItem(
                 headlineContent = { Text("Remove Progress") },
@@ -145,10 +146,19 @@ fun BookActionBottomSheet(
                 modifier = Modifier.clickable { onHide(); onDismiss() }
             )
             HorizontalDivider()
+            
+            if (isOffline) {
+                ListItem(
+                    headlineContent = { Text("Delete from Device") },
+                    leadingContent = { Icon(Icons.Default.SdStorage, null) },
+                    modifier = Modifier.clickable { onDeleteLocal(); onDismiss() }
+                )
+            }
+            
             ListItem(
-                headlineContent = { Text("Delete", color = MaterialTheme.colorScheme.error) },
-                leadingContent = { Icon(Icons.Default.Delete, null, tint = MaterialTheme.colorScheme.error) },
-                modifier = Modifier.clickable { onDelete(); onDismiss() }
+                headlineContent = { Text("Delete from Library (Remote)", color = MaterialTheme.colorScheme.error) },
+                leadingContent = { Icon(Icons.Default.DeleteForever, null, tint = MaterialTheme.colorScheme.error) },
+                modifier = Modifier.clickable { onDeleteRemote(); onDismiss() }
             )
         }
     }
@@ -176,8 +186,10 @@ fun InProgressBookItem(
             shape = RoundedCornerShape(8.dp),
             elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
         ) {
-            val coverUrl = if (!book.coverPath.isNullOrEmpty()) {
-                "${baseUrl}/api/stream?path=${Uri.encode(book.coverPath)}"
+            val thumbPath = book.coverPath ?: if (book.type == BookType.PDF || book.type == BookType.EPUB) book.path else null
+            
+            val coverUrl = if (!thumbPath.isNullOrEmpty()) {
+                "${baseUrl}/api/stream?path=${Uri.encode(thumbPath)}&thumbnail=true"
             } else null
 
             if (coverUrl != null) {
@@ -223,13 +235,16 @@ fun BooksScreen(
     val allBooks by booksViewModel.allBooks.collectAsState()
     val inProgressBooks by booksViewModel.inProgressBooks.collectAsState()
     val downloadStatuses by booksViewModel.downloadStatuses.collectAsState()
+    val downloadedFiles by booksViewModel.downloadedFiles.collectAsState()
 
     val context = LocalContext.current
     var nowPlayingBook by remember { mutableStateOf<com.omni.sync.viewmodel.BookItem?>(null) }
     var selectedActionBook by remember { mutableStateOf<com.omni.sync.viewmodel.BookItem?>(null) }
     var targetMoveBook by remember { mutableStateOf<com.omni.sync.viewmodel.BookItem?>(null) }
+    var targetDeleteBook by remember { mutableStateOf<com.omni.sync.viewmodel.BookItem?>(null) }
     var isDeleteConfirmVisible by remember { mutableStateOf(false) }
     var isPathBrowserVisible by remember { mutableStateOf(false) }
+    var pendingOpenBookPath by remember { mutableStateOf<String?>(null) }
 
     val handleLongClick: (com.omni.sync.viewmodel.BookItem) -> Unit = { book ->
         selectedActionBook = book
@@ -242,6 +257,7 @@ fun BooksScreen(
             BookType.PDF -> {
                 val localPath = booksViewModel.downloadManager.getLocalPath(book.path)
                 if (localPath == null) {
+                    pendingOpenBookPath = book.path
                     booksViewModel.downloadBook(book)
                     booksViewModel.log("Queued download for ${book.name} instead of opening PDF viewer")
                     mainViewModel.showToast("Downloading PDF first")
@@ -253,6 +269,7 @@ fun BooksScreen(
             BookType.EPUB -> {
                 val localPath = booksViewModel.downloadManager.getLocalPath(book.path)
                 if (localPath == null) {
+                    pendingOpenBookPath = book.path
                     booksViewModel.downloadBook(book)
                     booksViewModel.log("Queued download for ${book.name} instead of opening EPUB viewer")
                     mainViewModel.showToast("Downloading EPUB first")
@@ -285,6 +302,19 @@ fun BooksScreen(
         }
     }
 
+    // Auto-open logic
+    LaunchedEffect(downloadedFiles, pendingOpenBookPath) {
+        val path = pendingOpenBookPath ?: return@LaunchedEffect
+        val book = allBooks.find { it.path == path } ?: return@LaunchedEffect
+        if (booksViewModel.isDownloaded(book)) {
+            booksViewModel.log("Auto-opening pending book after download: ${book.name}")
+            mainViewModel.updateConfig { it.copy(lastOpenedFilePath = book.path) }
+            if (book.type == BookType.PDF) mainViewModel.navigateTo(com.omni.sync.viewmodel.AppScreen.PDF_VIEWER)
+            else if (book.type == BookType.EPUB) mainViewModel.navigateTo(com.omni.sync.viewmodel.AppScreen.EPUB_VIEWER)
+            pendingOpenBookPath = null
+        }
+    }
+
     var selectedTab by remember { mutableStateOf(BooksTab.ALL) }
     var searchQuery by remember { mutableStateOf("") }
     var selectedCategory by remember { mutableStateOf("All") }
@@ -294,7 +324,7 @@ fun BooksScreen(
     }
 
     // Grouping for sub-categories
-    val categories = remember(allBooks, selectedTab, downloadStatuses) {
+    val categories = remember(allBooks, selectedTab, downloadStatuses, downloadedFiles) {
         val filteredByType = allBooks.filter { book ->
             when (selectedTab) {
                 BooksTab.ALL -> true
@@ -306,7 +336,7 @@ fun BooksScreen(
         listOf("All") + filteredByType.map { it.category }.distinct().sorted()
     }
 
-    val filteredBooks = remember(allBooks, selectedTab, selectedCategory, searchQuery, downloadStatuses) {
+    val filteredBooks = remember(allBooks, selectedTab, selectedCategory, searchQuery, downloadStatuses, downloadedFiles) {
         allBooks.filter { book ->
             val matchesTab = when (selectedTab) {
                 BooksTab.ALL -> true
@@ -400,19 +430,41 @@ fun BooksScreen(
             }
 
             // Search bar
-            OutlinedTextField(
-                value = searchQuery,
-                onValueChange = { searchQuery = it },
+            Row(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
-                placeholder = { Text("Search title…") },
-                leadingIcon = { Icon(Icons.Default.Search, null) },
-                trailingIcon = {
-                    if (searchQuery.isNotEmpty())
-                        IconButton(onClick = { searchQuery = "" }) { Icon(Icons.Default.Close, null) }
-                },
-                singleLine = true,
-                shape = RoundedCornerShape(12.dp)
-            )
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    modifier = Modifier.weight(1f),
+                    placeholder = { Text("Search title…") },
+                    leadingIcon = { Icon(Icons.Default.Search, null) },
+                    trailingIcon = {
+                        if (searchQuery.isNotEmpty())
+                            IconButton(onClick = { searchQuery = "" }) { Icon(Icons.Default.Close, null) }
+                    },
+                    singleLine = true,
+                    shape = RoundedCornerShape(12.dp)
+                )
+                
+                if (searchQuery.isNotEmpty()) {
+                    Spacer(Modifier.width(8.dp))
+                    Button(
+                        onClick = { 
+                            booksViewModel.addToWishlist(searchQuery)
+                            mainViewModel.showToast("Added to wishlist")
+                        },
+                        contentPadding = PaddingValues(horizontal = 12.dp),
+                        modifier = Modifier.height(56.dp),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Icon(Icons.Default.Star, null)
+                        Spacer(Modifier.width(4.dp))
+                        Text("Wish")
+                    }
+                }
+            }
 
             if (libraryState is LibraryState.Loading) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
 
@@ -503,13 +555,14 @@ fun BooksScreen(
                         booksViewModel.hideBook(book)
                         selectedActionBook = null
                     },
-                    onDelete = { 
-                        if (selectedTab == BooksTab.DOWNLOADED) {
-                            booksViewModel.downloadManager.deleteLocal(book.path)
-                            selectedActionBook = null
-                        } else {
-                            isDeleteConfirmVisible = true 
-                        }
+                    onDeleteLocal = { 
+                        booksViewModel.downloadManager.deleteLocal(book.path)
+                        selectedActionBook = null
+                    },
+                    onDeleteRemote = { 
+                        targetDeleteBook = book
+                        isDeleteConfirmVisible = true 
+                        selectedActionBook = null
                     }
                 )
             }
@@ -535,7 +588,7 @@ fun BooksScreen(
             }
 
             if (isDeleteConfirmVisible) {
-                selectedActionBook?.let { book ->
+                targetDeleteBook?.let { book ->
                     AlertDialog(
                         onDismissRequest = { isDeleteConfirmVisible = false },
                         title = { Text("Delete from library?") },
@@ -545,7 +598,7 @@ fun BooksScreen(
                                 onClick = {
                                     booksViewModel.deleteBook(book)
                                     isDeleteConfirmVisible = false
-                                    selectedActionBook = null
+                                    targetDeleteBook = null
                                 },
                                 colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
                             ) { Text("Delete") }
@@ -586,10 +639,12 @@ fun BookListItem(
     ) {
         Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(modifier = Modifier.size(48.dp)) {
-                if (book.coverPath != null) {
-                    val encodedCover = java.net.URLEncoder.encode(book.coverPath, "UTF-8")
+                val thumbPath = book.coverPath ?: if (book.type == BookType.PDF || book.type == BookType.EPUB) book.path else null
+                
+                if (thumbPath != null) {
+                    val encodedThumb = java.net.URLEncoder.encode(thumbPath, "UTF-8")
                     AsyncImage(
-                        model = "$baseUrl/api/stream?path=$encodedCover",
+                        model = "$baseUrl/api/stream?path=$encodedThumb&thumbnail=true",
                         contentDescription = "Cover",
                         modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(4.dp))
                     )

@@ -58,26 +58,18 @@ namespace OmniSync.Hub.Infrastructure.Services
             if (File.Exists(path))
             {
                 File.Delete(path);
+                
+                // Cleanup thumbnail cache
+                try
+                {
+                    var cachePath = GetThumbnailCachePath(path);
+                    if (File.Exists(cachePath)) File.Delete(cachePath);
+                }
+                catch {}
             }
             else if (Directory.Exists(path))
             {
                 Directory.Delete(path, true);
-            }
-        }
-
-        public virtual void MoveFile(string sourcePath, string destPath)
-        {
-            if (File.Exists(sourcePath))
-            {
-                var dir = Path.GetDirectoryName(destPath);
-                if (dir != null && !Directory.Exists(dir)) Directory.CreateDirectory(dir);
-                File.Move(sourcePath, destPath);
-            }
-            else if (Directory.Exists(sourcePath))
-            {
-                var dir = Path.GetDirectoryName(destPath);
-                if (dir != null && !Directory.Exists(dir)) Directory.CreateDirectory(dir);
-                Directory.Move(sourcePath, destPath);
             }
         }
 
@@ -87,6 +79,118 @@ namespace OmniSync.Hub.Infrastructure.Services
             {
                 Directory.CreateDirectory(path);
             }
+        }
+
+        private string GetThumbnailCachePath(string ebookPath)
+        {
+            var appData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            var cacheDir = Path.Combine(appData, "OmniSync", "Thumbnails");
+            if (!Directory.Exists(cacheDir)) Directory.CreateDirectory(cacheDir);
+
+            // Use hash of path to ensure unique name
+            using var md5 = System.Security.Cryptography.MD5.Create();
+            var hash = md5.ComputeHash(System.Text.Encoding.UTF8.GetBytes(ebookPath));
+            var fileName = BitConverter.ToString(hash).Replace("-", "").ToLower() + ".jpg";
+            return Path.Combine(cacheDir, fileName);
+        }
+
+        private byte[] CropAndResize(Stream imageStream, int targetWidth, int targetHeight)
+        {
+            using var original = System.Drawing.Image.FromStream(imageStream);
+            
+            // Calculate cropping to fit target aspect ratio
+            float targetAspect = (float)targetWidth / targetHeight;
+            float currentAspect = (float)original.Width / original.Height;
+
+            int cropWidth = original.Width;
+            int cropHeight = original.Height;
+            int cropX = 0;
+            int cropY = 0;
+
+            if (currentAspect > targetAspect)
+            {
+                cropWidth = (int)(original.Height * targetAspect);
+                cropX = (original.Width - cropWidth) / 2;
+            }
+            else
+            {
+                cropHeight = (int)(original.Width / targetAspect);
+                cropY = (original.Height - cropHeight) / 2;
+            }
+
+            using var bitmap = new System.Drawing.Bitmap(targetWidth, targetHeight);
+            using var graphics = System.Drawing.Graphics.FromImage(bitmap);
+            
+            graphics.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
+            graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.HighQuality;
+            graphics.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.HighQuality;
+            graphics.CompositingQuality = System.Drawing.Drawing2D.CompositingQuality.HighQuality;
+
+            graphics.DrawImage(original, 
+                new System.Drawing.Rectangle(0, 0, targetWidth, targetHeight),
+                new System.Drawing.Rectangle(cropX, cropY, cropWidth, cropHeight),
+                System.Drawing.GraphicsUnit.Pixel);
+
+            using var ms = new MemoryStream();
+            bitmap.Save(ms, System.Drawing.Imaging.ImageFormat.Jpeg);
+            return ms.ToArray();
+        }
+
+        public virtual void AppendToFile(string path, string content)
+        {
+            File.AppendAllText(path, content + Environment.NewLine);
+        }
+
+        public virtual byte[]? ExtractThumbnail(string ebookPath)
+        {
+            try
+            {
+                var cachePath = GetThumbnailCachePath(ebookPath);
+                if (File.Exists(cachePath))
+                {
+                    return File.ReadAllBytes(cachePath);
+                }
+
+                var ext = Path.GetExtension(ebookPath).ToLower();
+                byte[]? result = null;
+
+                if (ext == ".epub")
+                {
+                    using var archive = System.IO.Compression.ZipFile.OpenRead(ebookPath);
+                    // Find first image in zip (basic heuristic)
+                    var image = archive.Entries.FirstOrDefault(e => e.FullName.EndsWith(".jpg") || e.FullName.EndsWith(".jpeg") || e.FullName.EndsWith(".png"));
+                    if (image != null)
+                    {
+                        using var entryStream = image.Open();
+                        result = CropAndResize(entryStream, 300, 400);
+                    }
+                }
+                else if (ext == ".pdf")
+                {
+                    // Using PdfiumViewer to render first page
+                    using var document = PdfiumViewer.PdfDocument.Load(ebookPath);
+                    if (document.PageCount > 0)
+                    {
+                        // Render at higher res then crop/resize via our helper for consistent aspect
+                        using var image = document.Render(0, 600, 800, true);
+                        using var ms = new MemoryStream();
+                        image.Save(ms, System.Drawing.Imaging.ImageFormat.Png);
+                        ms.Position = 0;
+                        result = CropAndResize(ms, 300, 400);
+                    }
+                }
+
+                if (result != null)
+                {
+                    File.WriteAllBytes(cachePath, result);
+                    return result;
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error extracting thumbnail from {ebookPath}: {ex.Message}");
+            }
+            return null;
         }
 
         public virtual string GetNoteRootPath()
@@ -232,12 +336,6 @@ namespace OmniSync.Hub.Infrastructure.Services
             {
                 return false;
             }
-        }
-
-        public virtual void AppendToFile(string filePath, string content)
-        {
-            var fullPath = SanitizeAndGetNoteFullPath(filePath);
-            File.AppendAllText(fullPath, content);
         }
 
         public virtual IEnumerable<FileSystemEntry> GetDrives()
@@ -525,17 +623,8 @@ namespace OmniSync.Hub.Infrastructure.Services
             try
             {
                 string targetPath = string.IsNullOrEmpty(_browseRootPath) ? path : SanitizeAndGetBrowseFullPath(path);
-                if (File.Exists(targetPath))
-                {
-                    File.Delete(targetPath);
-                    return true;
-                }
-                if (Directory.Exists(targetPath))
-                {
-                    Directory.Delete(targetPath, true);
-                    return true;
-                }
-                return false;
+                DeleteFile(targetPath);
+                return true;
             }
             catch (Exception)
             {

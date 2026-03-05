@@ -1565,6 +1565,10 @@ class SignalRClient(
         return null
     }
 
+    fun appendToFile(path: String, content: String) {
+        hubConnection?.send("AppendToFile", path, content)
+    }
+
     fun createDirectory(path: String) {
         hubConnection?.send("CreateDirectory", path)
     }

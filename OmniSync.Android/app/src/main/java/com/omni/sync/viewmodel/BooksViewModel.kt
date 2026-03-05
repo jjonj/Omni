@@ -73,6 +73,7 @@ class BooksViewModel(
     val inProgressBooks: StateFlow<List<BookItem>> = _inProgressBooks
 
     val downloadStatuses = downloadManager.downloadStatuses
+    val downloadedFiles = downloadManager.downloadedFiles
 
     init {
         // Restore folder track cache
@@ -192,6 +193,11 @@ class BooksViewModel(
         if (current is LibraryState.Success) {
             _libraryState.value = LibraryState.Success(current.books) // Trigger state update
         }
+    }
+
+    fun addToWishlist(text: String) {
+        signalRClient.appendToFile("B:\\GDrive\\Books\\wishlist.txt", text)
+        log("Added to wishlist: $text")
     }
 
     fun saveProgress(path: String, position: String) {
