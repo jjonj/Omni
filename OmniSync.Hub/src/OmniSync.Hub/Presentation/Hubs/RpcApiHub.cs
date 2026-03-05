@@ -769,6 +769,15 @@ namespace OmniSync.Hub.Presentation.Hubs
             }
         }
 
+        public void CreateDirectory(string path)
+        {
+            if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
+            {
+                AnyCommandReceived?.Invoke(this, $"CreateDirectory: {path}");
+                _fileService.CreateDirectory(path);
+            }
+        }
+
         public bool DeleteFile(string filePath)
         {
             if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)

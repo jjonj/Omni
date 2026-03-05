@@ -1738,6 +1738,9 @@ fun AiDialogBubble(
     signalRClient: SignalRClient,
     selectedPid: Int
 ) {
+    // State to hold answers for questions if present
+    val answers = remember(dialog) { mutableMapOf<Int, String>() }
+
     Column(
         modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
         horizontalAlignment = Alignment.CenterHorizontally
@@ -1749,24 +1752,58 @@ fun AiDialogBubble(
             border = androidx.compose.foundation.BorderStroke(2.dp, MaterialTheme.colorScheme.tertiary)
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
-                val isStatus = dialog.options != null && dialog.options.isEmpty()
+                val isStatus = dialog.options != null && dialog.options.isEmpty() && dialog.questions == null
+                val hasQuestions = dialog.questions != null && dialog.questions!!.isNotEmpty()
+                
                 Text(
-                    text = if (isStatus) "Status" else "Choice Required",
+                    text = when {
+                        isStatus -> "Status"
+                        hasQuestions -> "Questions Required"
+                        else -> "Choice Required"
+                    },
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onTertiaryContainer
                 )
                 Spacer(Modifier.height(8.dp))
-                Text(
-                    text = dialog.prompt,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onTertiaryContainer
-                )
+                
+                if (!hasQuestions) {
+                    Text(
+                        text = dialog.prompt,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onTertiaryContainer
+                    )
+                }
                 
                 if (!isStatus) {
                     Spacer(Modifier.height(16.dp))
                     
-                    if (dialog.options != null) {
+                    if (hasQuestions) {
+                        Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                            dialog.questions!!.forEachIndexed { index, question ->
+                                AiQuestionInput(
+                                    question = question,
+                                    onAnswerChanged = { answer ->
+                                        answers[index] = answer
+                                    }
+                                )
+                            }
+                            
+                            Button(
+                                onClick = {
+                                    val gson = com.google.gson.Gson()
+                                    val jsonResponse = gson.toJson(answers.mapKeys { it.key.toString() })
+                                    signalRClient.sendAiDialogResponse(jsonResponse, selectedPid)
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = MaterialTheme.colorScheme.primary
+                                )
+                            ) {
+                                Text("Submit Answers")
+                            }
+                        }
+                    } else if (dialog.options != null) {
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             dialog.options.forEach { option ->
                                 Button(
@@ -1781,7 +1818,7 @@ fun AiDialogBubble(
                             }
                         }
                     } else {
-                        // Default to Yes/No if options is null
+                        // Default to Yes/No if options and questions are null
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -1803,6 +1840,103 @@ fun AiDialogBubble(
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+fun AiQuestionInput(
+    question: SignalRClient.AiQuestion,
+    onAnswerChanged: (String) -> Unit
+) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        if (question.header.isNotEmpty()) {
+            Text(
+                text = question.header,
+                style = MaterialTheme.typography.labelSmall,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.secondary
+            )
+            Spacer(Modifier.height(4.dp))
+        }
+        Text(
+            text = question.question,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurface
+        )
+        Spacer(Modifier.height(8.dp))
+        
+        when (question.type) {
+            "choice" -> {
+                val options = question.options ?: emptyList()
+                var selectedLabel by remember { mutableStateOf("") }
+                
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    options.forEach { option ->
+                        val isSelected = selectedLabel == option.label
+                        Surface(
+                            onClick = {
+                                selectedLabel = option.label
+                                onAnswerChanged(option.label)
+                            },
+                            shape = RoundedCornerShape(8.dp),
+                            color = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
+                            border = if (isSelected) androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.primary) else null,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(8.dp)) {
+                                Text(
+                                    text = option.label,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                if (option.description.isNotEmpty()) {
+                                    Text(
+                                        text = option.description,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            "yesno" -> {
+                var selectedValue by remember { mutableStateOf<Boolean?>(null) }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(
+                        selected = selectedValue == true,
+                        onClick = {
+                            selectedValue = true
+                            onAnswerChanged("yes")
+                        },
+                        label = { Text("Yes") }
+                    )
+                    FilterChip(
+                        selected = selectedValue == false,
+                        onClick = {
+                            selectedValue = false
+                            onAnswerChanged("no")
+                        },
+                        label = { Text("No") }
+                    )
+                }
+            }
+            else -> { // "text"
+                var textValue by remember { mutableStateOf("") }
+                OutlinedTextField(
+                    value = textValue,
+                    onValueChange = {
+                        textValue = it
+                        onAnswerChanged(it)
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    placeholder = { question.placeholder?.let { Text(it) } },
+                    maxLines = 1,
+                    textStyle = MaterialTheme.typography.bodySmall
+                )
             }
         }
     }

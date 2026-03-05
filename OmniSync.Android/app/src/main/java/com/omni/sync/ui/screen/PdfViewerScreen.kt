@@ -5,6 +5,7 @@ import android.graphics.pdf.PdfRenderer
 import android.os.ParcelFileDescriptor
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
@@ -12,14 +13,23 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChanged
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import com.omni.sync.ui.components.ReaderSettingsOverlay
 import com.omni.sync.viewmodel.BooksViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -38,13 +48,19 @@ fun PdfViewerScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     
-    var pdfRenderer by remember { mutableStateOf<PdfRenderer?>(null) }
+    val pdfRenderer = remember { mutableStateOf<PdfRenderer?>(null) }
     var pageCount by remember { mutableStateOf(0) }
     var startPage by remember { mutableIntStateOf(booksViewModel.getCachedProgress(bookPath)?.toIntOrNull() ?: 0) }
     var isLoading by remember { mutableStateOf(true) }
     var hasRestoredProgress by remember { mutableStateOf(false) }
+    val isSettingsVisible = remember { mutableStateOf(false) }
+    val readerTheme by booksViewModel.readerTheme.collectAsState()
 
     val pagerState = rememberPagerState(initialPage = startPage) { pageCount }
+
+    // State used by child to tell parent if pager should scroll
+    var globalScale by remember { mutableFloatStateOf(1f) }
+    var isAtHorizontalEdge by remember { mutableStateOf(true) }
 
     // 1. Initialize PDF
     LaunchedEffect(bookPath) {
@@ -70,7 +86,7 @@ fun PdfViewerScreen(
                     if (file.exists()) {
                         val input = ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY)
                         val renderer = PdfRenderer(input)
-                        pdfRenderer = renderer
+                        pdfRenderer.value = renderer
                         pageCount = renderer.pageCount
                         booksViewModel.log("PDF loaded successfully. Pages: $pageCount")
                         isLoading = false
@@ -113,7 +129,7 @@ fun PdfViewerScreen(
     }
 
     DisposableEffect(Unit) {
-        onDispose { pdfRenderer?.close() }
+        onDispose { pdfRenderer.value?.close() }
     }
 
     Scaffold(
@@ -123,6 +139,11 @@ fun PdfViewerScreen(
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    }
+                },
+                actions = {
+                    IconButton(onClick = { isSettingsVisible.value = !isSettingsVisible.value }) {
+                        Icon(Icons.Default.Settings, contentDescription = "Settings")
                     }
                 }
             )
@@ -151,44 +172,163 @@ fun PdfViewerScreen(
             }
         }
     ) { padding ->
-        Box(modifier = Modifier.fillMaxSize().padding(padding).background(Color.DarkGray)) {
+        val bgColor = try { Color(android.graphics.Color.parseColor(readerTheme.backgroundColor)) } catch(e: Exception) { Color.DarkGray }
+        Box(modifier = Modifier.fillMaxSize().padding(padding).background(bgColor)) {
             if (isLoading) {
                 CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
-            } else if (pdfRenderer != null) {
+            } else if (pdfRenderer.value != null) {
                 HorizontalPager(
                     state = pagerState,
-                    modifier = Modifier.fillMaxSize()
+                    modifier = Modifier.fillMaxSize(),
+                    userScrollEnabled = globalScale <= 1.05f || isAtHorizontalEdge
                 ) { pageIndex ->
-                    PdfPageImage(pdfRenderer!!, pageIndex)
+                    PdfPageImage(
+                        renderer = pdfRenderer.value!!, 
+                        index = pageIndex, 
+                        invert = readerTheme.invertPdf,
+                        onScaleChanged = { if (pagerState.currentPage == pageIndex) globalScale = it },
+                        onEdgeReached = { if (pagerState.currentPage == pageIndex) isAtHorizontalEdge = it }
+                    )
                 }
             } else {
                 Text("Failed to load PDF. Is it downloaded?", color = Color.White, modifier = Modifier.align(Alignment.Center))
+            }
+
+            if (isSettingsVisible.value) {
+                Box(modifier = Modifier.fillMaxWidth().align(Alignment.BottomCenter)) {
+                    ReaderSettingsOverlay(
+                        theme = readerTheme,
+                        onThemeChange = { booksViewModel.updateTheme(it) },
+                        onClose = { isSettingsVisible.value = false }
+                    )
+                }
             }
         }
     }
 }
 
 @Composable
-fun PdfPageImage(renderer: PdfRenderer, index: Int) {
+fun PdfPageImage(
+    renderer: PdfRenderer, 
+    index: Int, 
+    invert: Boolean,
+    onScaleChanged: (Float) -> Unit,
+    onEdgeReached: (Boolean) -> Unit
+) {
     var bitmap by remember { mutableStateOf<Bitmap?>(null) }
-
+    var scale by remember { mutableFloatStateOf(1f) }
+    var offset by remember { mutableStateOf(Offset.Zero) }
+    var containerSize by remember { mutableStateOf(androidx.compose.ui.unit.IntSize.Zero) }
+    
     LaunchedEffect(index) {
         withContext(Dispatchers.IO) {
-            val page = renderer.openPage(index)
-            // Scale bitmap for better quality (basic implementation)
-            val b = Bitmap.createBitmap(page.width * 2, page.height * 2, Bitmap.Config.ARGB_8888)
-            page.render(b, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
-            bitmap = b
-            page.close()
+            try {
+                val page = renderer.openPage(index)
+                val b = Bitmap.createBitmap(page.width * 2, page.height * 2, Bitmap.Config.ARGB_8888)
+                page.render(b, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+                bitmap = b
+                page.close()
+            } catch (e: Exception) {}
         }
     }
 
-    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        bitmap?.let {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .onGloballyPositioned { containerSize = it.size }
+            .pointerInput(Unit) {
+                awaitEachGesture {
+                    var zoom = 1f
+                    var pan = Offset.Zero
+                    var pastTouchSlop = false
+                    val touchSlop = viewConfiguration.touchSlop
+
+                    awaitFirstDown(requireUnconsumed = false)
+                    do {
+                        val event = awaitPointerEvent()
+                        val canceled = event.changes.any { it.isConsumed }
+                        if (!canceled) {
+                            val zoomChange = event.calculateZoom()
+                            val panChange = event.calculatePan()
+
+                            if (!pastTouchSlop) {
+                                zoom *= zoomChange
+                                pan += panChange
+
+                                val centroidSize = event.calculateCentroidSize(useCurrent = false)
+                                val zoomMotion = Math.abs(1 - zoom) * centroidSize
+                                val panMotion = pan.getDistance()
+
+                                if (zoomMotion > touchSlop || panMotion > touchSlop) {
+                                    pastTouchSlop = true
+                                }
+                            }
+
+                            if (pastTouchSlop) {
+                                scale = (scale * zoomChange).coerceIn(1f, 5f)
+                                onScaleChanged(scale)
+
+                                if (scale > 1f) {
+                                    val maxX = (containerSize.width * (scale - 1)) / 2f
+                                    val maxY = (containerSize.height * (scale - 1)) / 2f
+                                    
+                                    val newOffset = offset + panChange
+                                    val constrainedOffset = Offset(
+                                        newOffset.x.coerceIn(-maxX, maxX),
+                                        newOffset.y.coerceIn(-maxY, maxY)
+                                    )
+                                    
+                                    // Only consume X if we are NOT at the edge or moving away from it
+                                    val atLeftEdge = offset.x >= maxX - 5f
+                                    val atRightEdge = offset.x <= -maxX + 5f
+                                    val movingLeft = panChange.x < 0
+                                    val movingRight = panChange.x > 0
+                                    
+                                    val shouldConsumeX = !(atLeftEdge && movingRight) && !(atRightEdge && movingLeft)
+                                    
+                                    offset = constrainedOffset
+                                    
+                                    event.changes.forEach {
+                                        if (it.positionChanged()) {
+                                            if (shouldConsumeX) it.consume()
+                                        }
+                                    }
+
+                                    onEdgeReached(atLeftEdge || atRightEdge)
+                                } else {
+                                    offset = Offset.Zero
+                                    onEdgeReached(true)
+                                }
+                            }
+                        }
+                    } while (!canceled && event.changes.any { it.pressed })
+                }
+            },
+        contentAlignment = Alignment.Center
+    ) {
+        bitmap?.let { bmap ->
+            val colorFilter = if (invert) {
+                val matrix = ColorMatrix(floatArrayOf(
+                    -1f, 0f, 0f, 0f, 255f,
+                    0f, -1f, 0f, 0f, 255f,
+                    0f, 0f, -1f, 0f, 255f,
+                    0f, 0f, 0f, 1f, 0f
+                ))
+                ColorFilter.colorMatrix(matrix)
+            } else null
+
             Image(
-                bitmap = it.asImageBitmap(),
+                bitmap = bmap.asImageBitmap(),
                 contentDescription = "Page $index",
-                modifier = Modifier.fillMaxSize()
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer(
+                        scaleX = scale,
+                        scaleY = scale,
+                        translationX = offset.x,
+                        translationY = offset.y
+                    ),
+                colorFilter = colorFilter
             )
         } ?: CircularProgressIndicator()
     }

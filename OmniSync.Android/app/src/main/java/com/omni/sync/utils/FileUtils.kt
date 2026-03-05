@@ -38,6 +38,32 @@ fun isBookFile(filename: String): Boolean {
 
 enum class BookType { PDF, EPUB, AUDIOBOOK, UNKNOWN }
 
+data class ReaderTheme(
+    val backgroundColor: String = "#111111",
+    val textColor: String = "#CCCCCC",
+    val fontSize: Int = 18,
+    val invertPdf: Boolean = false,
+    val zoomLevel: Float = 1.0f
+)
+
+class ReaderSettingsManager(context: android.content.Context) {
+    private val prefs = context.getSharedPreferences("reader_settings", android.content.Context.MODE_PRIVATE)
+    private val gson = com.google.gson.Gson()
+
+    fun getTheme(): ReaderTheme {
+        val json = prefs.getString("global_theme", null) ?: return ReaderTheme()
+        return try {
+            gson.fromJson(json, ReaderTheme::class.java)
+        } catch (e: Exception) {
+            ReaderTheme()
+        }
+    }
+
+    fun saveTheme(theme: ReaderTheme) {
+        prefs.edit().putString("global_theme", gson.toJson(theme)).apply()
+    }
+}
+
 fun getBookType(filename: String): BookType {
     return when {
         isPdfFile(filename) -> BookType.PDF

@@ -116,4 +116,14 @@ class BookDownloadManager(
         val file = File(booksDir, fileName)
         return if (file.exists()) file.absolutePath else null
     }
+
+    fun deleteLocal(path: String) {
+        val fileName = getFileNameFromPath(path)
+        val booksDir = context.getExternalFilesDir("downloaded_books")
+        val file = File(booksDir, fileName)
+        if (file.exists()) {
+            file.delete()
+            _downloadStatuses.value = _downloadStatuses.value - path
+        }
+    }
 }

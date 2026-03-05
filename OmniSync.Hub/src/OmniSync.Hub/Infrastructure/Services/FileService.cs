@@ -53,6 +53,42 @@ namespace OmniSync.Hub.Infrastructure.Services
             }
         }
 
+        public virtual void DeleteFile(string path)
+        {
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
+            else if (Directory.Exists(path))
+            {
+                Directory.Delete(path, true);
+            }
+        }
+
+        public virtual void MoveFile(string sourcePath, string destPath)
+        {
+            if (File.Exists(sourcePath))
+            {
+                var dir = Path.GetDirectoryName(destPath);
+                if (dir != null && !Directory.Exists(dir)) Directory.CreateDirectory(dir);
+                File.Move(sourcePath, destPath);
+            }
+            else if (Directory.Exists(sourcePath))
+            {
+                var dir = Path.GetDirectoryName(destPath);
+                if (dir != null && !Directory.Exists(dir)) Directory.CreateDirectory(dir);
+                Directory.Move(sourcePath, destPath);
+            }
+        }
+
+        public virtual void CreateDirectory(string path)
+        {
+            if (!Directory.Exists(path))
+            {
+                Directory.CreateDirectory(path);
+            }
+        }
+
         public virtual string GetNoteRootPath()
         {
             return _noteRootPath;

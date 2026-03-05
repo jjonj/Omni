@@ -32,6 +32,12 @@ The primary user is the developer/creator themselves—a power user who demands:
 -   **Startup Routines:** A "QuickActionService" framework that executes once-per-day maintenance tasks (e.g., browser tab cleanup based on title patterns) upon Hub initialization.
 -   **Intelligent Alarms:** Advanced alarm system with gradual wake, macro integration, and custom dismiss messages.
 
+### 4. Books & Media
+-   **Persistent Library:** Seamless access to the PC books repository (`B:\GDrive\Books`) with category-based filtering (Audiobooks/Ebooks).
+-   **Offline Mode:** Download books and audiobooks to the Android device for offline access.
+-   **Progress Synchronization:** Bi-directional progress tracking (page/timestamp) synced between the Hub and mobile client.
+-   **Rich Visuals:** Automatic cover extraction from metadata and folder assets for a polished library view.
+
 ### 4. AI Integration
 -   **Hybrid AI Ecosystem:** Interaction with local LLMs via Gemini CLI, with deep system integration through custom extensions.
 -   **OmniProjectContext (OPC):** High-performance C# tool providing dense, token-efficient codebase context to AI via lifecycle hooks.

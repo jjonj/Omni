@@ -2,9 +2,10 @@ package com.omni.sync.ui.screen
 
 import android.net.Uri
 import androidx.activity.compose.BackHandler
-import androidx.annotation.OptIn
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -26,6 +27,7 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
+import kotlin.OptIn
 import com.omni.sync.data.model.FileSystemEntry
 import com.omni.sync.utils.*
 import com.omni.sync.viewmodel.MainViewModel
@@ -71,6 +73,138 @@ fun bookTypeLabel(type: BookType): String = when (type) {
 }
 
 
+@Composable
+fun InProgressSection(
+    books: List<com.omni.sync.viewmodel.BookItem>,
+    baseUrl: String,
+    onClick: (com.omni.sync.viewmodel.BookItem) -> Unit,
+    onLongClick: (com.omni.sync.viewmodel.BookItem) -> Unit
+) {
+    if (books.isEmpty()) return
+
+    Column(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
+        Text(
+            "In Progress",
+            style = MaterialTheme.typography.titleMedium,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+            color = MaterialTheme.colorScheme.primary
+        )
+        androidx.compose.foundation.lazy.LazyRow(
+            contentPadding = PaddingValues(horizontal = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            items(books) { book ->
+                InProgressBookItem(book, baseUrl, onClick, onLongClick)
+            }
+        }
+        HorizontalDivider(modifier = Modifier.padding(top = 12.dp, start = 8.dp, end = 8.dp), thickness = 0.5.dp)
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun BookActionBottomSheet(
+    book: com.omni.sync.viewmodel.BookItem,
+    isOffline: Boolean,
+    onDismiss: () -> Unit,
+    onSetCategory: () -> Unit,
+    onRemoveProgress: () -> Unit,
+    onHide: () -> Unit,
+    onDelete: () -> Unit
+) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = rememberModalBottomSheetState()
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 32.dp)
+        ) {
+            Text(
+                text = book.name,
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.padding(16.dp),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            
+            ListItem(
+                headlineContent = { Text("Set Category") },
+                leadingContent = { Icon(Icons.Default.FolderOpen, null) },
+                modifier = Modifier.clickable { onSetCategory() } // Don't call onDismiss here yet
+            )
+            ListItem(
+                headlineContent = { Text("Remove Progress") },
+                leadingContent = { Icon(Icons.Default.History, null) },
+                modifier = Modifier.clickable { onRemoveProgress(); onDismiss() }
+            )
+            ListItem(
+                headlineContent = { Text("Hide") },
+                leadingContent = { Icon(Icons.Default.VisibilityOff, null) },
+                modifier = Modifier.clickable { onHide(); onDismiss() }
+            )
+            HorizontalDivider()
+            ListItem(
+                headlineContent = { Text("Delete", color = MaterialTheme.colorScheme.error) },
+                leadingContent = { Icon(Icons.Default.Delete, null, tint = MaterialTheme.colorScheme.error) },
+                modifier = Modifier.clickable { onDelete(); onDismiss() }
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+fun InProgressBookItem(
+    book: com.omni.sync.viewmodel.BookItem,
+    baseUrl: String,
+    onClick: (com.omni.sync.viewmodel.BookItem) -> Unit,
+    onLongClick: (com.omni.sync.viewmodel.BookItem) -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .width(120.dp)
+            .combinedClickable(
+                onClick = { onClick(book) },
+                onLongClick = { onLongClick(book) }
+            ),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Card(
+            modifier = Modifier.aspectRatio(0.7f).fillMaxWidth(),
+            shape = RoundedCornerShape(8.dp),
+            elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+        ) {
+            val coverUrl = if (!book.coverPath.isNullOrEmpty()) {
+                "${baseUrl}/api/stream?path=${Uri.encode(book.coverPath)}"
+            } else null
+
+            if (coverUrl != null) {
+                AsyncImage(
+                    model = coverUrl,
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = androidx.compose.ui.layout.ContentScale.Crop
+                )
+            } else {
+                Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) {
+                    Icon(bookTypeIcon(book.type), null, Modifier.size(32.dp), tint = MaterialTheme.colorScheme.outline)
+                }
+            }
+        }
+        Spacer(Modifier.height(4.dp))
+        Text(
+            book.name,
+            style = MaterialTheme.typography.bodySmall,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(horizontal = 2.dp),
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+        )
+    }
+}
+
 // ─── Main Screen ─────────────────────────────────────────────────────────────
 
 @OptIn(UnstableApi::class, ExperimentalMaterial3Api::class)
@@ -87,9 +221,52 @@ fun BooksScreen(
     val baseUrl = mainViewModel.getBaseUrl()
     val libraryState by booksViewModel.libraryState.collectAsState()
     val allBooks by booksViewModel.allBooks.collectAsState()
+    val inProgressBooks by booksViewModel.inProgressBooks.collectAsState()
     val downloadStatuses by booksViewModel.downloadStatuses.collectAsState()
 
     val context = LocalContext.current
+    var nowPlayingBook by remember { mutableStateOf<com.omni.sync.viewmodel.BookItem?>(null) }
+    var selectedActionBook by remember { mutableStateOf<com.omni.sync.viewmodel.BookItem?>(null) }
+    var targetMoveBook by remember { mutableStateOf<com.omni.sync.viewmodel.BookItem?>(null) }
+    var isDeleteConfirmVisible by remember { mutableStateOf(false) }
+    var isPathBrowserVisible by remember { mutableStateOf(false) }
+
+    val handleLongClick: (com.omni.sync.viewmodel.BookItem) -> Unit = { book ->
+        selectedActionBook = book
+    }
+
+    // Navigation and opening logic
+    val handleBookClick: (com.omni.sync.viewmodel.BookItem) -> Unit = { book ->
+        when (book.type) {
+            BookType.AUDIOBOOK -> nowPlayingBook = book
+            BookType.PDF -> {
+                val localPath = booksViewModel.downloadManager.getLocalPath(book.path)
+                if (localPath == null) {
+                    booksViewModel.downloadBook(book)
+                    booksViewModel.log("Queued download for ${book.name} instead of opening PDF viewer")
+                    mainViewModel.showToast("Downloading PDF first")
+                } else {
+                    mainViewModel.updateConfig { it.copy(lastOpenedFilePath = book.path) }
+                    mainViewModel.navigateTo(com.omni.sync.viewmodel.AppScreen.PDF_VIEWER)
+                }
+            }
+            BookType.EPUB -> {
+                val localPath = booksViewModel.downloadManager.getLocalPath(book.path)
+                if (localPath == null) {
+                    booksViewModel.downloadBook(book)
+                    booksViewModel.log("Queued download for ${book.name} instead of opening EPUB viewer")
+                    mainViewModel.showToast("Downloading EPUB first")
+                } else {
+                    mainViewModel.updateConfig { it.copy(lastOpenedFilePath = book.path) }
+                    mainViewModel.navigateTo(com.omni.sync.viewmodel.AppScreen.EPUB_VIEWER)
+                }
+            }
+            else -> {
+                // Not supported yet
+                mainViewModel.showToast("Opening ${book.type} not supported yet")
+            }
+        }
+    }
 
     // Register download receiver
     DisposableEffect(Unit) {
@@ -111,7 +288,6 @@ fun BooksScreen(
     var selectedTab by remember { mutableStateOf(BooksTab.ALL) }
     var searchQuery by remember { mutableStateOf("") }
     var selectedCategory by remember { mutableStateOf("All") }
-    var nowPlayingBook by remember { mutableStateOf<com.omni.sync.viewmodel.BookItem?>(null) }
 
     BackHandler {
         onBack()
@@ -160,9 +336,16 @@ fun BooksScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = {
-                        booksViewModel.scanLibrary()
-                    }) { Icon(Icons.Default.Refresh, contentDescription = "Refresh") }
+                    IconButton(
+                        onClick = { booksViewModel.scanLibrary() },
+                        enabled = isConnected
+                    ) { 
+                        Icon(
+                            Icons.Default.Refresh, 
+                            contentDescription = "Refresh",
+                            tint = if (isConnected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.outline
+                        ) 
+                    }
                 }
             )
         }
@@ -233,7 +416,7 @@ fun BooksScreen(
 
             if (libraryState is LibraryState.Loading) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
 
-            if (!isConnected) {
+            if (!isConnected && selectedTab != BooksTab.DOWNLOADED) {
                 Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Icon(Icons.Default.WifiOff, null, Modifier.size(48.dp), tint = MaterialTheme.colorScheme.outline)
@@ -244,11 +427,18 @@ fun BooksScreen(
             } else if (filteredBooks.isEmpty() && libraryState !is LibraryState.Loading) {
                 Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(Icons.Default.LibraryBooks, null, Modifier.size(48.dp), tint = MaterialTheme.colorScheme.outline)
+                        Icon(
+                            if (selectedTab == BooksTab.DOWNLOADED) Icons.Default.DownloadDone else Icons.Default.LibraryBooks,
+                            null, Modifier.size(48.dp), tint = MaterialTheme.colorScheme.outline
+                        )
                         Spacer(Modifier.height(8.dp))
                         Text(
-                            if (allBooks.isEmpty()) "No books found in B:\\GDrive\\Books"
-                            else "No books match your filters.",
+                            when {
+                                selectedTab == BooksTab.DOWNLOADED -> "No downloaded books found."
+                                allBooks.isEmpty() -> "No books found. Connect to Hub and refresh."
+                                searchQuery.isNotEmpty() || selectedCategory != "All" -> "No books match your filters."
+                                else -> "No books found in library."
+                            },
                             color = MaterialTheme.colorScheme.outline
                         )
                     }
@@ -258,6 +448,13 @@ fun BooksScreen(
                     modifier = Modifier.weight(1f),
                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
                 ) {
+                    // Show In-Progress section at the top of ALL tab
+                    if (selectedTab == BooksTab.ALL && searchQuery.isEmpty() && selectedCategory == "All") {
+                        item {
+                            InProgressSection(inProgressBooks, baseUrl, handleBookClick, handleLongClick)
+                        }
+                    }
+
                     items(filteredBooks) { book ->
                         BookListItem(
                             book = book,
@@ -265,43 +462,8 @@ fun BooksScreen(
                             isDownloading = booksViewModel.isDownloading(book),
                             onDownloadClick = { booksViewModel.downloadBook(book) },
                             baseUrl = baseUrl,
-                            onClick = {
-                                when (book.type) {
-                                    BookType.AUDIOBOOK -> nowPlayingBook = book
-                                    BookType.PDF -> {
-                                        val localPath = booksViewModel.downloadManager.getLocalPath(book.path)
-                                        if (localPath == null) {
-                                            booksViewModel.downloadBook(book)
-                                        }
-                                        mainViewModel.updateConfig { it.copy(lastOpenedFilePath = book.path) }
-                                        mainViewModel.navigateTo(com.omni.sync.viewmodel.AppScreen.PDF_VIEWER)
-                                    }
-                                    BookType.EPUB -> {
-                                        val localPath = booksViewModel.downloadManager.getLocalPath(book.path)
-                                        if (localPath == null) {
-                                            booksViewModel.downloadBook(book)
-                                            booksViewModel.log("EPUB not local; queued download instead of opening viewer")
-                                            mainViewModel.showToast("Downloading EPUB first")
-                                        } else {
-                                            booksViewModel.log("Opening local EPUB in app reader")
-                                            mainViewModel.updateConfig { it.copy(lastOpenedFilePath = book.path) }
-                                            mainViewModel.navigateTo(com.omni.sync.viewmodel.AppScreen.EPUB_VIEWER)
-                                        }
-                                    }
-                                    else -> {
-                                        val path = booksViewModel.downloadManager.getLocalPath(book.path) ?: book.path
-                                        val isLocal = path != book.path
-                                        
-                                        if (isLocal) {
-                                            // Handle local file opening
-                                            mainViewModel.openUrlOnPhone("file://$path")
-                                        } else {
-                                            val encoded = java.net.URLEncoder.encode(book.path, "UTF-8")
-                                            mainViewModel.openUrlOnPhone("$baseUrl/api/stream?path=$encoded")
-                                        }
-                                    }
-                                }
-                            }
+                            onClick = { handleBookClick(book) },
+                            onLongClick = { handleLongClick(book) }
                         )
                     }
                 }
@@ -321,12 +483,86 @@ fun BooksScreen(
                     }
                 )
             }
+            
+            // Overlays
+            selectedActionBook?.let { book ->
+                BookActionBottomSheet(
+                    book = book,
+                    isOffline = booksViewModel.isDownloaded(book),
+                    onDismiss = { selectedActionBook = null },
+                    onSetCategory = { 
+                        targetMoveBook = book
+                        isPathBrowserVisible = true 
+                        selectedActionBook = null
+                    },
+                    onRemoveProgress = { 
+                        booksViewModel.saveProgress(book.path, "0")
+                        selectedActionBook = null
+                    },
+                    onHide = { 
+                        booksViewModel.hideBook(book)
+                        selectedActionBook = null
+                    },
+                    onDelete = { 
+                        if (selectedTab == BooksTab.DOWNLOADED) {
+                            booksViewModel.downloadManager.deleteLocal(book.path)
+                            selectedActionBook = null
+                        } else {
+                            isDeleteConfirmVisible = true 
+                        }
+                    }
+                )
+            }
+
+            if (isPathBrowserVisible) {
+                targetMoveBook?.let { book ->
+                    val typeRoot = if (book.type == com.omni.sync.utils.BookType.AUDIOBOOK) "B:\\GDrive\\Books\\Audiobooks" else "B:\\GDrive\\Books\\Books"
+                    BooksPathBrowser(
+                        signalRClient = mainViewModel.signalRClient,
+                        isConnected = isConnected,
+                        rootPath = typeRoot,
+                        onSelectPath = { newPath ->
+                            booksViewModel.moveBook(book, newPath)
+                            isPathBrowserVisible = false
+                            targetMoveBook = null
+                        },
+                        onDismiss = { 
+                            isPathBrowserVisible = false
+                            targetMoveBook = null
+                        }
+                    )
+                }
+            }
+
+            if (isDeleteConfirmVisible) {
+                selectedActionBook?.let { book ->
+                    AlertDialog(
+                        onDismissRequest = { isDeleteConfirmVisible = false },
+                        title = { Text("Delete from library?") },
+                        text = { Text("Are you sure you want to permanently delete '${book.name}' from the remote library? This cannot be undone.") },
+                        confirmButton = {
+                            Button(
+                                onClick = {
+                                    booksViewModel.deleteBook(book)
+                                    isDeleteConfirmVisible = false
+                                    selectedActionBook = null
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                            ) { Text("Delete") }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { isDeleteConfirmVisible = false }) { Text("Cancel") }
+                        }
+                    )
+                }
+            }
         }
     }
 }
 
 // ─── Book List Item ───────────────────────────────────────────────────────────
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun BookListItem(
     book: com.omni.sync.viewmodel.BookItem, 
@@ -334,10 +570,17 @@ fun BookListItem(
     isDownloading: Boolean,
     onDownloadClick: () -> Unit,
     baseUrl: String,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onLongClick: () -> Unit
 ) {
     Card(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp).clickable { onClick() },
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 3.dp)
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = onLongClick
+            ),
         shape = RoundedCornerShape(10.dp),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
@@ -420,51 +663,55 @@ fun BookListItem(
 fun BooksPathBrowser(
     signalRClient: com.omni.sync.data.repository.SignalRClient,
     isConnected: Boolean,
+    rootPath: String,
     onSelectPath: (String) -> Unit,
     onDismiss: () -> Unit
 ) {
-    var currentPath by remember { mutableStateOf("") }
+    var currentPath by remember { mutableStateOf(rootPath) }
     var entries by remember { mutableStateOf<List<FileSystemEntry>>(emptyList()) }
     var loading by remember { mutableStateOf(false) }
+    var isNewFolderDialogVisible by remember { mutableStateOf(false) }
+    var newFolderName by remember { mutableStateOf("") }
 
     fun loadPath(path: String) {
         if (!isConnected) return
         loading = true
-        if (path.isEmpty()) {
-            signalRClient.getAvailableDrives()
-                ?.subscribeOn(Schedulers.io())
-                ?.observeOn(AndroidSchedulers.mainThread())
-                ?.subscribe({ e -> entries = e; loading = false }, { loading = false })
-        } else {
-            signalRClient.listDirectory(path)
-                ?.subscribeOn(Schedulers.io())
-                ?.observeOn(AndroidSchedulers.mainThread())
-                ?.subscribe({ e -> entries = e.filter { it.isDirectory }; loading = false }, { loading = false })
-        }
+        signalRClient.listDirectory(path)
+            ?.subscribeOn(io.reactivex.rxjava3.schedulers.Schedulers.io())
+            ?.observeOn(io.reactivex.rxjava3.android.schedulers.AndroidSchedulers.mainThread())
+            ?.subscribe({ e -> entries = e.filter { it.isDirectory }; loading = false }, { loading = false })
     }
 
-    LaunchedEffect(Unit) { loadPath("") }
+    LaunchedEffect(currentPath) { loadPath(currentPath) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Browse to folder") },
+        title = { 
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Text("Select category")
+                IconButton(onClick = { isNewFolderDialogVisible = true }) {
+                    Icon(Icons.Default.CreateNewFolder, contentDescription = "New Folder")
+                }
+            }
+        },
         text = {
             Column(modifier = Modifier.fillMaxWidth().heightIn(max = 400.dp)) {
                 Text(
-                    text = if (currentPath.isEmpty()) "/" else currentPath,
+                    text = currentPath.removePrefix(rootPath).ifEmpty { "/" },
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.secondary,
                     modifier = Modifier.padding(bottom = 8.dp)
                 )
                 if (loading) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
                 LazyColumn {
-                    if (currentPath.isNotEmpty()) {
+                    if (currentPath.length > rootPath.length) {
                         item {
                             Row(
                                 modifier = Modifier.fillMaxWidth().clickable {
                                     val parent = currentPath.substringBeforeLast('\\').substringBeforeLast('/')
-                                    currentPath = parent
-                                    loadPath(parent)
+                                    if (parent.length >= rootPath.length) {
+                                        currentPath = parent
+                                    }
                                 }.padding(vertical = 8.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
@@ -478,7 +725,6 @@ fun BooksPathBrowser(
                         Row(
                             modifier = Modifier.fillMaxWidth().clickable {
                                 currentPath = entry.path
-                                loadPath(entry.path)
                             }.padding(vertical = 8.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
@@ -491,12 +737,45 @@ fun BooksPathBrowser(
             }
         },
         confirmButton = {
-            Button(onClick = { if (currentPath.isNotEmpty()) onSelectPath(currentPath) }) { Text("Select This Folder") }
+            Button(onClick = { onSelectPath(currentPath) }) { Text("Select") }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) { Text("Cancel") }
         }
     )
+
+    if (isNewFolderDialogVisible) {
+        AlertDialog(
+            onDismissRequest = { isNewFolderDialogVisible = false },
+            title = { Text("New Category") },
+            text = {
+                OutlinedTextField(
+                    value = newFolderName,
+                    onValueChange = { newFolderName = it },
+                    label = { Text("Folder Name") },
+                    singleLine = true
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (newFolderName.isNotBlank()) {
+                            val separator = if (currentPath.contains('\\')) "\\" else "/"
+                            val newPath = if (currentPath.endsWith(separator)) currentPath + newFolderName else currentPath + separator + newFolderName
+                            signalRClient.createDirectory(newPath)
+                            newFolderName = ""
+                            isNewFolderDialogVisible = false
+                            loadPath(currentPath) // Refresh
+                        }
+                    },
+                    enabled = newFolderName.isNotBlank()
+                ) { Text("Create") }
+            },
+            dismissButton = {
+                TextButton(onClick = { isNewFolderDialogVisible = false }) { Text("Cancel") }
+            }
+        )
+    }
 }
 
 // ─── Audiobook Mini-Player ────────────────────────────────────────────────────
@@ -515,6 +794,30 @@ fun AudiobookMiniPlayer(
     var isPlaying by remember { mutableStateOf(true) }
     var currentPosition by remember { mutableStateOf(0L) }
     var duration by remember { mutableStateOf(0L) }
+    var playbackSpeed by remember { mutableFloatStateOf(1.0f) }
+    var sleepTimerMs by remember { mutableLongStateOf(0L) }
+    var currentMediaIndex by remember { mutableIntStateOf(0) }
+    var mediaItemCount by remember { mutableIntStateOf(0) }
+
+    LaunchedEffect(playbackSpeed) {
+        exoPlayer.setPlaybackSpeed(playbackSpeed)
+    }
+
+    LaunchedEffect(sleepTimerMs) {
+        if (sleepTimerMs > 0) {
+            val startTime = System.currentTimeMillis()
+            val targetTime = startTime + sleepTimerMs
+            while (System.currentTimeMillis() < targetTime) {
+                delay(1000)
+                if (!exoPlayer.isPlaying) break // Pause timer if not playing? Or just let it run.
+            }
+            if (exoPlayer.isPlaying) {
+                exoPlayer.pause()
+                booksViewModel.log("Sleep timer reached: pausing playback")
+            }
+            sleepTimerMs = 0
+        }
+    }
 
     LaunchedEffect(book) {
         // Do not block playback on remote progress RPC.
@@ -534,6 +837,7 @@ fun AudiobookMiniPlayer(
             }
 
             booksViewModel.log("Preparing ${items.size} media items for ${book.name}")
+            mediaItemCount = items.size
             exoPlayer.setMediaItems(items)
             if (startMs > 0 || startIndex > 0) {
                 if (startIndex in items.indices) {
@@ -583,7 +887,8 @@ fun AudiobookMiniPlayer(
             currentPosition = exoPlayer.currentPosition
             duration = exoPlayer.duration.coerceAtLeast(0L)
             isPlaying = exoPlayer.isPlaying
-            val index = exoPlayer.currentMediaItemIndex.coerceAtLeast(0)
+            currentMediaIndex = exoPlayer.currentMediaItemIndex.coerceAtLeast(0)
+            val index = currentMediaIndex
             onPositionUpdate("$index:$currentPosition")
             tick += 1
             if (tick % 5 == 0) {
@@ -606,15 +911,61 @@ fun AudiobookMiniPlayer(
         color = MaterialTheme.colorScheme.surfaceVariant
     ) {
         Column(modifier = Modifier.fillMaxWidth().padding(12.dp)) {
+            var isSpeedMenuVisible by remember { mutableStateOf(false) }
+            var isTimerMenuVisible by remember { mutableStateOf(false) }
+
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Default.Headphones, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(24.dp))
                 Spacer(Modifier.width(8.dp))
-                Text(
-                    book.name.substringBeforeLast('.'),
-                    style = MaterialTheme.typography.bodyMedium,
-                    maxLines = 1, overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f)
-                )
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        book.name.substringBeforeLast('.'),
+                        style = MaterialTheme.typography.bodyMedium,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis
+                    )
+                    if (mediaItemCount > 1) {
+                        Text(
+                            "Track ${currentMediaIndex + 1} of $mediaItemCount",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.secondary
+                        )
+                    }
+                }
+                
+                // Speed Button
+                Box {
+                    TextButton(onClick = { isSpeedMenuVisible = true }) {
+                        Text("${playbackSpeed}x", style = MaterialTheme.typography.labelMedium)
+                    }
+                    DropdownMenu(expanded = isSpeedMenuVisible, onDismissRequest = { isSpeedMenuVisible = false }) {
+                        listOf(0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 2.0f).forEach { speed ->
+                            DropdownMenuItem(
+                                text = { Text("${speed}x") },
+                                onClick = { playbackSpeed = speed; isSpeedMenuVisible = false }
+                            )
+                        }
+                    }
+                }
+
+                // Timer Button
+                Box {
+                    IconButton(onClick = { isTimerMenuVisible = true }) {
+                        Icon(
+                            if (sleepTimerMs > 0) Icons.Default.Timer else Icons.Default.TimerOff,
+                            null, modifier = Modifier.size(20.dp),
+                            tint = if (sleepTimerMs > 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
+                        )
+                    }
+                    DropdownMenu(expanded = isTimerMenuVisible, onDismissRequest = { isTimerMenuVisible = false }) {
+                        listOf(0, 15, 30, 60, 120).forEach { mins ->
+                            DropdownMenuItem(
+                                text = { Text(if (mins == 0) "Off" else "$mins mins") },
+                                onClick = { sleepTimerMs = mins.toLong() * 60 * 1000; isTimerMenuVisible = false }
+                            )
+                        }
+                    }
+                }
+
                 IconButton(onClick = onClose, modifier = Modifier.size(32.dp)) {
                     Icon(Icons.Default.Close, "Close")
                 }
@@ -636,6 +987,12 @@ fun AudiobookMiniPlayer(
                 horizontalArrangement = Arrangement.SpaceEvenly,
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                IconButton(
+                    onClick = { exoPlayer.seekToPreviousMediaItem() },
+                    enabled = currentMediaIndex > 0
+                ) {
+                    Icon(Icons.Default.SkipPrevious, "Prev Track")
+                }
                 IconButton(onClick = { exoPlayer.seekTo((exoPlayer.currentPosition - 30_000).coerceAtLeast(0L)) }) {
                     Icon(Icons.Default.Replay30, "Back 30s")
                 }
@@ -652,6 +1009,12 @@ fun AudiobookMiniPlayer(
                 }
                 IconButton(onClick = { exoPlayer.seekTo(exoPlayer.currentPosition + 30_000) }) {
                     Icon(Icons.Default.Forward30, "Forward 30s")
+                }
+                IconButton(
+                    onClick = { exoPlayer.seekToNextMediaItem() },
+                    enabled = currentMediaIndex < mediaItemCount - 1
+                ) {
+                    Icon(Icons.Default.SkipNext, "Next Track")
                 }
             }
         }

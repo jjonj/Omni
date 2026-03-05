@@ -32,6 +32,37 @@ namespace OmniSync.Hub.Infrastructure.Services
         public string Type { get; set; } = string.Empty;
         public string Prompt { get; set; } = string.Empty;
         public List<string>? Options { get; set; }
+        public List<GeminiQuestion>? Questions { get; set; }
+    }
+
+    public class GeminiQuestion
+    {
+        [System.Text.Json.Serialization.JsonPropertyName("question")]
+        public string Question { get; set; } = string.Empty;
+
+        [System.Text.Json.Serialization.JsonPropertyName("type")]
+        public string Type { get; set; } = "text"; // text, choice, yesno
+
+        [System.Text.Json.Serialization.JsonPropertyName("header")]
+        public string Header { get; set; } = string.Empty;
+
+        [System.Text.Json.Serialization.JsonPropertyName("placeholder")]
+        public string? Placeholder { get; set; }
+
+        [System.Text.Json.Serialization.JsonPropertyName("multiSelect")]
+        public bool? MultiSelect { get; set; }
+
+        [System.Text.Json.Serialization.JsonPropertyName("options")]
+        public List<GeminiOption>? Options { get; set; }
+    }
+
+    public class GeminiOption
+    {
+        [System.Text.Json.Serialization.JsonPropertyName("label")]
+        public string Label { get; set; } = string.Empty;
+
+        [System.Text.Json.Serialization.JsonPropertyName("description")]
+        public string Description { get; set; } = string.Empty;
     }
 
     public class GeminiTurnEndEventArgs : EventArgs
@@ -918,7 +949,7 @@ namespace OmniSync.Hub.Infrastructure.Services
                     IsCodeDiff = isCodeDiff,
                     IsUser = isUser
                 });
-            }, (p, type, prompt, options) =>
+            }, (p, type, prompt, options, questions) =>
             {
                 _lastDialogTypes[p] = type;
                 DialogReceived?.Invoke(this, new GeminiDialogEventArgs
@@ -926,7 +957,8 @@ namespace OmniSync.Hub.Infrastructure.Services
                     Pid = p,
                     Type = type,
                     Prompt = prompt,
-                    Options = options
+                    Options = options,
+                    Questions = questions
                 });
             }, (p, reason, category, finishReason, message, source, promptId, workspacePath, workspaceName, timestamp) =>
             {
@@ -1356,7 +1388,7 @@ namespace OmniSync.Hub.Infrastructure.Services
         private readonly ILogger _logger;
         private readonly bool _debugMode;
         private readonly Action<int, string, bool, bool, bool, bool> _onResponse;
-        private readonly Action<int, string, string, List<string>?> _onDialog;
+        private readonly Action<int, string, string, List<string>?, List<GeminiQuestion>?> _onDialog;
         private readonly Action<int, string, string, string?, string?, string?, string?, string?, string?, string?> _onTurnEnd;
         private NamedPipeClientStream? _pipeClient;
         private StreamWriter? _writer;
@@ -1406,7 +1438,7 @@ namespace OmniSync.Hub.Infrastructure.Services
             ILogger logger,
             bool debugMode,
             Action<int, string, bool, bool, bool, bool> onResponse,
-            Action<int, string, string, List<string>?> onDialog,
+            Action<int, string, string, List<string>?, List<GeminiQuestion>?> onDialog,
             Action<int, string, string, string?, string?, string?, string?, string?, string?, string?> onTurnEnd)
         {
             _pid = pid;
@@ -1787,6 +1819,8 @@ namespace OmniSync.Hub.Infrastructure.Services
                                 var prompt = msg.RootElement.TryGetProperty("prompt", out var pr) ? pr.GetString() : "";
                                 var options = msg.RootElement.TryGetProperty("options", out var op) ? 
                                     JsonSerializer.Deserialize<List<string>>(op.GetRawText()) : null;
+                                var questions = msg.RootElement.TryGetProperty("questions", out var qu) ?
+                                    JsonSerializer.Deserialize<List<GeminiQuestion>>(qu.GetRawText()) : null;
 
                                 if (dialogType == "ready")
                                 {
@@ -1794,7 +1828,7 @@ namespace OmniSync.Hub.Infrastructure.Services
                                     _readyTcs.TrySetResult(true);
                                 }
                                 _lastDialogType = dialogType;
-                                _onDialog(_pid, dialogType ?? "unknown", prompt ?? "", options);
+                                _onDialog(_pid, dialogType ?? "unknown", prompt ?? "", options, questions);
                             }
                             else if (typeStr == "turn_end")
                             {

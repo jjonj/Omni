@@ -73,10 +73,13 @@ In the browse book lists, make a long press menu that has "Set Category" (moves 
 In offline tab, allow deleting books offline without confirmation (as we can just redownload). 
 
 
-For the text book reader
+For the pdf and epub book reader
 add customizable background and text color. (when hte pdf is text based)
-Add invert colors (to automatically let me change a white page black letters to be opposite when the pdf is image based)
-Add pinch to zoom in and out, persist zoom level between pages and even when resuming the book later.
+Add invert colors toggle (to automatically let me change a white page black letters to be opposite when the pdf is image based)
+Add pinch to zoom in and out (works for epub, not pdf) persist zoom level between pages and even when resuming the book later.
+
+For epub we currently save the page progress, but also try to persist scroll progress.
+
 
 Add playback speed options for audiobooks 
 Add a timer option to audio books that optionally lets the playback stop after 15/30/60/120 minutes OR after current chapter for multifiles.

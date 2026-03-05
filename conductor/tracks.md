@@ -22,5 +22,5 @@
 
 ---
 
-- [ ] **Track: Android Books Screen Enhancements: In-progress section, management menu, and reader improvements.**
+- [~] **Track: Android Books Screen Enhancements: In-progress section, management menu, and reader improvements.**
 *Link: [./tracks/feat_books_enhancements_20260305/](./tracks/feat_books_enhancements_20260305/)*

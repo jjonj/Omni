@@ -48,6 +48,18 @@ class BooksViewModel(
 ) : ViewModel() {
     private val progressPrefs = mainViewModel.applicationContext.getSharedPreferences("book_progress_local", android.content.Context.MODE_PRIVATE)
     private val folderTracksPrefs = mainViewModel.applicationContext.getSharedPreferences("book_folder_tracks", android.content.Context.MODE_PRIVATE)
+    private val libraryPrefs = mainViewModel.applicationContext.getSharedPreferences("book_library_cache", android.content.Context.MODE_PRIVATE)
+    private val readerSettingsManager = com.omni.sync.utils.ReaderSettingsManager(mainViewModel.applicationContext)
+    private val gson = com.google.gson.Gson()
+
+    private val _readerTheme = MutableStateFlow(readerSettingsManager.getTheme())
+    val readerTheme: StateFlow<com.omni.sync.utils.ReaderTheme> = _readerTheme
+
+    fun updateTheme(theme: com.omni.sync.utils.ReaderTheme) {
+        _readerTheme.value = theme
+        readerSettingsManager.saveTheme(theme)
+    }
+
     private val _folderTracks = MutableStateFlow<Map<String, List<String>>>(emptyMap())
     private val _resolvedAudioTracks = MutableStateFlow<Map<String, List<AudioTrackSpec>>>(emptyMap())
 
@@ -57,9 +69,13 @@ class BooksViewModel(
     private val _allBooks = MutableStateFlow<List<BookItem>>(emptyList())
     val allBooks: StateFlow<List<BookItem>> = _allBooks
 
+    private val _inProgressBooks = MutableStateFlow<List<BookItem>>(emptyList())
+    val inProgressBooks: StateFlow<List<BookItem>> = _inProgressBooks
+
     val downloadStatuses = downloadManager.downloadStatuses
 
     init {
+        // Restore folder track cache
         val restored = mutableMapOf<String, List<String>>()
         folderTracksPrefs.all.forEach { (key, value) ->
             if (!key.startsWith("folder::")) return@forEach
@@ -74,10 +90,34 @@ class BooksViewModel(
             _folderTracks.value = restored
             log("Restored folder track cache for ${restored.size} audiobook folders")
         }
+
+        // Restore cached library
+        val cachedLibraryJson = libraryPrefs.getString("library_json", null)
+        if (!cachedLibraryJson.isNullOrBlank()) {
+            try {
+                val type = object : com.google.gson.reflect.TypeToken<List<BookItem>>() {}.type
+                val cachedBooks: List<BookItem> = gson.fromJson(cachedLibraryJson, type)
+                _allBooks.value = cachedBooks
+                _libraryState.value = LibraryState.Success(cachedBooks)
+                log("Restored ${cachedBooks.size} books from local cache")
+                refreshInProgressBooks()
+            } catch (e: Exception) {
+                log("Failed restoring cached library: ${e.message}", com.omni.sync.ui.screen.LogType.ERROR)
+            }
+        }
     }
 
     fun log(message: String, type: com.omni.sync.ui.screen.LogType = com.omni.sync.ui.screen.LogType.INFO) {
         mainViewModel.addLog("[Books] $message", type)
+    }
+
+    private fun cacheLibrary(books: List<BookItem>) {
+        try {
+            val json = gson.toJson(books)
+            libraryPrefs.edit().putString("library_json", json).apply()
+        } catch (e: Exception) {
+            log("Failed to cache library: ${e.message}", com.omni.sync.ui.screen.LogType.ERROR)
+        }
     }
 
     private fun cacheFolderTracks(folderPath: String, trackPaths: List<String>) {
@@ -157,6 +197,20 @@ class BooksViewModel(
     fun saveProgress(path: String, position: String) {
         progressPrefs.edit().putString(path, position).apply()
         signalRClient.saveBookProgress(path, position)
+        refreshInProgressBooks()
+    }
+
+    private fun refreshInProgressBooks() {
+        val all = _allBooks.value
+        if (all.isEmpty()) return
+        
+        _inProgressBooks.value = all.filter { book ->
+            val progress = progressPrefs.getString(book.path, null)
+            !progress.isNullOrBlank() && progress != "0" && progress != "0|0"
+        }.sortedByDescending { book ->
+            // Try to sort by last modified or access time if we had it, for now just presence
+            book.name 
+        }
     }
 
     fun getProgress(path: String, onResult: (String?) -> Unit) {
@@ -243,6 +297,48 @@ class BooksViewModel(
         }
     }
 
+    fun deleteBook(book: BookItem) {
+        val request = signalRClient.deleteFile(book.path)
+        request?.subscribeOn(Schedulers.io())
+            ?.observeOn(AndroidSchedulers.mainThread())
+            ?.subscribe({ success ->
+                if (success) {
+                    log("Deleted ${book.name} from remote")
+                    scanLibrary() // Refresh full list
+                } else {
+                    log("Failed to delete ${book.name} from remote", com.omni.sync.ui.screen.LogType.ERROR)
+                }
+            }, {
+                log("Error deleting ${book.name}: ${it.message}", com.omni.sync.ui.screen.LogType.ERROR)
+            })
+    }
+
+    fun moveBook(book: BookItem, targetDir: String) {
+        val fileName = book.path.substringAfterLast('\\').substringAfterLast('/')
+        val destPath = if (targetDir.endsWith('\\') || targetDir.endsWith('/')) targetDir + fileName else targetDir + File.separator + fileName
+        
+        val request = signalRClient.moveFile(book.path, destPath)
+        request?.subscribeOn(Schedulers.io())
+            ?.observeOn(AndroidSchedulers.mainThread())
+            ?.subscribe({ success ->
+                if (success) {
+                    log("Moved ${book.name} to $targetDir")
+                    scanLibrary()
+                } else {
+                    log("Failed to move ${book.name} to $targetDir", com.omni.sync.ui.screen.LogType.ERROR)
+                }
+            }, {
+                log("Error moving ${book.name}: ${it.message}", com.omni.sync.ui.screen.LogType.ERROR)
+            })
+    }
+
+    fun hideBook(book: BookItem) {
+        // Simple local hide for now (not persisted on Hub yet)
+        _allBooks.value = _allBooks.value.filter { it.path != book.path }
+        refreshInProgressBooks()
+        log("Hid ${book.name} locally")
+    }
+
     fun scanLibrary(rootPath: String = "B:\\GDrive\\Books") {
         _libraryState.value = LibraryState.Loading
 
@@ -269,6 +365,8 @@ class BooksViewModel(
                 }
                 _allBooks.value = books
                 _libraryState.value = LibraryState.Success(books)
+                cacheLibrary(books)
+                refreshInProgressBooks()
             }, { error ->
                 _libraryState.value = LibraryState.Error(error.message ?: "Unknown error")
             })

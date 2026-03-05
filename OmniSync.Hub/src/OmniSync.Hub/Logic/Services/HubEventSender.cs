@@ -200,7 +200,7 @@ namespace OmniSync.Hub.Logic.Services
             if (!autoHandledType)
             {
                 _logger.LogDebug($"[HubEventSender] Dialog type '{e.Type}' is not in AutoHandledDialogTypes. Ignoring for auto-response.");
-                await _hubContext.Clients.All.SendAsync("ReceiveAiDialog", e.Pid, e.Type, e.Prompt, e.Options);
+                await _hubContext.Clients.All.SendAsync("ReceiveAiDialog", e.Pid, e.Type, e.Prompt, e.Options, e.Questions);
                 return;
             }
 
@@ -246,7 +246,7 @@ namespace OmniSync.Hub.Logic.Services
                 }
             }
 
-            await _hubContext.Clients.All.SendAsync("ReceiveAiDialog", e.Pid, e.Type, e.Prompt, e.Options);
+            await _hubContext.Clients.All.SendAsync("ReceiveAiDialog", e.Pid, e.Type, e.Prompt, e.Options, e.Questions);
         }
 
         private async void OnAiCliResponseReceived(object? sender, GeminiResponseEventArgs e)

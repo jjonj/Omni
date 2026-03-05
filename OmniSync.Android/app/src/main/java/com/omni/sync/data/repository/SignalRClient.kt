@@ -133,7 +133,26 @@ class SignalRClient(
     private val _availableDrivesReceived = MutableSharedFlow<List<String>>(extraBufferCapacity = 1)
     val availableDrivesReceived: SharedFlow<List<String>> = _availableDrivesReceived.asSharedFlow()
 
-    data class AiDialog(val type: String, val prompt: String, val options: List<String>?)
+    data class AiDialog(
+        val type: String, 
+        val prompt: String, 
+        val options: List<String>?,
+        val questions: List<AiQuestion>? = null
+    )
+
+    data class AiQuestion(
+        val question: String,
+        val type: String,
+        val header: String,
+        val placeholder: String?,
+        val multiSelect: Boolean?,
+        val options: List<AiOption>?
+    )
+
+    data class AiOption(
+        val label: String,
+        val description: String
+    )
 
     private val _aiMessagesMap = MutableStateFlow<Map<Int, List<AiMessage>>>(emptyMap())
     val aiMessagesMap: StateFlow<Map<Int, List<AiMessage>>> = _aiMessagesMap
@@ -761,10 +780,22 @@ class SignalRClient(
             }
         }, String::class.java, Int::class.java)
 
-        hubConnection?.on("ReceiveAiDialog", { pid: Int, type: String, prompt: String, options: List<String>? ->
+        hubConnection?.on("ReceiveAiDialog", { pid: Int, type: String, prompt: String, options: List<String>?, questionsData: Any? ->
             Log.d("SignalRClient", "ReceiveAiDialog from PID $pid: $type - $prompt")
-            updateSessionDialog(pid, AiDialog(type, prompt, options))
-        }, Int::class.java, String::class.java, String::class.java, List::class.java)
+            
+            var questions: List<AiQuestion>? = null
+            if (questionsData != null) {
+                try {
+                    val jsonStr = gson.toJson(questionsData)
+                    val listType = object : TypeToken<List<AiQuestion>>() {}.type
+                    questions = gson.fromJson(jsonStr, listType)
+                } catch (e: Exception) {
+                    Log.e("SignalRClient", "Error parsing questions", e)
+                }
+            }
+            
+            updateSessionDialog(pid, AiDialog(type, prompt, options, questions))
+        }, Int::class.java, String::class.java, String::class.java, List::class.java, Any::class.java)
 
         hubConnection?.on("ReceivePayload", { payloadData: Any ->
             try {
@@ -1532,6 +1563,10 @@ class SignalRClient(
             return hubConnection?.invoke(Boolean::class.java, "WriteFileContent", path, content)
         }
         return null
+    }
+
+    fun createDirectory(path: String) {
+        hubConnection?.send("CreateDirectory", path)
     }
 
     fun deleteFile(path: String): Single<Boolean>? {
