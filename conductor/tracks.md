@@ -19,3 +19,8 @@
 
 - [~] **Track: Android Books Screen implementation & library reorganization for B:\GDrive\Books**
 *Link: [./tracks/feat_books_android_reorg_20260303/](./tracks/feat_books_android_reorg_20260303/)*
+
+---
+
+- [ ] **Track: Android Books Screen Enhancements: In-progress section, management menu, and reader improvements.**
+*Link: [./tracks/feat_books_enhancements_20260305/](./tracks/feat_books_enhancements_20260305/)*
