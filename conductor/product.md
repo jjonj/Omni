@@ -37,6 +37,8 @@ The primary user is the developer/creator themselves—a power user who demands:
 -   **Offline Mode:** Download books and audiobooks to the Android device for offline access.
 -   **Progress Synchronization:** Bi-directional progress tracking (page/timestamp) synced between the Hub and mobile client.
 -   **Rich Visuals:** Automatic cover extraction from metadata and folder assets for a polished library view.
+-   **Wishlist Integration:** Quick-add titles to a persistent wishlist directly from the mobile search interface.
+-   **Dynamic Content Discovery:** Automated thumbnail generation for PDF/EPUB files missing embedded covers.
 
 ### 4. AI Integration
 -   **Hybrid AI Ecosystem:** Interaction with local LLMs via Gemini CLI, with deep system integration through custom extensions.

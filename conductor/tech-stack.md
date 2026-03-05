@@ -16,6 +16,7 @@ OmniSync is a multi-platform ecosystem utilizing native technologies for maximum
     -   `IMacroService`: Shared execution engine for cross-platform automation scripts.
     -   `CalendarService`: Background ICS synchronization and parsing.
     -   `ProjectSearchService`: High-performance filesystem crawler for workspace discovery.
+    -   `FileService`: Extended with `PdfiumViewer` for server-side PDF/EPUB thumbnail extraction and caching.
 
 ### 2. Android Client (Remote & Sensor)
 -   **Language:** Kotlin (Native)
@@ -27,6 +28,7 @@ OmniSync is a multi-platform ecosystem utilizing native technologies for maximum
     -   `AccessibilityService` for input injection and macro triggers.
     -   `ForegroundService` for persistent connection.
     -   `WorkManager` for background tasks.
+    -   `PdfViewer`: Custom `pointerInput` implementation for edge-aware zoom/pan and pager synchronization.
     -   **Logic Components:**
         -   `MacroParser` & `MacroExecutor`: Custom parser for AHK-like automation scripts.
         -   `ConflictResolver`: Line-by-line merge engine for offline/online sync.
