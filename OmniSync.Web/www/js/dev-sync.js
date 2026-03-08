@@ -1,22 +1,60 @@
 /**
  * dev-sync.js
  * Extensionless Browser Refresh for Omni Assistant
- * 
- * To use: Include this script and signalr.min.js in your HTML.
- * <script src="/js/signalr.min.js"></script>
- * <script src="/js/dev-sync.js"></script>
  */
 
 (function() {
-    const HUB_URL = "/signalrhub";
+    const HUB_URL = "http://localhost:5000/signalrhub";
     const API_KEY = "test_api_key"; // Match Hub's AuthApiKey
 
-    let connection = new signalR.HubConnectionBuilder()
-        .withUrl(HUB_URL)
-        .withAutomaticReconnect()
-        .build();
+    let connection = null;
 
     async function start() {
+        if (typeof signalR === 'undefined') {
+            console.warn("[DevSync] SignalR not found yet, retrying in 500ms...");
+            setTimeout(start, 500);
+            return;
+        }
+
+        if (connection) return;
+
+        connection = new signalR.HubConnectionBuilder()
+            .withUrl(HUB_URL)
+            .withAutomaticReconnect()
+            .build();
+
+        connection.on("ReceiveDevRefresh", (url) => {
+            const currentUrl = window.location.href;
+            console.log("[DevSync] REFRESH RECEIVED. Target:", url || "(active)", "Current:", currentUrl);
+
+            if (!url || url.length === 0) {
+                if (currentUrl.includes("localhost") || currentUrl.includes("127.0.0.1")) {
+                    console.log("[DevSync] Refreshing active local page.");
+                    window.location.reload();
+                } else {
+                    console.log("[DevSync] Not refreshing: not a local page.");
+                }
+                return;
+            }
+
+            const isMatch = url && currentUrl.toLowerCase().indexOf(url.toLowerCase()) !== -1;
+            if (isMatch) {
+                console.log("[DevSync] MATCH! Refreshing...");
+                window.location.reload();
+            } else {
+                console.log("[DevSync] NO MATCH. Current URL:", currentUrl, "Target:", url);
+            }
+        });
+
+        connection.on("ReceiveBrowserCommand", (command, url, newTab) => {
+            if (command === "Refresh") {
+                if (!url || window.location.href.includes(url)) {
+                    console.log("[DevSync] Refreshing via ReceiveBrowserCommand.");
+                    window.location.reload();
+                }
+            }
+        });
+
         try {
             await connection.start();
             console.log("[DevSync] Connected to Hub at " + HUB_URL);
@@ -24,52 +62,18 @@
             if (success) {
                 console.log("[DevSync] Authenticated successfully.");
             } else {
-                console.warn("[DevSync] Authentication failed with provided API key.");
+                console.warn("[DevSync] Authentication failed.");
             }
         } catch (err) {
             console.error("[DevSync] Connection failed, retrying in 5s...", err);
-            setTimeout(start, 5000);
+            setTimeout(() => { connection = null; start(); }, 5000);
         }
     }
 
-    connection.on("ReceiveDevRefresh", (url) => {
-        const currentUrl = window.location.href;
-        console.log("[DevSync] ReceiveDevRefresh event received. Target URL filter:", url || "(none)");
-
-        // If no URL is specified, refresh if we are on localhost (dev safety check)
-        if (!url || url.length === 0) {
-            if (currentUrl.includes("localhost") || currentUrl.includes("127.0.0.1")) {
-                console.log("[DevSync] Refreshing active local page.");
-                window.location.reload();
-            }
-            return;
-        }
-
-        // If URL is specified, only refresh if it matches
-        if (currentUrl.includes(url)) {
-            console.log("[DevSync] Refreshing page as it matches target:", url);
-            window.location.reload();
-        }
-    });
-
-    // Also handle general browser commands if they target this URL
-    connection.on("ReceiveBrowserCommand", (command, url, newTab) => {
-        if (command === "Refresh") {
-            if (!url || window.location.href.includes(url)) {
-                console.log("[DevSync] Refreshing via ReceiveBrowserCommand.");
-                window.location.reload();
-            }
-        }
-    });
-
-    connection.onclose(async () => {
-        console.log("[DevSync] Connection closed.");
-    });
-
-    // Start connection
-    if (typeof signalR !== 'undefined') {
-        start();
+    // Start attempting to connect
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', start);
     } else {
-        console.error("[DevSync] SignalR not found. Please include signalr.min.js before dev-sync.js");
+        start();
     }
 })();

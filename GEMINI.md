@@ -29,3 +29,9 @@ If the user asks you to add a new gemini cli automatic dialog response:
 Junction folders are used a couple places:
 D:\SSDProjects\Omni\OmniSync.Web\www\worktrees contains subfolders that are junctions used for temporary webpages created elsewhere, folder should be gitignored.
 D:\SSDProjects\Omni\OmniSync.Cli\omni-extension is junctioned to C:\Users\crovea\.gemini\extensions\omni to automatically apply updates to the gemini extension when changed in omni.
+
+### DevSync
+
+All `index.html` files in the web UI MUST include the DevSync loader to enable automatic browser refresh:
+`<script src="../js/dev-sync-loader.js"></script>` (adjust path as needed).
+This script automatically connects to the Omni Hub for refresh events.
