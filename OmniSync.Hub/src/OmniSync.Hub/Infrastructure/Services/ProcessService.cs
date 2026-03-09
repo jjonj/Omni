@@ -1014,12 +1014,21 @@ Add-Type -MemberDefinition $code -Name Win32 -Namespace Native
 
                         bool isTreeMatch = pids.Contains((int)processId);
                         bool isTitleMatch = !string.IsNullOrEmpty(titleHint) && title.Contains(titleHint, StringComparison.OrdinalIgnoreCase);
+                        
+                        // Check for PID-in-title (e.g. "Omni (12345)") to disambiguate tabs in same workspace
+                        bool isPidInTitle = title.Contains($"({processId})") || title.Contains($" {processId}") || title.Contains($":{processId}");
 
                         int score = 0;
                         if (isTreeMatch)
                         {
                             // Tree match is highest priority
                             score += 500;
+                        }
+
+                        if (isPidInTitle)
+                        {
+                            // Massive bonus for explicit PID match in title
+                            score += 1000;
                         }
 
                         if (isTitleMatch)
