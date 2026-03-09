@@ -13,18 +13,6 @@ class MacroExecutor(
         context: android.content.Context,
         onProgress: (String) -> Unit = {}
     ) {
-        // Decide if we can batch everything to Hub
-        // We can't batch if there is a 'macro' chain (recursion/lookup needed) 
-        // or 'aihere' (android navigation needed)
-        val hasAndroidCmds = commands.any { it is MacroCommand.AiHere || it is MacroCommand.MacroChain }
-        
-        if (!hasAndroidCmds && commands.isNotEmpty()) {
-            onProgress("Executing batch on Hub...")
-            signalRClient.executeMacroBatch(commands)
-            onProgress("Execution finished")
-            return
-        }
-
         Log.d("MacroExecutor", "Executing ${commands.size} commands step-by-step")
         for (command in commands) {
             val label = when(command) {
@@ -53,8 +41,9 @@ class MacroExecutor(
                     }
                 }
                 is MacroCommand.Run -> {
-                    Log.d("MacroExecutor", "Running: ${command.path}")
-                    signalRClient.executeCommand(command.path)
+                    val scriptLine = "run ${command.path}"
+                    Log.d("MacroExecutor", "Running via ExecuteMacro: ${command.path}")
+                    signalRClient.executeMacroScript(scriptLine)
                 }
                 is MacroCommand.WinActivate -> {
                     Log.d("MacroExecutor", "Activating window: ${command.title}")

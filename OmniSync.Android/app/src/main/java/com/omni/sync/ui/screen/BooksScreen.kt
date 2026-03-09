@@ -223,12 +223,9 @@ fun InProgressBookItem(
 @Composable
 fun BooksScreen(
     mainViewModel: MainViewModel,
+    booksViewModel: BooksViewModel,
     onBack: () -> Unit
 ) {
-    val booksViewModel: BooksViewModel = viewModel(
-        factory = BooksViewModelFactory(mainViewModel)
-    )
-    
     val isConnected by mainViewModel.isConnected.collectAsState()
     val baseUrl = mainViewModel.getBaseUrl()
     val libraryState by booksViewModel.libraryState.collectAsState()

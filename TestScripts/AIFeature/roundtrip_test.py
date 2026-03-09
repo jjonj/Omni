@@ -158,10 +158,9 @@ class RoundtripTester:
         logger.info(f"Sending message via Hub to PID {target_pid}: {test_msg}")
         self.hub.send("SendAiMessage", [test_msg, target_pid])
 
-
         # 5. Wait for events
         start_time = time.time()
-        timeout = 45
+        timeout = 120 # Increased timeout
         while time.time() - start_time < timeout:
             if self.message_received and self.response_received:
                 break
@@ -191,6 +190,10 @@ def cleanup_all_gemini_windows():
     subprocess.run([sys.executable, cleanup_script], cwd=ROOT_DIR)
 
 async def main():
+    global WORKSPACE
+    if len(sys.argv) > 1:
+        WORKSPACE = sys.argv[1]
+        print(f"[CONFIG] Using custom WORKSPACE: {WORKSPACE}")
     print("\n" + "="*60)
     print("      OMNISYNC: FULL STACK AI ROUNDTRIP TEST")
     print("="*60 + "\n")

@@ -313,18 +313,7 @@ namespace OmniSync.Hub.Logic.Services
             _logger.LogInformation($"[HubEventSender] Turn ended for PID {e.Pid}: reason={e.Reason}, category={e.Category}, finishReason={e.FinishReason ?? "none"}, workspace={workspace}");
             _monitorService.AddLogMessage($"AI Turn End (PID {e.Pid}, {e.Category}): {e.Reason} [{workspace}]");
 
-            await _hubContext.Clients.All.SendAsync(
-                "ReceiveAiTurnEnd",
-                e.Pid,
-                e.Reason,
-                e.Category,
-                e.FinishReason,
-                e.Message,
-                e.Source,
-                e.PromptId,
-                e.WorkspacePath,
-                e.WorkspaceName,
-                e.Timestamp);
+            await _hubContext.Clients.All.SendAsync("ReceiveAiTurnEnd", e);
 
             // Preserve existing FINISHED broadcast behavior, sourced from the new structured event.
             await _hubContext.Clients.All.SendAsync("ReceiveAiStatus", "FINISHED", e.Pid);

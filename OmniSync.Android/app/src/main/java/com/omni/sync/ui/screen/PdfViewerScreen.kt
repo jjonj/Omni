@@ -1,5 +1,8 @@
 package com.omni.sync.ui.screen
 
+import android.app.Activity
+import android.content.pm.ActivityInfo
+import android.content.res.Configuration
 import android.graphics.Bitmap
 import android.graphics.pdf.PdfRenderer
 import android.os.ParcelFileDescriptor
@@ -27,8 +30,13 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChanged
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.unit.dp
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import com.omni.sync.ui.components.ReaderSettingsOverlay
 import com.omni.sync.viewmodel.BooksViewModel
 import kotlinx.coroutines.Dispatchers
@@ -46,7 +54,11 @@ fun PdfViewerScreen(
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
+    val activity = context as? Activity
+    val configuration = LocalConfiguration.current
+    val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
     val scope = rememberCoroutineScope()
+    val focusManager = LocalFocusManager.current
     
     val pdfRenderer = remember { mutableStateOf<PdfRenderer?>(null) }
     var pageCount by remember { mutableStateOf(0) }
@@ -61,6 +73,45 @@ fun PdfViewerScreen(
     // State used by child to tell parent if pager should scroll
     var globalScale by remember { mutableFloatStateOf(1f) }
     var isAtHorizontalEdge by remember { mutableStateOf(true) }
+
+    // Dynamic Orientation and Fullscreen
+    DisposableEffect(isLandscape) {
+        activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR
+        
+        val window = activity?.window
+        if (window != null) {
+            val insetsController = WindowCompat.getInsetsController(window, window.decorView)
+            if (isLandscape) {
+                insetsController.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                insetsController.hide(WindowInsetsCompat.Type.systemBars())
+                insetsController.hide(WindowInsetsCompat.Type.ime())
+            } else {
+                insetsController.show(WindowInsetsCompat.Type.systemBars())
+                insetsController.hide(WindowInsetsCompat.Type.ime())
+            }
+        }
+
+        onDispose {
+            val window = activity?.window
+            if (window != null) {
+                val insetsController = WindowCompat.getInsetsController(window, window.decorView)
+                insetsController.show(WindowInsetsCompat.Type.systemBars())
+            }
+        }
+    }
+
+    // Force sensor orientation and clear focus
+    LaunchedEffect(Unit) {
+        focusManager.clearFocus()
+    }
+
+    DisposableEffect(Unit) {
+        val originalOrientation = activity?.requestedOrientation ?: ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+        activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR
+        onDispose {
+            activity?.requestedOrientation = originalOrientation
+        }
+    }
 
     // 1. Initialize PDF
     LaunchedEffect(bookPath) {
@@ -134,22 +185,24 @@ fun PdfViewerScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text(bookName, maxLines = 1) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+            if (!isLandscape || isSettingsVisible.value) {
+                TopAppBar(
+                    title = { Text(bookName, maxLines = 1) },
+                    navigationIcon = {
+                        IconButton(onClick = onBack) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        }
+                    },
+                    actions = {
+                        IconButton(onClick = { isSettingsVisible.value = !isSettingsVisible.value }) {
+                            Icon(Icons.Default.Settings, contentDescription = "Settings")
+                        }
                     }
-                },
-                actions = {
-                    IconButton(onClick = { isSettingsVisible.value = !isSettingsVisible.value }) {
-                        Icon(Icons.Default.Settings, contentDescription = "Settings")
-                    }
-                }
-            )
+                )
+            }
         },
         bottomBar = {
-            if (pageCount > 0) {
+            if (pageCount > 0 && (!isLandscape || isSettingsVisible.value)) {
                 Surface(tonalElevation = 4.dp) {
                     Row(
                         modifier = Modifier.fillMaxWidth().padding(8.dp),
@@ -173,7 +226,7 @@ fun PdfViewerScreen(
         }
     ) { padding ->
         val bgColor = try { Color(android.graphics.Color.parseColor(readerTheme.backgroundColor)) } catch(e: Exception) { Color.DarkGray }
-        Box(modifier = Modifier.fillMaxSize().padding(padding).background(bgColor)) {
+        Box(modifier = Modifier.fillMaxSize().padding(if (isLandscape && !isSettingsVisible.value) PaddingValues(0.dp) else padding).background(bgColor)) {
             if (isLoading) {
                 CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
             } else if (pdfRenderer.value != null) {

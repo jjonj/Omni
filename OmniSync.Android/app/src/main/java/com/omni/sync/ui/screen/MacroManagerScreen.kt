@@ -417,7 +417,8 @@ fun MacroManagerScreen(
                         .padding(horizontal = 16.dp)
                 ) {
                     items(macros, key = { it.id }) { macro ->
-                        val icon = when (macro.iconName.lowercase()) {
+                        val iconName = macro.iconName?.lowercase() ?: "play"
+                        val icon = when (iconName) {
                             "browser" -> Icons.Default.Language
                             "folder" -> Icons.Default.Folder
                             "ai" -> Icons.Default.SmartToy
@@ -444,7 +445,7 @@ fun MacroManagerScreen(
                                 editingMacroId = macro.id
                                 editorName = macro.name
                                 editorScript = TextFieldValue(macro.script, TextRange(macro.script.length))
-                                editorIconName = macro.iconName
+                                editorIconName = macro.iconName ?: "play"
                             },
                             colors = if (editingMacroId == macro.id) 
                                 CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f))
@@ -691,4 +692,3 @@ fun SyntaxHelpItem(command: String, description: String, example: String) {
         }
     }
 }
-

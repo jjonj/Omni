@@ -13,24 +13,24 @@
 1771272312395|commit_msg_omni_config.txt
 1770404480486|commit_msg_tft.txt
 1770404480487|commit_msg_tft_final.txt
-1771198250225|commitmsg.txt
-1770404480488|connectadb.py
+1772314985277|commitmsg.txt
+1772312441247|connectadb.py
 1770664982686|crash.txt
 1770625980128|delete_build_dir.py
 1770625980132|design.txt
 1770404480546|full_commit_msg.txt
 1770404480649|git_diff.txt
 1770404480651|git_status.txt
-1771362736006|hub_log.txt
+1772541403349|hub_log.txt
 1770581121254|last_adb_target.txt
 1770625980135|launch_gemini_cli_hub.py
 1770625980138|launch_gemini_cli_old.py
 1770625980141|modify_gemini_cli.py
 1770404480666|package-lock.json
 1770625980145|temp_launch.bat
-1771362732070|↳\.omni
+1772541395673|↳\.omni
 1771252126428| omni_config.json
-1771362732070| ↳\athena
+1772541395673| ↳\athena
 1771109663989|  ↳\agent
 1771109663989|   ↳\workflows
 1771109663989|    end.md
@@ -40,7 +40,7 @@
 1771087222923|  ↳\framework
 1771087222923|   ↳\modules
 1771087222923|    Core_Identity.md
-1771362732070|  ↳\session_logs
+1772541395673|  ↳\session_logs
 1771107098668|   2026-02-14-session-01.md
 1771110345719|   2026-02-15-session-01.md
 1771111741031|   2026-02-15-session-02.md
@@ -48,7 +48,9 @@
 1771117190866|   2026-02-15-session-04.md
 1771186019526|   2026-02-15-session-05.md
 1771200545567|   2026-02-16-session-01.md
-1771362732070|   2026-02-17-session-01.md
+1771368119402|   2026-02-17-session-01.md
+1771881840951|   2026-02-23-session-01.md
+1772541395673|   2026-03-03-session-01.md
 1770625979303|↳\Omni.Other
 1770625979303| ↳\OmniNPP
 1770625979298|  Class1.cs
@@ -56,7 +58,7 @@
 1770404480824|  OmniNPP.cs
 1769812628400|  OmniNPP.csproj
 1770625979303|  deploy.py
-1771198275844|↳\OmniSync.Android
+1772314512562|↳\OmniSync.Android
 1770404480911| BUILD_DEPLOY_README.md
 1770404480913| BUILD_GUIDE.md
 1770404480915| CHANGES_SUMMARY.md
@@ -64,33 +66,33 @@
 1770404481264| README.md
 1769812628437| build.gradle.kts
 1770625979320| build_and_deploy.py
-1770404480922| connectadb.py
+1772312449408| connectadb.py
 1770404481254| extractcrash.py
 1770404481256| gradlew.bat
 1769812628439| settings.gradle.kts
 1770625979342| verify_setup.py
-1771198275844| ↳\app
+1772314512562| ↳\app
 1769812628401|  build.gradle.kts
-1771198275844|  ↳\src
-1771198275844|   ↳\main
+1772314512562|  ↳\src
+1772314512562|   ↳\main
 1769812628401|    AndroidManifest.xml
-1771198275844|    ↳\java
-1771198275844|     ↳\com
-1771198275844|      ↳\omni
-1771198275844|       ↳\sync
+1772314512562|    ↳\java
+1772314512562|     ↳\com
+1772314512562|      ↳\omni
+1772314512562|       ↳\sync
 1770759506440|        MainActivity.kt
 1770030468709|        OmniSyncApplication.kt
-1770893836454|        ↳\data
-1770626048665|         ↳\config
-1770626048665|          ConfigManager.kt
+1772314506503|        ↳\data
+1772312487842|         ↳\config
+1772312487842|          ConfigManager.kt
 1769812628402|         ↳\model
 1769812628402|          DownloadedVideo.kt
 1769812628402|          FileSystemEntry.kt
 1769812628402|          Macro.kt
 1769812628402|          NotificationAction.kt
 1769812628402|          PendingEdit.kt
-1770893836454|         ↳\repository
-1770893836454|          SignalRClient.kt
+1772314506503|         ↳\repository
+1772314506503|          SignalRClient.kt
 1769812628403|        ↳\logic
 1769812628403|         ConflictResolver.kt
 1769812628403|         SleepTracker.kt
@@ -105,14 +107,14 @@
 1769812628404|         ClipboardWatcher.kt
 1770626048667|         ForegroundService.kt
 1769812628404|         OmniAccessibilityService.kt
-1771198275844|        ↳\ui
+1772314512562|        ↳\ui
 1769812628405|         WidgetConfigActivity.kt
 1771198275844|         ↳\components
 1771198275844|          CustomKeyboard.kt
 1769812628405|          DirectoryPickerDialog.kt
 1770127018061|          OmniBottomNavigation.kt
 1769812628405|          SharedComponents.kt
-1770893860430|         ↳\screen
+1772314512562|         ↳\screen
 1770893860430|          AiChatScreen.kt
 1770625979309|          AlarmScreen.kt
 1770626048667|          BrowserControlScreen.kt
@@ -125,11 +127,11 @@
 1770031129052|          MacroManagerScreen.kt
 1769812628407|          NoteViewerScreen.kt
 1769812628408|          ProcessScreen.kt
-1770668777458|          RemoteControlScreen.kt
+1772314512562|          RemoteControlScreen.kt
 1770626048668|          SettingsScreen.kt
 1769812628409|          TextEditorScreen.kt
 1769812628409|          VideoPlayerScreen.kt
-1769812628409|          WebServerScreen.kt
+1771953469735|          WebServerScreen.kt
 1769812628409|         ↳\theme
 1769812628409|          Color.kt
 1769812628409|          Theme.kt
@@ -141,12 +143,12 @@
 1769812628410|         FileUtils.kt
 1769812628410|         NetworkDebugger.kt
 1769812628417|         WindowsKeyCodes.kt
-1770626048668|        ↳\viewmodel
+1771953465654|        ↳\viewmodel
 1770626048668|         BrowserViewModel.kt
 1769812628417|         FilesViewModel.kt
 1769812628417|         FilesViewModelFactory.kt
-1770625979315|         MainViewModel.kt
-1769812628436|    ↳\res
+1771953465654|         MainViewModel.kt
+1771953446391|    ↳\res
 1769812628419|     ↳\drawable
 1769812628418|      button_background.xml
 1769812628418|      ic_ai.xml
@@ -165,12 +167,12 @@
 1769812628435|     ↳\values
 1769812628435|      strings.xml
 1769812628435|      themes.xml
-1769812628436|     ↳\xml
+1771953446391|     ↳\xml
 1769812628435|      accessibility_service_config.xml
 1769812628435|      backup_rules.xml
 1769812628435|      data_extraction_rules.xml
 1769812628435|      file_paths.xml
-1769812628436|      network_security_config.xml
+1771953446391|      network_security_config.xml
 1769812628436|      omni_widget_info.xml
 1769812628437|   ↳\test
 1769812628437|    ↳\java
@@ -184,8 +186,8 @@
 1769812628437|         ConflictResolverTest.kt
 1769812628437|         ↳\macro
 1769812628437|          MacroLogicTest.kt
-1771252114338|↳\OmniSync.Assistant
-1771252114338| ↳\Omni.Athena
+1771441464632|↳\OmniSync.Assistant
+1771441464632| ↳\Omni.Athena
 1770991242136|  ↳\examples
 1770991242109|   DEMO_SCRIPT.md
 1770991242112|   demo.html
@@ -256,11 +258,11 @@
 1770991242142|     __init__.py
 1770991242142|     graphrag.py
 1770991242143|     pipeline.py
-1771252114338|  ↳\src
-1771252114338|   ↳\athena
+1771441464632|  ↳\src
+1771441464632|   ↳\athena
 1770991242144|    __init__.py
 1771115815374|    __main__.py
-1771074051077|    mcp_server.py
+1771441464632|    mcp_server.py
 1770991242151|    sessions.py
 1770991242145|    ↳\auditors
 1770991242144|     __init__.py
@@ -322,15 +324,15 @@
 1771025130015|  ↳\tests
 1771001762432|   test_config.py
 1771025130015|   test_opc_port.py
-1770626048669|↳\OmniSync.Chrome
-1770404481973| SETUP_INSTRUCTIONS.md
-1770626048669| background.js
-1770625979350| manifest.json
+1772280193479|↳\OmniSync.Chrome
+1772280193479| SETUP_INSTRUCTIONS.md
+1772280104145| background.js
+1772280173895| manifest.json
 1770625979354| signalr.min.js
-1771110000344|↳\OmniSync.Cli
+1771515823713|↳\OmniSync.Cli
 1771110000344| GeminiCLIMCPGuide.md
 1770625979365| emulate_input.py
-1770625979369| omni_cli_script.py
+1771515823713| omni_cli_script.py
 1771028210819| ↳\omni-extension
 1769454761487|  .gemini-extension-install.json
 1771026311579|  GEMINI.md
@@ -340,7 +342,7 @@
 1770404482002| background.js
 1770404482004| manifest.json
 1770625979379| signalr.min.js
-1771196488210|↳\OmniSync.Hub
+1772476810611|↳\OmniSync.Hub
 1770404482012| appsettings.json
 1770747644670| ↳\Voice
 1770404482528|  SYSTEM_GUIDE.md
@@ -493,15 +495,15 @@
 1770404485157|    package.json
 1769812628547|    style.css
 1770404485166|    vite.config.js
-1771196488210| ↳\src
-1771196488210|  ↳\OmniSync.Hub
-1769812628555|   OmniSync.Hub.csproj
-1771074493411|   Program.cs
+1772476810611| ↳\src
+1772377409252|  ↳\OmniSync.Hub
+1771881667705|   OmniSync.Hub.csproj
+1771881707634|   Program.cs
 1770404482141|   appsettings.json
-1771196488210|   ↳\Infrastructure
+1772377409252|   ↳\Infrastructure
 1770404482170|    RelayCommand.cs
-1771196488210|    ↳\Services
-1771195626681|     AiCliService.cs
+1772377409252|    ↳\Services
+1772377409252|     AiCliService.cs
 1770404482188|     AudioService.cs
 1770404482191|     ClipboardService.cs
 1770625979609|     CrashHandler.cs
@@ -514,19 +516,19 @@
 1771196488210|     ProcessService.cs
 1770404482233|     RegistryService.cs
 1770404482234|     ScreenshotService.cs
-1771195635900|   ↳\Logic
+1771881678600|   ↳\Logic
 1770404482237|    LayoutCaptureService.cs
 1770404482239|    LayoutHelper.cs
 1770625979622|    ProjectLauncherService.cs
 1770625979656|    WindowDetector.cs
 1770625979618|    ↳\Monitoring
 1770625979618|     HubMonitorService.cs
-1771195635900|    ↳\Services
+1771881678600|    ↳\Services
 1771110083143|     AssistantService.cs
 1770404482250|     AuthService.cs
 1770625979642|     CalendarService.cs
 1770404482256|     ClipboardHostedService.cs
-1771195635900|     CommandDispatcher.cs
+1771515683280|     CommandDispatcher.cs
 1770404482277|     GitService.cs
 1770404482280|     GlobalHotkeyService.cs
 1771081610149|     HubEventSender.cs
@@ -538,12 +540,14 @@
 1770404482296|     ResourceOpenerService.cs
 1770404482298|     ScreenshotHostedService.cs
 1770404482300|     ShutdownService.cs
+1771881678600|     UpnpService.cs
+1771515693384|     WebReloaderService.cs
 1770625979660|   ↳\Models
 1770404482302|    FileSystemEntry.cs
 1770625979660|    PcgObjectState.cs
-1771193832167|   ↳\Presentation
+1772376756580|   ↳\Presentation
 1770625979669|    Converters.cs
-1771074578042|    MainViewModel.cs
+1772376756580|    MainViewModel.cs
 1770894023558|    MainWindow.xaml
 1771074584636|    MainWindow.xaml.cs
 1770625979674|    OmniSweepViewModel.cs
@@ -556,33 +560,42 @@
 1771072159058|    ↳\Controllers
 1771072159058|     OmniHubApiController.cs
 1770404482388|     StreamController.cs
-1771193832167|    ↳\Hubs
-1771193832167|     RpcApiHub.cs
+1771515687717|    ↳\Hubs
+1771515687717|     RpcApiHub.cs
 1770895257427|   ↳\Properties
 1770895257427|    AssemblyInfo.cs
-1770895265856|  ↳\OmniSync.Hub.Tests
+1772476810611|  ↳\OmniSync.Hub.Tests
 1769812628548|   OmniSync.Hub.Tests.csproj
 1770625979604|   UnitTest1.cs
 1770404482447|   ↳\Infrastructure
 1770404482447|    ProcessServiceTests.cs
-1770625979589|   ↳\Presentation
-1770625979586|    MainViewModelHotkeyTests.cs
+1772474696034|   ↳\Presentation
+1772474696034|    MainViewModelHotkeyTests.cs
 1770625979589|    ProjectSelectorViewModelTests.cs
-1770895265856|   ↳\Services
+1772476810611|   ↳\Services
+1772473100107|    AiBridgeSignalRContractTests.cs
 1770625979593|    AiCliServiceBugReproTests.cs
 1770625979597|    AiCliServiceQueuingTests.cs
-1770404482502|    CalendarServiceTests.cs
+1772474676327|    CalendarServiceTests.cs
+1772476810611|    GeminiSessionMockPipeContractTests.cs
 1770895265856|    GeminiSessionPayloadTests.cs
-1770404482505|    MacroServiceTests.cs
-1770625979601|    ResourceOpenerServiceTests.cs
+1772474574874|    MacroServiceTests.cs
+1772474564742|    ResourceOpenerServiceTests.cs
+1772476790362|   ↳\TestResults
+1772475206254|    ↳\3e5980bf-86d0-4f3c-8673-9feb896bbe8d
+1772475206254|     Sequence_25e1a589d9814b69a20e6bb1faea546d.xml
+1772475306740|    ↳\50dd2ee2-4e41-4501-9c9b-8b47240c2428
+1772475306740|     Sequence_81f433bc08ad4f71a3f5709af43596a1.xml
+1772476790362|    ↳\ec6cbe41-202d-43ac-843f-04543d5f09cb
+1772476790362|     Sequence_a66092b858ba4adfb0f01abc53ad78f1.xml
 1771071463281| ↳\tests
 1771071463281|  ↳\OmniSync.Hub.Tests
 1771071453112|   OmniSync.Hub.Tests.csproj
 1771071463281|   ↳\Logic
 1771071463281|    ↳\Services
 1771071463281|     AssistantServiceTests.cs
-1771362607275|↳\OmniSync.Web
-1771362607275| ↳\www
+1771717382659|↳\OmniSync.Web
+1771717382659| ↳\www
 1770626048675|  Scheduler.html
 1770893873638|  Settings.html
 1770626048675|  TFT.html
@@ -701,12 +714,13 @@
 1771104281077|     GenerationWorker.js
 1769812633095|  ↳\css
 1769812633095|   style.css
-1770894015677|  ↳\js
+1771515654778|  ↳\js
 1770625979724|   TeamPlannerCode.js
 1770625979728|   app.js
 1770625979732|   audio.js
 1770625979736|   config.js
 1770404486475|   dev-console.js
+1771515654778|   dev-sync.js
 1770404486477|   dev_console_test.js
 1770404486480|   drag_drop_touch.js
 1770625979739|   gcal.js
@@ -720,7 +734,7 @@
 1770404486575|   tft_role_test.js
 1770404486578|   tft_smart_sort_test.js
 1770625979753|   tft_tests.js
-1771362607275|  ↳\worktrees
+1771717382659|  ↳\worktrees
 1771197524493|   ↳\Alt1
 1770938610944|    COMPLETE_DERIVATION_EXPLAINED.md
 1770938610951|    ELEVATION_SYSTEM_EXPLAINED.md
@@ -937,7 +951,7 @@
 1770852817792|      UIManager.js
 1770852817793|     ↳\worker
 1770852817793|      GenerationWorker.js
-1771362607275|   ↳\river_delta_estuary
+1771717382659|   ↳\river_delta_estuary
 1771185925230|    COMPLETE_DERIVATION_EXPLAINED.md
 1771185925231|    ELEVATION_SYSTEM_EXPLAINED.md
 1771185925236|    GEMINI.md
@@ -958,11 +972,11 @@
 1771185925350|    fix_variable_renaming.js
 1771185925350|    fix_variable_renaming_v2.js
 1771185925351|    fix_variable_renaming_v3.js
-1771200042582|    index.html
+1771459555322|    index.html
 1771185925359|    island_gen_refactor.md
 1771185925363|    main.js
 1771197062105|    prototype_delta.js
-1771185925363|    run_ValidationSuite.js
+1771373799271|    run_ValidationSuite.js
 1771185925363|    run_fast_validation.py
 1771185925364|    run_validation.py
 1771185925364|    siggraph_gap_analysis.md
@@ -1003,16 +1017,14 @@
 1771185925297|     test_shelf.js
 1771185925301|     test_smoothing_network_visual.js
 1771185925302|     test_smoothing_verification.js
-1771362607275|    ↳\ValidationMaps
-1771362607275|     ValidationConfig.json
 1771185925350|    ↳\css
 1771185925350|     styles.css
-1771362503094|    ↳\src
-1771354486525|     ↳\config
+1771717382659|    ↳\src
+1771717382659|     ↳\config
 1771354486525|      Config.js
-1771354389166|      Settings.json
+1771717382659|      Settings.json
 1771185925376|      SettingsRegistry.js
-1771362503094|     ↳\core
+1771459174983|     ↳\core
 1771185925380|      BiomeData.js
 1771185925383|      BiomeGenerator.js
 1771185925384|      ErosionSystem.js
@@ -1023,14 +1035,14 @@
 1771185925389|      LakeSystem.js
 1771185925389|      NoiseGenerator.js
 1771185925389|      ShapeProcessor.js
-1771362503094|      ↳\hydrology
+1771459174983|      ↳\hydrology
 1771185925395|       AnalyticInterpolator.js
 1771185925395|       FlowSystem.js
 1771185925395|       HeightInterpolator.js
 1771185925400|       InputGenerator.js
 1771185925400|       LakeOutflowOptimizer.js
 1771185925400|       OceanFeatures.js
-1771362503094|       RiverCarver.js
+1771459174983|       RiverCarver.js
 1771354486541|       RiverGenerator.js
 1771185925443|       TerrainTree.js
 1771185925443|       VoronoiDiagram.js
@@ -1041,24 +1053,25 @@
 1771185925456|      MathUtils.js
 1771185925456|      PriorityQueue.js
 1771185925460|      SpatialIndex.js
-1771354486544|     ↳\view
+1771422351295|     ↳\view
 1771185925463|      DebugRenderer.js
 1771185925467|      EventManager.js
 1771203261520|      LayerRenderer.js
-1771354486544|      Renderer.js
+1771422351295|      Renderer.js
 1771185925476|      ThreeRenderer.js
 1771185925480|      UIComponents.js
-1771354389187|      UIManager.js
+1771371531205|      UIManager.js
 1771359485968|     ↳\worker
 1771359485968|      GenerationWorker.js
-1770897373864|↳\TestScripts
+1772477420163|↳\TestScripts
 1770404486605| README.md
 1770628587855| cli_focus_test.py
 1770625980034| rename_sounds.py
 1770625980038| split_sounds.py
-1770897373864| ↳\AIFeature
+1772477420163| ↳\AIFeature
 1770625979764|  AI_TESTING_GUIDE.md
 1770404486641|  README.md
+1772477420163|  api_contract_test.py
 1770625979768|  cleanup_gemini_windows.py
 1770404486619|  commands_test.py
 1770625979771|  debug_log_filter.py
@@ -1068,7 +1081,7 @@
 1770625979775|  launch_and_stop_test.py
 1770625979780|  list_hub_sessions.py
 1770404486638|  multi_instance_test.py
-1770626048677|  roundtrip_test.py
+1772477347669|  roundtrip_test.py
 1770625979788|  test_android_ai_message.py
 1770625979793|  test_android_ux.py
 1770404486673|  test_cli_api_end_to_end.py
@@ -1088,6 +1101,8 @@
 1770625979816|  test_screenshot_skill_simple.py
 1770404486729|  test_special_messages.py
 1770625979820|  test_tell_pc_flow.py
+1772475228924|  ↳\Contracts
+1772475228924|   omni-ai-bridge-v1.json
 1770625979834| ↳\Browser
 1770404486738|  README.md
 1770625979824|  comprehensive_extension_test.py

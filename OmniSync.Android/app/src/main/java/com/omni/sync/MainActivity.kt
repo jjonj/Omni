@@ -195,6 +195,9 @@ class MainActivity : ComponentActivity() {
                             val browserViewModel: BrowserViewModel = viewModel(
                                 factory = BrowserViewModelFactory(application, signalRClient, mainViewModel)
                             )
+                    val booksViewModel: com.omni.sync.viewmodel.BooksViewModel = viewModel(
+                        factory = com.omni.sync.viewmodel.BooksViewModelFactory(mainViewModel)
+                    )
                     val pagerState = rememberPagerState(pageCount = { swipeableScreens.size })
 
                     val configuration = LocalConfiguration.current
@@ -300,7 +303,7 @@ class MainActivity : ComponentActivity() {
                         }
                         
                         Box(modifier = Modifier.fillMaxSize()) {
-                            if (isLandscape && currentScreen != AppScreen.IMAGE_VIEWER && currentScreen != AppScreen.VIDEOPLAYER) {
+                            if (isLandscape && currentScreen != AppScreen.IMAGE_VIEWER && currentScreen != AppScreen.VIDEOPLAYER && currentScreen != AppScreen.PDF_VIEWER && currentScreen != AppScreen.EPUB_VIEWER) {
                                 CustomKeyboard(
                                     signalRClient = signalRClient,
                                     appConfig = mainViewModel.appConfig.value,
@@ -327,7 +330,7 @@ class MainActivity : ComponentActivity() {
                                         val screenAtPage = swipeableScreens[page]
                                         val pageModifier = if (screenAtPage == AppScreen.REMOTECONTROL || screenAtPage == AppScreen.FILES || screenAtPage == AppScreen.AI_CHAT || screenAtPage == AppScreen.WEB_SERVER) Modifier else Modifier.padding(innerPadding)
                                         Box(modifier = pageModifier) {
-                                            MainScreenContent(screenAtPage, signalRClient, browserViewModel, filesViewModel, mainViewModel, innerPadding)
+                                            MainScreenContent(screenAtPage, signalRClient, browserViewModel, filesViewModel, mainViewModel, booksViewModel, innerPadding)
                                         }
                                     }
                                 }
@@ -338,7 +341,7 @@ class MainActivity : ComponentActivity() {
                                         modifier = Modifier.fillMaxSize(),
                                         color = MaterialTheme.colorScheme.background
                                     ) {
-                                        MainScreenContent(currentScreen, signalRClient, browserViewModel, filesViewModel, mainViewModel, innerPadding)
+                                        MainScreenContent(currentScreen, signalRClient, browserViewModel, filesViewModel, mainViewModel, booksViewModel, innerPadding)
                                     }
                                 }
                             }
@@ -411,6 +414,7 @@ class MainActivity : ComponentActivity() {
         browserViewModel: BrowserViewModel,
         filesViewModel: FilesViewModel,
         mainViewModel: MainViewModel,
+        booksViewModel: com.omni.sync.viewmodel.BooksViewModel,
         paddingValues: PaddingValues = PaddingValues(0.dp)
     ) {
         when (currentScreen) {
@@ -500,14 +504,12 @@ class MainActivity : ComponentActivity() {
             }
             AppScreen.BOOKS -> BooksScreen(
                 mainViewModel = mainViewModel,
+                booksViewModel = booksViewModel,
                 onBack = { mainViewModel.goBack() }
             )
             AppScreen.PDF_VIEWER -> {
                 val path = mainViewModel.appConfig.collectAsState().value.lastOpenedFilePath ?: ""
                 val name = path.substringAfterLast('\\').substringAfterLast('/')
-                val booksViewModel: com.omni.sync.viewmodel.BooksViewModel = viewModel(
-                    factory = com.omni.sync.viewmodel.BooksViewModelFactory(mainViewModel)
-                )
                 PdfViewerScreen(
                     booksViewModel = booksViewModel,
                     bookPath = path,
@@ -518,9 +520,6 @@ class MainActivity : ComponentActivity() {
             AppScreen.EPUB_VIEWER -> {
                 val path = mainViewModel.appConfig.collectAsState().value.lastOpenedFilePath ?: ""
                 val name = path.substringAfterLast('\\').substringAfterLast('/')
-                val booksViewModel: com.omni.sync.viewmodel.BooksViewModel = viewModel(
-                    factory = com.omni.sync.viewmodel.BooksViewModelFactory(mainViewModel)
-                )
                 EpubViewerScreen(
                     booksViewModel = booksViewModel,
                     bookPath = path,

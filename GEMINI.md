@@ -35,3 +35,13 @@ D:\SSDProjects\Omni\OmniSync.Cli\omni-extension is junctioned to C:\Users\crovea
 All `index.html` files in the web UI MUST include the DevSync loader to enable automatic browser refresh:
 `<script src="../js/dev-sync-loader.js"></script>` (adjust path as needed).
 This script automatically connects to the Omni Hub for refresh events.
+
+### Shadow Kotlin Testing (Android logic on Windows)
+
+To test heavy Android Kotlin logic (parsers, state, SignalR) with 100x faster iteration than an emulator:
+1.  **Project Location:** Create a standalone Kotlin JVM project in `TestScripts\<Feature>Shadow`.
+2.  **Logic Reuse:** Use `sourceSets` in `build.gradle.kts` to point to the real Android source files:
+    `sourceSets { main { kotlin.srcDirs("../../OmniSync.Android/app/src/main/java/com/omni/sync/logic") } }`
+3.  **Android Shims:** satisfy `android.*` dependencies by creating local "shim" objects (e.g., `object Log { fun d(t:String, m:String) = println(m) }`).
+4.  **Execution:** Run via the root Android gradlew: `.\OmniSync.Android\gradlew.bat -p TestScripts\<Feature>Shadow run`.
+5.  **SignalR parity:** Use `com.microsoft.signalr:signalr:8.0.0` to match Android's networking behavior exactly.

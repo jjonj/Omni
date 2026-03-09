@@ -1282,6 +1282,15 @@ class SignalRClient(
         }
     }
 
+    fun executeMacroScript(script: String) {
+        if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
+            Log.d("SignalR", "ExecuteMacro script: $script")
+            hubConnection?.send("ExecuteMacro", script)
+        } else {
+            Log.w("SignalR", "ExecuteMacro skipped: hub not connected")
+        }
+    }
+
     fun getHubStatus(): Single<Map<String, Any>>? {
         if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
             return hubConnection?.invoke(Any::class.java, "GetHubStatus")
@@ -1613,12 +1622,6 @@ class SignalRClient(
             return hubConnection?.invoke(String::class.java, "GetCommitDiff", path, commitHash)
         }
         return null
-    }
-
-    fun executeMacroBatch(commands: List<com.omni.sync.logic.macro.MacroCommand>) {
-        if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
-            hubConnection?.send("ExecuteMacro", commands)
-        }
     }
 
     fun sendPayload(command: String, payload: Any?) {
