@@ -162,7 +162,8 @@ namespace OmniSync.Hub.Infrastructure.Services
         {
             if (_sessions.TryGetValue(pid, out var s))
             {
-                _processService.WinActivatePid(s.RootPid);
+                string? hint = GetTitleHint(pid);
+                _processService.WinActivatePid(s.RootPid, hint);
             }
             await Task.CompletedTask;
         }
@@ -171,9 +172,17 @@ namespace OmniSync.Hub.Infrastructure.Services
         {
             if (_sessions.TryGetValue(pid, out var s))
             {
-                _processService.MoveWindowOpposite(s.RootPid);
+                string? hint = GetTitleHint(pid);
+                _processService.MoveWindowOpposite(s.RootPid, hint);
             }
             await Task.CompletedTask;
+        }
+
+        private string? GetTitleHint(int pid)
+        {
+            if (_workspaces.TryGetValue(pid, out var ws) && !string.IsNullOrEmpty(ws)) return ws;
+            if (_sessionNames.TryGetValue(pid, out var name)) return name;
+            return null;
         }
 
         public async Task MoveSessionToMonitorAsync(int pid, int monitorIndex)
