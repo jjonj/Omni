@@ -851,6 +851,25 @@ Add-Type -MemberDefinition $code -Name Win32 -Namespace Native
             }
         }
 
+        public void KillProcessTree(int rootPid)
+        {
+            try
+            {
+                _monitorService.AddLogMessage($"[ProcessService] KillProcessTree for PID: {rootPid}");
+                using var process = new Process();
+                process.StartInfo.FileName = "taskkill.exe";
+                process.StartInfo.Arguments = $"/F /T /PID {rootPid}";
+                process.StartInfo.CreateNoWindow = true;
+                process.StartInfo.UseShellExecute = false;
+                process.Start();
+                process.WaitForExit(5000);
+            }
+            catch (Exception ex)
+            {
+                _monitorService.AddLogMessage($"[ProcessService] Error in KillProcessTree: {ex.Message}");
+            }
+        }
+
         public void MoveWindowOpposite(int pid, string? titleHint = null)
         {
             _monitorService.AddLogMessage($"[ProcessService] MoveWindowOpposite for PID: {pid} (Hint: {titleHint ?? "None"})");
