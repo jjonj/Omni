@@ -112,7 +112,7 @@ namespace OmniSync.Hub.Infrastructure.Services
         private readonly ConcurrentQueue<(string Text, int Pid)> _pendingPrompts = new();
         private DateTime _lastWmiDiscovery = DateTime.MinValue;
         private List<int> _cachedWmiPids = new();
-        private List<(int Pid, string CommandLine, int ParentPid)> _cachedRawGeminiInfo = new();
+        private List<(int Pid, string Cmd, int Parent)> _cachedRawGeminiInfo = new();
         private int _targetPid = -1;
         private bool _isLaunching = false;
         private readonly SemaphoreSlim _sessionLock = new(1, 1);
@@ -312,14 +312,21 @@ namespace OmniSync.Hub.Infrastructure.Services
                 else
                 {
                     pids = await GetAllGeminiPidsAsync();
-                    var parentPids = new HashSet<int>();
+                    
+                    var leafPids = new HashSet<int>();
                     foreach (var gp in _cachedRawGeminiInfo)
                     {
-                        if (_sessions.TryGetValue(gp.Pid, out var s) && s.IsConnected) continue;
-                        if (_cachedRawGeminiInfo.Any(other => other.ParentPid == gp.Pid))
-                            parentPids.Add(gp.Pid);
+                        // If this process is a parent of another process in our list, 
+                        // then that other process is a "child" (leaf-ward)
+                        var child = _cachedRawGeminiInfo.FirstOrDefault(other => other.Parent == gp.Pid);
+                        if (child.Pid != 0)
+                        {
+                            leafPids.Add(child.Pid);
+                        }
                     }
-                    pids = pids.Except(parentPids).ToList();
+                    // Filter out the leaves, keeping only the top-level node processes
+                    pids = pids.Except(leafPids).ToList();
+                    
                     _cachedWmiPids = pids.ToList();
                 }
 
@@ -444,13 +451,13 @@ namespace OmniSync.Hub.Infrastructure.Services
                 string query = "SELECT ProcessId, CommandLine, ParentProcessId FROM Win32_Process WHERE Name LIKE 'node%'";
                 using var searcher = new ManagementObjectSearcher(query);
                 using var collection = searcher.Get();
-                var raw = new List<(int Pid, string Cmd, int Parent)>();
+                var raw = new List<(int Pid, string CommandLine, int ParentPid)>();
                 foreach (var process in collection) {
                     var cmd = process["CommandLine"]?.ToString();
                     var pid = Convert.ToInt32(process["ProcessId"]);
                     var ppid = Convert.ToInt32(process["ParentProcessId"]);
                     if (cmd != null && (cmd.ToLower().Contains("gemini.js") || cmd.ToLower().Contains("omni_gemini"))) {
-                        raw.Add((pid, cmd, ppid));
+                        raw.Add((Pid: pid, CommandLine: cmd, ParentPid: ppid));
                         if (cmd.Contains("--workspace")) {
                             var parts = cmd.Split(new[] { "--workspace" }, StringSplitOptions.None);
                             if (parts.Length > 1) {
@@ -461,7 +468,11 @@ namespace OmniSync.Hub.Infrastructure.Services
                     }
                 }
                 _cachedRawGeminiInfo = raw;
-                pids = raw.Select(r => r.Pid).ToList();
+                // Filter out any PIDs that are children of another Gemini node process in our list
+                var allGeminiPids = new HashSet<int>(raw.Select(r => r.Pid));
+                pids = raw.Where(r => !allGeminiPids.Contains(r.ParentPid))
+                          .Select(r => r.Pid)
+                          .ToList();
                 _cachedWmiPids = pids;
                 _lastWmiDiscovery = now;
             } catch (Exception ex) { _logger.LogError(ex, "Error in GetAllGeminiPidsAsync"); }
