@@ -59,6 +59,18 @@ namespace OmniSync.Hub.Infrastructure.Services
         [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
         private static extern int GetWindowText(IntPtr hWnd, StringBuilder lpString, int nMaxCount);
 
+        [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+        private static extern bool SetWindowText(IntPtr hWnd, string lpString);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern bool AttachConsole(uint dwProcessId);
+
+        [DllImport("kernel32.dll", SetLastError = true, ExactSpelling = true)]
+        private static extern bool FreeConsole();
+
+        [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+        private static extern bool SetConsoleTitle(string lpConsoleTitle);
+
         [DllImport("user32.dll")]
         private static extern bool IsWindowVisible(IntPtr hWnd);
 
@@ -447,6 +459,77 @@ foreach ($p in $procs) {{
             else
             {
                 action();
+            }
+        }
+
+        public void SetWindowTitle(int pid, string title, string? titleHint = null)
+        {
+            Action action = () => {
+                try
+                {
+                    _monitorService.AddLogMessage($"[ProcessService] SetWindowTitle for PID {pid}: '{title}' (Hint: {titleHint ?? "None"})");
+                    
+                    // First try the Aggressive Console approach (AttachConsole + SetConsoleTitle)
+                    // This is most reliable for Windows Terminal / cmd windows
+                    SetConsoleTitleAggressive(pid, title);
+
+                    // Then also try the HWND approach as fallback
+                    var treePids = GetProcessTreePids(pid);
+                    var hwnds = GetVisibleWindowsForPids(treePids, titleHint);
+
+                    if (hwnds.Any())
+                    {
+                        var targetHwnd = hwnds.First();
+                        _monitorService.AddLogMessage($"[ProcessService] Setting HWND title for HWND {targetHwnd}");
+                        SetWindowText(targetHwnd, title);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _monitorService.AddLogMessage($"[ProcessService] Error in SetWindowTitle: {ex.Message}");
+                }
+            };
+
+            if (System.Windows.Application.Current != null)
+            {
+                System.Windows.Application.Current.Dispatcher.Invoke(action);
+            }
+            else
+            {
+                action();
+            }
+        }
+
+        private void SetConsoleTitleAggressive(int pid, string title)
+        {
+            try
+            {
+                _monitorService.AddLogMessage($"[ProcessService] Attempting SetConsoleTitleAggressive for PID {pid}");
+                
+                // Get process tree to find a cmd or node process that owns a console
+                var treePids = GetProcessTreePids(pid);
+                
+                foreach (var pId in treePids)
+                {
+                    // Attempt to attach to each process in the tree until one succeeds
+                    FreeConsole(); // Must free current before attaching
+                    if (AttachConsole((uint)pId))
+                    {
+                        _monitorService.AddLogMessage($"[ProcessService] Attached to console of PID {pId}");
+                        if (SetConsoleTitle(title))
+                        {
+                            _monitorService.AddLogMessage($"[ProcessService] SetConsoleTitle successful via PID {pId}");
+                            FreeConsole();
+                            return; // Success!
+                        }
+                        FreeConsole();
+                    }
+                }
+                _monitorService.AddLogMessage("[ProcessService] SetConsoleTitleAggressive failed to attach/set for any PID in tree.");
+            }
+            catch (Exception ex)
+            {
+                _monitorService.AddLogMessage($"[ProcessService] Exception in SetConsoleTitleAggressive: {ex.Message}");
             }
         }
 

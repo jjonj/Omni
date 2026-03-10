@@ -369,12 +369,14 @@ namespace OmniSync.Hub.Infrastructure.Services
                     string finalWorkspace = string.IsNullOrWhiteSpace(workspace) ? Path.GetFullPath(Path.Combine(rootPath, "..")) : Path.GetFullPath(workspace);
                     finalWorkspace = finalWorkspace.TrimEnd('\\', '/');
                     string bundlePath = Path.Combine(geminiDir, "bundle", "gemini.js");
+                    string wsName = Path.GetFileName(finalWorkspace);
 
-                    string command = $"title OMNI_GEMINI_INTERACTIVE && cd /d \"{finalWorkspace}\" && node \"{bundlePath}\" --workspace \"{finalWorkspace.Replace("\\", "/")}\" --yolo";
+                    string tempTitle = $"OMNI_LAUNCHING_{Guid.NewGuid():N}";
+                    string command = $"title {tempTitle} && cd /d \"{finalWorkspace}\" && node \"{bundlePath}\" --workspace \"{finalWorkspace.Replace("\\", "/")}\" --yolo";
                     if (!string.IsNullOrEmpty(model ?? _settingsService.Settings.DefaultAiModel)) command += $" --model {model ?? _settingsService.Settings.DefaultAiModel}";
                     if (!string.IsNullOrEmpty(prepromptFile)) command += $" --prepromptfile {prepromptFile.Replace("\\", "/")}";
 
-                    _processService.ExecuteCommandNonAdmin("cmd.exe", $"/K \"set GEMINI_DEBUG_LOG_FILE={Path.Combine(rootPath, "gemini_cli_debug.log")} && {command}\"");
+                    _processService.ExecuteCommandNonAdmin("cmd.exe", $"/K \"set GEMINI_DEBUG_LOG_FILE={Path.Combine(rootPath, "gemini_cli_debug.log")} && set CLI_TITLE={wsName} && {command}\"");
                     
                     for (int i = 0; i < 40; i++) 
                     {
@@ -386,6 +388,13 @@ namespace OmniSync.Hub.Infrastructure.Services
                         {
                             int pid = diffPids.First();
                             _targetPid = pid;
+
+                            // Set dynamic title to match gmi scheme: WorkspaceName [PID]
+                            var finalWsName = _workspaces.TryGetValue(pid, out var ws) ? ws : wsName;
+                            var finalTitle = $"{finalWsName} [{pid}]";
+                            
+                            _processService.SetWindowTitle(pid, finalTitle, tempTitle);
+
                             return pid;
                         }
                     }
@@ -445,7 +454,7 @@ namespace OmniSync.Hub.Infrastructure.Services
                         if (cmd.Contains("--workspace")) {
                             var parts = cmd.Split(new[] { "--workspace" }, StringSplitOptions.None);
                             if (parts.Length > 1) {
-                                var ws = parts[1].Trim().Trim('\"', '\'').Split(' ')[0];
+                                var ws = parts[1].Trim().Split(' ')[0].Trim('\"', '\'');
                                 try { _workspaces[pid] = Path.GetFileName(ws.TrimEnd('\\', '/')); } catch { _workspaces[pid] = ws; }
                             }
                         }
