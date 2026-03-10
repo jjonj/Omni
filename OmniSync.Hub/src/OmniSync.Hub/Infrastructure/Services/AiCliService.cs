@@ -115,6 +115,7 @@ namespace OmniSync.Hub.Infrastructure.Services
         private List<(int Pid, string Cmd, int Parent)> _cachedRawGeminiInfo = new();
         private int _targetPid = -1;
         private bool _isLaunching = false;
+        private readonly CancellationTokenSource _cts = new();
         private readonly SemaphoreSlim _sessionLock = new(1, 1);
         private readonly SemaphoreSlim _discoveryLock = new(1, 1);
         private readonly SemaphoreSlim _launchLock = new(1, 1);
@@ -139,10 +140,18 @@ namespace OmniSync.Hub.Infrastructure.Services
                 _debugMode = _settingsService.Settings.AiDebugMode;
             };
             
-            // Trigger initial discovery in background
+            // Trigger periodic discovery in background
             _ = Task.Run(async () => {
                 await Task.Delay(2000); // Give Hub time to fully start
-                await DiscoverSessionsAsync();
+                while (!_cts.IsCancellationRequested)
+                {
+                    try {
+                        await DiscoverSessionsAsync();
+                    } catch (Exception ex) {
+                        _logger.LogError(ex, "Error in background session discovery");
+                    }
+                    await Task.Delay(30000); // Poll every 30 seconds
+                }
             });
         }
 
