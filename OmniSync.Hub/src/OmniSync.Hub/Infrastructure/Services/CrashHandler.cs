@@ -29,18 +29,18 @@ namespace OmniSync.Hub.Infrastructure.Services
 
             TaskScheduler.UnobservedTaskException += (sender, e) =>
             {
-                HandleCrash("UnobservedTaskException", e.Exception);
+                HandleCrash("UnobservedTaskException", e.Exception, shouldExit: false);
                 e.SetObserved();
             };
         }
 
-        public static void HandleCrash(string type, Exception? ex)
+        public static void HandleCrash(string type, Exception? ex, bool shouldExit = true)
         {
             string message = ex?.Message ?? "No exception message available.";
             string stackTrace = ex?.StackTrace ?? "No stack trace available.";
             
             var sb = new StringBuilder();
-            sb.AppendLine($"--- CRASH DETECTED [{DateTime.Now}] ---");
+            sb.AppendLine($"--- {(shouldExit ? "CRASH" : "NON-FATAL ERROR")} DETECTED [{DateTime.Now}] ---");
             sb.AppendLine($"Type: {type}");
             sb.AppendLine($"Message: {message}");
             sb.AppendLine($"StackTrace: {stackTrace}");
@@ -69,6 +69,8 @@ namespace OmniSync.Hub.Infrastructure.Services
                 catch { /* Ignore errors writing to root */ }
             }
             catch { /* If we can't log to file, we are in deep trouble */ }
+
+            if (!shouldExit) return;
 
             // Show MessageBox to user
             string displayMessage = $"OmniSync Hub has encountered a fatal error and needs to close.\n\n" +

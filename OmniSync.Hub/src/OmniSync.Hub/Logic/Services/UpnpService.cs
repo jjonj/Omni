@@ -23,18 +23,37 @@ namespace OmniSync.Hub.Logic.Services
             try
             {
                 var discoverer = new NatDiscoverer();
-                var cts = new CancellationTokenSource(5000); // 5 second timeout for discovery
-                _device = await discoverer.DiscoverDeviceAsync(PortMapper.Upnp, cts);
+                using var cts = new CancellationTokenSource(10000); // 10 second timeout for discovery
+                
+                // Link the host cancellation token if available
+                using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cts.Token, cancellationToken);
+
+                _logger.LogDebug("Searching for UPnP devices...");
+                _device = await discoverer.DiscoverDeviceAsync(PortMapper.Upnp, linkedCts);
 
                 if (_device != null)
                 {
-                    _logger.LogInformation($"UPnP Device found: {await _device.GetExternalIPAsync()}");
-                    await SetupForwardingAsync();
+                    try
+                    {
+                        var externalIp = await _device.GetExternalIPAsync();
+                        _logger.LogInformation($"UPnP Device found: {externalIp}");
+                        await SetupForwardingAsync();
+                    }
+                    catch (Exception ipEx)
+                    {
+                        _logger.LogWarning($"UPnP Device found but failed to get external IP: {ipEx.Message}");
+                        // Continue setup anyway
+                        await SetupForwardingAsync();
+                    }
                 }
                 else
                 {
-                    _logger.LogWarning("No UPnP device found.");
+                    _logger.LogWarning("No UPnP device found after 10 seconds.");
                 }
+            }
+            catch (OperationCanceledException)
+            {
+                _logger.LogWarning("UPnP discovery timed out or was cancelled.");
             }
             catch (Exception ex)
             {
@@ -44,7 +63,11 @@ namespace OmniSync.Hub.Logic.Services
 
         private async Task SetupForwardingAsync()
         {
-            if (_device == null) return;
+            if (_device == null)
+            {
+                _logger.LogWarning("Cannot setup port forwarding: No UPnP device.");
+                return;
+            }
 
             int[] ports = { 3333, 5555 };
 
@@ -53,7 +76,8 @@ namespace OmniSync.Hub.Logic.Services
                 try
                 {
                     _logger.LogInformation($"Setting up UPnP port forwarding for port {port}...");
-                    await _device.CreatePortMapAsync(new Mapping(Protocol.Tcp, port, port, $"OmniHub-{port}"));
+                    var mapping = new Mapping(Protocol.Tcp, port, port, $"OmniHub-{port}");
+                    await _device.CreatePortMapAsync(mapping);
                     _logger.LogInformation($"UPnP port forwarding successful for port {port}.");
                 }
                 catch (Exception ex)
@@ -74,7 +98,9 @@ namespace OmniSync.Hub.Logic.Services
             {
                 try
                 {
-                    await _device.DeletePortMapAsync(new Mapping(Protocol.Tcp, port, port, $"OmniHub-{port}"));
+                    _logger.LogInformation($"Removing UPnP port forwarding for port {port}...");
+                    var mapping = new Mapping(Protocol.Tcp, port, port, $"OmniHub-{port}");
+                    await _device.DeletePortMapAsync(mapping);
                     _logger.LogInformation($"UPnP port mapping removed for port {port}.");
                 }
                 catch (Exception ex)
