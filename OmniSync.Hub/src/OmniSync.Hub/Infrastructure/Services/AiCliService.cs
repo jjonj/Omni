@@ -927,7 +927,7 @@ namespace OmniSync.Hub.Infrastructure.Services
                                 }
                             }
                             else if (type == "thought") { if (text != null) _onResponse(_stablePid, $"Thinking: {text}", isFinished, false, false, false); }
-                            else if (type == "call") { if (text != null) _onResponse(_stablePid, text, isFinished, false, false, false); }
+                            else if (type == "call") { if (text != null) _onResponse(_stablePid, $"[Tool Call] {text}", isFinished, false, false, false); }
                             else if (type == "dialog") {
                                 var dt = msg.RootElement.GetProperty("dialogType").GetString();
                                 _logger.LogInformation($"[GeminiSession] SID: {_sid} | Dialog received: {dt}");

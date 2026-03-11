@@ -1694,9 +1694,9 @@ class SignalRClient(
             val mutable = currentMessages.toMutableList()
             val isNextNew = getIsNextBubble(pid)
             
-            // If it's a system message, we ALWAYS start a new bubble
+            // If it's a system/error/user message (anything non-AI), we ALWAYS start a new bubble
             if (sender != "AI") {
-                setIsNextBubble(pid, true) // Force next AI chunk to also be a new bubble
+                setIsNextBubble(pid, true) // Force next message to also be a new bubble
                 mutable + AiMessage(sender, response)
             } else {
                 // Regular AI chunk
