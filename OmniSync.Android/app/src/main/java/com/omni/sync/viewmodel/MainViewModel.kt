@@ -426,20 +426,25 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             _toastMessage.emit(message)
         }
     }
+fun setConnected(connected: Boolean) {
+    val wasConnected = _isConnected.value
+    _isConnected.value = connected
 
-    fun setConnected(connected: Boolean) {
-        _isConnected.value = connected
-        if (connected) {
-            addLog("Hub Connected", LogType.SUCCESS)
-            showToast("Hub Connected")
-            resetSleep()
-            fetchMacros()
-        } else {
-            addLog("Hub Disconnected", LogType.ERROR)
-            showToast("Hub Disconnected")
-            _isSleeping.value = sleepTracker.isSleeping()
-        }
+    if (connected == wasConnected) return // Avoid spamming effects if state hasn't changed
+
+    if (connected) {
+        _errorMessage.value = null
+        addLog("Hub Connected", LogType.SUCCESS)
+        showToast("Hub Connected")
+        resetSleep()
+        fetchMacros()
+    } else {
+        addLog("Hub Disconnected", LogType.ERROR)
+        showToast("Hub Disconnected")
+        _isSleeping.value = sleepTracker.isSleeping()
     }
+}
+
     
     fun setShiftPressed(isPressed: Boolean) {
         _isShiftPressed.value = isPressed
