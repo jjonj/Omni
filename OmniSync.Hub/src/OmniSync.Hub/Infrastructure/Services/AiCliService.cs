@@ -930,12 +930,24 @@ namespace OmniSync.Hub.Infrastructure.Services
                             else if (type == "toolCall" || type == "call") { if (text != null) _onResponse(_stablePid, $"[Tool Call] {text}", isFinished, false, false, false); }
                             else if (type == "codeDiff") { if (text != null) _onResponse(_stablePid, text, isFinished, false, true, false); }
                             else if (type == "dialog") {
-                                var dt = msg.RootElement.GetProperty("dialogType").GetString();
+                                var dt = msg.RootElement.TryGetProperty("dialogType", out var dtProp) ? dtProp.GetString() : "unknown";
+                                var prompt = msg.RootElement.TryGetProperty("prompt", out var pProp) ? pProp.GetString() : (text ?? "");
                                 _logger.LogInformation($"[GeminiSession] SID: {_sid} | Dialog received: {dt}");
+                                
                                 if (dt == "ready") {
                                     MarkAsReady();
                                 } else {
-                                    _onDialog(_stablePid, dt ?? "unknown", text ?? "", null, null);
+                                    List<string>? options = null;
+                                    if (msg.RootElement.TryGetProperty("options", out var optsProp) && optsProp.ValueKind == JsonValueKind.Array) {
+                                        options = JsonSerializer.Deserialize<List<string>>(optsProp.GetRawText());
+                                    }
+
+                                    List<GeminiQuestion>? questions = null;
+                                    if (msg.RootElement.TryGetProperty("questions", out var qsProp) && qsProp.ValueKind == JsonValueKind.Array) {
+                                        questions = JsonSerializer.Deserialize<List<GeminiQuestion>>(qsProp.GetRawText());
+                                    }
+
+                                    _onDialog(_stablePid, dt ?? "unknown", prompt, options, questions);
                                 }
                             }
                             else if (type == "turn_end") { _onTurnEnd(_stablePid, msg.RootElement.GetProperty("reason").GetString() ?? "unknown", "unknown", null, null, null, null, null, null, null); }
