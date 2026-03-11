@@ -794,6 +794,9 @@ namespace OmniSync.Hub.Infrastructure.Services
                             var msg = JsonDocument.Parse(completeMsg);
                             var type = msg.RootElement.GetProperty("type").GetString();
                             var text = msg.RootElement.TryGetProperty("text", out var t) ? t.GetString() : null;
+                            var isUser = msg.RootElement.TryGetProperty("isUser", out var iu) && iu.GetBoolean();
+                            var isCodeDiff = msg.RootElement.TryGetProperty("isCodeDiff", out var icd) && icd.GetBoolean();
+                            var isFinished = msg.RootElement.TryGetProperty("isFinished", out var ifin) && ifin.GetBoolean();
 
                             if (type == "history") {
                                 if (text != null) {
@@ -918,10 +921,10 @@ namespace OmniSync.Hub.Infrastructure.Services
                                 }
                                 else if (!_isCapturingHistory) {
                                     if (text != "[Command Handled]" && _recentlyBroadcastMessages.Add(text))
-                                        _onResponse(_stablePid, text, false, false, false, false);
+                                        _onResponse(_stablePid, text, isFinished, false, isCodeDiff, isUser);
                                 }
                             }
-                            else if (type == "thought") { if (text != null) _onResponse(_stablePid, $"Thinking: {text}", false, false, false, false); }
+                            else if (type == "thought") { if (text != null) _onResponse(_stablePid, $"Thinking: {text}", isFinished, false, false, false); }
                             else if (type == "dialog") {
                                 var dt = msg.RootElement.GetProperty("dialogType").GetString();
                                 _logger.LogInformation($"[GeminiSession] SID: {_sid} | Dialog received: {dt}");

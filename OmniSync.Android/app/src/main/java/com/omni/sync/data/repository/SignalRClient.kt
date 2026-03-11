@@ -565,6 +565,7 @@ class SignalRClient(
         hubConnection?.on("ReceiveAiMessage", { senderId: String, message: String, pid: Int ->
             val senderName = if (senderId == hubConnection?.connectionId || senderId == "CLI_USER") "Me" else "User"
             updateSessionMessages(pid) { it + AiMessage(senderName, message) }
+            setIsNextBubble(pid, true) // User message always breaks the stream
         }, String::class.java, String::class.java, Int::class.java)
 
         hubConnection?.on("ReceiveAiResponse", { response: String, pid: Int ->
@@ -1672,8 +1673,13 @@ class SignalRClient(
                 response.startsWith("Replacement") ||
                 response.startsWith("Read") ||
                 response.startsWith("Tool Call") ||
+                response.startsWith("[Tool Call]") ||
                 response.startsWith("Thinking") ||
-                response.startsWith("Executing")
+                response.startsWith("Executing") ||
+                response.startsWith("Calling") ||
+                response.startsWith("Validating") ||
+                response.startsWith("Strategy:") ||
+                response.startsWith("Research:")
 
         val sender = when {
             isError -> "Error"
@@ -1685,13 +1691,22 @@ class SignalRClient(
             val mutable = currentMessages.toMutableList()
             val isNextNew = getIsNextBubble(pid)
             
-            if (!isNextNew && !isError && !isSystem && mutable.isNotEmpty() && mutable.last().sender == "AI") {
-                val lastMsg = mutable.last()
-                mutable[mutable.size - 1] = lastMsg.copy(text = lastMsg.text + response)
-                mutable
-            } else {
-                if (!isError && !isSystem) setIsNextBubble(pid, false)
+            // If it's a system message, we ALWAYS start a new bubble
+            if (isSystem || isError) {
+                setIsNextBubble(pid, true) // Force next AI chunk to also be a new bubble
                 mutable + AiMessage(sender, response)
+            } else {
+                // Regular AI chunk
+                if (!isNextNew && mutable.isNotEmpty() && mutable.last().sender == "AI") {
+                    // Append to existing AI bubble
+                    val lastMsg = mutable.last()
+                    mutable[mutable.size - 1] = lastMsg.copy(text = lastMsg.text + response)
+                    mutable
+                } else {
+                    // Start new AI bubble
+                    setIsNextBubble(pid, false)
+                    mutable + AiMessage(sender, response)
+                }
             }
         }
     }

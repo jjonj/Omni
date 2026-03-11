@@ -1333,10 +1333,11 @@ fun ChatBubble(
     val content = message.text
     val isMe = sender == "Me"
     val isAi = sender == "AI"
+    val isUser = sender == "User"
     val isCodeDiff = sender == "CodeDiff"
-    val isToolCall = sender == "System" && content.startsWith("Tool Call:")
+    val isToolCall = sender == "System" && (content.startsWith("Tool Call:") || content.startsWith("[Tool Call]"))
     val isError = sender == "Error" || content.startsWith("Error:")
-    val isSystem = sender == "System" && !isToolCall || (!isMe && !isAi && !isError && !isCodeDiff && !isToolCall)
+    val isSystem = sender == "System" && !isToolCall || (!isMe && !isAi && !isUser && !isError && !isCodeDiff && !isToolCall)
     
     val context = LocalContext.current
     val timestamp = remember { 
@@ -1356,6 +1357,7 @@ fun ChatBubble(
         isCodeDiff -> Color.Black.copy(alpha = 0.9f)
         isMe -> MaterialTheme.colorScheme.primaryContainer
         isAi -> MaterialTheme.colorScheme.secondaryContainer
+        isUser -> MaterialTheme.colorScheme.tertiaryContainer
         else -> MaterialTheme.colorScheme.surfaceVariant
     }
 
@@ -1364,6 +1366,7 @@ fun ChatBubble(
         isSystem -> Color(0xFF333333) // Dark text for yellow
         isToolCall -> Color(0xFF666600) // Dark yellowish for tool call text
         isCodeDiff -> Color.White
+        isUser -> MaterialTheme.colorScheme.onTertiaryContainer
         else -> MaterialTheme.colorScheme.onSurface
     }
 
