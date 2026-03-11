@@ -307,26 +307,12 @@ namespace OmniSync.Hub.Infrastructure.Services
 
         public async Task<List<int>> DiscoverSessionsAsync(int connectionTimeoutMs = 1000, int startupTimeout = 5000)
         {
-            /* 
-             * SESSION PROCESS HIERARCHY NOTE:
-             * Every 'Gemini CLI' session typically consists of a 4-level process tree:
-             * 1. cmd.exe (Root) - The outer shell container that owns the window/tab.
-             * 2. node.exe (Launcher) - A shim process that starts the CLI.
-             * 3. node.exe (Engine) - The actual Gemini CLI logic.
-             * 4. node.exe (Extension) - Background workers like 'omni-server.cjs'.
-             * 
-             * The Hub tracks PID #2 (the Launcher).
-             * This ensures we have a stable PID for the session while avoiding 
-             * duplicate listings for the child engine or extension servers.
-             * 
-             * WE ALSO TRACK PID #1 (the Root) for window management operations.
-             */
             await _discoveryLock.WaitAsync();
             try
             {
-                var pids = new List<int>();
                 var now = DateTime.Now;
 
+                // 1. Cleanup exited sessions
                 foreach (var existingPid in _sessions.Keys.ToList())
                 {
                     try {
@@ -341,40 +327,40 @@ namespace OmniSync.Hub.Infrastructure.Services
                     }
                 }
 
-                if ((now - _lastWmiDiscovery).TotalSeconds < 10 && _cachedWmiPids.Any())
-                {
-                    pids = _cachedWmiPids.ToList();
-                }
-                else
-                {
-                    pids = await GetAllGeminiPidsAsync();
-                    
-                    var leafPids = new HashSet<int>();
-                    foreach (var gp in _cachedRawGeminiInfo)
-                    {
-                        var child = _cachedRawGeminiInfo.FirstOrDefault(other => other.Parent == gp.Pid);
-                        if (child.Pid != 0)
-                        {
-                            leafPids.Add(child.Pid);
-                        }
-                    }
-                    pids = pids.Except(leafPids).ToList();
-                    _cachedWmiPids = pids.ToList();
-                }
+                // 2. Discover current process groups
+                var sessionInfos = await GetAllGeminiPidsAsync();
+                var discoveredLauncherPids = sessionInfos.Select(s => s.Pid).ToList();
 
+                // 3. Prune sessions that no longer exist
                 foreach (var pid in _sessions.Keys.ToList())
                 {
-                    if (!pids.Contains(pid)) {
-                        bool shouldRemove = true;
-                        try { if (Process.GetProcessById(pid).HasExited) shouldRemove = true; else shouldRemove = false; } catch { shouldRemove = true; }
-                        if (shouldRemove && _sessions.TryRemove(pid, out var session)) session.Dispose();
+                    if (!discoveredLauncherPids.Contains(pid)) {
+                        if (_sessions.TryRemove(pid, out var session)) session.Dispose();
                     }
                 }
 
-                var pidsToConnect = pids.Where(p => (!_sessions.ContainsKey(p) || !_sessions[p].IsConnected)).ToList();
-                if (pidsToConnect.Any())
+                // 4. Update or Create sessions
+                foreach (var info in sessionInfos)
                 {
-                    await Task.WhenAll(pidsToConnect.Select(p => EnsureSessionAsync(p, Math.Min(connectionTimeoutMs, 300))));
+                    if (_sessions.TryGetValue(info.Pid, out var existing))
+                    {
+                        // If the active engine PID has changed (e.g. Launcher spawned Engine), reconnect
+                        if (existing.ActivePid != info.ActivePid)
+                        {
+                            _logger.LogInformation($"[AiCliService] Session {info.Pid} transitioned Active PID: {existing.ActivePid} -> {info.ActivePid}. Reconnecting...");
+                            existing.UpdateActivePid(info.ActivePid);
+                            _ = existing.ConnectAsync(connectionTimeoutMs);
+                        }
+                    }
+                    else
+                    {
+                        // Create new session keyed by Launcher PID
+                        await EnsureSessionAsync(info.Pid, info.ActivePid, info.RootPid, connectionTimeoutMs);
+                    }
+
+                    // 5. Ensure window title is set (essential for activation of old sessions)
+                    var titleHint = GetTitleHint(info.Pid);
+                    _processService.SetWindowTitle(info.RootPid, $"{titleHint ?? "Gemini"} [{info.Pid}]", null);
                 }
                 
                 var connectedPids = _sessions.Where(s => s.Value.IsConnected).Select(s => s.Key).ToList();
@@ -401,7 +387,7 @@ namespace OmniSync.Hub.Infrastructure.Services
                 _isLaunching = true;
                 try
                 {
-                    var initialPids = await GetAllGeminiPidsAsync();
+                    var initialPids = (await GetAllGeminiPidsAsync()).Select(s => s.Pid).ToList();
                     string rootPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", ".."));
                     string geminiDir = Path.GetFullPath(Path.Combine(rootPath, "..", "Tools", "omni-gemini-cli", "main")).TrimEnd('\\', '/');
 
@@ -420,24 +406,11 @@ namespace OmniSync.Hub.Infrastructure.Services
                     for (int i = 0; i < 40; i++) 
                     {
                         await Task.Delay(1000);
-                        _lastWmiDiscovery = DateTime.MinValue;
                         var currentSessions = await DiscoverSessionsAsync(1000, 5000); 
                         var diffPids = currentSessions.Except(initialPids).ToList();
                         if (diffPids.Any())
                         {
-                            int pid = diffPids.First();
-                            _targetPid = pid;
-
-                            var finalWsName = _workspaces.TryGetValue(pid, out var ws) ? ws : wsName;
-                            var finalTitle = $"{finalWsName} [{pid}]";
-                            
-                            int rootPid = pid;
-                            var raw = _cachedRawGeminiInfo.FirstOrDefault(r => r.Pid == pid);
-                            if (raw.Pid != 0) rootPid = raw.Parent;
-
-                            _processService.SetWindowTitle(rootPid, finalTitle, tempTitle);
-
-                            return pid;
+                            return diffPids.First();
                         }
                     }
                     return null;
@@ -447,19 +420,15 @@ namespace OmniSync.Hub.Infrastructure.Services
             finally { _launchLock.Release(); }
         }
 
-        private async Task EnsureSessionAsync(int pid, int timeoutMs)
+        private async Task EnsureSessionAsync(int stablePid, int activePid, int rootPid, int timeoutMs)
         {
-            if (_sessions.TryGetValue(pid, out var existing) && existing.IsConnected) return;
+            if (_sessions.TryGetValue(stablePid, out var existing) && existing.IsConnected) return;
             
-            _logger.LogInformation($"[AiCliService] Ensuring session for PID {pid} (timeout: {timeoutMs}ms)");
+            _logger.LogInformation($"[AiCliService] Ensuring session for Stable PID {stablePid} (Active: {activePid}, Root: {rootPid})");
             DateTime startTime = DateTime.Now;
-            try { startTime = Process.GetProcessById(pid).StartTime; } catch { }
+            try { startTime = Process.GetProcessById(stablePid).StartTime; } catch { }
 
-            int rootPid = pid;
-            var raw = _cachedRawGeminiInfo.FirstOrDefault(r => r.Pid == pid);
-            if (raw.Pid != 0) rootPid = raw.Parent;
-
-            var session = new GeminiSession(pid, rootPid, startTime, _logger, _debugMode, (p, text, finished, history, isCodeDiff, isUser) =>
+            var session = new GeminiSession(stablePid, activePid, rootPid, startTime, _logger, _debugMode, (p, text, finished, history, isCodeDiff, isUser) =>
             {
                 ResponseReceived?.Invoke(this, new GeminiResponseEventArgs { Pid = p, Text = text, IsFinished = finished, IsHistory = history, IsCodeDiff = isCodeDiff, IsUser = isUser });
             }, (p, type, prompt, options, questions) =>
@@ -475,19 +444,26 @@ namespace OmniSync.Hub.Infrastructure.Services
             if (await session.ConnectAsync(timeoutMs))
             {
                 if ((DateTime.Now - startTime).TotalSeconds > 15) session.MarkAsReady();
-                _sessions[pid] = session;
-                _logger.LogInformation($"[AiCliService] Connected to Gemini session PID {pid} (Root: {rootPid})");
-                var savedName = _settingsService.GetAiSessionName($"{startTime.Ticks}_{pid}");
-                if (savedName != null) _sessionNames[pid] = savedName;
-            } else session.Dispose();
+                _sessions[stablePid] = session;
+                _logger.LogInformation($"[AiCliService] Connected to Gemini session Stable PID {stablePid} via Active PID {activePid}");
+                var savedName = _settingsService.GetAiSessionName($"{startTime.Ticks}_{stablePid}");
+                if (savedName != null) _sessionNames[stablePid] = savedName;
+            } else {
+                // If connection fails, still track it so we can try again in next discovery
+                _sessions[stablePid] = session; 
+            }
         }
 
-        private async Task<List<int>> GetAllGeminiPidsAsync()
+        private class RawSessionInfo {
+            public int Pid { get; set; }       // Launcher
+            public int ActivePid { get; set; } // Engine
+            public int RootPid { get; set; }   // Shell
+        }
+
+        private async Task<List<RawSessionInfo>> GetAllGeminiPidsAsync()
         {
-            var now = DateTime.Now;
-            var pids = new List<int>();
+            var results = new List<RawSessionInfo>();
             try {
-                // Query for node and cmd processes
                 string query = "SELECT ProcessId, CommandLine, ParentProcessId, Name FROM Win32_Process WHERE Name LIKE 'node%' OR Name = 'cmd.exe'";
                 using var searcher = new ManagementObjectSearcher(query);
                 using var collection = searcher.Get();
@@ -504,16 +480,13 @@ namespace OmniSync.Hub.Infrastructure.Services
 
                 var geminiNodes = allProcs.Where(p => p.Name.ToLower().StartsWith("node") && (p.Cmd.ToLower().Contains("gemini.js") || p.Cmd.ToLower().Contains("omni_gemini"))).ToList();
                 
-                // Group nodes by their 'Root' (the first non-node parent, usually cmd.exe)
                 var sessionGroups = new Dictionary<int, List<int>>(); // RootPid -> List of Node Pids
-                var nodeToRootMap = new Dictionary<int, int>();
 
                 foreach (var node in geminiNodes)
                 {
                     int currentId = node.Pid;
                     int rootPid = currentId;
                     
-                    // Walk up the tree
                     int safety = 0;
                     while (safety++ < 10)
                     {
@@ -521,49 +494,47 @@ namespace OmniSync.Hub.Infrastructure.Services
                         if (parent.Pid == 0) break;
                         
                         rootPid = parent.Pid;
-                        if (!parent.Name.ToLower().StartsWith("node")) break; // Found the shell/launcher
+                        if (!parent.Name.ToLower().StartsWith("node")) break;
                         currentId = parent.Pid;
                     }
 
                     if (!sessionGroups.ContainsKey(rootPid)) sessionGroups[rootPid] = new List<int>();
                     sessionGroups[rootPid].Add(node.Pid);
-                    nodeToRootMap[node.Pid] = rootPid;
                 }
-
-                var finalPids = new List<int>();
-                var rawInfo = new List<(int Pid, string Name, string Cmd, int Parent)>();
 
                 foreach (var group in sessionGroups)
                 {
                     int rootPid = group.Key;
                     var members = group.Value;
 
-                    // Pick the 'Deepest' node as the primary PID for SignalR/Pipe communication
-                    int primaryPid = members.FirstOrDefault(m => !members.Any(other => allProcs.FirstOrDefault(x => x.Pid == other).Parent == m));
-                    
-                    if (primaryPid == 0) primaryPid = members.Last(); // Fallback to newest
+                    // Launcher is the node whose parent is NOT a node (or the top-most node)
+                    int launcherPid = members.FirstOrDefault(m => {
+                        var pId = allProcs.FirstOrDefault(x => x.Pid == m).Parent;
+                        return !members.Contains(pId);
+                    });
+                    if (launcherPid == 0) launcherPid = members.First();
 
-                    finalPids.Add(primaryPid);
-                    
-                    var primaryNode = allProcs.First(p => p.Pid == primaryPid);
-                    rawInfo.Add((primaryPid, primaryNode.Name, primaryNode.Cmd, rootPid)); // We store RootPid in the 'Parent' slot for GeminiSession
+                    // Active (Engine) is the deepest node
+                    int activePid = members.FirstOrDefault(m => !members.Any(other => allProcs.FirstOrDefault(x => x.Pid == other).Parent == m));
+                    if (activePid == 0) activePid = members.Last();
 
-                    // Handle workspace extraction for the primary node
-                    if (primaryNode.Cmd.Contains("--workspace")) {
-                        var parts = primaryNode.Cmd.Split(new[] { "--workspace" }, StringSplitOptions.None);
+                    results.Add(new RawSessionInfo { Pid = launcherPid, ActivePid = activePid, RootPid = rootPid });
+
+                    // Workspace extraction
+                    var launcherNode = allProcs.First(p => p.Pid == launcherPid);
+                    var activeNode = allProcs.First(p => p.Pid == activePid);
+                    var cmdToScan = activeNode.Cmd.Contains("--workspace") ? activeNode.Cmd : launcherNode.Cmd;
+
+                    if (cmdToScan.Contains("--workspace")) {
+                        var parts = cmdToScan.Split(new[] { "--workspace" }, StringSplitOptions.None);
                         if (parts.Length > 1) {
                             var ws = parts[1].Trim().Split(' ')[0].Trim('\"', '\'');
-                            try { _workspaces[primaryPid] = Path.GetFileName(ws.TrimEnd('\\', '/')); } catch { _workspaces[primaryPid] = ws; }
+                            try { _workspaces[launcherPid] = Path.GetFileName(ws.TrimEnd('\\', '/')); } catch { _workspaces[launcherPid] = ws; }
                         }
                     }
                 }
-
-                _cachedRawGeminiInfo = rawInfo;
-                pids = finalPids;
-                _cachedWmiPids = pids;
-                _lastWmiDiscovery = now;
             } catch (Exception ex) { _logger.LogError(ex, "Error in GetAllGeminiPidsAsync"); }
-            return pids;
+            return results;
         }
 
         public async Task<bool> SendPromptAsync(string text, int pid = -1)
@@ -670,7 +641,8 @@ namespace OmniSync.Hub.Infrastructure.Services
             return sb.ToString();
         }
 
-        private readonly int _pid;
+        private readonly int _stablePid;
+        private int _activePid;
         private readonly int _rootPid;
         private readonly string _sid;
         private readonly DateTime _startTime;
@@ -690,19 +662,26 @@ namespace OmniSync.Hub.Infrastructure.Services
 
         public bool IsConnected => _pipeClient?.IsConnected ?? false;
         public bool IsReady => _isReady;
-        public int Pid => _pid;
+        public int Pid => _stablePid;
+        public int ActivePid => _activePid;
         public int RootPid => _rootPid;
         public DateTime StartTime => _startTime;
 
-        public GeminiSession(int pid, int rootPid, DateTime startTime, ILogger logger, bool debugMode, Action<int, string, bool, bool, bool, bool> onResponse, Action<int, string, string, List<string>?, List<GeminiQuestion>?> onDialog, Action<int, string, string, string?, string?, string?, string?, string?, string?, string?> onTurnEnd)
+        public GeminiSession(int stablePid, int activePid, int rootPid, DateTime startTime, ILogger logger, bool debugMode, Action<int, string, bool, bool, bool, bool> onResponse, Action<int, string, string, List<string>?, List<GeminiQuestion>?> onDialog, Action<int, string, string, string?, string?, string?, string?, string?, string?, string?> onTurnEnd)
         {
-            _pid = pid; _rootPid = rootPid; _sid = Guid.NewGuid().ToString().Substring(0, 4); _startTime = startTime; _logger = logger; _debugMode = debugMode; _onResponse = onResponse; _onDialog = onDialog; _onTurnEnd = onTurnEnd;
+            _stablePid = stablePid; _activePid = activePid; _rootPid = rootPid; _sid = Guid.NewGuid().ToString().Substring(0, 4); _startTime = startTime; _logger = logger; _debugMode = debugMode; _onResponse = onResponse; _onDialog = onDialog; _onTurnEnd = onTurnEnd;
+        }
+
+        public void UpdateActivePid(int activePid)
+        {
+            _activePid = activePid;
         }
 
         public async Task<bool> ConnectAsync(int timeoutMs)
         {
             try {
-                _pipeClient = new NamedPipeClientStream(".", $"omni-gemini-cli-{_pid}", PipeDirection.InOut, PipeOptions.Asynchronous);
+                if (_pipeClient != null) { _cts?.Cancel(); _writer?.Dispose(); _pipeClient?.Dispose(); }
+                _pipeClient = new NamedPipeClientStream(".", $"omni-gemini-cli-{_activePid}", PipeDirection.InOut, PipeOptions.Asynchronous);
                 await _pipeClient.ConnectAsync(timeoutMs);
                 _writer = new StreamWriter(_pipeClient) { AutoFlush = true };
                 _cts = new CancellationTokenSource();
@@ -839,7 +818,7 @@ namespace OmniSync.Hub.Infrastructure.Services
                                         _logger.LogError(ex, $"[GeminiSession] SID: {_sid} | History parsing FAILED: {ex.Message}. Sample: {sample}");
                                         historyJson = "[{\"sender\":\"System\",\"text\":\"Error: Failed to process history. \"}]";
                                     }
-                                    _onResponse(_pid, historyJson, true, true, false, false);
+                                    _onResponse(_stablePid, historyJson, true, true, false, false);
                                 }
                             }
                             else if (type == "response") {
@@ -886,21 +865,21 @@ namespace OmniSync.Hub.Infrastructure.Services
                                             }
                                         }
                                     } catch { }
-                                    _onResponse(_pid, historyJson, true, true, false, false);
+                                    _onResponse(_stablePid, historyJson, true, true, false, false);
                                     _historyBuffer.Clear();
                                 }
                                 else if (!_isCapturingHistory) {
                                     if (text != "[Command Handled]" && _recentlyBroadcastMessages.Add(text))
-                                        _onResponse(_pid, text, false, false, false, false);
+                                        _onResponse(_stablePid, text, false, false, false, false);
                                 }
                             }
-                            else if (type == "thought") { if (text != null) _onResponse(_pid, $"Thinking: {text}", false, false, false, false); }
+                            else if (type == "thought") { if (text != null) _onResponse(_stablePid, $"Thinking: {text}", false, false, false, false); }
                             else if (type == "dialog") {
                                 var dt = msg.RootElement.GetProperty("dialogType").GetString();
                                 if (dt == "ready") MarkAsReady();
-                                _onDialog(_pid, dt ?? "unknown", text ?? "", null, null);
+                                _onDialog(_stablePid, dt ?? "unknown", text ?? "", null, null);
                             }
-                            else if (type == "turn_end") { _onTurnEnd(_pid, msg.RootElement.GetProperty("reason").GetString() ?? "unknown", "unknown", null, null, null, null, null, null, null); }
+                            else if (type == "turn_end") { _onTurnEnd(_stablePid, msg.RootElement.GetProperty("reason").GetString() ?? "unknown", "unknown", null, null, null, null, null, null, null); }
                         } catch { }
                     }
                     if (lastPos < chunk.Length) msgAccumulator.Append(chunk.Substring(lastPos));
