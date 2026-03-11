@@ -944,6 +944,9 @@ namespace OmniSync.Hub.Presentation.Hubs
                 // 1. Broadcast the user message so other clients can see it
                 await Clients.All.SendAsync("ReceiveAiMessage", Context.ConnectionId, message, targetPid);
 
+                // 2. Reset bubble state on all clients for this session so the response starts a new bubble
+                await Clients.All.SendAsync("ReceiveAiStatus", "RESET_BUBBLE", targetPid);
+
                 string connectionId = Context.ConnectionId;
 
                 if (message.ToLower().Contains("heya"))

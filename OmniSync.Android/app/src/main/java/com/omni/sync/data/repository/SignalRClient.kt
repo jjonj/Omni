@@ -598,6 +598,9 @@ class SignalRClient(
                 updateSessionMessages(pid) { messages ->
                     messages.map { it.copy(isQueued = false) }
                 }
+            } else if (status == "RESET_BUBBLE") {
+                Log.d("SignalRClient", "RESET_BUBBLE received for pid=$pid")
+                setIsNextBubble(pid, true)
             } else if (status == "QUEUED") {
                 updateSessionStatus(pid, "Queued (AI busy)")
                 _isWaitingForAiResponseMap.value = _isWaitingForAiResponseMap.value + (pid to false)
@@ -1667,8 +1670,7 @@ class SignalRClient(
         updateSessionThought(pid, null)
 
         val isError = response.startsWith("Error:")
-        val isSystem = response.contains("A new version of Gemini CLI is available") ||
-                response.startsWith("System:") ||
+        val isSystemLine = response.startsWith("System:") ||
                 response.startsWith("Info:") ||
                 response.startsWith("Replacement") ||
                 response.startsWith("Read") ||
@@ -1678,8 +1680,9 @@ class SignalRClient(
                 response.startsWith("Executing") ||
                 response.startsWith("Calling") ||
                 response.startsWith("Validating") ||
-                response.startsWith("Strategy:") ||
-                response.startsWith("Research:")
+                (response.length < 200 && (response.startsWith("Strategy:") || response.startsWith("Research:")))
+
+        val isSystem = response.contains("A new version of Gemini CLI is available") || isSystemLine
 
         val sender = when {
             isError -> "Error"
