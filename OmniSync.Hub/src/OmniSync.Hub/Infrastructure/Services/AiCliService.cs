@@ -932,8 +932,11 @@ namespace OmniSync.Hub.Infrastructure.Services
                             else if (type == "dialog") {
                                 var dt = msg.RootElement.GetProperty("dialogType").GetString();
                                 _logger.LogInformation($"[GeminiSession] SID: {_sid} | Dialog received: {dt}");
-                                if (dt == "ready") MarkAsReady();
-                                _onDialog(_stablePid, dt ?? "unknown", text ?? "", null, null);
+                                if (dt == "ready") {
+                                    MarkAsReady();
+                                } else {
+                                    _onDialog(_stablePid, dt ?? "unknown", text ?? "", null, null);
+                                }
                             }
                             else if (type == "turn_end") { _onTurnEnd(_stablePid, msg.RootElement.GetProperty("reason").GetString() ?? "unknown", "unknown", null, null, null, null, null, null, null); }
                         } catch { }

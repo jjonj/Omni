@@ -1741,6 +1741,9 @@ fun AiDialogBubble(
     signalRClient: SignalRClient,
     selectedPid: Int
 ) {
+    // Gracefully ignore internal or ready dialogs
+    if (dialog.type == "ready" || dialog.type == "status") return
+
     // State to hold answers for questions if present
     val answers = remember(dialog) { mutableMapOf<Int, String>() }
 
