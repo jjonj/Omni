@@ -1700,9 +1700,10 @@ class SignalRClient(
                 mutable + AiMessage(sender, response)
             } else {
                 // Regular AI chunk
-                if (!isNextNew && mutable.isNotEmpty() && mutable.last().sender == "AI") {
+                val lastMsg = mutable.lastOrNull()
+                // If we're not explicitly starting a new bubble, AND the last message was AI, append it
+                if (!isNextNew && lastMsg != null && lastMsg.sender == "AI") {
                     // Append to existing AI bubble
-                    val lastMsg = mutable.last()
                     mutable[mutable.size - 1] = lastMsg.copy(text = lastMsg.text + response)
                     mutable
                 } else {
