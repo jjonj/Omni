@@ -430,25 +430,33 @@ foreach ($p in $procs) {{
             Action action = () => {
                 try
                 {
-                    _monitorService.AddLogMessage($"[ProcessService] WinActivatePid: {pid} (Hint: {titleHint ?? "None"})");
+                    _monitorService.AddLogMessage($"[ProcessService] [FOCUS-TRACE] WinActivatePid: {pid} (Hint: {titleHint ?? "None"})");
                     var treePids = GetProcessTreePids(pid);
-                    _monitorService.AddLogMessage($"[ProcessService] Found {treePids.Count} PIDs in tree for root {pid}: {string.Join(", ", treePids)}");
+                    
+                    var treeDetails = string.Join(", ", treePids.Select(p => {
+                        try {
+                            using var proc = Process.GetProcessById(p);
+                            return $"{p}({proc.ProcessName})";
+                        } catch { return $"{p}(Unknown)"; }
+                    }));
+                    _monitorService.AddLogMessage($"[ProcessService] [FOCUS-TRACE] Process Tree for Root {pid}: {treeDetails}");
+
                     var hwnds = GetVisibleWindowsForPids(treePids, titleHint);
 
                     if (hwnds.Any())
                     {
                         var targetHwnd = hwnds.First();
-                        _monitorService.AddLogMessage($"[ProcessService] Activating HWND {targetHwnd} for PID {pid}");
+                        _monitorService.AddLogMessage($"[ProcessService] [FOCUS-TRACE] Activating HWND {targetHwnd} for PID {pid}");
                         ActivateWindow(targetHwnd);
                     }
                     else
                     {
-                        _monitorService.AddLogMessage($"[ProcessService] No window found to activate for PID {pid}");
+                        _monitorService.AddLogMessage($"[ProcessService] [FOCUS-TRACE] FAILURE: No window found to activate for PID {pid}. Tree PIDs: {string.Join(",", treePids)}");
                     }
                 }
                 catch (Exception ex)
                 {
-                    _monitorService.AddLogMessage($"[ProcessService] Error in WinActivatePid: {ex.Message}");
+                    _monitorService.AddLogMessage($"[ProcessService] [FOCUS-TRACE] Error in WinActivatePid: {ex.Message}");
                 }
             };
 
@@ -1141,7 +1149,7 @@ Add-Type -MemberDefinition $code -Name Win32 -Namespace Native
                                               procName.Contains("node", StringComparison.OrdinalIgnoreCase) ||
                                               procName.Contains("PowerShell", StringComparison.OrdinalIgnoreCase);
                             
-                            score += (isTerminal ? 100 : 0);
+                            score += (isTerminal ? 200 : 50); // Higher bonus for terminal matches
                             score += CalculateTitleScore(title, titleHint!);
                         }
 

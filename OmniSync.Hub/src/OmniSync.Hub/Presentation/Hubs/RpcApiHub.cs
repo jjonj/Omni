@@ -946,11 +946,18 @@ namespace OmniSync.Hub.Presentation.Hubs
 
                 string connectionId = Context.ConnectionId;
 
+                if (message.ToLower().Contains("heya"))
+                {
+                    _logger.LogInformation($"[RpcApiHub] [HEYA-TRACE] Received 'heya' message. Target PID: {targetPid}");
+                }
+
                 // 2. Direct Hub-to-CLI communication (Backgrounded to prevent Hub blocking)
                 _ = Task.Run(async () =>
                 {
                     try
                     {
+                        if (message.ToLower().Contains("heya")) _logger.LogInformation($"[RpcApiHub] [HEYA-TRACE] Background task starting for 'heya'. PID: {targetPid}");
+
                         if (_aiCliService.IsBusy)
                         {
                             _logger.LogInformation($"[RpcApiHub] AI is busy, notifying client that message is QUEUED (PID: {targetPid})");
@@ -966,8 +973,12 @@ namespace OmniSync.Hub.Presentation.Hubs
                         }
 
                         _logger.LogInformation($"[RpcApiHub] Background task sending prompt to AI (PID: {targetPid})");
+                        if (message.ToLower().Contains("heya")) _logger.LogInformation($"[RpcApiHub] [HEYA-TRACE] Calling SendPromptAsync for 'heya'. PID: {targetPid}");
                         bool success = await _aiCliService.SendPromptAsync(message, targetPid);
+                        if (message.ToLower().Contains("heya")) _logger.LogInformation($"[RpcApiHub] [HEYA-TRACE] SendPromptAsync returned {success} for 'heya'. PID: {targetPid}");
+
                         if (!success)
+
                         {
                             _logger.LogWarning($"[RpcApiHub] AI Communication Failed for PID {targetPid}");
                             await _hubEventSender.SendAiError(connectionId, "Error: Failed to communicate with AI service.", targetPid);

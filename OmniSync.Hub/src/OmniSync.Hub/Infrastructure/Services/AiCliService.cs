@@ -163,7 +163,12 @@ namespace OmniSync.Hub.Infrastructure.Services
             if (_sessions.TryGetValue(pid, out var s))
             {
                 string? hint = GetTitleHint(pid);
+                _logger.LogInformation($"[AiCliService] [FOCUS-TRACE] Focus requested for Session {pid}. StablePid: {s.Pid}, ActivePid: {s.ActivePid}, RootPid: {s.RootPid}, Hint: {hint ?? "None"}");
                 _processService.WinActivatePid(s.RootPid, hint);
+            }
+            else
+            {
+                _logger.LogWarning($"[AiCliService] [FOCUS-TRACE] Focus requested for unknown Session PID: {pid}");
             }
             await Task.CompletedTask;
         }
@@ -542,7 +547,6 @@ namespace OmniSync.Hub.Infrastructure.Services
             int target = pid == -1 ? _targetPid : pid;
             if (target != -1 && _sessions.TryGetValue(target, out var s) && s.IsConnected)
             {
-                if (!s.IsReady) await s.WaitUntilReadyAsync(30000);
                 return await s.SendPromptAsync(text);
             }
             return false;
@@ -659,6 +663,7 @@ namespace OmniSync.Hub.Infrastructure.Services
         private readonly HashSet<string> _recentlyBroadcastMessages = new();
         private bool _isReady = false;
         private readonly TaskCompletionSource<bool> _readyTcs = new();
+        private readonly ConcurrentQueue<string> _outgoingBuffer = new();
 
         public bool IsConnected => _pipeClient?.IsConnected ?? false;
         public bool IsReady => _isReady;
@@ -674,7 +679,11 @@ namespace OmniSync.Hub.Infrastructure.Services
 
         public void UpdateActivePid(int activePid)
         {
-            _activePid = activePid;
+            if (_activePid != activePid)
+            {
+                _logger.LogInformation($"[GeminiSession] SID: {_sid} | Active PID updating: {_activePid} -> {activePid}. (Stable: {_stablePid})");
+                _activePid = activePid;
+            }
         }
 
         public async Task<bool> ConnectAsync(int timeoutMs)
@@ -686,14 +695,53 @@ namespace OmniSync.Hub.Infrastructure.Services
                 _writer = new StreamWriter(_pipeClient) { AutoFlush = true };
                 _cts = new CancellationTokenSource();
                 _ = Task.Run(() => ReadLoopAsync(_cts.Token));
+
+                // Ask the CLI if it's already ready
+                _logger.LogInformation($"[GeminiSession] SID: {_sid} | Sending checkReadiness command to Active PID: {_activePid}");
+                await _writer.WriteLineAsync(JsonSerializer.Serialize(new { command = "checkReadiness" }));
+                
                 return true;
             } catch { return false; }
         }
 
-        public void MarkAsReady() { if (!_isReady) { _isReady = true; _readyTcs.TrySetResult(true); } }
-        public async Task<bool> WaitUntilReadyAsync(int ms) { return await Task.WhenAny(_readyTcs.Task, Task.Delay(ms)) == _readyTcs.Task; }
+        public void MarkAsReady() 
+        { 
+            if (!_isReady) 
+            { 
+                _logger.LogInformation($"[GeminiSession] SID: {_sid} | Session MARKED AS READY (Stable PID: {_stablePid}, Active: {_activePid})");
+                _isReady = true; 
+                _readyTcs.TrySetResult(true); 
+                _ = FlushBufferAsync();
+            } 
+        }
+
+        private async Task FlushBufferAsync()
+        {
+            while (_outgoingBuffer.TryDequeue(out var text))
+            {
+                _logger.LogInformation($"[GeminiSession] SID: {_sid} | Flushing buffered prompt to Active PID {_activePid}: {(text.Length > 20 ? text.Substring(0, 20) + "..." : text)}");
+                await SendPromptInternalAsync(text);
+            }
+        }
+
+        public async Task<bool> WaitUntilReadyAsync(int ms) 
+        { 
+            if (_isReady) return true;
+            return await Task.WhenAny(_readyTcs.Task, Task.Delay(ms)) == _readyTcs.Task; 
+        }
 
         public async Task<bool> SendPromptAsync(string text)
+        {
+            if (!_isReady)
+            {
+                _logger.LogInformation($"[GeminiSession] SID: {_sid} | Session not ready. Buffering prompt locally.");
+                _outgoingBuffer.Enqueue(text);
+                return true; // Technically 'success' as it's queued
+            }
+            return await SendPromptInternalAsync(text);
+        }
+
+        private async Task<bool> SendPromptInternalAsync(string text)
         {
             if (!IsConnected || _writer == null) return false;
             try {
@@ -876,6 +924,7 @@ namespace OmniSync.Hub.Infrastructure.Services
                             else if (type == "thought") { if (text != null) _onResponse(_stablePid, $"Thinking: {text}", false, false, false, false); }
                             else if (type == "dialog") {
                                 var dt = msg.RootElement.GetProperty("dialogType").GetString();
+                                _logger.LogInformation($"[GeminiSession] SID: {_sid} | Dialog received: {dt}");
                                 if (dt == "ready") MarkAsReady();
                                 _onDialog(_stablePid, dt ?? "unknown", text ?? "", null, null);
                             }
