@@ -565,7 +565,7 @@ class SignalRClient(
         hubConnection?.on("ReceiveAiMessage", { senderId: String, message: String, pid: Int ->
             val senderName = if (senderId == hubConnection?.connectionId || senderId == "CLI_USER") "Me" else "User"
             updateSessionMessages(pid) { it + AiMessage(senderName, message) }
-            setIsNextBubble(pid, true) // User message always breaks the stream
+            setIsNextBubble(pid, true) // ANY user message (Me or others) breaks the stream
         }, String::class.java, String::class.java, Int::class.java)
 
         hubConnection?.on("ReceiveAiResponse", { response: String, pid: Int ->
@@ -1695,7 +1695,7 @@ class SignalRClient(
             val isNextNew = getIsNextBubble(pid)
             
             // If it's a system message, we ALWAYS start a new bubble
-            if (isSystem || isError) {
+            if (sender != "AI") {
                 setIsNextBubble(pid, true) // Force next AI chunk to also be a new bubble
                 mutable + AiMessage(sender, response)
             } else {

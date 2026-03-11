@@ -664,6 +664,7 @@ namespace OmniSync.Hub.Infrastructure.Services
         private bool _isReady = false;
         private readonly TaskCompletionSource<bool> _readyTcs = new();
         private readonly ConcurrentQueue<string> _outgoingBuffer = new();
+        private string? _lastSentPrompt = null;
 
         public bool IsConnected => _pipeClient?.IsConnected ?? false;
         public bool IsReady => _isReady;
@@ -745,6 +746,7 @@ namespace OmniSync.Hub.Infrastructure.Services
         {
             if (!IsConnected || _writer == null) return false;
             try {
+                _lastSentPrompt = text;
                 await _writer.WriteLineAsync(JsonSerializer.Serialize(new { command = "prompt", text = text }));
                 return true;
             } catch { return false; }
@@ -920,11 +922,12 @@ namespace OmniSync.Hub.Infrastructure.Services
                                     _historyBuffer.Clear();
                                 }
                                 else if (!_isCapturingHistory) {
-                                    if (text != "[Command Handled]" && _recentlyBroadcastMessages.Add(text))
+                                    if (text != "[Command Handled]" && text != _lastSentPrompt && _recentlyBroadcastMessages.Add(text))
                                         _onResponse(_stablePid, text, isFinished, false, isCodeDiff, isUser);
                                 }
                             }
                             else if (type == "thought") { if (text != null) _onResponse(_stablePid, $"Thinking: {text}", isFinished, false, false, false); }
+                            else if (type == "call") { if (text != null) _onResponse(_stablePid, text, isFinished, false, false, false); }
                             else if (type == "dialog") {
                                 var dt = msg.RootElement.GetProperty("dialogType").GetString();
                                 _logger.LogInformation($"[GeminiSession] SID: {_sid} | Dialog received: {dt}");
