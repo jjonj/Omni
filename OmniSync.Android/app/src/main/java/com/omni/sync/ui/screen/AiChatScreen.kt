@@ -1123,7 +1123,8 @@ fun Dot(alpha: Float) {
 @Composable
 fun ToolCallBubble(content: String) {
     val toolData = remember(content) {
-        val raw = content.removePrefix("Tool Call:").trim()
+        val raw = content.removePrefix("[Tool Call]").trim()
+                        .removePrefix("Tool Call:").trim()
         try {
             val gson = com.google.gson.Gson()
             if (raw.startsWith("{")) {
