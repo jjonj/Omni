@@ -199,7 +199,7 @@ fun FilesScreen(
                                         text = { Text("AI: Add dir to $activeSessionName") },
                                         onClick = {
                                             showHeaderMenu = false
-                                            filesViewModel.signalRClient.sendAiMessage("/dir add \"$currentPath\"")
+                                            filesViewModel.signalRClient.sendAiMessage("/dir add $currentPath")
                                             Toast.makeText(context, "Added to $activeSessionName", Toast.LENGTH_SHORT).show()
                                         }
                                     )
@@ -209,7 +209,7 @@ fun FilesScreen(
                                     onClick = {
                                         showHeaderMenu = false
                                         filesViewModel.mainViewModel.navigateTo(com.omni.sync.viewmodel.AppScreen.AI_CHAT)
-                                        filesViewModel.signalRClient.sendAiMessage("/dir add \"$currentPath\"")
+                                        filesViewModel.signalRClient.sendAiMessage("/dir add $currentPath")
                                     }
                                 )
                                 DropdownMenuItem(
@@ -421,7 +421,7 @@ fun FilesScreen(
                                 formatFileSize = { filesViewModel.formatFileSize(it) },
                                 onBookmarkToggle = { filesViewModel.toggleBookmark(it) },
                                 onAddToSession = { entry, name ->
-                                    filesViewModel.signalRClient.sendAiMessage("/dir add \"${entry.path}\"")
+                                    filesViewModel.signalRClient.sendAiMessage("/dir add ${entry.path}")
                                     Toast.makeText(context, "Added to $name", Toast.LENGTH_SHORT).show()
                                 },
                                 onClick = { clickedEntry ->
@@ -472,7 +472,7 @@ fun FilesScreen(
                                 },
                                 onOpenInAiChat = { entry ->
                                     filesViewModel.mainViewModel.navigateTo(com.omni.sync.viewmodel.AppScreen.AI_CHAT)
-                                    filesViewModel.signalRClient.sendAiMessage("/dir add \"${entry.path}\"")
+                                    filesViewModel.signalRClient.sendAiMessage("/dir add ${entry.path}")
                                 },
                                 onDuplicate = { entry ->
                                     filesViewModel.duplicateFile(entry)

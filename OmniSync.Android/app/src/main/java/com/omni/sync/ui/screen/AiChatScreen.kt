@@ -525,7 +525,7 @@ fun AiChatScreen(
                                     leadingIcon = { Icon(Icons.Default.Folder, null) },
                                     trailingIcon = {
                                         IconButton(onClick = {
-                                            signalRClient.sendAiMessage("/dir add \"${bookmark.path}\"")
+                                            signalRClient.sendAiMessage("/dir add ${bookmark.path}")
                                             showWorkspaceMenu = false 
                                         }) {
                                             Icon(Icons.AutoMirrored.Filled.ArrowForward, "Add to current session")
@@ -778,7 +778,7 @@ fun AiChatScreen(
                         signalRClient.startNewAiSession(path)
                     } else {
                         selectedWorkspace = path
-                        signalRClient.sendAiMessage("/dir add \"$path\"")
+                        signalRClient.sendAiMessage("/dir add $path")
                     }
                 }
             )
