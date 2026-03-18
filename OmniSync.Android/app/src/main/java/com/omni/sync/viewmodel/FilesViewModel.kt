@@ -181,8 +181,8 @@ class FilesViewModel(
                  val name = lastOpenedPath.substringAfterLast("/").substringAfterLast("\\")
                  val entry = FileSystemEntry(name, lastOpenedPath, false, 0, java.util.Date())
                  
-                 // Manual context setup without navigation
-                 _editingFile.value = entry
+                 // Manual context setup without navigation (only restore tabs, don't set active)
+                 // _editingFile.value = entry
                  _editingContent.value = cachedContent
                  
                  val currentOpen = _openFiles.value.toMutableList()
@@ -193,6 +193,10 @@ class FilesViewModel(
                  val currentContents = _openFileContents.value.toMutableMap()
                  currentContents[entry.path] = cachedContent
                  _openFileContents.value = currentContents
+                 
+                 // If we have an open file, but no active edit, default back to the list
+                 // but keep the state ready for when they pick a tab
+                 // _editingFile.value = entry // DISABLED: Always start on FILES list
              }
         }
 

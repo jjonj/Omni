@@ -272,14 +272,18 @@ class MainActivity : ComponentActivity() {
                                     currentScreen = currentScreen,
                                     onNavigate = { screen -> 
                                         if (screen == AppScreen.FILES) {
-                                            if (filesViewModel.editingFile.value != null) {
-                                                if (currentScreen == AppScreen.EDITOR) {
-                                                    mainViewModel.navigateTo(AppScreen.FILES)
-                                                } else {
-                                                    mainViewModel.navigateTo(AppScreen.EDITOR)
+                                            if (currentScreen == AppScreen.FILES || currentScreen == AppScreen.EDITOR) {
+                                                // Toggle if already in Files context
+                                                if (filesViewModel.editingFile.value != null) {
+                                                    if (currentScreen == AppScreen.EDITOR) {
+                                                        mainViewModel.navigateTo(AppScreen.FILES)
+                                                    } else {
+                                                        mainViewModel.navigateTo(AppScreen.EDITOR)
+                                                    }
                                                 }
                                             } else {
-                                                mainViewModel.navigateTo(AppScreen.FILES)
+                                                // Switching back from another screen: restore last active
+                                                mainViewModel.navigateTo(mainViewModel.lastFilesScreen.value)
                                             }
                                         } else {
                                             mainViewModel.navigateTo(screen)
