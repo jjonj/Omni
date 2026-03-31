@@ -1185,6 +1185,11 @@ async function loadTFTData() {
         if (configTextarea) configTextarea.value = userDefaultDisabledUnits.join(', ');
 
         optimizer = new TFTOptimizer(tftData.units, tftData.trait_metadata);
+        
+        // Register addons
+        optimizer.addAddon(new Set16RulesAddon(optimizer, compRules));
+        optimizer.addAddon(new UnlockAddon(optimizer));
+        
         setupSolverListeners();
         updateUI();
         setActiveZone('must-include');
@@ -2113,6 +2118,7 @@ function createOptimizerWorker() {
 
     const blob = new Blob([`
         importScripts('${jsPath}tft_optimizer.js?v=${Date.now()}');
+        importScripts('${jsPath}tft_addons.js?v=${Date.now()}');
         
         let optimizer = null;
 
@@ -2121,6 +2127,9 @@ function createOptimizerWorker() {
             
             if (type === 'init') {
                 optimizer = new TFTOptimizer(data.units, data.traitsData);
+                // Register standard addons in worker
+                optimizer.addAddon(new Set16RulesAddon(optimizer, data.compRules));
+                optimizer.addAddon(new UnlockAddon(optimizer));
                 return;
             }
 

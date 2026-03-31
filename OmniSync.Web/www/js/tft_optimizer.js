@@ -1,8 +1,34 @@
+/**
+ * TFTOptimizer: A flexible, set-agnostic TFT board optimizer.
+ * 
+ * DESIGN NOTE: All set-specific mechanics (like Set 16's specific scoring rules or 
+ * the 'Unlock' requirement system) MUST be implemented as TFTAddons.
+ * This keeps the core search algorithm clean and ready for new sets.
+ * 
+ * To add a new set:
+ * 1. Create a new addon class extending TFTAddon in tft_addons.js.
+ * 2. Register it in tft.js (and workers) during initialization.
+ */
+class TFTAddon {
+    constructor(optimizer) {
+        this.optimizer = optimizer;
+    }
+    onInit() {}
+    beforeScore(board, emblems, targetSize, mode) { return null; }
+    modifyScore(result, board, emblems, targetSize, mode, mustIncludeNames) { return result; }
+    expandMustInclude(expandedNames) { return expandedNames; }
+    modifyPool(pool, size, emblems, mustIncludeNames, mustIncludeTraits, heuristic, mode) { return pool; }
+    modifyCandidates(candidates, neededSlots, fixedUnits) { return { candidates, neededSlots, fixedUnits }; }
+    modifySynergyBase(synergyBase, emblems, mode) { return synergyBase; }
+    modifyTraitIncrement(u, trait) { return 1; }
+}
+
 class TFTOptimizer {
     constructor(units, traitsData) {
         this.UNITS = units;
         this.TRAITS_DATA = traitsData;
         this.isCancelled = false;
+        this.addons = [];
 
         // Speed Optimization: Pre-index traits
         this.traitNames = Object.keys(traitsData || {});
@@ -14,7 +40,6 @@ class TFTOptimizer {
         this.UNIQUE_TRAIT_SCORE = 1900;
         
         this.LOCKED_UNIT_PENALTY = 500;
-        this.YORDLE_PENALTY = 200;
         this.UNIT_COST_TIEBREAKER_WEIGHT = 10;
         
         // Hard Constraints
@@ -25,13 +50,6 @@ class TFTOptimizer {
         
         // Trait Difficulty Constraints
         this.MAX_TRAIT_COUNT = 7;
-        this.FORBIDDEN_TRAITS = {
-            "Shurima": 3,
-            "Ixtal": 3
-        };
-        
-        this.SMALL_TRAIT_BONUS = 1;
-        this.BONUS_TRAITS = ["Quickstriker", "Piltover", "Targon"];
         
         // Data-driven ignored traits
         this.IGNORE_TRAITS = [];
@@ -43,12 +61,13 @@ class TFTOptimizer {
             }
         }
         
-        // Unit Specifics
-        this.ANNIE_ARCANIST_COUNT = 1;
-        this.SYLAS_FORBIDDEN_NAMES = ["Jarvan IV", "Lux", "Garen"];
-        
         // Algorithm Settings
         this.CANDIDATE_POOL_SIZE = 40; 
+    }
+
+    addAddon(addon) {
+        this.addons.push(addon);
+        addon.onInit();
     }
 
     cancel() {
@@ -58,23 +77,12 @@ class TFTOptimizer {
     expandMustInclude(names) {
         if (!names) return [];
         let namesArray = Array.isArray(names) ? [...names] : [names];
-        const expandedNames = new Set(namesArray);
+        let expandedNames = new Set(namesArray);
         
-        let added;
-        do {
-            added = false;
-            for (let i = 0; i < this.UNITS.length; i++) {
-                const u = this.UNITS[i];
-                
-                // Forward dependency: If we have forced a unit, we must force what it requires.
-                if (expandedNames.has(u.name)) {
-                    if (u.requires && !expandedNames.has(u.requires)) {
-                        expandedNames.add(u.requires);
-                        added = true;
-                    }
-                }
-            }
-        } while (added);
+        for (const addon of this.addons) {
+            expandedNames = addon.expandMustInclude(expandedNames);
+        }
+        
         return Array.from(expandedNames);
     }
 
@@ -84,7 +92,8 @@ class TFTOptimizer {
             if (!traitData || traitData.type !== 'origin') return false;
             
             const breakpoints = traitData.breakpoints;
-            // Targon is active at 1 unit, others check breakpoints
+            // Targon logic was hardcoded, now we need to handle it or move to addon
+            // For core, we check breakpoints. Addons can override or we can keep a "generic" origin check.
             if (t === 'Targon') return counts[t] >= 1;
             return breakpoints && breakpoints.some(b => b <= counts[t]);
         });
@@ -95,34 +104,25 @@ class TFTOptimizer {
         const names = new Set();
         for (let i = 0; i < board.length; i++) names.add(board[i].name);
         
-        if (names.has("Sylas") && this.SYLAS_FORBIDDEN_NAMES.some(x => names.has(x))) {
-            return { score: -this.INVALID_COMP_PENALTY, counts };
+        // Addon Hook: beforeScore
+        for (const addon of this.addons) {
+            const result = addon.beforeScore(board, emblems, targetSize, mode);
+            if (result) return result;
         }
 
-        // Data-driven requirements check
-        for (let i = 0; i < board.length; i++) {
-            const u = board[i];
-            if (u.requires && !names.has(u.requires)) {
-                return { score: -this.INVALID_COMP_PENALTY, counts };
-            }
-        }
-
-        // Hard Level Rules (Exempting Must-Include)
-        const mustSet = new Set(mustIncludeNames);
-        if (targetSize < 6 && names.has("Kennen") && !mustSet.has("Kennen")) return { score: -this.INVALID_COMP_PENALTY, counts };
-        if (targetSize < 7 && board.some(u => u.name.includes("Kobuko") && !mustSet.has(u.name))) return { score: -this.INVALID_COMP_PENALTY, counts };
-        
-        // Strict cost limits
-        if (targetSize < 7 && board.some(u => u.cost >= 4 && !mustSet.has(u.name))) return { score: -this.INVALID_COMP_PENALTY, counts };
-        if (targetSize < 8 && board.some(u => u.cost === 5 && !mustSet.has(u.name))) return { score: -this.INVALID_COMP_PENALTY, counts };
-        
         for (let i = 0; i < board.length; i++) {
             const u = board[i];
             for (let j = 0; j < u.traits.length; j++) {
                 const t = u.traits[j];
                 // In ryze-unlock mode, we need all origins, even ignored ones like Ixtal
                 if (this.IGNORE_TRAITS.includes(t) && mode !== 'ryze-unlock') continue;
-                const increment = (u.name === "Annie" && t === "Arcanist") ? this.ANNIE_ARCANIST_COUNT : 1;
+                
+                let increment = 1;
+                for (const addon of this.addons) {
+                    increment = addon.modifyTraitIncrement(u, t);
+                    if (increment !== 1) break; // First addon that modifies it wins
+                }
+                
                 counts[t] = (counts[t] || 0) + increment;
             }
         }
@@ -142,9 +142,6 @@ class TFTOptimizer {
             if (count > this.MAX_TRAIT_COUNT) {
                 score -= this.INVALID_COMP_PENALTY;
             }
-            if (this.FORBIDDEN_TRAITS[trait] !== undefined && count > this.FORBIDDEN_TRAITS[trait]) {
-                score -= this.INVALID_COMP_PENALTY;
-            }
             
             const traitData = this.TRAITS_DATA[trait];
             if (traitData) {
@@ -162,19 +159,12 @@ class TFTOptimizer {
                         activeTraits.add(trait);
                     }
 
-                    if (trait === "Targon") {
-                        // Small fixed bonus at breakpoint 1, no scaling
-                        // Exclude from scoring in bronze mode
-                        if (highest >= 1 && mode !== 'bronze-for-life') {
-                            score += 200; 
-                        }
+                    if (mode === 'bronze-for-life') {
+                        // In bronze mode, non-excluded traits get fixed score per reached breakpoint
+                        if (!isBronzeExclusion) score += 1 * this.BREAKPOINT_SCORE_MULTIPLIER;
                     } else {
-                        if (mode === 'bronze-for-life') {
-                            // In bronze mode, non-excluded traits get fixed score per reached breakpoint
-                            score += 1 * this.BREAKPOINT_SCORE_MULTIPLIER;
-                        } else {
-                            score += highest * this.BREAKPOINT_SCORE_MULTIPLIER;
-                        }
+                        // Generic scoring (Targon logic moved to addon)
+                        if (trait !== "Targon") score += highest * this.BREAKPOINT_SCORE_MULTIPLIER;
                     }
                 } else {
                     if (mode === 'bronze-for-life' && trait !== "Targon") {
@@ -198,22 +188,6 @@ class TFTOptimizer {
             }
         }
 
-        const activeOrigins = this.getActiveOrigins(counts);
-        const activeOriginsCount = activeOrigins.length;
-
-        if (mode === 'world-runes' || mode === 'ryze-unlock') {
-            if (activeOriginsCount < 4) {
-                if (board.length >= targetSize) {
-                    score -= this.INVALID_COMP_PENALTY;
-                } else {
-                    // Extremely aggressive guidance for intermediate steps
-                    score += activeOriginsCount * 10000;
-                }
-            } else {
-                score += 100000; // Requirement met massive bonus
-            }
-        }
-
         for (const targetTrait in mustIncludeTraits) {
             const requiredValue = mustIncludeTraits[targetTrait];
             const currentCount = (counts[targetTrait] || 0);
@@ -229,7 +203,6 @@ class TFTOptimizer {
         
         let carryCount = 0;
         let highCostCarryCount = 0;
-        let threeCostCount = 0;
         let lowCostCount = 0; 
         let highCostCount = 0;
 
@@ -239,7 +212,6 @@ class TFTOptimizer {
                 carryCount++;
                 if (u.cost >= 4) highCostCarryCount++;
             }
-            if (u.cost === 3) threeCostCount++;
             if (u.cost <= 2) lowCostCount++;
             if (u.cost >= 4) highCostCount++;
         }
@@ -259,41 +231,20 @@ class TFTOptimizer {
         }
         
         const costWeight = (targetSize >= 7) ? this.UNIT_COST_TIEBREAKER_WEIGHT : -10; 
-        const bonusTraitWeight = (targetSize >= 7) ? 100 : 1;
 
         for (let i = 0; i < board.length; i++) {
             const u = board[i];
             if (u.locked) score -= this.LOCKED_UNIT_PENALTY;
-            
-            let isTargonUnit = false;
-            for (let j = 0; j < u.traits.length; j++) {
-                const t = u.traits[j];
-                if (t === "Yordle") score -= this.YORDLE_PENALTY;
-                if (this.BONUS_TRAITS.includes(t)) score += bonusTraitWeight;
-                if (t === "Targon") isTargonUnit = true;
-            }
-
-            if (isTargonUnit && mode !== 'bronze-for-life') {
-                score += this.BREAKPOINT_SCORE_MULTIPLIER * 0.2; 
-            }
-
             score += u.cost * costWeight;
         }
         
-        if (board.length >= targetSize) {
-            if (targetSize === 10) {
-                if (lowCostCount > 3) score -= this.INVALID_COMP_PENALTY;
-                if (highCostCount < 5) score -= this.INVALID_COMP_PENALTY;
-            }
-            if (targetSize === 9) {
-                if (lowCostCount > 4) score -= this.INVALID_COMP_PENALTY;
-                if (highCostCount < 4) score -= this.INVALID_COMP_PENALTY;
-            }
-            if (targetSize === 4 && threeCostCount > 1) score -= this.INVALID_COMP_PENALTY;
-            if (targetSize === 5 && threeCostCount > 2) score -= this.INVALID_COMP_PENALTY;
+        // Addon Hook: modifyScore
+        let result = { score, counts };
+        for (const addon of this.addons) {
+            result = addon.modifyScore(result, board, emblems, targetSize, mode, mustIncludeNames);
         }
         
-        return { score, counts };
+        return result;
     }
 
     *getCombos(targetSlots, pool) {
@@ -354,7 +305,12 @@ class TFTOptimizer {
         if (namesArray.length > 0) {
             fixedUnits = this.UNITS.filter(u => namesArray.includes(u.name));
         }
-        const synergyBase = new Set([...emblems, ...this.BONUS_TRAITS]);
+
+        let synergyBase = new Set(emblems);
+        for (const addon of this.addons) {
+            synergyBase = addon.modifySynergyBase(synergyBase, emblems, mode);
+        }
+
         fixedUnits.forEach(f => f.traits.forEach(t => synergyBase.add(t)));
         
         let candidates = pool.filter(u => !fixedUnits.some(f => f.name === u.name));
