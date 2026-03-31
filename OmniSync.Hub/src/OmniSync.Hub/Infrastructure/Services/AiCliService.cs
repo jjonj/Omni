@@ -108,6 +108,7 @@ namespace OmniSync.Hub.Infrastructure.Services
         private readonly ConcurrentDictionary<int, string> _sessionNames = new();
         private readonly ConcurrentDictionary<int, string> _workspaces = new();
         private readonly ConcurrentDictionary<int, string> _lastDialogTypes = new();
+        private readonly ConcurrentDictionary<int, string> _lastSetTitles = new();
         private readonly ConcurrentDictionary<int, string> _tellPcContexts = new();
         private bool _isTriggeringTellPcFromHub = false;
         private string? _pendingTellPcContext = null;
@@ -365,7 +366,13 @@ namespace OmniSync.Hub.Infrastructure.Services
 
                     // 5. Ensure window title is set (essential for activation of old sessions)
                     var titleHint = GetTitleHint(info.Pid);
-                    _processService.SetWindowTitle(info.RootPid, $"{titleHint ?? "Gemini"} [{info.Pid}]", null);
+                    var desiredTitle = $"{titleHint ?? "Gemini"} [{info.Pid}]";
+                    
+                    if (!_lastSetTitles.TryGetValue(info.RootPid, out var lastTitle) || lastTitle != desiredTitle)
+                    {
+                        _processService.SetWindowTitle(info.RootPid, desiredTitle, null);
+                        _lastSetTitles[info.RootPid] = desiredTitle;
+                    }
                 }
                 
                 var connectedPids = _sessions.Where(s => s.Value.IsConnected).Select(s => s.Key).ToList();

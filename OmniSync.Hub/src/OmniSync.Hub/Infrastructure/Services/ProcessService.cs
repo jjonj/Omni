@@ -430,33 +430,18 @@ foreach ($p in $procs) {{
             Action action = () => {
                 try
                 {
-                    _monitorService.AddLogMessage($"[ProcessService] [FOCUS-TRACE] WinActivatePid: {pid} (Hint: {titleHint ?? "None"})");
                     var treePids = GetProcessTreePids(pid);
-                    
-                    var treeDetails = string.Join(", ", treePids.Select(p => {
-                        try {
-                            using var proc = Process.GetProcessById(p);
-                            return $"{p}({proc.ProcessName})";
-                        } catch { return $"{p}(Unknown)"; }
-                    }));
-                    _monitorService.AddLogMessage($"[ProcessService] [FOCUS-TRACE] Process Tree for Root {pid}: {treeDetails}");
-
                     var hwnds = GetVisibleWindowsForPids(treePids, titleHint);
 
                     if (hwnds.Any())
                     {
                         var targetHwnd = hwnds.First();
-                        _monitorService.AddLogMessage($"[ProcessService] [FOCUS-TRACE] Activating HWND {targetHwnd} for PID {pid}");
                         ActivateWindow(targetHwnd);
-                    }
-                    else
-                    {
-                        _monitorService.AddLogMessage($"[ProcessService] [FOCUS-TRACE] FAILURE: No window found to activate for PID {pid}. Tree PIDs: {string.Join(",", treePids)}");
                     }
                 }
                 catch (Exception ex)
                 {
-                    _monitorService.AddLogMessage($"[ProcessService] [FOCUS-TRACE] Error in WinActivatePid: {ex.Message}");
+                    _monitorService.AddLogMessage($"[ProcessService] Error in WinActivatePid: {ex.Message}");
                 }
             };
 
@@ -475,8 +460,6 @@ foreach ($p in $procs) {{
             Action action = () => {
                 try
                 {
-                    _monitorService.AddLogMessage($"[ProcessService] SetWindowTitle for PID {pid}: '{title}' (Hint: {titleHint ?? "None"})");
-                    
                     // First try the Aggressive Console approach (AttachConsole + SetConsoleTitle)
                     // This is most reliable for Windows Terminal / cmd windows
                     SetConsoleTitleAggressive(pid, title);
@@ -488,7 +471,6 @@ foreach ($p in $procs) {{
                     if (hwnds.Any())
                     {
                         var targetHwnd = hwnds.First();
-                        _monitorService.AddLogMessage($"[ProcessService] Setting HWND title for HWND {targetHwnd}");
                         SetWindowText(targetHwnd, title);
                     }
                 }
@@ -1013,11 +995,6 @@ Add-Type -MemberDefinition $code -Name Win32 -Namespace Native
                     }
                 }
 
-                if (nameMap.TryGetValue(rootPid, out var rootName))
-                {
-                    _monitorService.AddLogMessage($"[ProcessTree] Root: PID {rootPid} ({rootName})");
-                }
-
                 // 2. Add children (recursive) - AI processes might spawn children
                 void AddChildren(int pId)
                 {
@@ -1026,7 +1003,6 @@ Add-Type -MemberDefinition $code -Name Win32 -Namespace Native
                         if (kvp.Value == pId && !result.Contains(kvp.Key))
                         {
                             result.Add(kvp.Key);
-                            _monitorService.AddLogMessage($"[ProcessTree] Found child PID {kvp.Key} ({nameMap.GetValueOrDefault(kvp.Key, "Unknown")}) for parent {pId}");
                             AddChildren(kvp.Key);
                         }
                     }
@@ -1045,7 +1021,6 @@ Add-Type -MemberDefinition $code -Name Win32 -Namespace Native
                         if (!result.Contains(parentId))
                         {
                             result.Add(parentId);
-                            _monitorService.AddLogMessage($"[ProcessTree] Found parent PID {parentId} ({parentName}) for {currentPid}");
                         }
 
                         if (parentName.ToLower().Contains("conhost") || parentName.ToLower().Contains("openconsole"))
@@ -1062,7 +1037,6 @@ Add-Type -MemberDefinition $code -Name Win32 -Namespace Native
                                     (siblingName.ToLower().Contains("conhost") || siblingName.ToLower().Contains("openconsole")))
                                 {
                                     result.Add(kvp.Key);
-                                    _monitorService.AddLogMessage($"[ProcessTree] Found sibling console host PID {kvp.Key} ({siblingName})");
                                     foundConsoleHost = true;
                                 }
                             }
@@ -1083,7 +1057,6 @@ Add-Type -MemberDefinition $code -Name Win32 -Namespace Native
                                 if (pName.ToLower().Contains("windowsterminal"))
                                 {
                                     result.Add(pId);
-                                    _monitorService.AddLogMessage($"[ProcessTree] Identified specific hosting Terminal PID {pId} for console {p}");
                                 }
                             }
                         }
@@ -1101,8 +1074,6 @@ Add-Type -MemberDefinition $code -Name Win32 -Namespace Native
         {
             var candidates = new List<(IntPtr hWnd, int priority, long area, string title, string procName)>();
             
-            _monitorService.AddLogMessage($"[WindowSearch] Scanning for windows. Hint: '{titleHint ?? "NONE"}' PIDs: {string.Join(",", pids)}");
-
             EnumWindows((hWnd, lParam) =>
             {
                 if (IsWindowVisible(hWnd))
@@ -1164,23 +1135,14 @@ Add-Type -MemberDefinition $code -Name Win32 -Namespace Native
 
             if (candidates.Count == 0)
             {
-                _monitorService.AddLogMessage("[WindowSearch] No candidates found.");
                 return new List<IntPtr>();
             }
 
-            // Sort and log candidates
-            var ordered = candidates
+            // Sort by priority and area
+            var best = candidates
                 .OrderByDescending(c => c.priority)
                 .ThenByDescending(c => c.area)
-                .ToList();
-
-            foreach (var c in ordered)
-            {
-                _monitorService.AddLogMessage($"[WindowSearch] Candidate: [HWND {c.hWnd}] Score {c.priority} Proc '{c.procName}' Title '{c.title}'");
-            }
-
-            var best = ordered.First();
-            _monitorService.AddLogMessage($"[WindowSearch] SELECTED: [HWND {best.hWnd}] Title '{best.title}' Score {best.priority}");
+                .First();
 
             return new List<IntPtr> { best.hWnd };
         }
