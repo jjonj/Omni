@@ -3,14 +3,20 @@ const path = require('path');
 
 // Load the optimizer class
 const TFTOptimizer = require('../../OmniSync.Web/www/js/tft_optimizer.js');
+const { Set16RulesAddon, UnlockAddon } = require('../../OmniSync.Web/www/js/tft_addons.js');
 
 // Load data
 const set16Path = path.join(__dirname, '../../OmniSync.Web/www/assets/tft/data/set16.json');
 const set16Data = JSON.parse(fs.readFileSync(set16Path, 'utf8'));
 
+const compRulesPath = path.join(__dirname, '../../OmniSync.Web/www/assets/tft/data/comp_rules.json');
+const compRules = JSON.parse(fs.readFileSync(compRulesPath, 'utf8'));
+
 console.log("Loaded Set 16 data:", set16Data.set_name);
 
 const optimizer = new TFTOptimizer(set16Data.units, set16Data.trait_metadata);
+optimizer.addAddon(new Set16RulesAddon(optimizer, compRules));
+optimizer.addAddon(new UnlockAddon(optimizer));
 
 async function runTest() {
     console.log("\n--- Running Test: Rune Solver Heuristic + Level 5 + Yordle & Void Emblems ---");

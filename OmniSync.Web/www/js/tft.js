@@ -17,6 +17,7 @@ let highlightedTrait = null;
 let factoryDefaultDisabled = [];
 let userDefaultDisabledUnits = []; 
 let activeDisabledUnits = [];      
+let activeDisabledUnitsStorageKey = 'tft_user_defaults_disabled';
 
 let hubConnection = null;
 let lastReceivedClipboard = "";
@@ -1169,10 +1170,11 @@ async function loadTFTData() {
         TeamPlannerCode.setMapping(unitIdMap);
 
         // Load factory default disabled units
-        const disabledResp = await fetch('assets/tft/data/default_disabled.json');
+        const disabledResp = await fetch(`assets/tft/data/default_disabled_${currentConfig.current_set}.json`);
         factoryDefaultDisabled = await disabledResp.json();
         
-        const stored = localStorage.getItem('tft_user_defaults_disabled');
+        activeDisabledUnitsStorageKey = `tft_user_defaults_disabled_${currentConfig.current_set}`;
+        const stored = localStorage.getItem(activeDisabledUnitsStorageKey);
         if (stored) {
             userDefaultDisabledUnits = JSON.parse(stored);
         } else {
@@ -1186,9 +1188,14 @@ async function loadTFTData() {
 
         optimizer = new TFTOptimizer(tftData.units, tftData.trait_metadata);
         
-        // Register addons
-        optimizer.addAddon(new Set16RulesAddon(optimizer, compRules));
-        optimizer.addAddon(new UnlockAddon(optimizer));
+        // Register addons based on set
+        if (currentConfig.current_set === 'set17') {
+            optimizer.addAddon(new Set17RulesAddon(optimizer, compRules));
+            // Set 17 does not use the Unlock system
+        } else {
+            optimizer.addAddon(new Set16RulesAddon(optimizer, compRules));
+            optimizer.addAddon(new UnlockAddon(optimizer));
+        }
         
         setupSolverListeners();
         updateUI();
@@ -1408,13 +1415,37 @@ function renderUnitPools() {
     referenceUnits.forEach(u => u.traits.forEach(t => referenceTraits.add(t)));
 
     const roles = ["Tank", "AP Carry", "AD Carry", "Fighter"];
+    const matrix = document.getElementById('unit-pool-matrix');
+    if (!matrix) return;
 
-    for (let cost = 1; cost <= 5; cost++) {
+    // Clear and rebuild matrix structure
+    matrix.innerHTML = '';
+    
+    // Add Header
+    const header = document.createElement('div');
+    header.className = 'role-columns-header';
+    header.innerHTML = '<div class="role-header-label" style="border-bottom: none;"></div>' + 
+                      roles.map(r => `<div class="role-header-label">${r}</div>`).join('');
+    matrix.appendChild(header);
+
+    // Get unique costs from data
+    const costs = [...new Set(tftData.units.map(u => u.cost))].sort((a, b) => a - b);
+
+    costs.forEach(cost => {
+        const costGroup = document.createElement('div');
+        costGroup.className = 'cost-group';
+        costGroup.id = `cost-group-${cost}`;
+        
+        // Cost Label
+        const label = document.createElement('div');
+        label.className = `cost-label cost-${cost > 5 ? 5 : cost}`; // Cap color class at 5
+        label.innerText = cost;
+        costGroup.appendChild(label);
+
         roles.forEach(role => {
-            const poolId = `unit-pool-${cost}-${role}`;
-            const pool = document.getElementById(poolId);
-            if (!pool) return;
-            pool.innerHTML = '';
+            const pool = document.createElement('div');
+            pool.className = 'role-cell';
+            pool.id = `unit-pool-${cost}-${role}`;
             
             const units = tftData.units.filter(u => {
                 if (u.cost !== cost) return false;
@@ -1493,8 +1524,11 @@ function renderUnitPools() {
 
                 pool.appendChild(item);
             });
+
+            costGroup.appendChild(pool);
         });
-    }
+        matrix.appendChild(costGroup);
+    });
     applyTraitHighlight();
 }
 
@@ -1575,7 +1609,7 @@ function addToCurrentTeam(unit) {
 function saveDisabledConfig() {
     const val = document.getElementById('disabled-units-config').value;
     userDefaultDisabledUnits = val.split(',').map(s => s.trim()).filter(s => s);
-    localStorage.setItem('tft_user_defaults_disabled', JSON.stringify(userDefaultDisabledUnits));
+    localStorage.setItem(activeDisabledUnitsStorageKey, JSON.stringify(userDefaultDisabledUnits));
     activeDisabledUnits = [...userDefaultDisabledUnits];
     renderUnitPools();
     alert("Master Exclusion List Saved");
@@ -1584,7 +1618,7 @@ function saveDisabledConfig() {
 function resetDisabledToDefault() {
     if (confirm("Reset Master Exclusions to Factory Defaults?")) {
         userDefaultDisabledUnits = [...factoryDefaultDisabled];
-        localStorage.setItem('tft_user_defaults_disabled', JSON.stringify(userDefaultDisabledUnits));
+        localStorage.setItem(activeDisabledUnitsStorageKey, JSON.stringify(userDefaultDisabledUnits));
         document.getElementById('disabled-units-config').value = userDefaultDisabledUnits.join(', ');
         activeDisabledUnits = [...userDefaultDisabledUnits];
         renderUnitPools();
@@ -2127,9 +2161,13 @@ function createOptimizerWorker() {
             
             if (type === 'init') {
                 optimizer = new TFTOptimizer(data.units, data.traitsData);
-                // Register standard addons in worker
-                optimizer.addAddon(new Set16RulesAddon(optimizer, data.compRules));
-                optimizer.addAddon(new UnlockAddon(optimizer));
+                // Register standard addons in worker based on set
+                if (data.currentSet === 'set17') {
+                    optimizer.addAddon(new Set17RulesAddon(optimizer, data.compRules));
+                } else {
+                    optimizer.addAddon(new Set16RulesAddon(optimizer, data.compRules));
+                    optimizer.addAddon(new UnlockAddon(optimizer));
+                }
                 return;
             }
 
@@ -2306,7 +2344,12 @@ async function runOptimization() {
                         for (let i = 0; i < numWorkers; i++) {
                             const w = createOptimizerWorker();
                             workers.push(w);
-                            w.postMessage({ type: 'init', data: { units: tftData.units, traitsData: tftData.trait_metadata } });
+                            w.postMessage({ type: 'init', data: { 
+                                units: tftData.units, 
+                                traitsData: tftData.trait_metadata, 
+                                compRules: compRules,
+                                currentSet: currentConfig.current_set 
+                            } });
                             w.postMessage({ type: 'findBestBoards', data: { 
                                 candidates, neededSlots, fixedUnits,
                                 size: level, emblems, mustIncludeNames, 

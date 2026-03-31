@@ -1,0 +1,1116 @@
+{
+  "set_name": "Set 17",
+  "units": [
+    {
+      "name": "Zed",
+      "cost": 5,
+      "traits": [
+        "Galaxy Hunter"
+      ],
+      "is_carry": true,
+      "locked": false,
+      "icon_url": "assets/tft/set17/champions/zed.jpg",
+      "role": "Fighter"
+    },
+    {
+      "name": "Vex",
+      "cost": 5,
+      "traits": [
+        "Doomer "
+      ],
+      "is_carry": true,
+      "locked": false,
+      "icon_url": "assets/tft/set17/champions/vex.jpg",
+      "role": "AP Carry"
+    },
+    {
+      "name": "Sona",
+      "cost": 5,
+      "traits": [
+        "Commander ",
+        "Psionic",
+        "Shepherd"
+      ],
+      "is_carry": true,
+      "locked": false,
+      "icon_url": "assets/tft/set17/champions/sona.jpg",
+      "role": "AP Carry"
+    },
+    {
+      "name": "Shen",
+      "cost": 5,
+      "traits": [
+        "Bulwark",
+        "Bastion"
+      ],
+      "is_carry": true,
+      "locked": false,
+      "icon_url": "assets/tft/set17/champions/shen.jpg",
+      "role": "Tank"
+    },
+    {
+      "name": "Morgana",
+      "cost": 5,
+      "traits": [
+        "Dark Lady"
+      ],
+      "is_carry": true,
+      "locked": false,
+      "icon_url": "assets/tft/set17/champions/morgana.jpg",
+      "role": "AP Carry"
+    },
+    {
+      "name": "Jhin",
+      "cost": 5,
+      "traits": [
+        "Dark Star",
+        "Eradicator ",
+        "Sniper"
+      ],
+      "is_carry": true,
+      "locked": false,
+      "icon_url": "assets/tft/set17/champions/jhin.jpg",
+      "role": "AD Carry"
+    },
+    {
+      "name": "Graves",
+      "cost": 5,
+      "traits": [
+        "Factory New"
+      ],
+      "is_carry": true,
+      "locked": false,
+      "icon_url": "assets/tft/set17/champions/graves.jpg",
+      "role": "AD Carry"
+    },
+    {
+      "name": "Fiora",
+      "cost": 5,
+      "traits": [
+        "Divine Duelist",
+        "Anima",
+        "Marauder"
+      ],
+      "is_carry": true,
+      "locked": false,
+      "icon_url": "assets/tft/set17/champions/fiora.jpg",
+      "role": "Fighter"
+    },
+    {
+      "name": "Blitzcrank",
+      "cost": 5,
+      "traits": [
+        "Party Animal",
+        "Space Groove",
+        "Vanguard"
+      ],
+      "is_carry": true,
+      "locked": false,
+      "icon_url": "assets/tft/set17/champions/blitzcrank.jpg",
+      "role": "Tank"
+    },
+    {
+      "name": "Bard",
+      "cost": 5,
+      "traits": [
+        "Meeple",
+        "Channeler"
+      ],
+      "is_carry": true,
+      "locked": false,
+      "icon_url": "assets/tft/set17/champions/bard.jpg",
+      "role": "AP Carry"
+    },
+    {
+      "name": "Xayah",
+      "cost": 4,
+      "traits": [
+        "Stargazer",
+        "Sniper"
+      ],
+      "is_carry": true,
+      "locked": false,
+      "icon_url": "assets/tft/set17/champions/xayah.jpg",
+      "role": "AD Carry"
+    },
+    {
+      "name": "The Mighty Mech",
+      "cost": 4,
+      "traits": [
+        "Mecha",
+        "Voyager"
+      ],
+      "is_carry": true,
+      "locked": false,
+      "icon_url": "assets/tft/set17/champions/the-mighty-mech.jpg",
+      "role": "Tank"
+    },
+    {
+      "name": "Tahm Kench",
+      "cost": 4,
+      "traits": [
+        "Oracle",
+        "Brawler"
+      ],
+      "is_carry": true,
+      "locked": false,
+      "icon_url": "assets/tft/set17/champions/tahmkench.jpg",
+      "role": "Tank"
+    },
+    {
+      "name": "Riven",
+      "cost": 4,
+      "traits": [
+        "Timebreaker",
+        "Rogue"
+      ],
+      "is_carry": true,
+      "locked": false,
+      "icon_url": "assets/tft/set17/champions/riven.jpg",
+      "role": "Fighter"
+    },
+    {
+      "name": "Rammus",
+      "cost": 4,
+      "traits": [
+        "Meeple",
+        "Bastion"
+      ],
+      "is_carry": true,
+      "locked": false,
+      "icon_url": "assets/tft/set17/champions/rammus.jpg",
+      "role": "Tank"
+    },
+    {
+      "name": "Nunu",
+      "cost": 4,
+      "traits": [
+        "Stargazer",
+        "Vanguard"
+      ],
+      "is_carry": true,
+      "locked": false,
+      "icon_url": "assets/tft/set17/champions/nunu.jpg",
+      "role": "Tank"
+    },
+    {
+      "name": "Nami",
+      "cost": 4,
+      "traits": [
+        "Space Groove",
+        "Replicator"
+      ],
+      "is_carry": true,
+      "locked": false,
+      "icon_url": "assets/tft/set17/champions/nami.jpg",
+      "role": "AP Carry"
+    },
+    {
+      "name": "Master Yi",
+      "cost": 4,
+      "traits": [
+        "Psionic",
+        "Marauder"
+      ],
+      "is_carry": true,
+      "locked": false,
+      "icon_url": "assets/tft/set17/champions/masteryi.jpg",
+      "role": "AP Carry"
+    },
+    {
+      "name": "LeBlanc",
+      "cost": 4,
+      "traits": [
+        "Arbiter",
+        "Shepherd"
+      ],
+      "is_carry": true,
+      "locked": false,
+      "icon_url": "assets/tft/set17/champions/leblanc.jpg",
+      "role": "AP Carry"
+    },
+    {
+      "name": "Kindred",
+      "cost": 4,
+      "traits": [
+        "N.O.V.A.",
+        "Challenger"
+      ],
+      "is_carry": true,
+      "locked": false,
+      "icon_url": "assets/tft/set17/champions/kindred.jpg",
+      "role": "AD Carry"
+    },
+    {
+      "name": "Karma",
+      "cost": 4,
+      "traits": [
+        "Dark Star",
+        "Voyager"
+      ],
+      "is_carry": true,
+      "locked": false,
+      "icon_url": "assets/tft/set17/champions/karma.jpg",
+      "role": "AP Carry"
+    },
+    {
+      "name": "Corki",
+      "cost": 4,
+      "traits": [
+        "Meeple",
+        "Fateweaver"
+      ],
+      "is_carry": true,
+      "locked": false,
+      "icon_url": "assets/tft/set17/champions/corki.jpg",
+      "role": "AP Carry"
+    },
+    {
+      "name": "Aurelion Sol",
+      "cost": 4,
+      "traits": [
+        "Mecha",
+        "Channeler"
+      ],
+      "is_carry": true,
+      "locked": false,
+      "icon_url": "assets/tft/set17/champions/aurelionsol.jpg",
+      "role": "AP Carry"
+    },
+    {
+      "name": "Viktor",
+      "cost": 3,
+      "traits": [
+        "Psionic",
+        "Channeler"
+      ],
+      "is_carry": false,
+      "locked": false,
+      "icon_url": "assets/tft/set17/champions/viktor.jpg",
+      "role": "AP Carry"
+    },
+    {
+      "name": "Urgot",
+      "cost": 3,
+      "traits": [
+        "Mecha",
+        "Brawler",
+        "Marauder"
+      ],
+      "is_carry": false,
+      "locked": false,
+      "icon_url": "assets/tft/set17/champions/urgot.jpg",
+      "role": "Fighter"
+    },
+    {
+      "name": "Samira",
+      "cost": 3,
+      "traits": [
+        "Space Groove",
+        "Sniper"
+      ],
+      "is_carry": false,
+      "locked": false,
+      "icon_url": "assets/tft/set17/champions/samira.jpg",
+      "role": "AD Carry"
+    },
+    {
+      "name": "Rhaast",
+      "cost": 3,
+      "traits": [
+        "Redeemer "
+      ],
+      "is_carry": false,
+      "locked": false,
+      "icon_url": "assets/tft/set17/champions/rhaast.jpg",
+      "role": "Fighter"
+    },
+    {
+      "name": "Ornn",
+      "cost": 3,
+      "traits": [
+        "Space Groove",
+        "Bastion"
+      ],
+      "is_carry": false,
+      "locked": false,
+      "icon_url": "assets/tft/set17/champions/ornn.jpg",
+      "role": "Tank"
+    },
+    {
+      "name": "Miss Fortune",
+      "cost": 3,
+      "traits": [
+        "Gun Goddess"
+      ],
+      "is_carry": false,
+      "locked": false,
+      "icon_url": "assets/tft/set17/champions/missfortune.jpg",
+      "role": "AD Carry"
+    },
+    {
+      "name": "Maokai",
+      "cost": 3,
+      "traits": [
+        "N.O.V.A.",
+        "Brawler"
+      ],
+      "is_carry": false,
+      "locked": false,
+      "icon_url": "assets/tft/set17/champions/maokai.jpg",
+      "role": "Tank"
+    },
+    {
+      "name": "Lulu",
+      "cost": 3,
+      "traits": [
+        "Stargazer",
+        "Replicator"
+      ],
+      "is_carry": false,
+      "locked": false,
+      "icon_url": "assets/tft/set17/champions/lulu.jpg",
+      "role": "AP Carry"
+    },
+    {
+      "name": "Kai'Sa",
+      "cost": 3,
+      "traits": [
+        "Dark Star",
+        "Rogue"
+      ],
+      "is_carry": false,
+      "locked": false,
+      "icon_url": "assets/tft/set17/champions/kaisa.jpg",
+      "role": "AD Carry"
+    },
+    {
+      "name": "Illaoi",
+      "cost": 3,
+      "traits": [
+        "Anima",
+        "Vanguard",
+        "Shepherd"
+      ],
+      "is_carry": false,
+      "locked": false,
+      "icon_url": "assets/tft/set17/champions/illaoi.jpg",
+      "role": "Tank"
+    },
+    {
+      "name": "Fizz",
+      "cost": 3,
+      "traits": [
+        "Meeple",
+        "Rogue"
+      ],
+      "is_carry": false,
+      "locked": false,
+      "icon_url": "assets/tft/set17/champions/fizz.jpg",
+      "role": "Fighter"
+    },
+    {
+      "name": "Diana",
+      "cost": 3,
+      "traits": [
+        "Arbiter",
+        "Challenger"
+      ],
+      "is_carry": false,
+      "locked": false,
+      "icon_url": "assets/tft/set17/champions/diana.jpg",
+      "role": "Fighter"
+    },
+    {
+      "name": "Aurora",
+      "cost": 3,
+      "traits": [
+        "Anima",
+        "Voyager"
+      ],
+      "is_carry": false,
+      "locked": false,
+      "icon_url": "assets/tft/set17/champions/aurora.jpg",
+      "role": "AP Carry"
+    },
+    {
+      "name": "Zoe",
+      "cost": 2,
+      "traits": [
+        "Arbiter",
+        "Channeler"
+      ],
+      "is_carry": false,
+      "locked": false,
+      "icon_url": "assets/tft/set17/champions/zoe.jpg",
+      "role": "AP Carry"
+    },
+    {
+      "name": "Pyke",
+      "cost": 2,
+      "traits": [
+        "Psionic",
+        "Voyager"
+      ],
+      "is_carry": false,
+      "locked": false,
+      "icon_url": "assets/tft/set17/champions/pyke.jpg",
+      "role": "AP Carry"
+    },
+    {
+      "name": "Pantheon",
+      "cost": 2,
+      "traits": [
+        "Timebreaker",
+        "Brawler",
+        "Replicator"
+      ],
+      "is_carry": false,
+      "locked": false,
+      "icon_url": "assets/tft/set17/champions/pantheon.jpg",
+      "role": "Tank"
+    },
+    {
+      "name": "Mordekaiser",
+      "cost": 2,
+      "traits": [
+        "Dark Star",
+        "Channeler",
+        "Vanguard"
+      ],
+      "is_carry": false,
+      "locked": false,
+      "icon_url": "assets/tft/set17/champions/mordekaiser.jpg",
+      "role": "Tank"
+    },
+    {
+      "name": "Milio",
+      "cost": 2,
+      "traits": [
+        "Timebreaker",
+        "Fateweaver"
+      ],
+      "is_carry": false,
+      "locked": false,
+      "icon_url": "assets/tft/set17/champions/milio.jpg",
+      "role": "AP Carry"
+    },
+    {
+      "name": "Meepsie",
+      "cost": 2,
+      "traits": [
+        "Meeple",
+        "Shepherd",
+        "Voyager"
+      ],
+      "is_carry": false,
+      "locked": false,
+      "icon_url": "assets/tft/set17/champions/meepsie.jpg",
+      "role": "Tank"
+    },
+    {
+      "name": "Jinx",
+      "cost": 2,
+      "traits": [
+        "Anima",
+        "Challenger"
+      ],
+      "is_carry": false,
+      "locked": false,
+      "icon_url": "assets/tft/set17/champions/jinx.jpg",
+      "role": "AD Carry"
+    },
+    {
+      "name": "Jax",
+      "cost": 2,
+      "traits": [
+        "Stargazer",
+        "Bastion"
+      ],
+      "is_carry": false,
+      "locked": false,
+      "icon_url": "assets/tft/set17/champions/jax.jpg",
+      "role": "Tank"
+    },
+    {
+      "name": "Gwen",
+      "cost": 2,
+      "traits": [
+        "Space Groove",
+        "Rogue"
+      ],
+      "is_carry": false,
+      "locked": false,
+      "icon_url": "assets/tft/set17/champions/gwen.jpg",
+      "role": "Fighter"
+    },
+    {
+      "name": "Gragas",
+      "cost": 2,
+      "traits": [
+        "Psionic",
+        "Brawler"
+      ],
+      "is_carry": false,
+      "locked": false,
+      "icon_url": "assets/tft/set17/champions/gragas.jpg",
+      "role": "Tank"
+    },
+    {
+      "name": "Gnar",
+      "cost": 2,
+      "traits": [
+        "Meeple",
+        "Sniper"
+      ],
+      "is_carry": false,
+      "locked": false,
+      "icon_url": "assets/tft/set17/champions/gnar.jpg",
+      "role": "AD Carry"
+    },
+    {
+      "name": "Bel'Veth",
+      "cost": 2,
+      "traits": [
+        "Primordian",
+        "Challenger",
+        "Marauder"
+      ],
+      "is_carry": false,
+      "locked": false,
+      "icon_url": "assets/tft/set17/champions/belveth.jpg",
+      "role": "AD Carry"
+    },
+    {
+      "name": "Akali",
+      "cost": 2,
+      "traits": [
+        "N.O.V.A.",
+        "Marauder"
+      ],
+      "is_carry": false,
+      "locked": false,
+      "icon_url": "assets/tft/set17/champions/akali.jpg",
+      "role": "Fighter"
+    },
+    {
+      "name": "Veigar",
+      "cost": 1,
+      "traits": [
+        "Meeple",
+        "Replicator"
+      ],
+      "is_carry": false,
+      "locked": false,
+      "icon_url": "assets/tft/set17/champions/veigar.jpg",
+      "role": "AP Carry"
+    },
+    {
+      "name": "Twisted Fate",
+      "cost": 1,
+      "traits": [
+        "Stargazer",
+        "Fateweaver"
+      ],
+      "is_carry": false,
+      "locked": false,
+      "icon_url": "assets/tft/set17/champions/twistedfate.jpg",
+      "role": "AP Carry"
+    },
+    {
+      "name": "Teemo",
+      "cost": 1,
+      "traits": [
+        "Space Groove",
+        "Shepherd"
+      ],
+      "is_carry": false,
+      "locked": false,
+      "icon_url": "assets/tft/set17/champions/teemo.jpg",
+      "role": "AP Carry"
+    },
+    {
+      "name": "Talon",
+      "cost": 1,
+      "traits": [
+        "Stargazer",
+        "Rogue"
+      ],
+      "is_carry": false,
+      "locked": false,
+      "icon_url": "assets/tft/set17/champions/talon.jpg",
+      "role": "Fighter"
+    },
+    {
+      "name": "RekSai",
+      "cost": 1,
+      "traits": [
+        "Primordian",
+        "Brawler"
+      ],
+      "is_carry": false,
+      "locked": false,
+      "icon_url": "assets/tft/set17/champions/reksai.jpg",
+      "role": "Tank"
+    },
+    {
+      "name": "Poppy",
+      "cost": 1,
+      "traits": [
+        "Meeple",
+        "Bastion"
+      ],
+      "is_carry": false,
+      "locked": false,
+      "icon_url": "assets/tft/set17/champions/poppy.jpg",
+      "role": "Tank"
+    },
+    {
+      "name": "Nasus",
+      "cost": 1,
+      "traits": [
+        "Space Groove",
+        "Vanguard"
+      ],
+      "is_carry": false,
+      "locked": false,
+      "icon_url": "assets/tft/set17/champions/nasus.jpg",
+      "role": "Tank"
+    },
+    {
+      "name": "Lissandra",
+      "cost": 1,
+      "traits": [
+        "Dark Star",
+        "Shepherd",
+        "Replicator"
+      ],
+      "is_carry": false,
+      "locked": false,
+      "icon_url": "assets/tft/set17/champions/lissandra.jpg",
+      "role": "AP Carry"
+    },
+    {
+      "name": "Leona",
+      "cost": 1,
+      "traits": [
+        "Arbiter",
+        "Vanguard"
+      ],
+      "is_carry": false,
+      "locked": false,
+      "icon_url": "assets/tft/set17/champions/leona.jpg",
+      "role": "Tank"
+    },
+    {
+      "name": "Ezreal",
+      "cost": 1,
+      "traits": [
+        "Timebreaker",
+        "Sniper"
+      ],
+      "is_carry": false,
+      "locked": false,
+      "icon_url": "assets/tft/set17/champions/ezreal.jpg",
+      "role": "AD Carry"
+    },
+    {
+      "name": "Cho'Gath",
+      "cost": 1,
+      "traits": [
+        "Dark Star",
+        "Brawler"
+      ],
+      "is_carry": false,
+      "locked": false,
+      "icon_url": "assets/tft/set17/champions/chogath.jpg",
+      "role": "Tank"
+    },
+    {
+      "name": "Caitlyn",
+      "cost": 1,
+      "traits": [
+        "N.O.V.A.",
+        "Fateweaver"
+      ],
+      "is_carry": false,
+      "locked": false,
+      "icon_url": "assets/tft/set17/champions/caitlyn.jpg",
+      "role": "AD Carry"
+    },
+    {
+      "name": "Briar",
+      "cost": 1,
+      "traits": [
+        "Anima",
+        "Primordian",
+        "Rogue"
+      ],
+      "is_carry": false,
+      "locked": false,
+      "icon_url": "assets/tft/set17/champions/briar.jpg",
+      "role": "Fighter"
+    },
+    {
+      "name": "Aatrox",
+      "cost": 1,
+      "traits": [
+        "N.O.V.A.",
+        "Bastion"
+      ],
+      "is_carry": false,
+      "locked": false,
+      "icon_url": "assets/tft/set17/champions/aatrox.jpg",
+      "role": "Tank"
+    }
+  ],
+  "items": [
+    {
+      "name": "Anima Emblem",
+      "is_emblem": true,
+      "trait": "Anima",
+      "icon_url": "assets/tft/set17/traits/anima.svg"
+    },
+    {
+      "name": "Marauder Emblem",
+      "is_emblem": true,
+      "trait": "Marauder",
+      "icon_url": "assets/tft/set17/traits/marauder.svg"
+    },
+    {
+      "name": "Space Groove Emblem",
+      "is_emblem": true,
+      "trait": "Space Groove",
+      "icon_url": "assets/tft/set17/traits/space-groove.svg"
+    },
+    {
+      "name": "Sniper Emblem",
+      "is_emblem": true,
+      "trait": "Sniper",
+      "icon_url": "assets/tft/set17/traits/sniper.svg"
+    },
+    {
+      "name": "Vanguard Emblem",
+      "is_emblem": true,
+      "trait": "Vanguard",
+      "icon_url": "assets/tft/set17/traits/vanguard.svg"
+    },
+    {
+      "name": "Shepherd Emblem",
+      "is_emblem": true,
+      "trait": "Shepherd",
+      "icon_url": "assets/tft/set17/traits/shepherd.svg"
+    },
+    {
+      "name": "Dark Star Emblem",
+      "is_emblem": true,
+      "trait": "Dark Star",
+      "icon_url": "assets/tft/set17/traits/dark-star.svg"
+    },
+    {
+      "name": "Meeple Emblem",
+      "is_emblem": true,
+      "trait": "Meeple",
+      "icon_url": "assets/tft/set17/traits/meeple.svg"
+    },
+    {
+      "name": "Fateweaver Emblem",
+      "is_emblem": true,
+      "trait": "Fateweaver",
+      "icon_url": "assets/tft/set17/traits/fateweaver.svg"
+    },
+    {
+      "name": "Mecha Emblem",
+      "is_emblem": true,
+      "trait": "Mecha",
+      "icon_url": "assets/tft/set17/traits/mecha.svg"
+    },
+    {
+      "name": "Channeler Emblem",
+      "is_emblem": true,
+      "trait": "Channeler",
+      "icon_url": "assets/tft/set17/traits/channeler.svg"
+    },
+    {
+      "name": "Primordian Emblem",
+      "is_emblem": true,
+      "trait": "Primordian",
+      "icon_url": "assets/tft/set17/traits/primordian.svg"
+    },
+    {
+      "name": "Challenger Emblem",
+      "is_emblem": true,
+      "trait": "Challenger",
+      "icon_url": "assets/tft/set17/traits/challenger.svg"
+    },
+    {
+      "name": "Arbiter Emblem",
+      "is_emblem": true,
+      "trait": "Arbiter",
+      "icon_url": "assets/tft/set17/traits/arbiter.svg"
+    },
+    {
+      "name": "Stargazer Emblem",
+      "is_emblem": true,
+      "trait": "Stargazer",
+      "icon_url": "assets/tft/set17/traits/stargazer.svg"
+    },
+    {
+      "name": "Psionic Emblem",
+      "is_emblem": true,
+      "trait": "Psionic",
+      "icon_url": "assets/tft/set17/traits/psionic.svg"
+    },
+    {
+      "name": "Replicator Emblem",
+      "is_emblem": true,
+      "trait": "Replicator",
+      "icon_url": "assets/tft/set17/traits/replicator.svg"
+    },
+    {
+      "name": "Brawler Emblem",
+      "is_emblem": true,
+      "trait": "Brawler",
+      "icon_url": "assets/tft/set17/traits/brawler.svg"
+    },
+    {
+      "name": "Rogue Emblem",
+      "is_emblem": true,
+      "trait": "Rogue",
+      "icon_url": "assets/tft/set17/traits/rogue.svg"
+    },
+    {
+      "name": "Bastion Emblem",
+      "is_emblem": true,
+      "trait": "Bastion",
+      "icon_url": "assets/tft/set17/traits/bastion.svg"
+    },
+    {
+      "name": "Timebreaker Emblem",
+      "is_emblem": true,
+      "trait": "Timebreaker",
+      "icon_url": "assets/tft/set17/traits/timebreaker.svg"
+    },
+    {
+      "name": "Voyager Emblem",
+      "is_emblem": true,
+      "trait": "Voyager",
+      "icon_url": "assets/tft/set17/traits/voyager.svg"
+    },
+    {
+      "name": "N.O.V.A. Emblem",
+      "is_emblem": true,
+      "trait": "N.O.V.A.",
+      "icon_url": "assets/tft/set17/traits/nova.svg"
+    }
+  ],
+  "trait_metadata": {
+    "Anima": {
+      "breakpoints": [
+        2,
+        4,
+        6
+      ],
+      "type": "origin",
+      "icon_url": "assets/tft/set17/traits/anima.svg"
+    },
+    "Marauder": {
+      "breakpoints": [
+        2,
+        4,
+        6
+      ],
+      "type": "class",
+      "icon_url": "assets/tft/set17/traits/marauder.svg"
+    },
+    "Space Groove": {
+      "breakpoints": [
+        2,
+        4,
+        6
+      ],
+      "type": "origin",
+      "icon_url": "assets/tft/set17/traits/space-groove.svg"
+    },
+    "Sniper": {
+      "breakpoints": [
+        2,
+        4,
+        6
+      ],
+      "type": "class",
+      "icon_url": "assets/tft/set17/traits/sniper.svg"
+    },
+    "Vanguard": {
+      "breakpoints": [
+        2,
+        4,
+        6
+      ],
+      "type": "class",
+      "icon_url": "assets/tft/set17/traits/vanguard.svg"
+    },
+    "Shepherd": {
+      "breakpoints": [
+        2,
+        4,
+        6
+      ],
+      "type": "class",
+      "icon_url": "assets/tft/set17/traits/shepherd.svg"
+    },
+    "Dark Star": {
+      "breakpoints": [
+        2,
+        4,
+        6
+      ],
+      "type": "origin",
+      "icon_url": "assets/tft/set17/traits/dark-star.svg"
+    },
+    "Meeple": {
+      "breakpoints": [
+        2,
+        4,
+        6
+      ],
+      "type": "origin",
+      "icon_url": "assets/tft/set17/traits/meeple.svg"
+    },
+    "Fateweaver": {
+      "breakpoints": [
+        2,
+        4,
+        6
+      ],
+      "type": "class",
+      "icon_url": "assets/tft/set17/traits/fateweaver.svg"
+    },
+    "Mecha": {
+      "breakpoints": [
+        2,
+        4,
+        6
+      ],
+      "type": "origin",
+      "icon_url": "assets/tft/set17/traits/mecha.svg"
+    },
+    "Channeler": {
+      "breakpoints": [
+        2,
+        4,
+        6
+      ],
+      "type": "class",
+      "icon_url": "assets/tft/set17/traits/channeler.svg"
+    },
+    "Primordian": {
+      "breakpoints": [
+        2,
+        4,
+        6
+      ],
+      "type": "origin",
+      "icon_url": "assets/tft/set17/traits/primordian.svg"
+    },
+    "Challenger": {
+      "breakpoints": [
+        2,
+        4,
+        6
+      ],
+      "type": "class",
+      "icon_url": "assets/tft/set17/traits/challenger.svg"
+    },
+    "Arbiter": {
+      "breakpoints": [
+        2,
+        4,
+        6
+      ],
+      "type": "origin",
+      "icon_url": "assets/tft/set17/traits/arbiter.svg"
+    },
+    "Stargazer": {
+      "breakpoints": [
+        2,
+        4,
+        6
+      ],
+      "type": "origin",
+      "icon_url": "assets/tft/set17/traits/stargazer.svg"
+    },
+    "Psionic": {
+      "breakpoints": [
+        2,
+        4,
+        6
+      ],
+      "type": "origin",
+      "icon_url": "assets/tft/set17/traits/psionic.svg"
+    },
+    "Replicator": {
+      "breakpoints": [
+        2,
+        4,
+        6
+      ],
+      "type": "class",
+      "icon_url": "assets/tft/set17/traits/replicator.svg"
+    },
+    "Brawler": {
+      "breakpoints": [
+        2,
+        4,
+        6
+      ],
+      "type": "class",
+      "icon_url": "assets/tft/set17/traits/brawler.svg"
+    },
+    "Rogue": {
+      "breakpoints": [
+        2,
+        4,
+        6
+      ],
+      "type": "class",
+      "icon_url": "assets/tft/set17/traits/rogue.svg"
+    },
+    "Bastion": {
+      "breakpoints": [
+        2,
+        4,
+        6
+      ],
+      "type": "class",
+      "icon_url": "assets/tft/set17/traits/bastion.svg"
+    },
+    "Timebreaker": {
+      "breakpoints": [
+        2,
+        4,
+        6
+      ],
+      "type": "origin",
+      "icon_url": "assets/tft/set17/traits/timebreaker.svg"
+    },
+    "Voyager": {
+      "breakpoints": [
+        2,
+        4,
+        6
+      ],
+      "type": "class",
+      "icon_url": "assets/tft/set17/traits/voyager.svg"
+    },
+    "N.O.V.A.": {
+      "breakpoints": [
+        2,
+        4,
+        6
+      ],
+      "type": "origin",
+      "icon_url": "assets/tft/set17/traits/nova.svg"
+    }
+  }
+}

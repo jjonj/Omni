@@ -19,6 +19,7 @@ You can use the automated scraper to jumpstart a new set.
         -   Download all champion JPG icons.
         -   Download all trait SVG icons.
         -   Generate a `set17.json` file with correctly mapped traits and costs.
+        -   **Automatic Filtering**: The script automatically identifies and removes "unique" traits (traits that only have a single unit assigned). This keeps the synergy list focused on multi-unit interactions.
 
 3.  **Process Assets**:
     -   Move the downloaded icons to `assets/tft/set17/champions/` and `assets/tft/set17/traits/`.
@@ -43,7 +44,8 @@ You can use the automated scraper to jumpstart a new set.
     -   Update `assets/tft/data/unit_id_map.json` with IDs for the Team Planner.
 
 4.  **Update Default Disabled Units**:
-    -   Update `assets/tft/data/default_disabled.json` with units that should be hidden by default.
+    -   Create `assets/tft/data/default_disabled_set17.json` with a list of unit names that should be hidden by default for this set (e.g., `["Baron Nashor"]`).
+    -   The system now uses set-specific factory defaults and set-specific `localStorage` keys, ensuring a clean reset of master exclusions with every set upgrade.
 
 5.  **Update Composition Rules**:
     -   Modify `assets/tft/data/comp_rules.json` to reflect new level requirements, cost limits, and auto-includes.
@@ -101,3 +103,25 @@ You must register the new addons in `js/tft.js` in **two places**:
     ```bash
     node TestScripts/TFT/test_tft_logic.js
     ```
+
+## Troubleshooting and Lessons Learned
+
+### 1. SPA Data Extraction
+Mobalytics is a Single Page Application. The champion data is not in the HTML tags but embedded in a massive JSON block (`window.__PRELOADED_STATE__`).
+-   **Challenge**: Standard regex often fails on this block due to escaped quotes and nested structures.
+-   **Solution**: Use a **bracket-matching algorithm** (implemented in `tft_scraper.py`) to find the start of the JSON and count `{` and `}` to find the true end.
+
+### 2. Asset Filename Normalization
+Mobalytics CDN names do not always match the internal slugs or the names our application expects.
+-   **Challenge**: Trait icons often had a `24-` prefix (e.g., `24-bastion.svg`) which caused 404s in the UI.
+-   **Solution**: The scraper now automatically strips the `24-` prefix and ensures filenames match the `icon_url` generated in the JSON.
+
+### 3. Application Dependencies (The "Items" Array)
+The UI calls `renderEmblemPool`, which performs a `.filter()` on `tftData.items`.
+-   **Challenge**: If the `items` array is missing from the set JSON, the entire application will crash on load.
+-   **Solution**: The scraper now automatically generates the `items` array by creating an "Emblem" entry for every synergy found in the data.
+
+### 4. Worker/Main Thread Sync
+The optimizer runs in background workers for performance.
+-   **Challenge**: Registering an addon in `tft.js` only updates the main thread. The worker will still use the old logic or crash if it doesn't have the same addon registered.
+-   **Solution**: Always update the `createOptimizerWorker` blob and ensure the worker receives the `currentSet` ID during its `init` message to conditionally load the correct addons.

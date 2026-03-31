@@ -1,10 +1,17 @@
 const TFTOptimizer = require('../../OmniSync.Web/www/js/tft_optimizer.js');
+const { Set16RulesAddon, UnlockAddon } = require('../../OmniSync.Web/www/js/tft_addons.js');
 const fs = require('fs');
 const path = require('path');
 
 const jsonPath = path.resolve(__dirname, '../../OmniSync.Web/www/assets/tft/data/set16.json');
 const data = JSON.parse(fs.readFileSync(jsonPath, 'utf8'));
+
+const compRulesPath = path.resolve(__dirname, '../../OmniSync.Web/www/assets/tft/data/comp_rules.json');
+const compRules = JSON.parse(fs.readFileSync(compRulesPath, 'utf8'));
+
 const optimizer = new TFTOptimizer(data.units, data.trait_metadata);
+optimizer.addAddon(new Set16RulesAddon(optimizer, compRules));
+optimizer.addAddon(new UnlockAddon(optimizer));
 
 async function runTest() {
     console.log("Running Bronze Level 9 Azir/Renekton Test...");

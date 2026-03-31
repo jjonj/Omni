@@ -184,6 +184,22 @@ class UnlockAddon extends TFTAddon {
     }
 }
 
+class Set17RulesAddon extends TFTAddon {
+    constructor(optimizer, compRules) {
+        super(optimizer);
+        this.compRules = compRules || {};
+    }
+
+    onInit() {
+        // Placeholder for Set 17 specific rules
+    }
+
+    modifyScore(result, board, emblems, targetSize, mode, mustIncludeNames) {
+        // Set 17 specific scoring logic goes here
+        return result;
+    }
+}
+
 if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { TFTAddon, Set16RulesAddon, UnlockAddon };
+    module.exports = { TFTAddon, Set16RulesAddon, Set17RulesAddon, UnlockAddon };
 }
