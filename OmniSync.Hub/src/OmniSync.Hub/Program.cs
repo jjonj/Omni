@@ -340,7 +340,6 @@ builder.Services.AddHostedService<TrayIconManager>(provider => provider.GetRequi
 
 builder.Services.AddHostedService<HubStartupService>(); // Auto-launch AI components
 builder.Services.AddHostedService<ScreenshotHostedService>();
-builder.Services.AddHostedService<WebReloaderService>();
 builder.Services.AddHostedService<UpnpService>();
 builder.Services.AddSingleton<KeyboardHook>(); // Register KeyboardHook
 
