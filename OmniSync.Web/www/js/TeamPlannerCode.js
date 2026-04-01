@@ -4,7 +4,7 @@
  */
 class TeamPlannerCode {
     static HEADER = "02";
-    static TRAILER = "TFTSet16";
+    static TRAILER = "TFTSet17";
     static SLOT_SIZE = 3;
     static MAX_SLOTS = 10;
 

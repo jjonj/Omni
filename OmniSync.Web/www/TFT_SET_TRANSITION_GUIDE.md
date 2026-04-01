@@ -50,6 +50,28 @@ You can use the automated scraper to jumpstart a new set.
 5.  **Update Composition Rules**:
     -   Modify `assets/tft/data/comp_rules.json` to reflect new level requirements, cost limits, and auto-includes.
 
+### Phase 1.5: Team Planner Code Mapping
+
+TFT uses 3-character hex IDs to represent units in the Team Planner. These IDs often change between sets and do not always follow a predictable pattern.
+
+1.  **Run the TeamCode Wizard**:
+    -   Use the interactive tool in `TestScripts/TFT/teamcode_wizard.js`.
+    -   This tool will prompt you for batches of 10 units at a time.
+    ```bash
+    node TestScripts/TFT/teamcode_wizard.js
+    ```
+
+2.  **How to Use**:
+    -   The tool will list 10 units (e.g., "Aatrox to RekSai").
+    -   In the TFT client, create a Team Planner team containing **exactly** those 10 units in that order.
+    -   Copy the teamcode from the client and paste it into the tool's prompt.
+    -   The tool will automatically extract the IDs and update `assets/tft/data/unit_id_map.json`.
+
+3.  **Delayed Execution**:
+    -   If you do not have access to the TFT client or the new set's teamcodes yet, you can skip this step. 
+    -   The application will still function, but the "Copy TeamCode" feature in the UI may generate incorrect codes until this mapping is completed.
+    -   You can run the wizard at any time later to finalize the mapping.
+
 ## Phase 2: Logic and Addons
 
 Set-specific mechanics (like unique scoring for certain traits or the "Unlock" system) should be implemented as **Addons**.
