@@ -969,13 +969,8 @@ namespace OmniSync.Hub.Presentation.Hubs
 
                         if (targetPid != -1)
                         {
-                            _logger.LogInformation($"[RpcApiHub] Attempting auto-rename for PID {targetPid}...");
-                            _aiCliService.TryAutoRenameSession(targetPid, message);
-                            // Notify all clients of updated session names without rediscovery
-                            await _hubEventSender.BroadcastSessions();
+                            _logger.LogInformation($"[RpcApiHub] Background task sending prompt to AI (PID: {targetPid})");
                         }
-
-                        _logger.LogInformation($"[RpcApiHub] Background task sending prompt to AI (PID: {targetPid})");
                         if (message.ToLower().Contains("heya")) _logger.LogInformation($"[RpcApiHub] [HEYA-TRACE] Calling SendPromptAsync for 'heya'. PID: {targetPid}");
                         bool success = await _aiCliService.SendPromptAsync(message, targetPid);
                         if (message.ToLower().Contains("heya")) _logger.LogInformation($"[RpcApiHub] [HEYA-TRACE] SendPromptAsync returned {success} for 'heya'. PID: {targetPid}");

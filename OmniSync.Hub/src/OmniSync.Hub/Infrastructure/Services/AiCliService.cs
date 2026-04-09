@@ -95,6 +95,9 @@ namespace OmniSync.Hub.Infrastructure.Services
 
         [System.Text.Json.Serialization.JsonPropertyName("workspace")]
         public string Workspace { get; set; } = string.Empty;
+
+        [System.Text.Json.Serialization.JsonPropertyName("workspacePath")]
+        public string WorkspacePath { get; set; } = string.Empty;
     }
 
     public class AiCliService : IDisposable
@@ -107,6 +110,7 @@ namespace OmniSync.Hub.Infrastructure.Services
         private readonly ConcurrentDictionary<int, GeminiSession> _sessions = new();
         private readonly ConcurrentDictionary<int, string> _sessionNames = new();
         private readonly ConcurrentDictionary<int, string> _workspaces = new();
+        private readonly ConcurrentDictionary<int, string> _workspacePaths = new();
         private readonly ConcurrentDictionary<int, string> _lastDialogTypes = new();
         private readonly ConcurrentDictionary<int, string> _lastSetTitles = new();
         private readonly ConcurrentDictionary<int, string> _tellPcContexts = new();
@@ -224,58 +228,6 @@ namespace OmniSync.Hub.Infrastructure.Services
             }
         }
 
-        public void TryAutoRenameSession(int pid, string firstMessage)
-        {
-            int target = pid == -1 ? _targetPid : pid;
-            if (target == -1 || string.IsNullOrWhiteSpace(firstMessage)) return;
-            if (_sessionNames.ContainsKey(target)) return; 
-
-            if (_sessions.TryGetValue(target, out var session))
-            {
-                var key = $"{session.StartTime.Ticks}_{target}";
-                var savedName = _settingsService.GetAiSessionName(key);
-                if (savedName != null)
-                {
-                    _sessionNames[target] = savedName;
-                    return;
-                }
-            }
-
-            string name = GenerateName(firstMessage);
-            if (!string.IsNullOrWhiteSpace(name))
-            {
-                _sessionNames[target] = name;
-                if (_sessions.TryGetValue(target, out var session2))
-                {
-                    var key = $"{session2.StartTime.Ticks}_{target}";
-                    _settingsService.SetAiSessionName(key, name);
-                }
-            }
-        }
-
-        private string GenerateName(string message)
-        {
-            var prefixWords = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-            {
-                "please", "can", "you", "i", "want", "to", "could", "would", "should", "tell", "give", "show", 
-                "help", "with", "write", "create", "make", "find", "search", "check", "analyze", "suggest", 
-                "summarize", "explain", "how", "what", "why", "when", "where", "who", "is", "are", "am", 
-                "do", "does", "did", "for", "of", "in", "on", "at", "by", "this", "that", "will", "my", "your", 
-                "it", "its", "from", "now", "here", "there", "me", "a", "an", "the"
-            };
-
-            var words = message.Split(new[] { ' ', '\t', '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries);
-            int startIndex = 0;
-            while (startIndex < words.Length && prefixWords.Contains(words[startIndex].Trim(new[] { '.', ',', '?', '!', '"', '\'', ':', ';' })))
-            {
-                startIndex++;
-            }
-            if (startIndex >= words.Length) startIndex = 0;
-            string baseName = string.Join(" ", words.Skip(startIndex).Take(3));
-            if (baseName.Length > 12) return baseName.Substring(0, 12).Trim() + "..";
-            return baseName;
-        }
-
         public string GetSessionName(int pid)
         {
             if (_sessionNames.TryGetValue(pid, out var name)) return name;
@@ -306,7 +258,8 @@ namespace OmniSync.Hub.Infrastructure.Services
                     RootPid = s.RootPid,
                     Name = GetSessionName(s.Pid),
                     StartTime = s.StartTime,
-                    Workspace = _workspaces.TryGetValue(s.Pid, out var ws) ? ws : string.Empty
+                    Workspace = _workspaces.TryGetValue(s.Pid, out var ws) ? ws : string.Empty,
+                    WorkspacePath = _workspacePaths.TryGetValue(s.Pid, out var wp) ? wp : string.Empty
                 })
                 .ToList();
         }
@@ -541,6 +494,7 @@ namespace OmniSync.Hub.Infrastructure.Services
                         var parts = cmdToScan.Split(new[] { "--workspace" }, StringSplitOptions.None);
                         if (parts.Length > 1) {
                             var ws = parts[1].Trim().Split(' ')[0].Trim('\"', '\'');
+                            _workspacePaths[launcherPid] = ws;
                             try { _workspaces[launcherPid] = Path.GetFileName(ws.TrimEnd('\\', '/')); } catch { _workspaces[launcherPid] = ws; }
                         }
                     }
@@ -588,6 +542,7 @@ namespace OmniSync.Hub.Infrastructure.Services
                 s.Dispose();
                 _sessionNames.TryRemove(target, out _);
                 _workspaces.TryRemove(target, out _);
+                _workspacePaths.TryRemove(target, out _);
                 return true;
             }
             return false;
@@ -614,6 +569,7 @@ namespace OmniSync.Hub.Infrastructure.Services
             _sessions.Clear();
             _sessionNames.Clear();
             _workspaces.Clear();
+            _workspacePaths.Clear();
         }
 
         public void Dispose() { foreach (var s in _sessions.Values) s.Dispose(); _sessions.Clear(); }

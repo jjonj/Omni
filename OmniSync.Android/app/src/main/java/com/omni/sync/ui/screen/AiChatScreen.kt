@@ -339,9 +339,9 @@ fun AiChatScreen(
                                     val currentName = if (!isConnected) "Disconnected" 
                                         else if (isStartingSession) "Creating Session..." 
                                         else {
-                                            val ws = workspaces[selectedPid]
-                                            if (!ws.isNullOrBlank()) ws else (sessions[selectedPid] ?: "Select Session")
+                                            sessions[selectedPid] ?: "Select Session"
                                         }
+
                                     Text(currentName, style = MaterialTheme.typography.titleMedium)
                                     if (isConnected) {
                                         if (aiStatus != null) {
@@ -367,7 +367,7 @@ fun AiChatScreen(
                                 )
                             }
                             sessions.forEach { (pid, name) ->
-                                val displayName = workspaces[pid].takeIf { !it.isNullOrBlank() } ?: name
+                                val displayName = name
                                 DropdownMenuItem(
                                     text = { 
                                         Row(verticalAlignment = Alignment.CenterVertically) {

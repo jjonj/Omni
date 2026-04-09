@@ -703,7 +703,7 @@ class SignalRClient(
                         else -> 0
                     }
                     val name = (session["name"] ?: session["Name"]) as? String ?: "Session $pid"
-                    val workspace = (session["workspace"] ?: session["Workspace"]) as? String ?: ""
+                    val workspace = (session["workspacePath"] ?: session["WorkspacePath"] ?: session["workspace"] ?: session["Workspace"]) as? String ?: ""
                     if (pid != 0) {
                         sessionsMap[pid] = name
                         workspacesMap[pid] = workspace
