@@ -3,7 +3,11 @@ package com.omni.sync.ui.screen
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.clickable
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -113,6 +117,7 @@ fun AiChatScreen(
     var showRenameDialog by remember { mutableStateOf(false) }
     var renameText by remember { mutableStateOf("") }
     var pidToRename by remember { mutableIntStateOf(-1) }
+    var isOvmMode by remember { mutableStateOf(false) }
 
     val bookmarks by filesViewModel.bookmarks.collectAsState()
     var selectedWorkspace by remember { mutableStateOf<String?>(null) }
@@ -300,6 +305,26 @@ fun AiChatScreen(
     Scaffold(
         topBar = {
             CenterAlignedTopAppBar(
+                navigationIcon = {
+                    if (sessions.size > 1) {
+                        IconButton(onClick = { 
+                            isOvmMode = !isOvmMode 
+                            if (isOvmMode) {
+                                // Close keyboard when entering OVM
+                                context.getSystemService(Activity.INPUT_METHOD_SERVICE)?.let {
+                                    (it as android.view.inputmethod.InputMethodManager)
+                                        .hideSoftInputFromWindow((context as Activity).window.decorView.windowToken, 0)
+                                }
+                            }
+                        }) {
+                            Icon(
+                                imageVector = if (isOvmMode) Icons.Default.Circle else Icons.Default.List,
+                                contentDescription = "Toggle Overview Mode",
+                                tint = if (isOvmMode) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                    }
+                },
                 title = {
                     Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -385,6 +410,7 @@ fun AiChatScreen(
                                     onClick = {
                                         signalRClient.switchAiSession(pid)
                                         showSessionMenu = false
+                                        isOvmMode = false
                                     }
                                 )
                             }
@@ -419,7 +445,7 @@ fun AiChatScreen(
                     }
                 },
                 actions = {
-                    if (selectedPid != -1) {
+                    if (selectedPid != -1 && !isOvmMode) {
                         Box {
                             IconButton(onClick = { showModelMenu = true }, enabled = isConnected) {
                                 Icon(imageVector = Icons.Default.Tune, contentDescription = "Model Selection")
@@ -478,266 +504,133 @@ fun AiChatScreen(
                             }
                         }
                     }
-                    Box {
-                        IconButton(onClick = { showWorkspaceMenu = true }, enabled = isConnected) {
-                            Icon(Icons.Default.Folder, contentDescription = "AI Actions")
-                        }
-                        DropdownMenu(
-                            expanded = showWorkspaceMenu,
-                            onDismissRequest = { showWorkspaceMenu = false }
-                        ) {
-                            DropdownMenuItem(
-                                text = { Text("New Session (Default Workspace)") },
-                                onClick = { 
-                                    selectedWorkspace = null
-                                    signalRClient.startNewAiSession(null)
-                                    showWorkspaceMenu = false 
-                                },
-                                leadingIcon = { Icon(Icons.Default.Add, null) }
-                            )
-                            
-                            HorizontalDivider()
-                            
-                            Text("Switch Workspace / New from Bookmark", 
-                                style = MaterialTheme.typography.labelSmall, 
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                                color = MaterialTheme.colorScheme.primary
-                            )
-
-                            DropdownMenuItem(
-                                text = { Text("Default Workspace", fontWeight = if (selectedWorkspace == null) FontWeight.Bold else FontWeight.Normal) },
-                                onClick = { 
-                                    selectedWorkspace = null
-                                    signalRClient.startNewAiSession(null)
-                                    showWorkspaceMenu = false 
-                                },
-                                leadingIcon = { Icon(Icons.Default.Home, null) }
-                            )
-
-                            bookmarks.filter { it.isDirectory }.forEach { bookmark ->
+                    if (!isOvmMode) {
+                        Box {
+                            IconButton(onClick = { showWorkspaceMenu = true }, enabled = isConnected) {
+                                Icon(Icons.Default.Folder, contentDescription = "AI Actions")
+                            }
+                            DropdownMenu(
+                                expanded = showWorkspaceMenu,
+                                onDismissRequest = { showWorkspaceMenu = false }
+                            ) {
                                 DropdownMenuItem(
-                                    text = { Text(bookmark.name, fontWeight = if (selectedWorkspace == bookmark.path) FontWeight.Bold else FontWeight.Normal) },
+                                    text = { Text("New Session (Default Workspace)") },
                                     onClick = { 
-                                        selectedWorkspace = bookmark.path
-                                        signalRClient.startNewAiSession(bookmark.path)
+                                        selectedWorkspace = null
+                                        signalRClient.startNewAiSession(null)
                                         showWorkspaceMenu = false 
                                     },
-                                    leadingIcon = { Icon(Icons.Default.Folder, null) },
-                                    trailingIcon = {
-                                        IconButton(onClick = {
-                                            signalRClient.sendAiMessage("/dir add ${bookmark.path}")
+                                    leadingIcon = { Icon(Icons.Default.Add, null) }
+                                )
+                                
+                                HorizontalDivider()
+                                
+                                Text("Switch Workspace / New from Bookmark", 
+                                    style = MaterialTheme.typography.labelSmall, 
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+
+                                DropdownMenuItem(
+                                    text = { Text("Default Workspace", fontWeight = if (selectedWorkspace == null) FontWeight.Bold else FontWeight.Normal) },
+                                    onClick = { 
+                                        selectedWorkspace = null
+                                        signalRClient.startNewAiSession(null)
+                                        showWorkspaceMenu = false 
+                                    },
+                                    leadingIcon = { Icon(Icons.Default.Home, null) }
+                                )
+
+                                bookmarks.filter { it.isDirectory }.forEach { bookmark ->
+                                    DropdownMenuItem(
+                                        text = { Text(bookmark.name, fontWeight = if (selectedWorkspace == bookmark.path) FontWeight.Bold else FontWeight.Normal) },
+                                        onClick = { 
+                                            selectedWorkspace = bookmark.path
+                                            signalRClient.startNewAiSession(bookmark.path)
                                             showWorkspaceMenu = false 
-                                        }) {
-                                            Icon(Icons.AutoMirrored.Filled.ArrowForward, "Add to current session")
+                                        },
+                                        leadingIcon = { Icon(Icons.Default.Folder, null) },
+                                        trailingIcon = {
+                                            IconButton(onClick = {
+                                                signalRClient.sendAiMessage("/dir add ${bookmark.path}")
+                                                showWorkspaceMenu = false 
+                                            }) {
+                                                Icon(Icons.AutoMirrored.Filled.ArrowForward, "Add to current session")
+                                            }
                                         }
-                                    }
+                                    )
+                                }
+                                
+                                DropdownMenuItem(
+                                    text = { Text("Browse for New Session...") },
+                                    onClick = {
+                                        browseMode = "new"
+                                        showDirectoryPicker = true
+                                        showWorkspaceMenu = false
+                                    },
+                                    leadingIcon = { Icon(Icons.Default.Add, null) }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Browse to Add Context...") },
+                                    onClick = {
+                                        browseMode = "add"
+                                        showDirectoryPicker = true
+                                        showWorkspaceMenu = false
+                                    },
+                                    leadingIcon = { Icon(Icons.AutoMirrored.Filled.ArrowForward, null) }
                                 )
                             }
-                            
-                            DropdownMenuItem(
-                                text = { Text("Browse for New Session...") },
-                                onClick = {
-                                    browseMode = "new"
-                                    showDirectoryPicker = true
-                                    showWorkspaceMenu = false
-                                },
-                                leadingIcon = { Icon(Icons.Default.Add, null) }
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Browse to Add Context...") },
-                                onClick = {
-                                    browseMode = "add"
-                                    showDirectoryPicker = true
-                                    showWorkspaceMenu = false
-                                },
-                                leadingIcon = { Icon(Icons.AutoMirrored.Filled.ArrowForward, null) }
-                            )
                         }
                     }
-                    IconButton(onClick = { 
-                        if (selectedPid != -1) {
-                            signalRClient.stopAiSession(selectedPid)
-                            signalRClient.clearAiMessages(selectedPid)
+                    if (!isOvmMode) {
+                        IconButton(onClick = { 
+                            if (selectedPid != -1) {
+                                signalRClient.stopAiSession(selectedPid)
+                                signalRClient.clearAiMessages(selectedPid)
+                            }
+                        }, enabled = isConnected) {
+                            Icon(Icons.Default.Close, contentDescription = "Close Session")
                         }
-                    }, enabled = isConnected) {
-                        Icon(Icons.Default.Close, contentDescription = "Close Session")
                     }
                 }
             )
         }
     ) { padding ->
-        val imeHeight = WindowInsets.ime.asPaddingValues().calculateBottomPadding()
-        val bottomBarHeight = parentPadding.calculateBottomPadding()
-        val keyboardOverlapOffset = 25.dp
-        val floatHeight = if (imeHeight > 0.dp) imeHeight - keyboardOverlapOffset else 0.dp
-        val currentBottomPadding = maxOf(floatHeight, bottomBarHeight)
-
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(top = padding.calculateTopPadding())
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(bottom = currentBottomPadding + 160.dp) // Leave room for floating panel (restored to 160)
-            ) {
-                if (!isConnected) {
-                    Surface(
-                        color = MaterialTheme.colorScheme.errorContainer,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text(
-                            "Disconnected from Hub",
-                            color = MaterialTheme.colorScheme.onErrorContainer,
-                            modifier = Modifier.padding(8.dp),
-                            textAlign = TextAlign.Center,
-                            style = MaterialTheme.typography.bodyMedium
-                        )
-                    }
+        if (isOvmMode) {
+            OverviewMode(
+                signalRClient = signalRClient,
+                mainViewModel = mainViewModel,
+                sessions = sessions,
+                padding = padding,
+                parentPadding = parentPadding,
+                onSessionSelected = { pid ->
+                    signalRClient.switchAiSession(pid)
+                    isOvmMode = false
                 }
-
-                Box(modifier = Modifier.weight(1f)) {
-                    LazyColumn(
-                        state = listState,
-                        reverseLayout = true,
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(horizontal = 8.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp),
-                        contentPadding = PaddingValues(top = 8.dp, bottom = 8.dp)
-                    ) {
-                        if (isAiThinking) {
-                            item(key = "typing_indicator") {
-                                AiTypingIndicator()
-                            }
-                        }
-
-                        if (aiThought != null) {
-                            item(key = "thought_bubble") {
-                                ThoughtBubble(aiThought!!)
-                            }
-                        }
-
-                        if (aiDialog != null) {
-                            item(key = "dialog_bubble") {
-                                AiDialogBubble(aiDialog!!, signalRClient, selectedPid)
-                            }
-                        }
-
-                        items(
-                            items = filteredMessages.reversed(),
-                            key = { it.id }
-                        ) { message ->
-                            ChatBubble(
-                                message = message, 
-                                signalRClient = signalRClient, 
-                                mainViewModel = mainViewModel,
-                                selectedPid = selectedPid
-                            )
-                        }
-                    }
-                    
-                    VerticalScrollbar(
-                        state = listState,
-                        modifier = Modifier
-                            .align(Alignment.CenterEnd)
-                            .padding(end = 2.dp, top = 8.dp, bottom = 8.dp)
-                    )
-                }
-
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    OutlinedTextField(
-                        value = textFieldValue,
-                        onValueChange = { 
-                            textFieldValue = it
-                            signalRClient.updateAiInputText(it.text) 
-                        },
-                        modifier = Modifier.weight(1f),
-                        placeholder = { Text(if (isConnected) "Ask AI something..." else "Connecting...") },
-                        maxLines = 3,
-                        enabled = isConnected
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    
-                    IconButton(
-                        onClick = {
-                            if (inputText.isBlank()) {
-                                signalRClient.sendAiSpecialKey("enter", if (selectedPid != -1) selectedPid else null)
-                            } else {
-                                signalRClient.sendAiMessage(inputText, if (selectedPid != -1) selectedPid else null)
-                                signalRClient.updateAiInputText("")
-                            }
-                            scrollToBottom(animate = false) // Instant jump
-                        },
-                        modifier = Modifier.background(
-                            if (isConnected) MaterialTheme.colorScheme.primary else Color.Gray, 
-                            CircleShape
-                        ),
-                        enabled = isConnected,
-                        colors = IconButtonDefaults.iconButtonColors(contentColor = MaterialTheme.colorScheme.onPrimary)
-                    ) {
-                        Icon(
-                            if (inputText.isBlank()) Icons.AutoMirrored.Filled.KeyboardReturn else Icons.AutoMirrored.Filled.Send,
-                            contentDescription = if (inputText.isBlank()) "Send Enter" else "Send"
-                        )
-                    }
-                }
-            }
-
-            // --- Added: Scroll to Bottom Button ---
-            val showScrollToBottom by remember {
-                derivedStateOf {
-                    listState.firstVisibleItemIndex > 0
-                }
-            }
-            if (showScrollToBottom) {
-                SmallFloatingActionButton(
-                    onClick = {
-                        scrollToBottom(animate = true)
-                    },
-                    modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .padding(bottom = currentBottomPadding + 240.dp, end = 16.dp), // Moved up from 220.dp
-                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer
-                ) {
-                    Icon(Icons.Default.KeyboardDoubleArrowDown, contentDescription = "Scroll to Bottom")
-                }
-            }
-
-            Surface(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-                    .padding(bottom = currentBottomPadding),
-                tonalElevation = 2.dp,
-                shadowElevation = 8.dp,
-                color = MaterialTheme.colorScheme.surface
-            ) {
-                Column {
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                    QuickActionPanel(
-                        signalRClient, 
-                        coroutineScope, 
-                        selectedPid, 
-                        isConnected, 
-                        listState, 
-                        userMessageItemIndices,
-                        filteredMessages.size,
-                        textFieldValue,
-                        onTextFieldValueChange = { textFieldValue = it },
-                        onVoiceTrigger = { startVoiceRecognition() },
-                        onMessageSent = { isAutoScrollEnabled = true },
-                        onScrollToBottom = { scrollToBottom(animate = true) }
-                    )
-                }
-            }
+            )
+        } else {
+            StandardView(
+                signalRClient = signalRClient,
+                mainViewModel = mainViewModel,
+                filesViewModel = filesViewModel,
+                parentPadding = parentPadding,
+                padding = padding,
+                isConnected = isConnected,
+                selectedPid = selectedPid,
+                filteredMessages = filteredMessages,
+                isAiThinking = isAiThinking,
+                aiStatus = aiStatus,
+                aiThought = aiThought,
+                aiDialog = aiDialog,
+                listState = listState,
+                textFieldValue = textFieldValue,
+                onTextFieldValueChange = { textFieldValue = it },
+                onScrollToBottom = { scrollToBottom(it) },
+                onVoiceTrigger = { startVoiceRecognition() },
+                onMessageSent = { isAutoScrollEnabled = true },
+                userMessageItemIndices = userMessageItemIndices,
+                coroutineScope = coroutineScope
+            )
         }
 
         if (showRenameDialog) {
@@ -1950,3 +1843,294 @@ fun AiQuestionInput(
 }
 
 val CircleShape = RoundedCornerShape(50)
+
+@Composable
+fun StandardView(
+    signalRClient: SignalRClient,
+    mainViewModel: MainViewModel,
+    filesViewModel: com.omni.sync.viewmodel.FilesViewModel,
+    parentPadding: PaddingValues,
+    padding: PaddingValues,
+    isConnected: Boolean,
+    selectedPid: Int,
+    filteredMessages: List<com.omni.sync.data.repository.AiMessage>,
+    isAiThinking: Boolean,
+    aiStatus: String?,
+    aiThought: String?,
+    aiDialog: com.omni.sync.data.repository.SignalRClient.AiDialog?,
+    listState: LazyListState,
+    textFieldValue: TextFieldValue,
+    onTextFieldValueChange: (TextFieldValue) -> Unit,
+    onScrollToBottom: (Boolean) -> Unit,
+    onVoiceTrigger: () -> Unit,
+    onMessageSent: () -> Unit,
+    userMessageItemIndices: List<Int>,
+    coroutineScope: kotlinx.coroutines.CoroutineScope
+) {
+    val imeHeight = WindowInsets.ime.asPaddingValues().calculateBottomPadding()
+    val bottomBarHeight = parentPadding.calculateBottomPadding()
+    val keyboardOverlapOffset = 25.dp
+    val floatHeight = if (imeHeight > 0.dp) imeHeight - keyboardOverlapOffset else 0.dp
+    val currentBottomPadding = maxOf(floatHeight, bottomBarHeight)
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(top = padding.calculateTopPadding())
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(bottom = currentBottomPadding + 160.dp) // Leave room for floating panel
+        ) {
+            if (!isConnected) {
+                Surface(
+                    color = MaterialTheme.colorScheme.errorContainer,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        "Disconnected from Hub",
+                        color = MaterialTheme.colorScheme.onErrorContainer,
+                        modifier = Modifier.padding(8.dp),
+                        textAlign = TextAlign.Center,
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                }
+            }
+
+            Box(modifier = Modifier.weight(1f)) {
+                LazyColumn(
+                    state = listState,
+                    reverseLayout = true,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    contentPadding = PaddingValues(top = 8.dp, bottom = 8.dp)
+                ) {
+                    if (isAiThinking) {
+                        item(key = "typing_indicator") {
+                            AiTypingIndicator()
+                        }
+                    }
+
+                    if (aiThought != null) {
+                        item(key = "thought_bubble") {
+                            ThoughtBubble(aiThought)
+                        }
+                    }
+
+                    if (aiDialog != null) {
+                        item(key = "dialog_bubble") {
+                            AiDialogBubble(aiDialog, signalRClient, selectedPid)
+                        }
+                    }
+
+                    items(
+                        items = filteredMessages.reversed(),
+                        key = { it.id }
+                    ) { message ->
+                        ChatBubble(
+                            message = message, 
+                            signalRClient = signalRClient, 
+                            mainViewModel = mainViewModel,
+                            selectedPid = selectedPid
+                        )
+                    }
+                }
+                
+                VerticalScrollbar(
+                    state = listState,
+                    modifier = Modifier
+                        .align(Alignment.CenterEnd)
+                        .padding(end = 2.dp, top = 8.dp, bottom = 8.dp)
+                )
+            }
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                OutlinedTextField(
+                    value = textFieldValue,
+                    onValueChange = { onTextFieldValueChange(it) },
+                    modifier = Modifier.weight(1f),
+                    placeholder = { Text(if (isConnected) "Ask AI something..." else "Connecting...") },
+                    maxLines = 3,
+                    enabled = isConnected
+                )
+                Spacer(Modifier.width(8.dp))
+                
+                IconButton(
+                    onClick = {
+                        val text = textFieldValue.text
+                        if (text.isBlank()) {
+                            signalRClient.sendAiSpecialKey("enter", if (selectedPid != -1) selectedPid else null)
+                        } else {
+                            signalRClient.sendAiMessage(text, if (selectedPid != -1) selectedPid else null)
+                            onTextFieldValueChange(TextFieldValue(""))
+                        }
+                        onScrollToBottom(false) // Instant jump
+                    },
+                    modifier = Modifier.background(
+                        if (isConnected) MaterialTheme.colorScheme.primary else Color.Gray, 
+                        CircleShape
+                    ),
+                    enabled = isConnected,
+                    colors = IconButtonDefaults.iconButtonColors(contentColor = MaterialTheme.colorScheme.onPrimary)
+                ) {
+                    Icon(
+                        if (textFieldValue.text.isBlank()) Icons.AutoMirrored.Filled.KeyboardReturn else Icons.AutoMirrored.Filled.Send,
+                        contentDescription = if (textFieldValue.text.isBlank()) "Send Enter" else "Send"
+                    )
+                }
+            }
+        }
+
+        val showScrollToBottom by remember {
+            derivedStateOf {
+                listState.firstVisibleItemIndex > 0
+            }
+        }
+        if (showScrollToBottom) {
+            SmallFloatingActionButton(
+                onClick = { onScrollToBottom(true) },
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(bottom = currentBottomPadding + 240.dp, end = 16.dp),
+                containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+            ) {
+                Icon(Icons.Default.KeyboardDoubleArrowDown, contentDescription = "Scroll to Bottom")
+            }
+        }
+
+        Surface(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .padding(bottom = currentBottomPadding),
+            tonalElevation = 2.dp,
+            shadowElevation = 8.dp,
+            color = MaterialTheme.colorScheme.surface
+        ) {
+            Column {
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                QuickActionPanel(
+                    signalRClient, 
+                    coroutineScope, 
+                    selectedPid, 
+                    isConnected, 
+                    listState, 
+                    userMessageItemIndices,
+                    filteredMessages.size,
+                    textFieldValue,
+                    onTextFieldValueChange = onTextFieldValueChange,
+                    onVoiceTrigger = onVoiceTrigger,
+                    onMessageSent = onMessageSent,
+                    onScrollToBottom = { onScrollToBottom(true) }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun OverviewMode(
+    signalRClient: SignalRClient,
+    mainViewModel: MainViewModel,
+    sessions: Map<Int, String>,
+    padding: PaddingValues,
+    parentPadding: PaddingValues,
+    onSessionSelected: (Int) -> Unit
+) {
+    val messagesMap by signalRClient.aiMessagesMap.collectAsState()
+    val aiStatusMap by signalRClient.aiStatusMap.collectAsState()
+
+    // Auto-load history for sessions that have none
+    LaunchedEffect(sessions) {
+        sessions.keys.forEach { pid ->
+            if (messagesMap[pid].isNullOrEmpty()) {
+                signalRClient.requestAiHistory(pid)
+                delay(300) // Stagger requests
+            }
+        }
+    }
+
+    val bottomBarHeight = parentPadding.calculateBottomPadding()
+    val topPadding = padding.calculateTopPadding()
+
+    // 2-column grid of chat tiles
+    androidx.compose.foundation.lazy.grid.LazyVerticalGrid(
+        columns = androidx.compose.foundation.lazy.grid.GridCells.Fixed(2),
+        contentPadding = PaddingValues(start = 8.dp, end = 8.dp, top = 8.dp, bottom = bottomBarHeight + 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(top = topPadding)
+            .background(MaterialTheme.colorScheme.surface)
+    ) {
+
+        val sessionIds = sessions.keys.toList()
+        items(sessionIds.size) { index ->
+            val pid = sessionIds[index]
+            val name = sessions[pid] ?: "Session $pid"
+            val messages = messagesMap[pid] ?: emptyList()
+            val status = aiStatusMap[pid]
+
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(250.dp)
+                    .clickable { onSessionSelected(pid) },
+                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+            ) {
+                Column(modifier = Modifier.padding(8.dp)) {
+                    Text(
+                        text = name,
+                        style = MaterialTheme.typography.titleSmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+
+                    if (status != null) {
+                        Text(
+                            text = status,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.secondary,
+                            maxLines = 1
+                        )
+                    }
+
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+
+                    // Small preview of the chat
+                    Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                        LazyColumn(
+                            modifier = Modifier.fillMaxSize(),
+                            reverseLayout = true, // Show most recent at bottom
+                            verticalArrangement = Arrangement.Bottom
+                        ) {
+                            items(messages.takeLast(15).reversed()) { msg ->
+                                val isMe = msg.sender == "Me"
+                                Text(
+                                    text = (if (isMe) "Me: " else "AI: ") + msg.text,
+                                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.sp),
+                                    maxLines = 3,
+                                    overflow = TextOverflow.Ellipsis,
+                                    color = if (isMe) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                                    modifier = Modifier.padding(vertical = 1.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
