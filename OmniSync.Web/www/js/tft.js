@@ -1560,7 +1560,7 @@ function addToMustIncludeTrait(traitName) {
     if (!selectedMustInclude.find(item => item.name === traitName && item.type === 'trait')) {
         selectedMustInclude.push({
             name: traitName,
-            iconUrl: `assets/tft/${currentConfig.current_set}/traits/${traitName.replace(/ /g, '')}.svg`,
+            iconUrl: meta.icon_url,
             type: 'trait',
             trait: traitName,
             targetBreakpointIndex: 0
@@ -1938,7 +1938,7 @@ function renderTraitsSummary(counts, displayBoard, container, mode = 'default') 
         traitItem.style.fontSize = '10px';
         
         let textColor = 'var(--text-dim)';
-        let filter = isActive ? '' : 'opacity: 0.5; filter: grayscale(1);';
+        let filter = isActive ? '' : 'opacity: 0.4;';
         
         const greenFilter = 'invert(48%) sepia(79%) saturate(2476%) hue-rotate(86deg) brightness(118%) contrast(119%)';
         const orangeFilter = 'invert(65%) sepia(91%) saturate(1831%) hue-rotate(3deg) brightness(103%) contrast(105%)';
@@ -1960,7 +1960,7 @@ function renderTraitsSummary(counts, displayBoard, container, mode = 'default') 
         traitItem.style.color = textColor;
         if (isActive || hasEmblem) traitItem.style.fontWeight = '600';
         
-        const iconUrl = `assets/tft/${currentConfig.current_set}/traits/${trait.replace(/ /g, '')}.svg`;
+        const iconUrl = traitInfo ? traitInfo.icon_url : `assets/tft/${currentConfig.current_set}/traits/${trait.replace(/ /g, '')}.svg`;
         
         const contributors = displayBoard.filter(u => u.traits.includes(trait)).map(u => u.name);
         const tooltip = `${trait} (${count}): ${contributors.join(', ')}`;
@@ -2741,7 +2741,7 @@ function renderImproveResults(suggestions, container, currentCounts) {
             traitItem.style.gap = '4px';
             traitItem.style.fontSize = '11px';
             let color = 'var(--text-dim)';
-            let filter = 'opacity: 0.5; filter: grayscale(1);';
+            let filter = 'opacity: 0.4;';
             
             if (solverMode === 'world-runes' || solverMode === 'ryze-unlock') {
                 if (isOrigin && isActive) {
@@ -2758,7 +2758,7 @@ function renderImproveResults(suggestions, container, currentCounts) {
                 else if (isActive) { color = 'var(--text-bright)'; filter = ''; }
             }
 
-            const iconUrl = `assets/tft/${currentConfig.current_set}/traits/${trait.replace(/ /g, '')}.svg`;
+            const iconUrl = traitInfo ? traitInfo.icon_url : `assets/tft/${currentConfig.current_set}/traits/${trait.replace(/ /g, '')}.svg`;
             traitItem.style.color = color;
             traitItem.style.fontWeight = status !== 'none' ? 'bold' : 'normal';
             traitItem.innerHTML = `<img src="${iconUrl}" style="width: 16px; height: 16px; filter: ${filter}" title="${trait}" onerror="this.style.display='none'"><span>${count}</span>`;
@@ -3358,8 +3358,8 @@ function renderQuizTraits() {
             }
         }
 
-        const iconUrl = `assets/tft/${currentConfig.current_set}/traits/${trait.replace(/ /g, '')}.svg`;
-        const filter = isActive ? '' : 'opacity: 0.3; filter: grayscale(1);';
+        const iconUrl = traitInfo ? traitInfo.icon_url : `assets/tft/${currentConfig.current_set}/traits/${trait.replace(/ /g, '')}.svg`;
+        const filter = isActive ? '' : 'opacity: 0.4;';
         
         traitEl.innerHTML = `
             <img src="${iconUrl}" style="width: 14px; height: 14px; ${filter}" onerror="this.style.display='none'">
@@ -3431,7 +3431,8 @@ function renderQuizBoard() {
         quizState.activeEmblems.forEach(trait => {
             const slot = document.createElement('div');
             slot.className = 'quiz-unit-slot';
-            const iconUrl = `assets/tft/${currentConfig.current_set}/traits/${trait.replace(/ /g, '')}.svg`;
+            const traitInfo = tftData.trait_metadata[trait];
+        const iconUrl = traitInfo ? traitInfo.icon_url : `assets/tft/${currentConfig.current_set}/traits/${trait.replace(/ /g, '')}.svg`;
             slot.innerHTML = `
                 <img src="${iconUrl}" class="quiz-unit-icon" style="border-color: var(--accent); background: rgba(10,132,255,0.1); padding: 8px;">
                 <div class="quiz-unit-name">${trait} Emb</div>
@@ -4013,7 +4014,7 @@ function renderSingleResult(res, container, level, solverMode, isHighlighted = f
         traitItem.style.alignItems = 'center';
         traitItem.style.gap = '1px';
         traitItem.style.fontSize = '7px';
-        const iconUrl = `assets/tft/${currentConfig.current_set}/traits/${trait.replace(/ /g, '')}.svg`;
+        const iconUrl = traitInfo ? traitInfo.icon_url : `assets/tft/${currentConfig.current_set}/traits/${trait.replace(/ /g, '')}.svg`;
         traitItem.innerHTML = `<img src="${iconUrl}" style="width: 8px; height: 8px;" title="${trait}" onerror="this.style.display='none'"><span>${count}</span>`;
         traitsList.appendChild(traitItem);
     });
@@ -4280,7 +4281,8 @@ function renderChallengeRequirements(challenge) {
     challenge.traits.forEach(t => {
         const item = document.createElement('div');
         item.className = 'trainer-req-item';
-        const iconUrl = `assets/tft/${currentConfig.current_set}/traits/${t.name.replace(/ /g, '')}.svg`;
+        const traitInfo = tftData.trait_metadata[t.name];
+        const iconUrl = traitInfo ? traitInfo.icon_url : `assets/tft/${currentConfig.current_set}/traits/${t.name.replace(/ /g, '')}.svg`;
         item.innerHTML = `<img src="${iconUrl}" style="width: 18px; height: 18px;" onerror="this.style.display='none'"> <span>${t.value} ${t.name}</span>`;
         container.appendChild(item);
     });

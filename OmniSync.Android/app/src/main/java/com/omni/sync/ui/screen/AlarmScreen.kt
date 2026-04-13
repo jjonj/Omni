@@ -137,13 +137,18 @@ fun AlarmScreen(
         }
     }
 
-    // Helper to find which alarm is likely ringing/snoozing
-    val activeAlarmId = when {
-        alarm1.enabled -> 1
-        alarm2.enabled -> 2
-        else -> 0
+    val isRinging by AlarmService.isRinging.collectAsState()
+    val isSnoozing by AlarmService.isSnoozing.collectAsState()
+
+    // Use the actual triggered alarm ID if ringing or snoozing
+    val activeAlarmId = if (isRinging || isSnoozing) AlarmService.lastTriggeredAlarmId else {
+        when {
+            alarm1.enabled -> 1
+            alarm2.enabled -> 2
+            else -> 0
+        }
     }
-    val isActiveAlarmRepeating = if (activeAlarmId == 1) alarm1.repeatDaily else if (activeAlarmId == 2) alarm2.repeatDaily else false
+    val isActiveAlarmRepeating = if (activeAlarmId == 1) alarm1.repeatDaily else if (activeAlarmId == 2) alarm2.repeatDaily else AlarmService.lastTriggeredAlarmRepeating
 
     val availableAlarmSounds = listOf(
         "angel" to "Angel",
@@ -191,9 +196,6 @@ fun AlarmScreen(
         }
     }
     
-    val isRinging by AlarmService.isRinging.collectAsState()
-    val isSnoozing by AlarmService.isSnoozing.collectAsState()
-
     // Refresh alarms from prefs when ringing/snoozing state changes to false
     // This ensures the UI updates even if the SharedPreferences listener missed an update
     LaunchedEffect(isRinging, isSnoozing) {
@@ -221,42 +223,16 @@ fun AlarmScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
-                .padding(16.dp)
-                .verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+                .padding(horizontal = 16.dp)
         ) {
-            AlarmCard(
-                alarmNumber = 1,
-                alarm = alarm1,
-                onAlarmChange = { alarm1 = it; updateSchedule(1, it) },
-                availableSounds = availableAlarmSounds,
-                timeFormat = timeFormat,
-                onShowTimePicker = { showTimePicker = 1 },
-                onShowSoundPicker = { showSoundPicker = 1 },
-                hideOptionsWhenDisabled = false,
-                macros = appConfig.macros
-            )
-            
-            AlarmCard(
-                alarmNumber = 2,
-                alarm = alarm2,
-                onAlarmChange = { alarm2 = it; updateSchedule(2, it) },
-                availableSounds = availableAlarmSounds,
-                timeFormat = timeFormat,
-                onShowTimePicker = { showTimePicker = 2 },
-                onShowDatePicker = { showDatePicker = 2 },
-                onShowSoundPicker = { showSoundPicker = 2 },
-                hideOptionsWhenDisabled = true,
-                macros = appConfig.macros
-            )
-
-            // Dismiss Button when ringing or snoozing
-            val isRinging by AlarmService.isRinging.collectAsState()
-            val isSnoozing by AlarmService.isSnoozing.collectAsState()
+            // Dismiss Button when ringing or snoozing - PINNED AT TOP
             if (isRinging || isSnoozing) {
                 val dismissText = if (activeAlarmId == 1) alarm1.dismissText else if (activeAlarmId == 2) alarm2.dismissText else null
                 
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(
+                    modifier = Modifier.padding(vertical = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
                     if (!dismissText.isNullOrBlank()) {
                         Surface(
                             color = MaterialTheme.colorScheme.tertiaryContainer,
@@ -287,62 +263,98 @@ fun AlarmScreen(
                     }
                 }
             }
-            
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Column(
-                    modifier = Modifier.fillMaxWidth().padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Icon(Icons.AutoMirrored.Filled.VolumeUp, "Settings")
-                        Text("Global Gradual Settings", style = MaterialTheme.typography.titleMedium)
-                    }
-                    HorizontalDivider()
-                    
-                    AdjustableSettingRow("Initial Volume: ${config.initialVolume}%", config.initialVolume, { config = config.copy(initialVolume = it); saveAlarms() }, 0, 100)
-                    AdjustableSettingRow("Alarm Duration: ${config.alarmDuration}s", config.alarmDuration, { config = config.copy(alarmDuration = it); saveAlarms() }, 1, 300)
-                    AdjustableSettingRow("Auto-Snooze: ${config.snoozeDuration}m", config.snoozeDuration, { config = config.copy(snoozeDuration = it); saveAlarms() }, 1, 60)
-                    AdjustableSettingRow("Volume Increase: +${config.volumeIncrement}%", config.volumeIncrement, { config = config.copy(volumeIncrement = it); saveAlarms() }, 1, 20)
-                    AdjustableSettingRow("Max Repetitions: ${config.maxRepetitions}", config.maxRepetitions, { config = config.copy(maxRepetitions = it); saveAlarms() }, 1, 20)
-                }
-            }
 
-            // --- Permissions Check ---
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
-                if (!android.provider.Settings.canDrawOverlays(context)) {
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Spacer(Modifier.height(if (isRinging || isSnoozing) 0.dp else 16.dp))
+                
+                AlarmCard(
+                    alarmNumber = 1,
+                    alarm = alarm1,
+                    onAlarmChange = { alarm1 = it; updateSchedule(1, it) },
+                    availableSounds = availableAlarmSounds,
+                    timeFormat = timeFormat,
+                    onShowTimePicker = { showTimePicker = 1 },
+                    onShowSoundPicker = { showSoundPicker = 1 },
+                    hideOptionsWhenDisabled = false,
+                    macros = appConfig.macros
+                )
+                
+                AlarmCard(
+                    alarmNumber = 2,
+                    alarm = alarm2,
+                    onAlarmChange = { alarm2 = it; updateSchedule(2, it) },
+                    availableSounds = availableAlarmSounds,
+                    timeFormat = timeFormat,
+                    onShowTimePicker = { showTimePicker = 2 },
+                    onShowDatePicker = { showDatePicker = 2 },
+                    onShowSoundPicker = { showSoundPicker = 2 },
+                    hideOptionsWhenDisabled = true,
+                    macros = appConfig.macros
+                )
+                
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth().padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text(
-                                "Permission Required",
-                                style = MaterialTheme.typography.titleMedium,
-                                color = MaterialTheme.colorScheme.onErrorContainer
-                            )
-                            Text(
-                                "To force open the alarm screen when it triggers, please grant 'Display over other apps' permission.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onErrorContainer
-                            )
-                            Button(
-                                onClick = {
-                                    val intent = Intent(
-                                        android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                                        Uri.parse("package:${context.packageName}")
-                                    )
-                                    context.startActivity(intent)
-                                },
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Text("Grant Permission")
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(Icons.AutoMirrored.Filled.VolumeUp, "Settings")
+                            Text("Global Gradual Settings", style = MaterialTheme.typography.titleMedium)
+                        }
+                        HorizontalDivider()
+                        
+                        AdjustableSettingRow("Initial Volume: ${config.initialVolume}%", config.initialVolume, { config = config.copy(initialVolume = it); saveAlarms() }, 0, 100)
+                        AdjustableSettingRow("Alarm Duration: ${config.alarmDuration}s", config.alarmDuration, { config = config.copy(alarmDuration = it); saveAlarms() }, 1, 300)
+                        AdjustableSettingRow("Auto-Snooze: ${config.snoozeDuration}m", config.snoozeDuration, { config = config.copy(snoozeDuration = it); saveAlarms() }, 1, 60)
+                        AdjustableSettingRow("Volume Increase: +${config.volumeIncrement}%", config.volumeIncrement, { config = config.copy(volumeIncrement = it); saveAlarms() }, 1, 20)
+                        AdjustableSettingRow("Max Repetitions: ${config.maxRepetitions}", config.maxRepetitions, { config = config.copy(maxRepetitions = it); saveAlarms() }, 1, 20)
+                    }
+                }
+
+                // --- Permissions Check ---
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+                    if (!android.provider.Settings.canDrawOverlays(context)) {
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
+                        ) {
+                            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text(
+                                    "Permission Required",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = MaterialTheme.colorScheme.onErrorContainer
+                                )
+                                Text(
+                                    "To force open the alarm screen when it triggers, please grant 'Display over other apps' permission.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onErrorContainer
+                                )
+                                Button(
+                                    onClick = {
+                                        val intent = Intent(
+                                            android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                                            Uri.parse("package:${context.packageName}")
+                                        )
+                                        context.startActivity(intent)
+                                    },
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Text("Grant Permission")
+                                }
                             }
                         }
                     }
                 }
+                
+                Spacer(Modifier.height(16.dp))
             }
         }
     }

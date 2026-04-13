@@ -996,6 +996,7 @@ class SignalRClient(
             }
             
             val hubPid = if (targetPid <= 0) null else targetPid
+            setIsNextBubble(targetPid, true)
             hubConnection?.send("SendAiMessage", message, hubPid)
         }
     }

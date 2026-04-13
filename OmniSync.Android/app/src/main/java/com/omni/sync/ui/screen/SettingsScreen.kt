@@ -569,6 +569,32 @@ fun SettingsScreen(
                 )
             }
 
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text("Overlay Floating Icon")
+                Switch(
+                    checked = appConfig.overlayEnabled,
+                    onCheckedChange = { 
+                        appConfig.overlayEnabled = it
+                        mainViewModel.saveAppConfig()
+                        
+                        val activity = context as? com.omni.sync.MainActivity
+                        if (it) {
+                            if (android.provider.Settings.canDrawOverlays(context)) {
+                                activity?.startOverlayService()
+                            } else {
+                                activity?.requestOverlayPermission()
+                            }
+                        } else {
+                            activity?.stopOverlayService()
+                        }
+                    }
+                )
+            }
+
             Spacer(modifier = Modifier.height(16.dp))
 
             var streamFps by remember { mutableIntStateOf(appConfig.streamFps) }

@@ -36,5 +36,8 @@ class OmniSyncApplication : Application() {
 
         clipboardWatcher = ClipboardWatcher(applicationContext, signalRClient)
         clipboardWatcher.startWatching()
+
+        // Restore alarm states (e.g. isSnoozing) from SharedPreferences
+        com.omni.sync.service.AlarmService.init(this)
     }
 }

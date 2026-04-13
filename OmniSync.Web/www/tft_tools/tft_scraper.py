@@ -111,7 +111,7 @@ def scrape_mobalytics(html_path, output_dir, set_num="17"):
                 ref_id = syn_ref.get("__ref")
                 actual_ref = lookup.get(ref_id, ref_id)
                 if actual_ref in synergies:
-                    trait_name = synergies[actual_ref]["name"]
+                    trait_name = synergies[actual_ref]["name"].strip()
                     traits.append(trait_name)
                     trait_counts[trait_name] = trait_counts.get(trait_name, 0) + 1
             

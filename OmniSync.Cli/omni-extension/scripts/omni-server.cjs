@@ -52,6 +52,35 @@ async function runPythonAthenaCommand(args, cwd = null) {
   }
 }
 
+async function runPythonScript(scriptPath, args = []) {
+  log(`Running Python script: ${scriptPath} with args: ${args.join(" ")}`);
+  return new Promise((resolve, reject) => {
+    const pythonProcess = spawn("python", [scriptPath, ...args]);
+    let output = "";
+    let errorOutput = "";
+
+    pythonProcess.stdout.on("data", (data) => {
+      output += data.toString();
+    });
+
+    pythonProcess.stderr.on("data", (data) => {
+      errorOutput += data.toString();
+    });
+
+    pythonProcess.on("close", (code) => {
+      if (code === 0 || code === 1) { // 1 is often used for "found errors" but command ran successfully
+        resolve(output + errorOutput);
+      } else {
+        reject(new Error(`Python script exited with code ${code}: ${errorOutput}`));
+      }
+    });
+
+    pythonProcess.on("error", (err) => {
+      reject(new Error(`Failed to start Python process: ${err.message}`));
+    });
+  });
+}
+
 function sendResponse(id, result) {
   if (id === undefined || id === null) return;
   const response = JSON.stringify({ jsonrpc: "2.0", id, result }) + "\n";
@@ -273,6 +302,17 @@ async function main() {
                   url: { type: "string", description: "Optional URL substring to match (e.g. 'index.html')" }
                 }
               }
+            },
+            {
+              name: "check_syntax",
+              description: "Check HTML and JS files for syntax errors",
+              inputSchema: {
+                type: "object",
+                properties: {
+                  path: { type: "string", description: "Path to the file or directory to check" }
+                },
+                required: ["path"]
+              }
             }
           ]
         });
@@ -366,6 +406,15 @@ async function main() {
             sendResponse(req.id, { content: [{ type: "text", text: `Refresh command sent ${url ? `for ${url}` : "(active tab)"}` }] });
           } catch (error) {
             sendResponse(req.id, { isError: true, content: [{ type: "text", text: `Browser Refresh Error: ${error.message}` }] });
+          }
+        } else if (toolName === "check_syntax") {
+          const { path: checkPath } = args;
+          try {
+            const scriptPath = path.join(__dirname, "check_syntax.py");
+            const output = await runPythonScript(scriptPath, [checkPath]);
+            sendResponse(req.id, { content: [{ type: "text", text: output }] });
+          } catch (error) {
+            sendResponse(req.id, { isError: true, content: [{ type: "text", text: `Check Syntax Error: ${error.message}` }] });
           }
         } else {
           sendError(req.id, -32601, `Tool not found: ${toolName}`);

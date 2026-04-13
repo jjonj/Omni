@@ -29,7 +29,8 @@ data class AppConfig(
     var keyboardSoundEnabled: Boolean = true,
     var showKeyboardNumberRow: Boolean = true,
     var browserCleanupPatterns: List<String> = emptyList(),
-    var lastOpenedFilePath: String? = null
+    var lastOpenedFilePath: String? = null,
+    var overlayEnabled: Boolean = false
 )
 
 class ConfigManager(private val context: Context) {

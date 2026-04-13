@@ -63,6 +63,36 @@ class AlarmService : Service(), android.content.SharedPreferences.OnSharedPrefer
         var lastTriggeredAlarmId: Int = 0
         var lastTriggeredAlarmRepeating: Boolean = false
 
+        fun init(context: Context) {
+            val prefs = context.getSharedPreferences("alarm_prefs", Context.MODE_PRIVATE)
+            lastTriggeredAlarmId = prefs.getInt("last_triggered_alarm_id", 0)
+            lastTriggeredAlarmRepeating = prefs.getBoolean("last_triggered_alarm_repeating", false)
+            _isSnoozing.value = prefs.getBoolean("is_snoozing", false)
+            Log.d("AlarmService", "Initialized: lastId=$lastTriggeredAlarmId, snoozing=${_isSnoozing.value}")
+        }
+
+        fun updateState(context: Context, isRinging: Boolean? = null, isSnoozing: Boolean? = null, alarmId: Int? = null, repeating: Boolean? = null) {
+            val prefs = context.getSharedPreferences("alarm_prefs", Context.MODE_PRIVATE)
+            val editor = prefs.edit()
+            
+            isRinging?.let { 
+                _isRinging.value = it
+            }
+            isSnoozing?.let {
+                _isSnoozing.value = it
+                editor.putBoolean("is_snoozing", it)
+            }
+            alarmId?.let {
+                lastTriggeredAlarmId = it
+                editor.putInt("last_triggered_alarm_id", it)
+            }
+            repeating?.let {
+                lastTriggeredAlarmRepeating = it
+                editor.putBoolean("last_triggered_alarm_repeating", it)
+            }
+            editor.apply()
+        }
+
         fun stopAlarm(context: Context, alarmId: Int = 0, repeatDaily: Boolean? = null) {
             val intent = Intent(context, AlarmService::class.java).apply {
                 action = ACTION_DISMISS
@@ -126,8 +156,7 @@ class AlarmService : Service(), android.content.SharedPreferences.OnSharedPrefer
         }
 
         // Store for global dismissal (e.g. from notification or overlay)
-        lastTriggeredAlarmId = currentAlarmId
-        lastTriggeredAlarmRepeating = repeatDaily
+        updateState(this, isRinging = true, isSnoozing = false, alarmId = currentAlarmId, repeating = repeatDaily)
 
         // Extract Alarm Data (for starting)
         currentSoundId = intent?.getStringExtra("SOUND_ID") ?: "gentle"
@@ -147,9 +176,6 @@ class AlarmService : Service(), android.content.SharedPreferences.OnSharedPrefer
         macroOnDismiss = intent?.getStringExtra("MACRO_ON_DISMISS")
         dismissText = intent?.getStringExtra("DISMISS_TEXT")
 
-        _isRinging.value = true
-        _isSnoozing.value = false
-        
         // Execute macro on first trigger
         if (currentRepetition == 0 && !macroOnTrigger.isNullOrBlank()) {
             executeAlarmMacro(macroOnTrigger!!)
@@ -220,11 +246,9 @@ class AlarmService : Service(), android.content.SharedPreferences.OnSharedPrefer
     private fun handleAutoSnooze() {
         Log.i("AlarmService", "Auto-snooze triggered.")
         stopSound()
-        _isRinging.value = false
-
+        
         if (currentRepetition < maxRepetitions) {
             // Schedule Snooze
-            _isSnoozing.value = true
             val nextVolume = (currentVolume + volumeIncrement).coerceAtMost(100)
             val nextRepetition = currentRepetition + 1
             
@@ -233,6 +257,9 @@ class AlarmService : Service(), android.content.SharedPreferences.OnSharedPrefer
 
             Log.i("AlarmService", "Scheduling snooze: Rep $nextRepetition, Vol $nextVolume in $snoozeDurationMin mins for alarm $currentAlarmId")
             
+            // Update states together to prevent UI flickering
+            updateState(this, isRinging = false, isSnoozing = true)
+
             AlarmScheduler.scheduleSnooze(
                 context = this,
                 alarmId = currentAlarmId,
@@ -253,7 +280,7 @@ class AlarmService : Service(), android.content.SharedPreferences.OnSharedPrefer
             )
         } else {
             // Max repetitions reached. 
-            _isSnoozing.value = false
+            updateState(this, isRinging = false, isSnoozing = false)
             // If repeatDaily is true, the next day is already scheduled by AlarmScheduler when it first fired (or should be).
             // If repeatDaily is false, we should disable the alarm.
             if (!repeatDaily) {
@@ -267,8 +294,7 @@ class AlarmService : Service(), android.content.SharedPreferences.OnSharedPrefer
     private fun handleDismiss() {
         Log.i("AlarmService", "User Dismissed Alarm $currentAlarmId.")
         stopSound()
-        _isRinging.value = false
-        _isSnoozing.value = false
+        updateState(this, isRinging = false, isSnoozing = false)
         timeoutJob?.cancel()
         snoozeMessage = null
 
@@ -392,7 +418,7 @@ class AlarmService : Service(), android.content.SharedPreferences.OnSharedPrefer
 
     override fun onDestroy() {
         _isRinging.value = false
-        _isSnoozing.value = false
+        // isSnoozing is persistent across service restarts until dismissed
         timeoutJob?.cancel()
         stopSound()
         

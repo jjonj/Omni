@@ -114,6 +114,42 @@ class MainActivity : ComponentActivity() {
         AppScreen.BOOKS
     )
 
+    fun startOverlayService() {
+        if (!android.provider.Settings.canDrawOverlays(this)) return
+        Intent(this, com.omni.sync.service.OverlayService::class.java).also { intent ->
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                startForegroundService(intent)
+            } else {
+                startService(intent)
+            }
+        }
+    }
+
+    fun stopOverlayService() {
+        Intent(this, com.omni.sync.service.OverlayService::class.java).also { intent ->
+            stopService(intent)
+        }
+    }
+
+    fun requestOverlayPermission() {
+        if (!android.provider.Settings.canDrawOverlays(this)) {
+            val intent = Intent(
+                android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                android.net.Uri.parse("package:$packageName")
+            )
+            startActivityForResult(intent, 123)
+        }
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == 123) {
+            if (android.provider.Settings.canDrawOverlays(this)) {
+                startOverlayService()
+            }
+        }
+    }
+
     @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -141,6 +177,10 @@ class MainActivity : ComponentActivity() {
         mainViewModel = omniSyncApplication.mainViewModel
         
         omniSyncApplication.signalRClient.startConnection()
+
+        if (mainViewModel.appConfig.value.overlayEnabled && android.provider.Settings.canDrawOverlays(this)) {
+            startOverlayService()
+        }
 
         Intent(this, ForegroundService::class.java).also { intent ->
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
