@@ -168,12 +168,12 @@ namespace OmniSync.Hub.Infrastructure.Services
             if (_sessions.TryGetValue(pid, out var s))
             {
                 string? hint = GetTitleHint(pid);
-                _logger.LogInformation($"[AiCliService] [FOCUS-TRACE] Focus requested for Session {pid}. StablePid: {s.Pid}, ActivePid: {s.ActivePid}, RootPid: {s.RootPid}, Hint: {hint ?? "None"}");
+                _logger.LogInformation($"[AiCliService] Focusing Session {pid} (Root: {s.RootPid}, Hint: {hint ?? "None"})");
                 _processService.WinActivatePid(s.RootPid, hint);
             }
             else
             {
-                _logger.LogWarning($"[AiCliService] [FOCUS-TRACE] Focus requested for unknown Session PID: {pid}");
+                _logger.LogWarning($"[AiCliService] Focus requested for unknown Session PID: {pid}");
             }
             await Task.CompletedTask;
         }

@@ -431,12 +431,18 @@ foreach ($p in $procs) {{
                 try
                 {
                     var treePids = GetProcessTreePids(pid);
+                    _monitorService.AddLogMessage($"[ProcessService] [FOCUS] Tree PIDs for {pid}: {string.Join(", ", treePids)}");
                     var hwnds = GetVisibleWindowsForPids(treePids, titleHint);
 
                     if (hwnds.Any())
                     {
                         var targetHwnd = hwnds.First();
+                        _monitorService.AddLogMessage($"[ProcessService] [FOCUS] Best HWND found: {targetHwnd}. Activating...");
                         ActivateWindow(targetHwnd);
+                    }
+                    else
+                    {
+                        _monitorService.AddLogMessage($"[ProcessService] [FOCUS] NO visible windows found for the process tree.");
                     }
                 }
                 catch (Exception ex)
@@ -1073,65 +1079,70 @@ Add-Type -MemberDefinition $code -Name Win32 -Namespace Native
         private List<IntPtr> GetVisibleWindowsForPids(HashSet<int> pids, string? titleHint = null)
         {
             var candidates = new List<(IntPtr hWnd, int priority, long area, string title, string procName)>();
-            
+
             EnumWindows((hWnd, lParam) =>
             {
-                if (IsWindowVisible(hWnd))
+                GetWindowThreadProcessId(hWnd, out uint processId);
+                bool isTreeMatch = pids.Contains((int)processId);
+                
+                var sb = new StringBuilder(256);
+                GetWindowText(hWnd, sb, sb.Capacity);
+                string title = sb.ToString();
+
+                bool isVisible = IsWindowVisible(hWnd);
+                GetWindowRect(hWnd, out RECT rect);
+                int w = rect.Right - rect.Left;
+                int h = rect.Bottom - rect.Top;
+
+                string procName = "Unknown";
+                try { procName = Process.GetProcessById((int)processId).ProcessName; } catch { }
+
+                // Check for PID-in-title (e.g. "Omni (12345)") to disambiguate tabs in same workspace
+                bool isPidInTitle = title.Contains($"({processId})") || title.Contains($" {processId}") || title.Contains($":{processId}");
+
+                bool isTitleMatch = !string.IsNullOrEmpty(titleHint) && title.Contains(titleHint, StringComparison.OrdinalIgnoreCase);
+
+                // If it's a tree match, we consider it even if size is 0 (it might be a hidden console owner we can still try to activate)
+                if (isTreeMatch)
                 {
-                    GetWindowThreadProcessId(hWnd, out uint processId);
-                    
-                    var sb = new StringBuilder(256);
-                    GetWindowText(hWnd, sb, sb.Capacity);
-                    string title = sb.ToString();
+                    int score = 1000; // Base score for being in the tree
+                    if (isVisible) score += 500;
+                    if (w > 0 && h > 0) score += 200;
+                    if (isPidInTitle) score += 2000;
 
-                    GetWindowRect(hWnd, out RECT rect);
-                    int w = rect.Right - rect.Left;
-                    int h = rect.Bottom - rect.Top;
-
-                    if (w > 10 && h > 10)
+                    _monitorService.AddLogMessage($"[ProcessService] [FOCUS] Tree match HWND: {hWnd}, Score: {score}, Title: '{title}', Proc: '{procName}'");
+                    candidates.Add((hWnd, score, (long)w * h, title, procName));
+                }
+                else if (isVisible && w > 10 && h > 10)
+                {
+                    int score = 0;
+                    if (isPidInTitle)
                     {
-                        string procName = "Unknown";
-                        try { procName = Process.GetProcessById((int)processId).ProcessName; } catch { }
+                        // Massive bonus for explicit PID match in title even if not in tree
+                        score += 1500;
+                    }
 
-                        bool isTreeMatch = pids.Contains((int)processId);
-                        bool isTitleMatch = !string.IsNullOrEmpty(titleHint) && title.Contains(titleHint, StringComparison.OrdinalIgnoreCase);
-                        
-                        // Check for PID-in-title (e.g. "Omni (12345)") to disambiguate tabs in same workspace
-                        bool isPidInTitle = title.Contains($"({processId})") || title.Contains($" {processId}") || title.Contains($":{processId}");
+                    if (isTitleMatch)
+                    {
+                        // DESPERATE LAST RESORT: Title match for non-tree process
+                        bool isTerminal = procName.Contains("Terminal", StringComparison.OrdinalIgnoreCase) || 
+                                          procName.Contains("cmd", StringComparison.OrdinalIgnoreCase) || 
+                                          procName.Contains("node", StringComparison.OrdinalIgnoreCase) ||
+                                          procName.Contains("PowerShell", StringComparison.OrdinalIgnoreCase);
 
-                        int score = 0;
-                        if (isTreeMatch)
-                        {
-                            // Tree match is highest priority
-                            score += 500;
-                        }
+                        score += (isTerminal ? 300 : 50); 
+                        score += CalculateTitleScore(title, titleHint!);
+                    }
 
-                        if (isPidInTitle)
-                        {
-                            // Massive bonus for explicit PID match in title
-                            score += 1000;
-                        }
-
-                        if (isTitleMatch)
-                        {
-                            // Bonus for terminal processes matching title
-                            bool isTerminal = procName.Contains("Terminal", StringComparison.OrdinalIgnoreCase) || 
-                                              procName.Contains("cmd", StringComparison.OrdinalIgnoreCase) || 
-                                              procName.Contains("node", StringComparison.OrdinalIgnoreCase) ||
-                                              procName.Contains("PowerShell", StringComparison.OrdinalIgnoreCase);
-                            
-                            score += (isTerminal ? 200 : 50); // Higher bonus for terminal matches
-                            score += CalculateTitleScore(title, titleHint!);
-                        }
-
-                        if (score > 0)
-                        {
-                            candidates.Add((hWnd, score, (long)w * h, title, procName));
-                        }
+                    if (score > 0)
+                    {
+                        _monitorService.AddLogMessage($"[ProcessService] [FOCUS] Title fallback HWND: {hWnd}, Score: {score}, Title: '{title}', Proc: '{procName}'");
+                        candidates.Add((hWnd, score, (long)w * h, title, procName));
                     }
                 }
                 return true;
-            }, IntPtr.Zero);
+                }, IntPtr.Zero);
+
 
             if (candidates.Count == 0)
             {
