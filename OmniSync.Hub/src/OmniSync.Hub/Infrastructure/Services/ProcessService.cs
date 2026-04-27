@@ -868,54 +868,105 @@ Add-Type -MemberDefinition $code -Name Win32 -Namespace Native
 
         public void MoveWindowOpposite(int pid, string? titleHint = null)
         {
-            _monitorService.AddLogMessage($"[ProcessService] MoveWindowOpposite for PID: {pid} (Hint: {titleHint ?? "None"})");
-            var targetPids = GetProcessTreePids(pid);
-            _monitorService.AddLogMessage($"[ProcessService] PIDs in tree: {string.Join(", ", targetPids)}");
-            var hwnds = GetVisibleWindowsForPids(targetPids, titleHint);
-            _monitorService.AddLogMessage($"[ProcessService] Found {hwnds.Count} visible windows for tree.");
-            MoveHwndsToOppositeMonitor(hwnds);
+            Action action = () => {
+                try
+                {
+                    _monitorService.AddLogMessage($"[ProcessService] MoveWindowOpposite for PID: {pid} (Hint: {titleHint ?? "None"})");
+                    var targetPids = GetProcessTreePids(pid);
+                    _monitorService.AddLogMessage($"[ProcessService] PIDs in tree: {string.Join(", ", targetPids)}");
+                    var hwnds = GetVisibleWindowsForPids(targetPids, titleHint);
+                    _monitorService.AddLogMessage($"[ProcessService] Found {hwnds.Count} visible windows for tree.");
+                    MoveHwndsToOppositeMonitor(hwnds);
+                }
+                catch (Exception ex)
+                {
+                    _monitorService.AddLogMessage($"[ProcessService] Error in MoveWindowOpposite (PID): {ex.Message}");
+                }
+            };
+
+            if (System.Windows.Application.Current != null)
+            {
+                System.Windows.Application.Current.Dispatcher.Invoke(action);
+            }
+            else
+            {
+                action();
+            }
         }
 
         public void MoveWindowOpposite(string titleOrName)
         {
-            _monitorService.AddLogMessage($"[ProcessService] MoveWindowOpposite for Title/Name: {titleOrName}");
-            var hwnds = GetWindowsByTitleOrProcessName(titleOrName);
-            _monitorService.AddLogMessage($"[ProcessService] Found {hwnds.Count} visible windows for '{titleOrName}'.");
-            MoveHwndsToOppositeMonitor(hwnds);
+            Action action = () => {
+                try
+                {
+                    _monitorService.AddLogMessage($"[ProcessService] MoveWindowOpposite for Title/Name: {titleOrName}");
+                    var hwnds = GetWindowsByTitleOrProcessName(titleOrName);
+                    _monitorService.AddLogMessage($"[ProcessService] Found {hwnds.Count} visible windows for '{titleOrName}'.");
+                    MoveHwndsToOppositeMonitor(hwnds);
+                }
+                catch (Exception ex)
+                {
+                    _monitorService.AddLogMessage($"[ProcessService] Error in MoveWindowOpposite (Title): {ex.Message}");
+                }
+            };
+
+            if (System.Windows.Application.Current != null)
+            {
+                System.Windows.Application.Current.Dispatcher.Invoke(action);
+            }
+            else
+            {
+                action();
+            }
         }
 
         public void MoveWindowToMonitor(int pid, int monitorIndex)
         {
-            _monitorService.AddLogMessage($"[ProcessService] MoveWindowToMonitor for PID: {pid} to Mon {monitorIndex}");
-            var targetPids = GetProcessTreePids(pid);
-            var hwnds = GetVisibleWindowsForPids(targetPids);
-            
-            if (hwnds.Count == 0)
+            Action action = () => {
+                try
+                {
+                    _monitorService.AddLogMessage($"[ProcessService] MoveWindowToMonitor for PID: {pid} to Mon {monitorIndex}");
+                    var targetPids = GetProcessTreePids(pid);
+                    var hwnds = GetVisibleWindowsForPids(targetPids);
+                    
+                    if (hwnds.Count == 0)
+                    {
+                        _monitorService.AddLogMessage("[ProcessService] MoveWindowToMonitor: No valid windows found.");
+                        return;
+                    }
+
+                    var monitors = new List<IntPtr>();
+                    EnumDisplayMonitors(IntPtr.Zero, IntPtr.Zero, (IntPtr hMonitor, IntPtr hdcMonitor, ref RECT lprcMonitor, IntPtr dwData) =>
+                    {
+                        monitors.Add(hMonitor);
+                        return true;
+                    }, IntPtr.Zero);
+
+                    if (monitorIndex < 0 || monitorIndex >= monitors.Count)
+                    {
+                        _monitorService.AddLogMessage($"[ProcessService] Invalid monitor index {monitorIndex}. Total monitors: {monitors.Count}");
+                        return;
+                    }
+
+                    IntPtr hTargetMonitor = monitors[monitorIndex];
+                    foreach (var hWnd in hwnds.Distinct())
+                    {
+                        MoveHwndProportional(hWnd, hTargetMonitor, monitorIndex);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _monitorService.AddLogMessage($"[ProcessService] Error in MoveWindowToMonitor: {ex.Message}");
+                }
+            };
+
+            if (System.Windows.Application.Current != null)
             {
-                _monitorService.AddLogMessage("[ProcessService] MoveWindowToMonitor: No valid windows found.");
-                return;
+                System.Windows.Application.Current.Dispatcher.Invoke(action);
             }
-
-            var monitors = new List<IntPtr>();
-            EnumDisplayMonitors(IntPtr.Zero, IntPtr.Zero, (IntPtr hMonitor, IntPtr hdcMonitor, ref RECT lprcMonitor, IntPtr dwData) =>
+            else
             {
-                monitors.Add(hMonitor);
-                return true;
-            }, IntPtr.Zero);
-
-            if (monitorIndex < 0 || monitorIndex >= monitors.Count)
-            {
-                _monitorService.AddLogMessage($"[ProcessService] Invalid monitor index {monitorIndex}. Total monitors: {monitors.Count}");
-                return;
-            }
-
-            IntPtr hTargetMonitor = monitors[monitorIndex];
-            MONITORINFO targetInfo = new MONITORINFO { cbSize = Marshal.SizeOf(typeof(MONITORINFO)) };
-            GetMonitorInfo(hTargetMonitor, ref targetInfo);
-
-            foreach (var hWnd in hwnds.Distinct())
-            {
-                MoveHwndProportional(hWnd, hTargetMonitor, monitorIndex);
+                action();
             }
         }
 
@@ -937,6 +988,12 @@ Add-Type -MemberDefinition $code -Name Win32 -Namespace Native
             int curH = currentInfo.rcWork.Bottom - currentInfo.rcWork.Top;
             int tarW = targetInfo.rcWork.Right - targetInfo.rcWork.Left;
             int tarH = targetInfo.rcWork.Bottom - targetInfo.rcWork.Top;
+
+            if (curW <= 0 || curH <= 0 || tarW <= 0 || tarH <= 0)
+            {
+                _monitorService.AddLogMessage($"[ProcessService] [WARNING] Invalid monitor dimensions detected. Current: {curW}x{curH}, Target: {tarW}x{tarH}. Aborting proportional move.");
+                return;
+            }
 
             // Relative position to current monitor's work area top-left
             float relX = rect.Left - currentInfo.rcWork.Left;
@@ -1107,10 +1164,20 @@ Add-Type -MemberDefinition $code -Name Win32 -Namespace Native
                 {
                     int score = 1000; // Base score for being in the tree
                     if (isVisible) score += 500;
-                    if (w > 0 && h > 0) score += 200;
+                    
+                    if (w > 0 && h > 0) 
+                    {
+                        score += 200;
+                    }
+                    else 
+                    {
+                        // Heavy penalty for 0-size windows in the tree, as they are likely hosted/ghost windows
+                        score -= 2000;
+                    }
+
                     if (isPidInTitle) score += 2000;
 
-                    _monitorService.AddLogMessage($"[ProcessService] [FOCUS] Tree match HWND: {hWnd}, Score: {score}, Title: '{title}', Proc: '{procName}'");
+                    _monitorService.AddLogMessage($"[ProcessService] [FOCUS] Tree match HWND: {hWnd}, Size: {w}x{h}, Score: {score}, Title: '{title}', Proc: '{procName}'");
                     candidates.Add((hWnd, score, (long)w * h, title, procName));
                 }
                 else if (isVisible && w > 10 && h > 10)
