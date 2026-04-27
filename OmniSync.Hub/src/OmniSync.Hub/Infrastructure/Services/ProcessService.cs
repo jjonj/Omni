@@ -1136,6 +1136,7 @@ Add-Type -MemberDefinition $code -Name Win32 -Namespace Native
         private List<IntPtr> GetVisibleWindowsForPids(HashSet<int> pids, string? titleHint = null)
         {
             var candidates = new List<(IntPtr hWnd, int priority, long area, string title, string procName)>();
+            _monitorService.AddLogMessage($"[ProcessService] [FOCUS] Searching windows for Tree PIDs: {string.Join(", ", pids.Take(10))}{(pids.Count > 10 ? "..." : "")}");
 
             EnumWindows((hWnd, lParam) =>
             {
@@ -1154,8 +1155,16 @@ Add-Type -MemberDefinition $code -Name Win32 -Namespace Native
                 string procName = "Unknown";
                 try { procName = Process.GetProcessById((int)processId).ProcessName; } catch { }
 
-                // Check for PID-in-title (e.g. "Omni (12345)") to disambiguate tabs in same workspace
-                bool isPidInTitle = title.Contains($"({processId})") || title.Contains($" {processId}") || title.Contains($":{processId}");
+                // Check for PID-in-title (e.g. "Omni [12345]") to disambiguate tabs in same workspace
+                bool isPidInTitle = false;
+                foreach (var pid in pids)
+                {
+                    if (title.Contains($"[{pid}]") || title.Contains($"({pid})") || title.EndsWith($" {pid}"))
+                    {
+                        isPidInTitle = true;
+                        break;
+                    }
+                }
 
                 bool isTitleMatch = !string.IsNullOrEmpty(titleHint) && title.Contains(titleHint, StringComparison.OrdinalIgnoreCase);
 
@@ -1175,9 +1184,9 @@ Add-Type -MemberDefinition $code -Name Win32 -Namespace Native
                         score -= 2000;
                     }
 
-                    if (isPidInTitle) score += 2000;
+                    if (isPidInTitle) score += 5000; // MASSIVE boost for explicit PID match in title
 
-                    _monitorService.AddLogMessage($"[ProcessService] [FOCUS] Tree match HWND: {hWnd}, Size: {w}x{h}, Score: {score}, Title: '{title}', Proc: '{procName}'");
+                    _monitorService.AddLogMessage($"[ProcessService] [FOCUS] Tree match HWND: {hWnd}, OwnerPID: {processId}, Size: {w}x{h}, Score: {score}, Title: '{title}', Proc: '{procName}'");
                     candidates.Add((hWnd, score, (long)w * h, title, procName));
                 }
                 else if (isVisible && w > 10 && h > 10)
@@ -1186,7 +1195,7 @@ Add-Type -MemberDefinition $code -Name Win32 -Namespace Native
                     if (isPidInTitle)
                     {
                         // Massive bonus for explicit PID match in title even if not in tree
-                        score += 1500;
+                        score += 5000;
                     }
 
                     if (isTitleMatch)
@@ -1203,7 +1212,7 @@ Add-Type -MemberDefinition $code -Name Win32 -Namespace Native
 
                     if (score > 0)
                     {
-                        _monitorService.AddLogMessage($"[ProcessService] [FOCUS] Title fallback HWND: {hWnd}, Score: {score}, Title: '{title}', Proc: '{procName}'");
+                        _monitorService.AddLogMessage($"[ProcessService] [FOCUS] Fallback match HWND: {hWnd}, OwnerPID: {processId}, Score: {score}, Title: '{title}', Proc: '{procName}'");
                         candidates.Add((hWnd, score, (long)w * h, title, procName));
                     }
                 }
@@ -1217,10 +1226,13 @@ Add-Type -MemberDefinition $code -Name Win32 -Namespace Native
             }
 
             // Sort by priority and area
-            var best = candidates
+            var sorted = candidates
                 .OrderByDescending(c => c.priority)
                 .ThenByDescending(c => c.area)
-                .First();
+                .ToList();
+
+            var best = sorted.First();
+            _monitorService.AddLogMessage($"[ProcessService] [FOCUS] Selected best HWND: {best.hWnd} (Score: {best.priority}, Title: '{best.title}')");
 
             return new List<IntPtr> { best.hWnd };
         }
