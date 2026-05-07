@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.IO;
 using System.Diagnostics;
 using System.Collections.Generic;
@@ -7,10 +7,10 @@ using System.Text.Json;
 
 namespace OmniSync.Hub.Logic.Services
 {
-    public class AthenaPaths
+    public class OpcPaths
     {
-        public string AthenaRoot { get; set; } = "";
-        public string AthenaSrc { get; set; } = "";
+        public string OpcRoot { get; set; } = "";
+        public string OpcSrc { get; set; } = "";
         public string PythonExecutable { get; set; } = "python";
     }
 
@@ -24,12 +24,12 @@ namespace OmniSync.Hub.Logic.Services
 
     public class AssistantService
     {
-        public AthenaPaths GetAthenaPaths()
+        public OpcPaths GetOpcPaths()
         {
             // Hardcoded base for now as per project structure
             string root = @"D:\SSDProjects\Omni";
-            string athenaRoot = Path.Combine(root, "OmniSync.Assistant", "Omni.Athena");
-            string athenaSrc = Path.Combine(athenaRoot, "src");
+            string opcRoot = Path.Combine(root, "OmniSync.Assistant", "Omni.Opc");
+            string opcSrc = Path.Combine(opcRoot, "src");
 
             string pythonExe = "python"; // Default to system python
 
@@ -37,7 +37,7 @@ namespace OmniSync.Hub.Logic.Services
             string[] possibleVenvs = { ".venv", "venv" };
             foreach (var venv in possibleVenvs)
             {
-                string venvPath = Path.Combine(athenaRoot, venv, "Scripts", "python.exe");
+                string venvPath = Path.Combine(opcRoot, venv, "Scripts", "python.exe");
                 if (File.Exists(venvPath))
                 {
                     pythonExe = venvPath;
@@ -45,21 +45,21 @@ namespace OmniSync.Hub.Logic.Services
                 }
             }
 
-            return new AthenaPaths
+            return new OpcPaths
             {
-                AthenaRoot = athenaRoot,
-                AthenaSrc = athenaSrc,
+                OpcRoot = opcRoot,
+                OpcSrc = opcSrc,
                 PythonExecutable = pythonExe
             };
         }
 
         public async Task<AssistantExecutionResult> ExecuteAsync(string command, IEnumerable<string> args, string? projectRoot = null)
         {
-            var paths = GetAthenaPaths();
+            var paths = GetOpcPaths();
             projectRoot = DiscoverProjectRoot(projectRoot ?? Directory.GetCurrentDirectory());
 
-            var processArgs = new List<string> { "-m", "athena" };
-            
+            var processArgs = new List<string> { "-m", "opc" };
+
             // Inject --root if not already present, before the subcommand
             if (!processArgs.Contains("--root"))
             {
@@ -89,11 +89,11 @@ namespace OmniSync.Hub.Logic.Services
             }
 
             // Set PYTHONPATH
-            startInfo.EnvironmentVariables["PYTHONPATH"] = paths.AthenaSrc;
+            startInfo.EnvironmentVariables["PYTHONPATH"] = paths.OpcSrc;
             startInfo.EnvironmentVariables["PYTHONIOENCODING"] = "utf-8";
 
             using var process = new Process { StartInfo = startInfo };
-            
+
             var output = "";
             var error = "";
 
@@ -121,9 +121,7 @@ namespace OmniSync.Hub.Logic.Services
             while (current != null)
             {
                 if (current.GetDirectories(".omni").Length > 0 ||
-                    current.GetDirectories(".athena").Length > 0 ||
-                    current.GetDirectories(".git").Length > 0 ||
-                    current.GetFiles(".athena_root").Length > 0)
+                    current.GetDirectories(".git").Length > 0)
                 {
                     return current.FullName;
                 }

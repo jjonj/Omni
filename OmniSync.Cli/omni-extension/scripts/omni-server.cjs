@@ -1,4 +1,4 @@
-const http = require("http");
+﻿const http = require("http");
 const { URL } = require("url");
 const fs = require("fs");
 const path = require("path");
@@ -14,12 +14,11 @@ function log(msg) {
 }
 
 function discoverProjectRoot() {
-  // Simple discovery: look for .git or .omni or .athena_root starting from current __dirname
+  // Simple discovery: look for .git or .omni starting from current __dirname
   let current = __dirname;
   while (current !== path.parse(current).root) {
-    if (fs.existsSync(path.join(current, ".git")) || 
-        fs.existsSync(path.join(current, ".omni")) || 
-        fs.existsSync(path.join(current, ".athena_root"))) {
+    if (fs.existsSync(path.join(current, ".git")) ||
+        fs.existsSync(path.join(current, ".omni"))) {
       return current;
     }
     current = path.dirname(current);
@@ -31,23 +30,23 @@ function discoverProjectRoot() {
 const PROJECT_ROOT = discoverProjectRoot();
 log(`Resolved Project Root: ${PROJECT_ROOT}`);
 
-async function runPythonAthenaCommand(args, cwd = null) {
+async function runPythonOpcCommand(args, cwd = null) {
   const targetRoot = cwd || PROJECT_ROOT;
-  log(`Requesting Hub to run Athena command: ${args.join(" ")} in ${targetRoot}`);
+  log(`Requesting Hub to run OPC command: ${args.join(" ")} in ${targetRoot}`);
   try {
     const response = await postToHubApi("assistant/execute", {
       Command: args[0],
       Args: args.slice(1),
       ProjectRoot: targetRoot
     });
-    
+
     if (response.success) {
       return response.output;
     } else {
-      throw new Error(response.error || response.output || "Unknown Athena error");
+      throw new Error(response.error || response.output || "Unknown OPC error");
     }
   } catch (error) {
-    log(`Hub Athena Execution Error: ${error.message}`);
+    log(`Hub OPC Execution Error: ${error.message}`);
     throw error;
   }
 }
@@ -68,7 +67,7 @@ async function runPythonScript(scriptPath, args = []) {
     });
 
     pythonProcess.on("close", (code) => {
-      if (code === 0 || code === 1) { // 1 is often used for "found errors" but command ran successfully
+      if (code === 0 || code === 1) { 
         resolve(output + errorOutput);
       } else {
         reject(new Error(`Python script exited with code ${code}: ${errorOutput}`));
@@ -198,7 +197,7 @@ async function main() {
               inputSchema: {
                 type: "object",
                 properties: {
-                  path: { type: "string", description: "Absolute path or URL" },    
+                  path: { type: "string", description: "Absolute path or URL" },
                   line_number: { type: "integer", description: "Optional line number for Notepad++" }
                 },
                 required: ["path"]
@@ -206,7 +205,7 @@ async function main() {
             },
             {
               name: "list_cli_sessions",
-              description: "Lists active Gemini CLI sessions managed by the Hub",   
+              description: "Lists active Gemini CLI sessions managed by the Hub",
               inputSchema: { type: "object", properties: {} }
             },
             {
@@ -216,7 +215,7 @@ async function main() {
                 type: "object",
                 properties: {
                   pid: { type: "integer", description: "Process ID of the target session" },
-                  message: { type: "string", description: "The prompt to inject" }  
+                  message: { type: "string", description: "The prompt to inject" }
                 },
                 required: ["pid", "message"]
               }
@@ -240,7 +239,7 @@ async function main() {
             },
             {
               name: "quicksave",
-              description: "Save a checkpoint to the current session log via Athena",
+              description: "Save a checkpoint to the current session log via OPC",
               inputSchema: {
                 type: "object",
                 properties: {
@@ -252,7 +251,7 @@ async function main() {
             },
             {
               name: "smart_search",
-              description: "Search Athena's sovereign memory and project context",
+              description: "Search sovereign memory and project context",
               inputSchema: {
                 type: "object",
                 properties: {
@@ -316,7 +315,7 @@ async function main() {
             }
           ]
         });
-      } else if (req.method === "call_tool" || req.method === "tools/call") {       
+      } else if (req.method === "call_tool" || req.method === "tools/call") {
         const toolName = req.params.name;
         const args = req.params.arguments || {};
 
@@ -338,7 +337,7 @@ async function main() {
         } else if (toolName === "send_cli_message") {
           const { pid, message } = args;
           try {
-            await callHubApi("SEND_CLI_MESSAGE", { Pid: pid, Message: message });   
+            await callHubApi("SEND_CLI_MESSAGE", { Pid: pid, Message: message });
             sendResponse(req.id, { content: [{ type: "text", text: `Message sent to PID ${pid}` }] });
           } catch (error) {
             sendResponse(req.id, { isError: true, content: [{ type: "text", text: `Error: ${error.message}` }] });
@@ -365,7 +364,7 @@ async function main() {
             if (bullets && bullets.length > 0) {
               bullets.forEach(b => { cmdArgs.push("--bullets"); cmdArgs.push(b); });
             }
-            const output = await runPythonAthenaCommand(cmdArgs, project_root);
+            const output = await runPythonOpcCommand(cmdArgs, project_root);
             sendResponse(req.id, { content: [{ type: "text", text: output }] });
           } catch (error) {
             sendResponse(req.id, { isError: true, content: [{ type: "text", text: `Quicksave Error: ${error.message}` }] });
@@ -373,28 +372,28 @@ async function main() {
         } else if (toolName === "smart_search") {
           const { query, limit } = args;
           try {
-            const output = await runPythonAthenaCommand(["omni:search", query, "--limit", (limit || 10).toString(), "--json"]);
+            const output = await runPythonOpcCommand(["omni:search", query, "--limit", (limit || 10).toString(), "--json"]);
             sendResponse(req.id, { content: [{ type: "text", text: output }] });
           } catch (error) {
             sendResponse(req.id, { isError: true, content: [{ type: "text", text: `Omni Search Error: ${error.message}` }] });
           }
         } else if (toolName === "opc_sync") {
           try {
-            const output = await runPythonAthenaCommand(["omni:sync"], args.project_root);
+            const output = await runPythonOpcCommand(["omni:sync"], args.project_root);
             sendResponse(req.id, { content: [{ type: "text", text: output }] });
           } catch (error) {
             sendResponse(req.id, { isError: true, content: [{ type: "text", text: `OPC Sync Error: ${error.message}` }] });
           }
         } else if (toolName === "omni_setup") {
           try {
-            const output = await runPythonAthenaCommand(["init"], args.project_root);
+            const output = await runPythonOpcCommand(["init"], args.project_root);
             sendResponse(req.id, { content: [{ type: "text", text: output }] });
           } catch (error) {
             sendResponse(req.id, { isError: true, content: [{ type: "text", text: `Setup Error: ${error.message}` }] });
           }
         } else if (toolName === "omni_boot") {
           try {
-            const output = await runPythonAthenaCommand(["start"], args.project_root);
+            const output = await runPythonOpcCommand(["start"], args.project_root);
             sendResponse(req.id, { content: [{ type: "text", text: output }] });
           } catch (error) {
             sendResponse(req.id, { isError: true, content: [{ type: "text", text: `Boot Error: ${error.message}` }] });
