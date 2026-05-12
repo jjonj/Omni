@@ -77,6 +77,7 @@ namespace OmniSync.Hub.Presentation
         public ICommand CreateTaskFromClipboardCommand { get; }
         public ICommand RunGmiCommand { get; }
         public ICommand RunGmiJobCommand { get; }
+        public ICommand ApplyPatchFromClipboardCommand { get; }
 
         public OmniSweepViewModel(
             HubSettingsService settingsService,
@@ -113,8 +114,51 @@ namespace OmniSync.Hub.Presentation
             CreateTaskFromClipboardCommand = new RelayCommand(async _ => await ExecuteCreateTaskFromClipboard());
             RunGmiCommand = new RelayCommand(async _ => await ExecuteRunGmi());
             RunGmiJobCommand = new RelayCommand(async _ => await ExecuteRunGmiJob());
+            ApplyPatchFromClipboardCommand = new RelayCommand(async _ => await ExecuteApplyPatchFromClipboard());
 
             InitializeAsync();
+        }
+
+        private async Task ExecuteApplyPatchFromClipboard()
+        {
+            try
+            {
+                string patch = _clipboardService.GetClipboardText();
+                if (string.IsNullOrWhiteSpace(patch) || !patch.Contains("diff --git"))
+                {
+                    _monitorService.AddLogMessage("[OmniSweep] Clipboard does not contain a valid git patch");
+                    return;
+                }
+
+                // Repair common clipboard mangling (stripping first character of headers)
+                var lines = patch.Replace("\r\n", "\n").Split('\n').ToList();
+                for (int i = 0; i < lines.Count; i++)
+                {
+                    string l = lines[i];
+                    if (l.StartsWith("-- ") && !l.StartsWith("--- ")) lines[i] = "-" + l;
+                    else if (l.StartsWith("++ ") && !l.StartsWith("+++ ")) lines[i] = "+" + l;
+                    else if (l.StartsWith("@ -") && !l.StartsWith("@@ -")) lines[i] = "@" + l;
+                }
+                string repairedPatch = string.Join("\n", lines).TrimEnd('\n') + "\n";
+
+                string tempPatchPath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"omni_patch_{Guid.NewGuid():N}.patch");
+                await System.IO.File.WriteAllTextAsync(tempPatchPath, repairedPatch, System.Text.Encoding.ASCII);
+
+                _monitorService.AddLogMessage($"[OmniSweep] Applying patch to Wartribes (Len: {repairedPatch.Length}):\n{repairedPatch}");
+                _monitorService.AddLogMessage($"[OmniSweep] Patch file saved to: {tempPatchPath}");
+                
+                // Launch CMD to apply patch so user can see output
+                string wartribesPath = @"D:\Wartribes";
+                string command = $"/k \"cd /d {wartribesPath} && echo Applying patch... && git apply --verbose --ignore-space-change --ignore-whitespace --recount \"{tempPatchPath}\" && del \"{tempPatchPath}\"\"";
+
+                _processService.ExecuteCommandNonAdmin("cmd.exe", command);
+                
+                RequestClose?.Invoke(this, EventArgs.Empty);
+            }
+            catch (Exception ex)
+            {
+                _monitorService.AddLogMessage($"[OmniSweep] Error applying patch: {ex.Message}");
+            }
         }
 
         private async Task ExecuteRunGmi()
@@ -183,26 +227,20 @@ namespace OmniSync.Hub.Presentation
         {
             var lines = content.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.None);
             string? titleLine = lines.FirstOrDefault(l => l.Trim().StartsWith("# "));
-            string baseText = "";
+
             if (titleLine != null)
             {
-                baseText = titleLine.Trim().Substring(2).Trim();
-            }
-            else
-            {
-                baseText = content;
+                string baseText = titleLine.Trim().Substring(2).Trim();
+                // Take max 5 words
+                var words = baseText.Split(new[] { ' ', '\t', '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries)
+                                   .Take(5);
+                string filenameBase = string.Join("", words.Select(w => Sanitize(w)));
+
+                if (!string.IsNullOrWhiteSpace(filenameBase)) return filenameBase + ".md";
             }
 
-            // Take max 5 words
-            var words = baseText.Split(new[] { ' ', '\t', '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries)
-                               .Take(5);
-            string filenameBase = string.Join("", words.Select(w => Sanitize(w)));
-            
-            if (string.IsNullOrWhiteSpace(filenameBase)) filenameBase = "UntitledTask";
-            
-            return filenameBase + ".md";
+            return "Task.md";
         }
-
         private string Sanitize(string word)
         {
             return new string(word.Where(c => char.IsLetterOrDigit(c)).ToArray());

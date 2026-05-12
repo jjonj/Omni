@@ -106,14 +106,15 @@
 
             <!-- Action Bar -->
             <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="15,10,15,0">
-                <Button Content="Clipboard to Task (T)" Style="{StaticResource ActionButtonStyle}" 
+                <Button Content="Clipboard to Task (T)" Style="{StaticResource ActionButtonStyle}"       
                         Command="{Binding CreateTaskFromClipboardCommand}"/>
+                <Button Content="Apply Patch (P)" Style="{StaticResource ActionButtonStyle}" 
+                        Command="{Binding ApplyPatchFromClipboardCommand}"/>
                 <Button Content="Wartribes GMI (W)" Style="{StaticResource ActionButtonStyle}" 
                         Command="{Binding RunGmiCommand}"/>
                 <Button Content="Wartribes Job (J)" Style="{StaticResource ActionButtonStyle}" 
                         Command="{Binding RunGmiJobCommand}"/>
             </StackPanel>
-
             <!-- Search Bar -->
             <Grid Grid.Row="2" Margin="15,5,15,10">
                 <TextBox x:Name="SearchInput" Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}" 

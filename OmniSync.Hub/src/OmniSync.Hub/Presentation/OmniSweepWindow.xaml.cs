@@ -89,6 +89,13 @@ namespace OmniSync.Hub.Presentation
                 return;
             }
 
+            if (e.Key == Key.P && string.IsNullOrEmpty(_viewModel.SearchText))
+            {
+                _viewModel.ApplyPatchFromClipboardCommand.Execute(null);
+                e.Handled = true;
+                return;
+            }
+
             if (e.Key == Key.Enter)
             {
                 if (ResultsList.SelectedItem == null && ResultsList.Items.Count > 0)
