@@ -81,7 +81,12 @@ namespace OmniSync.Hub.Logic.Monitoring
                 CommandUpdateOccurred?.Invoke(this, command);
                 
                 // Filter out verbose commands from the persistent log
-                if (command == "MouseMove" || command.Contains("GetVolume") || command.Contains("GetFileChunk"))
+                if (command == "MouseMove" || 
+                    command.Contains("GetVolume") || 
+                    command.Contains("GetFileChunk") ||
+                    command.Contains("SendAiResponse") ||
+                    command.Contains("SendAiStatus") ||
+                    command.Contains("ReceiveAiStatus"))
                 {
                     return;
                 }

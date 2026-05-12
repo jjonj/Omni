@@ -1,5 +1,3 @@
-You are on windows 11
-
 Always read design.txt first
 
 Use these scripts instead of manual commands:

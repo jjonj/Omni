@@ -24,11 +24,13 @@ namespace OmniSync.Hub.Tests.Services
 
             using var session = new GeminiSession(
                 pid,
+                pid, // activePid
+                pid, // rootPid
                 DateTime.Now,
                 NullLogger.Instance,
                 false,
-                (_, text, _, _, _, _) => responseTcs.TrySetResult(text),
-                (_, _, _, _) => { },
+                (p, text, _, _, _, _) => responseTcs.TrySetResult(text),
+                (_, _, _, _, _) => { },
                 (_, _, _, _, _, _, _, _, _, _) => { });
 
             bool connected = await session.ConnectAsync(2000);

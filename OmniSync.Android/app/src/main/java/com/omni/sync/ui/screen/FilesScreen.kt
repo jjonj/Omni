@@ -722,7 +722,7 @@ fun FilesScreen(
             signalRClient = filesViewModel.signalRClient,
             isConnected = isConnectedState,
             onDismiss = { showCopyDialog = false },
-            onConfirm = { destDir: String ->
+            onConfirm = { destDir, _ ->
                 showCopyDialog = false
                 val separator = if (destDir.contains("/")) "/" else "\\"
                 val entryName = sourceEntry?.name ?: ""
@@ -739,7 +739,7 @@ fun FilesScreen(
             signalRClient = filesViewModel.signalRClient,
             isConnected = isConnectedState,
             onDismiss = { showMoveDialog = false },
-            onConfirm = { destDir: String ->
+            onConfirm = { destDir, _ ->
                 showMoveDialog = false
                 val separator = if (destDir.contains("/")) "/" else "\\"
                 val entryName = sourceEntry?.name ?: ""

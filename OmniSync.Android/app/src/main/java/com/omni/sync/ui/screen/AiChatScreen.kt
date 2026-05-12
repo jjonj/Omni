@@ -61,14 +61,13 @@ import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.draw.clip
 import androidx.compose.material.icons.filled.Adjust
 import androidx.compose.material.icons.filled.List
-import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Monitor
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.SmartToy
+import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.SettingsSuggest
 import androidx.compose.material.icons.filled.Error
-import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.CenterFocusStrong
 import kotlinx.coroutines.launch
@@ -193,11 +192,14 @@ fun AiChatScreen(
 
     val isWaitingForAiMap by signalRClient.isWaitingForAiResponseMap.collectAsState()
     val isWaitingForAi = isWaitingForAiMap[selectedPid] ?: false
+    val terminalSessions by signalRClient.terminalSessions.collectAsState()
+    val isTerminalSession = terminalSessions.containsKey(selectedPid)
+
     // Robust Thinking Check: Check local waiting status OR hub status OR dialog existence
-    val isAiThinking = isWaitingForAi || 
+    val isAiThinking = !isTerminalSession && (isWaitingForAi || 
                        aiStatus?.contains("Thinking", ignoreCase = true) == true || 
                        aiStatus?.contains("Starting", ignoreCase = true) == true ||
-                       aiDialog != null // Dialog means it's waiting for input, but effectively "active/busy" in a sense, but maybe not "thinking". Let's stick to active processing.
+                       aiDialog != null)
                        
     val isStartingSession by signalRClient.isStartingSessionFlow.collectAsState()
     val isConnected by mainViewModel.isConnected.collectAsState()
@@ -363,13 +365,16 @@ fun AiChatScreen(
                                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                     val currentName = if (!isConnected) "Disconnected" 
                                         else if (isStartingSession) "Creating Session..." 
+                                        else if (isTerminalSession) "Terminal"
                                         else {
                                             sessions[selectedPid] ?: "Select Session"
                                         }
 
                                     Text(currentName, style = MaterialTheme.typography.titleMedium)
                                     if (isConnected) {
-                                        if (aiStatus != null) {
+                                        if (isTerminalSession) {
+                                            Text("Terminal Active ($selectedPid)", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                                        } else if (aiStatus != null) {
                                             val displayStatus = if (aiStatus == "READY_TO_LISTEN") "Ready to listen" else aiStatus!!
                                             Text(displayStatus, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
                                         } else {
@@ -522,6 +527,15 @@ fun AiChatScreen(
                                     },
                                     leadingIcon = { Icon(Icons.Default.Add, null) }
                                 )
+                                DropdownMenuItem(
+                                    text = { Text("New Terminal (Default Workspace)") },
+                                    onClick = { 
+                                        selectedWorkspace = null
+                                        signalRClient.startTerminalSession(null)
+                                        showWorkspaceMenu = false 
+                                    },
+                                    leadingIcon = { Icon(Icons.Default.Code, null) }
+                                )
                                 
                                 HorizontalDivider()
                                 
@@ -551,11 +565,19 @@ fun AiChatScreen(
                                         },
                                         leadingIcon = { Icon(Icons.Default.Folder, null) },
                                         trailingIcon = {
-                                            IconButton(onClick = {
-                                                signalRClient.sendAiMessage("/dir add ${bookmark.path}")
-                                                showWorkspaceMenu = false 
-                                            }) {
-                                                Icon(Icons.AutoMirrored.Filled.ArrowForward, "Add to current session")
+                                            Row {
+                                                IconButton(onClick = {
+                                                    signalRClient.startTerminalSession(bookmark.path)
+                                                    showWorkspaceMenu = false
+                                                }) {
+                                                    Icon(Icons.Default.Code, "Start Terminal here")
+                                                }
+                                                IconButton(onClick = {
+                                                    signalRClient.sendAiMessage("/dir add ${bookmark.path}")
+                                                    showWorkspaceMenu = false 
+                                                }) {
+                                                    Icon(Icons.AutoMirrored.Filled.ArrowForward, "Add to current session")
+                                                }
                                             }
                                         }
                                     )
@@ -569,6 +591,15 @@ fun AiChatScreen(
                                         showWorkspaceMenu = false
                                     },
                                     leadingIcon = { Icon(Icons.Default.Add, null) }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Browse for New Terminal...") },
+                                    onClick = {
+                                        browseMode = "terminal"
+                                        showDirectoryPicker = true
+                                        showWorkspaceMenu = false
+                                    },
+                                    leadingIcon = { Icon(Icons.Default.Code, null) }
                                 )
                                 DropdownMenuItem(
                                     text = { Text("Browse to Add Context...") },
@@ -664,10 +695,13 @@ fun AiChatScreen(
             DirectoryPickerDialog(
                 signalRClient = signalRClient,
                 isConnected = isConnected,
+                initialTerminalMode = browseMode == "terminal",
                 onDismiss = { showDirectoryPicker = false },
-                onConfirm = { path ->
+                onConfirm = { path, isTerminal ->
                     showDirectoryPicker = false
-                    if (browseMode == "new") {
+                    if (isTerminal || browseMode == "terminal") {
+                        signalRClient.startTerminalSession(path)
+                    } else if (browseMode == "new") {
                         signalRClient.startNewAiSession(path)
                     } else {
                         selectedWorkspace = path
@@ -1229,6 +1263,7 @@ fun ChatBubble(
     val isAi = sender == "AI"
     val isUser = sender == "User"
     val isCodeDiff = sender == "CodeDiff"
+    val isTerminal = message.isTerminal
     val isToolCall = sender == "System" && (content.startsWith("Tool Call:") || content.startsWith("[Tool Call]"))
     val isError = sender == "Error" || content.startsWith("Error:")
     val isSystem = sender == "System" && !isToolCall || (!isMe && !isAi && !isUser && !isError && !isCodeDiff && !isToolCall)
@@ -1239,12 +1274,14 @@ fun ChatBubble(
     }
 
     val alignment = when {
+        isTerminal -> Alignment.Start
         isError || isSystem || isCodeDiff || isToolCall -> Alignment.CenterHorizontally
         isMe -> Alignment.End
         else -> Alignment.Start
     }
     
     val bgColor = when {
+        isTerminal -> Color.Black.copy(alpha = 0.85f)
         isError -> MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.8f)
         isSystem -> Color(0xFFFFF176).copy(alpha = 0.7f) // Yellow for system
         isToolCall -> Color(0xFFFFF176).copy(alpha = 0.9f) // Dull yellow for tool calls
@@ -1256,6 +1293,7 @@ fun ChatBubble(
     }
 
     val textColor = when {
+        isTerminal -> Color.Green
         isError -> MaterialTheme.colorScheme.onErrorContainer
         isSystem -> Color(0xFF333333) // Dark text for yellow
         isToolCall -> Color(0xFF666600) // Dark yellowish for tool call text
@@ -1265,6 +1303,7 @@ fun ChatBubble(
     }
 
     val icon = when {
+        isTerminal -> Icons.Default.Code
         isMe -> Icons.Default.Person
         isAi -> Icons.Default.SmartToy
         isCodeDiff -> Icons.Default.Code
@@ -1323,7 +1362,7 @@ fun ChatBubble(
             color = bgColor,
             shape = RoundedCornerShape(12.dp),
             modifier = Modifier
-                .widthIn(max = if (isSystem || isError || isCodeDiff || isToolCall) 380.dp else 300.dp)
+                .widthIn(max = if (isSystem || isError || isCodeDiff || isToolCall || isTerminal) 380.dp else 300.dp)
                 .combinedClickable(
                     onClick = { },
                     onLongClick = {
@@ -1337,6 +1376,16 @@ fun ChatBubble(
             SelectionContainer {
                 Column {
                     when {
+                        isTerminal -> {
+                            Text(
+                                text = content,
+                                modifier = Modifier.padding(8.dp),
+                                style = MaterialTheme.typography.bodySmall.copy(
+                                    fontFamily = FontFamily.Monospace,
+                                    color = textColor
+                                )
+                            )
+                        }
                         isCodeDiff -> DiffText(content)
                         isToolCall -> ToolCallBubble(content)
                         else -> MarkdownText(

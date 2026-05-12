@@ -68,7 +68,8 @@ data class AiMessage(
     val sender: String,
     val text: String,
     val id: String = java.util.UUID.randomUUID().toString(),
-    val isQueued: Boolean = false
+    val isQueued: Boolean = false,
+    val isTerminal: Boolean = false
 )
 
 class SignalRClient(
@@ -76,7 +77,9 @@ class SignalRClient(
     private val mainViewModel: MainViewModel
 ) {
     private var hubConnection: HubConnection? = null
+    private var terminalHubConnection: HubConnection? = null
     private val hubUrl: String get() = mainViewModel.appConfig.value.hubUrl
+    private val terminalHubUrl: String get() = hubUrl.replace("/signalrhub", "/terminalhub")
     private val apiKey: String get() = mainViewModel.appConfig.value.apiKey
 
     private val clipboardManager = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
@@ -153,6 +156,18 @@ class SignalRClient(
         val label: String,
         val description: String
     )
+
+    data class TerminalSession(
+        val pid: Int,
+        val workspace: String,
+        val shell: String = "cmd.exe"
+    )
+
+    private val _terminalMessagesMap = MutableStateFlow<Map<Int, List<AiMessage>>>(emptyMap())
+    val terminalMessagesMap: StateFlow<Map<Int, List<AiMessage>>> = _terminalMessagesMap
+
+    private val _terminalSessions = MutableStateFlow<Map<Int, TerminalSession>>(emptyMap())
+    val terminalSessions: StateFlow<Map<Int, TerminalSession>> = _terminalSessions
 
     private val _aiMessagesMap = MutableStateFlow<Map<Int, List<AiMessage>>>(emptyMap())
     val aiMessagesMap: StateFlow<Map<Int, List<AiMessage>>> = _aiMessagesMap
@@ -363,6 +378,10 @@ class SignalRClient(
 
         val connection = HubConnectionBuilder.create(url).build()
         hubConnection = connection
+
+        val termConnection = HubConnectionBuilder.create(terminalHubUrl).build()
+        terminalHubConnection = termConnection
+
         handlersRegistered = false
         activeConnectionToken.set(token)
 
@@ -370,7 +389,12 @@ class SignalRClient(
             handleConnectionClosed(error, token)
         }
 
+        termConnection.onClosed { error ->
+            Log.d("SignalRClient", "Terminal connection closed: ${error?.message}")
+        }
+
         registerHubHandlers()
+        registerTerminalHubHandlers()
 
         return try {
             connection.start()
@@ -384,6 +408,22 @@ class SignalRClient(
 
             onConnected(url)
             mainViewModel.addLog("Connected successfully to: $url", com.omni.sync.ui.screen.LogType.SUCCESS)
+
+            // Asynchronously start and authenticate terminal hub
+            coroutineScope.launch {
+                try {
+                    termConnection.start().blockingAwait()
+                    termConnection.invoke(Boolean::class.java, "Authenticate", apiKey)
+                        ?.subscribe({ success ->
+                            Log.d("SignalR", "Terminal Auth success: $success")
+                        }, { error ->
+                            Log.e("SignalR", "Terminal Auth failed", error)
+                        })
+                } catch (e: Exception) {
+                    Log.e("SignalRClient", "TerminalHub connection failed: ${e.message}")
+                }
+            }
+
             true
         } catch (e: Exception) {
             Log.e("SignalRClient", "Connection error for $url: ${e.message}")
@@ -471,6 +511,49 @@ class SignalRClient(
             } finally {
                 if (isCurrent) {
                     hubConnection = null
+                }
+            }
+        }
+    }
+
+    private fun registerTerminalHubHandlers() {
+        val hub = terminalHubConnection ?: return
+        
+        hub.on("ReceiveOutput", { pid: Int, data: String ->
+            updateTerminalMessages(pid) { it + AiMessage("Terminal", data, isTerminal = true) }
+            coroutineScope.launch { anyAiActivityEvent.emit(Unit) }
+        }, Int::class.java, String::class.java)
+    }
+
+    private fun updateTerminalMessages(pid: Int, block: (List<AiMessage>) -> List<AiMessage>) {
+        val currentMap = _terminalMessagesMap.value
+        val sessionMessages = currentMap[pid] ?: emptyList()
+        val newMessages = block(sessionMessages)
+        _terminalMessagesMap.value = currentMap + (pid to newMessages)
+        updateActiveView()
+    }
+
+    fun startTerminalSession(workspace: String? = null, shell: String = "cmd.exe") {
+        coroutineScope.launch {
+            if (terminalHubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
+                try {
+                    val pid = terminalHubConnection?.invoke(Int::class.java, "SpawnTerminal", shell, workspace)?.blockingGet()
+                    if (pid != null && pid > 0) {
+                        _terminalSessions.value = _terminalSessions.value + (pid to TerminalSession(pid, workspace ?: "", shell))
+                        terminalHubConnection?.send("Subscribe", pid)
+                        
+                        // Treat as an AI session for UI integration
+                        _aiSessions.value = _aiSessions.value + (pid to "Term: $shell ($pid)")
+                        _aiWorkspaces.value = _aiWorkspaces.value + (pid to (workspace ?: ""))
+                        
+                        _terminalMessagesMap.value = _terminalMessagesMap.value + (pid to listOf(
+                            AiMessage("System", "Terminal session started at ${workspace ?: "default"}", isTerminal = true)
+                        ))
+                        
+                        setSelectedPid(pid)
+                    }
+                } catch (e: Exception) {
+                    Log.e("SignalRClient", "Failed to start terminal session", e)
                 }
             }
         }
@@ -804,7 +887,7 @@ class SignalRClient(
         hubConnection?.on("ReceivePayload", { payloadData: Any ->
             try {
                 val jsonStr = gson.toJson(payloadData)
-                Log.d("SignalRClient", "Raw ReceivePayload JSON: $jsonStr")
+                // Log.d("SignalRClient", "Raw ReceivePayload JSON: $jsonStr")
 
                 val type = object : TypeToken<Map<String, Any>>() {}.type
                 val map: Map<String, Any> = gson.fromJson(jsonStr, type)
@@ -888,10 +971,17 @@ class SignalRClient(
 
     private fun updateActiveView() {
         val pid = _selectedPid.value
-        _aiMessages.value = _aiMessagesMap.value[pid] ?: emptyList()
-        _aiStatus.value = _aiStatusMap.value[pid]
-        _aiThought.value = _aiThoughtMap.value[pid]
-        _aiDialog.value = _aiDialogMap.value[pid]
+        if (_terminalSessions.value.containsKey(pid)) {
+            _aiMessages.value = _terminalMessagesMap.value[pid] ?: emptyList()
+            _aiStatus.value = "Terminal Active"
+            _aiThought.value = null
+            _aiDialog.value = null
+        } else {
+            _aiMessages.value = _aiMessagesMap.value[pid] ?: emptyList()
+            _aiStatus.value = _aiStatusMap.value[pid]
+            _aiThought.value = _aiThoughtMap.value[pid]
+            _aiDialog.value = _aiDialogMap.value[pid]
+        }
     }
 
     fun setSelectedPid(pid: Int) {
@@ -967,6 +1057,15 @@ class SignalRClient(
 
     fun sendAiMessage(message: String, pid: Int? = null) {
         var targetPid = pid ?: _selectedPid.value
+
+        // Handle terminal session
+        if (_terminalSessions.value.containsKey(targetPid)) {
+            if (terminalHubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
+                updateTerminalMessages(targetPid) { it + AiMessage("Me", message, isTerminal = true) }
+                terminalHubConnection?.send("SendCommand", targetPid, message)
+            }
+            return
+        }
 
         // Resolve pending Tell PC PID if target is -1
         if (targetPid == -1 && _latestTellPcPid != null) {
@@ -1247,8 +1346,7 @@ class SignalRClient(
 
     fun sendMouseMove(x: Float, y: Float) {
         if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
-            val payload = mapOf("X" to x, "Y" to y)
-            hubConnection?.send("MouseMove", payload)
+            hubConnection?.send("MouseMove", x.toDouble(), y.toDouble())
         }
     }
 

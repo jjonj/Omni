@@ -343,7 +343,7 @@ namespace OmniSync.Hub.Infrastructure.Services
             await DiscoverSessionsAsync(2000, 5000);
         }
 
-        public async Task<int?> LaunchSessionAsync(string? workspace = null, Action<string>? onProgress = null, string? model = null, string? prepromptFile = null)
+        public async Task<int?> LaunchSessionAsync(string? workspace = null, Action<string>? onProgress = null, string? model = null, string? prepromptFile = null, string? job = null)
         {
             await _launchLock.WaitAsync();
             try 
@@ -360,13 +360,33 @@ namespace OmniSync.Hub.Infrastructure.Services
                     finalWorkspace = finalWorkspace.TrimEnd('\\', '/');
                     string bundlePath = Path.Combine(geminiDir, "bundle", "gemini.js");
                     string wsName = Path.GetFileName(finalWorkspace);
+                    if (string.IsNullOrEmpty(wsName)) wsName = finalWorkspace;
 
+                    string gmiPath = _settingsService.GetPath("gmi");
                     string tempTitle = $"OMNI_LAUNCHING_{Guid.NewGuid():N}";
-                    string command = $"title {tempTitle} && cd /d \"{finalWorkspace}\" && node \"{bundlePath}\" --workspace \"{finalWorkspace.Replace("\\", "/")}\" --yolo";
-                    if (!string.IsNullOrEmpty(model ?? _settingsService.Settings.DefaultAiModel)) command += $" --model {model ?? _settingsService.Settings.DefaultAiModel}";
-                    if (!string.IsNullOrEmpty(prepromptFile)) command += $" --prepromptfile {prepromptFile.Replace("\\", "/")}";
+                    
+                    if (!string.IsNullOrEmpty(gmiPath) && File.Exists(gmiPath))
+                    {
+                        // USE THE NEW LAUNCHER (gmi.exe)
+                        string gmiArgs = $"--workspace \"{finalWorkspace}\"";
+                        if (!string.IsNullOrEmpty(model ?? _settingsService.Settings.DefaultAiModel)) gmiArgs += $" --model {model ?? _settingsService.Settings.DefaultAiModel}";
+                        if (!string.IsNullOrEmpty(prepromptFile)) gmiArgs += $" --prepromptfile \"{prepromptFile}\"";
+                        if (!string.IsNullOrEmpty(job)) gmiArgs += $" --job \"{job}\"";
 
-                    _processService.ExecuteCommandNonAdmin("cmd.exe", $"/K \"set GEMINI_DEBUG_LOG_FILE={Path.Combine(rootPath, "gemini_cli_debug.log")} && set CLI_TITLE={wsName} && {command}\"");
+                        _logger.LogInformation($"[AiCliService] Launching session via gmi.exe: {gmiPath} {gmiArgs}");
+                        _processService.ExecuteCommandNonAdmin(gmiPath, gmiArgs, finalWorkspace);
+                    }
+                    else
+                    {
+                        // FALLBACK TO DIRECT NODE
+                        string command = $"title {tempTitle} && cd /d \"{finalWorkspace}\" && node \"{bundlePath}\" --workspace \"{finalWorkspace.Replace("\\", "/")}\" --yolo";
+                        if (!string.IsNullOrEmpty(model ?? _settingsService.Settings.DefaultAiModel)) command += $" --model {model ?? _settingsService.Settings.DefaultAiModel}";
+                        if (!string.IsNullOrEmpty(prepromptFile)) command += $" --prepromptfile {prepromptFile.Replace("\\", "/")}";
+                        if (!string.IsNullOrEmpty(job)) command += $" --job \"{job}\"";
+
+                        _logger.LogInformation($"[AiCliService] Launching session via direct node (gmi not found).");
+                        _processService.ExecuteCommandNonAdmin("cmd.exe", $"/K \"set GEMINI_DEBUG_LOG_FILE={Path.Combine(rootPath, "gemini_cli_debug.log")} && set CLI_TITLE={wsName} && {command}\"");
+                    }
                     
                     for (int i = 0; i < 40; i++) 
                     {

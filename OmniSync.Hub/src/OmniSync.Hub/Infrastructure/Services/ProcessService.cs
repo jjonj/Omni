@@ -1037,11 +1037,72 @@ Add-Type -MemberDefinition $code -Name Win32 -Namespace Native
             SetForegroundWindow(hWnd);
         }
 
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+        static extern IntPtr OpenJobObject(uint dwDesiredAccess, bool bInheritHandle, string lpName);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        static extern bool QueryInformationJobObject(IntPtr hJob, int JobObjectInfoClass, IntPtr lpJobObjectInfo, uint cbJobObjectInfoLength, out uint lpReturnLength);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        static extern bool CloseHandle(IntPtr hObject);
+
+        [StructLayout(LayoutKind.Sequential)]
+        struct JOBOBJECT_BASIC_PROCESS_ID_LIST
+        {
+            public uint NumberOfAssignedProcesses;
+            public uint NumberOfProcessIdsInList;
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 128)] // Support up to 128 sub-processes
+            public UIntPtr[] ProcessIdList;
+        }
+
+        const uint JOB_OBJECT_QUERY = 0x0004;
+        const int JobObjectBasicProcessIdList = 3;
+
         private HashSet<int> GetProcessTreePids(int rootPid)
         {
             var result = new HashSet<int> { rootPid };
+
+            // 1. PRIMARY SOURCE: Job Object
+            // Modern gmi.exe puts the entire session group into a Job Object named 'GeminiJob_{rootPid}'
             try
             {
+                string jobName = "GeminiJob_" + rootPid;
+                IntPtr hJob = OpenJobObject(JOB_OBJECT_QUERY, false, jobName);
+                if (hJob != IntPtr.Zero)
+                {
+                    uint size = (uint)Marshal.SizeOf(typeof(JOBOBJECT_BASIC_PROCESS_ID_LIST));
+                    IntPtr ptr = Marshal.AllocHGlobal((int)size);
+                    uint returnLength = 0;
+
+                    if (QueryInformationJobObject(hJob, JobObjectBasicProcessIdList, ptr, size, out returnLength))
+                    {
+                        var info = (JOBOBJECT_BASIC_PROCESS_ID_LIST)Marshal.PtrToStructure(ptr, typeof(JOBOBJECT_BASIC_PROCESS_ID_LIST));
+                        int addedCount = 0;
+                        for (int i = 0; i < info.NumberOfProcessIdsInList; i++)
+                        {
+                            int pId = (int)info.ProcessIdList[i];
+                            if (pId != 0 && result.Add(pId)) addedCount++;
+                        }
+                        // _monitorService.AddLogMessage($"[ProcessService] Job Object '{jobName}' found. Retrieved {addedCount} PIDs from Job.");
+                        
+                        // If we got PIDs from the job, we are done. Job is the source of truth.
+                        Marshal.FreeHGlobal(ptr);
+                        CloseHandle(hJob);
+                        return result;
+                    }
+                    Marshal.FreeHGlobal(ptr);
+                    CloseHandle(hJob);
+                }
+            }
+            catch (Exception ex)
+            {
+                _monitorService.AddLogMessage($"[ProcessService] Error querying Job Object: {ex.Message}");
+            }
+
+            // 2. FALLBACK: Manual Tree Crawl (for old launchers or non-job sessions)
+            try
+            {
+                // ... rest of the existing tree crawl logic ...
                 // 1. Get all processes to build a mapping
                 var parentMap = new Dictionary<int, int>();
                 var nameMap = new Dictionary<int, string>();
@@ -1157,16 +1218,36 @@ Add-Type -MemberDefinition $code -Name Win32 -Namespace Native
 
                 // Check for PID-in-title (e.g. "Omni [12345]") to disambiguate tabs in same workspace
                 bool isPidInTitle = false;
-                foreach (var pid in pids)
+                int? foundPidInTitle = null;
+                var pidMatch = System.Text.RegularExpressions.Regex.Match(title, @"\[(\d+)\]|\((\d+)\)");
+                if (pidMatch.Success)
                 {
-                    if (title.Contains($"[{pid}]") || title.Contains($"({pid})") || title.EndsWith($" {pid}"))
+                    string pidStr = pidMatch.Groups[1].Value;
+                    if (string.IsNullOrEmpty(pidStr)) pidStr = pidMatch.Groups[2].Value;
+                    
+                    if (int.TryParse(pidStr, out int p))
                     {
-                        isPidInTitle = true;
-                        break;
+                        foundPidInTitle = p;
+                        if (pids.Contains(p)) isPidInTitle = true;
+                    }
+                }
+                
+                // If title doesn't have [PID], check for trailing space PID
+                if (!foundPidInTitle.HasValue)
+                {
+                    var trailingMatch = System.Text.RegularExpressions.Regex.Match(title, @" (\d+)$");
+                    if (trailingMatch.Success && int.TryParse(trailingMatch.Groups[1].Value, out int p))
+                    {
+                        foundPidInTitle = p;
+                        if (pids.Contains(p)) isPidInTitle = true;
                     }
                 }
 
                 bool isTitleMatch = !string.IsNullOrEmpty(titleHint) && title.Contains(titleHint, StringComparison.OrdinalIgnoreCase);
+                
+                // If the title contains a PID that is NOT in our tree, it's likely a sibling session in the same workspace.
+                // We should heavily penalize this window for this specific session.
+                bool isWrongPidInTitle = foundPidInTitle.HasValue && !isPidInTitle;
 
                 // If it's a tree match, we consider it even if size is 0 (it might be a hidden console owner we can still try to activate)
                 if (isTreeMatch)
@@ -1185,8 +1266,9 @@ Add-Type -MemberDefinition $code -Name Win32 -Namespace Native
                     }
 
                     if (isPidInTitle) score += 5000; // MASSIVE boost for explicit PID match in title
+                    if (isWrongPidInTitle) score -= 10000; // MASSIVE penalty for wrong PID in title
 
-                    _monitorService.AddLogMessage($"[ProcessService] [FOCUS] Tree match HWND: {hWnd}, OwnerPID: {processId}, Size: {w}x{h}, Score: {score}, Title: '{title}', Proc: '{procName}'");
+                    // _monitorService.AddLogMessage($"[ProcessService] [FOCUS] Tree match HWND: {hWnd}, OwnerPID: {processId}, Size: {w}x{h}, Score: {score}, Title: '{title}', Proc: '{procName}'");
                     candidates.Add((hWnd, score, (long)w * h, title, procName));
                 }
                 else if (isVisible && w > 10 && h > 10)
@@ -1208,11 +1290,13 @@ Add-Type -MemberDefinition $code -Name Win32 -Namespace Native
 
                         score += (isTerminal ? 300 : 50); 
                         score += CalculateTitleScore(title, titleHint!);
+                        
+                        if (isWrongPidInTitle) score -= 10000; // Don't steal a window that belongs to another session
                     }
 
                     if (score > 0)
                     {
-                        _monitorService.AddLogMessage($"[ProcessService] [FOCUS] Fallback match HWND: {hWnd}, OwnerPID: {processId}, Score: {score}, Title: '{title}', Proc: '{procName}'");
+                        // _monitorService.AddLogMessage($"[ProcessService] [FOCUS] Fallback match HWND: {hWnd}, OwnerPID: {processId}, Score: {score}, Title: '{title}', Proc: '{procName}'");
                         candidates.Add((hWnd, score, (long)w * h, title, procName));
                     }
                 }
@@ -1225,8 +1309,17 @@ Add-Type -MemberDefinition $code -Name Win32 -Namespace Native
                 return new List<IntPtr>();
             }
 
+            // DISCARD any candidates with negative scores (they belong to other sessions)
+            var validCandidates = candidates.Where(c => c.priority > 0).ToList();
+
+            if (validCandidates.Count == 0)
+            {
+                // _monitorService.AddLogMessage($"[ProcessService] [FOCUS] All {candidates.Count} candidates were discarded due to negative scores (Wrong PID matches).");
+                return new List<IntPtr>();
+            }
+
             // Sort by priority and area
-            var sorted = candidates
+            var sorted = validCandidates
                 .OrderByDescending(c => c.priority)
                 .ThenByDescending(c => c.area)
                 .ToList();

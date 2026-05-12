@@ -16,8 +16,9 @@ namespace OmniSync.Hub.Presentation.Controllers
         private readonly AiCliService _aiCliService;
         private readonly ScreenshotService _screenshotService;
         private readonly AssistantService _assistantService;
+        private readonly ITerminalService _terminalService;
 
-        public OmniHubApiController(CommandDispatcher dispatcher, HubMonitorService monitor, AuthService authService, AiCliService aiCliService, ScreenshotService screenshotService, AssistantService assistantService)
+        public OmniHubApiController(CommandDispatcher dispatcher, HubMonitorService monitor, AuthService authService, AiCliService aiCliService, ScreenshotService screenshotService, AssistantService assistantService, ITerminalService terminalService)
         {
             _dispatcher = dispatcher;
             _monitor = monitor;
@@ -25,6 +26,36 @@ namespace OmniSync.Hub.Presentation.Controllers
             _aiCliService = aiCliService;
             _screenshotService = screenshotService;
             _assistantService = assistantService;
+            _terminalService = terminalService;
+        }
+
+        [HttpPost("terminal/spawn")]
+        public async Task<IActionResult> SpawnTerminal([FromQuery] string key, [FromQuery] string shell, [FromQuery] string? workspace = null)
+        {
+            if (!_authService.Validate(key)) return Unauthorized();
+            try
+            {
+                int pid = await _terminalService.SpawnTerminalAsync(shell, workspace);
+                return Ok(new { pid = pid });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, ex.Message);
+            }
+        }
+
+        public class TerminalRequest
+        {
+            public int Pid { get; set; }
+            public string Command { get; set; } = "";
+        }
+
+        [HttpPost("terminal/send")]
+        public async Task<IActionResult> SendTerminalCommand([FromQuery] string key, [FromBody] TerminalRequest request)
+        {
+            if (!_authService.Validate(key)) return Unauthorized();
+            bool success = await _terminalService.SendCommandAsync(request.Pid, request.Command);
+            return success ? Ok() : NotFound();
         }
 
         [HttpGet("commands")]

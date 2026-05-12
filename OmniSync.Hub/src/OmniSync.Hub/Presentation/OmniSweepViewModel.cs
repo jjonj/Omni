@@ -33,6 +33,9 @@ namespace OmniSync.Hub.Presentation
         private readonly IMacroService _macroService;
         private readonly ResourceOpenerService _resourceOpenerService;
         private readonly HubMonitorService _monitorService;
+        private readonly ClipboardService _clipboardService;
+        private readonly ProcessService _processService;
+        private readonly AiCliService _aiCliService;
 
         public event EventHandler? RequestClose;
 
@@ -71,6 +74,9 @@ namespace OmniSync.Hub.Presentation
 
         public ICommand ExecuteCommand { get; }
         public ICommand RunMacroCommand { get; }
+        public ICommand CreateTaskFromClipboardCommand { get; }
+        public ICommand RunGmiCommand { get; }
+        public ICommand RunGmiJobCommand { get; }
 
         public OmniSweepViewModel(
             HubSettingsService settingsService,
@@ -79,7 +85,10 @@ namespace OmniSync.Hub.Presentation
             ProjectSearchService searchService,
             IMacroService macroService,
             ResourceOpenerService resourceOpenerService,
-            HubMonitorService monitorService)
+            HubMonitorService monitorService,
+            ClipboardService clipboardService,
+            ProcessService processService,
+            AiCliService aiCliService)
         {
             _settingsService = settingsService;
             _projectLauncherService = projectLauncherService;
@@ -88,6 +97,9 @@ namespace OmniSync.Hub.Presentation
             _macroService = macroService;
             _resourceOpenerService = resourceOpenerService;
             _monitorService = monitorService;
+            _clipboardService = clipboardService;
+            _processService = processService;
+            _aiCliService = aiCliService;
 
             ExecuteCommand = new RelayCommand(async p => await ExecuteItem(p as OmniSweepItem ?? SelectedItem));
             RunMacroCommand = new RelayCommand(async p => 
@@ -98,8 +110,117 @@ namespace OmniSync.Hub.Presentation
                     RequestClose?.Invoke(this, EventArgs.Empty);
                 }
             });
+            CreateTaskFromClipboardCommand = new RelayCommand(async _ => await ExecuteCreateTaskFromClipboard());
+            RunGmiCommand = new RelayCommand(async _ => await ExecuteRunGmi());
+            RunGmiJobCommand = new RelayCommand(async _ => await ExecuteRunGmiJob());
 
             InitializeAsync();
+        }
+
+        private async Task ExecuteRunGmi()
+        {
+            try
+            {
+                _monitorService.AddLogMessage("[OmniSweep] Launching Wartribes GMI via AiCliService");
+                await _aiCliService.LaunchSessionAsync(@"D:\Wartribes");
+                RequestClose?.Invoke(this, EventArgs.Empty);
+            }
+            catch (Exception ex)
+            {
+                _monitorService.AddLogMessage($"[OmniSweep] Error launching GMI: {ex.Message}");
+            }
+        }
+
+        private async Task ExecuteRunGmiJob()
+        {
+            try
+            {
+                string jobName = _clipboardService.GetClipboardText();
+                if (string.IsNullOrWhiteSpace(jobName))
+                {
+                    _monitorService.AddLogMessage("[OmniSweep] Clipboard empty, cannot run job");
+                    return;
+                }
+                _monitorService.AddLogMessage($"[OmniSweep] Launching Wartribes Job via AiCliService: {jobName}");
+                await _aiCliService.LaunchSessionAsync(@"D:\Wartribes", job: jobName);
+                RequestClose?.Invoke(this, EventArgs.Empty);
+            }
+            catch (Exception ex)
+            {
+                _monitorService.AddLogMessage($"[OmniSweep] Error launching Job: {ex.Message}");
+            }
+        }
+
+        private async Task ExecuteCreateTaskFromClipboard()
+        {
+            try 
+            {
+                string text = _clipboardService.GetClipboardText();
+                if (string.IsNullOrWhiteSpace(text)) return;
+
+                string filename = GenerateFilename(text);
+                string directory = @"D:\Wartribes\Tasks";
+                if (!System.IO.Directory.Exists(directory))
+                {
+                    System.IO.Directory.CreateDirectory(directory);
+                }
+
+                string fullPath = GetUniquePath(directory, filename);
+                await System.IO.File.WriteAllTextAsync(fullPath, text);
+
+                _clipboardService.SetClipboardText(fullPath);
+                
+                _monitorService.AddLogMessage($"[OmniSweep] Created task file: {fullPath}");
+                RequestClose?.Invoke(this, EventArgs.Empty);
+            }
+            catch (Exception ex)
+            {
+                _monitorService.AddLogMessage($"[OmniSweep] Error creating task: {ex.Message}");
+            }
+        }
+
+        private string GenerateFilename(string content)
+        {
+            var lines = content.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.None);
+            string? titleLine = lines.FirstOrDefault(l => l.Trim().StartsWith("# "));
+            string baseText = "";
+            if (titleLine != null)
+            {
+                baseText = titleLine.Trim().Substring(2).Trim();
+            }
+            else
+            {
+                baseText = content;
+            }
+
+            // Take max 5 words
+            var words = baseText.Split(new[] { ' ', '\t', '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries)
+                               .Take(5);
+            string filenameBase = string.Join("", words.Select(w => Sanitize(w)));
+            
+            if (string.IsNullOrWhiteSpace(filenameBase)) filenameBase = "UntitledTask";
+            
+            return filenameBase + ".md";
+        }
+
+        private string Sanitize(string word)
+        {
+            return new string(word.Where(c => char.IsLetterOrDigit(c)).ToArray());
+        }
+
+        private string GetUniquePath(string dir, string filename)
+        {
+            string fullPath = System.IO.Path.Combine(dir, filename);
+            if (!System.IO.File.Exists(fullPath)) return fullPath;
+
+            string baseName = System.IO.Path.GetFileNameWithoutExtension(filename);
+            string ext = System.IO.Path.GetExtension(filename);
+            int counter = 1;
+            while (System.IO.File.Exists(System.IO.Path.Combine(dir, $"{baseName}_{counter}{ext}")))
+            {
+                counter++;
+            }
+            return System.IO.Path.Combine(dir, $"{baseName}_{counter}{ext}");
         }
 
         private async void InitializeAsync()

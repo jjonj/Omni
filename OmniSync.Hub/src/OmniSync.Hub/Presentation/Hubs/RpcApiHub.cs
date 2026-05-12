@@ -12,6 +12,18 @@ using Microsoft.Extensions.Logging; // Added for ILogger
 
 namespace OmniSync.Hub.Presentation.Hubs
 {
+    public class SendPayloadRequest
+    {
+        public string Command { get; set; } = string.Empty;
+        public object? Payload { get; set; }
+    }
+
+    public class MouseMoveRequest
+    {
+        public double X { get; set; }
+        public double Y { get; set; }
+    }
+
     public class RpcApiHub : Microsoft.AspNetCore.SignalR.Hub, IDisposable
     {
         // New: Event to notify of any command received by the Hub
@@ -364,11 +376,11 @@ namespace OmniSync.Hub.Presentation.Hubs
             throw new UnauthorizedAccessException();
         }
 
-        public void SendPayload(string command, JsonElement payload)
+        public void SendPayload(string command, object payload)
         {
-            if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
+            // Invoke the event for SendPayload commands
+            if (!string.IsNullOrEmpty(command))
             {
-                // Invoke the event for SendPayload commands
                 AnyCommandReceived?.Invoke(this, command);
 
                 try
@@ -377,30 +389,27 @@ namespace OmniSync.Hub.Presentation.Hubs
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"Error dispatching command '{command}': {ex.Message}");
+                    _logger.LogError(ex, $"Error dispatching command '{command}'");
                 }
             }
         }
 
-        public void MouseMove(JsonElement payload)
+        public void MouseMove(double x, double y)
         {
-            if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
-            {
-                AnyCommandReceived?.Invoke(this, "MouseMove");
+            AnyCommandReceived?.Invoke(this, "MouseMove");
 
-                try
-                {
-                    // Get double values and round to nearest integer
-                    int x = (int)Math.Round(payload.GetProperty("X").GetDouble());
-                    int y = (int)Math.Round(payload.GetProperty("Y").GetDouble());
-                    _inputService.MoveMouse(x, y);
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"Error moving mouse: {ex.Message}");
-                }
+            try
+            {
+                int ix = (int)Math.Round(x);
+                int iy = (int)Math.Round(y);
+                _inputService.MoveMouse(ix, iy);
             }
-        }        public string GetClipboardText()
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error moving mouse");
+            }
+        }
+        public string GetClipboardText()
         {
             try
             {
@@ -423,7 +432,7 @@ namespace OmniSync.Hub.Presentation.Hubs
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"Error setting clipboard text: {ex.Message}");
+                    _logger.LogError(ex, "Error setting clipboard text");
                 }
             }
         }
@@ -445,7 +454,7 @@ namespace OmniSync.Hub.Presentation.Hubs
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"Error pasting clipboard text: {ex.Message}");
+                    _logger.LogError(ex, "Error pasting clipboard text");
                 }
             }
         }
@@ -949,18 +958,11 @@ namespace OmniSync.Hub.Presentation.Hubs
 
                 string connectionId = Context.ConnectionId;
 
-                if (message.ToLower().Contains("heya"))
-                {
-                    _logger.LogInformation($"[RpcApiHub] [HEYA-TRACE] Received 'heya' message. Target PID: {targetPid}");
-                }
-
                 // 2. Direct Hub-to-CLI communication (Backgrounded to prevent Hub blocking)
                 _ = Task.Run(async () =>
                 {
                     try
                     {
-                        if (message.ToLower().Contains("heya")) _logger.LogInformation($"[RpcApiHub] [HEYA-TRACE] Background task starting for 'heya'. PID: {targetPid}");
-
                         if (_aiCliService.IsBusy)
                         {
                             _logger.LogInformation($"[RpcApiHub] AI is busy, notifying client that message is QUEUED (PID: {targetPid})");
@@ -971,9 +973,8 @@ namespace OmniSync.Hub.Presentation.Hubs
                         {
                             _logger.LogInformation($"[RpcApiHub] Background task sending prompt to AI (PID: {targetPid})");
                         }
-                        if (message.ToLower().Contains("heya")) _logger.LogInformation($"[RpcApiHub] [HEYA-TRACE] Calling SendPromptAsync for 'heya'. PID: {targetPid}");
+                        
                         bool success = await _aiCliService.SendPromptAsync(message, targetPid);
-                        if (message.ToLower().Contains("heya")) _logger.LogInformation($"[RpcApiHub] [HEYA-TRACE] SendPromptAsync returned {success} for 'heya'. PID: {targetPid}");
 
                         if (!success)
 

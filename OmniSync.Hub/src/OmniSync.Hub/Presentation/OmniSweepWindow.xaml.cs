@@ -68,6 +68,27 @@ namespace OmniSync.Hub.Presentation
                 return;
             }
 
+            if (e.Key == Key.T && string.IsNullOrEmpty(_viewModel.SearchText))
+            {
+                _viewModel.CreateTaskFromClipboardCommand.Execute(null);
+                e.Handled = true;
+                return;
+            }
+
+            if (e.Key == Key.W && string.IsNullOrEmpty(_viewModel.SearchText))
+            {
+                _viewModel.RunGmiCommand.Execute(null);
+                e.Handled = true;
+                return;
+            }
+
+            if (e.Key == Key.J && string.IsNullOrEmpty(_viewModel.SearchText))
+            {
+                _viewModel.RunGmiJobCommand.Execute(null);
+                e.Handled = true;
+                return;
+            }
+
             if (e.Key == Key.Enter)
             {
                 if (ResultsList.SelectedItem == null && ResultsList.Items.Count > 0)

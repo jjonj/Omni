@@ -23,12 +23,14 @@ import io.reactivex.rxjava3.schedulers.Schedulers
 fun DirectoryPickerDialog(
     signalRClient: SignalRClient,
     isConnected: Boolean,
+    initialTerminalMode: Boolean = false,
     onDismiss: () -> Unit,
-    onConfirm: (String) -> Unit
+    onConfirm: (String, Boolean) -> Unit
 ) {
     var currentPath by remember { mutableStateOf("") }
     var entries by remember { mutableStateOf<List<FileSystemEntry>>(emptyList()) }
     var isLoading by remember { mutableStateOf(false) }
+    var isTerminalMode by remember { mutableStateOf(initialTerminalMode) }
 
     LaunchedEffect(currentPath, isConnected) {
         if (!isConnected) return@LaunchedEffect
@@ -50,6 +52,14 @@ fun DirectoryPickerDialog(
         title = { Text("Select Destination Folder") },
         text = {
             Column(modifier = Modifier.fillMaxWidth().height(400.dp)) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
+                ) {
+                    Text("Terminal Mode", modifier = Modifier.weight(1f))
+                    Switch(checked = isTerminalMode, onCheckedChange = { isTerminalMode = it })
+                }
+
                 Text(
                     text = if (currentPath.isEmpty()) "/" else currentPath,
                     style = MaterialTheme.typography.labelSmall,
@@ -103,7 +113,7 @@ fun DirectoryPickerDialog(
         },
         confirmButton = {
             Button(
-                onClick = { onConfirm(currentPath) },
+                onClick = { onConfirm(currentPath, isTerminalMode) },
                 enabled = currentPath.isNotEmpty() || entries.isNotEmpty() // Allow selecting root if we can see it
             ) {
                 Text("Select Current")

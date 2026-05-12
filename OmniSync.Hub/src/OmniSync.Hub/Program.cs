@@ -275,6 +275,8 @@ builder.Services.AddSingleton<CommandDispatcher>(provider => {
     var hubContext = provider.GetRequiredService<IHubContext<RpcApiHub>>();
     return new CommandDispatcher(inputService, fileService, audioService, processService, screenshotService, shutdownService, settingsService, pcgService, nodeRedService, projectLauncherService, resourceOpenerService, aiCliService, monitorService, appLifetime, hubContext);
 });
+builder.Services.AddSingleton<ITerminalService, TerminalService>();
+builder.Services.AddHostedService<TerminalOutputBroadcaster>();
 builder.Services.AddSingleton<GlobalHotkeyService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<GlobalHotkeyService>());
 
@@ -333,8 +335,9 @@ builder.Services.AddSingleton<TrayIconManager>(provider =>
     var resourceOpenerService = provider.GetRequiredService<ResourceOpenerService>();
     var hubEventSender = provider.GetRequiredService<HubEventSender>();
     var assistantService = provider.GetRequiredService<AssistantService>();
+    var clipboardService = provider.GetRequiredService<ClipboardService>();
     var logger = provider.GetRequiredService<ILogger<TrayIconManager>>();
-    return new TrayIconManager(appLifetime, hubMonitorService, inputService, processService, shutdownService, registryService, settingsService, hotkeyService, keyboardHook, aiCliService, layoutCaptureService, projectLauncherService, commandDispatcher, calendarService, searchService, macroService, resourceOpenerService, hubEventSender, logger, assistantService);
+    return new TrayIconManager(appLifetime, hubMonitorService, inputService, processService, shutdownService, registryService, settingsService, hotkeyService, keyboardHook, aiCliService, layoutCaptureService, projectLauncherService, commandDispatcher, calendarService, searchService, macroService, resourceOpenerService, hubEventSender, logger, assistantService, clipboardService);
 });
 builder.Services.AddHostedService<TrayIconManager>(provider => provider.GetRequiredService<TrayIconManager>());
 
@@ -417,6 +420,7 @@ app.UseAuthorization(); // Even if empty, it's good practice if Authorization is
 
 app.MapControllers();
 app.MapHub<RpcApiHub>("/signalrhub");
+app.MapHub<TerminalHub>("/terminalhub");
 
 // --- Global Exception Handling for Crashes ---
 CrashHandler.Initialize();

@@ -37,11 +37,12 @@ namespace OmniSync.Hub.Presentation
         private readonly ResourceOpenerService _resourceOpenerService;
         private readonly HubEventSender _hubEventSender;
         private readonly AssistantService _assistantService;
+        private readonly ClipboardService _clipboardService;
         private readonly ILogger<TrayIconManager> _logger;
         private TrayApplicationContext _applicationContext;
         private Thread _trayThread;
 
-        public TrayIconManager(IHostApplicationLifetime appLifetime, HubMonitorService hubMonitorService, InputService inputService, ProcessService processService, ShutdownService shutdownService, RegistryService registryService, HubSettingsService settingsService, GlobalHotkeyService hotkeyService, KeyboardHook keyboardHook, AiCliService aiCliService, LayoutCaptureService layoutCaptureService, ProjectLauncherService projectLauncherService, CommandDispatcher commandDispatcher, CalendarService calendarService, ProjectSearchService searchService, IMacroService macroService, ResourceOpenerService resourceOpenerService, HubEventSender hubEventSender, ILogger<TrayIconManager> logger, AssistantService assistantService)
+        public TrayIconManager(IHostApplicationLifetime appLifetime, HubMonitorService hubMonitorService, InputService inputService, ProcessService processService, ShutdownService shutdownService, RegistryService registryService, HubSettingsService settingsService, GlobalHotkeyService hotkeyService, KeyboardHook keyboardHook, AiCliService aiCliService, LayoutCaptureService layoutCaptureService, ProjectLauncherService projectLauncherService, CommandDispatcher commandDispatcher, CalendarService calendarService, ProjectSearchService searchService, IMacroService macroService, ResourceOpenerService resourceOpenerService, HubEventSender hubEventSender, ILogger<TrayIconManager> logger, AssistantService assistantService, ClipboardService clipboardService)
         {
             _appLifetime = appLifetime;
             _hubMonitorService = hubMonitorService;
@@ -63,6 +64,7 @@ namespace OmniSync.Hub.Presentation
             _hubEventSender = hubEventSender;
             _logger = logger;
             _assistantService = assistantService;
+            _clipboardService = clipboardService;
         }
 
         public Task StartAsync(CancellationToken cancellationToken)
@@ -98,7 +100,7 @@ namespace OmniSync.Hub.Presentation
                 WinFormsApp.SetCompatibleTextRenderingDefault(false); // For WinForms interop
 
                                 _logger.LogInformation("TrayIconManager: Creating TrayApplicationContext.");
-                                _applicationContext = new TrayApplicationContext(_appLifetime, app, _hubMonitorService, _inputService, _processService, _shutdownService, _registryService, _settingsService, _hotkeyService, _keyboardHook, _aiCliService, _layoutCaptureService, _projectLauncherService, _commandDispatcher, _calendarService, _searchService, _macroService, _resourceOpenerService, _hubEventSender, _logger, _assistantService); // Pass logger
+                                _applicationContext = new TrayApplicationContext(_appLifetime, app, _hubMonitorService, _inputService, _processService, _shutdownService, _registryService, _settingsService, _hotkeyService, _keyboardHook, _aiCliService, _layoutCaptureService, _projectLauncherService, _commandDispatcher, _calendarService, _searchService, _macroService, _resourceOpenerService, _hubEventSender, _logger, _assistantService, _clipboardService); // Pass logger
                 
                                 // Add message filter to route messages to WPF's ComponentDispatcher
                                 WinFormsApp.AddMessageFilter(new WpfMessageFilter());
@@ -163,11 +165,12 @@ namespace OmniSync.Hub.Presentation
             private readonly ResourceOpenerService _resourceOpenerService;
             private readonly HubEventSender _hubEventSender;
             private readonly AssistantService _assistantService;
+            private readonly ClipboardService _clipboardService;
             private readonly ILogger _logger;
             private MainWindow _mainWindow;
             private OmniSweepWindow? _omniSweepWindow;
 
-            public TrayApplicationContext(IHostApplicationLifetime appLifetime, WpfApp wpfApplication, HubMonitorService hubMonitorService, InputService inputService, ProcessService processService, ShutdownService shutdownService, RegistryService registryService, HubSettingsService settingsService, GlobalHotkeyService hotkeyService, KeyboardHook keyboardHook, AiCliService aiCliService, LayoutCaptureService layoutCaptureService, ProjectLauncherService projectLauncherService, CommandDispatcher commandDispatcher, CalendarService calendarService, ProjectSearchService searchService, IMacroService macroService, ResourceOpenerService resourceOpenerService, HubEventSender hubEventSender, ILogger logger, AssistantService assistantService)
+            public TrayApplicationContext(IHostApplicationLifetime appLifetime, WpfApp wpfApplication, HubMonitorService hubMonitorService, InputService inputService, ProcessService processService, ShutdownService shutdownService, RegistryService registryService, HubSettingsService settingsService, GlobalHotkeyService hotkeyService, KeyboardHook keyboardHook, AiCliService aiCliService, LayoutCaptureService layoutCaptureService, ProjectLauncherService projectLauncherService, CommandDispatcher commandDispatcher, CalendarService calendarService, ProjectSearchService searchService, IMacroService macroService, ResourceOpenerService resourceOpenerService, HubEventSender hubEventSender, ILogger logger, AssistantService assistantService, ClipboardService clipboardService)
             {
                 _appLifetime = appLifetime;
                 _wpfApplication = wpfApplication; // Store reference to the WPF Application instance
@@ -190,6 +193,7 @@ namespace OmniSync.Hub.Presentation
                 _hubEventSender = hubEventSender;
                 _logger = logger;
                 _assistantService = assistantService;
+                _clipboardService = clipboardService;
                 InitializeComponent();
             }
 
@@ -334,7 +338,7 @@ namespace OmniSync.Hub.Presentation
                             return;
                         }
 
-                        var viewModel = new OmniSweepViewModel(_settingsService, _projectLauncherService, _calendarService, _searchService, _macroService, _resourceOpenerService, _hubMonitorService);
+                        var viewModel = new OmniSweepViewModel(_settingsService, _projectLauncherService, _calendarService, _searchService, _macroService, _resourceOpenerService, _hubMonitorService, _clipboardService, _processService, _aiCliService);
                         var window = new OmniSweepWindow(viewModel);
                         _omniSweepWindow = window;
                         window.Closed += (s, e) =>
