@@ -1226,16 +1226,16 @@ namespace OmniSync.Hub.Presentation
             AiModels.Clear();
             foreach (var modelName in SnapshotList(() => _settingsService.Settings.AiModels))
             {
-                var entry = new AiModelEntry 
-                { 
-                    Name = modelName, 
-                    IsDefault = modelName == defaultModel 
+                var entry = new AiModelEntry
+                {
+                    Name = modelName
                 };
+                // Set IsDefault WITHOUT triggering OnSelectedAsDefault by attaching the handler AFTER setting the value
+                entry.IsDefault = modelName == defaultModel;
                 entry.OnSelectedAsDefault += OnAiModelSelectedAsDefault;
                 AiModels.Add(entry);
             }
         }
-
         private static List<T> SnapshotList<T>(Func<IEnumerable<T>?> getSource)
         {
             for (int attempt = 0; attempt < 5; attempt++)

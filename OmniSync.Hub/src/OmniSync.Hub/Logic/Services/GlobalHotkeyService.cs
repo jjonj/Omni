@@ -58,6 +58,8 @@ namespace OmniSync.Hub.Logic.Services
 
         private void OnKeyActionOccurred(object? sender, KeyHookEventArgs e)
         {
+            if (e.IsInjected) return; // Prevent feedback loops from software-simulated keys
+
             // Track state for both Down and Up to be accurate
             if (e.State == KeyState.Down)
             {

@@ -339,7 +339,8 @@ builder.Services.AddSingleton<TrayIconManager>(provider =>
     var logger = provider.GetRequiredService<ILogger<TrayIconManager>>();
     return new TrayIconManager(appLifetime, hubMonitorService, inputService, processService, shutdownService, registryService, settingsService, hotkeyService, keyboardHook, aiCliService, layoutCaptureService, projectLauncherService, commandDispatcher, calendarService, searchService, macroService, resourceOpenerService, hubEventSender, logger, assistantService, clipboardService);
 });
-builder.Services.AddHostedService<TrayIconManager>(provider => provider.GetRequiredService<TrayIconManager>());
+builder.Services.AddHostedService<TrayIconManager>(provider =>
+provider.GetRequiredService<TrayIconManager>());
 
 builder.Services.AddHostedService<HubStartupService>(); // Auto-launch AI components
 builder.Services.AddHostedService<ScreenshotHostedService>();
