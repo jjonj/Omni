@@ -405,6 +405,79 @@ namespace OmniSync.Hub.Infrastructure.Services
             finally { _launchLock.Release(); }
         }
 
+        public async Task LaunchTabInFocusedWorkspaceAsync()
+        {
+            try
+            {
+                var hwnd = ProcessService.GetForegroundWindow();
+                if (hwnd == IntPtr.Zero) return;
+
+                ProcessService.GetWindowThreadProcessId(hwnd, out uint winPid);
+                var title = _processService.GetWindowTitle(hwnd);
+
+                // 1. Extract PID from title (Primary identification method)
+                int? foundPidInTitle = null;
+                var match = System.Text.RegularExpressions.Regex.Match(title, @"\[(\d+)\]|\((\d+)\)");
+                if (match.Success)
+                {
+                    string pidStr = match.Groups[1].Value;
+                    if (string.IsNullOrEmpty(pidStr)) pidStr = match.Groups[2].Value;
+                    if (int.TryParse(pidStr, out int p)) foundPidInTitle = p;
+                }
+
+                // 2. Get process tree snapshot (Stable, No WMI bulk)
+                var (parentMap, nameMap) = _processService.GetProcessMaps();
+                
+                // 3. Scan all active sessions
+                var sessionInfos = await GetAllGeminiPidsAsync();
+
+                foreach (var info in sessionInfos)
+                {
+                    // Build the tree for this session (Launcher + Children + Parents up to Explorer)
+                    var treePids = new HashSet<int> { info.Pid, info.ActivePid, info.RootPid };
+                    
+                    void AddChildren(int pId) {
+                        foreach (var kvp in parentMap) { if (kvp.Value == pId && treePids.Add(kvp.Key)) AddChildren(kvp.Key); }
+                    }
+                    AddChildren(info.RootPid);
+                    AddChildren(info.Pid);
+                    AddChildren(info.ActivePid);
+
+                    int current = info.Pid;
+                    for (int i = 0; i < 15; i++) {
+                        if (!parentMap.TryGetValue(current, out int parentId) || parentId == 0) break;
+                        if (nameMap.TryGetValue(parentId, out string pName) && pName.ToLower().Contains("explorer")) break;
+                        treePids.Add(parentId);
+                        current = parentId;
+                    }
+
+                    bool isMatch = false;
+                    if (foundPidInTitle.HasValue && treePids.Contains(foundPidInTitle.Value)) isMatch = true;
+                    if (!isMatch && treePids.Contains((int)winPid)) isMatch = true;
+
+                    if (isMatch)
+                    {
+                        if (_workspacePaths.TryGetValue(info.Pid, out var workspacePath))
+                        {
+                            _hubMonitorService.AddLogMessage($"[AiCliService] Spawning new tab for workspace: {workspacePath}");
+                            string gmiPath = _settingsService.GetPath("gmi") ?? "gmi.exe";
+                            string model = _settingsService.Settings.DefaultAiModel;
+                            
+                            string commandLine = $"\"{gmiPath}\" --workspace \"{workspacePath}\" --sync";
+                            if (!string.IsNullOrEmpty(model)) commandLine += $" --model {model}";
+
+                            _processService.ExecuteCommandNonAdmin("wt.exe", $"-w 0 nt cmd /k \"{commandLine}\"");
+                            return;
+                        }
+                    }
+                }
+            }
+            catch (Exception ex) 
+            { 
+                _logger.LogError(ex, "Error in LaunchTabInFocusedWorkspaceAsync");
+            }
+        }
+
         private async Task EnsureSessionAsync(int stablePid, int activePid, int rootPid, int timeoutMs)
         {
             if (_sessions.TryGetValue(stablePid, out var existing) && existing.IsConnected) return;
@@ -434,7 +507,6 @@ namespace OmniSync.Hub.Infrastructure.Services
                 var savedName = _settingsService.GetAiSessionName($"{startTime.Ticks}_{stablePid}");
                 if (savedName != null) _sessionNames[stablePid] = savedName;
             } else {
-                // If connection fails, still track it so we can try again in next discovery
                 _sessions[stablePid] = session; 
             }
         }
@@ -449,23 +521,71 @@ namespace OmniSync.Hub.Infrastructure.Services
         {
             var results = new List<RawSessionInfo>();
             try {
-                string query = "SELECT ProcessId, CommandLine, ParentProcessId, Name FROM Win32_Process WHERE Name LIKE 'node%' OR Name = 'cmd.exe'";
-                using var searcher = new ManagementObjectSearcher(query);
-                using var collection = searcher.Get();
-                
-                var allProcs = new List<(int Pid, string Name, string Cmd, int Parent)>();
-                foreach (var process in collection) {
-                    allProcs.Add((
-                        Convert.ToInt32(process["ProcessId"]),
-                        process["Name"]?.ToString() ?? "",
-                        process["CommandLine"]?.ToString() ?? "",
-                        Convert.ToInt32(process["ParentProcessId"])
-                    ));
+                // 1. Get process tree snapshot (Stable, No WMI)
+                var (parentMap, nameMap) = _processService.GetProcessMaps();
+                var geminiNodes = new List<(int Pid, string Name, string Cmd, int Parent)>();
+
+                // 2. Fetch Node command lines via PowerShell (Bypasses .NET 9 System.Management COM bugs)
+                string jsonOutput = "";
+                await Task.Run(() => {
+                    try 
+                    {
+                        var psi = new ProcessStartInfo 
+                        { 
+                            FileName = "powershell.exe", 
+                            Arguments = "-NoProfile -Command \"Get-CimInstance Win32_Process -Filter \\\"Name = 'node.exe'\\\" | Select-Object ProcessId, CommandLine | ConvertTo-Json -Compress\"", 
+                            RedirectStandardOutput = true, 
+                            RedirectStandardError = true,
+                            UseShellExecute = false, 
+                            CreateNoWindow = true 
+                        };
+                        using (var process = Process.Start(psi))
+                        {
+                            if (process != null)
+                            {
+                                jsonOutput = process.StandardOutput.ReadToEnd();
+                                process.WaitForExit(3000);
+                            }
+                        }
+                    }
+                    catch { }
+                });
+
+                if (!string.IsNullOrWhiteSpace(jsonOutput))
+                {
+                    try
+                    {
+                        var elements = new List<JsonElement>();
+                        string cleanJson = jsonOutput.Trim();
+                        
+                        if (cleanJson.StartsWith("[")) {
+                            using var doc = JsonDocument.Parse(cleanJson);
+                            foreach (var el in doc.RootElement.EnumerateArray()) elements.Add(el.Clone());
+                        } else if (cleanJson.StartsWith("{")) {
+                            using var doc = JsonDocument.Parse(cleanJson);
+                            elements.Add(doc.RootElement.Clone());
+                        }
+
+                        foreach (var el in elements)
+                        {
+                            if (el.TryGetProperty("ProcessId", out var pidProp) && el.TryGetProperty("CommandLine", out var cmdProp))
+                            {
+                                int pid = pidProp.ValueKind == JsonValueKind.Number ? pidProp.GetInt32() : 
+                                         (int.TryParse(pidProp.GetString(), out int p) ? p : 0);
+                                string cmd = cmdProp.GetString() ?? "";
+
+                                if (pid > 0 && !string.IsNullOrEmpty(cmd) && (cmd.ToLower().Contains("gemini.js") || cmd.ToLower().Contains("omni_gemini")))
+                                {
+                                    int ppid = parentMap.TryGetValue(pid, out int p2) ? p2 : 0;
+                                    geminiNodes.Add((pid, "node.exe", cmd, ppid));
+                                }
+                            }
+                        }
+                    }
+                    catch { }
                 }
 
-                var geminiNodes = allProcs.Where(p => p.Name.ToLower().StartsWith("node") && (p.Cmd.ToLower().Contains("gemini.js") || p.Cmd.ToLower().Contains("omni_gemini"))).ToList();
-                
-                var sessionGroups = new Dictionary<int, List<int>>(); // RootPid -> List of Node Pids
+                var sessionGroups = new Dictionary<int, List<int>>(); 
 
                 foreach (var node in geminiNodes)
                 {
@@ -473,14 +593,13 @@ namespace OmniSync.Hub.Infrastructure.Services
                     int rootPid = currentId;
                     
                     int safety = 0;
-                    while (safety++ < 10)
+                    while (safety++ < 15)
                     {
-                        var parent = allProcs.FirstOrDefault(p => p.Pid == allProcs.FirstOrDefault(x => x.Pid == currentId).Parent);
-                        if (parent.Pid == 0) break;
+                        if (!parentMap.TryGetValue(currentId, out int parentId) || parentId == 0) break;
+                        if (nameMap.TryGetValue(parentId, out string pName) && pName.ToLower().Contains("explorer")) break;
                         
-                        rootPid = parent.Pid;
-                        if (!parent.Name.ToLower().StartsWith("node")) break;
-                        currentId = parent.Pid;
+                        rootPid = parentId;
+                        currentId = parentId;
                     }
 
                     if (!sessionGroups.ContainsKey(rootPid)) sessionGroups[rootPid] = new List<int>();
@@ -492,30 +611,26 @@ namespace OmniSync.Hub.Infrastructure.Services
                     int rootPid = group.Key;
                     var members = group.Value;
 
-                    // Launcher is the node whose parent is NOT a node (or the top-most node)
                     int launcherPid = members.FirstOrDefault(m => {
-                        var pId = allProcs.FirstOrDefault(x => x.Pid == m).Parent;
-                        return !members.Contains(pId);
+                        return parentMap.TryGetValue(m, out int p) && !members.Contains(p);
                     });
                     if (launcherPid == 0) launcherPid = members.First();
 
-                    // Active (Engine) is the deepest node
-                    int activePid = members.FirstOrDefault(m => !members.Any(other => allProcs.FirstOrDefault(x => x.Pid == other).Parent == m));
+                    int activePid = members.FirstOrDefault(m => !members.Any(other => parentMap.TryGetValue(other, out int p) && p == m));
                     if (activePid == 0) activePid = members.Last();
 
                     results.Add(new RawSessionInfo { Pid = launcherPid, ActivePid = activePid, RootPid = rootPid });
 
-                    // Workspace extraction
-                    var launcherNode = allProcs.First(p => p.Pid == launcherPid);
-                    var activeNode = allProcs.First(p => p.Pid == activePid);
-                    var cmdToScan = activeNode.Cmd.Contains("--workspace") ? activeNode.Cmd : launcherNode.Cmd;
+                    var launcherNode = geminiNodes.FirstOrDefault(p => p.Pid == launcherPid);
+                    var activeNode = geminiNodes.FirstOrDefault(p => p.Pid == activePid);
+                    var cmdToScan = (activeNode.Pid != 0 && activeNode.Cmd.Contains("--workspace")) ? activeNode.Cmd : (launcherNode.Pid != 0 ? launcherNode.Cmd : "");
 
-                    if (cmdToScan.Contains("--workspace")) {
+                    if (!string.IsNullOrEmpty(cmdToScan) && cmdToScan.Contains("--workspace")) {
                         var parts = cmdToScan.Split(new[] { "--workspace" }, StringSplitOptions.None);
                         if (parts.Length > 1) {
-                            var ws = parts[1].Trim().Split(' ')[0].Trim('\"', '\'');
-                            _workspacePaths[launcherPid] = ws;
-                            try { _workspaces[launcherPid] = Path.GetFileName(ws.TrimEnd('\\', '/')); } catch { _workspaces[launcherPid] = ws; }
+                            var wsPart = parts[1].Trim().Split(' ')[0].Trim('\"', '\'');
+                            _workspacePaths[launcherPid] = wsPart;
+                            try { _workspaces[launcherPid] = Path.GetFileName(wsPart.TrimEnd('\\', '/')); } catch { _workspaces[launcherPid] = wsPart; }
                         }
                     }
                 }

@@ -54,10 +54,17 @@ namespace OmniSync.Hub.Infrastructure.Services
         private delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
 
         [DllImport("user32.dll")]
-        private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
+        public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
 
         [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
-        private static extern int GetWindowText(IntPtr hWnd, StringBuilder lpString, int nMaxCount);
+        public static extern int GetWindowText(IntPtr hWnd, StringBuilder lpString, int nMaxCount);
+
+        public string GetWindowTitle(IntPtr hWnd)
+        {
+            var sb = new StringBuilder(256);
+            GetWindowText(hWnd, sb, sb.Capacity);
+            return sb.ToString();
+        }
 
         [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
         private static extern bool SetWindowText(IntPtr hWnd, string lpString);
@@ -84,7 +91,37 @@ namespace OmniSync.Hub.Infrastructure.Services
         private static extern bool AttachThreadInput(uint idAttach, uint idAttachTo, bool fAttach);
 
         [DllImport("user32.dll")]
-        private static extern IntPtr GetForegroundWindow();
+        public static extern IntPtr GetForegroundWindow();
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        public static extern IntPtr CreateToolhelp32Snapshot(uint dwFlags, uint th32ProcessID);
+
+        [DllImport("kernel32.dll")]
+        public static extern bool Process32First(IntPtr hSnapshot, ref PROCESSENTRY32 lppe);
+
+        [DllImport("kernel32.dll")]
+        public static extern bool Process32Next(IntPtr hSnapshot, ref PROCESSENTRY32 lppe);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        public static extern bool CloseHandle(IntPtr hObject);
+
+        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Auto)]
+        public struct PROCESSENTRY32
+        {
+            public uint dwSize;
+            public uint cntUsage;
+            public uint th32ProcessID;
+            public IntPtr th32DefaultHeapID;
+            public uint th32ModuleID;
+            public uint cntThreads;
+            public uint th32ParentProcessID;
+            public int pcPriClassBase;
+            public uint dwFlags;
+            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 260)]
+            public string szExeFile;
+        }
+
+        public const uint TH32CS_SNAPPROCESS = 0x00000002;
 
         [StructLayout(LayoutKind.Sequential)]
         public struct RECT
@@ -300,28 +337,46 @@ foreach ($p in $procs) {{ if ($wshell.AppActivate($p.Id)) {{ exit }} }}";
         private (DateTime LastUpdate, Dictionary<int, int> ParentMap, Dictionary<int, string> NameMap) _procCache;
         private readonly SemaphoreSlim _cacheLock = new SemaphoreSlim(1, 1);
 
-        private async Task<(Dictionary<int, int> ParentMap, Dictionary<int, string> NameMap)> GetProcessMapsAsync()
+        public (Dictionary<int, int> ParentMap, Dictionary<int, string> NameMap) GetProcessMaps()
         {
-            await _cacheLock.WaitAsync();
+            _cacheLock.Wait();
             try
             {
-                if (DateTime.Now - _procCache.LastUpdate < TimeSpan.FromSeconds(5) && _procCache.ParentMap != null) return (_procCache.ParentMap, _procCache.NameMap);
+                if (DateTime.Now - _procCache.LastUpdate < TimeSpan.FromSeconds(2) && _procCache.ParentMap != null) return (_procCache.ParentMap, _procCache.NameMap);
                 var parentMap = new Dictionary<int, int>();
                 var nameMap = new Dictionary<int, string>();
-                using (var searcher = new System.Management.ManagementObjectSearcher("SELECT ProcessId, ParentProcessId, Name FROM Win32_Process"))
-                using (var results = searcher.Get())
+
+                IntPtr hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+                if (hSnapshot != IntPtr.Zero)
                 {
-                    foreach (var obj in results)
+                    try
                     {
-                        try { int pId = Convert.ToInt32(obj["ProcessId"]); int parentId = Convert.ToInt32(obj["ParentProcessId"]); string name = obj["Name"]?.ToString() ?? ""; parentMap[pId] = parentId; nameMap[pId] = name; }
-                        catch { } finally { obj.Dispose(); }
+                        PROCESSENTRY32 procEntry = new PROCESSENTRY32();
+                        procEntry.dwSize = (uint)Marshal.SizeOf(typeof(PROCESSENTRY32));
+
+                        if (Process32First(hSnapshot, ref procEntry))
+                        {
+                            do
+                            {
+                                int pid = (int)procEntry.th32ProcessID;
+                                int ppid = (int)procEntry.th32ParentProcessID;
+                                parentMap[pid] = ppid;
+                                nameMap[pid] = procEntry.szExeFile;
+                            } while (Process32Next(hSnapshot, ref procEntry));
+                        }
                     }
+                    finally { CloseHandle(hSnapshot); }
                 }
+
                 _procCache = (DateTime.Now, parentMap, nameMap);
                 return (parentMap, nameMap);
             }
-            catch { return (new Dictionary<int, int>(), new Dictionary<int, string>()); }
             finally { _cacheLock.Release(); }
+        }
+
+        private async Task<(Dictionary<int, int> ParentMap, Dictionary<int, string> NameMap)> GetProcessMapsAsync()
+        {
+            return await Task.Run(() => GetProcessMaps());
         }
 
         public void SetWindowTitle(int pid, string title, string? titleHint = null)
@@ -347,7 +402,7 @@ foreach ($p in $procs) {{ if ($wshell.AppActivate($p.Id)) {{ exit }} }}";
             });
         }
 
-        private async Task<HashSet<int>> GetProcessTreePidsAsync(int rootPid)
+        public async Task<HashSet<int>> GetProcessTreePidsAsync(int rootPid)
         {
             var result = new HashSet<int> { rootPid };
             string jobName = "GeminiJob_" + rootPid;
@@ -603,8 +658,6 @@ Add-Type -MemberDefinition $code -Name Win32 -Namespace Native
         static extern IntPtr OpenJobObject(uint dwDesiredAccess, bool bInheritHandle, string lpName);
         [DllImport("kernel32.dll", SetLastError = true)]
         static extern bool QueryInformationJobObject(IntPtr hJob, int JobObjectInfoClass, IntPtr lpJobObjectInfo, uint cbJobObjectInfoLength, out uint lpReturnLength);
-        [DllImport("kernel32.dll", SetLastError = true)]
-        static extern bool CloseHandle(IntPtr hObject);
         [StructLayout(LayoutKind.Sequential)]
         struct JOBOBJECT_BASIC_PROCESS_ID_LIST { public uint NumberOfAssignedProcesses; public uint NumberOfProcessIdsInList; [MarshalAs(UnmanagedType.ByValArray, SizeConst = 128)] public UIntPtr[] ProcessIdList; }
         const uint JOB_OBJECT_QUERY = 0x0004;

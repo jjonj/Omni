@@ -154,7 +154,8 @@ namespace OmniSync.Hub.Logic.Services
                                                                     string filePath = System.IO.Path.Combine(screenshotsDir, fileName);
                                                                     _screenshotService.CapturePrimaryScreen(filePath);      
                                                                 }},
-                                                                { "SCHEDULE_SHUTDOWN", payload => _shutdownService.ScheduleShutdown(payload.GetProperty("Minutes").GetInt32()) },
+                { "LAUNCH_TAB_IN_FOCUSED_WORKSPACE", payload => _ = _aiCliService.LaunchTabInFocusedWorkspaceAsync() },
+                { "SCHEDULE_SHUTDOWN", payload => _shutdownService.ScheduleShutdown(payload.GetProperty("Minutes").GetInt32()) },
                                                 { "ADDCLEANUPPATTERN", payload => AddCleanupPatternRequested?.Invoke(this, payload.GetString() ?? "") },
                 { "HUB_EXIT", payload => _appLifetime.StopApplication() },
                 { "WIN_MINIMIZE", payload => _processService.WinMinimize(payload.GetProperty("Title").GetString() ?? "") },
