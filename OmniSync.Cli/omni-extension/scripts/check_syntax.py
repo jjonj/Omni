@@ -145,6 +145,13 @@ def check_js_syntax(content, filename, is_module=False, start_line=1):
         if os.path.exists(tmp_path):
             os.remove(tmp_path)
 
+def check_json_syntax(content, filename):
+    try:
+        json.loads(content)
+        return None
+    except json.JSONDecodeError as e:
+        return f"{filename}:{e.lineno}:{e.colno}: {e.msg}"
+
 def process_file(file_path):
     print(f"Checking: {file_path}...")
     errors_found = False
@@ -187,6 +194,15 @@ def process_file(file_path):
             if err:
                 print(err)
                 errors_found = True
+    
+    # 3. For JSON files, use Python's json module
+    elif file_path.endswith('.json'):
+        with open(file_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+        err = check_json_syntax(content, file_path)
+        if err:
+            print(err)
+            errors_found = True
         
     return errors_found
 
@@ -201,7 +217,7 @@ def main():
     elif os.path.isdir(target):
         for root, _, files in os.walk(target):
             for file in files:
-                if file.endswith(('.html', '.js')):
+                if file.endswith(('.html', '.js', '.json')):
                     full_path = os.path.join(root, file)
                     if process_file(full_path):
                         any_errors = True

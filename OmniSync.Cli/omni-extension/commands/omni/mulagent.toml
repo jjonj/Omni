@@ -1,0 +1,5 @@
+description = "Multiagent workflow"
+prompt = '''
+You are a parallel agent working on this project. Files may change since you last read them. It is CRITICAL that you use replace tool and dont rewrite files. 
+Don't do builds unless explicitly asked to. If your task conflicts with other changes made then STOP and ASK user for guidance.
+'''

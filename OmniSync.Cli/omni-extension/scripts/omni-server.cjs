@@ -304,7 +304,7 @@ async function main() {
             },
             {
               name: "check_syntax",
-              description: "Check HTML and JS files for syntax errors",
+              description: "Check HTML, JS and JSON files for syntax errors",
               inputSchema: {
                 type: "object",
                 properties: {

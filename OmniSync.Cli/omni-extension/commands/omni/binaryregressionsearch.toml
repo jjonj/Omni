@@ -1,0 +1,130 @@
+description = "Regression Binary Search"
+
+prompt = '''
+We are invoking the regression binary search method.
+
+We achieved some goal or subgoal, but something else regressed.
+
+The assumption is:
+- The regression was introduced by a recent change.
+- The bug likely exists somewhere in the local uncommitted changes or recent commits.
+- We want to binary search the changes to find the exact regression point.
+
+Step 1: establish the known-good reference point.
+Figure out what version definitely worked before the regression.
+
+Usually this is:
+- Before the local uncommitted changes.
+OR
+- The latest commit before the regression.
+OR
+- The last version the user confirms had the feature working.
+
+We must keep careful track of:
+- What changes exist locally.
+- What has been temporarily reverted.
+- What the current test state is.
+- What version is currently known-good vs known-bad.
+
+Step 2: revert HALF the suspect changes.
+DO NOT randomly edit code or guess fixes.
+
+Instead:
+- Split the suspect changes roughly in half.
+- Temporarily revert HALF.
+- Get things building/running if needed.
+- Test whether the regressed feature works again.
+
+Important:
+At partial steps things may not build or run cleanly.
+That is OK.
+
+We are in the SEARCH phase.
+
+It is acceptable to make temporary hacky fixes, stubs, bypasses, hardcoded values, or small glue code to get a partial state running so we can continue narrowing down the problem.
+
+Just do not mistake temporary search fixes for the final solution.
+
+Ask:
+"Does the regressed feature work now?"
+
+If YES:
+- The regression exists in the remaining HALF still applied.
+- Keep this as the new search space.
+- Re-apply half of the reverted changes and test again.
+
+If NO:
+- The regression exists in the HALF we reverted.
+- Restore the reverted changes.
+- Instead revert HALF of the other side and test again.
+
+Repeat until we isolate the exact change causing the regression.
+
+Example:
+We added 20 changes to make feature A work.
+Now login is broken.
+
+1. Revert ~10 changes -> login works.
+   -> Regression is in those 10 reverted changes.
+
+2. Re-apply 5 of those -> login still works.
+   -> Regression is in the remaining 5.
+
+3. Re-apply half again -> login breaks.
+   -> Regression narrowed further.
+
+Repeat until the exact file, diff, or code block is identified.
+
+Step 3: prove the exact cause.
+Once we think we found the bad change, we must prove it.
+
+DO NOT stop at:
+"I think this is it."
+
+Instead:
+- Find the absolute smallest possible change that seems responsible.
+- Toggle ONLY that exact change on/off.
+
+Ask:
+"Does this tiny change alone make the regression appear/disappear?"
+
+We want very high confidence that THIS is the exact regression point and not nearby code.
+
+Step 4: verify the fix before restoring everything.
+Before applying the full stack of changes again:
+
+- Return to the last known BAD version.
+- Apply ONLY the minimal regression fix.
+- Verify the regression is actually fixed.
+
+Ask:
+"Does the regressed feature still work?"
+
+If it does:
+- Create a checkpoint commit immediately.
+
+This gives us a safe rollback point.
+
+Step 5: restore remaining work.
+Now re-apply the remaining intended changes.
+
+Do a final verification:
+- Original goal/subgoal still works.
+- Regressed feature still works.
+- No new regressions appeared.
+
+Rules:
+- Prefer reverting changes over inventing fixes.
+- Keep notes of what is reverted/applied.
+- Avoid changing unrelated code during the search.
+- Temporary hacky fixes are OK during the search phase.
+- Remove temporary hacks once the regression is identified.
+- If 3 reproductions fail in a row, return to the last known-good test state and verify it still behaves as expected.
+- The goal is to identify the regression point first, then fix it safely.
+
+This is interactive.
+Unless there is a reliable automated regression test:
+- Stop after every iteration.
+- Ask whether the regressed feature works.
+- Do not continue automatically.
+'''

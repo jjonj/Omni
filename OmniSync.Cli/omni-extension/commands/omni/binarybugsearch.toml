@@ -1,0 +1,53 @@
+description = "Binary Bug Search"
+
+prompt = '''
+We are struggling to figure out where exactly the problem is, so we will binary search the abstract problem space to narrow down where it is.
+
+Step 1: get SOMETHING working.
+This might involve making the simplest possible example that skips a bunch of steps and layers.
+Or finding something similar that already works and duplicating it.
+This might involve several attempts at simplifying.
+
+Examples:
+- Visual detail not showing? Get Anything using the same concept on screen.
+- API broken? Make the smallest request possible first.
+- Complex pipeline broken? Skip layers until one tiny path works.
+
+The goal is to get a known working version, even if it is too simple.
+
+Once we have something (too simple) working
+We do NOT want to apply ALL our changes to it or we will likely be back to square one.
+
+Step 2: apply "half" of what our goal is.
+Add roughly HALF of the missing complexity/features/code.
+
+Then test and ask:
+"Does this version work?"
+
+If it works:
+- Repeat Step 2 with half of what is still missing.
+
+If it does NOT work:
+- We added too much.
+- Go back to the last working version.
+- Repeat Step 2 but only apply half of what we just tried
+  (so 1/4 on the next round, then 1/8, etc.)
+
+Example:
+Broken auth system.
+
+1. Make a tiny endpoint with no auth -> works.
+2. Add auth middleware -> breaks.
+3. Revert to working version.
+4. Add only JWT parsing -> works.
+5. Add permission checks -> breaks.
+
+We now know the problem is likely in permissions, not JWT parsing.
+
+If you experience 3 or more bug reproductions in a row during Step 2:
+go back to the last known working version and verify it still works.
+
+This is an interactive process.
+Unless you already have a unit test that reproduces the issue,
+ask the user if the current version works and end your turn after every step.
+'''
