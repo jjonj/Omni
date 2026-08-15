@@ -14,6 +14,7 @@ using System.IO; // Added for Path.Combine and Directory.GetCurrentDirectory()
 
 using Microsoft.Extensions.FileProviders; // Added for PhysicalFileProvider
 using Microsoft.AspNetCore.Hosting; // Added for ConfigureKestrel
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.SignalR; // Added for IHubContext
 using Microsoft.AspNetCore.SignalR.Client; // Added for HubConnectionBuilder extension methods
 using System.Threading.Tasks; // For TaskScheduler events
@@ -277,6 +278,8 @@ builder.Services.AddSingleton<CommandDispatcher>(provider => {
 });
 builder.Services.AddSingleton<ITerminalService, TerminalService>();
 builder.Services.AddHostedService<TerminalOutputBroadcaster>();
+builder.Services.AddSingleton<RemoteTerminalSessionManager>();
+builder.Services.AddSingleton<RemoteTerminalBridgeEndpoint>();
 builder.Services.AddSingleton<GlobalHotkeyService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<GlobalHotkeyService>());
 
@@ -390,6 +393,7 @@ app.Use(async (context, next) =>
 
 app.UseCors("AllowAll");
 
+app.UseWebSockets();
 app.UseRouting();
 
 // Serve static files from OmniSync.Web\www
@@ -422,6 +426,17 @@ app.UseAuthorization(); // Even if empty, it's good practice if Authorization is
 app.MapControllers();
 app.MapHub<RpcApiHub>("/signalrhub");
 app.MapHub<TerminalHub>("/terminalhub");
+app.MapHub<RemoteTerminalHub>("/remoteterminalhub");
+app.Map("/internal/remote-terminal/{sessionId}", async context =>
+{
+    var sessionId = context.Request.RouteValues["sessionId"]?.ToString();
+    if (string.IsNullOrEmpty(sessionId))
+    {
+        context.Response.StatusCode = StatusCodes.Status404NotFound;
+        return;
+    }
+    await context.RequestServices.GetRequiredService<RemoteTerminalBridgeEndpoint>().HandleAsync(context, sessionId);
+});
 
 // --- Global Exception Handling for Crashes ---
 CrashHandler.Initialize();
