@@ -15,6 +15,8 @@ public sealed record RemoteTerminalSessionInfo(string SessionId, string Command,
 
 public sealed class RemoteTerminalSessionManager
 {
+    private const string DebugOutputPath = @"D:\SSDProjects\Omni\terminal_output_debug.ansi";
+    private static readonly object DebugOutputFileLock = new();
     private readonly ConcurrentDictionary<string, RemoteTerminalSession> _sessions = new();
     private readonly IHubContext<RemoteTerminalHub> _hubContext;
     private readonly IConfiguration _configuration;
@@ -42,6 +44,8 @@ public sealed class RemoteTerminalSessionManager
 
         try
         {
+            File.WriteAllBytes(DebugOutputPath, Array.Empty<byte>());
+            _logger.LogInformation("Remote terminal {SessionId} created command={Command} workspace={Workspace} columns={Columns} rows={Rows}", id, command, workspace, columns, rows);
             session.Process = LaunchOmnish(session);
             _ = PublishStatusAsync(session, "launching");
             return new RemoteTerminalSessionInfo(id, command, workspace, columns, rows);
@@ -55,11 +59,17 @@ public sealed class RemoteTerminalSessionManager
 
     public bool CanAttach(string sessionId, string? token)
     {
-        if (!_sessions.TryGetValue(sessionId, out var session) || string.IsNullOrWhiteSpace(token)) return false;
+        if (!_sessions.TryGetValue(sessionId, out var session) || string.IsNullOrWhiteSpace(token))
+        {
+            _logger.LogWarning("Remote terminal attach rejected session={SessionId} sessionKnown={SessionKnown} tokenPresent={TokenPresent}", sessionId, session is not null, !string.IsNullOrWhiteSpace(token));
+            return false;
+        }
         try
         {
-            return CryptographicOperations.FixedTimeEquals(
+            var valid = CryptographicOperations.FixedTimeEquals(
                 Convert.FromBase64String(session.Token), Convert.FromBase64String(token));
+            _logger.LogInformation("Remote terminal attach token validation session={SessionId} valid={Valid}", sessionId, valid);
+            return valid;
         }
         catch (FormatException)
         {
@@ -72,17 +82,29 @@ public sealed class RemoteTerminalSessionManager
         if (!_sessions.TryGetValue(sessionId, out var session)) throw new InvalidOperationException("Remote terminal session was not found.");
         lock (session.Sync)
         {
-            if (session.HostSocket is not null) throw new InvalidOperationException("Remote terminal session already has an Omnish host.");
+            if (session.HostSocket is { State: WebSocketState.Open }) throw new InvalidOperationException("Remote terminal session already has an Omnish host.");
             session.HostSocket = socket;
         }
 
+        _logger.LogInformation("Omnish attached to remote terminal {SessionId}", sessionId);
         await PublishStatusAsync(session, "ready");
+    }
+
+    public void Detach(string sessionId, WebSocket socket)
+    {
+        if (!_sessions.TryGetValue(sessionId, out var session)) return;
+        lock (session.Sync)
+        {
+            if (ReferenceEquals(session.HostSocket, socket)) session.HostSocket = null;
+        }
+        _logger.LogInformation("Omnish detached from remote terminal {SessionId}", sessionId);
     }
 
     public async Task SendInputAsync(string sessionId, byte[] bytes)
     {
         if (!_sessions.TryGetValue(sessionId, out var session)) throw new InvalidOperationException("Remote terminal session was not found.");
         var socket = session.HostSocket ?? throw new InvalidOperationException("Omnish has not connected to this session yet.");
+        _logger.LogInformation("Forwarding terminal input session={SessionId} bytes={ByteCount} socketState={SocketState}", sessionId, bytes.Length, socket.State);
         await session.SendLock.WaitAsync();
         try
         {
@@ -94,8 +116,17 @@ public sealed class RemoteTerminalSessionManager
         }
     }
 
-    public Task PublishOutputAsync(string sessionId, byte[] bytes) =>
-        _hubContext.Clients.Group(GroupName(sessionId)).SendAsync("RemoteTerminalOutput", sessionId, Convert.ToBase64String(bytes));
+    public Task PublishOutputAsync(string sessionId, byte[] bytes)
+    {
+        lock (DebugOutputFileLock)
+        {
+            using var stream = new FileStream(DebugOutputPath, FileMode.Append, FileAccess.Write, FileShare.Read);
+            stream.Write(bytes);
+        }
+
+        _logger.LogInformation("Publishing terminal output session={SessionId} bytes={ByteCount} preview={Preview}", sessionId, bytes.Length, DebugPreview(bytes));
+        return _hubContext.Clients.Group(GroupName(sessionId)).SendAsync("RemoteTerminalOutput", sessionId, Convert.ToBase64String(bytes));
+    }
 
     public async Task StopAsync(string sessionId)
     {
@@ -148,6 +179,15 @@ public sealed class RemoteTerminalSessionManager
         _hubContext.Clients.Group(GroupName(session.Id)).SendAsync("RemoteTerminalStatus", session.Id, status);
 
     private static string GroupName(string sessionId) => $"RemoteTerminal_{sessionId}";
+
+    private static string DebugPreview(byte[] bytes) => string.Concat(bytes.Take(120).Select(value => value switch
+    {
+        0x1b => "<ESC>",
+        0x0d => "<CR>",
+        0x0a => "<LF>",
+        >= 0x20 and <= 0x7e => ((char)value).ToString(),
+        _ => $"<{value:x2}>"
+    }));
 
     private sealed class RemoteTerminalSession
     {

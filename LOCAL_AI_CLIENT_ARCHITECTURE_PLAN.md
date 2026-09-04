@@ -47,6 +47,16 @@ The first milestone is deliberately narrow:
 - [x] Rebuilt the Hub with current-status replay after start/subscribe and reran the Hub round-trip.
 - [x] Status replay works. The next Hub run exposed the handshake failure: Omnish sends JSON `token`, but the C# record expected case-sensitive `Token`, producing a null token and closing the socket with code 1006.
 - [x] Bound the registration field explicitly to JSON `token`, rejected malformed tokens without throwing, rebuilt, and reran successfully.
+- [x] Added an Android `RemoteTerminalClient` with its own GUID-based session, connection, status, output, and error state instead of extending the legacy PID-indexed Gemini maps.
+- [x] Connected the Android remote-terminal transport alongside the app's authenticated Hub lifecycle and resubscribed the active session after a Hub reconnect.
+- [x] Preserved the existing Android `AiChatScreen` interface unchanged and added a compatibility adapter behind it. A synthetic negative UI ID maps its PID-oriented controls onto the real GUID remote-terminal session without changing the Hub identity.
+- [x] Redirected the existing new-session, workspace/bookmark, model-selection, prompt, voice, special-key, rename, clear, close, and reset entry points where applicable to the remote-terminal transport. `agy` and `codex` appear through the existing model selector as opaque launch commands.
+- [x] Routed the Files screen's existing `CLI Here` action to the new remote-terminal transport using the currently selected opaque command.
+- [x] Added focused tests for UTF-8 characters split across SignalR frames, bounded scrollback, and decoder reset. All three pass, and the Android debug APK assembles successfully.
+- [x] Installed the corrected debug APK on the physical Android device, launched `agy` from the original AI screen, and observed the visible Omnish PTY output in the original terminal-style chat bubble.
+- [x] Completed a physical Android-to-Hub transformed-nonce round trip through the original interface. Android submitted `omni_ui_roundtrip_73194` and received both response fragments `49137_pirtdnuor` and `_iu_inmo`.
+- [x] Replaced only the live remote-terminal output bubble's plain Compose text with a local xterm.js 6.0.0 WebView POC. The renderer is bundled from the same pinned distribution Omnish uses; launch, session, and input UI remain unchanged.
+- [x] Matched the Android POC's fixed xterm geometry with the remote PTY start request at 80x24. Dynamic resize remains deferred until the Hub and Omnish bridge expose PTY resize.
 
 ### First milestone result
 
@@ -70,7 +80,8 @@ python TestScripts/AIFeature/remote_terminal_roundtrip_test.py
 The standalone test passed in 18.5 seconds. The full Hub test passed in 22.5 seconds.
 - [x] Added `TestScripts/AIFeature/remote_terminal_roundtrip_test.py`, which launches opaque command `agy`, sends a nonce-transformation prompt as raw terminal input, and requires transformed output absent from the submitted prompt.
 - [x] Ran the first full Hub-mediated `agy` round-trip. The Hub and Omnish release builds both succeed.
-- [ ] Replace Android's Gemini-specific session calls after the transport is proven.
+- [x] Replace the primary Android AI-tab and `CLI Here` backend calls while preserving the established AI interface.
+- [ ] Retire the now-unreachable Gemini pipe/session handlers after the compatibility adapter and remaining Tell PC/hook-in workflows have had broader manual use.
 
 The Hub must not know how Codex, Agy, Gemini, Claude, or another AI client works internally. It launches a command and relays terminal data.
 

@@ -85,7 +85,7 @@ namespace OmniSync.Hub.Logic.Services
                     UseShellExecute = true
                 };
 
-                Process.Start(startInfo);
+                using (var process = Process.Start(startInfo)) { }
             }
             catch (Exception ex)
             {
@@ -119,7 +119,7 @@ namespace OmniSync.Hub.Logic.Services
                     CreateNoWindow = false
                 };
 
-                Process.Start(startInfo);
+                using (var process = Process.Start(startInfo)) { }
             }
             catch (Exception ex)
             {

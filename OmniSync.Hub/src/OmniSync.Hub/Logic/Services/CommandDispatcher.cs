@@ -23,6 +23,7 @@ namespace OmniSync.Hub.Logic.Services
         private readonly NodeRedService _nodeRedService;
         private readonly ProjectLauncherService _projectLauncherService;
         private readonly ResourceOpenerService _resourceOpenerService;
+        private readonly ClipboardService _clipboardService;
         private readonly AiCliService _aiCliService;
         private readonly HubMonitorService _monitorService;
         private readonly IHostApplicationLifetime _appLifetime;
@@ -33,7 +34,7 @@ namespace OmniSync.Hub.Logic.Services
         public event EventHandler? ShowProjectSelectorRequested;
         public event EventHandler<(string Command, JsonElement Payload)>? ExternalCommandDispatched;
 
-        public CommandDispatcher(InputService inputService, FileService fileService, AudioService audioService, ProcessService processService, ScreenshotService screenshotService, ShutdownService shutdownService, HubSettingsService settingsService, PcgPersistentService pcgService, NodeRedService nodeRedService, ProjectLauncherService projectLauncherService, ResourceOpenerService resourceOpenerService, AiCliService aiCliService, HubMonitorService monitorService, IHostApplicationLifetime appLifetime, IHubContext<RpcApiHub> hubContext)
+        public CommandDispatcher(InputService inputService, FileService fileService, AudioService audioService, ProcessService processService, ScreenshotService screenshotService, ShutdownService shutdownService, HubSettingsService settingsService, PcgPersistentService pcgService, NodeRedService nodeRedService, ProjectLauncherService projectLauncherService, ResourceOpenerService resourceOpenerService, ClipboardService clipboardService, AiCliService aiCliService, HubMonitorService monitorService, IHostApplicationLifetime appLifetime, IHubContext<RpcApiHub> hubContext)
         {
             _inputService = inputService;
             _fileService = fileService;
@@ -46,6 +47,7 @@ namespace OmniSync.Hub.Logic.Services
             _nodeRedService = nodeRedService;
             _projectLauncherService = projectLauncherService;
             _resourceOpenerService = resourceOpenerService;
+            _clipboardService = clipboardService;
             _aiCliService = aiCliService;
             _monitorService = monitorService;
             _appLifetime = appLifetime;
@@ -108,11 +110,7 @@ namespace OmniSync.Hub.Logic.Services
                     }
 
                     if (!string.IsNullOrEmpty(path)) {
-                        try {
-                            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(path) { UseShellExecute = true });
-                        } catch (Exception ex) {
-                            Console.WriteLine($"Error opening on PC: {ex.Message}");
-                        }
+                        _processService.ShellExecute(path);
                     }
                 }},
                                 { "OPEN_RESOURCE", payload => {
@@ -134,6 +132,18 @@ namespace OmniSync.Hub.Logic.Services
                                         _ = _resourceOpenerService.OpenResource(path, lineNumber); 
                                     }
                                 }},
+                { "OPEN_CLIPBOARD_URL", payload => {
+                    // Temporary hotkey (Ctrl+Alt+L)
+                    // Ask user: Are you ready to delete this hotkey?
+                    string text = _clipboardService.GetClipboardText();
+                    if (!string.IsNullOrWhiteSpace(text)) {
+                        // Remove all whitespace (spaces, newlines, tabs)
+                        string cleanedUrl = System.Text.RegularExpressions.Regex.Replace(text, @"\s+", "");
+                        if (!string.IsNullOrWhiteSpace(cleanedUrl)) {
+                            _processService.ShellExecute(cleanedUrl);
+                        }
+                    }
+                }},
                                 { "LIST_CLI_SESSIONS", payload => {
                                     // This is handled by OmniHubApiController directly for returning data
                                 }},
@@ -155,6 +165,7 @@ namespace OmniSync.Hub.Logic.Services
                                                                     _screenshotService.CapturePrimaryScreen(filePath);      
                                                                 }},
                 { "LAUNCH_TAB_IN_FOCUSED_WORKSPACE", payload => _ = _aiCliService.LaunchTabInFocusedWorkspaceAsync() },
+                { "FOMNI_WAR_TRIBES", payload => _processService.RunProcess(@"D:\SSDProjects\Tools\Fomni\target\release\fomni.exe", @"""D:/wartribes""") },
                 { "SCHEDULE_SHUTDOWN", payload => _shutdownService.ScheduleShutdown(payload.GetProperty("Minutes").GetInt32()) },
                                                 { "ADDCLEANUPPATTERN", payload => AddCleanupPatternRequested?.Invoke(this, payload.GetString() ?? "") },
                 { "HUB_EXIT", payload => _appLifetime.StopApplication() },

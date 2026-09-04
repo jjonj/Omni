@@ -28,6 +28,9 @@ class AlarmReceiver : BroadcastReceiver() {
                 val soundId = intent.getStringExtra("SOUND_ID") ?: "gentle"
                 val macroOnTrigger = intent.getStringExtra("MACRO_ON_TRIGGER")
                 val macroOnDismiss = intent.getStringExtra("MACRO_ON_DISMISS")
+                val quickActionOnTriggerId = intent.getStringExtra("QUICK_ACTION_ON_TRIGGER_ID")
+                val quickActionOnDismissId = intent.getStringExtra("QUICK_ACTION_ON_DISMISS_ID")
+                val dismissActionDelaySeconds = intent.getIntExtra("DISMISS_ACTION_DELAY_SECONDS", 0)
                 val dismissText = intent.getStringExtra("DISMISS_TEXT")
                 
                 val alarmData = AlarmData(
@@ -39,6 +42,9 @@ class AlarmReceiver : BroadcastReceiver() {
                     repeatDaily = true,
                     macroOnTrigger = macroOnTrigger,
                     macroOnDismiss = macroOnDismiss,
+                    quickActionOnTriggerId = quickActionOnTriggerId,
+                    quickActionOnDismissId = quickActionOnDismissId,
+                    dismissActionDelaySeconds = dismissActionDelaySeconds,
                     dismissText = dismissText
                 )
                 val config = GradualConfig(

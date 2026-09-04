@@ -1,5 +1,7 @@
 package com.omni.sync.viewmodel
 
+import android.content.Context
+import android.content.SharedPreferences
 import com.omni.sync.data.repository.SignalRClient
 import com.omni.sync.utils.BookType
 import io.reactivex.rxjava3.android.plugins.RxAndroidPlugins
@@ -27,6 +29,12 @@ class BooksViewModelTest {
     private lateinit var downloadManager: com.omni.sync.logic.BookDownloadManager
     @Mock
     private lateinit var mainViewModel: MainViewModel
+    @Mock
+    private lateinit var context: Context
+    @Mock
+    private lateinit var sharedPreferences: SharedPreferences
+    @Mock
+    private lateinit var preferencesEditor: SharedPreferences.Editor
     private lateinit var viewModel: BooksViewModel
     private val testDispatcher = UnconfinedTestDispatcher()
 
@@ -34,7 +42,15 @@ class BooksViewModelTest {
     fun setup() {
         MockitoAnnotations.openMocks(this)
         Dispatchers.setMain(testDispatcher)
-        
+
+        `when`(mainViewModel.applicationContext).thenReturn(context)
+        `when`(context.getSharedPreferences(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyInt()))
+            .thenReturn(sharedPreferences)
+        `when`(sharedPreferences.all).thenReturn(emptyMap())
+        `when`(sharedPreferences.edit()).thenReturn(preferencesEditor)
+        `when`(preferencesEditor.putString(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString()))
+            .thenReturn(preferencesEditor)
+
         RxJavaPlugins.setIoSchedulerHandler { Schedulers.trampoline() }
         RxJavaPlugins.setComputationSchedulerHandler { Schedulers.trampoline() }
         RxJavaPlugins.setNewThreadSchedulerHandler { Schedulers.trampoline() }

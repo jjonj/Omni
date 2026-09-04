@@ -47,12 +47,15 @@ object AlarmScheduler {
             putExtra("CURRENT_REPETITION", 0)
             putExtra("MACRO_ON_TRIGGER", data.macroOnTrigger)
             putExtra("MACRO_ON_DISMISS", data.macroOnDismiss)
+            putExtra("QUICK_ACTION_ON_TRIGGER_ID", data.quickActionOnTriggerId)
+            putExtra("QUICK_ACTION_ON_DISMISS_ID", data.quickActionOnDismissId)
+            putExtra("DISMISS_ACTION_DELAY_SECONDS", data.dismissActionDelaySeconds)
             putExtra("DISMISS_TEXT", data.dismissText)
         }
 
         val pendingIntent = PendingIntent.getBroadcast(
             context,
-            alarmId, // ID 1 or 2
+            alarmId,
             intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
@@ -128,6 +131,9 @@ object AlarmScheduler {
                         repeatDaily: Boolean,
                         macroOnTrigger: String?,
                         macroOnDismiss: String?,
+                        quickActionOnTriggerId: String?,
+                        quickActionOnDismissId: String?,
+                        dismissActionDelaySeconds: Int,
                         dismissText: String?
             ) {
                 val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
@@ -150,6 +156,9 @@ object AlarmScheduler {
                     putExtra("CURRENT_REPETITION", repetition)
                     putExtra("MACRO_ON_TRIGGER", macroOnTrigger)
                     putExtra("MACRO_ON_DISMISS", macroOnDismiss)
+                    putExtra("QUICK_ACTION_ON_TRIGGER_ID", quickActionOnTriggerId)
+                    putExtra("QUICK_ACTION_ON_DISMISS_ID", quickActionOnDismissId)
+                    putExtra("DISMISS_ACTION_DELAY_SECONDS", dismissActionDelaySeconds)
                     putExtra("DISMISS_TEXT", dismissText)
                 }
                 val pendingIntent = PendingIntent.getBroadcast(

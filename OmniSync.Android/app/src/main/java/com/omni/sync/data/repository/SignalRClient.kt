@@ -12,6 +12,7 @@ import android.net.NetworkCapabilities
 import android.util.Log
 import com.microsoft.signalr.HubConnection
 import com.microsoft.signalr.HubConnectionBuilder
+import com.omni.sync.OmniSyncApplication
 import com.omni.sync.service.OmniAccessibilityService
 import com.omni.sync.viewmodel.MainViewModel
 import com.omni.sync.utils.NetworkDebugger
@@ -78,6 +79,7 @@ class SignalRClient(
 ) {
     private var hubConnection: HubConnection? = null
     private var terminalHubConnection: HubConnection? = null
+    val remoteTerminalClient = RemoteTerminalClient()
     private val hubUrl: String get() = mainViewModel.appConfig.value.hubUrl
     private val terminalHubUrl: String get() = hubUrl.replace("/signalrhub", "/terminalhub")
     private val apiKey: String get() = mainViewModel.appConfig.value.apiKey
@@ -203,11 +205,14 @@ class SignalRClient(
     private val _aiPresets = MutableStateFlow<List<String>>(emptyList())
     val aiPresets: StateFlow<List<String>> = _aiPresets
 
-    private val _aiModels = MutableStateFlow<List<String>>(emptyList())
+    private val _aiModels = MutableStateFlow(listOf("agy", "codex"))
     val aiModels: StateFlow<List<String>> = _aiModels
 
-    private val _defaultAiModel = MutableStateFlow("")
+    private val _defaultAiModel = MutableStateFlow(mainViewModel.appConfig.value.terminalLauncher.ifBlank { "agy" })
     val defaultAiModel: StateFlow<String> = _defaultAiModel
+
+    private val _terminalLauncher = MutableStateFlow(mainViewModel.appConfig.value.terminalLauncher.ifBlank { "agy" })
+    val terminalLauncher: StateFlow<String> = _terminalLauncher
 
     private val _aiInputText = MutableStateFlow("")
     val aiInputText: StateFlow<String> = _aiInputText
@@ -250,6 +255,114 @@ class SignalRClient(
     companion object {
         const val SHARED_PREFS_NAME = "OmniSyncPrefs"
         const val KEY_LAST_CONNECTED_HUB_URL = "last_connected_hub_url"
+        private const val REMOTE_TERMINAL_PID = -2
+        private const val REMOTE_OUTPUT_MESSAGE_ID = "remote-terminal-output"
+        private const val DEFAULT_REMOTE_WORKSPACE = "D:\\SSDProjects"
+    }
+
+    init {
+        observeRemoteTerminalForAiUi()
+    }
+
+    private fun observeRemoteTerminalForAiUi() {
+        coroutineScope.launch {
+            var hadSession = false
+            remoteTerminalClient.session.collect { active ->
+                if (active == null) {
+                    if (hadSession) removeRemoteTerminalFromAiUi()
+                    hadSession = false
+                    return@collect
+                }
+
+                hadSession = true
+                _terminalSessions.value = _terminalSessions.value + (
+                    REMOTE_TERMINAL_PID to TerminalSession(
+                        REMOTE_TERMINAL_PID,
+                        active.workspace,
+                        active.command
+                    )
+                )
+                _aiSessions.value = _aiSessions.value + (
+                    REMOTE_TERMINAL_PID to "${active.command} (${active.sessionId.take(8)})"
+                )
+                _aiWorkspaces.value = _aiWorkspaces.value + (REMOTE_TERMINAL_PID to active.workspace)
+                _isStartingSession = false
+                isStartingSessionFlow.value = false
+                setSelectedPid(REMOTE_TERMINAL_PID)
+                recordSessionActivity(REMOTE_TERMINAL_PID)
+                lastCreatedSessionPid.emit(REMOTE_TERMINAL_PID)
+
+                val queued = messageQueue.toList()
+                messageQueue.clear()
+                queued.forEach { sendAiMessage(it, REMOTE_TERMINAL_PID) }
+            }
+        }
+
+        coroutineScope.launch {
+            remoteTerminalClient.output.collect { output ->
+                Log.d("SignalRClient", "Remote terminal UI update chars=${output.length} hash=${output.hashCode()}")
+                val current = _terminalMessagesMap.value[REMOTE_TERMINAL_PID].orEmpty()
+                    .filterNot { it.id == REMOTE_OUTPUT_MESSAGE_ID }
+                val updated = if (output.isEmpty()) {
+                    current
+                } else {
+                    current + AiMessage(
+                        sender = "Terminal",
+                        text = output,
+                        id = REMOTE_OUTPUT_MESSAGE_ID,
+                        isTerminal = true
+                    )
+                }
+                _terminalMessagesMap.value = _terminalMessagesMap.value + (REMOTE_TERMINAL_PID to updated)
+                Log.d("SignalRClient", "Remote terminal UI messages=${updated.size} hasOutput=${output.isNotEmpty()} terminalMessagePresent=${updated.any { it.id == REMOTE_OUTPUT_MESSAGE_ID }}")
+                if (output.isNotEmpty()) {
+                    recordSessionActivity(REMOTE_TERMINAL_PID)
+                    anyAiActivityEvent.emit(Unit)
+                }
+                updateActiveView()
+            }
+        }
+
+        coroutineScope.launch {
+            remoteTerminalClient.sessionStatus.collect { status ->
+                updateSessionStatus(REMOTE_TERMINAL_PID, status.replaceFirstChar { it.uppercase() })
+            }
+        }
+
+        coroutineScope.launch {
+            remoteTerminalClient.error.collect { error ->
+                if (error == null) return@collect
+                _isStartingSession = false
+                isStartingSessionFlow.value = false
+                updateSessionStatus(REMOTE_TERMINAL_PID, "Error")
+                mainViewModel.addLog("[AI terminal] $error", com.omni.sync.ui.screen.LogType.ERROR)
+            }
+        }
+    }
+
+    private fun removeRemoteTerminalFromAiUi() {
+        _terminalSessions.value = _terminalSessions.value - REMOTE_TERMINAL_PID
+        _aiSessions.value = _aiSessions.value - REMOTE_TERMINAL_PID
+        _aiWorkspaces.value = _aiWorkspaces.value - REMOTE_TERMINAL_PID
+        _isWaitingForAiResponseMap.value = _isWaitingForAiResponseMap.value - REMOTE_TERMINAL_PID
+        _isStartingSession = false
+        isStartingSessionFlow.value = false
+        if (_selectedPid.value == REMOTE_TERMINAL_PID) setSelectedPid(-1)
+    }
+
+    private fun startRemoteTerminalForAiUi(command: String, workspace: String?) {
+        if (_isStartingSession) return
+        _isStartingSession = true
+        isStartingSessionFlow.value = true
+        messageQueue.clear()
+        _terminalMessagesMap.value = _terminalMessagesMap.value + (
+            REMOTE_TERMINAL_PID to listOf(
+                AiMessage("System", "Launching $command in ${workspace ?: DEFAULT_REMOTE_WORKSPACE}", isTerminal = true)
+            )
+        )
+        setSelectedPid(REMOTE_TERMINAL_PID)
+        updateSessionStatus(REMOTE_TERMINAL_PID, "Starting new session...")
+        remoteTerminalClient.startSession(command, workspace ?: DEFAULT_REMOTE_WORKSPACE)
     }
 
     fun getRetryDelay(attempt: Int): Long {
@@ -269,6 +382,7 @@ class SignalRClient(
         mainViewModel.setConnected(true)
         mainViewModel.recordActivity() // Record activity on connect
         authenticateClient()
+        remoteTerminalClient.connect(url, apiKey)
         getAiSessions()
         getAiModels()
         lastSuccessfulHubUrl = url
@@ -443,6 +557,7 @@ class SignalRClient(
         _connectionState.value = "Disconnected: $reason"
         mainViewModel.setConnected(false)
         mainViewModel.setScheduledShutdownTime(null)
+        remoteTerminalClient.disconnect()
         try {
             removeHubHandlers()
         } catch (_: Exception) {
@@ -511,6 +626,7 @@ class SignalRClient(
             } finally {
                 if (isCurrent) {
                     hubConnection = null
+                    remoteTerminalClient.disconnect()
                 }
             }
         }
@@ -533,35 +649,38 @@ class SignalRClient(
         updateActiveView()
     }
 
-    fun startTerminalSession(workspace: String? = null, shell: String = "cmd.exe") {
-        coroutineScope.launch {
-            if (terminalHubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
-                try {
-                    val pid = terminalHubConnection?.invoke(Int::class.java, "SpawnTerminal", shell, workspace)?.blockingGet()
-                    if (pid != null && pid > 0) {
-                        _terminalSessions.value = _terminalSessions.value + (pid to TerminalSession(pid, workspace ?: "", shell))
-                        terminalHubConnection?.send("Subscribe", pid)
-                        
-                        // Treat as an AI session for UI integration
-                        _aiSessions.value = _aiSessions.value + (pid to "Term: $shell ($pid)")
-                        _aiWorkspaces.value = _aiWorkspaces.value + (pid to (workspace ?: ""))
-                        
-                        _terminalMessagesMap.value = _terminalMessagesMap.value + (pid to listOf(
-                            AiMessage("System", "Terminal session started at ${workspace ?: "default"}", isTerminal = true)
-                        ))
-                        
-                        setSelectedPid(pid)
-                    }
-                } catch (e: Exception) {
-                    Log.e("SignalRClient", "Failed to start terminal session", e)
-                }
-            }
-        }
+    fun startTerminalSession(workspace: String? = null) {
+        startRemoteTerminalForAiUi(_terminalLauncher.value, workspace)
     }
 
     private fun registerHubHandlers() {
         if (handlersRegistered) return
         handlersRegistered = true
+
+        hubConnection?.on("AndroidUpdateRequested", { requestId: String ->
+            val activeBaseUrl = mainViewModel.getBaseUrl()
+            Log.i(
+                "AndroidDeploy",
+                "Received deployment $requestId through SignalR; active base URL=$activeBaseUrl"
+            )
+            mainViewModel.addLog(
+                "Android deployment requested by Hub.",
+                com.omni.sync.ui.screen.LogType.INFO
+            )
+            reportAndroidUpdateStatus(
+                requestId,
+                "received",
+                "Android client received the deployment request."
+            )
+            val application = context.applicationContext as? OmniSyncApplication
+            if (application == null) {
+                reportAndroidUpdateStatus(requestId, "error", "Android application is unavailable.")
+            } else {
+                application.androidUpdateManager.deployLatest(requestId, activeBaseUrl, apiKey) { status, message ->
+                    reportAndroidUpdateStatus(requestId, status, message)
+                }
+            }
+        }, String::class.java)
         
         hubConnection?.on("ClipboardUpdated", { newText: String ->
             try {
@@ -1009,14 +1128,36 @@ class SignalRClient(
     }
 
     fun sendAiSpecialKey(key: String, pid: Int? = null) {
+        val targetPid = pid ?: _selectedPid.value
+        if (targetPid == REMOTE_TERMINAL_PID) {
+            val sequence = when (key.lowercase()) {
+                "enter", "return" -> "\r"
+                "escape", "esc" -> "\u001b"
+                "up" -> "\u001b[A"
+                "down" -> "\u001b[B"
+                "left" -> "\u001b[D"
+                "right" -> "\u001b[C"
+                "tab" -> "\t"
+                "ctrl+c", "control+c" -> "\u0003"
+                else -> key
+            }
+            remoteTerminalClient.sendKey(sequence)
+            return
+        }
         if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
-            val targetPid = pid ?: _selectedPid.value
             hubConnection?.send("SendAiSpecialKey", key, targetPid)
         }
     }
 
-        fun sendAiYolo(pid: Int? = null) {
+    fun sendRemoteTerminalInput(input: String) {
+        remoteTerminalClient.sendText(input)
+    }
 
+        fun sendAiYolo(pid: Int? = null) {
+            if ((pid ?: _selectedPid.value) == REMOTE_TERMINAL_PID) {
+                remoteTerminalClient.sendText("y", appendEnter = true)
+                return
+            }
             if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
 
                 val targetPid = pid ?: _selectedPid.value
@@ -1045,7 +1186,11 @@ class SignalRClient(
     
 
         fun sendAiDialogResponse(response: String, pid: Int? = null) {
-
+        if ((pid ?: _selectedPid.value) == REMOTE_TERMINAL_PID) {
+            remoteTerminalClient.sendText(response, appendEnter = true)
+            updateSessionDialog(REMOTE_TERMINAL_PID, null)
+            return
+        }
     
         if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
             val targetPid = pid ?: _selectedPid.value
@@ -1057,6 +1202,24 @@ class SignalRClient(
 
     fun sendAiMessage(message: String, pid: Int? = null) {
         var targetPid = pid ?: _selectedPid.value
+
+        if (targetPid == REMOTE_TERMINAL_PID) {
+            if (message == "/model") return
+            if (message.startsWith("/model ")) {
+                setDefaultAiModel(message.removePrefix("/model ").trim())
+                return
+            }
+            if (message.startsWith("/dir add ")) {
+                updateTerminalMessages(targetPid) {
+                    it + AiMessage("System", "Directory context commands are unavailable in raw terminal mode.", isTerminal = true)
+                }
+                return
+            }
+            updateTerminalMessages(targetPid) { it + AiMessage("Me", message, isTerminal = true) }
+            recordSessionActivity(targetPid)
+            remoteTerminalClient.sendText(message, appendEnter = true)
+            return
+        }
 
         // Handle terminal session
         if (_terminalSessions.value.containsKey(targetPid)) {
@@ -1101,12 +1264,21 @@ class SignalRClient(
     }
 
     fun getAiSessions() {
-        if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
-            hubConnection?.send("GetAiSessions")
-        }
+        val active = remoteTerminalClient.session.value ?: return
+        _terminalSessions.value = _terminalSessions.value + (
+            REMOTE_TERMINAL_PID to TerminalSession(REMOTE_TERMINAL_PID, active.workspace, active.command)
+        )
+        _aiSessions.value = _aiSessions.value + (
+            REMOTE_TERMINAL_PID to "${active.command} (${active.sessionId.take(8)})"
+        )
+        _aiWorkspaces.value = _aiWorkspaces.value + (REMOTE_TERMINAL_PID to active.workspace)
     }
 
     fun requestAiHistory(pid: Int? = null) {
+        if ((pid ?: _selectedPid.value) == REMOTE_TERMINAL_PID) {
+            updateActiveView()
+            return
+        }
         if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {       
             val targetPid = pid ?: _selectedPid.value
             
@@ -1126,6 +1298,13 @@ class SignalRClient(
     }
 
     fun switchAiSession(pid: Int) {
+        if (pid == REMOTE_TERMINAL_PID) {
+            _isStartingSession = false
+            isStartingSessionFlow.value = false
+            messageQueue.clear()
+            setSelectedPid(pid)
+            return
+        }
         if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {       
             _isStartingSession = false
             isStartingSessionFlow.value = false
@@ -1139,35 +1318,15 @@ class SignalRClient(
     }
 
     fun startNewAiSession(workspace: String? = null) {
-        Log.e("SignalRClient", "DEBUG: startNewAiSession CALLED with workspace: $workspace")
-        android.widget.Toast.makeText(context, "AI Launching: $workspace", android.widget.Toast.LENGTH_SHORT).show()
-        if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {       
-            if (_isStartingSession) {
-                Log.d("SignalRClient", "Already starting a session, ignoring request.")
-                return
-            }
-            
-            _isStartingSession = true
-            isStartingSessionFlow.value = true
-            messageQueue.clear()
-
-            // Ensure -1 session is clean and switch to it immediately
-            _aiMessagesMap.value = _aiMessagesMap.value + (-1 to emptyList())
-            setSelectedPid(-1)
-            updateSessionStatus(-1, "Starting new session...")
-
-            try {
-                Log.e("SignalRClient", "DEBUG: Sending StartNewAiSessionAndroid to Hub with workspace: $workspace")
-                hubConnection?.send("StartNewAiSessionAndroid", workspace)
-                Log.e("SignalRClient", "DEBUG: StartNewAiSessionAndroid send call completed successfully.")
-            } catch (e: Exception) {
-                Log.e("SignalRClient", "ERROR: Failed to send StartNewAiSessionAndroid: ${e.message}")
-                android.widget.Toast.makeText(context, "SignalR Send Error: ${e.message}", android.widget.Toast.LENGTH_LONG).show()
-            }
-        }
+        startRemoteTerminalForAiUi(_terminalLauncher.value, workspace)
     }
 
     fun stopAiSession(pid: Int) {
+        if (pid == REMOTE_TERMINAL_PID) {
+            updateSessionStatus(pid, "Closing session...")
+            remoteTerminalClient.stopSession()
+            return
+        }
         if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {       
             updateSessionStatus(pid, "Closing session...")
             try {
@@ -1188,6 +1347,10 @@ class SignalRClient(
     }
 
     fun renameAiSession(pid: Int, name: String) {
+        if (pid == REMOTE_TERMINAL_PID) {
+            _aiSessions.value = _aiSessions.value + (pid to name)
+            return
+        }
         if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {       
             hubConnection?.send("RenameAiSession", pid, name)
         }
@@ -1199,6 +1362,10 @@ class SignalRClient(
     }
 
     fun reloadAiSessions() {
+        if (remoteTerminalClient.session.value != null) {
+            getAiSessions()
+            return
+        }
         if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {       
             mainViewModel.addLog("[AI] Requesting session reload and debug report...", com.omni.sync.ui.screen.LogType.INFO)
             
@@ -1216,6 +1383,7 @@ class SignalRClient(
     }
 
     fun focusAiSession(pid: Int) {
+        if (pid == REMOTE_TERMINAL_PID) return
         if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {       
             hubConnection?.send("FocusAiSession", pid)
         }
@@ -1228,9 +1396,8 @@ class SignalRClient(
     }
 
     fun getAiModels() {
-        if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
-            hubConnection?.send("GetAiModels")
-        }
+        _aiModels.value = listOf("agy", "codex")
+        if (_defaultAiModel.value.isBlank()) _defaultAiModel.value = remoteTerminalClient.preferredCommand.value
     }
 
     fun addAiPreset(preset: String) {
@@ -1246,16 +1413,23 @@ class SignalRClient(
     }
 
     fun setDefaultAiModel(model: String) {
-        if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
-            hubConnection?.send("SetDefaultAiModel", model)
-        }
+        val command = model.ifBlank { "agy" }
+        _defaultAiModel.value = command
+        remoteTerminalClient.setPreferredCommand(command)
+    }
+
+    fun setTerminalLauncher(command: String) {
+        if (command.isBlank()) return
+        _terminalLauncher.value = command
+        remoteTerminalClient.setPreferredCommand(command)
+        mainViewModel.updateConfig { it.copy(terminalLauncher = command) }
     }
 
     fun resetAiSessions() {
+        if (remoteTerminalClient.session.value != null) remoteTerminalClient.stopSession()
+        _terminalMessagesMap.value = _terminalMessagesMap.value - REMOTE_TERMINAL_PID
+        removeRemoteTerminalFromAiUi()
         if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
-            mainViewModel.addLog("[AI] Requesting session reset (Nuke all)...", com.omni.sync.ui.screen.LogType.WARNING)
-            hubConnection?.send("ResetAiSessions")
-            // Clear local state
             _aiMessagesMap.value = emptyMap()
             _aiStatusMap.value = emptyMap()
             _aiThoughtMap.value = emptyMap()
@@ -1272,19 +1446,7 @@ class SignalRClient(
     }
 
     fun startCliAtWorkspace(path: String) {
-        Log.e("SignalRClient", "DEBUG: startCliAtWorkspace CALLED with path: $path")
-        android.widget.Toast.makeText(context, "AI Workspace: $path", android.widget.Toast.LENGTH_SHORT).show()
-        if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
-            _aiStatus.value = "Starting session at workspace..."
-            try {
-                Log.e("SignalRClient", "DEBUG: Sending StartCliAtWorkspaceAndroid to Hub with path: $path")
-                hubConnection?.send("StartCliAtWorkspaceAndroid", path)
-                Log.e("SignalRClient", "DEBUG: StartCliAtWorkspaceAndroid send call completed.")
-            } catch (e: Exception) {
-                Log.e("SignalRClient", "ERROR: Failed to send StartCliAtWorkspaceAndroid: ${e.message}")
-                android.widget.Toast.makeText(context, "SignalR Error: ${e.message}", android.widget.Toast.LENGTH_LONG).show()
-            }
-        }
+        startRemoteTerminalForAiUi(_terminalLauncher.value, path)
     }
 
     fun getMacros(): Single<List<com.omni.sync.data.model.Macro>>? {
@@ -1313,6 +1475,12 @@ class SignalRClient(
 
     fun clearAiMessages(pid: Int? = null) {
         val targetPid = pid ?: _selectedPid.value
+        if (targetPid == REMOTE_TERMINAL_PID) {
+            remoteTerminalClient.clearOutput()
+            _terminalMessagesMap.value = _terminalMessagesMap.value + (targetPid to emptyList())
+            updateActiveView()
+            return
+        }
         if (hubConnection != null && hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED && aiSessions.value.containsKey(targetPid)) {
             hubConnection?.send("SendAiMessage", "/clear", targetPid)
         }
@@ -1733,6 +1901,21 @@ class SignalRClient(
         }
     }
 
+    fun reportAndroidUpdateStatus(requestId: String, status: String, message: String) {
+        val connection = hubConnection
+        if (connection?.connectionState != com.microsoft.signalr.HubConnectionState.CONNECTED) {
+            Log.w("AndroidDeploy", "Cannot report $status for $requestId: SignalR is disconnected.")
+            return
+        }
+        Log.i("AndroidDeploy", "Reporting $status for deployment $requestId: $message")
+        try {
+            connection.send("ReportAndroidUpdateStatus", requestId, status, message)
+            Log.d("AndroidDeploy", "Queued $status report for $requestId.")
+        } catch (error: Exception) {
+            Log.e("AndroidDeploy", "Failed reporting $status for $requestId.", error)
+        }
+    }
+
     private fun authenticateClient() {
         hubConnection?.invoke(Boolean::class.java, "Authenticate", apiKey)
             ?.subscribe({ success ->
@@ -1855,11 +2038,12 @@ class SignalRClient(
         val localIp = getLocalIpAddress() ?: return
         mainViewModel.addLog("Local IP detected: $localIp", com.omni.sync.ui.screen.LogType.INFO)
         
-        val newHubIp = when {
-            localIp.startsWith("192.") -> "192.168.0.37"
-            localIp.startsWith("10.") -> "10.0.0.37"
-            else -> null
-        }
+        val octets = localIp.split('.')
+        val newHubIp = if (octets.size == 4 &&
+            (localIp.startsWith("192.168.") || localIp.startsWith("10."))
+        ) {
+            octets.take(3).joinToString(".") + ".37"
+        } else null
         
         if (newHubIp != null) {
             val currentHubUrl = mainViewModel.appConfig.value.hubUrl
@@ -1900,5 +2084,6 @@ class SignalRClient(
         hub.remove("ReceiveAiHistory")
         hub.remove("ReceiveAiDialog")
         hub.remove("ReceivePayload")
+        hub.remove("AndroidUpdateRequested")
     }
 }

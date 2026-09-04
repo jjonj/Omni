@@ -25,6 +25,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.omni.sync.data.repository.SignalRClient
+import com.omni.sync.OmniSyncApplication
+import com.omni.sync.update.AndroidUpdateManager
+import com.omni.sync.update.AndroidUpdatePhase
+import com.omni.sync.update.AndroidUpdateState
 import com.omni.sync.viewmodel.MainViewModel
 import com.omni.sync.viewmodel.AppScreen
 import kotlinx.coroutines.delay
@@ -40,11 +44,63 @@ enum class ConnectionStatus {
     UNKNOWN
 }
 
+@Composable
+private fun AndroidUpdateCard(
+    state: AndroidUpdateState,
+    updateManager: AndroidUpdateManager,
+    hubUrl: String,
+    apiKey: String
+) {
+    val busy = state.phase == AndroidUpdatePhase.CHECKING ||
+        state.phase == AndroidUpdatePhase.DOWNLOADING ||
+        state.phase == AndroidUpdatePhase.INSTALLING
+    val actionLabel = when (state.phase) {
+        AndroidUpdatePhase.AVAILABLE -> "Install update"
+        AndroidUpdatePhase.PERMISSION_REQUIRED -> "Continue install"
+        else -> "Check for update"
+    }
+
+    Card(modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp)) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text("Android Update", fontWeight = FontWeight.Bold)
+            Text(state.message, style = MaterialTheme.typography.bodySmall)
+            if (state.progressPercent != null) {
+                Spacer(Modifier.height(8.dp))
+                LinearProgressIndicator(
+                    progress = { state.progressPercent / 100f },
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+            Spacer(Modifier.height(8.dp))
+            Button(
+                onClick = {
+                    if (state.phase == AndroidUpdatePhase.AVAILABLE ||
+                        state.phase == AndroidUpdatePhase.PERMISSION_REQUIRED
+                    ) {
+                        updateManager.installAvailableUpdate(hubUrl, apiKey)
+                    } else {
+                        updateManager.checkForUpdate(hubUrl, apiKey)
+                    }
+                },
+                enabled = !busy
+            ) {
+                Text(actionLabel)
+            }
+        }
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DashboardScreen(modifier: Modifier = Modifier, signalRClient: SignalRClient, mainViewModel: MainViewModel) {
     val context = LocalContext.current
     val appConfig by mainViewModel.appConfig.collectAsState()
+    val updateManager = remember(context) {
+        (context.applicationContext as OmniSyncApplication).androidUpdateManager
+    }
+    val updateState by updateManager.state.collectAsState()
+    val activeBaseUrl by mainViewModel.activeBaseUrl.collectAsState()
+    val updateHubUrl = activeBaseUrl.ifBlank { appConfig.hubUrl }
     // Collect connection states
     val connectionStateString by signalRClient.connectionState.collectAsState()
     val isConnected by mainViewModel.isConnected.collectAsState()
@@ -74,6 +130,17 @@ fun DashboardScreen(modifier: Modifier = Modifier, signalRClient: SignalRClient,
             title = { Text("Wireless ADB Debugging") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        "Open Wireless debugging, choose Pair using pairing code, then enter the six-digit code. The hub discovers both ports when mDNS is available.",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    TextButton(onClick = {
+                        context.startActivity(
+                            android.content.Intent(android.provider.Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS)
+                        )
+                    }) {
+                        Text("Open developer settings")
+                    }
                     OutlinedTextField(
                         value = pairingCode,
                         onValueChange = { pairingCode = it },
@@ -84,16 +151,16 @@ fun DashboardScreen(modifier: Modifier = Modifier, signalRClient: SignalRClient,
                     OutlinedTextField(
                         value = pairingPort,
                         onValueChange = { pairingPort = it },
-                        label = { Text("Pairing Port") },
+                        label = { Text("Pairing IP:port or port (optional)") },
                         singleLine = true,
-                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number)
+                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Ascii)
                     )
                     OutlinedTextField(
                         value = connectPort,
                         onValueChange = { connectPort = it },
-                        label = { Text("Connect Port") },
+                        label = { Text("Connect IP:port or port (optional)") },
                         singleLine = true,
-                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number)
+                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Ascii)
                     )
                 }
             },
@@ -101,8 +168,8 @@ fun DashboardScreen(modifier: Modifier = Modifier, signalRClient: SignalRClient,
                 TextButton(onClick = {
                     showWadbDialog = false
                     signalRClient.sendCommand("ConnectWadb", pairingCode, pairingPort, connectPort)
-                    mainViewModel.addLog("Requesting WIFI DBG: Code $pairingCode, Port $pairingPort -> Connect $connectPort", LogType.INFO)
-                }) {
+                    mainViewModel.addLog("Wireless ADB pairing requested", LogType.INFO)
+                }, enabled = pairingCode.matches(Regex("\\d{6}"))) {
                     Text("OK")
                 }
             },
@@ -120,6 +187,10 @@ fun DashboardScreen(modifier: Modifier = Modifier, signalRClient: SignalRClient,
         connectionStateString.contains("Error", ignoreCase = true) -> ConnectionStatus.ERROR
         connectionStateString.contains("Disconnected", ignoreCase = true) -> ConnectionStatus.DISCONNECTED
         else -> ConnectionStatus.UNKNOWN
+    }
+
+    LaunchedEffect(isConnected) {
+        if (isConnected) updateManager.checkForUpdate(updateHubUrl, appConfig.apiKey)
     }
     
     Column(modifier = modifier.fillMaxSize()) {
@@ -143,6 +214,15 @@ fun DashboardScreen(modifier: Modifier = Modifier, signalRClient: SignalRClient,
                     connectionMessage = connectionStateString,
                     onReconnect = { signalRClient?.manualReconnect() },
                     onWake = { mainViewModel.sendWakeOnLan(appConfig.wakeOnLanMac) }
+                )
+            }
+
+            item {
+                AndroidUpdateCard(
+                    state = updateState,
+                    updateManager = updateManager,
+                    hubUrl = updateHubUrl,
+                    apiKey = appConfig.apiKey
                 )
             }
 
@@ -577,8 +657,6 @@ fun HubConnectionCard(
     
     }
     
-    
-    
     @Composable
     
     fun SleepTrackingCard(
@@ -686,5 +764,3 @@ fun HubConnectionCard(
         }
     
     }
-    
-    

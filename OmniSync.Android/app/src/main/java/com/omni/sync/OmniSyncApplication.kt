@@ -4,6 +4,7 @@ import android.app.Application
 import com.omni.sync.data.repository.SignalRClient
 import com.omni.sync.service.ClipboardWatcher
 import com.omni.sync.viewmodel.MainViewModel
+import com.omni.sync.update.AndroidUpdateManager
 
 import timber.log.Timber
 import com.omni.sync.utils.CrashReportingTree
@@ -17,6 +18,7 @@ class OmniSyncApplication : Application() {
     lateinit var mainViewModel: MainViewModel
     lateinit var signalRClient: SignalRClient
     lateinit var clipboardWatcher: ClipboardWatcher
+    lateinit var androidUpdateManager: AndroidUpdateManager
 
     override fun onCreate() {
         super.onCreate()
@@ -27,7 +29,7 @@ class OmniSyncApplication : Application() {
         }
         Timber.plant(CrashReportingTree(applicationContext))
         mainViewModel = MainViewModel(this) // Pass the Application instance
-        
+        androidUpdateManager = AndroidUpdateManager(applicationContext)
         signalRClient = SignalRClient(
             context = applicationContext,
             mainViewModel = mainViewModel

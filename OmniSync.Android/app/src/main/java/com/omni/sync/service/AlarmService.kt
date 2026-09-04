@@ -19,6 +19,7 @@ import com.omni.sync.R
 import com.omni.sync.MainActivity
 import com.omni.sync.OmniSyncApplication
 import com.omni.sync.utils.AlarmScheduler
+import com.omni.sync.worker.AlarmAutomationWorker
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -48,6 +49,9 @@ class AlarmService : Service(), android.content.SharedPreferences.OnSharedPrefer
     private var dismissText: String? = null
     private var macroOnTrigger: String? = null
     private var macroOnDismiss: String? = null
+    private var quickActionOnTriggerId: String? = null
+    private var quickActionOnDismissId: String? = null
+    private var dismissActionDelaySeconds: Int = 0
 
     companion object {
         const val CHANNEL_ID = "OmniAlarmChannel"
@@ -174,11 +178,20 @@ class AlarmService : Service(), android.content.SharedPreferences.OnSharedPrefer
         repeatDaily = intent?.getBooleanExtra("REPEAT_DAILY", false) ?: false
         macroOnTrigger = intent?.getStringExtra("MACRO_ON_TRIGGER")
         macroOnDismiss = intent?.getStringExtra("MACRO_ON_DISMISS")
+        quickActionOnTriggerId = intent?.getStringExtra("QUICK_ACTION_ON_TRIGGER_ID")
+        quickActionOnDismissId = intent?.getStringExtra("QUICK_ACTION_ON_DISMISS_ID")
+        dismissActionDelaySeconds = intent?.getIntExtra("DISMISS_ACTION_DELAY_SECONDS", 0)
+            ?.coerceIn(0, 86_400) ?: 0
         dismissText = intent?.getStringExtra("DISMISS_TEXT")
 
-        // Execute macro on first trigger
-        if (currentRepetition == 0 && !macroOnTrigger.isNullOrBlank()) {
-            executeAlarmMacro(macroOnTrigger!!)
+        if (currentRepetition == 0) {
+            val triggerMacro = macroOnTrigger?.takeIf { it.isNotBlank() }
+            val triggerQuickAction = quickActionOnTriggerId?.takeIf { it.isNotBlank() }
+            if (triggerMacro != null) {
+                executeAlarmMacro(triggerMacro)
+            } else if (triggerQuickAction != null) {
+                executeQuickAction(triggerQuickAction)
+            }
         }
 
         // Force open activity
@@ -276,6 +289,9 @@ class AlarmService : Service(), android.content.SharedPreferences.OnSharedPrefer
                 repeatDaily = repeatDaily,
                 macroOnTrigger = macroOnTrigger,
                 macroOnDismiss = macroOnDismiss,
+                quickActionOnTriggerId = quickActionOnTriggerId,
+                quickActionOnDismissId = quickActionOnDismissId,
+                dismissActionDelaySeconds = dismissActionDelaySeconds,
                 dismissText = dismissText
             )
         } else {
@@ -298,9 +314,25 @@ class AlarmService : Service(), android.content.SharedPreferences.OnSharedPrefer
         timeoutJob?.cancel()
         snoozeMessage = null
 
-        // Execute Dismiss Macro
-        if (!macroOnDismiss.isNullOrBlank()) {
-            executeAlarmMacro(macroOnDismiss!!)
+        val dismissMacro = macroOnDismiss?.takeIf { it.isNotBlank() }
+        val dismissQuickAction = quickActionOnDismissId?.takeIf { it.isNotBlank() }
+        if (dismissMacro != null || dismissQuickAction != null) {
+            if (dismissActionDelaySeconds > 0) {
+                AlarmAutomationWorker.enqueue(
+                    context = this,
+                    macroScript = dismissMacro,
+                    quickActionId = dismissQuickAction.takeIf { dismissMacro == null },
+                    delaySeconds = dismissActionDelaySeconds
+                )
+                Log.i(
+                    "AlarmService",
+                    "Dismiss automation scheduled in $dismissActionDelaySeconds seconds."
+                )
+            } else if (dismissMacro != null) {
+                executeAlarmMacro(dismissMacro)
+            } else if (dismissQuickAction != null) {
+                executeQuickAction(dismissQuickAction)
+            }
         }
 
         // Cancel any pending snoozes for this alarm
@@ -326,19 +358,27 @@ class AlarmService : Service(), android.content.SharedPreferences.OnSharedPrefer
             executor.execute(parser.parse(script, applicationContext), applicationContext)
         }
     }
+
+    private fun executeQuickAction(actionId: String) {
+        val configManager = com.omni.sync.data.config.ConfigManager(this)
+        val action = configManager.loadConfig().notificationActions
+            .ifEmpty { configManager.getDefaultNotificationActions() }
+            .find { it.id == actionId }
+            ?: return
+        QuickActionDispatcher.execute(this, action)
+    }
     
     private fun disableAlarmState() {
         Log.d("AlarmService", "disabling alarm state for ID: $currentAlarmId")
-        // Update SharedPreferences
         val prefs = getSharedPreferences("alarm_prefs", Context.MODE_PRIVATE)
-        val key = if (currentAlarmId == 1) "alarm1" else "alarm2"
-        val json = prefs.getString(key, null)
-        if (json != null) {
-            val gson = com.google.gson.Gson()
-            val data = gson.fromJson(json, com.omni.sync.ui.screen.AlarmData::class.java)
-            data.enabled = false
-            prefs.edit().putString(key, gson.toJson(data)).apply()
-            Log.d("AlarmService", "Updated prefs for $key: enabled=false")
+        val gson = com.google.gson.Gson()
+        val alarms = com.omni.sync.utils.AlarmStore.load(prefs, gson)
+        val updatedAlarms = alarms.map { alarm ->
+            if (alarm.id == currentAlarmId) alarm.copy(enabled = false) else alarm
+        }
+        if (updatedAlarms != alarms) {
+            com.omni.sync.utils.AlarmStore.save(prefs, gson, updatedAlarms)
+            Log.d("AlarmService", "Updated alarm $currentAlarmId: enabled=false")
         }
 
         // Send broadcast to UI to turn off the switch

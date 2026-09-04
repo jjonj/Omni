@@ -1,0 +1,92 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'">
+  <link rel="stylesheet" href="xterm.css">
+  <style>
+    html, body, #scroll { margin: 0; width: 100%; height: 100%; background: #000; overflow: hidden; }
+    #terminal { width: 100%; height: 100%; padding: 6px; box-sizing: border-box; }
+    #preview-output { display: none; }
+    body.preview #preview-output { display: block; position: absolute; top: 6px; left: 6px; z-index: 10; color: #d4d4d4; font: 12px monospace; line-height: 14.1px; white-space: pre; }
+    body.preview .xterm .xterm-viewport { display: none; }
+    body.preview .xterm .xterm-screen { z-index: 1; }
+    body.preview .xterm .xterm-rows { position: absolute; top: 0; left: 0; z-index: 1; }
+  </style>
+</head>
+<body>
+  <div id="scroll"><div id="terminal"></div><div id="preview-output"></div></div>
+  <script src="xterm.js"></script>
+  <script src="fit-addon.js"></script>
+  <script>
+    const log = (message) => console.log(`[OmniXterm] ${message}`);
+    window.onerror = (message, source, line) => log(`window error ${message} at ${source}:${line}`);
+    try {
+      const isPreview = new URLSearchParams(window.location.search).get('preview') === 'agy';
+      if (isPreview) document.body.classList.add('preview');
+      log(`initializing preview=${isPreview} hasTerminal=${Boolean(window.Terminal)} hasFitAddon=${Boolean(window.FitAddon)} hasInputBridge=${Boolean(window.OmniTerminalInput)}`);
+      if (!window.Terminal) throw new Error('xterm.js did not define window.Terminal');
+      const terminal = new Terminal({
+        cols: 80,
+        rows: 24,
+        disableStdin: false,
+        cursorBlink: false,
+        fontFamily: 'monospace',
+        fontSize: 12,
+        scrollback: 1000,
+        theme: { background: '#000000', foreground: '#d4d4d4' }
+      });
+      if (!window.FitAddon) throw new Error('xterm fit addon did not define window.FitAddon');
+      const fitAddon = new FitAddon.FitAddon();
+      terminal.loadAddon(fitAddon);
+      terminal.open(document.getElementById('terminal'));
+      const fit = () => {
+        fitAddon.fit();
+        terminal.refresh(0, terminal.rows - 1);
+        log(`fit cols=${terminal.cols} rows=${terminal.rows} width=${terminal.element.clientWidth} height=${terminal.element.clientHeight}`);
+      };
+      new ResizeObserver(fit).observe(document.getElementById('terminal'));
+      terminal.onData((data) => {
+        const bytes = new TextEncoder().encode(data);
+        const binary = Array.from(bytes, byte => String.fromCharCode(byte)).join('');
+        window.OmniTerminalInput.sendBase64(btoa(binary));
+      });
+      terminal.onWriteParsed(() => log(`write parsed cols=${terminal.cols} rows=${terminal.rows}`));
+      terminal.onWriteParsed(() => {
+        if (!isPreview) return;
+        const source = terminal.element.querySelector('.xterm-rows');
+        const preview = document.getElementById('preview-output');
+        preview.textContent = source.textContent;
+      });
+      window.omniTerminal = {
+        reset: () => {
+          log('reset requested');
+          terminal.reset();
+        },
+        writeBase64: (base64) => {
+          const binary = atob(base64);
+          const bytes = new Uint8Array(binary.length);
+          for (let index = 0; index < binary.length; index++) bytes[index] = binary.charCodeAt(index);
+          log(`write requested base64Chars=${base64.length} bytes=${bytes.length}`);
+          terminal.write(bytes);
+          terminal.refresh(0, terminal.rows - 1);
+        }
+      };
+      if (isPreview) {
+        fetch('agy-preview.base64')
+          .then((response) => response.text())
+          .then((base64) => window.omniTerminal.writeBase64(base64.trim()))
+          .catch((error) => log(`preview load failed ${error}`));
+      }
+      requestAnimationFrame(() => {
+        fit();
+        window.OmniTerminalInput?.ready?.();
+        log(`ready cols=${terminal.cols} rows=${terminal.rows}`);
+      });
+    } catch (error) {
+      log(`initialization failed ${error.stack || error}`);
+    }
+  </script>
+</body>
+</html>

@@ -41,7 +41,8 @@ class BookDownloadManagerTest {
         val fileName = "test.epub"
         val bookFile = File(tempDir, fileName)
         bookFile.writeText("content")
-        
+        downloadManager.refreshDownloads()
+
         assertTrue(downloadManager.isDownloaded("any/path/$fileName"))
     }
 

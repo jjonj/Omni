@@ -8,6 +8,7 @@ import android.app.Service
 import android.content.Intent
 import android.os.Build
 import android.os.IBinder
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.omni.sync.R
 import android.app.PendingIntent
@@ -68,7 +69,10 @@ class ForegroundService : Service() {
             addAction(Intent.ACTION_POWER_DISCONNECTED)
         }
         registerReceiver(batteryReceiver, filter)
-        
+
+        val app = application as OmniSyncApplication
+        Log.i("AndroidDeploy", "Foreground service ensuring SignalR deployment channel is connected.")
+        app.signalRClient.startConnection()
         startNotificationRefresh()
     }
 
@@ -77,6 +81,13 @@ class ForegroundService : Service() {
         refreshJob = app.mainViewModel.viewModelScope.launch {
             while (true) {
                 delay(60000) // Refresh every minute
+                if (app.signalRClient.connectionState.value != "Connected") {
+                    Log.w(
+                        "AndroidDeploy",
+                        "Foreground service found deployment channel disconnected; reconnecting."
+                    )
+                    app.signalRClient.startConnection()
+                }
                 updateNotification()
             }
         }
@@ -158,82 +169,7 @@ class ForegroundService : Service() {
     private fun handleNotificationAction(actionId: String) {
         val actions = getSavedActions()
         val action = actions.find { it.id == actionId } ?: return
-        
-        val app = application as OmniSyncApplication
-        val signalRClient = app.signalRClient
-        val mainViewModel = app.mainViewModel
-
-        if (action.isTellPc) {
-            mainViewModel.addLog("Notification: Triggering Tell PC...", com.omni.sync.ui.screen.LogType.INFO)
-            signalRClient.triggerTellPc()
-            val intent = Intent(this, MainActivity::class.java).apply {
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
-            }
-            startActivity(intent)
-        } else if (action.isWol && action.macAddress != null) {
-            mainViewModel.sendWakeOnLan(action.macAddress)
-        } else if (action.command.startsWith("NAV:")) {
-            val screenName = action.command.substring(4)
-            val intent = Intent(this, MainActivity::class.java).apply {
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
-                putExtra("OPEN_SCREEN", screenName)
-            }
-            startActivity(intent)
-        } else if (action.command.startsWith("NAV_FILE:")) {
-            val path = action.command.substring(9)
-            val intent = Intent(this, MainActivity::class.java).apply {
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
-                putExtra("OPEN_SCREEN", "FILES")
-                putExtra("FILE_PATH", path)
-            }
-            startActivity(intent)
-        } else if (action.command.startsWith("ALARM:")) {
-            val minutesStr = action.command.substring(6)
-            val minutes = minutesStr.toIntOrNull() ?: 0
-            if (minutes > 0) {
-                // We need AlarmScheduler here. 
-                // Since ForegroundService is a service, we can call it.
-                // We need the data from SharedPreferences though for gradual config.
-                val prefs = getSharedPreferences("alarm_prefs", Context.MODE_PRIVATE)
-                val configJson = prefs.getString("config", null)
-                val gson = Gson()
-                val config = if (configJson != null) gson.fromJson(configJson, com.omni.sync.ui.screen.GradualConfig::class.java) else com.omni.sync.ui.screen.GradualConfig()
-                
-                val cal = java.util.Calendar.getInstance()
-                cal.add(java.util.Calendar.MINUTE, minutes)
-                
-                val alarmData = com.omni.sync.ui.screen.AlarmData(
-                    enabled = true,
-                    hour = cal.get(java.util.Calendar.HOUR_OF_DAY).let { if (it == 0 || it == 12) 12 else it % 12 },
-                    minute = cal.get(java.util.Calendar.MINUTE),
-                    isAM = cal.get(java.util.Calendar.AM_PM) == java.util.Calendar.AM,
-                    repeatDaily = false
-                )
-                com.omni.sync.utils.AlarmScheduler.scheduleAlarm(this, 1, alarmData, config)
-                // Update prefs so UI reflects it
-                prefs.edit().putString("alarm1", gson.toJson(alarmData)).apply()
-                mainViewModel.addLog("Quick Alarm set for $minutes minutes from now", com.omni.sync.ui.screen.LogType.SUCCESS)
-            }
-        } else if (action.command.startsWith("BOOKMARK:")) {
-            val url = action.command.substring(9)
-            mainViewModel.addLog("Notification: Opening bookmark on PC...", com.omni.sync.ui.screen.LogType.INFO)
-            signalRClient.sendBrowserCommand("Navigate", url, true)
-        } else if (action.command.startsWith("BROWSER:")) {
-            val cmd = action.command.substring(8)
-            mainViewModel.addLog("Notification: Browser $cmd...", com.omni.sync.ui.screen.LogType.INFO)
-            signalRClient.sendBrowserCommand(cmd, "", false)
-        } else if (action.command.startsWith("MACRO:")) {
-            val script = action.command.substring(6)
-            mainViewModel.addLog("Notification: Running macro...", com.omni.sync.ui.screen.LogType.INFO)
-            val parser = com.omni.sync.logic.macro.MacroParser()
-            val executor = com.omni.sync.logic.macro.MacroExecutor(signalRClient, app.mainViewModel.appConfig.value.macros)
-            mainViewModel.viewModelScope.launch {
-                executor.execute(parser.parse(script, applicationContext), applicationContext)
-            }
-        } else {
-            mainViewModel.addLog("Notification: Triggering ".plus(action.label).plus("..."), com.omni.sync.ui.screen.LogType.INFO)
-            signalRClient.executeCommand(action.command)
-        }
+        QuickActionDispatcher.execute(this, action)
     }
 
     private fun updateNotification() {
@@ -263,12 +199,7 @@ class ForegroundService : Service() {
         
         if (config.notificationActions.isEmpty()) {
             // Default actions
-            return listOf(
-                NotificationAction("1", "Shutdown", "B:\\GDrive\\Tools\\05 Automation\\shutdown.bat"),
-                NotificationAction("2", "Sleep", "B:\\GDrive\\Tools\\05 Automation\\sleep.bat"),
-                NotificationAction("3", "TV", "B:\\GDrive\\Tools\\05 Automation\\TVActive3\\tv_toggle.bat"),
-                NotificationAction("4", "WOL", "", isWol = true, macAddress = "10FFE0379DAC")
-            )
+            return configManager.getDefaultNotificationActions()
         }
         return config.notificationActions
     }

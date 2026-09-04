@@ -150,6 +150,40 @@ namespace OmniSync.Hub.Infrastructure.Services
             _monitorService = monitorService;
         }
 
+        public virtual void RunProcess(string path, string arguments)
+        {
+            try
+            {
+                var psi = new ProcessStartInfo
+                {
+                    FileName = path,
+                    Arguments = arguments,
+                    UseShellExecute = true,
+                    CreateNoWindow = false
+                };
+                using (var process = Process.Start(psi))
+                {
+                    if (process != null)
+                    {
+                        try
+                        {
+                            int pid = process.Id;
+                            _ = Task.Run(async () =>
+                            {
+                                await Task.Delay(500);
+                                WinActivatePid(pid);
+                            });
+                        }
+                        catch { }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _monitorService.AddLogMessage($"[ERROR] RunProcess failed for {path}: {ex.Message}");
+            }
+        }
+
         public virtual async Task ExecuteCommand(string command)
         {
             _monitorService.AddLogMessage($"[ProcessService] ExecuteCommand: '{command}'");
@@ -250,7 +284,22 @@ namespace OmniSync.Hub.Infrastructure.Services
             try
             {
                 var psi = new ProcessStartInfo { FileName = path, Arguments = arguments ?? "", UseShellExecute = true, WorkingDirectory = workingDirectory ?? "" };
-                Process.Start(psi);
+                using (var process = Process.Start(psi))
+                {
+                    if (process != null)
+                    {
+                        try
+                        {
+                            int pid = process.Id;
+                            _ = Task.Run(async () =>
+                            {
+                                await Task.Delay(500);
+                                WinActivatePid(pid);
+                            });
+                        }
+                        catch { }
+                    }
+                }
             }
             catch (Exception ex) { _monitorService.AddLogMessage($"[ERROR] ShellExecute failed for {path}: {ex.Message}"); }
         }

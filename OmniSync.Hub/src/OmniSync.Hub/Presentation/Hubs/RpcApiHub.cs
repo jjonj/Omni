@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using OmniSync.Hub.Logic.Services;
 using OmniSync.Hub.Infrastructure.Services; // Added for FileService
@@ -51,9 +52,10 @@ namespace OmniSync.Hub.Presentation.Hubs
         private readonly GlobalHotkeyService _hotkeyService;
         private readonly IMacroService _macroService;
         private readonly BookProgressService _bookProgressService;
+        private readonly AndroidUpdateDeploymentCoordinator _androidUpdateCoordinator;
         private readonly ILogger<RpcApiHub> _logger; // Added for logging
 
-        public RpcApiHub(AuthService authService, FileService fileService, ClipboardService clipboardService, CommandDispatcher commandDispatcher, ProcessService processService, HubEventSender hubEventSender, InputService inputService, AudioService audioService, ShutdownService shutdownService, RegistryService registryService, HubMonitorService hubMonitorService, AiCliService aiCliService, PcgPersistentService pcgService, HubSettingsService settingsService, GitService gitService, GlobalHotkeyService hotkeyService, IMacroService macroService, BookProgressService bookProgressService, ILogger<RpcApiHub> logger)
+        public RpcApiHub(AuthService authService, FileService fileService, ClipboardService clipboardService, CommandDispatcher commandDispatcher, ProcessService processService, HubEventSender hubEventSender, InputService inputService, AudioService audioService, ShutdownService shutdownService, RegistryService registryService, HubMonitorService hubMonitorService, AiCliService aiCliService, PcgPersistentService pcgService, HubSettingsService settingsService, GitService gitService, GlobalHotkeyService hotkeyService, IMacroService macroService, BookProgressService bookProgressService, AndroidUpdateDeploymentCoordinator androidUpdateCoordinator, ILogger<RpcApiHub> logger)
         {
             _authService = authService;
             _fileService = fileService;
@@ -73,6 +75,7 @@ namespace OmniSync.Hub.Presentation.Hubs
             _hotkeyService = hotkeyService;
             _macroService = macroService;
             _bookProgressService = bookProgressService;
+            _androidUpdateCoordinator = androidUpdateCoordinator;
             _logger = logger;
         }
 
@@ -82,6 +85,7 @@ namespace OmniSync.Hub.Presentation.Hubs
             var userAgent = Context.GetHttpContext()?.Request.Headers["User-Agent"].ToString();
             _logger.LogInformation($"[RpcApiHub][INIT_DEBUG] Client connecting: {Context.ConnectionId} from IP: {ip}. UA: {userAgent}. Awaiting authentication.");
             ClientConnectedEvent?.Invoke(this, Context.ConnectionId);
+            _androidUpdateCoordinator.ClientConnected(Context.ConnectionId, ip);
             _hubEventSender.SubscribeForCommandOutput(Context.UserIdentifier ?? Context.ConnectionId, Context.ConnectionId);
             await base.OnConnectedAsync();
             
@@ -96,6 +100,7 @@ namespace OmniSync.Hub.Presentation.Hubs
         {
             _logger.LogInformation($"Client disconnected: {Context.ConnectionId}");
             ClientDisconnectedEvent?.Invoke(this, Context.ConnectionId);
+            _androidUpdateCoordinator.ClientDisconnected(Context.ConnectionId);
             _hubEventSender.UnsubscribeFromCommandOutput(Context.UserIdentifier ?? Context.ConnectionId);
             await base.OnDisconnectedAsync(exception);
         }
@@ -177,11 +182,20 @@ namespace OmniSync.Hub.Presentation.Hubs
             return false;
         }
 
-        public async Task ConnectWadb(string pairingCode, string pairingPort, string connectPort)
+        public Task ConnectWadb(string pairingCode, string pairingPort, string connectPort)
         {
             if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
             {
-                _hubMonitorService.AddLogMessage($"[RpcApiHub] ConnectWadb requested. Code: {pairingCode}, PPort: {pairingPort}, CPort: {connectPort}");
+                if (!Regex.IsMatch(pairingCode, @"^\d{6}$"))
+                {
+                    throw new HubException("The wireless debugging pairing code must contain six digits.");
+                }
+                if (!IsValidAdbEndpointHint(pairingPort) || !IsValidAdbEndpointHint(connectPort))
+                {
+                    throw new HubException("ADB endpoints must be a port or an IP:port value.");
+                }
+
+                _hubMonitorService.AddLogMessage("[RpcApiHub] Wireless ADB pairing requested.");
                 
                 // Locate connectadb.py - it's in the project root
                 string projectRoot = AppContext.BaseDirectory;
@@ -197,14 +211,49 @@ namespace OmniSync.Hub.Presentation.Hubs
                 string scriptPath = Path.Combine(projectRoot, "connectadb.py");
                 if (File.Exists(scriptPath))
                 {
-                    _logger.LogInformation($"[RpcApiHub] Executing: python {scriptPath} {pairingCode} {pairingPort} {connectPort}");
-                    _ = _processService.ExecuteCommandWithLogging($"python \"{scriptPath}\" {pairingCode} {pairingPort} {connectPort}", "[WIFI-DBG]");
+                    var endpointArguments = string.Empty;
+                    if (!string.IsNullOrWhiteSpace(pairingPort)) endpointArguments += $" --pair-endpoint {pairingPort}";
+                    if (!string.IsNullOrWhiteSpace(connectPort)) endpointArguments += $" --connect-endpoint {connectPort}";
+                    _logger.LogInformation("[RpcApiHub] Starting the wireless ADB helper.");
+                    _ = _processService.ExecuteCommandWithLogging(
+                        $"python \"{scriptPath}\" --pair-code {pairingCode}{endpointArguments} --non-interactive",
+                        "[WIFI-DBG]");
                 }
                 else
                 {
                     _logger.LogError($"[RpcApiHub] Could not find connectadb.py in {projectRoot} or parent directories.");
                 }
             }
+            return Task.CompletedTask;
+        }
+
+        public void ReportAndroidUpdateStatus(string requestId, string status, string message)
+        {
+            if (!Context.Items.TryGetValue("IsAuthenticated", out var authenticated) ||
+                authenticated is not true)
+            {
+                throw new UnauthorizedAccessException();
+            }
+            if (requestId.Length > 64 || status.Length > 64 || message.Length > 1000)
+            {
+                throw new ArgumentException("Android update status payload is too large.");
+            }
+
+            var accepted = _androidUpdateCoordinator.Report(requestId, status, message);
+            _logger.LogInformation(
+                "[AndroidDeploy] Client {ConnectionId} reported {Status} for {RequestId}; accepted={Accepted}; {Message}",
+                Context.ConnectionId,
+                status,
+                requestId,
+                accepted,
+                message);
+        }
+
+        private static bool IsValidAdbEndpointHint(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value)) return true;
+            return Regex.IsMatch(value, @"^\d{1,5}$") ||
+                   Regex.IsMatch(value, @"^[A-Za-z0-9.:\[\]-]+:\d{1,5}$");
         }
 
         public HubSettings GetSettings()

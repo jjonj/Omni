@@ -21,8 +21,16 @@ import sys
 import os
 import time
 import argparse
+import hashlib
+import json
+import re
 import threading
 import queue
+import socket
+import urllib.error
+import urllib.parse
+import urllib.request
+from datetime import datetime, timezone
 from pathlib import Path
 import connectadb
 
@@ -31,6 +39,7 @@ PACKAGE = "com.omni.sync"
 PROJECT_DIR = Path(__file__).parent
 APK_DEBUG = PROJECT_DIR / "app" / "build" / "outputs" / "apk" / "debug" / "app-debug.apk"
 APK_RELEASE = PROJECT_DIR / "app" / "build" / "outputs" / "apk" / "release" / "app-release.apk"
+HUB_CONFIG = PROJECT_DIR.parent / "OmniSync.Hub" / "src" / "OmniSync.Hub" / "appsettings.json"
 
 def run_command(cmd, check=True, capture_output=True):
     """Run a shell command and return the result."""
@@ -50,32 +59,152 @@ def run_command(cmd, check=True, capture_output=True):
 
 def adb(args, device=None, check=True):
     """Run an ADB command."""
-    cmd = ["adb"]
+    cmd = [connectadb.ADB]
     if device:
         cmd += ["-s", device]
     cmd += args
     return run_command(cmd, check=check)
 
-def ensure_device(specified_device=None):
+def ensure_device(specified_device=None, pairing_code=None, pairing_endpoint=None, connect_endpoint=None):
     """Ensure a device is connected, either specified or auto-detected."""
-    if specified_device:
-        print(f"Using specified device: {specified_device}")
-        devices = connectadb.list_devices()
-        if specified_device in devices:
-            return specified_device
-        else:
-            print(f"Specified device {specified_device} not found. Attempting to connect...")
-            # We can try to connect to the specified device if it looks like an IP:Port
-            if ":" in specified_device:
-                 run_command(["adb", "connect", specified_device], check=False)
-                 time.sleep(1)
-                 if specified_device in connectadb.list_devices():
-                     return specified_device
-            
-            print(f"Could not connect to {specified_device}. Falling back to standard connection...")
+    return connectadb.connect(
+        pairing_code=pairing_code,
+        pairing_endpoint=pairing_endpoint,
+        connect_endpoint=connect_endpoint,
+        specified_device=specified_device,
+        interactive=sys.stdin.isatty(),
+    )
 
-    # Use connectadb logic to connect
-    return connectadb.connect()
+
+def read_app_version():
+    build_script = (PROJECT_DIR / "app" / "build.gradle.kts").read_text(encoding="utf-8")
+    version_code_match = re.search(r"\bversionCode\s*=\s*(\d+)", build_script)
+    version_name_match = re.search(r'\bversionName\s*=\s*"([^"]+)"', build_script)
+    if not version_code_match or not version_name_match:
+        raise RuntimeError("Could not read versionCode/versionName from app/build.gradle.kts")
+    return int(version_code_match.group(1)), version_name_match.group(1)
+
+
+def publish_update_metadata(apk_path):
+    version_code, version_name = read_app_version()
+    digest = hashlib.sha256()
+    with apk_path.open("rb") as apk_file:
+        for block in iter(lambda: apk_file.read(1024 * 1024), b""):
+            digest.update(block)
+
+    metadata = {
+        "versionCode": version_code,
+        "versionName": version_name,
+        "sha256": digest.hexdigest(),
+        "size": apk_path.stat().st_size,
+        "builtAtUtc": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+    }
+    metadata_path = apk_path.with_suffix(".update.json")
+    temporary_path = metadata_path.with_suffix(metadata_path.suffix + ".tmp")
+    temporary_path.write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
+    temporary_path.replace(metadata_path)
+    print(f"  Update metadata: {metadata_path}")
+
+
+def get_local_ipv4():
+    probe = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        probe.connect(("8.8.8.8", 80))
+        return probe.getsockname()[0]
+    finally:
+        probe.close()
+
+
+def request_json(url, api_key, method="GET", body=None, timeout=15):
+    encoded_body = json.dumps(body).encode("utf-8") if body is not None else None
+    request = urllib.request.Request(url, data=encoded_body, method=method)
+    request.add_header("X-Omni-Api-Key", api_key)
+    if encoded_body is not None:
+        request.add_header("Content-Type", "application/json")
+    with urllib.request.urlopen(request, timeout=timeout) as response:
+        return json.loads(response.read().decode("utf-8"))
+
+
+def deploy_via_hub(explicit_public_base_url=None):
+    print("\n=== Deploying through OmniSync Hub ===")
+    if not HUB_CONFIG.exists():
+        print(f"[FAIL] Hub configuration was not found at {HUB_CONFIG}")
+        return False
+
+    settings = json.loads(HUB_CONFIG.read_text(encoding="utf-8"))
+    api_key = settings.get("AuthApiKey")
+    listen_url = settings.get("SignalR", {}).get("Url", "http://0.0.0.0:5000")
+    if not api_key:
+        print("[FAIL] AuthApiKey is missing from the Hub configuration.")
+        return False
+
+    parsed_listen_url = urllib.parse.urlparse(listen_url)
+    port = parsed_listen_url.port or 5000
+    controller_base_url = f"http://127.0.0.1:{port}"
+    public_base_url = explicit_public_base_url or f"http://{get_local_ipv4()}:{port}"
+    deploy_url = f"{controller_base_url}/api/android-update/deploy"
+    print(f"Requesting Hub deployment; phone download base: {public_base_url}")
+
+    try:
+        response = request_json(
+            deploy_url,
+            api_key,
+            method="POST",
+            body={"publicBaseUrl": public_base_url},
+            timeout=75,
+        )
+    except urllib.error.HTTPError as error:
+        detail = error.read().decode("utf-8", errors="replace")
+        print(f"[FAIL] Hub rejected deployment: HTTP {error.code} {detail}")
+        return False
+    except Exception as error:
+        print(f"[FAIL] Could not reach the Hub deployment API: {error}")
+        return False
+
+    request_id = response.get("requestId")
+    mode = response.get("mode", "unknown")
+    status = response.get("status", "dispatched")
+    print(f"Hub deployment {request_id}: mode={mode}, status={status}")
+    print(response.get("message", "Deployment command dispatched."))
+
+    if mode == "browser" or not request_id:
+        print("[OK] The APK download was opened on the connected legacy Android client.")
+        return True
+
+    terminal_statuses = {
+        "current",
+        "permission_required",
+        "installer_started",
+        "confirmation_required",
+        "installed",
+        "error",
+        "busy",
+    }
+    deadline = time.monotonic() + 90
+    last_status = None
+    status_url = f"{controller_base_url}/api/android-update/deploy/{request_id}"
+    while time.monotonic() < deadline:
+        try:
+            status_response = request_json(status_url, api_key)
+        except Exception as error:
+            print(f"[WARN] Could not read deployment status: {error}")
+            time.sleep(1)
+            continue
+
+        current_status = status_response.get("status", "unknown")
+        if current_status != last_status:
+            print(f"Android deployment status: {current_status} - {status_response.get('message', '')}")
+            last_status = current_status
+        if current_status in terminal_statuses:
+            if current_status == "error" or current_status == "busy":
+                print("[FAIL] Android reported that Hub deployment did not start.")
+                return False
+            print("[OK] Hub-to-Android deployment started successfully.")
+            return True
+        time.sleep(1)
+
+    print("[WARN] Android acknowledged deployment, but no final installer status arrived within 90 seconds.")
+    return True
 
 def build_apk(clean=False, release=False):
     """Build the Android APK."""
@@ -107,6 +236,7 @@ def build_apk(clean=False, release=False):
     print(f"\n[OK] Build successful!")
     print(f"  APK: {apk_path}")
     print(f"  Size: {apk_path.stat().st_size / 1024 / 1024:.2f} MB")
+    publish_update_metadata(apk_path)
     
     return apk_path
 
@@ -115,7 +245,7 @@ def install_apk(device, apk_path):
     print(f"\n=== Installing APK ===")
     print(f"Installing {apk_path.name} to {device}...")
     
-    result = adb(["-s", device, "install", "-r", str(apk_path)], check=False)
+    result = adb(["install", "-r", str(apk_path)], device=device, check=False)
     
     if result.returncode != 0:
         print(f"\n[FAIL] Installation failed")
@@ -131,13 +261,14 @@ def launch_app(device):
     
     # Stop the app first if it's running
     print("Stopping existing app instance...")
-    adb(["-s", device, "shell", "am", "force-stop", PACKAGE], check=False)
+    adb(["shell", "am", "force-stop", PACKAGE], device=device, check=False)
     time.sleep(0.5)
     
     print(f"Launching {PACKAGE}...")
     result = adb(
-        ["-s", device, "shell", "monkey", "-p", PACKAGE, 
+        ["shell", "monkey", "-p", PACKAGE,
          "-c", "android.intent.category.LAUNCHER", "1"],
+        device=device,
         check=False
     )
     
@@ -158,6 +289,11 @@ def main():
     parser.add_argument("--no-install", action="store_true", help="Skip installation")
     parser.add_argument("--no-launch", action="store_true", help="Skip launching")
     parser.add_argument("--device", help="Specify device IP:PORT")
+    parser.add_argument("--pair-code", help="Six-digit wireless debugging pairing code")
+    parser.add_argument("--pair-endpoint", help="Pairing IP:port, or just the port")
+    parser.add_argument("--connect-endpoint", help="Connection IP:port, or just the port")
+    parser.add_argument("--hub-deploy", action="store_true", help="Deploy through the connected Hub client without ADB")
+    parser.add_argument("--hub-base-url", help="LAN URL the phone should use for the Hub, such as http://192.168.1.37:5000")
     
     args = parser.parse_args()
     
@@ -171,6 +307,11 @@ def main():
     if args.no_install:
         print("\n[OK] Build complete (installation skipped)")
         return
+
+    if args.hub_deploy:
+        if deploy_via_hub(args.hub_base_url):
+            return
+        sys.exit(1)
     
     # Ensure device is connected with timeout
     print("\n=== Connecting to Device ===")
@@ -180,7 +321,12 @@ def main():
     def connect_worker():
         try:
             print("Connection worker started...")
-            dev = ensure_device(args.device)
+            dev = ensure_device(
+                args.device,
+                pairing_code=args.pair_code,
+                pairing_endpoint=args.pair_endpoint,
+                connect_endpoint=args.connect_endpoint,
+            )
             print(f"Connection worker finished. Result: {dev}")
             device_queue.put(dev)
         except SystemExit as e:
@@ -197,18 +343,23 @@ def main():
         device = device_queue.get(timeout=300)
     except queue.Empty:
         print("\n[TIMEOUT] Device connection timed out after 5 minutes.")
-        print("Proceeding without installation. You can run with --no-install to skip deployment.")
-        print("\n" + "=" * 60)
-        print("[OK] Build successful, deployment skipped due to connection timeout.")
-        print("=" * 60)
-        return
+        print("Falling back to Hub-to-Android deployment.")
+        if deploy_via_hub(args.hub_base_url):
+            return
+        sys.exit(1)
 
     if not device:
-        print("\n[FAIL] Could not connect to device.")
+        print("\nADB could not connect; falling back to Hub-to-Android deployment.")
+        if deploy_via_hub(args.hub_base_url):
+            return
+        print("\n[FAIL] Neither ADB nor Hub deployment could reach the device.")
         sys.exit(1)
     
     # Install the APK
     if not install_apk(device, apk_path):
+        print("ADB installation failed; falling back to Hub-to-Android deployment.")
+        if deploy_via_hub(args.hub_base_url):
+            return
         sys.exit(1)
     
     if args.no_launch:

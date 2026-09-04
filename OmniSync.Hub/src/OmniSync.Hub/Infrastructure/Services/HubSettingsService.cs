@@ -382,7 +382,9 @@ namespace OmniSync.Hub.Infrastructure.Services
                                     new HotkeyConfig { Name = "Open Hub Window", Key = "Ctrl+Alt+H", Action = "OPEN_HUB_WINDOW", Category = "System" },
                                     new HotkeyConfig { Name = "Project Selector", Key = "Ctrl+Alt+P", Action = "SHOW_PROJECT_SELECTOR", Category = "System" },
                                     new HotkeyConfig { Name = "New AI Tab (Focused)", Key = "Ctrl+Alt+D", Action = "LAUNCH_TAB_IN_FOCUSED_WORKSPACE", Category = "System" },
+                                    new HotkeyConfig { Name = "Run Fomni: WarTribes", Key = "Ctrl+Alt+W", Action = "FOMNI_WAR_TRIBES", Category = "System" },
                                     new HotkeyConfig { Name = "Screenshot", Key = "PrintScreen", Action = "SCREENSHOT", Category = "System" },
+                                    new HotkeyConfig { Name = "Open Clipboard URL", Key = "Ctrl+Alt+L", Action = "OPEN_CLIPBOARD_URL", Category = "System" },
                 
                 new HotkeyConfig { Name = "Toggle Mute", Key = "", Action = "TOGGLE_MUTE", Category = "System" },
                 new HotkeyConfig { Name = "Volume Up", Key = "", Action = "VOL_UP", Category = "System" },

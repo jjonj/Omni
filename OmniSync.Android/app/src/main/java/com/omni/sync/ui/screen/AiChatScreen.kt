@@ -79,6 +79,7 @@ import com.omni.sync.utils.WindowsKeyCodes.VK_RETURN
 import com.omni.sync.utils.WindowsKeyCodes.VK_UP
 import com.omni.sync.utils.WindowsKeyCodes.VK_Y
 import com.omni.sync.ui.components.DirectoryPickerDialog
+import com.omni.sync.ui.components.XtermTerminalView
 
 import androidx.compose.foundation.interaction.DragInteraction
 import android.speech.RecognizerIntent
@@ -92,6 +93,8 @@ import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Circle
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.foundation.shape.CircleShape
+
+private const val AGY_RENDER_PREVIEW = "__AGY_RENDER_PREVIEW__"
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
@@ -109,7 +112,7 @@ fun AiChatScreen(
     val workspaces by signalRClient.aiWorkspaces.collectAsState()
     val inputText by signalRClient.aiInputText.collectAsState()
     val aiModels by signalRClient.aiModels.collectAsState()
-    val defaultAiModel by signalRClient.defaultAiModel.collectAsState()
+    val terminalLauncher by signalRClient.terminalLauncher.collectAsState()
     var showSessionMenu by remember { mutableStateOf(false) }
     var showModelMenu by remember { mutableStateOf(false) }
     val selectedPid by signalRClient.selectedPid.collectAsState()
@@ -127,7 +130,12 @@ fun AiChatScreen(
     
     val listState = rememberLazyListState()
     val filteredMessages = remember(messages) {
-        messages.filter { it.text.isNotBlank() }
+        messages.filter { it.text.isNotBlank() } + com.omni.sync.data.repository.AiMessage(
+            sender = "Terminal",
+            text = AGY_RENDER_PREVIEW,
+            id = "temporary-agy-render-preview",
+            isTerminal = true,
+        )
     }
 
     // STRICT AUTO-SCROLL LOGIC
@@ -450,47 +458,35 @@ fun AiChatScreen(
                     }
                 },
                 actions = {
-                    if (selectedPid != -1 && !isOvmMode) {
+                    if (!isOvmMode) {
                         Box {
                             IconButton(onClick = { showModelMenu = true }, enabled = isConnected) {
-                                Icon(imageVector = Icons.Default.Tune, contentDescription = "Model Selection")
+                                Icon(imageVector = Icons.Default.Tune, contentDescription = "Terminal Launcher")
                             }
                             DropdownMenu(
                                 expanded = showModelMenu,
                                 onDismissRequest = { showModelMenu = false }
                             ) {
-                                DropdownMenuItem(
-                                    text = { 
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            RadioButton(
-                                                selected = defaultAiModel == "",
-                                                onClick = { signalRClient.setDefaultAiModel("") }
-                                            )
-                                            Spacer(Modifier.width(8.dp))
-                                            Text("Default (None)")
-                                        }
-                                    },
-                                    onClick = { 
-                                        signalRClient.sendAiMessage("/model", selectedPid)
-                                        showModelMenu = false 
-                                    },
-                                    leadingIcon = { Icon(Icons.Default.SettingsSuggest, null) }
+                                Text(
+                                    "Terminal launcher",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                    color = MaterialTheme.colorScheme.primary
                                 )
-                                HorizontalDivider()
                                 aiModels.forEach { model ->
                                     DropdownMenuItem(
                                         text = { 
                                             Row(verticalAlignment = Alignment.CenterVertically) {
                                                 RadioButton(
-                                                    selected = defaultAiModel == model,
-                                                    onClick = { signalRClient.setDefaultAiModel(model) }
+                                                    selected = terminalLauncher == model,
+                                                    onClick = { signalRClient.setTerminalLauncher(model) }
                                                 )
                                                 Spacer(Modifier.width(8.dp))
                                                 Text(model)
                                             }
                                         },
                                         onClick = {
-                                            signalRClient.sendAiMessage("/model $model", selectedPid)
+                                            signalRClient.setTerminalLauncher(model)
                                             showModelMenu = false
                                         }
                                     )
@@ -1264,6 +1260,8 @@ fun ChatBubble(
     val isUser = sender == "User"
     val isCodeDiff = sender == "CodeDiff"
     val isTerminal = message.isTerminal
+    val usesXtermRenderer = isTerminal && sender == "Terminal"
+    val isAgyRenderPreview = content == AGY_RENDER_PREVIEW
     val isToolCall = sender == "System" && (content.startsWith("Tool Call:") || content.startsWith("[Tool Call]"))
     val isError = sender == "Error" || content.startsWith("Error:")
     val isSystem = sender == "System" && !isToolCall || (!isMe && !isAi && !isUser && !isError && !isCodeDiff && !isToolCall)
@@ -1377,14 +1375,25 @@ fun ChatBubble(
                 Column {
                     when {
                         isTerminal -> {
-                            Text(
-                                text = content,
-                                modifier = Modifier.padding(8.dp),
-                                style = MaterialTheme.typography.bodySmall.copy(
-                                    fontFamily = FontFamily.Monospace,
-                                    color = textColor
+                            if (usesXtermRenderer) {
+                                XtermTerminalView(
+                                    output = if (isAgyRenderPreview) "" else content,
+                                    onInput = signalRClient::sendRemoteTerminalInput,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(250.dp),
+                                    previewAgy = isAgyRenderPreview,
                                 )
-                            )
+                            } else {
+                                Text(
+                                    text = content,
+                                    modifier = Modifier.padding(8.dp),
+                                    style = MaterialTheme.typography.bodySmall.copy(
+                                        fontFamily = FontFamily.Monospace,
+                                        color = textColor
+                                    )
+                                )
+                            }
                         }
                         isCodeDiff -> DiffText(content)
                         isToolCall -> ToolCallBubble(content)
@@ -1398,12 +1407,14 @@ fun ChatBubble(
                         )
                     }
                     
-                    Text(
-                        text = timestamp,
-                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.sp),
-                        color = textColor.copy(alpha = 0.5f),
-                        modifier = Modifier.align(Alignment.End).padding(end = 8.dp, bottom = 4.dp)
-                    )
+                    if (!usesXtermRenderer) {
+                        Text(
+                            text = timestamp,
+                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.sp),
+                            color = textColor.copy(alpha = 0.5f),
+                            modifier = Modifier.align(Alignment.End).padding(end = 8.dp, bottom = 4.dp)
+                        )
+                    }
                 }
             }
         }

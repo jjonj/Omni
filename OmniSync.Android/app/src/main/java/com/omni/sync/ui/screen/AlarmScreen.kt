@@ -11,6 +11,7 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -20,7 +21,9 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.Alarm
 import androidx.compose.material.icons.filled.AlarmOff
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Repeat
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material3.*
@@ -28,9 +31,12 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.text.KeyboardOptions
 import com.omni.sync.service.AlarmService
 import com.omni.sync.utils.AlarmScheduler
+import com.omni.sync.utils.AlarmStore
 import com.omni.sync.viewmodel.MainViewModel
 import com.omni.sync.data.repository.SignalRClient
 import kotlinx.coroutines.Job
@@ -40,6 +46,7 @@ import java.text.SimpleDateFormat
 import java.util.*
 
 data class AlarmData(
+    var id: Int = 0,
     var enabled: Boolean = false,
     var hour: Int = 9,
     var minute: Int = 0,
@@ -50,8 +57,11 @@ data class AlarmData(
     var soundId: String = "gentle",
     var macroOnTrigger: String? = null,
     var macroOnDismiss: String? = null,
-    var scheduledDate: Long? = null, // Optional specific date
-    var dismissText: String? = null // Custom text for the dismiss screen
+    var quickActionOnTriggerId: String? = null,
+    var quickActionOnDismissId: String? = null,
+    var dismissActionDelaySeconds: Int = 0,
+    var scheduledDate: Long? = null,
+    var dismissText: String? = null
 )
 
 data class GradualConfig(
@@ -74,23 +84,15 @@ fun AlarmScreen(
     val prefs = remember { context.getSharedPreferences("alarm_prefs", Context.MODE_PRIVATE) }
     val gson = remember { com.google.gson.Gson() }
 
-    var alarm1 by remember { 
-        val json = prefs.getString("alarm1", null)
-        mutableStateOf(if (json != null) gson.fromJson(json, AlarmData::class.java) else AlarmData(enabled = false, hour = 8, minute = 30, isAM = true))
-    }
-    var alarm2 by remember { 
-        val json = prefs.getString("alarm2", null)
-        mutableStateOf(if (json != null) gson.fromJson(json, AlarmData::class.java) else AlarmData(enabled = false, hour = 9, minute = 0, isAM = true))
-    }
+    var alarms by remember { mutableStateOf(AlarmStore.load(prefs, gson)) }
     var config by remember { 
         val json = prefs.getString("config", null)
         mutableStateOf(if (json != null) gson.fromJson(json, GradualConfig::class.java) else GradualConfig())
     }
     
-    fun saveAlarms() {
+    fun saveAlarms(updatedAlarms: List<AlarmData> = alarms) {
         prefs.edit().apply {
-            putString("alarm1", gson.toJson(alarm1))
-            putString("alarm2", gson.toJson(alarm2))
+            putString(AlarmStore.ALARMS_KEY, gson.toJson(updatedAlarms))
             putString("config", gson.toJson(config))
             apply()
         }
@@ -107,13 +109,10 @@ fun AlarmScreen(
     // Listen for Changes in SharedPreferences
     DisposableEffect(Unit) {
         val listener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { sharedPrefs, key ->
-            if (key == "alarm1" || key == "alarm2" || key == "config") {
-                val json1 = sharedPrefs.getString("alarm1", null)
-                val json2 = sharedPrefs.getString("alarm2", null)
+            if (key == AlarmStore.ALARMS_KEY || key == "config") {
                 val jsonC = sharedPrefs.getString("config", null)
-                
-                if (json1 != null) alarm1 = gson.fromJson(json1, AlarmData::class.java)
-                if (json2 != null) alarm2 = gson.fromJson(json2, AlarmData::class.java)
+
+                alarms = AlarmStore.load(sharedPrefs, gson)
                 if (jsonC != null) config = gson.fromJson(jsonC, GradualConfig::class.java)
             }
         }
@@ -128,9 +127,11 @@ fun AlarmScreen(
     }
 
     fun updateSchedule(id: Int, data: AlarmData) {
-        saveAlarms()
+        val updatedAlarms = alarms.map { if (it.id == id) data.copy(id = id) else it }
+        alarms = updatedAlarms
+        saveAlarms(updatedAlarms)
         if (data.enabled) {
-            AlarmScheduler.scheduleAlarm(context, id, data, config)
+            AlarmScheduler.scheduleAlarm(context, id, data.copy(id = id), config)
             mainViewModel.startSleep()
         } else {
             AlarmScheduler.cancelAlarm(context, id)
@@ -141,14 +142,13 @@ fun AlarmScreen(
     val isSnoozing by AlarmService.isSnoozing.collectAsState()
 
     // Use the actual triggered alarm ID if ringing or snoozing
-    val activeAlarmId = if (isRinging || isSnoozing) AlarmService.lastTriggeredAlarmId else {
-        when {
-            alarm1.enabled -> 1
-            alarm2.enabled -> 2
-            else -> 0
-        }
+    val activeAlarmId = if (isRinging || isSnoozing) {
+        AlarmService.lastTriggeredAlarmId
+    } else {
+        alarms.firstOrNull { it.enabled }?.id ?: 0
     }
-    val isActiveAlarmRepeating = if (activeAlarmId == 1) alarm1.repeatDaily else if (activeAlarmId == 2) alarm2.repeatDaily else AlarmService.lastTriggeredAlarmRepeating
+    val activeAlarm = alarms.firstOrNull { it.id == activeAlarmId }
+    val isActiveAlarmRepeating = activeAlarm?.repeatDaily ?: AlarmService.lastTriggeredAlarmRepeating
 
     val availableAlarmSounds = listOf(
         "angel" to "Angel",
@@ -200,10 +200,7 @@ fun AlarmScreen(
     // This ensures the UI updates even if the SharedPreferences listener missed an update
     LaunchedEffect(isRinging, isSnoozing) {
         if (!isRinging && !isSnoozing) {
-            val json1 = prefs.getString("alarm1", null)
-            val json2 = prefs.getString("alarm2", null)
-            if (json1 != null) alarm1 = gson.fromJson(json1, AlarmData::class.java)
-            if (json2 != null) alarm2 = gson.fromJson(json2, AlarmData::class.java)
+            alarms = AlarmStore.load(prefs, gson)
         }
     }
     
@@ -227,7 +224,7 @@ fun AlarmScreen(
         ) {
             // Dismiss Button when ringing or snoozing - PINNED AT TOP
             if (isRinging || isSnoozing) {
-                val dismissText = if (activeAlarmId == 1) alarm1.dismissText else if (activeAlarmId == 2) alarm2.dismissText else null
+                val dismissText = activeAlarm?.dismissText
                 
                 Column(
                     modifier = Modifier.padding(vertical = 16.dp),
@@ -272,30 +269,45 @@ fun AlarmScreen(
             ) {
                 Spacer(Modifier.height(if (isRinging || isSnoozing) 0.dp else 16.dp))
                 
-                AlarmCard(
-                    alarmNumber = 1,
-                    alarm = alarm1,
-                    onAlarmChange = { alarm1 = it; updateSchedule(1, it) },
-                    availableSounds = availableAlarmSounds,
-                    timeFormat = timeFormat,
-                    onShowTimePicker = { showTimePicker = 1 },
-                    onShowSoundPicker = { showSoundPicker = 1 },
-                    hideOptionsWhenDisabled = false,
-                    macros = appConfig.macros
-                )
-                
-                AlarmCard(
-                    alarmNumber = 2,
-                    alarm = alarm2,
-                    onAlarmChange = { alarm2 = it; updateSchedule(2, it) },
-                    availableSounds = availableAlarmSounds,
-                    timeFormat = timeFormat,
-                    onShowTimePicker = { showTimePicker = 2 },
-                    onShowDatePicker = { showDatePicker = 2 },
-                    onShowSoundPicker = { showSoundPicker = 2 },
-                    hideOptionsWhenDisabled = true,
-                    macros = appConfig.macros
-                )
+                alarms.forEachIndexed { index, alarm ->
+                    key(alarm.id) {
+                        AlarmCard(
+                            alarmNumber = index + 1,
+                            alarm = alarm,
+                            onAlarmChange = { updateSchedule(alarm.id, it) },
+                            onDelete = {
+                                AlarmScheduler.cancelAlarm(context, alarm.id)
+                                val updatedAlarms = alarms.filterNot { it.id == alarm.id }
+                                alarms = updatedAlarms
+                                saveAlarms(updatedAlarms)
+                            },
+                            availableSounds = availableAlarmSounds,
+                            timeFormat = timeFormat,
+                            onShowTimePicker = { showTimePicker = alarm.id },
+                            onShowDatePicker = { showDatePicker = alarm.id },
+                            onShowSoundPicker = { showSoundPicker = alarm.id },
+                            hideOptionsWhenDisabled = index > 0,
+                            macros = appConfig.macros,
+                            quickActions = appConfig.notificationActions.ifEmpty {
+                                mainViewModel.configManager.getDefaultNotificationActions()
+                            }
+                        )
+                    }
+                }
+
+                OutlinedButton(
+                    onClick = {
+                        val id = AlarmStore.nextId(alarms)
+                        val updatedAlarms = alarms + AlarmData(id = id)
+                        alarms = updatedAlarms
+                        saveAlarms(updatedAlarms)
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Add Alarm")
+                }
                 
                 Card(modifier = Modifier.fillMaxWidth()) {
                     Column(
@@ -359,8 +371,12 @@ fun AlarmScreen(
         }
     }
     
-    showTimePicker?.let { alarmNum ->
-        val currentAlarm = if (alarmNum == 1) alarm1 else alarm2
+    showTimePicker?.let { alarmId ->
+        val currentAlarm = alarms.firstOrNull { it.id == alarmId }
+        if (currentAlarm == null) {
+            showTimePicker = null
+            return@let
+        }
         
         // Convert internal 12h to 24h for initialization
         val initHour = if (currentAlarm.isAM) {
@@ -386,15 +402,18 @@ fun AlarmScreen(
                     enabled = true // Auto-enable on time change
                 )
                 
-                if (alarmNum == 1) { alarm1 = updated; updateSchedule(1, updated) }
-                else { alarm2 = updated; updateSchedule(2, updated) }
+                updateSchedule(alarmId, updated)
                 showTimePicker = null
             }
         )
     }
     
-    showDatePicker?.let { alarmNum ->
-        val currentAlarm = if (alarmNum == 1) alarm1 else alarm2
+    showDatePicker?.let { alarmId ->
+        val currentAlarm = alarms.firstOrNull { it.id == alarmId }
+        if (currentAlarm == null) {
+            showDatePicker = null
+            return@let
+        }
         val cal = Calendar.getInstance()
         if (currentAlarm.scheduledDate != null) cal.timeInMillis = currentAlarm.scheduledDate!!
         
@@ -416,21 +435,30 @@ fun AlarmScreen(
                     repeatDaily = false, // Auto-disable repeat if specific date set
                     enabled = true
                 )
-                if (alarmNum == 1) { alarm1 = updated; updateSchedule(1, updated) }
-                else { alarm2 = updated; updateSchedule(2, updated) }
+                updateSchedule(alarmId, updated)
                 showDatePicker = null
             },
             cal.get(Calendar.YEAR),
             cal.get(Calendar.MONTH),
             cal.get(Calendar.DAY_OF_MONTH)
         ).apply {
+            datePicker.minDate = Calendar.getInstance().apply {
+                set(Calendar.HOUR_OF_DAY, 0)
+                set(Calendar.MINUTE, 0)
+                set(Calendar.SECOND, 0)
+                set(Calendar.MILLISECOND, 0)
+            }.timeInMillis
             setOnDismissListener { showDatePicker = null }
             show()
         }
     }
     
-    showSoundPicker?.let { alarmNum ->
-        val currentAlarm = if (alarmNum == 1) alarm1 else alarm2
+    showSoundPicker?.let { alarmId ->
+        val currentAlarm = alarms.firstOrNull { it.id == alarmId }
+        if (currentAlarm == null) {
+            showSoundPicker = null
+            return@let
+        }
         AlertDialog(
             onDismissRequest = { 
                 showSoundPicker = null 
@@ -448,8 +476,7 @@ fun AlarmScreen(
                                 selected = currentAlarm.soundId == soundId,
                                 onClick = {
                                     val updated = currentAlarm.copy(soundId = soundId)
-                                    if (alarmNum == 1) { alarm1 = updated; updateSchedule(1, updated) }
-                                    else { alarm2 = updated; updateSchedule(2, updated) }
+                                    updateSchedule(alarmId, updated)
                                     playPreview(soundId)
                                 }
                             )
@@ -473,13 +500,15 @@ fun AlarmCard(
     alarmNumber: Int,
     alarm: AlarmData,
     onAlarmChange: (AlarmData) -> Unit,
+    onDelete: () -> Unit,
     availableSounds: List<Pair<String, String>>,
     timeFormat: SimpleDateFormat,
     onShowTimePicker: () -> Unit,
-    onShowDatePicker: (() -> Unit)? = null,
+    onShowDatePicker: () -> Unit,
     onShowSoundPicker: () -> Unit,
     hideOptionsWhenDisabled: Boolean,
-    macros: List<com.omni.sync.data.model.Macro>
+    macros: List<com.omni.sync.data.model.Macro>,
+    quickActions: List<com.omni.sync.data.model.NotificationAction>
 ) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -496,7 +525,12 @@ fun AlarmCard(
                     )
                     Text("Alarm $alarmNumber", style = MaterialTheme.typography.titleLarge)
                 }
-                Switch(checked = alarm.enabled, onCheckedChange = { onAlarmChange(alarm.copy(enabled = it)) })
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = onDelete) {
+                        Icon(Icons.Default.Delete, "Delete Alarm")
+                    }
+                    Switch(checked = alarm.enabled, onCheckedChange = { onAlarmChange(alarm.copy(enabled = it)) })
+                }
             }
             
             val showContent = !hideOptionsWhenDisabled || alarm.enabled
@@ -504,24 +538,22 @@ fun AlarmCard(
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     HorizontalDivider()
                     
-                    if (alarmNumber == 2 && onShowDatePicker != null) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text("Specific Date")
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                TextButton(onClick = onShowDatePicker) {
-                                    val dateText = if (alarm.scheduledDate != null) {
-                                        SimpleDateFormat("MMM dd, yyyy", Locale.getDefault()).format(Date(alarm.scheduledDate!!))
-                                    } else "Not Set"
-                                    Text(dateText)
-                                }
-                                if (alarm.scheduledDate != null) {
-                                    IconButton(onClick = { onAlarmChange(alarm.copy(scheduledDate = null)) }) {
-                                        Icon(Icons.Default.Close, "Clear Date", modifier = Modifier.size(16.dp))
-                                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Specific Date")
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            TextButton(onClick = onShowDatePicker) {
+                                val dateText = if (alarm.scheduledDate != null) {
+                                    SimpleDateFormat("MMM dd, yyyy", Locale.getDefault()).format(Date(alarm.scheduledDate!!))
+                                } else "Any Day"
+                                Text(dateText)
+                            }
+                            if (alarm.scheduledDate != null) {
+                                IconButton(onClick = { onAlarmChange(alarm.copy(scheduledDate = null)) }) {
+                                    Icon(Icons.Default.Close, "Clear Date", modifier = Modifier.size(16.dp))
                                 }
                             }
                         }
@@ -546,7 +578,8 @@ fun AlarmCard(
                                 hour = hour12, 
                                 minute = if (newMode == 0) alarm.minute else cal.get(Calendar.MINUTE), 
                                 isAM = isAM,
-                                enabled = true // Auto-enable on quick toggle
+                                scheduledDate = if (newMode == 0) alarm.scheduledDate else null,
+                                enabled = true
                             ))
                         },
                         modifier = Modifier.fillMaxWidth()
@@ -598,7 +631,12 @@ fun AlarmCard(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text("Repeat Daily")
-                        Switch(checked = alarm.repeatDaily, onCheckedChange = { onAlarmChange(alarm.copy(repeatDaily = it)) })
+                        Switch(
+                            checked = alarm.repeatDaily,
+                            onCheckedChange = {
+                                onAlarmChange(alarm.copy(repeatDaily = it, scheduledDate = if (it) null else alarm.scheduledDate))
+                            }
+                        )
                     }
                     
                     OutlinedButton(onClick = onShowSoundPicker, modifier = Modifier.fillMaxWidth()) {
@@ -608,80 +646,263 @@ fun AlarmCard(
                     HorizontalDivider()
                     Text("Automation", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
                     
-                    MacroPicker(
-                        label = "Trigger",
+                    AutomationActionPicker(
+                        label = "On Trigger",
                         selectedMacroScript = alarm.macroOnTrigger,
+                        selectedActionId = alarm.quickActionOnTriggerId,
                         macros = macros,
-                        onMacroSelected = { onAlarmChange(alarm.copy(macroOnTrigger = it)) }
-                    )
-                    
-                    MacroPicker(
-                        label = "Dismiss",
-                        selectedMacroScript = alarm.macroOnDismiss,
-                        macros = macros,
-                        onMacroSelected = { onAlarmChange(alarm.copy(macroOnDismiss = it)) }
+                        actions = quickActions,
+                        dismissDelaySeconds = null,
+                        onSave = { macroScript, actionId, _ ->
+                            onAlarmChange(
+                                alarm.copy(
+                                    macroOnTrigger = macroScript,
+                                    quickActionOnTriggerId = actionId
+                                )
+                            )
+                        }
                     )
 
-                    if (alarmNumber == 2) {
-                        OutlinedTextField(
-                            value = alarm.dismissText ?: "",
-                            onValueChange = { onAlarmChange(alarm.copy(dismissText = it)) },
-                            label = { Text("Custom Dismiss Message") },
-                            modifier = Modifier.fillMaxWidth(),
-                            singleLine = true,
-                            placeholder = { Text("e.g. Leave for airport") }
-                        )
-                    }
+                    AutomationActionPicker(
+                        label = "On Dismiss",
+                        selectedMacroScript = alarm.macroOnDismiss,
+                        selectedActionId = alarm.quickActionOnDismissId,
+                        macros = macros,
+                        actions = quickActions,
+                        dismissDelaySeconds = alarm.dismissActionDelaySeconds,
+                        onSave = { macroScript, actionId, delaySeconds ->
+                            onAlarmChange(
+                                alarm.copy(
+                                    macroOnDismiss = macroScript,
+                                    quickActionOnDismissId = actionId,
+                                    dismissActionDelaySeconds = delaySeconds
+                                )
+                            )
+                        }
+                    )
+
+                    OutlinedTextField(
+                        value = alarm.dismissText ?: "",
+                        onValueChange = { onAlarmChange(alarm.copy(dismissText = it)) },
+                        label = { Text("Custom Dismiss Message") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        placeholder = { Text("e.g. Leave for airport") }
+                    )
                 }
             }
         }
     }
 }
 
+private enum class AutomationActionKind {
+    NONE,
+    MACRO,
+    QUICK_ACTION
+}
+
+private enum class DelayUnit(val multiplierSeconds: Int) {
+    SECONDS(1),
+    MINUTES(60)
+}
+
 @Composable
-fun MacroPicker(
+private fun AutomationActionPicker(
     label: String,
     selectedMacroScript: String?,
+    selectedActionId: String?,
     macros: List<com.omni.sync.data.model.Macro>,
-    onMacroSelected: (String?) -> Unit
+    actions: List<com.omni.sync.data.model.NotificationAction>,
+    dismissDelaySeconds: Int?,
+    onSave: (macroScript: String?, actionId: String?, delaySeconds: Int) -> Unit
 ) {
-    var expanded by remember { mutableStateOf(false) }
+    var showDialog by remember { mutableStateOf(false) }
     val selectedMacro = macros.find { it.script == selectedMacroScript }
+    val selectedAction = actions.find { it.id == selectedActionId }
+    val selectionName = selectedMacro?.name ?: selectedAction?.label ?: "None"
+    val delaySummary = dismissDelaySeconds
+        ?.takeIf { it > 0 }
+        ?.let { " · ${formatAutomationDelay(it)}" }
+        .orEmpty()
 
-    Box(modifier = Modifier.fillMaxWidth()) {
-        OutlinedButton(
-            onClick = { expanded = true },
-            modifier = Modifier.fillMaxWidth()
-        ) {
+    OutlinedButton(
+        onClick = { showDialog = true },
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Text(label, style = MaterialTheme.typography.labelLarge)
             Text(
-                text = "$label: ${selectedMacro?.name ?: "None"}",
+                text = selectionName + delaySummary,
+                style = MaterialTheme.typography.bodySmall,
                 maxLines = 1,
                 overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
             )
         }
-        DropdownMenu(
-            expanded = expanded,
-            onDismissRequest = { expanded = false },
-            modifier = Modifier.fillMaxWidth(0.8f)
-        ) {
-            DropdownMenuItem(
-                text = { Text("None") },
-                onClick = {
-                    onMacroSelected(null)
-                    expanded = false
-                }
-            )
-            macros.forEach { macro ->
-                DropdownMenuItem(
-                    text = { Text(macro.name) },
+    }
+
+    if (!showDialog) return
+
+    var pendingKind by remember {
+        mutableStateOf(
+            when {
+                selectedMacroScript != null -> AutomationActionKind.MACRO
+                selectedActionId != null -> AutomationActionKind.QUICK_ACTION
+                else -> AutomationActionKind.NONE
+            }
+        )
+    }
+    var pendingMacroScript by remember { mutableStateOf(selectedMacroScript) }
+    var pendingActionId by remember { mutableStateOf(selectedActionId) }
+    val initialDelay = dismissDelaySeconds ?: 0
+    var delayUnit by remember {
+        mutableStateOf(
+            if (initialDelay >= 60 && initialDelay % 60 == 0) DelayUnit.MINUTES
+            else DelayUnit.SECONDS
+        )
+    }
+    var delayAmount by remember {
+        mutableStateOf(
+            (initialDelay / if (initialDelay >= 60 && initialDelay % 60 == 0) 60 else 1).toString()
+        )
+    }
+    val parsedDelayAmount = delayAmount.toLongOrNull()
+    val calculatedDelaySeconds = parsedDelayAmount?.times(delayUnit.multiplierSeconds)
+    val delayIsValid = dismissDelaySeconds == null ||
+        (calculatedDelaySeconds != null && calculatedDelaySeconds in 0..86_400)
+
+    AlertDialog(
+        onDismissRequest = { showDialog = false },
+        title = { Text(label) },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                AutomationChoiceRow(
+                    label = "None",
+                    selected = pendingKind == AutomationActionKind.NONE,
                     onClick = {
-                        onMacroSelected(macro.script)
-                        expanded = false
+                        pendingKind = AutomationActionKind.NONE
+                        pendingMacroScript = null
+                        pendingActionId = null
                     }
                 )
+
+                if (macros.isNotEmpty()) {
+                    Text(
+                        "Macros",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    macros.forEach { macro ->
+                        AutomationChoiceRow(
+                            label = macro.name,
+                            selected = pendingKind == AutomationActionKind.MACRO &&
+                                pendingMacroScript == macro.script,
+                            onClick = {
+                                pendingKind = AutomationActionKind.MACRO
+                                pendingMacroScript = macro.script
+                                pendingActionId = null
+                            }
+                        )
+                    }
+                }
+
+                if (actions.isNotEmpty()) {
+                    Text(
+                        "Quick actions",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    actions.forEach { action ->
+                        AutomationChoiceRow(
+                            label = action.label,
+                            selected = pendingKind == AutomationActionKind.QUICK_ACTION &&
+                                pendingActionId == action.id,
+                            onClick = {
+                                pendingKind = AutomationActionKind.QUICK_ACTION
+                                pendingActionId = action.id
+                                pendingMacroScript = null
+                            }
+                        )
+                    }
+                }
+
+                if (dismissDelaySeconds != null) {
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+                    Text("Delay after dismissal", style = MaterialTheme.typography.labelLarge)
+                    OutlinedTextField(
+                        value = delayAmount,
+                        onValueChange = { value ->
+                            if (value.all(Char::isDigit)) delayAmount = value
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Delay") },
+                        isError = !delayIsValid,
+                        supportingText = {
+                            Text(if (delayIsValid) "Use 0 for no delay" else "Enter a delay up to 24 hours")
+                        },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        singleLine = true
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FilterChip(
+                            selected = delayUnit == DelayUnit.SECONDS,
+                            onClick = { delayUnit = DelayUnit.SECONDS },
+                            label = { Text("Seconds") }
+                        )
+                        FilterChip(
+                            selected = delayUnit == DelayUnit.MINUTES,
+                            onClick = { delayUnit = DelayUnit.MINUTES },
+                            label = { Text("Minutes") }
+                        )
+                    }
+                }
             }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = delayIsValid,
+                onClick = {
+                    onSave(
+                        pendingMacroScript.takeIf { pendingKind == AutomationActionKind.MACRO },
+                        pendingActionId.takeIf { pendingKind == AutomationActionKind.QUICK_ACTION },
+                        calculatedDelaySeconds?.toInt() ?: 0
+                    )
+                    showDialog = false
+                }
+            ) { Text("Save") }
+        },
+        dismissButton = {
+            TextButton(onClick = { showDialog = false }) { Text("Cancel") }
         }
+    )
+}
+
+@Composable
+private fun AutomationChoiceRow(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        RadioButton(selected = selected, onClick = onClick)
+        Text(label, modifier = Modifier.padding(start = 8.dp))
     }
+}
+
+private fun formatAutomationDelay(seconds: Int): String = when {
+    seconds % 3600 == 0 -> "${seconds / 3600}h delay"
+    seconds % 60 == 0 -> "${seconds / 60}m delay"
+    else -> "${seconds}s delay"
 }
 
 @Composable

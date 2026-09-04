@@ -6,7 +6,7 @@ import com.omni.sync.data.model.NotificationAction
 import java.io.File
 
 data class AppConfig(
-    var hubUrl: String = "http://192.168.0.37:5000/signalrhub",
+    var hubUrl: String = "http://192.168.1.37:5000/signalrhub",
     var wanIp: String = "85.80.233.70",
     var apiKey: String = "test_api_key",
     var syncIntervalMinutes: Long = 15,
@@ -30,7 +30,8 @@ data class AppConfig(
     var showKeyboardNumberRow: Boolean = true,
     var browserCleanupPatterns: List<String> = emptyList(),
     var lastOpenedFilePath: String? = null,
-    var overlayEnabled: Boolean = false
+    var overlayEnabled: Boolean = false,
+    var terminalLauncher: String = "agy"
 )
 
 class ConfigManager(private val context: Context) {
@@ -106,6 +107,13 @@ class ConfigManager(private val context: Context) {
             NotificationAction("pre-br-phone", "Open Tab on Phone", "BROWSER:OpenCurrentTabOnPhone")
         )
     }
+
+    fun getDefaultNotificationActions(): List<NotificationAction> = listOf(
+        NotificationAction("1", "Shutdown", "B:\\GDrive\\Tools\\05 Automation\\shutdown.bat"),
+        NotificationAction("2", "Sleep", "B:\\GDrive\\Tools\\05 Automation\\sleep.bat"),
+        NotificationAction("3", "TV", "B:\\GDrive\\Tools\\05 Automation\\TVActive3\\tv_toggle.bat"),
+        NotificationAction("4", "WOL", "", isWol = true, macAddress = "10FFE0379DAC")
+    )
 
     fun getBookmarks(): List<NotificationAction> {
         val browserPrefs = context.getSharedPreferences("browser_prefs", Context.MODE_PRIVATE)

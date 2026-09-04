@@ -194,6 +194,7 @@ builder.Configuration.AddJsonFile(appSettingsPath, optional: true, reloadOnChang
 
 // Add services to the container.
 builder.Services.AddSingleton<AuthService>(new AuthService(builder.Configuration["AuthApiKey"] ?? throw new InvalidOperationException("AuthApiKey not configured.")));
+builder.Services.AddSingleton<AndroidUpdateDeploymentCoordinator>();
 builder.Services.AddSingleton<FileService>(provider =>
 {
     var configuration = provider.GetRequiredService<IConfiguration>();
@@ -270,11 +271,12 @@ builder.Services.AddSingleton<CommandDispatcher>(provider => {
     var nodeRedService = provider.GetRequiredService<NodeRedService>();
     var projectLauncherService = provider.GetRequiredService<ProjectLauncherService>();
     var resourceOpenerService = provider.GetRequiredService<ResourceOpenerService>();
+    var clipboardService = provider.GetRequiredService<ClipboardService>();
     var aiCliService = provider.GetRequiredService<AiCliService>();
     var monitorService = provider.GetRequiredService<HubMonitorService>();
     var appLifetime = provider.GetRequiredService<IHostApplicationLifetime>();
     var hubContext = provider.GetRequiredService<IHubContext<RpcApiHub>>();
-    return new CommandDispatcher(inputService, fileService, audioService, processService, screenshotService, shutdownService, settingsService, pcgService, nodeRedService, projectLauncherService, resourceOpenerService, aiCliService, monitorService, appLifetime, hubContext);
+    return new CommandDispatcher(inputService, fileService, audioService, processService, screenshotService, shutdownService, settingsService, pcgService, nodeRedService, projectLauncherService, resourceOpenerService, clipboardService, aiCliService, monitorService, appLifetime, hubContext);
 });
 builder.Services.AddSingleton<ITerminalService, TerminalService>();
 builder.Services.AddHostedService<TerminalOutputBroadcaster>();

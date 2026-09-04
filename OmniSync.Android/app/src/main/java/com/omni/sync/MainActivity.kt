@@ -414,6 +414,13 @@ class MainActivity : ComponentActivity() {
         handleIntent(intent)
     }
 
+    override fun onResume() {
+        super.onResume()
+        (application as? OmniSyncApplication)
+            ?.androidUpdateManager
+            ?.continuePendingDeploymentIfPermitted()
+    }
+
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
         updateSystemBars(newConfig.orientation)

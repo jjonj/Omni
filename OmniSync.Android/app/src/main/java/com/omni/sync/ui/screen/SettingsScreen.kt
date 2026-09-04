@@ -76,12 +76,7 @@ fun SettingsScreen(
     var apiKey by remember { mutableStateOf(appConfig.apiKey) }
 
     val initialActions = appConfig.notificationActions.ifEmpty {
-        listOf(
-            NotificationAction("1", "Shutdown", "B:\\GDrive\\Tools\\05 Automation\\shutdown.bat"),
-            NotificationAction("2", "Sleep", "B:\\GDrive\\Tools\\05 Automation\\sleep.bat"),
-            NotificationAction("3", "TV", "B:\\GDrive\\Tools\\05 Automation\\TVActive3\\tv_toggle.bat"),
-            NotificationAction("4", "WOL", "", isWol = true, macAddress = "10FFE0379DAC")
-        )
+        mainViewModel.configManager.getDefaultNotificationActions()
     }
     
     var notificationActions by remember { mutableStateOf<List<NotificationAction>>(initialActions) }
