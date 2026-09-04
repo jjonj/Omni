@@ -44,6 +44,12 @@ public sealed class RemoteTerminalHub : Microsoft.AspNetCore.SignalR.Hub
         return _sessions.SendInputAsync(sessionId, Convert.FromBase64String(dataBase64));
     }
 
+    public Task ResizeRemoteTerminal(string sessionId, int columns, int rows)
+    {
+        RequireAuthentication();
+        return _sessions.ResizeAsync(sessionId, columns, rows);
+    }
+
     public Task StopRemoteTerminal(string sessionId)
     {
         RequireAuthentication();

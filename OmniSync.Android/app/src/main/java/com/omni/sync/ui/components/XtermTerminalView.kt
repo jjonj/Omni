@@ -25,11 +25,12 @@ private const val TAG = "OmniXterm"
 fun XtermTerminalView(
     output: String,
     onInput: (String) -> Unit,
+    onResize: (Int, Int) -> Unit,
     modifier: Modifier = Modifier,
-    previewAgy: Boolean = false,
 ) {
     val renderer = remember { XtermRenderer() }
     renderer.onInput = onInput
+    renderer.onResize = onResize
 
     AndroidView(
         modifier = modifier,
@@ -38,7 +39,7 @@ fun XtermTerminalView(
                 renderer.attach(webView)
                 configureTerminalWebView(webView, renderer)
                 Log.d(TAG, "Loading local terminal page: $TERMINAL_URL")
-                webView.loadUrl(if (previewAgy) "$TERMINAL_URL?preview=agy" else TERMINAL_URL)
+                webView.loadUrl(TERMINAL_URL)
             }
         },
         update = { renderer.render(output) }
@@ -59,7 +60,7 @@ private fun configureTerminalWebView(webView: WebView, renderer: XtermRenderer) 
     webView.settings.blockNetworkLoads = false
     webView.settings.mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_NEVER_ALLOW
     webView.addJavascriptInterface(
-        TerminalInputBridge(renderer::sendInput, renderer::onTerminalReady),
+        TerminalInputBridge(renderer::sendInput, renderer::resize, renderer::onTerminalReady),
         "OmniTerminalInput"
     )
     webView.webChromeClient = object : WebChromeClient() {
@@ -99,6 +100,7 @@ private class XtermRenderer {
     private var renderedOutput = ""
     private var pendingOutput = ""
     var onInput: (String) -> Unit = {}
+    var onResize: (Int, Int) -> Unit = { _, _ -> }
 
     fun attach(webView: WebView) {
         this.webView = webView
@@ -148,6 +150,11 @@ private class XtermRenderer {
         onInput(input)
     }
 
+    fun resize(columns: Int, rows: Int) {
+        Log.d(TAG, "Forwarding terminal resize columns=$columns rows=$rows")
+        onResize(columns, rows)
+    }
+
     private fun evaluate(script: String) {
         val target = webView ?: return
         Log.d(TAG, "Evaluating terminal script length=${script.length} webViewId=${System.identityHashCode(target)}")
@@ -161,6 +168,7 @@ private class XtermRenderer {
 
 private class TerminalInputBridge(
     private val onInput: (String) -> Unit,
+    private val onResize: (Int, Int) -> Unit,
     private val onReady: () -> Unit,
 ) {
     @JavascriptInterface
@@ -178,5 +186,11 @@ private class TerminalInputBridge(
         } catch (error: IllegalArgumentException) {
             Log.e(TAG, "Terminal sent invalid input", error)
         }
+    }
+
+    @JavascriptInterface
+    fun resize(columns: Int, rows: Int) {
+        Log.d(TAG, "JavaScript terminal resize columns=$columns rows=$rows")
+        onResize(columns, rows)
     }
 }

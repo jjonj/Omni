@@ -159,6 +159,21 @@ class RemoteTerminalClient {
         sendBytes(sequence.toByteArray(Charsets.UTF_8))
     }
 
+    fun resizeSession(columns: Int, rows: Int) {
+        val active = _session.value ?: return
+        scope.launch {
+            val connection = connectedHub() ?: return@launch
+            try {
+                Log.d(TAG, "Resizing remote terminal session=${active.sessionId} columns=$columns rows=$rows")
+                connection.send("ResizeRemoteTerminal", active.sessionId, columns, rows)
+                _error.value = null
+            } catch (error: Exception) {
+                Log.e(TAG, "Could not resize remote terminal", error)
+                _error.value = error.message ?: "Could not resize remote terminal"
+            }
+        }
+    }
+
     fun stopSession() {
         val active = _session.value ?: return
         scope.launch {

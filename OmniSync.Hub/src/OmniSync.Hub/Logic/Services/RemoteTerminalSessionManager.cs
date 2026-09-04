@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Net.WebSockets;
 using System.Security.Cryptography;
+using System.Text.Json;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
@@ -109,6 +110,25 @@ public sealed class RemoteTerminalSessionManager
         try
         {
             await socket.SendAsync(bytes, WebSocketMessageType.Binary, true, CancellationToken.None);
+        }
+        finally
+        {
+            session.SendLock.Release();
+        }
+    }
+
+    public async Task ResizeAsync(string sessionId, int columns, int rows)
+    {
+        if (!_sessions.TryGetValue(sessionId, out var session)) throw new InvalidOperationException("Remote terminal session was not found.");
+        var socket = session.HostSocket ?? throw new InvalidOperationException("Omnish has not connected to this session yet.");
+        columns = Math.Clamp(columns, 2, 500);
+        rows = Math.Clamp(rows, 1, 200);
+        var payload = JsonSerializer.SerializeToUtf8Bytes(new { type = "resize", columns, rows });
+        _logger.LogInformation("Forwarding terminal resize session={SessionId} columns={Columns} rows={Rows} socketState={SocketState}", sessionId, columns, rows, socket.State);
+        await session.SendLock.WaitAsync();
+        try
+        {
+            await socket.SendAsync(payload, WebSocketMessageType.Text, true, CancellationToken.None);
         }
         finally
         {

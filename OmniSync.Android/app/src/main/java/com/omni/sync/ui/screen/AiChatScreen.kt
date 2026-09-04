@@ -94,8 +94,6 @@ import androidx.compose.material.icons.filled.Circle
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.foundation.shape.CircleShape
 
-private const val AGY_RENDER_PREVIEW = "__AGY_RENDER_PREVIEW__"
-
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun AiChatScreen(
@@ -129,14 +127,7 @@ fun AiChatScreen(
     val context = LocalContext.current
     
     val listState = rememberLazyListState()
-    val filteredMessages = remember(messages) {
-        messages.filter { it.text.isNotBlank() } + com.omni.sync.data.repository.AiMessage(
-            sender = "Terminal",
-            text = AGY_RENDER_PREVIEW,
-            id = "temporary-agy-render-preview",
-            isTerminal = true,
-        )
-    }
+    val filteredMessages = remember(messages) { messages.filter { it.text.isNotBlank() } }
 
     // STRICT AUTO-SCROLL LOGIC
     var isAutoScrollEnabled by remember { mutableStateOf(true) }
@@ -1261,7 +1252,6 @@ fun ChatBubble(
     val isCodeDiff = sender == "CodeDiff"
     val isTerminal = message.isTerminal
     val usesXtermRenderer = isTerminal && sender == "Terminal"
-    val isAgyRenderPreview = content == AGY_RENDER_PREVIEW
     val isToolCall = sender == "System" && (content.startsWith("Tool Call:") || content.startsWith("[Tool Call]"))
     val isError = sender == "Error" || content.startsWith("Error:")
     val isSystem = sender == "System" && !isToolCall || (!isMe && !isAi && !isUser && !isError && !isCodeDiff && !isToolCall)
@@ -1377,12 +1367,12 @@ fun ChatBubble(
                         isTerminal -> {
                             if (usesXtermRenderer) {
                                 XtermTerminalView(
-                                    output = if (isAgyRenderPreview) "" else content,
+                                    output = content,
                                     onInput = signalRClient::sendRemoteTerminalInput,
+                                    onResize = signalRClient::resizeRemoteTerminal,
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .height(250.dp),
-                                    previewAgy = isAgyRenderPreview,
                                 )
                             } else {
                                 Text(

@@ -1153,6 +1153,10 @@ class SignalRClient(
         remoteTerminalClient.sendText(input)
     }
 
+    fun resizeRemoteTerminal(columns: Int, rows: Int) {
+        remoteTerminalClient.resizeSession(columns, rows)
+    }
+
         fun sendAiYolo(pid: Int? = null) {
             if ((pid ?: _selectedPid.value) == REMOTE_TERMINAL_PID) {
                 remoteTerminalClient.sendText("y", appendEnter = true)
