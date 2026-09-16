@@ -27,6 +27,8 @@ namespace OmniSync.Hub.Logic.Services
         private readonly ILogger<CalendarService> _logger;
         private System.Threading.Timer? _timer;
         private List<CalendarEvent> _events = new();
+        private string? _lastCalendarUrl;
+        private int _isRefreshing = 0;
 
         public CalendarService(
             HttpClient httpClient,
@@ -38,10 +40,16 @@ namespace OmniSync.Hub.Logic.Services
             _monitorService = monitorService;
             _settingsService = settingsService;
             _logger = logger;
+            _lastCalendarUrl = _settingsService.Settings?.CalendarUrl;
 
             _settingsService.SettingsChanged += (s, e) =>
             {
-                _ = RefreshCalendarAsync();
+                var newUrl = _settingsService.Settings?.CalendarUrl;
+                if (!string.Equals(newUrl, _lastCalendarUrl, StringComparison.OrdinalIgnoreCase))
+                {
+                    _lastCalendarUrl = newUrl;
+                    _ = RefreshCalendarAsync();
+                }
             };
         }
 
@@ -66,6 +74,12 @@ namespace OmniSync.Hub.Logic.Services
 
         public async Task RefreshCalendarAsync()
         {
+            if (Interlocked.CompareExchange(ref _isRefreshing, 1, 0) != 0)
+            {
+                _logger.LogInformation("[CalendarService] Refresh already in progress, skipping.");
+                return;
+            }
+
             try
             {
                 string url = _settingsService.Settings.CalendarUrl;
@@ -91,6 +105,10 @@ namespace OmniSync.Hub.Logic.Services
             {
                 _logger.LogError(ex, "[CalendarService] Error during RefreshCalendarAsync");
                 _monitorService.AddLogMessage($"[Calendar] Refresh Failed: {ex.Message}");
+            }
+            finally
+            {
+                Interlocked.Exchange(ref _isRefreshing, 0);
             }
         }
 

@@ -239,20 +239,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _appConfig.value = _appConfig.value.copy() 
     }
 
-    fun updateMacros(macros: List<com.omni.sync.data.model.Macro>) {
+    fun updateMacros(macros: List<com.omni.sync.data.model.Macro>, syncToHub: Boolean = true) {
         val current = _appConfig.value
         _appConfig.value = current.copy(macros = macros)
         saveAppConfig()
         
         // Sync to Hub
-        if (isConnected.value) {
+        if (syncToHub && isConnected.value) {
             macros.forEach { signalRClient.saveMacro(it) }
         }
     }
 
     fun deleteMacro(macro: com.omni.sync.data.model.Macro) {
         val currentMacros = _appConfig.value.macros.filter { it.id != macro.id }
-        updateMacros(currentMacros)
+        updateMacros(currentMacros, syncToHub = false)
         if (isConnected.value) {
             signalRClient.deleteMacro(macro.id)
         }
@@ -280,7 +280,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                             }
                         }
                         
-                        updateMacros(merged)
+                        updateMacros(merged, syncToHub = false)
                         addLog("Synced ${hubMacros.size} macros from Hub.", LogType.SUCCESS)
                     }, { error ->
                         addLog("Failed to fetch macros: ${error.message}", LogType.ERROR)
