@@ -52,6 +52,7 @@ val navigationItems = listOf(
 // Define the burger menu items
 val burgerMenuItems = listOf(
     NavItem(AppScreen.PROCESS, "Process", Icons.Default.Memory),
+    NavItem(AppScreen.AGENTS, "Agents", Icons.Default.SmartToy),
     NavItem(AppScreen.ALARM, "Alarm", Icons.Default.Alarm),
     NavItem(AppScreen.WEB_SERVER, "OmniWeb", Icons.Default.Public),
     NavItem(AppScreen.BOOKS, "Books", Icons.Default.MenuBook)

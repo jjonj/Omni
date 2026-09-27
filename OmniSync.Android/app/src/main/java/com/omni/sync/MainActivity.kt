@@ -153,8 +153,15 @@ class MainActivity : ComponentActivity() {
     @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        
+
         handleIntent(intent)
+        if (
+            savedInstanceState == null &&
+            intent?.hasExtra("OPEN_SCREEN") != true &&
+            java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY) >= 23
+        ) {
+            mainViewModel.navigateTo(AppScreen.ALARM)
+        }
 
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
             val permissions = mutableListOf(Manifest.permission.POST_NOTIFICATIONS, Manifest.permission.READ_MEDIA_VIDEO)
@@ -506,6 +513,17 @@ class MainActivity : ComponentActivity() {
                 signalRClient = signalRClient,
                 mainViewModel = mainViewModel,
                 filesViewModel = filesViewModel,
+                parentPadding = paddingValues
+            )
+            AppScreen.AGENTS -> com.omni.sync.ui.screen.AgentInboxScreen(
+                signalRClient = signalRClient,
+                mainViewModel = mainViewModel,
+                parentPadding = paddingValues
+            )
+            AppScreen.AGENT_DETAIL -> com.omni.sync.ui.screen.AgentSessionDetailScreen(
+                signalRClient = signalRClient,
+                mainViewModel = mainViewModel,
+                onBack = { mainViewModel.navigateTo(AppScreen.AGENTS) },
                 parentPadding = paddingValues
             )
             AppScreen.DOWNLOADED_VIDEOS -> com.omni.sync.ui.screen.DownloadedVideosScreen(

@@ -42,6 +42,7 @@ fun XtermTerminalView(
                 webView.loadUrl(TERMINAL_URL)
             }
         },
+        onRelease = { renderer.release(it) },
         update = { renderer.render(output) }
     )
 }
@@ -53,6 +54,8 @@ private fun configureTerminalWebView(webView: WebView, renderer: XtermRenderer) 
         .build()
 
     webView.setBackgroundColor(Color.BLACK)
+    webView.isFocusable = false
+    webView.isFocusableInTouchMode = false
     webView.settings.javaScriptEnabled = true
     webView.settings.domStorageEnabled = false
     webView.settings.allowFileAccess = false
@@ -116,13 +119,24 @@ private class XtermRenderer {
     }
 
     fun onTerminalReady() {
-        if (isReady) return
-        isReady = true
-        Log.d(TAG, "xterm renderer ready, pendingChars=${pendingOutput.length} pendingHash=${pendingOutput.hashCode()}")
-        render(pendingOutput)
+        val target = webView ?: return
+        target.post {
+            if (webView !== target || isReady) return@post
+            isReady = true
+            Log.d(TAG, "xterm renderer ready, pendingChars=${pendingOutput.length}")
+            render(pendingOutput)
+        }
+    }
+
+    fun release(target: WebView) {
+        webView = null
+        isReady = false
+        target.removeJavascriptInterface("OmniTerminalInput")
+        target.destroy()
     }
 
     fun render(output: String) {
+        if (isReady && output == renderedOutput) return
         pendingOutput = output
         Log.d(TAG, "Terminal render requested chars=${output.length} hash=${output.hashCode()} ready=$isReady renderedChars=${renderedOutput.length}")
         if (!isReady) {
@@ -159,6 +173,7 @@ private class XtermRenderer {
         val target = webView ?: return
         Log.d(TAG, "Evaluating terminal script length=${script.length} webViewId=${System.identityHashCode(target)}")
         target.post {
+            if (webView !== target) return@post
             target.evaluateJavascript(script) { result ->
                 Log.d(TAG, "Terminal JavaScript completed result=$result")
             }

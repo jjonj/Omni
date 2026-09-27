@@ -73,6 +73,61 @@ data class AiMessage(
     val isTerminal: Boolean = false
 )
 
+data class AgentSessionSummaryData(
+    @SerializedName("Id") val id: String = "",
+    @SerializedName("Provider") val provider: String = "",
+    @SerializedName("Title") val title: String = "",
+    @SerializedName("Modified") val modified: String = "",
+    @SerializedName("Cwd") val cwd: String = ""
+)
+
+data class AgentEventData(
+    @SerializedName("Kind") val kind: String = "output",
+    @SerializedName("Title") val title: String = "",
+    @SerializedName("Text") val text: String = "",
+    @SerializedName("Time") val time: String = "",
+    @SerializedName("Result") val result: String? = null,
+    @SerializedName("ResultError") val resultError: Boolean = false
+)
+
+data class AgentSessionDetailData(
+    @SerializedName("Id") val id: String = "",
+    @SerializedName("Provider") val provider: String = "",
+    @SerializedName("Title") val title: String = "",
+    @SerializedName("SessionId") val sessionId: String = "",
+    @SerializedName("Cwd") val cwd: String = "",
+    @SerializedName("Model") val model: String = "",
+    @SerializedName("Modified") val modified: String = "",
+    @SerializedName("Events") val events: List<AgentEventData> = emptyList(),
+    @SerializedName("TotalEvents") val totalEvents: Int = 0,
+    @SerializedName("AvailableEvents") val availableEvents: Int = 0,
+    @SerializedName("HasMoreBefore") val hasMoreBefore: Boolean = false,
+    @SerializedName("NextBefore") val nextBefore: Int = 0,
+    @SerializedName("Status") val status: String = ""
+)
+
+data class AgentSendStatusData(
+    @SerializedName("Id") val id: String = "",
+    @SerializedName("State") val state: String = "",
+    @SerializedName("Error") val error: String? = null
+)
+
+data class ReminderData(
+    @SerializedName(value = "Id", alternate = ["id"]) val id: String = "",
+    @SerializedName(value = "Kind", alternate = ["kind"]) val kind: Int = 0,
+    @SerializedName(value = "State", alternate = ["state"]) val state: Int = 0,
+    @SerializedName(value = "Ownership", alternate = ["ownership"]) val ownership: Int = 0,
+    @SerializedName(value = "Title", alternate = ["title"]) val title: String = "",
+    @SerializedName(value = "DueAt", alternate = ["dueAt"]) val dueAt: String = "",
+    @SerializedName(value = "NextFireAt", alternate = ["nextFireAt"]) val nextFireAt: String? = null,
+    @SerializedName(value = "Revision", alternate = ["revision"]) val revision: Long = 0,
+    @SerializedName(value = "Source", alternate = ["source"]) val source: Int = 0,
+    @SerializedName(value = "SourceOriginalTitle", alternate = ["sourceOriginalTitle"]) val sourceOriginalTitle: String? = null,
+    @SerializedName(value = "IsAllDay", alternate = ["isAllDay"]) val isAllDay: Boolean = false
+) {
+    val isTerminal: Boolean get() = state == 3 || state == 4 || state == 5
+}
+
 class SignalRClient(
     private val context: Context,
     private val mainViewModel: MainViewModel
@@ -119,6 +174,9 @@ class SignalRClient(
 
     private val _connectionState = MutableStateFlow("Disconnected")
     val connectionState: StateFlow<String> = _connectionState
+
+    private val _reminders = MutableStateFlow<List<ReminderData>>(emptyList())
+    val reminders: StateFlow<List<ReminderData>> = _reminders
 
     private val _currentBaseUrl = MutableStateFlow("")
     val currentBaseUrl: StateFlow<String> = _currentBaseUrl
@@ -198,6 +256,18 @@ class SignalRClient(
 
     private val _aiSessions = MutableStateFlow<Map<Int, String>>(emptyMap())
     val aiSessions: StateFlow<Map<Int, String>> = _aiSessions
+
+    private val _agentSessions = MutableStateFlow<List<AgentSessionSummaryData>>(emptyList())
+    val agentSessions: StateFlow<List<AgentSessionSummaryData>> = _agentSessions
+
+    private val _agentSessionDetail = MutableStateFlow<AgentSessionDetailData?>(null)
+    val agentSessionDetail: StateFlow<AgentSessionDetailData?> = _agentSessionDetail
+
+    val agentSendStatus = MutableSharedFlow<AgentSendStatusData>(extraBufferCapacity = 8)
+
+    fun emitAgentSendStatus(status: AgentSendStatusData) {
+        agentSendStatus.tryEmit(status)
+    }
 
     private val _aiWorkspaces = MutableStateFlow<Map<Int, String>>(emptyMap())
     val aiWorkspaces: StateFlow<Map<Int, String>> = _aiWorkspaces
@@ -486,6 +556,46 @@ class SignalRClient(
         return ordered.filter { it.isNotBlank() }.distinct()
     }
 
+    /**
+     * The Hub re-resolves its own public address on a timer and pushes it here, so
+     * the WAN address this app connects back on is never a stale typed in value.
+     */
+    private fun handleExternalIpUpdate(externalIp: String, updatedAtUnix: Long) {
+        val trimmed = externalIp.trim()
+        if (trimmed.isBlank()) return
+        if (!isPlausibleIpv4(trimmed)) {
+            mainViewModel.addLog(
+                "Hub sent an unusable public address, ignoring it.",
+                com.omni.sync.ui.screen.LogType.WARNING
+            )
+            return
+        }
+
+        val previous = mainViewModel.appConfig.value.wanIp.trim()
+        if (trimmed == previous) return
+
+        mainViewModel.updateConfig { it.copy(wanIp = trimmed) }
+        val checkedAt = if (updatedAtUnix > 0) {
+            java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.getDefault())
+                .format(java.util.Date(updatedAtUnix * 1000))
+        } else {
+            "unknown time"
+        }
+        mainViewModel.addLog(
+            "Hub public address updated: $previous -> $trimmed (checked $checkedAt).",
+            com.omni.sync.ui.screen.LogType.INFO
+        )
+    }
+
+    private fun isPlausibleIpv4(value: String): Boolean {
+        val parts = value.split('.')
+        if (parts.size != 4) return false
+        return parts.all { part ->
+            part.isNotEmpty() && part.length <= 3 && part.all { it.isDigit() } &&
+                (part.toIntOrNull() ?: -1) in 0..255
+        }
+    }
+
     private suspend fun tryConnect(url: String, token: Long): Boolean {
         _connectionState.value = "Connecting..."
         mainViewModel.addLog("Attempting connection: $url", com.omni.sync.ui.screen.LogType.INFO)
@@ -682,6 +792,10 @@ class SignalRClient(
             }
         }, String::class.java)
         
+        hubConnection?.on("UpdateExternalIp", { externalIp: String, updatedAtUnix: Long ->
+            handleExternalIpUpdate(externalIp, updatedAtUnix)
+        }, String::class.java, java.lang.Long::class.java)
+
         hubConnection?.on("ClipboardUpdated", { newText: String ->
             try {
                 isUpdatingClipboardInternally = true
@@ -938,6 +1052,37 @@ class SignalRClient(
                 Log.e("SignalRClient", "Error parsing AI sessions", e)
             }
         }, List::class.java)
+
+        hubConnection?.on("ReceiveAgentSessions", { sessionsJson: String ->
+            try {
+                val type = object : TypeToken<List<AgentSessionSummaryData>>() {}.type
+                val sessions: List<AgentSessionSummaryData> = gson.fromJson(sessionsJson, type)
+                Log.d("SignalRClient", "ReceiveAgentSessions: ${sessions.size} transcripts")
+                _agentSessions.value = sessions
+            } catch (e: Exception) {
+                Log.e("SignalRClient", "Error parsing agent sessions", e)
+            }
+        }, String::class.java)
+
+        hubConnection?.on("ReceiveAgentSessionDetail", { detailJson: String ->
+            try {
+                val detail = gson.fromJson(detailJson, AgentSessionDetailData::class.java)
+                Log.d("SignalRClient", "ReceiveAgentSessionDetail: ${detail.title} events=${detail.events.size}")
+                _agentSessionDetail.value = detail
+            } catch (e: Exception) {
+                Log.e("SignalRClient", "Error parsing agent session detail", e)
+            }
+        }, String::class.java)
+
+        hubConnection?.on("ReceiveAgentSendStatus", { statusJson: String ->
+            try {
+                val status = gson.fromJson(statusJson, AgentSendStatusData::class.java)
+                Log.d("SignalRClient", "ReceiveAgentSendStatus: ${status.id.take(8)} -> ${status.state}")
+                agentSendStatus.tryEmit(status)
+            } catch (e: Exception) {
+                Log.e("SignalRClient", "Error parsing agent send status", e)
+            }
+        }, String::class.java)
 
         hubConnection?.on("ReceiveAiHistory", { historyJson: String, pid: Int ->
             try {
@@ -1301,6 +1446,25 @@ class SignalRClient(
         }
     }
 
+    fun requestAgentSessions() {
+        if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
+            hubConnection?.send("RequestAgentSessions")
+        }
+    }
+
+    fun requestAgentSessionDetail(id: String, limit: Int = 120, before: Int = 0, clear: Boolean = true) {
+        if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
+            if (clear) _agentSessionDetail.value = null
+            hubConnection?.send("RequestAgentSessionDetail", id, limit, before)
+        }
+    }
+
+    fun sendAgentMessage(id: String, message: String) {
+        if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
+            hubConnection?.send("SendAgentMessage", id, message)
+        }
+    }
+
     fun switchAiSession(pid: Int) {
         if (pid == REMOTE_TERMINAL_PID) {
             _isStartingSession = false
@@ -1463,6 +1627,58 @@ class SignalRClient(
                 } as? Single<List<com.omni.sync.data.model.Macro>>
         }
         return null
+    }
+
+    fun refreshReminders() {
+        val connection = hubConnection
+        if (connection?.connectionState != com.microsoft.signalr.HubConnectionState.CONNECTED) {
+            return
+        }
+
+        connection.invoke(List::class.java, "GetReminders")
+            ?.map { rawList ->
+                val jsonElement = gson.toJsonTree(rawList)
+                val listType = object : TypeToken<List<ReminderData>>() {}.type
+                gson.fromJson<List<ReminderData>>(jsonElement, listType)
+            }
+            ?.subscribe({ loaded ->
+                _reminders.value = loaded
+            }, { error ->
+                Log.e("SignalRClient", "Failed to refresh reminders", error)
+            })
+    }
+
+    fun completeReminder(id: String) {
+        sendReminderAction("CompleteReminder", id)
+    }
+
+    fun dismissReminder(id: String) {
+        sendReminderAction("DismissReminder", id)
+    }
+
+    fun snoozeReminder(id: String, minutes: Int) {
+        sendReminderAction("SnoozeReminder", id, minutes)
+    }
+
+    fun postponeReminder(id: String, dueAtIso: String) {
+        sendReminderAction("PostponeReminder", id, dueAtIso)
+    }
+
+    private fun sendReminderAction(method: String, vararg arguments: Any) {
+        val connection = hubConnection
+        if (connection?.connectionState != com.microsoft.signalr.HubConnectionState.CONNECTED) {
+            return
+        }
+
+        try {
+            connection.send(method, *arguments)
+            coroutineScope.launch {
+                delay(350)
+                refreshReminders()
+            }
+        } catch (error: Exception) {
+            Log.e("SignalRClient", "Reminder action $method failed", error)
+        }
     }
 
     fun saveMacro(macro: com.omni.sync.data.model.Macro) {
@@ -1768,6 +1984,12 @@ class SignalRClient(
         }
     }
 
+    fun cycleFocusedWindowMonitor() {
+        if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
+            hubConnection?.send("CycleFocusedWindowMonitor")
+        }
+    }
+
     fun sendBrowserCommand(command: String, url: String, newTab: Boolean) {
         if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
             hubConnection?.send("SendBrowserCommand", command, url, newTab)
@@ -1924,6 +2146,9 @@ class SignalRClient(
         hubConnection?.invoke(Boolean::class.java, "Authenticate", apiKey)
             ?.subscribe({ success ->
                 Log.d("SignalR", "Auth success: $success")
+                if (success) {
+                    refreshReminders()
+                }
             }, { error ->
                 Log.e("SignalR", "Auth failed", error)
             })
@@ -2089,5 +2314,6 @@ class SignalRClient(
         hub.remove("ReceiveAiDialog")
         hub.remove("ReceivePayload")
         hub.remove("AndroidUpdateRequested")
+        hub.remove("UpdateExternalIp")
     }
 }

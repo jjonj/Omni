@@ -19,8 +19,15 @@ object AlarmScheduler {
     // Snooze Alarm 1: 1001
     // Snooze Alarm 2: 1002
 
-    fun scheduleAlarm(context: Context, alarmId: Int, data: AlarmData, config: GradualConfig) {
+    fun scheduleAlarm(
+        context: Context,
+        alarmId: Int,
+        data: AlarmData,
+        config: GradualConfig,
+        forceNextDay: Boolean = false
+    ) {
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        val triggerData = data.resolvedForNextTrigger()
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             if (!alarmManager.canScheduleExactAlarms()) {
@@ -32,10 +39,10 @@ object AlarmScheduler {
         val intent = Intent(context, AlarmReceiver::class.java).apply {
             action = "com.omni.sync.ALARM_TRIGGER"
             putExtra("ALARM_ID", alarmId)
-            putExtra("SOUND_ID", data.soundId)
-            putExtra("HOUR", data.hour)
-            putExtra("MINUTE", data.minute)
-            putExtra("IS_AM", data.isAM)
+            putExtra("SOUND_ID", triggerData.soundId)
+            putExtra("HOUR", triggerData.hour)
+            putExtra("MINUTE", triggerData.minute)
+            putExtra("IS_AM", triggerData.isAM)
             
             // Initial Config
             putExtra("CURRENT_VOLUME", config.initialVolume)
@@ -45,12 +52,12 @@ object AlarmScheduler {
             putExtra("SNOOZE_DURATION", config.snoozeDuration)
             putExtra("REPEAT_DAILY", data.repeatDaily)
             putExtra("CURRENT_REPETITION", 0)
-            putExtra("MACRO_ON_TRIGGER", data.macroOnTrigger)
-            putExtra("MACRO_ON_DISMISS", data.macroOnDismiss)
-            putExtra("QUICK_ACTION_ON_TRIGGER_ID", data.quickActionOnTriggerId)
-            putExtra("QUICK_ACTION_ON_DISMISS_ID", data.quickActionOnDismissId)
-            putExtra("DISMISS_ACTION_DELAY_SECONDS", data.dismissActionDelaySeconds)
-            putExtra("DISMISS_TEXT", data.dismissText)
+            putExtra("MACRO_ON_TRIGGER", triggerData.macroOnTrigger)
+            putExtra("MACRO_ON_DISMISS", triggerData.macroOnDismiss)
+            putExtra("QUICK_ACTION_ON_TRIGGER_ID", triggerData.quickActionOnTriggerId)
+            putExtra("QUICK_ACTION_ON_DISMISS_ID", triggerData.quickActionOnDismissId)
+            putExtra("DISMISS_ACTION_DELAY_SECONDS", triggerData.dismissActionDelaySeconds)
+            putExtra("DISMISS_TEXT", triggerData.dismissText)
         }
 
         val pendingIntent = PendingIntent.getBroadcast(
@@ -61,27 +68,27 @@ object AlarmScheduler {
         )
 
         // Convert 12h (1-12) to 24h (0-23)
-        val hour24 = if (data.isAM) {
-            if (data.hour == 12) 0 else data.hour
+        val hour24 = if (triggerData.isAM) {
+            if (triggerData.hour == 12) 0 else triggerData.hour
         } else {
-            if (data.hour == 12) 12 else data.hour + 12
+            if (triggerData.hour == 12) 12 else triggerData.hour + 12
         }
 
         val calendar = Calendar.getInstance().apply {
-            if (data.scheduledDate != null) {
-                timeInMillis = data.scheduledDate!!
+            if (triggerData.scheduledDate != null) {
+                timeInMillis = triggerData.scheduledDate!!
                 // Ensure we use the specified hour/minute even if the timestamp had different ones
                 set(Calendar.HOUR_OF_DAY, hour24)
-                set(Calendar.MINUTE, data.minute)
+                set(Calendar.MINUTE, triggerData.minute)
                 set(Calendar.SECOND, 0)
                 set(Calendar.MILLISECOND, 0)
             } else {
                 set(Calendar.HOUR_OF_DAY, hour24)
-                set(Calendar.MINUTE, data.minute)
+                set(Calendar.MINUTE, triggerData.minute)
                 set(Calendar.SECOND, 0)
                 set(Calendar.MILLISECOND, 0)
                 
-                if (timeInMillis <= System.currentTimeMillis()) {
+                if (forceNextDay || timeInMillis <= System.currentTimeMillis()) {
                     add(Calendar.DAY_OF_YEAR, 1)
                 }
             }

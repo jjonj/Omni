@@ -39,10 +39,14 @@ import com.omni.sync.utils.AlarmScheduler
 import com.omni.sync.utils.AlarmStore
 import com.omni.sync.viewmodel.MainViewModel
 import com.omni.sync.data.repository.SignalRClient
+import com.omni.sync.data.repository.ReminderData
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
+import java.time.OffsetDateTime
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import java.util.*
 
 data class AlarmData(
@@ -61,8 +65,34 @@ data class AlarmData(
     var quickActionOnDismissId: String? = null,
     var dismissActionDelaySeconds: Int = 0,
     var scheduledDate: Long? = null,
-    var dismissText: String? = null
-)
+    var dismissText: String? = null,
+    var applyChangesToNextTriggerOnly: Boolean = false,
+    var nextTriggerOverride: AlarmData? = null
+) {
+    /** Returns the one-off settings when a daily alarm has a pending next-trigger change. */
+    fun resolvedForNextTrigger(): AlarmData {
+        val override = nextTriggerOverride ?: return this
+        return override.copy(
+            id = id,
+            enabled = enabled,
+            repeatDaily = repeatDaily,
+            applyChangesToNextTriggerOnly = applyChangesToNextTriggerOnly,
+            nextTriggerOverride = nextTriggerOverride
+        )
+    }
+
+    fun withNextTriggerOverride(changed: AlarmData): AlarmData = copy(
+        enabled = changed.enabled,
+        applyChangesToNextTriggerOnly = true,
+        nextTriggerOverride = changed.copy(
+            id = id,
+            enabled = true,
+            repeatDaily = false,
+            applyChangesToNextTriggerOnly = false,
+            nextTriggerOverride = null
+        )
+    )
+}
 
 data class GradualConfig(
     var initialVolume: Int = 5,
@@ -85,6 +115,24 @@ fun AlarmScreen(
     val gson = remember { com.google.gson.Gson() }
 
     var alarms by remember { mutableStateOf(AlarmStore.load(prefs, gson)) }
+    val omniReminders by signalRClient.reminders.collectAsState()
+    val activeOmniReminders = remember(omniReminders) {
+        omniReminders.filterNot { it.isTerminal }
+    }
+    val omniTimeSensitive = remember(activeOmniReminders) {
+        activeOmniReminders.filter { it.kind != 0 }.sortedBy { it.dueAt }
+    }
+    val omniTasks = remember(activeOmniReminders) {
+        activeOmniReminders.filter { it.kind == 0 }.sortedBy { it.dueAt }
+    }
+
+    LaunchedEffect(signalRClient) {
+        while (true) {
+            signalRClient.refreshReminders()
+            delay(30_000)
+        }
+    }
+
     var config by remember { 
         val json = prefs.getString("config", null)
         mutableStateOf(if (json != null) gson.fromJson(json, GradualConfig::class.java) else GradualConfig())
@@ -127,14 +175,46 @@ fun AlarmScreen(
     }
 
     fun updateSchedule(id: Int, data: AlarmData) {
-        val updatedAlarms = alarms.map { if (it.id == id) data.copy(id = id) else it }
+        val existing = alarms.firstOrNull { it.id == id }
+        val updatedData = if (
+            existing?.repeatDaily == true &&
+            data.repeatDaily &&
+            data.applyChangesToNextTriggerOnly
+        ) {
+            existing.withNextTriggerOverride(data)
+        } else {
+            data.copy(id = id, nextTriggerOverride = null)
+        }
+        val updatedAlarms = alarms.map { if (it.id == id) updatedData else it }
         alarms = updatedAlarms
         saveAlarms(updatedAlarms)
-        if (data.enabled) {
-            AlarmScheduler.scheduleAlarm(context, id, data.copy(id = id), config)
+        if (updatedData.enabled) {
+            AlarmScheduler.scheduleAlarm(context, id, updatedData, config)
             mainViewModel.startSleep()
         } else {
             AlarmScheduler.cancelAlarm(context, id)
+        }
+    }
+
+    fun updateRepeatChangeScope(id: Int, nextTriggerOnly: Boolean) {
+        val updated = alarms.map { alarm ->
+            if (alarm.id == id) alarm.copy(applyChangesToNextTriggerOnly = nextTriggerOnly) else alarm
+        }
+        alarms = updated
+        saveAlarms(updated)
+    }
+
+    fun dismissUpcomingAlarm(alarm: AlarmData) {
+        AlarmScheduler.cancelAlarm(context, alarm.id)
+        val updated = if (alarm.repeatDaily) {
+            alarm.copy(nextTriggerOverride = null)
+        } else {
+            alarm.copy(enabled = false, nextTriggerOverride = null)
+        }
+        alarms = alarms.map { if (it.id == alarm.id) updated else it }
+        saveAlarms(alarms)
+        if (updated.enabled) {
+            AlarmScheduler.scheduleAlarm(context, updated.id, updated, config, forceNextDay = true)
         }
     }
 
@@ -269,12 +349,15 @@ fun AlarmScreen(
             ) {
                 Spacer(Modifier.height(if (isRinging || isSnoozing) 0.dp else 16.dp))
                 
-                alarms.forEachIndexed { index, alarm ->
+                alarms.forEachIndexed { index, storedAlarm ->
+                    val alarm = storedAlarm.resolvedForNextTrigger()
                     key(alarm.id) {
                         AlarmCard(
                             alarmNumber = index + 1,
                             alarm = alarm,
                             onAlarmChange = { updateSchedule(alarm.id, it) },
+                            onRepeatChangeScopeChange = { updateRepeatChangeScope(alarm.id, it) },
+                            onDismissUpcoming = { dismissUpcomingAlarm(storedAlarm) },
                             onDelete = {
                                 AlarmScheduler.cancelAlarm(context, alarm.id)
                                 val updatedAlarms = alarms.filterNot { it.id == alarm.id }
@@ -292,6 +375,31 @@ fun AlarmScreen(
                                 mainViewModel.configManager.getDefaultNotificationActions()
                             }
                         )
+                    }
+                }
+
+                if (omniTimeSensitive.isNotEmpty()) {
+                    Text(
+                        "Omni reminders",
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                    omniTimeSensitive.forEach { reminder ->
+                        key("omni-reminder-${reminder.id}") {
+                            OmniReminderCard(
+                                reminder = reminder,
+                                onDone = { signalRClient.completeReminder(reminder.id) },
+                                onDismiss = { signalRClient.dismissReminder(reminder.id) },
+                                onSnooze = { signalRClient.snoozeReminder(reminder.id, 10) },
+                                onPostpone = {
+                                    val tomorrow = OffsetDateTime.now()
+                                        .plusDays(1)
+                                        .withSecond(0)
+                                        .withNano(0)
+                                        .format(DateTimeFormatter.ISO_OFFSET_DATE_TIME)
+                                    signalRClient.postponeReminder(reminder.id, tomorrow)
+                                }
+                            )
+                        }
                     }
                 }
 
@@ -328,6 +436,32 @@ fun AlarmScreen(
                         AdjustableSettingRow("Auto-Snooze: ${config.snoozeDuration}m", config.snoozeDuration, { config = config.copy(snoozeDuration = it); saveAlarms() }, 1, 60)
                         AdjustableSettingRow("Volume Increase: +${config.volumeIncrement}%", config.volumeIncrement, { config = config.copy(volumeIncrement = it); saveAlarms() }, 1, 20)
                         AdjustableSettingRow("Max Repetitions: ${config.maxRepetitions}", config.maxRepetitions, { config = config.copy(maxRepetitions = it); saveAlarms() }, 1, 20)
+                    }
+                }
+
+                if (omniTasks.isNotEmpty()) {
+                    HorizontalDivider()
+                    Text(
+                        "Tasks",
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                    omniTasks.forEach { reminder ->
+                        key("omni-task-${reminder.id}") {
+                            OmniReminderCard(
+                                reminder = reminder,
+                                onDone = { signalRClient.completeReminder(reminder.id) },
+                                onDismiss = { signalRClient.dismissReminder(reminder.id) },
+                                onSnooze = { signalRClient.snoozeReminder(reminder.id, 10) },
+                                onPostpone = {
+                                    val tomorrow = OffsetDateTime.now()
+                                        .plusDays(1)
+                                        .withSecond(0)
+                                        .withNano(0)
+                                        .format(DateTimeFormatter.ISO_OFFSET_DATE_TIME)
+                                    signalRClient.postponeReminder(reminder.id, tomorrow)
+                                }
+                            )
+                        }
                     }
                 }
 
@@ -432,7 +566,7 @@ fun AlarmScreen(
                 }
                 val updated = currentAlarm.copy(
                     scheduledDate = newCal.timeInMillis,
-                    repeatDaily = false, // Auto-disable repeat if specific date set
+                    repeatDaily = currentAlarm.repeatDaily && currentAlarm.applyChangesToNextTriggerOnly,
                     enabled = true
                 )
                 updateSchedule(alarmId, updated)
@@ -500,6 +634,8 @@ fun AlarmCard(
     alarmNumber: Int,
     alarm: AlarmData,
     onAlarmChange: (AlarmData) -> Unit,
+    onRepeatChangeScopeChange: (Boolean) -> Unit,
+    onDismissUpcoming: () -> Unit,
     onDelete: () -> Unit,
     availableSounds: List<Pair<String, String>>,
     timeFormat: SimpleDateFormat,
@@ -525,12 +661,12 @@ fun AlarmCard(
                     )
                     Text("Alarm $alarmNumber", style = MaterialTheme.typography.titleLarge)
                 }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = onDelete) {
-                        Icon(Icons.Default.Delete, "Delete Alarm")
-                    }
-                    Switch(checked = alarm.enabled, onCheckedChange = { onAlarmChange(alarm.copy(enabled = it)) })
-                }
+                  Row(verticalAlignment = Alignment.CenterVertically) {
+                      IconButton(onClick = onDelete) {
+                          Icon(Icons.Default.Delete, "Delete Alarm")
+                      }
+                      Switch(checked = alarm.enabled, onCheckedChange = { onAlarmChange(alarm.copy(enabled = it)) })
+                  }
             }
             
             val showContent = !hideOptionsWhenDisabled || alarm.enabled
@@ -625,21 +761,53 @@ fun AlarmCard(
                         Switch(checked = alarm.useGradual, onCheckedChange = { onAlarmChange(alarm.copy(useGradual = it)) })
                     }
                     
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text("Repeat Daily")
+                      Row(
+                          modifier = Modifier.fillMaxWidth(),
+                          horizontalArrangement = Arrangement.SpaceBetween,
+                          verticalAlignment = Alignment.CenterVertically
+                      ) {
+                          Text("Repeat Daily")
                         Switch(
                             checked = alarm.repeatDaily,
                             onCheckedChange = {
                                 onAlarmChange(alarm.copy(repeatDaily = it, scheduledDate = if (it) null else alarm.scheduledDate))
                             }
-                        )
-                    }
-                    
-                    OutlinedButton(onClick = onShowSoundPicker, modifier = Modifier.fillMaxWidth()) {
+                          )
+                      }
+
+                      if (alarm.repeatDaily) {
+                          Row(
+                              modifier = Modifier.fillMaxWidth(),
+                              horizontalArrangement = Arrangement.SpaceBetween,
+                              verticalAlignment = Alignment.CenterVertically
+                          ) {
+                              Column(modifier = Modifier.weight(1f)) {
+                                  Text("Change next trigger only")
+                                  Text(
+                                      if (alarm.applyChangesToNextTriggerOnly) "The next occurrence only" else "All daily occurrences",
+                                      style = MaterialTheme.typography.bodySmall,
+                                      color = MaterialTheme.colorScheme.onSurfaceVariant
+                                  )
+                              }
+                              Switch(
+                                  checked = alarm.applyChangesToNextTriggerOnly,
+                                  onCheckedChange = onRepeatChangeScopeChange
+                              )
+                          }
+                      }
+
+                      if (alarm.enabled) {
+                          OutlinedButton(
+                              onClick = onDismissUpcoming,
+                              modifier = Modifier.fillMaxWidth()
+                          ) {
+                              Icon(Icons.Default.AlarmOff, contentDescription = null)
+                              Spacer(Modifier.width(8.dp))
+                              Text(if (alarm.repeatDaily) "Dismiss Next Alarm" else "Dismiss Alarm")
+                          }
+                      }
+
+                      OutlinedButton(onClick = onShowSoundPicker, modifier = Modifier.fillMaxWidth()) {
                         Text("Sound: ${availableSounds.find { it.first == alarm.soundId }?.second ?: "Select"}")
                     }
 
@@ -879,6 +1047,97 @@ private fun AutomationActionPicker(
             TextButton(onClick = { showDialog = false }) { Text("Cancel") }
         }
     )
+}
+
+@Composable
+private fun OmniReminderCard(
+    reminder: ReminderData,
+    onDone: () -> Unit,
+    onDismiss: () -> Unit,
+    onSnooze: () -> Unit,
+    onPostpone: () -> Unit
+) {
+    val kindLabel = when (reminder.kind) {
+        2 -> "Alarm"
+        1 -> "Reminder"
+        else -> "Task"
+    }
+    val stateLabel = when (reminder.state) {
+        1 -> "Due"
+        2 -> "Postponed"
+        else -> null
+    }
+
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(reminder.title, style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        buildString {
+                            append(kindLabel)
+                            append(" · ")
+                            append(formatReminderDue(reminder.nextFireAt ?: reminder.dueAt))
+                            stateLabel?.let {
+                                append(" · ")
+                                append(it)
+                            }
+                        },
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+
+                if (reminder.source == 1) {
+                    Text(
+                        "Google",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                if (reminder.kind == 0) {
+                    Button(onClick = onDone, modifier = Modifier.weight(1f)) {
+                        Text("Done")
+                    }
+                    OutlinedButton(onClick = onPostpone, modifier = Modifier.weight(1f)) {
+                        Text("Tomorrow")
+                    }
+                    TextButton(onClick = onDismiss) {
+                        Text("Remove")
+                    }
+                } else {
+                    Button(onClick = onDismiss, modifier = Modifier.weight(1f)) {
+                        Text("Dismiss")
+                    }
+                    OutlinedButton(onClick = onSnooze, modifier = Modifier.weight(1f)) {
+                        Text("Snooze 10m")
+                    }
+                }
+            }
+        }
+    }
+}
+
+private fun formatReminderDue(value: String): String {
+    return runCatching {
+        OffsetDateTime.parse(value)
+            .atZoneSameInstant(ZoneId.systemDefault())
+            .format(DateTimeFormatter.ofPattern("EEE d MMM HH:mm"))
+    }.getOrElse {
+        value
+    }
 }
 
 @Composable

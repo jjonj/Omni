@@ -42,6 +42,9 @@
       const fitAddon = new FitAddon.FitAddon();
       terminal.loadAddon(fitAddon);
       terminal.open(document.getElementById('terminal'));
+      // Text is composed locally in the Android input field; terminal replies still use onData.
+      terminal.textarea.readOnly = true;
+      terminal.textarea.setAttribute('inputmode', 'none');
       let lastColumns = 0;
       let lastRows = 0;
       const fit = () => {
@@ -55,7 +58,11 @@
         const host = document.getElementById('terminal');
         log(`fit cols=${terminal.cols} rows=${terminal.rows} terminal=${terminal.element.clientWidth}x${terminal.element.clientHeight} host=${host.clientWidth}x${host.clientHeight} body=${document.body.clientWidth}x${document.body.clientHeight} viewport=${window.innerWidth}x${window.innerHeight}`);
       };
-      new ResizeObserver(fit).observe(document.getElementById('terminal'));
+      let fitTimer;
+      new ResizeObserver(() => {
+        clearTimeout(fitTimer);
+        fitTimer = setTimeout(fit, 100);
+      }).observe(document.getElementById('terminal'));
       terminal.onData((data) => {
         const bytes = new TextEncoder().encode(data);
         const binary = Array.from(bytes, byte => String.fromCharCode(byte)).join('');
@@ -79,7 +86,6 @@
           for (let index = 0; index < binary.length; index++) bytes[index] = binary.charCodeAt(index);
           log(`write requested base64Chars=${base64.length} bytes=${bytes.length}`);
           terminal.write(bytes);
-          terminal.refresh(0, terminal.rows - 1);
         }
       };
       if (isPreview) {

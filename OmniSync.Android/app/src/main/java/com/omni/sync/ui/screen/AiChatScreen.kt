@@ -1923,6 +1923,84 @@ fun StandardView(
     val floatHeight = if (imeHeight > 0.dp) imeHeight - keyboardOverlapOffset else 0.dp
     val currentBottomPadding = maxOf(floatHeight, bottomBarHeight)
 
+    val remoteSession by signalRClient.remoteTerminalClient.session.collectAsState()
+    val remoteSessionId = remoteSession?.sessionId
+    if (selectedPid == -2 && remoteSessionId != null) {
+        var showActions by remember { mutableStateOf(false) }
+        val terminalConnection by signalRClient.remoteTerminalClient.connectionState.collectAsState()
+        val terminalError by signalRClient.remoteTerminalClient.error.collectAsState()
+        val canSend = terminalConnection == "Connected"
+        Column(
+            Modifier.fillMaxSize()
+                .padding(top = padding.calculateTopPadding(), bottom = maxOf(imeHeight, bottomBarHeight))
+        ) {
+            if (!canSend || terminalError != null) {
+                Text(
+                    terminalError ?: "Terminal disconnected — reconnecting…",
+                    modifier = Modifier.fillMaxWidth().padding(8.dp),
+                    color = MaterialTheme.colorScheme.error
+                )
+            }
+            key(remoteSessionId) {
+                LiveTerminalPane(signalRClient, Modifier.weight(1f).fillMaxWidth())
+            }
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                OutlinedTextField(
+                    value = textFieldValue,
+                    onValueChange = onTextFieldValueChange,
+                    modifier = Modifier.weight(1f),
+                    placeholder = { Text("Type here, then send to terminal") },
+                    maxLines = 3
+                )
+                IconButton(
+                    enabled = canSend,
+                    onClick = {
+                        if (textFieldValue.text.isEmpty()) {
+                            signalRClient.sendAiSpecialKey("enter", selectedPid)
+                        } else {
+                            signalRClient.sendRemoteTerminalInput(textFieldValue.text + "\r")
+                            onTextFieldValueChange(TextFieldValue(""))
+                        }
+                    }
+                ) {
+                    Icon(
+                        if (textFieldValue.text.isEmpty()) Icons.AutoMirrored.Filled.KeyboardReturn else Icons.AutoMirrored.Filled.Send,
+                        contentDescription = if (textFieldValue.text.isEmpty()) "Send Enter" else "Send to terminal"
+                    )
+                }
+            }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                listOf("Esc" to "escape", "Tab" to "tab", "↑" to "up", "↓" to "down", "Ctrl+C" to "ctrl+c").forEach { (label, key) ->
+                    TextButton(
+                        modifier = Modifier.weight(1f),
+                        contentPadding = PaddingValues(0.dp),
+                        enabled = canSend,
+                        onClick = { signalRClient.sendAiSpecialKey(key, selectedPid) }
+                    ) {
+                        Text(label)
+                    }
+                }
+                TextButton(
+                    modifier = Modifier.weight(1f),
+                    contentPadding = PaddingValues(0.dp),
+                    onClick = { showActions = !showActions }
+                ) { Text(if (showActions) "Less" else "More") }
+            }
+            if (showActions) {
+                QuickActionPanel(
+                    signalRClient, coroutineScope, selectedPid, canSend, listState,
+                    userMessageItemIndices, filteredMessages.size, textFieldValue,
+                    onTextFieldValueChange, onVoiceTrigger, onMessageSent,
+                    onScrollToBottom = { onScrollToBottom(false) }
+                )
+            }
+        }
+        return
+    }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -2085,6 +2163,17 @@ fun StandardView(
             }
         }
     }
+}
+
+@Composable
+private fun LiveTerminalPane(signalRClient: SignalRClient, modifier: Modifier) {
+    val output by signalRClient.remoteTerminalClient.output.collectAsState()
+    XtermTerminalView(
+        output = output,
+        onInput = signalRClient::sendRemoteTerminalInput,
+        onResize = signalRClient::resizeRemoteTerminal,
+        modifier = modifier
+    )
 }
 
 @Composable

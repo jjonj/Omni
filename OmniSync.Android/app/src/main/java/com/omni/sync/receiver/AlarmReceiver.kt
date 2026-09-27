@@ -9,6 +9,8 @@ import com.omni.sync.service.AlarmService
 import com.omni.sync.utils.AlarmScheduler
 import com.omni.sync.ui.screen.AlarmData
 import com.omni.sync.ui.screen.GradualConfig
+import com.omni.sync.utils.AlarmStore
+import com.google.gson.Gson
 import java.util.Calendar
 
 class AlarmReceiver : BroadcastReceiver() {
@@ -22,31 +24,25 @@ class AlarmReceiver : BroadcastReceiver() {
             val alarmId = intent.getIntExtra("ALARM_ID", 0)
 
             if (repeatDaily && !isSnooze) {
-                val hour = intent.getIntExtra("HOUR", 0)
-                val minute = intent.getIntExtra("MINUTE", 0)
-                val isAM = intent.getBooleanExtra("IS_AM", true)
-                val soundId = intent.getStringExtra("SOUND_ID") ?: "gentle"
-                val macroOnTrigger = intent.getStringExtra("MACRO_ON_TRIGGER")
-                val macroOnDismiss = intent.getStringExtra("MACRO_ON_DISMISS")
-                val quickActionOnTriggerId = intent.getStringExtra("QUICK_ACTION_ON_TRIGGER_ID")
-                val quickActionOnDismissId = intent.getStringExtra("QUICK_ACTION_ON_DISMISS_ID")
-                val dismissActionDelaySeconds = intent.getIntExtra("DISMISS_ACTION_DELAY_SECONDS", 0)
-                val dismissText = intent.getStringExtra("DISMISS_TEXT")
-                
-                val alarmData = AlarmData(
-                    enabled = true, 
-                    hour = hour, 
-                    minute = minute, 
-                    isAM = isAM, 
-                    soundId = soundId, 
-                    repeatDaily = true,
-                    macroOnTrigger = macroOnTrigger,
-                    macroOnDismiss = macroOnDismiss,
-                    quickActionOnTriggerId = quickActionOnTriggerId,
-                    quickActionOnDismissId = quickActionOnDismissId,
-                    dismissActionDelaySeconds = dismissActionDelaySeconds,
-                    dismissText = dismissText
+                val prefs = context.getSharedPreferences("alarm_prefs", Context.MODE_PRIVATE)
+                val gson = Gson()
+                val savedAlarm = AlarmStore.load(prefs, gson).firstOrNull { it.id == alarmId }
+                // A one-off override must never become tomorrow's recurring alarm.
+                val alarmData = savedAlarm?.copy(nextTriggerOverride = null) ?: AlarmData(
+                    id = alarmId,
+                    enabled = true,
+                    hour = intent.getIntExtra("HOUR", 0),
+                    minute = intent.getIntExtra("MINUTE", 0),
+                    isAM = intent.getBooleanExtra("IS_AM", true),
+                    soundId = intent.getStringExtra("SOUND_ID") ?: "gentle",
+                    repeatDaily = true
                 )
+                if (savedAlarm?.nextTriggerOverride != null) {
+                    val updated = AlarmStore.load(prefs, gson).map { alarm ->
+                        if (alarm.id == alarmId) alarm.copy(nextTriggerOverride = null) else alarm
+                    }
+                    AlarmStore.save(prefs, gson, updated)
+                }
                 val config = GradualConfig(
                     initialVolume = intent.getIntExtra("CURRENT_VOLUME", 5),
                     alarmDuration = intent.getIntExtra("ALARM_DURATION", 3),

@@ -75,6 +75,11 @@ fun SettingsScreen(
     var wanIp by remember { mutableStateOf(appConfig.wanIp) }
     var apiKey by remember { mutableStateOf(appConfig.apiKey) }
 
+    // The Hub pushes its public address, so pick that up while this screen is open.
+    LaunchedEffect(appConfig.wanIp) {
+        wanIp = appConfig.wanIp
+    }
+
     val initialActions = appConfig.notificationActions.ifEmpty {
         mainViewModel.configManager.getDefaultNotificationActions()
     }
@@ -232,7 +237,8 @@ fun SettingsScreen(
             OutlinedTextField(
                 value = wanIp,
                 onValueChange = { wanIp = it },
-                label = { Text("WAN IP (Public)") },
+                label = { Text("WAN IP (Public, auto)") },
+                supportingText = { Text("Refreshed by the Hub every few hours") },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth()
             )

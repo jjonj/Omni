@@ -35,6 +35,8 @@ enum class AppScreen {
     EDITOR,
     SETTINGS,
     AI_CHAT,
+    AGENTS,
+    AGENT_DETAIL,
     DOWNLOADED_VIDEOS,
     ALARM,
     IMAGE_VIEWER,
@@ -490,6 +492,14 @@ fun setConnected(connected: Boolean) {
         
         _currentScreen.value = screen
         _canGoBack.value = true // We can always try to go back now
+    }
+
+    private val _selectedAgentSessionId = MutableStateFlow<String?>(null)
+    val selectedAgentSessionId: StateFlow<String?> = _selectedAgentSessionId
+
+    fun openAgentSession(id: String) {
+        _selectedAgentSessionId.value = id
+        navigateTo(AppScreen.AGENT_DETAIL)
     }
 
     fun handleBackPress(exitApp: () -> Unit) {

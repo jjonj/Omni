@@ -46,9 +46,12 @@ import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.painter.Painter
+import androidx.compose.ui.graphics.painter.BitmapPainter
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.core.graphics.drawable.toBitmap
 import androidx.compose.foundation.Image
-import coil.compose.rememberAsyncImagePainter
-import coil.compose.AsyncImagePainter
+import coil.imageLoader
+import coil.request.SuccessResult
 import com.omni.sync.utils.WindowsKeyCodes.VK_A
 import com.omni.sync.utils.WindowsKeyCodes.VK_BACK
 import com.omni.sync.utils.WindowsKeyCodes.VK_CONTROL
@@ -75,6 +78,11 @@ import android.app.Activity
 import android.content.Intent
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.isActive
+import androidx.lifecycle.Lifecycle
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
+import android.os.SystemClock
 
 import android.view.HapticFeedbackConstants
 import android.media.ToneGenerator
@@ -480,39 +488,47 @@ fun TrackpadArea(
     val coroutineScope = rememberCoroutineScope()
     var lastTapTime by remember { mutableLongStateOf(0L) }
     var isDraggingLeftClick by remember { mutableStateOf(false) }
-    var screenshotTick by remember { mutableIntStateOf(0) }
-    var currentFrame by remember { mutableStateOf<Painter?>(null) }
+    val activeBaseUrl by mainViewModel.activeBaseUrl.collectAsState()
+    val baseUrl = activeBaseUrl.ifBlank { mainViewModel.getBaseUrl() }.trimEnd('/')
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    var currentFrame by remember(isMonitorVisible, baseUrl) { mutableStateOf<Painter?>(null) }
+    var streamError by remember(isMonitorVisible, baseUrl) { mutableStateOf(false) }
 
-    LaunchedEffect(isMonitorVisible, appConfig.streamFps) {
-        if (isMonitorVisible) {
-            val fps = if (appConfig.streamFps > 0) appConfig.streamFps else 10
-            val interval = (1000 / fps).toLong()
-            while (true) {
-                delay(interval)
-                screenshotTick++
+    LaunchedEffect(isMonitorVisible, baseUrl, appConfig.streamFps, appConfig.streamResolution, lifecycleOwner) {
+        if (!isMonitorVisible) return@LaunchedEffect
+        val fps = appConfig.streamFps.takeIf { it > 0 } ?: 10
+        val interval = (1000L / fps).coerceAtLeast(1L)
+        val resolution = appConfig.streamResolution.coerceIn(1, 100)
+        lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            Log.d("TrackpadArea", "Screen stream started: $baseUrl, fps=$fps, resolution=$resolution")
+            try {
+                while (isActive) {
+                    val startedAt = SystemClock.elapsedRealtime()
+                    val request = ImageRequest.Builder(context)
+                        .data("$baseUrl/api/screenshot?t=${System.nanoTime()}&scale=${resolution / 100f}&quality=$resolution")
+                        .size(coil.size.Size.ORIGINAL)
+                        .diskCachePolicy(coil.request.CachePolicy.DISABLED)
+                        .memoryCachePolicy(coil.request.CachePolicy.DISABLED)
+                        .build()
+                    // Finish each request before starting another, and keep the last complete frame visible.
+                    val result = context.imageLoader.execute(request)
+                    if (result is SuccessResult) {
+                        currentFrame = BitmapPainter(result.drawable.toBitmap().asImageBitmap())
+                        streamError = false
+                    } else {
+                        if (!streamError) {
+                            Log.e("TrackpadArea", "Screen stream capture failed", (result as coil.request.ErrorResult).throwable)
+                        }
+                        streamError = true
+                    }
+                    delay(if (streamError) 1000L else (interval - (SystemClock.elapsedRealtime() - startedAt)).coerceAtLeast(1L))
+                }
+            } finally {
+                Log.d("TrackpadArea", "Screen stream stopped")
             }
         }
     }
-
-    val baseUrl = mainViewModel.getBaseUrl()
-    val scaleParam = appConfig.streamResolution / 100f
-    val imageUrl = "$baseUrl/api/screenshot?t=$screenshotTick&scale=$scaleParam&quality=${appConfig.streamResolution}"
-
-    val painter = rememberAsyncImagePainter(
-        model = ImageRequest.Builder(LocalContext.current)
-            .data(imageUrl)
-            .crossfade(false)
-            .diskCachePolicy(coil.request.CachePolicy.DISABLED)
-            .memoryCachePolicy(coil.request.CachePolicy.DISABLED)
-            .build(),
-        onState = { state ->
-            if (state is AsyncImagePainter.State.Success) {
-                currentFrame = state.painter
-            } else if (state is AsyncImagePainter.State.Error) {
-                Log.e("TrackpadArea", "Failed to load screenshot: ${state.result.throwable.message}")
-            }
-        }
-    )
 
     Box(
         modifier = modifier
@@ -608,7 +624,8 @@ fun TrackpadArea(
                 painter = currentFrame!!,
                 contentDescription = "PC Monitor",
                 modifier = Modifier
-                    .fillMaxSize()
+                    .fillMaxWidth()
+                    .aspectRatio(currentFrame!!.intrinsicSize.width / currentFrame!!.intrinsicSize.height)
                     .graphicsLayer(
                         scaleX = scale,
                         scaleY = scale,
@@ -620,8 +637,14 @@ fun TrackpadArea(
         }
 
         Text(
-            text = if (isMonitorVisible) "" else "Trackpad Active\n(Tap = Left Click | Hold 2s = Right Click)",
-            modifier = Modifier.align(Alignment.Center),
+            text = when {
+                !isMonitorVisible -> "Trackpad Active\n(Tap = Left Click | Hold 2s = Right Click)"
+                streamError -> "Screen stream unavailable. Retrying..."
+                currentFrame == null -> "Connecting to screen stream..."
+                else -> ""
+            },
+            modifier = if (isMonitorVisible) Modifier.align(Alignment.TopCenter).padding(16.dp)
+                       else Modifier.align(Alignment.Center),
             style = MaterialTheme.typography.bodyLarge,
             textAlign = androidx.compose.ui.text.style.TextAlign.Center,
             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
@@ -909,6 +932,9 @@ fun ButtonPanel(
                         val isSleep = shutdownMode.contains("Sleep", ignoreCase = true)
                         ActionKeyButton(icon = if (isSleep) Icons.Default.ModeNight else Icons.Default.PowerSettingsNew, text = shutdownLabel, modifier = Modifier.weight(1f), onClick = { shutdownIndex = (shutdownIndex + 1) % shutdownTimes.size; signalRClient.sendScheduleShutdown(shutdownTimes[shutdownIndex]) }, onLongClick = { signalRClient.toggleShutdownMode() })
                         ActionKeyButton(text = "Alt+Tab", modifier = Modifier.weight(1f)) { signalRClient.sendKeyEvent("INPUT_KEY_DOWN", VK_MENU); signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_TAB); signalRClient.sendKeyEvent("INPUT_KEY_UP", VK_MENU) }
+                        ActionKeyButton(text = "Monitor", icon = Icons.Default.Tv, modifier = Modifier.weight(1f)) {
+                            signalRClient.cycleFocusedWindowMonitor()
+                        }
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                         ActionKeyButton(icon = Icons.Default.Delete, modifier = Modifier.weight(1f)) {
