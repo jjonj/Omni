@@ -128,6 +128,10 @@ namespace OmniSync.Hub.Infrastructure.Services
         public List<ProjectRoot> ProjectRoots { get; set; } = new();
         public string CalendarUrl { get; set; } = "https://calendar.google.com/calendar/ical/jjonjex%40gmail.com/public/basic.ics";
 
+        // Public address of this PC, refreshed by ExternalIpService and pushed to the phone.
+        public string ExternalIp { get; set; } = "";
+        public DateTimeOffset? ExternalIpUpdatedAtUtc { get; set; }
+
         // Tell PC Settings
         public string TellPcWorkspace { get; set; } = @"B:\GDrive\Tools";
         public string TellPcSystemContext { get; set; } = "You are to help the user execute commands and tools on this windows PC. You are an expert assistant with full system access. Be concise and efficient.";
@@ -477,6 +481,13 @@ namespace OmniSync.Hub.Infrastructure.Services
         public virtual void AddMapping(string key, string path)
         {
             _settings.ExeMappings[key] = path;
+            SaveSettings();
+        }
+
+        public virtual void UpdateExternalIp(string ip, DateTimeOffset updatedAtUtc)
+        {
+            _settings.ExternalIp = ip;
+            _settings.ExternalIpUpdatedAtUtc = updatedAtUtc;
             SaveSettings();
         }
 

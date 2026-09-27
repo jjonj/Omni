@@ -676,6 +676,29 @@ Add-Type -MemberDefinition $code -Name Win32 -Namespace Native
             });
         }
 
+        public bool CycleForegroundWindowMonitor()
+        {
+            IntPtr hWnd = GetForegroundWindow();
+            if (hWnd == IntPtr.Zero || !IsWindowVisible(hWnd)) return false;
+
+            var monitors = new List<IntPtr>();
+            EnumDisplayMonitors(IntPtr.Zero, IntPtr.Zero, (IntPtr hMonitor, IntPtr hdcMonitor, ref RECT lprcMonitor, IntPtr dwData) =>
+            {
+                monitors.Add(hMonitor);
+                return true;
+            }, IntPtr.Zero);
+            if (monitors.Count < 2) return false;
+
+            IntPtr currentMonitor = MonitorFromWindow(hWnd, MONITOR_DEFAULTTONEAREST);
+            int currentIndex = monitors.IndexOf(currentMonitor);
+            if (currentIndex < 0) return false;
+
+            int targetIndex = (currentIndex + 1) % monitors.Count;
+            System.Windows.Application.Current?.Dispatcher?.BeginInvoke(new Action(() =>
+                MoveHwndProportional(hWnd, monitors[targetIndex], targetIndex)));
+            return true;
+        }
+
         private void MoveHwndProportional(IntPtr hWnd, IntPtr hTargetMonitor, int targetIndex)
         {
             IntPtr hCurrentMonitor = MonitorFromWindow(hWnd, MONITOR_DEFAULTTONEAREST);

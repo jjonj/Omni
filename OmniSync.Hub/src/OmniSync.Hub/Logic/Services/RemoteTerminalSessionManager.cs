@@ -13,6 +13,7 @@ using OmniSync.Hub.Presentation.Hubs;
 namespace OmniSync.Hub.Logic.Services;
 
 public sealed record RemoteTerminalSessionInfo(string SessionId, string Command, string Workspace, int Columns, int Rows);
+public sealed record RemoteTerminalMemoryDiagnosticSnapshot(int SessionCount, int ConnectedHostCount, int ExitedProcessCount);
 
 public sealed class RemoteTerminalSessionManager
 {
@@ -169,6 +170,20 @@ public sealed class RemoteTerminalSessionManager
     {
         if (!_sessions.TryGetValue(sessionId, out var session)) return "stopped";
         return session.HostSocket is { State: WebSocketState.Open } ? "ready" : "launching";
+    }
+
+    public RemoteTerminalMemoryDiagnosticSnapshot GetMemoryDiagnosticSnapshot()
+    {
+        int connectedHostCount = 0;
+        int exitedProcessCount = 0;
+
+        foreach (var session in _sessions.Values)
+        {
+            if (session.HostSocket is { State: WebSocketState.Open }) connectedHostCount++;
+            if (session.Process?.HasExited == true) exitedProcessCount++;
+        }
+
+        return new RemoteTerminalMemoryDiagnosticSnapshot(_sessions.Count, connectedHostCount, exitedProcessCount);
     }
 
     private Process LaunchOmnish(RemoteTerminalSession session)

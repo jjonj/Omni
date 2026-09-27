@@ -34,6 +34,9 @@ namespace OmniSync.Hub.Presentation.Hubs
         public static event EventHandler<string>? ClientConnectedEvent;
         public static event EventHandler<string>? ClientDisconnectedEvent;
 
+        // One in-flight send per session; guards double-taps from the phone.
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, byte> _agentSends = new();
+
         private readonly AuthService _authService;
         private readonly FileService _fileService;
         private readonly ClipboardService _clipboardService;
@@ -53,9 +56,12 @@ namespace OmniSync.Hub.Presentation.Hubs
         private readonly IMacroService _macroService;
         private readonly BookProgressService _bookProgressService;
         private readonly AndroidUpdateDeploymentCoordinator _androidUpdateCoordinator;
+        private readonly AgentSessionService _agentSessionService;
+        private readonly ExternalIpService _externalIpService;
+        private readonly IReminderRepository _reminderRepository;
         private readonly ILogger<RpcApiHub> _logger; // Added for logging
 
-        public RpcApiHub(AuthService authService, FileService fileService, ClipboardService clipboardService, CommandDispatcher commandDispatcher, ProcessService processService, HubEventSender hubEventSender, InputService inputService, AudioService audioService, ShutdownService shutdownService, RegistryService registryService, HubMonitorService hubMonitorService, AiCliService aiCliService, PcgPersistentService pcgService, HubSettingsService settingsService, GitService gitService, GlobalHotkeyService hotkeyService, IMacroService macroService, BookProgressService bookProgressService, AndroidUpdateDeploymentCoordinator androidUpdateCoordinator, ILogger<RpcApiHub> logger)
+        public RpcApiHub(AuthService authService, FileService fileService, ClipboardService clipboardService, CommandDispatcher commandDispatcher, ProcessService processService, HubEventSender hubEventSender, InputService inputService, AudioService audioService, ShutdownService shutdownService, RegistryService registryService, HubMonitorService hubMonitorService, AiCliService aiCliService, PcgPersistentService pcgService, HubSettingsService settingsService, GitService gitService, GlobalHotkeyService hotkeyService, IMacroService macroService, BookProgressService bookProgressService, AndroidUpdateDeploymentCoordinator androidUpdateCoordinator, AgentSessionService agentSessionService, ExternalIpService externalIpService, IReminderRepository reminderRepository, ILogger<RpcApiHub> logger)
         {
             _authService = authService;
             _fileService = fileService;
@@ -76,6 +82,9 @@ namespace OmniSync.Hub.Presentation.Hubs
             _macroService = macroService;
             _bookProgressService = bookProgressService;
             _androidUpdateCoordinator = androidUpdateCoordinator;
+            _agentSessionService = agentSessionService;
+            _externalIpService = externalIpService;
+            _reminderRepository = reminderRepository;
             _logger = logger;
         }
 
@@ -93,6 +102,14 @@ namespace OmniSync.Hub.Presentation.Hubs
             if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
             {
                 await SendCurrentState();
+            }
+
+            // The cached public address goes out on every connect, before the
+            // client has authenticated, so a phone that just woke up outside the
+            // LAN already has a current address to try.
+            if (_externalIpService.CurrentExternalIp is { } externalIp)
+            {
+                await Clients.Caller.SendAsync("UpdateExternalIp", externalIp, _externalIpService.UpdatedAtUnix);
             }
         }
 
@@ -180,6 +197,92 @@ namespace OmniSync.Hub.Presentation.Hubs
             }
             _logger.LogWarning($"[RpcApiHub] Connection {Context.ConnectionId} failed authentication. Provided key length: {apiKey?.Length ?? 0}");
             return false;
+        }
+
+        public async Task<IReadOnlyList<ReminderItem>> GetReminders()
+        {
+            EnsureAuthenticated();
+            var items = await _reminderRepository.GetAllAsync();
+            return items
+                .OrderBy(item => item.IsTerminal)
+                .ThenBy(item => item.NextFireAt ?? item.DueAt)
+                .ToList();
+        }
+
+        public async Task<ReminderItem?> CompleteReminder(string reminderId)
+        {
+            EnsureAuthenticated();
+            var id = ParseReminderId(reminderId);
+            var now = DateTimeOffset.Now;
+
+            return await _reminderRepository.UpdateAsync(id, item =>
+            {
+                item.State = ReminderState.Done;
+                item.Ownership = ReminderOwnership.Owned;
+                item.AcknowledgedAt = now;
+                item.CompletedAt = now;
+                item.NextFireAt = null;
+                return item;
+            });
+        }
+
+        public async Task<ReminderItem?> DismissReminder(string reminderId)
+        {
+            EnsureAuthenticated();
+            var id = ParseReminderId(reminderId);
+            var now = DateTimeOffset.Now;
+
+            return await _reminderRepository.UpdateAsync(id, item =>
+            {
+                item.State = ReminderState.Dismissed;
+                item.Ownership = ReminderOwnership.Owned;
+                item.AcknowledgedAt = now;
+                item.NextFireAt = null;
+                return item;
+            });
+        }
+
+        public async Task<ReminderItem?> SnoozeReminder(string reminderId, int minutes)
+        {
+            EnsureAuthenticated();
+            if (minutes < 1 || minutes > 10080)
+                throw new HubException("Snooze duration must be between 1 minute and 7 days.");
+
+            var id = ParseReminderId(reminderId);
+            var now = DateTimeOffset.Now;
+
+            return await _reminderRepository.UpdateAsync(id, item =>
+            {
+                if (item.IsTerminal)
+                    return item;
+
+                item.State = ReminderState.SnoozedOrPostponed;
+                item.Ownership = ReminderOwnership.Owned;
+                item.AcknowledgedAt = now;
+                item.NextFireAt = now.AddMinutes(minutes);
+                return item;
+            });
+        }
+
+        public async Task<ReminderItem?> PostponeReminder(string reminderId, string dueAtIso)
+        {
+            EnsureAuthenticated();
+            if (!DateTimeOffset.TryParse(dueAtIso, out var dueAt))
+                throw new HubException("Invalid postpone time.");
+
+            var id = ParseReminderId(reminderId);
+            return await _reminderRepository.UpdateAsync(id, item =>
+            {
+                if (item.IsTerminal)
+                    return item;
+
+                item.State = ReminderState.SnoozedOrPostponed;
+                item.Ownership = ReminderOwnership.Owned;
+                item.DueAt = dueAt;
+                item.NextFireAt = dueAt;
+                item.AcknowledgedAt = DateTimeOffset.Now;
+                return item;
+            });
         }
 
         public Task ConnectWadb(string pairingCode, string pairingPort, string connectPort)
@@ -339,8 +442,21 @@ namespace OmniSync.Hub.Presentation.Hubs
                     LogMessages = _hubMonitorService.LogMessages,
                     LastIncomingCommand = _hubMonitorService.LastIncomingCommand,
                     IsRunOnStartupEnabled = _registryService.IsRunOnStartupEnabled(),
-                    ScheduledShutdownTime = _shutdownService.GetScheduledTime()
+                    ScheduledShutdownTime = _shutdownService.GetScheduledTime(),
+                    ExternalIp = _externalIpService.CurrentExternalIp,
+                    ExternalIpSource = _externalIpService.CurrentSource,
+                    ExternalIpUpdatedAtUnix = _externalIpService.UpdatedAtUnix
                 };
+            }
+            throw new UnauthorizedAccessException();
+        }
+
+        /// <summary>Re-resolves the public address now and pushes it to every client.</summary>
+        public async Task<string?> RefreshExternalIp()
+        {
+            if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
+            {
+                return await _externalIpService.RefreshAsync(Context.ConnectionAborted);
             }
             throw new UnauthorizedAccessException();
         }
@@ -458,6 +574,21 @@ namespace OmniSync.Hub.Presentation.Hubs
                 _logger.LogError(ex, "Error moving mouse");
             }
         }
+
+        public void CycleFocusedWindowMonitor()
+        {
+            if (!Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) || !(bool)isAuthenticated)
+            {
+                throw new UnauthorizedAccessException();
+            }
+
+            AnyCommandReceived?.Invoke(this, "CycleFocusedWindowMonitor");
+            if (!_processService.CycleForegroundWindowMonitor())
+            {
+                _logger.LogInformation("Cannot cycle the focused window monitor because fewer than two monitors are available or no foreground window exists.");
+            }
+        }
+
         public string GetClipboardText()
         {
             try
@@ -1522,6 +1653,91 @@ namespace OmniSync.Hub.Presentation.Hubs
             }
         }
 
+        public async Task RequestAgentSessions()
+        {
+            if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
+            {
+                try
+                {
+                    var sessions = _agentSessionService.Listing();
+                    _logger.LogInformation("[RpcApiHub] RequestAgentSessions: {Count} transcripts", sessions.Count);
+                    await Clients.Caller.SendAsync("ReceiveAgentSessions", JsonSerializer.Serialize(sessions));
+                }
+                catch (Exception error)
+                {
+                    _logger.LogError(error, "[RpcApiHub] RequestAgentSessions failed");
+                    await Clients.Caller.SendAsync("ReceiveAgentSessions", "[]");
+                }
+            }
+        }
+
+        public async Task RequestAgentSessionDetail(string id, int limit = 120, int before = 0)
+        {
+            if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
+            {
+                try
+                {
+                    var detail = _agentSessionService.Read(id, limit, before);
+                    await Clients.Caller.SendAsync("ReceiveAgentSessionDetail", JsonSerializer.Serialize(detail));
+                }
+                catch (Exception error)
+                {
+                    _logger.LogWarning(error, "[RpcApiHub] RequestAgentSessionDetail failed for {Id}", id);
+                    await Clients.Caller.SendAsync("ReceiveAgentSessionDetail", JsonSerializer.Serialize(new
+                    {
+                        Id = id,
+                        Title = "Session unavailable",
+                        Events = Array.Empty<object>(),
+                        TotalEvents = 0,
+                        HasMoreBefore = false,
+                        Control = false,
+                    }));
+                }
+            }
+        }
+
+        public async Task SendAgentMessage(string id, string message)
+        {
+            if (!(Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)) return;
+            if (string.IsNullOrWhiteSpace(id) || string.IsNullOrWhiteSpace(message)) return;
+            if (!_agentSends.TryAdd(id, 0))
+            {
+                await Clients.Caller.SendAsync("ReceiveAgentSendStatus", JsonSerializer.Serialize(new
+                { Id = id, State = "busy", Error = "A send is already in progress for this session." }));
+                return;
+            }
+            _logger.LogInformation("[RpcApiHub] SendAgentMessage to {Id} ({Length} chars)", id, message.Length);
+            AnyCommandReceived?.Invoke(this, $"Agent message sent to {id}");
+            await Clients.All.SendAsync("ReceiveAgentSendStatus", JsonSerializer.Serialize(new { Id = id, State = "sending" }));
+            try
+            {
+                await _agentSessionService.SendToSessionAsync(id, message);
+                await Clients.All.SendAsync("ReceiveAgentSendStatus", JsonSerializer.Serialize(new { Id = id, State = "completed" }));
+            }
+            catch (Exception error)
+            {
+                _logger.LogError(error, "[RpcApiHub] SendAgentMessage failed for {Id}", id);
+                await Clients.All.SendAsync("ReceiveAgentSendStatus", JsonSerializer.Serialize(new
+                { Id = id, State = "error", Error = TruncateError(error.Message) }));
+            }
+            finally
+            {
+                _agentSends.TryRemove(id, out _);
+            }
+        }
+
+        private static string TruncateError(string value) =>
+            value.Length <= 300 ? value : value[..300];
+
+        public async Task RequestAgentModelStatus()
+        {
+            if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
+            {
+                var provider = _aiCliService.GetTargetPid() >= 0 ? "active" : "idle";
+                await Clients.Caller.SendAsync("ReceiveAgentModelStatus", provider);
+            }
+        }
+
         public async Task GetAiPresets()
         {
             if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
@@ -1799,6 +2015,22 @@ namespace OmniSync.Hub.Presentation.Hubs
                     await Clients.All.SendAsync("ReceiveAiStatus", "FAILED_TO_START_TELL_PC", -1);
                 }
             }
+        }
+
+        private void EnsureAuthenticated()
+        {
+            if (!Context.Items.TryGetValue("IsAuthenticated", out var authenticated) ||
+                authenticated is not true)
+            {
+                throw new HubException("Unauthorized");
+            }
+        }
+
+        private static Guid ParseReminderId(string reminderId)
+        {
+            if (!Guid.TryParse(reminderId, out var id))
+                throw new HubException("Invalid reminder ID.");
+            return id;
         }
 
         private (string commandName, List<string> args) ParseCommand(string commandString)

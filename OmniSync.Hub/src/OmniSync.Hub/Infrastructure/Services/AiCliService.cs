@@ -100,6 +100,16 @@ namespace OmniSync.Hub.Infrastructure.Services
         public string WorkspacePath { get; set; } = string.Empty;
     }
 
+    public sealed record AiMemoryDiagnosticSnapshot(
+        int SessionCount,
+        int PendingPromptCount,
+        long PendingPromptCharacters,
+        int BroadcastMessageCount,
+        long BroadcastMessageCharacters,
+        long HistoryBufferCharacters,
+        int OutgoingPromptCount,
+        long OutgoingPromptCharacters);
+
     public class AiCliService : IDisposable
     {
         private readonly ILogger<AiCliService> _logger;
@@ -130,6 +140,43 @@ namespace OmniSync.Hub.Infrastructure.Services
 
         public bool IsBusy => _sessionLock.CurrentCount == 0 || _discoveryLock.CurrentCount == 0 || _isLaunching;
         public bool IsDebugModeEnabled => _debugMode;
+
+        public AiMemoryDiagnosticSnapshot GetMemoryDiagnosticSnapshot()
+        {
+            int broadcastMessageCount = 0;
+            long broadcastMessageCharacters = 0;
+            long historyBufferCharacters = 0;
+            int outgoingPromptCount = 0;
+            long outgoingPromptCharacters = 0;
+
+            foreach (var session in _sessions.Values)
+            {
+                var sessionSnapshot = session.GetMemoryDiagnosticSnapshot();
+                broadcastMessageCount += sessionSnapshot.BroadcastMessageCount;
+                broadcastMessageCharacters += sessionSnapshot.BroadcastMessageCharacters;
+                historyBufferCharacters += sessionSnapshot.HistoryBufferCharacters;
+                outgoingPromptCount += sessionSnapshot.OutgoingPromptCount;
+                outgoingPromptCharacters += sessionSnapshot.OutgoingPromptCharacters;
+            }
+
+            int pendingPromptCount = 0;
+            long pendingPromptCharacters = 0;
+            foreach (var pendingPrompt in _pendingPrompts)
+            {
+                pendingPromptCount++;
+                pendingPromptCharacters += pendingPrompt.Text.Length;
+            }
+
+            return new AiMemoryDiagnosticSnapshot(
+                _sessions.Count,
+                pendingPromptCount,
+                pendingPromptCharacters,
+                broadcastMessageCount,
+                broadcastMessageCharacters,
+                historyBufferCharacters,
+                outgoingPromptCount,
+                outgoingPromptCharacters);
+        }
 
         public event EventHandler<GeminiResponseEventArgs>? ResponseReceived;
         public event EventHandler<GeminiDialogEventArgs>? DialogReceived;
@@ -759,6 +806,7 @@ namespace OmniSync.Hub.Infrastructure.Services
         private readonly StringBuilder _historyBuffer = new();
         private bool _isCapturingHistory = false;
         private readonly HashSet<string> _recentlyBroadcastMessages = new();
+        private readonly object _recentlyBroadcastMessagesLock = new();
         private bool _isReady = false;
         private readonly TaskCompletionSource<bool> _readyTcs = new();
         private readonly ConcurrentQueue<string> _outgoingBuffer = new();
@@ -770,6 +818,33 @@ namespace OmniSync.Hub.Infrastructure.Services
         public int ActivePid => _activePid;
         public int RootPid => _rootPid;
         public DateTime StartTime => _startTime;
+
+        public GeminiSessionMemoryDiagnosticSnapshot GetMemoryDiagnosticSnapshot()
+        {
+            lock (_recentlyBroadcastMessagesLock)
+            {
+                long broadcastMessageCharacters = 0;
+                foreach (var message in _recentlyBroadcastMessages)
+                {
+                    broadcastMessageCharacters += message.Length;
+                }
+
+                int outgoingPromptCount = 0;
+                long outgoingPromptCharacters = 0;
+                foreach (var prompt in _outgoingBuffer)
+                {
+                    outgoingPromptCount++;
+                    outgoingPromptCharacters += prompt.Length;
+                }
+
+                return new GeminiSessionMemoryDiagnosticSnapshot(
+                    _recentlyBroadcastMessages.Count,
+                    broadcastMessageCharacters,
+                    _historyBuffer.Length,
+                    outgoingPromptCount,
+                    outgoingPromptCharacters);
+            }
+        }
 
         public GeminiSession(int stablePid, int activePid, int rootPid, DateTime startTime, ILogger logger, bool debugMode, Action<int, string, bool, bool, bool, bool> onResponse, Action<int, string, string, List<string>?, List<GeminiQuestion>?> onDialog, Action<int, string, string, string?, string?, string?, string?, string?, string?, string?> onTurnEnd)
         {
@@ -975,7 +1050,12 @@ namespace OmniSync.Hub.Infrastructure.Services
                             else if (type == "response") {
                                 if (text == null) continue;
                                 if (text.Contains("[HISTORY_START]")) {
-                                    _isCapturingHistory = true; _historyBuffer.Clear(); _recentlyBroadcastMessages.Clear(); 
+                                    _isCapturingHistory = true;
+                                    _historyBuffer.Clear();
+                                    lock (_recentlyBroadcastMessagesLock)
+                                    {
+                                        _recentlyBroadcastMessages.Clear();
+                                    }
                                     string rawContent = msg.RootElement.GetProperty("text").GetRawText();
                                     int startIdx = rawContent.IndexOf("[HISTORY_START]");
                                     if (startIdx != -1) _historyBuffer.Append(rawContent.Substring(startIdx + "[HISTORY_START]".Length));
@@ -1020,7 +1100,15 @@ namespace OmniSync.Hub.Infrastructure.Services
                                     _historyBuffer.Clear();
                                 }
                                 else if (!_isCapturingHistory) {
-                                    if (text != "[Command Handled]" && text != _lastSentPrompt && _recentlyBroadcastMessages.Add(text))
+                                    bool isNewMessage = false;
+                                    if (text != "[Command Handled]" && text != _lastSentPrompt)
+                                    {
+                                        lock (_recentlyBroadcastMessagesLock)
+                                        {
+                                            isNewMessage = _recentlyBroadcastMessages.Add(text);
+                                        }
+                                    }
+                                    if (isNewMessage)
                                         _onResponse(_stablePid, text, isFinished, false, isCodeDiff, isUser);
                                 }
                             }
@@ -1058,4 +1146,11 @@ namespace OmniSync.Hub.Infrastructure.Services
 
         public void Dispose() { _cts?.Cancel(); _writer?.Dispose(); _pipeClient?.Dispose(); }
     }
+
+    internal sealed record GeminiSessionMemoryDiagnosticSnapshot(
+        int BroadcastMessageCount,
+        long BroadcastMessageCharacters,
+        long HistoryBufferCharacters,
+        int OutgoingPromptCount,
+        long OutgoingPromptCharacters);
 }

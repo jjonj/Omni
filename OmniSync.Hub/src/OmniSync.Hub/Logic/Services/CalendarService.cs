@@ -11,14 +11,6 @@ using OmniSync.Hub.Logic.Monitoring;
 
 namespace OmniSync.Hub.Logic.Services
 {
-    public class CalendarEvent
-    {
-        public string Summary { get; set; } = "No Title";
-        public DateTime Start { get; set; }
-        public bool IsAllDay { get; set; }
-        public string? RRule { get; set; }
-    }
-
     public class CalendarService : IHostedService, IDisposable
     {
         private readonly HttpClient _httpClient;
@@ -26,9 +18,12 @@ namespace OmniSync.Hub.Logic.Services
         private readonly HubSettingsService _settingsService;
         private readonly ILogger<CalendarService> _logger;
         private System.Threading.Timer? _timer;
+        private readonly object _eventsLock = new();
         private List<CalendarEvent> _events = new();
         private string? _lastCalendarUrl;
         private int _isRefreshing = 0;
+
+        public event EventHandler? Refreshed;
 
         public CalendarService(
             HttpClient httpClient,
@@ -56,7 +51,8 @@ namespace OmniSync.Hub.Logic.Services
         public Task StartAsync(CancellationToken cancellationToken)
         {
             _logger.LogInformation("CalendarService starting.");
-            _timer = new System.Threading.Timer(DoWork, null, TimeSpan.Zero, TimeSpan.FromMinutes(15));
+            // Omni reminders depend on voice corrections being picked up quickly.
+            _timer = new System.Threading.Timer(DoWork, null, TimeSpan.Zero, TimeSpan.FromMinutes(1));
             return Task.CompletedTask;
         }
 
@@ -93,13 +89,18 @@ namespace OmniSync.Hub.Logic.Services
                 var icsData = await _httpClient.GetStringAsync(url);
                 _logger.LogInformation($"[CalendarService] Received {icsData.Length} bytes of ICS data.");
 
-                var events = ParseIcs(icsData);
+                var events = CalendarIcsParser.Parse(icsData);
                 _logger.LogInformation($"[CalendarService] Parsed {events.Count} total events from ICS.");
 
-                _events = FilterToday(events);
-                _logger.LogInformation($"[CalendarService] Found {_events.Count} valid events for today/future.");
+                var filtered = FilterToday(events);
+                lock (_eventsLock)
+                {
+                    _events = filtered;
+                }
 
-                _monitorService.AddLogMessage($"[Calendar] Refreshed. Found {_events.Count} events.");
+                _logger.LogInformation($"[CalendarService] Found {filtered.Count} valid events for today/future.");
+                _monitorService.AddLogMessage($"[Calendar] Refreshed. Found {filtered.Count} events.");
+                Refreshed?.Invoke(this, EventArgs.Empty);
             }
             catch (Exception ex)
             {
@@ -112,20 +113,31 @@ namespace OmniSync.Hub.Logic.Services
             }
         }
 
-        public List<CalendarEvent> GetTodayEvents() 
+        public List<CalendarEvent> GetTodayEvents()
         {
             var today = DateTime.Today;
             var tomorrow = today.AddDays(1);
-            return _events.Where(e => e.Start >= today && e.Start < tomorrow).OrderBy(e => e.Start).ToList();
+            return GetEventsSnapshot()
+                .Where(e => e.Start >= today && e.Start < tomorrow)
+                .OrderBy(e => e.Start)
+                .ToList();
         }
 
         public CalendarEvent? GetNextEvent()
         {
             var now = DateTime.Now;
-            return _events
+            return GetEventsSnapshot()
                 .Where(e => !e.IsAllDay && e.Start > now)
                 .OrderBy(e => e.Start)
                 .FirstOrDefault();
+        }
+
+        public List<CalendarEvent> GetEventsSnapshot()
+        {
+            lock (_eventsLock)
+            {
+                return _events.Select(CloneEvent).ToList();
+            }
         }
 
         private List<CalendarEvent> ParseIcs(string data)
@@ -237,7 +249,7 @@ namespace OmniSync.Hub.Logic.Services
                     continue;
                 }
 
-                // 2. Recurring (RRULE) - Expand for the next 14 days
+                // 2. Recurring (RRULE) - Expand far enough for reminder scheduling.
                 if (e.RRule.Contains("UNTIL="))
                 {
                     var untilPart = e.RRule.Split(';').FirstOrDefault(p => p.StartsWith("UNTIL="));
@@ -251,8 +263,8 @@ namespace OmniSync.Hub.Logic.Services
                     }
                 }
 
-                // Simplified recurrence expansion for 14 days
-                for (int i = 0; i < 14; i++)
+                // Simplified recurrence expansion for the next year.
+                for (int i = 0; i < 366; i++)
                 {
                     var day = today.AddDays(i);
                     bool match = false;
@@ -276,8 +288,18 @@ namespace OmniSync.Hub.Logic.Services
                         {
                             Summary = e.Summary,
                             IsAllDay = e.IsAllDay,
-                            Start = new DateTime(day.Year, day.Month, day.Day, e.Start.Hour, e.Start.Minute, e.Start.Second),
-                            RRule = e.RRule
+                            Start = new DateTime(
+                                day.Year, day.Month, day.Day,
+                                e.Start.Hour, e.Start.Minute, e.Start.Second,
+                                DateTimeKind.Local),
+                            RRule = e.RRule,
+                            Uid = e.Uid,
+                            Sequence = e.Sequence,
+                            LastModified = e.LastModified,
+                            Status = e.Status,
+                            Description = e.Description,
+                            Location = e.Location,
+                            RecurrenceId = e.RecurrenceId
                         });
                     }
                 }
@@ -286,7 +308,11 @@ namespace OmniSync.Hub.Logic.Services
             // Final filter: only return events that haven't ended yet
             return results.Where(e => e.IsAllDay || e.Start > now.AddMinutes(-5))
                           .OrderBy(e => e.Start)
-                          .GroupBy(e => new { e.Summary, e.Start }) // Deduplicate instances
+                          .GroupBy(e => new
+                          {
+                              Identity = string.IsNullOrWhiteSpace(e.Uid) ? e.Summary : e.Uid,
+                              e.Start
+                          })
                           .Select(g => g.First())
                           .ToList();
         }
@@ -299,6 +325,24 @@ namespace OmniSync.Hub.Logic.Services
                 IsAllDay = e.IsAllDay,
                 Start = new DateTime(today.Year, today.Month, today.Day, e.Start.Hour, e.Start.Minute, e.Start.Second),
                 RRule = e.RRule
+            };
+        }
+
+        private static CalendarEvent CloneEvent(CalendarEvent e)
+        {
+            return new CalendarEvent
+            {
+                Summary = e.Summary,
+                Start = e.Start,
+                IsAllDay = e.IsAllDay,
+                RRule = e.RRule,
+                Uid = e.Uid,
+                Sequence = e.Sequence,
+                LastModified = e.LastModified,
+                Status = e.Status,
+                Description = e.Description,
+                Location = e.Location,
+                RecurrenceId = e.RecurrenceId
             };
         }
 

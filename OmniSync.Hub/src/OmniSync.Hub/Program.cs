@@ -212,8 +212,12 @@ builder.Services.AddSingleton<FileService>(provider =>
 });
 builder.Services.AddHttpClient();
 builder.Services.AddSingleton<CalendarService>();
+builder.Services.AddSingleton<IReminderRepository, ReminderRepository>();
+builder.Services.AddSingleton<CalendarReminderSyncService>();
 builder.Services.AddSingleton<ProjectSearchService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<CalendarService>());
+builder.Services.AddHostedService(sp => sp.GetRequiredService<CalendarReminderSyncService>());
+builder.Services.AddHostedService<ReminderLifecycleService>();
 builder.Services.AddSingleton<GitService>();
 builder.Services.AddSingleton<IMacroService, MacroService>();
 builder.Services.AddSingleton<ClipboardService>();
@@ -249,6 +253,7 @@ builder.Services.AddSingleton<InputService>(provider =>
 
 builder.Services.AddSingleton<AudioService>();
 builder.Services.AddSingleton<HubSettingsService>();
+builder.Services.AddSingleton<AgentSessionService>();
 builder.Services.AddSingleton<QuickActionService>(provider =>
 {
     var logger = provider.GetRequiredService<ILogger<QuickActionService>>();
@@ -302,6 +307,7 @@ builder.Services.AddSingleton<NodeRedService>();
 builder.Services.AddSingleton<HubMonitorService>();
 builder.Services.AddSingleton<BookProgressService>();
 builder.Services.AddHostedService<HubMonitorService>(provider => provider.GetRequiredService<HubMonitorService>());
+builder.Services.AddHostedService<MemoryWatchdogService>();
 builder.Services.AddSingleton<HubEventSender>(provider =>
 {
     var logger = provider.GetRequiredService<ILogger<HubEventSender>>();
@@ -350,6 +356,8 @@ provider.GetRequiredService<TrayIconManager>());
 builder.Services.AddHostedService<HubStartupService>(); // Auto-launch AI components
 builder.Services.AddHostedService<ScreenshotHostedService>();
 builder.Services.AddHostedService<UpnpService>();
+builder.Services.AddSingleton<ExternalIpService>();
+builder.Services.AddHostedService<ExternalIpService>(provider => provider.GetRequiredService<ExternalIpService>());
 builder.Services.AddSingleton<KeyboardHook>(); // Register KeyboardHook
 
 builder.Services.AddCors(options =>
