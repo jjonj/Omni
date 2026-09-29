@@ -1738,6 +1738,12 @@ class SignalRClient(
         }
     }
 
+    fun getScreenCount(): Single<Int>? {
+        return if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED)
+            hubConnection?.invoke(Int::class.java, "GetScreenCount")
+        else null
+    }
+
     fun sendClipboardUpdate(text: String) {
         if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
             hubConnection?.send("UpdateClipboard", text)

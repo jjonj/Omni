@@ -65,10 +65,10 @@ namespace OmniSync.Hub.Presentation.Controllers
         }
 
         [HttpGet("screenshot")]
-        public IActionResult GetScreenshot([FromQuery] double scale = 1.0, [FromQuery] long quality = 50L)
+        public IActionResult GetScreenshot([FromQuery] double scale = 1.0, [FromQuery] long quality = 50L, [FromQuery] int monitor = 0)
         {
-            _logger.LogDebug("GetScreenshot request: scale={Scale}, quality={Quality}", scale, quality);
-            var data = _screenshotService.CapturePrimaryScreenToMemory(scale, quality);
+            _logger.LogDebug("GetScreenshot request: scale={Scale}, quality={Quality}, monitor={Monitor}", scale, quality, monitor);
+            var data = _screenshotService.CapturePrimaryScreenToMemory(scale, quality, monitor);
             if (data == null || data.Length == 0)
             {
                 _logger.LogWarning("GetScreenshot: Failed to capture screen.");

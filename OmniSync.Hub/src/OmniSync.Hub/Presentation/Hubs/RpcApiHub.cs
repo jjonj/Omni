@@ -575,6 +575,14 @@ namespace OmniSync.Hub.Presentation.Hubs
             }
         }
 
+        public int GetScreenCount()
+        {
+            if (!Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) || !(bool)isAuthenticated)
+                throw new UnauthorizedAccessException();
+
+            return System.Windows.Forms.Screen.AllScreens.Length;
+        }
+
         public void CycleFocusedWindowMonitor()
         {
             if (!Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) || !(bool)isAuthenticated)

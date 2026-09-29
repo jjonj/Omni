@@ -8,7 +8,9 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.foundation.gestures.calculateCentroid
+import androidx.compose.foundation.gestures.calculatePan
+import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -22,10 +24,13 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.input.key.*
 import androidx.compose.ui.input.pointer.*
 import androidx.compose.ui.platform.LocalContext
@@ -80,6 +85,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.isActive
 import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
 import android.os.SystemClock
@@ -141,8 +147,12 @@ fun RemoteControlScreen(
     val focusRequester = remember { FocusRequester() }
     val isKeyboardVisible = WindowInsets.isImeVisible
     var isMonitorVisible by remember { mutableStateOf(false) }
+    var monitorIndex by remember { mutableIntStateOf(-1) }
+    var monitorCount by remember { mutableIntStateOf(1) }
     var monitorScale by remember { mutableFloatStateOf(1f) }
     var monitorOffset by remember { mutableStateOf(Offset.Zero) }
+    var isLeftHeld by remember { mutableStateOf(false) }
+    val currentLeftHeld by rememberUpdatedState(isLeftHeld)
     var showMacroGrid by remember { mutableStateOf(false) }
     var showMoreButtons by remember { mutableStateOf(false) }
 
@@ -151,6 +161,29 @@ fun RemoteControlScreen(
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
     val appConfig by mainViewModel.appConfig.collectAsState()
+    val connectionState by signalRClient.connectionState.collectAsState()
+    val lifecycleOwner = LocalLifecycleOwner.current
+
+    DisposableEffect(connectionState) {
+        val request = signalRClient.getScreenCount()?.subscribe({ count ->
+            monitorCount = count.coerceAtLeast(1)
+        }, {})
+        onDispose { request?.dispose() }
+    }
+
+    DisposableEffect(lifecycleOwner, signalRClient) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_STOP && currentLeftHeld) {
+                signalRClient.sendPayload("MOUSE_CLICK_UP", mapOf("Button" to "Left"))
+                isLeftHeld = false
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            if (currentLeftHeld) signalRClient.sendPayload("MOUSE_CLICK_UP", mapOf("Button" to "Left"))
+        }
+    }
 
     val voiceLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
@@ -197,11 +230,20 @@ fun RemoteControlScreen(
                     mainViewModel = mainViewModel,
                     appConfig = appConfig,
                     isMonitorVisible = isMonitorVisible,
+                    monitorIndex = monitorIndex,
+                    isLeftHeld = isLeftHeld,
                     scale = monitorScale,
                     offset = monitorOffset,
-                    onTransform = { s, o ->
-                        monitorScale = (monitorScale * s).coerceIn(1f, 5f)
-                        monitorOffset += o
+                    onTransform = { zoom, pan, centroid, imageSize ->
+                        val newScale = (monitorScale * zoom).coerceIn(1f, 5f)
+                        val appliedZoom = newScale / monitorScale
+                        val center = Offset(imageSize.width / 2f, imageSize.height / 2f)
+                        val nextOffset = monitorOffset + pan + (centroid - center - monitorOffset) * (1f - appliedZoom)
+                        monitorScale = newScale
+                        monitorOffset = if (newScale == 1f) Offset.Zero else Offset(
+                            nextOffset.x.coerceIn(-(newScale - 1f) * center.x, (newScale - 1f) * center.x),
+                            nextOffset.y.coerceIn(-(newScale - 1f) * center.y, (newScale - 1f) * center.y)
+                        )
                     }
                 )
             } else {
@@ -236,14 +278,19 @@ fun RemoteControlScreen(
                     isKeyboardVisible = isKeyboardVisible,
                     focusRequester = focusRequester,
                     isMonitorVisible = isMonitorVisible,
+                    monitorIndex = monitorIndex,
+                    isLeftHeld = isLeftHeld,
+                    onToggleLeftHeld = {
+                        isLeftHeld = !isLeftHeld
+                        signalRClient.sendPayload(if (isLeftHeld) "MOUSE_CLICK_DOWN" else "MOUSE_CLICK_UP", mapOf("Button" to "Left"))
+                    },
                     showMoreButtons = showMoreButtons,
                     onToggleMore = { showMoreButtons = it },
-                    onToggleMonitor = { 
-                        isMonitorVisible = it
-                        if (!it) {
-                            monitorScale = 1f
-                            monitorOffset = Offset.Zero
-                        }
+                    onToggleMonitor = {
+                        monitorIndex = if (monitorIndex + 1 < monitorCount) monitorIndex + 1 else -1
+                        isMonitorVisible = monitorIndex >= 0
+                        monitorScale = 1f
+                        monitorOffset = Offset.Zero
                     },
                     onToggleMacros = { showMacroGrid = !showMacroGrid },
                     onStartVoice = { startVoiceRecognition() }
@@ -481,9 +528,11 @@ fun TrackpadArea(
     appConfig: com.omni.sync.data.config.AppConfig,
     modifier: Modifier = Modifier,
     isMonitorVisible: Boolean = false,
+    monitorIndex: Int = -1,
+    isLeftHeld: Boolean = false,
     scale: Float = 1f,
     offset: Offset = Offset.Zero,
-    onTransform: (Float, Offset) -> Unit = { _, _ -> }
+    onTransform: (Float, Offset, Offset, IntSize) -> Unit = { _, _, _, _ -> }
 ) {
     val coroutineScope = rememberCoroutineScope()
     var lastTapTime by remember { mutableLongStateOf(0L) }
@@ -492,10 +541,12 @@ fun TrackpadArea(
     val baseUrl = activeBaseUrl.ifBlank { mainViewModel.getBaseUrl() }.trimEnd('/')
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
-    var currentFrame by remember(isMonitorVisible, baseUrl) { mutableStateOf<Painter?>(null) }
-    var streamError by remember(isMonitorVisible, baseUrl) { mutableStateOf(false) }
+    var currentFrame by remember(isMonitorVisible, monitorIndex, baseUrl) { mutableStateOf<Painter?>(null) }
+    var streamError by remember(isMonitorVisible, monitorIndex, baseUrl) { mutableStateOf(false) }
+    var imageSize by remember { mutableStateOf(IntSize.Zero) }
+    val currentTransform by rememberUpdatedState(onTransform)
 
-    LaunchedEffect(isMonitorVisible, baseUrl, appConfig.streamFps, appConfig.streamResolution, lifecycleOwner) {
+    LaunchedEffect(isMonitorVisible, monitorIndex, baseUrl, appConfig.streamFps, appConfig.streamResolution, lifecycleOwner) {
         if (!isMonitorVisible) return@LaunchedEffect
         val fps = appConfig.streamFps.takeIf { it > 0 } ?: 10
         val interval = (1000L / fps).coerceAtLeast(1L)
@@ -506,7 +557,7 @@ fun TrackpadArea(
                 while (isActive) {
                     val startedAt = SystemClock.elapsedRealtime()
                     val request = ImageRequest.Builder(context)
-                        .data("$baseUrl/api/screenshot?t=${System.nanoTime()}&scale=${resolution / 100f}&quality=$resolution")
+                        .data("$baseUrl/api/screenshot?t=${System.nanoTime()}&scale=${resolution / 100f}&quality=$resolution&monitor=$monitorIndex")
                         .size(coil.size.Size.ORIGINAL)
                         .diskCachePolicy(coil.request.CachePolicy.DISABLED)
                         .memoryCachePolicy(coil.request.CachePolicy.DISABLED)
@@ -534,19 +585,14 @@ fun TrackpadArea(
         modifier = modifier
             .fillMaxWidth()
             .background(Color.Black)
-            .pointerInput(isMonitorVisible) {
-                if (isMonitorVisible) {
-                    detectTransformGestures { _, pan, zoom, _ ->
-                        onTransform(zoom, pan)
-                    }
-                }
-            }
-            .pointerInput(signalRClient) {
+            .clipToBounds()
+            .pointerInput(signalRClient, isMonitorVisible, isLeftHeld, imageSize) {
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false)
                     val downPoint = down.position
                     var isDrag = false
                     var isRightClickTriggered = false
+                    var usedMultipleFingers = false
                     val movementThreshold = 5.dp.toPx()
                     
                     val currentTime = System.currentTimeMillis()
@@ -554,7 +600,7 @@ fun TrackpadArea(
                     
                     val longPressJob = coroutineScope.launch {
                         delay(1750)
-                        if (!isDrag && !isDoubleTapCandidate) {
+                        if (!isDrag && !isDoubleTapCandidate && !isLeftHeld) {
                             isRightClickTriggered = true
                             signalRClient.sendRightClick()
                         }
@@ -566,10 +612,15 @@ fun TrackpadArea(
                             val changes = event.changes
                             val pressedCount = changes.count { it.pressed }
                             
-                            if (pressedCount >= 2 && !isMonitorVisible) {
-                                val scrollDelta = changes.first().positionChange()
-                                if (scrollDelta != Offset.Zero) {
-                                    signalRClient.sendPayload("MOUSE_SCROLL", mapOf("Delta" to scrollDelta.y.toInt()))
+                            if (pressedCount >= 2) {
+                                usedMultipleFingers = true
+                                if (isMonitorVisible) {
+                                    currentTransform(event.calculateZoom(), event.calculatePan(), event.calculateCentroid(), imageSize)
+                                } else {
+                                    val scrollDelta = changes.first().positionChange()
+                                    if (scrollDelta != Offset.Zero) {
+                                        signalRClient.sendPayload("MOUSE_SCROLL", mapOf("Delta" to scrollDelta.y.toInt()))
+                                    }
                                 }
                                 isDrag = true
                                 longPressJob.cancel()
@@ -583,17 +634,17 @@ fun TrackpadArea(
                                 val positionChange = change.position - downPoint
                                 val distance = positionChange.getDistance()
 
-                                if (!isDrag && distance > movementThreshold) {
+                                if (!isDrag && !usedMultipleFingers && distance > movementThreshold) {
                                     isDrag = true
                                     longPressJob.cancel()
                                     
-                                    if (isDoubleTapCandidate) {
+                                    if (isDoubleTapCandidate && !isLeftHeld) {
                                         isDraggingLeftClick = true
                                         signalRClient.sendPayload("MOUSE_CLICK_DOWN", mapOf("Button" to "Left"))
                                     }
                                 }
 
-                                if (isDrag) {
+                                if (isDrag && !usedMultipleFingers) {
                                     val delta = change.positionChange()
                                     if (delta != Offset.Zero) {
                                         val sensitivity = 0.72f
@@ -609,7 +660,7 @@ fun TrackpadArea(
                             signalRClient.sendPayload("MOUSE_CLICK_UP", mapOf("Button" to "Left"))
                             isDraggingLeftClick = false
                             lastTapTime = 0
-                        } else if (!isDrag && !isRightClickTriggered) {
+                        } else if (!isDrag && !isRightClickTriggered && !isLeftHeld) {
                             signalRClient.sendLeftClick()
                             lastTapTime = System.currentTimeMillis()
                         } else {
@@ -626,6 +677,7 @@ fun TrackpadArea(
                 modifier = Modifier
                     .fillMaxWidth()
                     .aspectRatio(currentFrame!!.intrinsicSize.width / currentFrame!!.intrinsicSize.height)
+                    .onSizeChanged { imageSize = it }
                     .graphicsLayer(
                         scaleX = scale,
                         scaleY = scale,
@@ -753,9 +805,12 @@ fun ButtonPanel(
     isKeyboardVisible: Boolean,
     focusRequester: FocusRequester,
     isMonitorVisible: Boolean,
+    monitorIndex: Int,
+    isLeftHeld: Boolean,
+    onToggleLeftHeld: () -> Unit,
     showMoreButtons: Boolean,
     onToggleMore: (Boolean) -> Unit,
-    onToggleMonitor: (Boolean) -> Unit,
+    onToggleMonitor: () -> Unit,
     onToggleMacros: () -> Unit,
     onStartVoice: () -> Unit = {}
 ) {
@@ -823,6 +878,11 @@ fun ButtonPanel(
                 onValueChangeFinished = { signalRClient.sendSetVolume(volumeLevel) },
                 valueRange = 0f..100f,
                 modifier = Modifier.weight(1f)
+            )
+            FilterChip(
+                selected = isLeftHeld,
+                onClick = onToggleLeftHeld,
+                label = { Text(if (isLeftHeld) "Release" else "Hold Left") }
             )
         }
         Spacer(Modifier.height(4.dp))
@@ -902,7 +962,7 @@ fun ButtonPanel(
                     ActionKeyButton(icon = Icons.Default.AutoFixHigh, modifier = Modifier.weight(1f)) { onToggleMacros() }
                     ActionKeyButton(icon = Icons.Default.Mic, modifier = Modifier.weight(1f)) { onStartVoice() }
                     ActionKeyButton(icon = Icons.AutoMirrored.Filled.KeyboardReturn, modifier = Modifier.weight(1f)) { signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_RETURN) }
-                    ActionKeyButton(icon = Icons.Default.Tv, text = if (isMonitorVisible) "Off" else "On", modifier = Modifier.weight(1f), onClick = { onToggleMonitor(!isMonitorVisible) })
+                    ActionKeyButton(icon = Icons.Default.Tv, text = if (isMonitorVisible) "${monitorIndex + 1}" else "Off", modifier = Modifier.weight(1f), onClick = onToggleMonitor)
                     ActionKeyButton(text = "More", modifier = Modifier.weight(1f)) { onToggleMore(true) }
                 }
             } else {
