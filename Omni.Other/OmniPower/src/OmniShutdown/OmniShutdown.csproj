@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Pin OmniShutdown.exe to the taskbar. Runs the TV-off helper, then shuts the PC down. -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <RootNamespace>OmniShutdown</RootNamespace>
+    <AssemblyName>OmniShutdown</AssemblyName>
+    <ApplicationIcon>icon.ico</ApplicationIcon>
+    <Version>1.0.0</Version>
+    <Product>OmniPower</Product>
+    <Description>Shut the PC down, with the TV turned off first.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\OmniPower.Core\OmniPower.Core.csproj" />
+  </ItemGroup>
+
+</Project>

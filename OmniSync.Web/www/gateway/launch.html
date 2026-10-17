@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#0d1116"><title>Launching · OmniHub</title>
+<link rel="icon" href="/favicon.png"><link rel="stylesheet" href="/gateway/gateway.css"></head>
+<body>
+<main class="launch-screen"><section class="launch-box" aria-label="Application startup">
+ <div id="mono" class="mono" aria-hidden="true">…</div>
+ <h1 id="name">Opening</h1>
+ <p id="description"></p>
+ <div id="spinner" class="spinner" role="img" aria-label="Starting"></div>
+ <p id="status" role="status" aria-live="polite">Checking tool…</p>
+ <p id="elapsed" class="elapsed"></p>
+ <div id="details" hidden><pre id="log" class="log"></pre></div>
+ <div class="actions"><a class="btn" href="/gateway/">← Gateway</a><button class="btn primary" id="retry" type="button" hidden>Retry</button></div>
+ </section>
+</main>
+<script>
+'use strict';
+const id = new URLSearchParams(location.search).get('tool');
+const status = document.querySelector('#status');
+const name = document.querySelector('#name');
+const spinner = document.querySelector('#spinner');
+const details = document.querySelector('#details');
+const retry = document.querySelector('#retry');
+let activeAttempt = 0;
+// Registered URLs use loopback for reliable local health checks. On a phone,
+// loopback means the PHONE, so navigate to the Hub PC's LAN hostname instead.
+function browserTarget(url) {
+ const target = new URL(url);
+ const loopback = host => ['127.0.0.1','localhost','[::1]','::1'].includes(host.toLowerCase());
+ if (!loopback(location.hostname) && loopback(target.hostname)) target.hostname = location.hostname;
+ return target.href;
+}
+async function launch() {
+ const attempt = ++activeAttempt;
+ retry.hidden = true; retry.disabled = false;
+ spinner.hidden = false; details.hidden = true; status.classList.remove('fail');
+ status.textContent = 'Checking server health…';
+ document.querySelector('#elapsed').textContent = '';
+ if (!id || !/^[a-z0-9][a-z0-9-]{1,49}$/.test(id)) {
+   status.textContent = 'Invalid tool identifier.'; status.classList.add('fail'); spinner.hidden = true; return;
+ }
+ let started = 0;
+ let timer;
+ try {
+   const response = await fetch('/gateway/api/tools', {cache:'no-store'});
+   if (!response.ok) throw new Error('Could not read the Gateway registry (HTTP ' + response.status + ').');
+   const tools = await response.json();
+   const tool = tools.find(t => t.id === id);
+   if (!tool) throw new Error('This tool is no longer registered.');
+   name.textContent = tool.name;
+   const mono = document.querySelector('#mono');
+   mono.textContent = tool.name.split(/\s+/).filter(Boolean).slice(0,2).map(w => w[0]).join('').toUpperCase();
+   let h = 0; for (const c of tool.id) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+   mono.style.setProperty('--h', h % 360);
+   document.querySelector('#description').textContent = tool.description;
+   if (tool.status === 'running') { status.textContent = 'Already running. Opening…'; location.replace(browserTarget(tool.url)); return; }
+   started = Date.now();
+   timer = setInterval(() => {
+     if (activeAttempt !== attempt) return;
+     const seconds = Math.round((Date.now() - started)/1000);
+     document.querySelector('#elapsed').textContent = seconds + 's · waiting for health checks';
+   }, 1000);
+   status.textContent = tool.status === 'starting' ? 'Another launch is in progress…' : 'Starting…';
+   const result = await fetch('/gateway/api/launch/' + encodeURIComponent(id), {method:'POST'});
+   const body = await result.json();
+   if (!result.ok) throw new Error(body.error || ('Launch failed (HTTP ' + result.status + ')'));
+   status.textContent = 'Ready. Opening application…';
+   location.replace(browserTarget(body.url));
+ } catch (error) {
+   if (activeAttempt !== attempt) return;
+   status.textContent = error.message || 'Unable to start tool.';
+   status.classList.add('fail');
+   spinner.hidden = true;
+   retry.hidden = false;
+   try {
+     const response = await fetch('/gateway/api/log/' + encodeURIComponent(id), {cache:'no-store'});
+     if (response.ok) {
+       document.querySelector('#log').textContent = (await response.text()).slice(-12000);
+       details.hidden = false;
+     }
+   } catch {}
+ } finally { clearInterval(timer); }
+}
+retry.addEventListener('click', launch);
+launch();
+</script></body></html>

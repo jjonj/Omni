@@ -9,6 +9,8 @@ using OmniSync.Hub.Logic.Services;
 using OmniSync.Hub.Infrastructure.Services; // Added for FileService
 using OmniSync.Hub.Models;
 using OmniSync.Hub.Logic.Monitoring;
+using OmniSync.Hub.Logic.Services.VoiceInbox;
+using OmniSync.Hub.Logic.Services.AssistantCommands;
 using Microsoft.Extensions.Logging; // Added for ILogger
 
 namespace OmniSync.Hub.Presentation.Hubs
@@ -35,7 +37,6 @@ namespace OmniSync.Hub.Presentation.Hubs
         public static event EventHandler<string>? ClientDisconnectedEvent;
 
         // One in-flight send per session; guards double-taps from the phone.
-        private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, byte> _agentSends = new();
 
         private readonly AuthService _authService;
         private readonly FileService _fileService;
@@ -59,9 +60,12 @@ namespace OmniSync.Hub.Presentation.Hubs
         private readonly AgentSessionService _agentSessionService;
         private readonly ExternalIpService _externalIpService;
         private readonly IReminderRepository _reminderRepository;
+        private readonly VoiceInboxService _voiceInboxService;
+        private readonly AssistantDeviceRegistry _assistantDevices;
+        private readonly AssistantRemoteDispatcher _assistantRemoteDispatcher;
         private readonly ILogger<RpcApiHub> _logger; // Added for logging
 
-        public RpcApiHub(AuthService authService, FileService fileService, ClipboardService clipboardService, CommandDispatcher commandDispatcher, ProcessService processService, HubEventSender hubEventSender, InputService inputService, AudioService audioService, ShutdownService shutdownService, RegistryService registryService, HubMonitorService hubMonitorService, AiCliService aiCliService, PcgPersistentService pcgService, HubSettingsService settingsService, GitService gitService, GlobalHotkeyService hotkeyService, IMacroService macroService, BookProgressService bookProgressService, AndroidUpdateDeploymentCoordinator androidUpdateCoordinator, AgentSessionService agentSessionService, ExternalIpService externalIpService, IReminderRepository reminderRepository, ILogger<RpcApiHub> logger)
+        public RpcApiHub(AuthService authService, FileService fileService, ClipboardService clipboardService, CommandDispatcher commandDispatcher, ProcessService processService, HubEventSender hubEventSender, InputService inputService, AudioService audioService, ShutdownService shutdownService, RegistryService registryService, HubMonitorService hubMonitorService, AiCliService aiCliService, PcgPersistentService pcgService, HubSettingsService settingsService, GitService gitService, GlobalHotkeyService hotkeyService, IMacroService macroService, BookProgressService bookProgressService, AndroidUpdateDeploymentCoordinator androidUpdateCoordinator, AgentSessionService agentSessionService, ExternalIpService externalIpService, IReminderRepository reminderRepository, VoiceInboxService voiceInboxService, AssistantDeviceRegistry assistantDevices, AssistantRemoteDispatcher assistantRemoteDispatcher, ILogger<RpcApiHub> logger)
         {
             _authService = authService;
             _fileService = fileService;
@@ -85,6 +89,9 @@ namespace OmniSync.Hub.Presentation.Hubs
             _agentSessionService = agentSessionService;
             _externalIpService = externalIpService;
             _reminderRepository = reminderRepository;
+            _voiceInboxService = voiceInboxService;
+            _assistantDevices = assistantDevices;
+            _assistantRemoteDispatcher = assistantRemoteDispatcher;
             _logger = logger;
         }
 
@@ -118,6 +125,7 @@ namespace OmniSync.Hub.Presentation.Hubs
             _logger.LogInformation($"Client disconnected: {Context.ConnectionId}");
             ClientDisconnectedEvent?.Invoke(this, Context.ConnectionId);
             _androidUpdateCoordinator.ClientDisconnected(Context.ConnectionId);
+            _assistantDevices.Disconnect(Context.ConnectionId);
             _hubEventSender.UnsubscribeFromCommandOutput(Context.UserIdentifier ?? Context.ConnectionId);
             await base.OnDisconnectedAsync(exception);
         }
@@ -330,6 +338,23 @@ namespace OmniSync.Hub.Presentation.Hubs
             return Task.CompletedTask;
         }
 
+        public string GetTaskResurfacingTimes()
+        {
+            EnsureAuthenticated();
+            return _settingsService.Settings.TaskResurfacingTimes;
+        }
+
+        public void SetTaskResurfacingTimes(string times)
+        {
+            EnsureAuthenticated();
+            var values = times.Split(',').Select(value => value.Trim()).ToList();
+            if (values.Count == 0 || values.Any(value => !TimeOnly.TryParseExact(value, "HH:mm", out _)))
+                throw new HubException("Enter comma-separated times in HH:mm format.");
+            _settingsService.Settings.TaskResurfacingTimes = string.Join(',', values.Distinct().Order());
+            _settingsService.SaveSettings();
+            _hubMonitorService.AddLogMessage($"[Reminders] Task resurfacing times set to {_settingsService.Settings.TaskResurfacingTimes}.");
+        }
+
         public void ReportAndroidUpdateStatus(string requestId, string status, string message)
         {
             if (!Context.Items.TryGetValue("IsAuthenticated", out var authenticated) ||
@@ -376,8 +401,7 @@ namespace OmniSync.Hub.Presentation.Hubs
                 var settingsService = Context.GetHttpContext()?.RequestServices.GetService(typeof(HubSettingsService)) as HubSettingsService;
                 if (settingsService != null)
                 {
-                    settingsService.Settings.Hotkeys = hotkeys;
-                    settingsService.SaveSettings();
+                    settingsService.UpdateHotkeys(hotkeys);
                     _hubMonitorService.AddLogMessage("Hotkeys updated via web interface.");
                 }
             }
@@ -387,8 +411,46 @@ namespace OmniSync.Hub.Presentation.Hubs
             }
         }
 
-        public void UpdateProjects(List<Project> projects)
+        public object GetSetupOptions()
         {
+            _ = GetSettings(); // Authentication gate shared with settings reads.
+            return new {
+                monitors = System.Windows.Forms.Screen.AllScreens.Select((s, i) => new { key = s.DeviceName,
+                    label = $"Monitor {i + 1}{(s.Primary ? " (primary)" : "")}", layout = OmniSync.Hub.Logic.LayoutHelper.FromRectangle(s.WorkingArea, s) }),
+                zones = OmniSync.Hub.Logic.SetupOptions.Zones()
+            };
+        }
+
+        public async Task LaunchSetup(Guid id)
+        {
+            var settings = GetSettings();
+            var setup = settings.Setups.FirstOrDefault(s => s.Id == id) ?? throw new ArgumentException("Setup not found.");
+            var launcher = Context.GetHttpContext()?.RequestServices.GetService(typeof(OmniSync.Hub.Logic.ProjectLauncherService)) as OmniSync.Hub.Logic.ProjectLauncherService;
+            if (launcher != null) await launcher.LaunchProject(setup);
+        }
+
+        public void RequestSetupSnapshot(Guid? id = null, bool replace = false)
+        {
+            var settings = GetSettings();
+            var setup = id.HasValue ? settings.Setups.FirstOrDefault(s => s.Id == id) ?? throw new ArgumentException("Setup not found.") : null;
+            var dispatcher = Context.GetHttpContext()?.RequestServices.GetService(typeof(CommandDispatcher)) as CommandDispatcher;
+            dispatcher?.RequestSetupSnapshot(setup, replace);
+        }
+
+        public void UpdateSetups(List<Project> projects)
+        {
+            var authenticatedSettings = GetSettings();
+            var globalKeys = authenticatedSettings.Hotkeys.Where(h => !h.Action.StartsWith("LAUNCH_SETUP_") && !string.IsNullOrWhiteSpace(h.Key))
+                .Select(h => h.Key).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var used = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var setup in projects)
+            {
+                if (!string.IsNullOrWhiteSpace(setup.GlobalHotkey) && !globalKeys.Add(setup.GlobalHotkey))
+                    throw new ArgumentException("A global hotkey is already assigned.");
+                if (!string.IsNullOrWhiteSpace(setup.Shortcut) &&
+                    (!OmniSync.Hub.Logic.SetupRules.IsValidShortcut(setup.Shortcut) || !used.Add(setup.Shortcut)))
+                    throw new ArgumentException("Setup shortcuts must be unique; WASD is reserved for navigation.");
+            }
             if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
             {
                 var settingsService = Context.GetHttpContext()?.RequestServices.GetService(typeof(HubSettingsService)) as HubSettingsService;
@@ -396,7 +458,7 @@ namespace OmniSync.Hub.Presentation.Hubs
                 {
                     settingsService.Settings.Projects = projects;
                     settingsService.SaveSettings();
-                    _hubMonitorService.AddLogMessage("Projects updated via web interface.");
+                    _hubMonitorService.AddLogMessage("Setups updated via web interface.");
                 }
             }
             else
@@ -405,7 +467,7 @@ namespace OmniSync.Hub.Presentation.Hubs
             }
         }
 
-        public void AddProject(Project project)
+        public void AddSetup(Project project)
         {
             if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
             {
@@ -414,7 +476,7 @@ namespace OmniSync.Hub.Presentation.Hubs
             }
         }
 
-        public void UpdateProject(Project project)
+        public void UpdateSetup(Project project)
         {
             if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
             {
@@ -423,7 +485,7 @@ namespace OmniSync.Hub.Presentation.Hubs
             }
         }
 
-        public void RemoveProject(Guid id)
+        public void RemoveSetup(Guid id)
         {
             if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
             {
@@ -556,6 +618,100 @@ namespace OmniSync.Hub.Presentation.Hubs
                 {
                     _logger.LogError(ex, $"Error dispatching command '{command}'");
                 }
+            }
+        }
+
+        public void AdvertiseAssistantCommands(
+            string deviceId,
+            IReadOnlyList<DeviceAssistantCommandDescriptor> commands)
+        {
+            EnsureAuthenticated();
+            if (string.IsNullOrWhiteSpace(deviceId))
+                throw new HubException("Device id is required.");
+
+            _assistantDevices.Advertise(
+                deviceId.Trim(),
+                Context.ConnectionId,
+                commands ?? Array.Empty<DeviceAssistantCommandDescriptor>());
+
+            _hubMonitorService.AddLogMessage(
+                $"[Assistant] Device {deviceId} advertised {commands?.Count ?? 0} command(s).");
+        }
+
+        public async Task<bool> ReportAssistantRunResult(
+            string runId,
+            string state,
+            string? summary = null)
+        {
+            EnsureAuthenticated();
+            if (!Guid.TryParse(runId, out var parsedRunId))
+                throw new HubException("Invalid assistant run id.");
+
+            return await _assistantRemoteDispatcher.ReportResultAsync(
+                parsedRunId,
+                state,
+                summary);
+        }
+
+        public async Task<VoiceInboxOutcome?> SendJarvisTranscript(string transcript)
+        {
+            EnsureAuthenticated();
+
+            transcript = (transcript ?? string.Empty).Trim();
+            if (transcript.Length == 0) return null;
+
+            _logger.LogInformation(
+                "[RpcApiHub] Jarvis transcript received ({Length} chars).",
+                transcript.Length);
+            AnyCommandReceived?.Invoke(this, "JarvisVoice");
+
+            return await _voiceInboxService.SubmitAsync(
+                new VoiceInboxItem(
+                    transcript,
+                    "android-voice",
+                    null,
+                    DateTimeOffset.Now),
+                CancellationToken.None);
+        }
+
+        public async Task<VoiceInboxOutcome> SubmitAssistantRequest(
+            string requestId,
+            string transcript,
+            long occurredAtUnixMillis,
+            string? conversationId = null)
+        {
+            EnsureAuthenticated();
+            if (!Guid.TryParse(requestId, out var parsedRequestId))
+                throw new HubException("Invalid assistant request id.");
+
+            transcript = (transcript ?? string.Empty).Trim();
+            if (transcript.Length == 0)
+                throw new HubException("Assistant request text is required.");
+
+            var occurredAt = DateTimeOffset.FromUnixTimeMilliseconds(occurredAtUnixMillis);
+            return await _voiceInboxService.SubmitAsync(
+                new VoiceInboxItem(
+                    transcript,
+                    "android-voice",
+                    null,
+                    DateTimeOffset.Now,
+                    OccurredAt: occurredAt,
+                    RequestId: parsedRequestId,
+                    ConversationId: conversationId),
+                CancellationToken.None);
+        }
+
+        public void SendTypeTranscript(string transcript)
+        {
+            EnsureAuthenticated();
+            if (string.IsNullOrEmpty(transcript)) return;
+            try
+            {
+                _inputService.SendText(transcript);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error typing voice transcript on PC.");
             }
         }
 
@@ -1704,33 +1860,82 @@ namespace OmniSync.Hub.Presentation.Hubs
             }
         }
 
-        public async Task SendAgentMessage(string id, string message)
+        /// <param name="mode">"auto" (send now, or queue while a turn runs), "queue", or "now" (parallel turn while another client is mid-turn).</param>
+        public async Task SendAgentMessage(string id, string message, string mode)
         {
             if (!(Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)) return;
             if (string.IsNullOrWhiteSpace(id) || string.IsNullOrWhiteSpace(message)) return;
-            if (!_agentSends.TryAdd(id, 0))
+            _logger.LogInformation("[RpcApiHub] SendAgentMessage to {Id} ({Length} chars, mode {Mode})", id, message.Length, mode);
+            AnyCommandReceived?.Invoke(this, $"Agent message sent to {id}");
+            await RunAgentControl(id, () => _agentSessionService.Send(id, message, string.IsNullOrWhiteSpace(mode) ? "auto" : mode));
+        }
+
+        public async Task CancelQueuedAgentMessage(string id, string queuedId)
+        {
+            if (!(Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)) return;
+            if (!_agentSessionService.CancelQueued(id, queuedId))
             {
                 await Clients.Caller.SendAsync("ReceiveAgentSendStatus", JsonSerializer.Serialize(new
-                { Id = id, State = "busy", Error = "A send is already in progress for this session." }));
-                return;
+                { Id = id, State = "error", Error = "That message was already sent." }));
             }
-            _logger.LogInformation("[RpcApiHub] SendAgentMessage to {Id} ({Length} chars)", id, message.Length);
-            AnyCommandReceived?.Invoke(this, $"Agent message sent to {id}");
-            await Clients.All.SendAsync("ReceiveAgentSendStatus", JsonSerializer.Serialize(new { Id = id, State = "sending" }));
+        }
+
+        public async Task RetryAgentTurn(string id)
+        {
+            if (!(Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)) return;
+            _logger.LogInformation("[RpcApiHub] RetryAgentTurn {Id}", id);
+            await RunAgentControl(id, () => _agentSessionService.Retry(id));
+        }
+
+        public async Task InterruptAgentTurn(string id)
+        {
+            if (!(Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)) return;
+            _logger.LogInformation("[RpcApiHub] InterruptAgentTurn {Id}", id);
+            if (!_agentSessionService.Interrupt(id))
+            {
+                await Clients.Caller.SendAsync("ReceiveAgentSendStatus", JsonSerializer.Serialize(new
+                { Id = id, State = "error", Error = "Only turns started from Omni can be stopped." }));
+            }
+        }
+
+        public async Task CreateAgentSession(string provider, string cwd, string message)
+        {
+            if (!(Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)) return;
+            if (string.IsNullOrWhiteSpace(message)) return;
+            _logger.LogInformation("[RpcApiHub] CreateAgentSession {Provider} in {Cwd}", provider, cwd);
+            await RunAgentControl("new", () => _agentSessionService.Create(provider, cwd, message));
+        }
+
+        public async Task RenameAgentSession(string id, string title)
+        {
+            if (!(Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)) return;
+            if (string.IsNullOrWhiteSpace(id)) return;
+            _logger.LogInformation("[RpcApiHub] RenameAgentSession {Id}", id);
+            await RunAgentControl(id, () => _agentSessionService.Rename(id, title ?? ""));
+        }
+
+        /// <summary>Permanently deletes the session's transcript files on this PC.</summary>
+        public async Task DeleteAgentSession(string id)
+        {
+            if (!(Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)) return;
+            if (string.IsNullOrWhiteSpace(id)) return;
+            _logger.LogInformation("[RpcApiHub] DeleteAgentSession {Id}", id);
+            AnyCommandReceived?.Invoke(this, $"Agent session deleted: {id}");
+            await RunAgentControl(id, () => _agentSessionService.Delete(id));
+        }
+
+        /// <summary>Agent control calls return immediately; failures to start are reported to the caller only.</summary>
+        private async Task RunAgentControl(string id, Action action)
+        {
             try
             {
-                await _agentSessionService.SendToSessionAsync(id, message);
-                await Clients.All.SendAsync("ReceiveAgentSendStatus", JsonSerializer.Serialize(new { Id = id, State = "completed" }));
+                action();
             }
             catch (Exception error)
             {
-                _logger.LogError(error, "[RpcApiHub] SendAgentMessage failed for {Id}", id);
-                await Clients.All.SendAsync("ReceiveAgentSendStatus", JsonSerializer.Serialize(new
+                _logger.LogWarning(error, "[RpcApiHub] Agent control failed for {Id}", id);
+                await Clients.Caller.SendAsync("ReceiveAgentSendStatus", JsonSerializer.Serialize(new
                 { Id = id, State = "error", Error = TruncateError(error.Message) }));
-            }
-            finally
-            {
-                _agentSends.TryRemove(id, out _);
             }
         }
 
@@ -1932,64 +2137,6 @@ namespace OmniSync.Hub.Presentation.Hubs
             if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
             {
                 _settingsService.RemoveMacro(id);
-            }
-        }
-
-        public async Task TriggerJarvis()
-        {
-            if (Context.Items.TryGetValue("IsAuthenticated", out var isAuthenticated) && (bool)isAuthenticated)
-            {
-                _logger.LogInformation("[RpcApiHub] TriggerJarvis requested.");
-                AnyCommandReceived?.Invoke(this, "TriggerJarvis");
-
-                string workspace = _settingsService.Settings.JarvisWorkspace;
-                string systemPromptPath = _settingsService.Settings.JarvisSystemContextPath;
-                string model = _settingsService.Settings.JarvisModel;
-
-                await Clients.All.SendAsync("ReceiveAiStatus", "Jarvis: Starting Session...", -1);
-
-                string systemContext = "You are Jarvis.";
-                try
-                {
-                    if (File.Exists(systemPromptPath))
-                    {
-                        systemContext = File.ReadAllText(systemPromptPath);
-                    }
-                    else
-                    {
-                        _logger.LogWarning($"Jarvis preprompt file not found at {systemPromptPath}");
-                    }
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Error reading Jarvis preprompt file.");
-                }
-
-                                        _logger.LogInformation($"[RpcApiHub] Launching Jarvis session in workspace: {workspace} (Model: {model})");
-
-                                        
-
-                                        var pid = await _aiCliService.LaunchSessionAsync(workspace, null, model, systemPromptPath);
-
-                            
-
-                                        if (pid.HasValue)                {
-                    _logger.LogInformation($"[RpcApiHub] Jarvis session started with PID {pid.Value}. Sending 'Begin'.");
-                    _aiCliService.SetTellPcContext(pid.Value, systemContext);
-                    await Clients.All.SendAsync("ReceiveNewAiSessionPid", pid.Value);
-                    await Clients.All.SendAsync("ReceiveAiStatus", "FINISHED", pid.Value);
-                    
-                    // Send the "Begin" message to kick off the loop
-                    _ = Task.Run(async () => {
-                        await Task.Delay(2000); // Wait for CLI to settle
-                        await _aiCliService.SendPromptAsync("Begin", pid.Value);
-                    });
-                }
-                else
-                {
-                    _logger.LogWarning("[RpcApiHub] Failed to start Jarvis session.");
-                    await Clients.All.SendAsync("ReceiveAiStatus", "FAILED_TO_START_JARVIS", -1);
-                }
             }
         }
 

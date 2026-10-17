@@ -32,7 +32,6 @@ namespace OmniSync.Hub.Presentation
         private readonly ProjectLauncherService _projectLauncherService;
         private readonly CommandDispatcher _commandDispatcher;
         private readonly HubEventSender _hubEventSender;
-        private readonly AssistantService _assistantService;
         private readonly DispatcherTimer _uiUpdateTimer;
         private DispatcherTimer _longPressTimer;
         private bool _isLongPress;
@@ -50,7 +49,6 @@ namespace OmniSync.Hub.Presentation
         public ICommand FocusAiSessionsCommand { get; }
         public ICommand ResetAiSessionsCommand { get; }
         public ICommand SaveAiSettingsCommand { get; }
-        public ICommand LaunchJarvisCommand { get; }
         public ICommand AddAiModelCommand { get; }
         public ICommand DeleteAiModelCommand { get; }
 
@@ -171,6 +169,7 @@ namespace OmniSync.Hub.Presentation
                 var actions = new List<string>
                 {
                     "OPEN_HUB_WINDOW",
+                    "OPEN_OMNISWEEP",
                     "TOGGLE_MUTE",
                     "VOL_UP",
                     "VOL_DOWN",
@@ -219,7 +218,7 @@ namespace OmniSync.Hub.Presentation
                 {
                     foreach (var p in Projects)
                     {
-                        actions.Add($"LAUNCH_PROJECT_{p.Id}");
+                        actions.Add($"LAUNCH_SETUP_{p.Id}");
                     }
                                 }
                                 return actions;
@@ -345,107 +344,19 @@ namespace OmniSync.Hub.Presentation
                                         }
                                     }
                                 }
-                        
-                                // --- Jarvis Settings ---
-                                public bool JarvisAutoStart
+
+                                public string TaskResurfacingTimes
                                 {
-                                    get => _settingsService.Settings.JarvisAutoStart;
+                                    get => _settingsService.Settings.TaskResurfacingTimes;
                                     set
                                     {
-                                        if (_settingsService.Settings.JarvisAutoStart != value)
-                                        {
-                                            _settingsService.Settings.JarvisAutoStart = value;
-                                            _settingsService.SaveSettings();
-                                            OnPropertyChanged();
-                                        }
+                                        if (_settingsService.Settings.TaskResurfacingTimes == value) return;
+                                        _settingsService.Settings.TaskResurfacingTimes = value;
+                                        _settingsService.SaveSettings();
+                                        OnPropertyChanged();
                                     }
                                 }
                         
-                                        public string JarvisWorkspace
-                        
-                                        {
-                        
-                                            get => _settingsService.Settings.JarvisWorkspace;
-                        
-                                            set
-                        
-                                            {
-                        
-                                                if (_settingsService.Settings.JarvisWorkspace != value)
-                        
-                                                {
-                        
-                                                    _settingsService.Settings.JarvisWorkspace = value;
-                        
-                                                    _settingsService.SaveSettings();
-                        
-                                                    OnPropertyChanged();
-                        
-                                                }
-                        
-                                            }
-                        
-                                        }
-                        
-                                
-                        
-                                        public string JarvisSystemContextPath
-                        
-                                        {
-                        
-                                            get => _settingsService.Settings.JarvisSystemContextPath;
-                        
-                                            set
-                        
-                                            {
-                        
-                                                if (_settingsService.Settings.JarvisSystemContextPath != value)
-                        
-                                                {
-                        
-                                                    _settingsService.Settings.JarvisSystemContextPath = value;
-                        
-                                                    _settingsService.SaveSettings();
-                        
-                                                    OnPropertyChanged();
-                        
-                                                }
-                        
-                                            }
-                        
-                                        }
-                        
-                                
-                        
-                                        public string JarvisModel
-                        
-                                        {
-                        
-                                            get => _settingsService.Settings.JarvisModel;
-                        
-                                            set
-                        
-                                            {
-                        
-                                                if (_settingsService.Settings.JarvisModel != value)
-                        
-                                                {
-                        
-                                                    _settingsService.Settings.JarvisModel = value;
-                        
-                                                    _settingsService.SaveSettings();
-                        
-                                                    OnPropertyChanged();
-                        
-                                                }
-                        
-                                            }
-                        
-                                        }
-                        
-                                
-                        
-                                
                                                 private string _scheduledShutdownTimeLabel = "None";
                         public string ScheduledShutdownTimeLabel
                         {
@@ -552,6 +463,17 @@ namespace OmniSync.Hub.Presentation
                 } 
             }
         }
+        public List<SetupOption> SetupMonitors => SetupOptions.Monitors();
+        public List<SetupOption> SetupZones => SetupOptions.Zones();
+        public ICommand SnapshotSetupCommand => new RelayCommand(_ => _commandDispatcher.RequestSetupSnapshot(CurrentEditingProject));
+        public ICommand MoveSetupStepUpCommand => new RelayCommand(p => MoveSetupStep(p as ProjectAction, -1));
+        public ICommand MoveSetupStepDownCommand => new RelayCommand(p => MoveSetupStep(p as ProjectAction, 1));
+        private void MoveSetupStep(ProjectAction? action, int delta)
+        {
+            if (action == null || CurrentEditingProject == null) return;
+            int index = CurrentEditingProject.Actions.IndexOf(action), target = index + delta;
+            if (index >= 0 && target >= 0 && target < CurrentEditingProject.Actions.Count) CurrentEditingProject.Actions.Move(index, target);
+        }
 
         private HotkeyConfig? _recordingTarget;
         private readonly HashSet<Keys> _currentlyPressedKeys = new();
@@ -582,7 +504,6 @@ namespace OmniSync.Hub.Presentation
             FocusAiSessionsCommand = new RelayCommand(_ => { });
             ResetAiSessionsCommand = new RelayCommand(_ => { });
             SaveAiSettingsCommand = new RelayCommand(_ => { });
-            LaunchJarvisCommand = new RelayCommand(_ => { });
 
             AddProjectCommand = new RelayCommand(_ => { });
             DeleteProjectCommand = new RelayCommand(_ => { });
@@ -616,7 +537,7 @@ namespace OmniSync.Hub.Presentation
             set { _isAltPressed = value; OnPropertyChanged(); }
         }
 
-        public MainViewModel(HubMonitorService hubMonitorService, InputService inputService, ProcessService processService, ShutdownService shutdownService, RegistryService registryService, HubSettingsService settingsService, KeyboardHook keyboardHook, AiCliService aiCliService, LayoutCaptureService layoutCaptureService, ProjectLauncherService projectLauncherService, CommandDispatcher commandDispatcher, HubEventSender hubEventSender, AssistantService assistantService)
+        public MainViewModel(HubMonitorService hubMonitorService, InputService inputService, ProcessService processService, ShutdownService shutdownService, RegistryService registryService, HubSettingsService settingsService, KeyboardHook keyboardHook, AiCliService aiCliService, LayoutCaptureService layoutCaptureService, ProjectLauncherService projectLauncherService, CommandDispatcher commandDispatcher, HubEventSender hubEventSender)
         {
             _hubMonitorService = hubMonitorService;
             _inputService = inputService;
@@ -630,7 +551,6 @@ namespace OmniSync.Hub.Presentation
             _projectLauncherService = projectLauncherService;
             _commandDispatcher = commandDispatcher;
             _hubEventSender = hubEventSender;
-            _assistantService = assistantService;
 
             // Initialize collections
             ActiveConnections = _hubMonitorService.ActiveConnections;
@@ -683,9 +603,11 @@ namespace OmniSync.Hub.Presentation
                         ExeMappings.Add(mapping);
                     }
                     
+                    foreach (var existingHotkey in Hotkeys) existingHotkey.PropertyChanged -= OnHotkeyPropertyChanged;
                     Hotkeys.Clear();
                     foreach (var hk in hotkeysSnapshot)
                     {
+                        hk.PropertyChanged += OnHotkeyPropertyChanged;
                         Hotkeys.Add(hk);
                     }
 
@@ -694,6 +616,7 @@ namespace OmniSync.Hub.Presentation
                     {
                         Projects.Add(p);
                     }
+                    OnPropertyChanged(nameof(AvailableActions));
 
                     ProjectRoots.Clear();
                     foreach (var r in projectRootsSnapshot)
@@ -771,47 +694,6 @@ namespace OmniSync.Hub.Presentation
                 _settingsService.SaveSettings();
                 _hubMonitorService.AddLogMessage("[Settings] Saved AI Configuration.");
                 MessageBox.Show("AI Configuration Saved.", "Settings", MessageBoxButtons.OK, MessageBoxIcon.Information);
-            });
-
-            LaunchJarvisCommand = new RelayCommand(async _ => {
-                _hubMonitorService.AddLogMessage("[AI] User triggered Jarvis Loop launch.");
-                string workspace = _settingsService.Settings.JarvisWorkspace;
-                string systemPromptPath = _settingsService.Settings.JarvisSystemContextPath;
-                string model = _settingsService.Settings.JarvisModel;
-
-                string systemContext = "You are Jarvis.";
-                try
-                {
-                    if (System.IO.File.Exists(systemPromptPath))
-                    {
-                        systemContext = System.IO.File.ReadAllText(systemPromptPath);
-                    }
-                }
-                catch { }
-
-                                        _hubMonitorService.AddLogMessage($"[AI] Launching Jarvis session in {workspace} (Model: {model})...");
-
-                                        
-
-                                        var pid = await _aiCliService.LaunchSessionAsync(workspace, null, model, systemPromptPath);
-
-                            
-
-                                        if (pid.HasValue)
-                {
-                    _hubMonitorService.AddLogMessage($"[AI] Jarvis started with PID {pid.Value}. Sending 'Begin'.");
-                    _aiCliService.SetTellPcContext(pid.Value, systemContext);
-                    
-                    // Send the "Begin" message
-                    _ = Task.Run(async () => {
-                        await Task.Delay(2000); 
-                        await _aiCliService.SendPromptAsync("Begin", pid.Value);
-                    });
-                }
-                else
-                {
-                    _hubMonitorService.AddLogMessage("[AI] Failed to start Jarvis.");
-                }
             });
 
             AddProjectCommand = new RelayCommand(_ => ExecuteAddProject());
@@ -1291,6 +1173,11 @@ namespace OmniSync.Hub.Presentation
 
         private void OnHotkeyPropertyChanged(object? sender, PropertyChangedEventArgs e)
         {
+            if (sender is HotkeyConfig hotkey && e.PropertyName == nameof(HotkeyConfig.Key) && hotkey.Action.StartsWith("LAUNCH_SETUP_"))
+            {
+                var setup = _settingsService.Settings.Setups.FirstOrDefault(s => hotkey.Action == $"LAUNCH_SETUP_{s.Id}");
+                if (setup != null) setup.GlobalHotkey = hotkey.Key;
+            }
             _settingsService.SaveSettings();
             if (e.PropertyName == nameof(HotkeyConfig.Category))
             {
@@ -1301,7 +1188,7 @@ namespace OmniSync.Hub.Presentation
 
         private void ExecuteAddProject()
         {
-            var newProject = new Project { Name = "New Project" };
+            var newProject = new Project { Name = "New Setup" };
             _settingsService.AddProject(newProject);
             // SettingsChanged event will refresh the Projects collection
             CurrentEditingProject = CloneProject(newProject);
@@ -1311,7 +1198,7 @@ namespace OmniSync.Hub.Presentation
         {
             if (project == null) return;
 
-            var result = MessageBox.Show($"Are you sure you want to delete the project '{project.Name}'?", "Confirm Delete", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
+            var result = MessageBox.Show($"Delete setup '{project.Name}'?", "Confirm Delete", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
             if (result == DialogResult.Yes)
             {
                 _settingsService.RemoveProject(project.Id);
@@ -1329,6 +1216,8 @@ namespace OmniSync.Hub.Presentation
             var duplicated = CloneProject(project);
             duplicated.Id = Guid.NewGuid();
             duplicated.Name += " (Copy)";
+            duplicated.Shortcut = "";
+            duplicated.GlobalHotkey = "";
             
             _settingsService.AddProject(duplicated);
             _hubMonitorService.AddLogMessage($"[Settings] Duplicated project: {project.Name} -> {duplicated.Name}");
@@ -1344,8 +1233,21 @@ namespace OmniSync.Hub.Presentation
         private void ExecuteSaveProject()
         {
             if (CurrentEditingProject == null) return;
+            var shortcut = CurrentEditingProject.Shortcut.Trim().ToUpperInvariant();
+            if (!SetupRules.IsValidShortcut(shortcut) || _settingsService.Settings.Setups.Any(s => s.Id != CurrentEditingProject.Id && s.Shortcut == shortcut))
+            {
+                MessageBox.Show("Choose an unused letter, digit or F1–F24 key, optionally with Shift. W, A, S and D are reserved for navigation.", "Setup shortcut");
+                return;
+            }
+            CurrentEditingProject.Shortcut = shortcut;
+            if (!string.IsNullOrWhiteSpace(CurrentEditingProject.GlobalHotkey) && _settingsService.Settings.Hotkeys.Any(h =>
+                h.Key.Equals(CurrentEditingProject.GlobalHotkey, StringComparison.OrdinalIgnoreCase) && h.Action != $"LAUNCH_SETUP_{CurrentEditingProject.Id}"))
+            {
+                MessageBox.Show("That global hotkey is already assigned.", "Setup hotkey");
+                return;
+            }
             _settingsService.UpdateProject(CurrentEditingProject);
-            _hubMonitorService.AddLogMessage($"[Settings] Saved project: {CurrentEditingProject.Name}");
+            _hubMonitorService.AddLogMessage($"[Settings] Saved setup: {CurrentEditingProject.Name}");
             OnPropertyChanged(nameof(AvailableActions));
         }
 

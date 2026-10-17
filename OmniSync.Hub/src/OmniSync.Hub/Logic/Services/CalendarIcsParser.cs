@@ -46,6 +46,12 @@ public static class CalendarIcsParser
                         hasStart = true;
                     }
                     break;
+                case "DTEND":
+                    if (TryParseDate(value, parameters, out var end, out _))
+                    {
+                        current.End = end;
+                    }
+                    break;
                 case "SUMMARY":
                     current.Summary = DecodeText(value);
                     break;

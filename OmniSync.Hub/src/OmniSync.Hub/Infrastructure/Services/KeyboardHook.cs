@@ -49,6 +49,8 @@ namespace OmniSync.Hub.Infrastructure.Services
         public event EventHandler<KeyHookEventArgs>? KeyActionOccurred;
 
         public bool IsRecording { get; set; }
+        public bool IsSnapshotActive { get; set; }
+        public bool IsSweepActive { get; set; }
 
         public KeyboardHook(ILogger<KeyboardHook> logger)
         {

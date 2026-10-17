@@ -31,8 +31,9 @@ namespace OmniSync.Hub.Logic.Services
         private readonly CommandDispatcher _commandDispatcher;
         private readonly FileService _fileService; // Added FileService dependency
         private readonly AiCliService _aiCliService; // Added AiCliService
-        private readonly AssistantService _assistantService;
         private readonly HubSettingsService _settingsService;
+        public Task NotifySetupSnapshotCompleted(Guid? id, bool skipped) =>
+            _hubContext.Clients.All.SendAsync("SetupSnapshotCompleted", new { id, skipped });
         private readonly HubMonitorService _monitorService;
         private string? _lastPlayedDialogPrompt;
         private DateTime _lastPlayedDialogTime = DateTime.MinValue;
@@ -42,7 +43,7 @@ namespace OmniSync.Hub.Logic.Services
         private readonly SemaphoreSlim _autoResponseSemaphore = new SemaphoreSlim(1, 1);
         private DateTime _lastAutoResponseTime = DateTime.MinValue;
 
-        public HubEventSender(ILogger<HubEventSender> logger, IHubContext<RpcApiHub> hubContext, ProcessService processService, InputService inputService, AudioService audioService, ShutdownService shutdownService, CommandDispatcher commandDispatcher, FileService fileService, AiCliService aiCliService, HubSettingsService settingsService, HubMonitorService monitorService, AssistantService assistantService) // Added AiCliService
+        public HubEventSender(ILogger<HubEventSender> logger, IHubContext<RpcApiHub> hubContext, ProcessService processService, InputService inputService, AudioService audioService, ShutdownService shutdownService, CommandDispatcher commandDispatcher, FileService fileService, AiCliService aiCliService, HubSettingsService settingsService, HubMonitorService monitorService) // Added AiCliService
         {
             _logger = logger;
             _hubContext = hubContext;
@@ -54,8 +55,8 @@ namespace OmniSync.Hub.Logic.Services
             _fileService = fileService; // Assign FileService
             _aiCliService = aiCliService;
             _settingsService = settingsService;
+            _settingsService.SettingsChanged += (_, _) => _ = _hubContext.Clients.All.SendAsync("SettingsUpdated");
             _monitorService = monitorService;
-            _assistantService = assistantService;
 
             _processService.CommandOutputReceived += OnCommandOutputReceived;
             _inputService.ModifierStateChanged += OnModifierStateChanged;

@@ -18,6 +18,10 @@ namespace OmniSync.Hub.Logic.Monitoring
         private readonly ILogger<HubMonitorService> _logger;
 
         public event PropertyChangedEventHandler? PropertyChanged;
+        public event EventHandler<ReminderPresentation>? ReminderPresentationRequested;
+        public event EventHandler<System.Collections.Generic.IReadOnlyList<OmniSync.Hub.Models.ReminderItem>>? ReminderSnapshotReceived;
+        public void RequestReminderPresentation(ReminderPresentation presentation) => ReminderPresentationRequested?.Invoke(this, presentation);
+        public void PublishReminderSnapshot(System.Collections.Generic.IReadOnlyList<OmniSync.Hub.Models.ReminderItem> items) => ReminderSnapshotReceived?.Invoke(this, items);
 
         // New events for UI updates
         public event EventHandler<string>? LogEntryAdded;
@@ -25,6 +29,12 @@ namespace OmniSync.Hub.Logic.Monitoring
         public event EventHandler<string>? ConnectionAdded; // New event
         public event EventHandler<string>? ConnectionRemoved; // New event
         public event EventHandler<string>? ExternalCommandReceived; // New event for tray notifications
+        public event EventHandler<ConnectivityAlert>? ConnectivityAlertChanged;
+        public void ReportConnectivityAlert(ConnectivityAlert alert)
+        {
+            AddLogMessage($"[Connectivity] {alert.Title}: {alert.Detail}");
+            ConnectivityAlertChanged?.Invoke(this, alert);
+        }
 
         // Event handlers from RpcApiHub
         private EventHandler<string>? _anyCommandReceivedHandler;

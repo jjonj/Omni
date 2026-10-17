@@ -107,7 +107,7 @@ class MainActivity : ComponentActivity() {
         AppScreen.REMOTECONTROL,
         AppScreen.BROWSER,
         AppScreen.FILES,
-        AppScreen.AI_CHAT,
+        AppScreen.AGENTS,
         AppScreen.ALARM,
         AppScreen.WEB_SERVER,
         AppScreen.PROCESS,
@@ -153,15 +153,11 @@ class MainActivity : ComponentActivity() {
     @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        omniSyncApplication = application as OmniSyncApplication
+        mainViewModel = omniSyncApplication.mainViewModel
+        mainViewModel.addLog("[Android startup] Activity dependencies initialized; handling launch intent", com.omni.sync.ui.screen.LogType.INFO)
 
         handleIntent(intent)
-        if (
-            savedInstanceState == null &&
-            intent?.hasExtra("OPEN_SCREEN") != true &&
-            java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY) >= 23
-        ) {
-            mainViewModel.navigateTo(AppScreen.ALARM)
-        }
 
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
             val permissions = mutableListOf(Manifest.permission.POST_NOTIFICATIONS, Manifest.permission.READ_MEDIA_VIDEO)
@@ -180,9 +176,7 @@ class MainActivity : ComponentActivity() {
         WindowCompat.setDecorFitsSystemWindows(window, false)
         updateSystemBars(resources.configuration.orientation)
 
-        omniSyncApplication = application as OmniSyncApplication
-        mainViewModel = omniSyncApplication.mainViewModel
-        
+        mainViewModel.addLog("[Android startup] Permissions and window configured; starting connection", com.omni.sync.ui.screen.LogType.INFO)
         omniSyncApplication.signalRClient.startConnection()
 
         if (mainViewModel.appConfig.value.overlayEnabled && android.provider.Settings.canDrawOverlays(this)) {
@@ -276,6 +270,42 @@ class MainActivity : ComponentActivity() {
                         } catch (e: Exception) {
                             mainViewModel.addLog("Voice recognition not supported", com.omni.sync.ui.screen.LogType.ERROR)
                         }
+                    }
+
+                    var voiceCaptureMode by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf<com.omni.sync.data.repository.SignalRClient.VoiceMode?>(null) }
+                    val voiceCaptureLauncher = rememberLauncherForActivityResult(
+                        contract = ActivityResultContracts.StartActivityForResult()
+                    ) { result ->
+                        val mode = voiceCaptureMode
+                        voiceCaptureMode = null
+                        signalRClient.completeVoiceCapture()
+                        if (mode != null && result.resultCode == Activity.RESULT_OK) {
+                            val spokenText = result.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()
+                            if (!spokenText.isNullOrBlank()) {
+                                mainViewModel.addLog("[Voice] ${mode.name}: $spokenText", com.omni.sync.ui.screen.LogType.INFO)
+                                signalRClient.sendVoiceTranscript(mode, spokenText)
+                            }
+                        }
+                    }
+
+                    LaunchedEffect(Unit) {
+                        fun launchVoiceCapture(mode: com.omni.sync.data.repository.SignalRClient.VoiceMode) {
+                            if (voiceCaptureMode != null) return
+                            voiceCaptureMode = mode
+                            val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                                putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                                putExtra(RecognizerIntent.EXTRA_PROMPT, if (mode == com.omni.sync.data.repository.SignalRClient.VoiceMode.JARVIS) "Jarvis..." else "Type...")
+                            }
+                            try {
+                                voiceCaptureLauncher.launch(intent)
+                            } catch (e: Exception) {
+                                voiceCaptureMode = null
+                                signalRClient.completeVoiceCapture()
+                                mainViewModel.addLog("Voice recognition not supported: ${e.message}", com.omni.sync.ui.screen.LogType.ERROR)
+                            }
+                        }
+                        signalRClient.consumePendingVoiceCapture()?.let { launchVoiceCapture(it) }
+                        signalRClient.voiceCaptureRequests.collect { launchVoiceCapture(it) }
                     }
 
                     LaunchedEffect(Unit) {
@@ -379,7 +409,7 @@ class MainActivity : ComponentActivity() {
                                         userScrollEnabled = canSwipe // Only allow swiping on swipeable screens and editor with word wrap
                                     ) { page ->
                                         val screenAtPage = swipeableScreens[page]
-                                        val pageModifier = if (screenAtPage == AppScreen.REMOTECONTROL || screenAtPage == AppScreen.FILES || screenAtPage == AppScreen.AI_CHAT || screenAtPage == AppScreen.WEB_SERVER) Modifier else Modifier.padding(innerPadding)
+                                        val pageModifier = if (screenAtPage == AppScreen.REMOTECONTROL || screenAtPage == AppScreen.FILES || screenAtPage == AppScreen.AGENTS || screenAtPage == AppScreen.WEB_SERVER) Modifier else Modifier.padding(innerPadding)
                                         Box(modifier = pageModifier) {
                                             MainScreenContent(screenAtPage, signalRClient, browserViewModel, filesViewModel, mainViewModel, booksViewModel, innerPadding)
                                         }
@@ -408,6 +438,11 @@ class MainActivity : ComponentActivity() {
 
     override fun onStart() {
         super.onStart()
+        mainViewModel.addLog("[Android startup] Activity started; applying morning navigation", com.omni.sync.ui.screen.LogType.INFO)
+        if (java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY) < 9) {
+            mainViewModel.navigateTo(AppScreen.ALARM)
+            mainViewModel.addLog("[Android startup] Morning Alarm screen selected", com.omni.sync.ui.screen.LogType.INFO)
+        }
         // Retry connection if disconnected when app comes to foreground
         val state = omniSyncApplication.signalRClient.connectionState.value
         val isConnecting = state.contains("Connecting", ignoreCase = true) || state.contains("Reconnecting", ignoreCase = true)
@@ -423,6 +458,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        mainViewModel.addLog("[Android startup] Activity resumed; checking pending deployment", com.omni.sync.ui.screen.LogType.INFO)
         (application as? OmniSyncApplication)
             ?.androidUpdateManager
             ?.continuePendingDeploymentIfPermitted()
@@ -446,11 +482,15 @@ class MainActivity : ComponentActivity() {
 
     private fun handleIntent(intent: Intent?) {
         val screenName = intent?.getStringExtra("OPEN_SCREEN")
+        mainViewModel.addLog("[Android startup] Launch intent screen=${screenName ?: "default"}", com.omni.sync.ui.screen.LogType.INFO)
         if (screenName != null) {
             try {
                 val screen = AppScreen.valueOf(screenName)
                 mainViewModel.navigateTo(screen)
                 
+                if (screen == AppScreen.AGENT_DETAIL) {
+                    intent.getStringExtra("AGENT_SESSION_ID")?.let { mainViewModel.openAgentSession(it) }
+                }
                 if (screen == AppScreen.FILES) {
                     val filePath = intent.getStringExtra("FILE_PATH")
                     if (filePath != null) {
@@ -509,6 +549,7 @@ class MainActivity : ComponentActivity() {
                 signalRClient = signalRClient,
                 filesViewModel = filesViewModel
             )
+            // LEGACY: old AI screen (als1), shown as "OldAI" in the burger menu. Superseded by AppScreen.AGENTS.
             AppScreen.AI_CHAT -> com.omni.sync.ui.screen.AiChatScreen(
                 signalRClient = signalRClient,
                 mainViewModel = mainViewModel,
@@ -523,6 +564,11 @@ class MainActivity : ComponentActivity() {
             AppScreen.AGENT_DETAIL -> com.omni.sync.ui.screen.AgentSessionDetailScreen(
                 signalRClient = signalRClient,
                 mainViewModel = mainViewModel,
+                onBack = { mainViewModel.navigateTo(AppScreen.AGENTS) },
+                parentPadding = paddingValues
+            )
+            AppScreen.AGENT_TERMINAL -> com.omni.sync.ui.screen.AgentTerminalScreen(
+                signalRClient = signalRClient,
                 onBack = { mainViewModel.navigateTo(AppScreen.AGENTS) },
                 parentPadding = paddingValues
             )
@@ -571,6 +617,10 @@ class MainActivity : ComponentActivity() {
                     )
                 }
             }
+            AppScreen.TESTS -> com.omni.sync.ui.screen.TestsScreen()
+            AppScreen.TASKBOARD -> com.omni.sync.ui.screen.TaskBoardScreen(
+                parentPadding = paddingValues
+            )
             AppScreen.BOOKS -> BooksScreen(
                 mainViewModel = mainViewModel,
                 booksViewModel = booksViewModel,

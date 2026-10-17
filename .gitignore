@@ -58,6 +58,7 @@ target/
 OmniSync.Android/app/build
 OmniSync.Android/.gradle
 OmniSync.Android/.kotlin
+/artifacts/gradle-cache/
 
 # Model data
 *.onnx.data
@@ -108,7 +109,7 @@ coderesults.txt
 
 speech_input.wav
 response.wav
-OmniSync.Hub/Voice/MIND/Diary/*
+
 /OmniSync.Hub/Screenshots
 
 OmniSync.Hub/src/OmniSync.Hub.Tests/TestResults/
@@ -117,3 +118,9 @@ OmniSync.Hub/temp_test_out/
 # OmniSync.Web/www/ Management
 OmniSync.Web/www/worktrees/
 OmniSync.Web/www/worktrees.json
+
+# User Obsidian project notes (local junction)
+/OmniNotes/
+
+# Python venv for the Google Keep voice bridge
+artifacts/keep-venv/

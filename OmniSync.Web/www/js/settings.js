@@ -1,6 +1,6 @@
 let hubConnection = null;
 let currentHotkeys = [];
-let currentProjects = [];
+let currentSetups = [];
 let recordingHotkeyIndex = -1;
 
 async function init() {
@@ -12,6 +12,22 @@ async function init() {
     hubConnection.on("UpdateRunOnStartup", (enabled) => {
         const cb = document.getElementById("run-on-startup");
         if (cb) cb.checked = enabled;
+    });
+    hubConnection.onreconnected(async () => {
+        await hubConnection.invoke("Authenticate", API_KEY);
+        if (!editingSetupId) await loadSettings();
+    });
+    hubConnection.on("SettingsUpdated", async () => {
+        if (!waitingForSnapshot && !editingSetupId && recordingHotkeyIndex === -1) await loadSettings();
+    });
+    hubConnection.on("SetupSnapshotCompleted", async result => {
+        if (!waitingForSnapshot) return;
+        waitingForSnapshot = false;
+        if (result.id) {
+            editingSetupId = null;
+            document.getElementById("setup-editor").hidden = true;
+            await loadSettings();
+        }
     });
 
     try {
@@ -28,10 +44,11 @@ async function init() {
 async function loadSettings() {
     try {
         const settings = await hubConnection.invoke("GetSettings");
+        document.getElementById("task-resurfacing-times").value = settings.taskResurfacingTimes || "11:00,18:00";
         currentHotkeys = settings.hotkeys;
-        currentProjects = settings.projects || [];
+        currentSetups = settings.setups || [];
         renderHotkeys();
-        renderProjects();
+        renderSetups();
         renderExeMappings(settings.exeMappings);
         renderAiModels(settings.aiModels || [], settings.defaultAiModel || "");
         
@@ -48,6 +65,14 @@ async function loadSettings() {
         if (cb) cb.checked = status.isRunOnStartupEnabled;
     } catch (err) {
         console.error("Error loading settings:", err);
+    }
+}
+
+async function saveTaskResurfacingTimes() {
+    try {
+        await hubConnection.invoke("SetTaskResurfacingTimes", document.getElementById("task-resurfacing-times").value);
+    } catch (error) {
+        alert("Could not save reminder times: " + error.message);
     }
 }
 
@@ -72,95 +97,176 @@ async function saveAiSettings() {
     }
 }
 
-function renderProjects() {
-    const list = document.getElementById("projects-list");
+
+const setupBaseKeys = [..."1234567890QERTYUIOPFGHJKLZXCVBNM", ...Array.from({length: 24}, (_, i) => "F" + (i + 1))];
+const setupShortcutKeys = [...setupBaseKeys, ...setupBaseKeys.map(k => "SHIFT+" + k)];
+let setupOptions = { monitors: [], zones: [] };
+let editingSetupId = null;
+let draggedSetupId = null;
+let waitingForSnapshot = false;
+
+function setupElement(tag, text, parent) {
+    const element = document.createElement(tag);
+    if (text !== null) element.textContent = text;
+    if (parent) parent.appendChild(element);
+    return element;
+}
+function setupButton(parent, text, action) {
+    const button = setupElement("button", text, parent);
+    button.className = "modern-btn";
+    button.onclick = action;
+    return button;
+}
+function nextSetupShortcut() {
+    const used = new Set(currentSetups.map(s => (s.shortcut || "").toUpperCase()));
+    return setupShortcutKeys.find(k => !used.has(k)) || "";
+}
+function renderSetups() {
+    const list = document.getElementById("setups-list");
     if (!list) return;
-    list.innerHTML = "";
-    
-    if (currentProjects.length === 0) {
-        list.innerHTML = '<div class="text-dim" style="font-size: 12px;">No projects defined yet.</div>';
-        return;
-    }
-
-    currentProjects.forEach((proj, index) => {
-        const row = document.createElement("div");
+    list.replaceChildren();
+    if (!currentSetups.length) setupElement("p", "No setups yet. Snapshot your desktop or create an empty setup.", list);
+    currentSetups.forEach(setup => {
+        const row = setupElement("div", null, list);
         row.className = "hub-box";
-        row.style.background = "var(--bg)";
         row.style.padding = "12px";
-        
-        const actionsSummary = proj.actions ? `${proj.actions.length} action(s)` : "No actions";
-        
-        row.innerHTML = `
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                <div style="font-weight: bold; color: var(--accent);">${proj.name}</div>
-                <div>
-                    <button class="btn" onclick="editProject(${index})">Edit</button>
-                    <button class="btn" onclick="duplicateProject(${index})">Copy</button>
-                    <button class="btn danger" onclick="removeProject(${index})">Delete</button>
-                </div>
-            </div>
-            <div class="text-dim" style="font-size: 11px;">${actionsSummary}</div>
-        `;
-        list.appendChild(row);
+        row.draggable = true;
+        row.ondragstart = () => { draggedSetupId = setup.id; };
+        row.ondragover = event => event.preventDefault();
+        row.ondrop = async event => {
+            event.preventDefault();
+            const from = currentSetups.findIndex(s => s.id === draggedSetupId);
+            const to = currentSetups.findIndex(s => s.id === setup.id);
+            if (from < 0 || from === to) return;
+            const moving = currentSetups.splice(from, 1)[0];
+            currentSetups.splice(to, 0, moving);
+            renderSetups();
+            await saveSetups();
+        };
+        setupElement("strong", setup.name + "  [" + (setup.shortcut || "") + "]", row);
+        setupElement("p", (setup.actions || []).length + " steps", row);
+        setupButton(row, "Launch", async () => {
+            if (await saveSetups()) await hubConnection.invoke("LaunchSetup", setup.id);
+        });
+        setupButton(row, "Edit", () => editSetup(setup.id));
+        setupButton(row, "Re-snapshot", () => snapshotSetup(setup.id));
+        setupButton(row, "Copy", () => {
+            const copy = JSON.parse(JSON.stringify(setup));
+            copy.id = generateGuid(); copy.name += " (Copy)"; copy.shortcut = nextSetupShortcut(); copy.globalHotkey = "";
+            currentSetups.push(copy); renderSetups(); editSetup(copy.id);
+        });
+        setupButton(row, "Delete", async () => {
+            if (!confirm("Delete setup '" + setup.name + "'?")) return;
+            currentSetups = currentSetups.filter(s => s.id !== setup.id);
+            if (editingSetupId === setup.id) { editingSetupId = null; document.getElementById("setup-editor").hidden = true; }
+            renderSetups(); await saveSetups();
+        });
     });
 }
-
-function addNewProject() {
-    const name = prompt("Enter project name:");
-    if (!name) return;
-    
-    currentProjects.push({
-        id: generateGuid(),
-        name: name,
-        actions: [],
-        hotkeyName: ""
+function addNewSetup() {
+    const setup = { id: generateGuid(), name: "New Setup", shortcut: nextSetupShortcut(), globalHotkey: "", actions: [] };
+    currentSetups.push(setup);
+    renderSetups(); editSetup(setup.id);
+}
+function setupField(parent, label, object, key, kind = "text") {
+    const wrapper = setupElement("label", null, parent);
+    wrapper.style.display = "block"; wrapper.style.margin = "8px 0";
+    setupElement("span", label, wrapper).style.display = "block";
+    const input = setupElement(kind === "textarea" ? "textarea" : "input", null, wrapper);
+    input.style.width = kind === "checkbox" ? "auto" : "100%";
+    if (kind !== "textarea") input.type = kind;
+    if (kind === "checkbox") input.checked = object[key] === true;
+    else input.value = object[key] ?? "";
+    input.oninput = () => {
+        object[key] = kind === "checkbox" ? input.checked : kind === "number" ? Number(input.value) : input.value;
+    };
+    return input;
+}
+async function editSetup(id) {
+    editingSetupId = id;
+    try { setupOptions = await hubConnection.invoke("GetSetupOptions"); } catch (error) { console.error(error); }
+    const setup = currentSetups.find(s => s.id === id);
+    if (!setup || editingSetupId !== id) return;
+    const editor = document.getElementById("setup-editor");
+    editor.hidden = false; editor.replaceChildren();
+    setupElement("h3", "Edit setup", editor);
+    setupField(editor, "Name", setup, "name");
+    setupField(editor, "Sweep shortcut (WASD reserved; F1-F24 and Shift supported)", setup, "shortcut").maxLength = 12;
+    setupField(editor, "Optional global hotkey", setup, "globalHotkey");
+    setupElement("p", "Steps run in order. Terminal stays open; RunOnce exits. Scripts can read OMNI_CLIPBOARD.", editor);
+    const typeNames = ["Folder", "Program", "Terminal", "Run once", "Omni action", "Macro"];
+    setup.actions ||= [];
+    setup.actions.forEach((action, index) => {
+        action.layout ||= { useRatio: true, x: 0, y: 0, width: 800, height: 600, ratioX: 0, ratioY: 0, ratioWidth: .5, ratioHeight: .5 };
+        const box = setupElement("div", null, editor);
+        box.className = "hub-box"; box.style.padding = "12px"; box.style.marginBottom = "12px";
+        const type = setupElement("select", null, box);
+        typeNames.forEach((name, value) => { const option = setupElement("option", name, type); option.value = value; });
+        type.value = action.type ?? 1;
+        type.onchange = () => { action.type = Number(type.value); if (action.type === 2) action.reuseWindow = false; editSetup(id); };
+        setupField(box, "Program / folder / Omni action / macro name", action, "path");
+        setupField(box, "Arguments (JSON payload for Omni action)", action, "arguments");
+        setupField(box, "Working directory", action, "workingDirectory");
+        setupField(box, "Command (Terminal / Run once / inline Macro)", action, "command", "textarea");
+        setupField(box, "Window title to match", action, "windowTitle");
+        setupField(box, "Reuse existing window", action, "reuseWindow", "checkbox");
+        setupField(box, "Restore position and size", action, "positionWindow", "checkbox");
+        setupElement("span", "Target monitor", box);
+        const monitor = setupElement("select", null, box);
+        const saved = setupElement("option", "Saved monitor", monitor); saved.value = action.layout.monitorDevice || "";
+        (setupOptions.monitors || []).forEach(m => { const option = setupElement("option", m.label, monitor); option.value = m.key; });
+        monitor.value = action.layout.monitorDevice || "";
+        monitor.onchange = () => {
+            const selected = setupOptions.monitors.find(m => m.key === monitor.value);
+            if (!selected) return;
+            const old = action.layout, target = selected.layout;
+            action.layout = { ...old, monitorDevice: target.monitorDevice, monitorIdentity: target.monitorIdentity,
+                monitorPrimary: target.monitorPrimary, monitorX: target.monitorX, monitorY: target.monitorY,
+                monitorWidth: target.monitorWidth, monitorHeight: target.monitorHeight,
+                x: target.monitorX + old.ratioX * target.monitorWidth, y: target.monitorY + old.ratioY * target.monitorHeight,
+                width: old.ratioWidth * target.monitorWidth, height: old.ratioHeight * target.monitorHeight };
+            editSetup(id);
+        };
+        setupField(box, "Use proportions instead of exact pixels", action.layout, "useRatio", "checkbox");
+        ["x", "y", "width", "height", "ratioX", "ratioY", "ratioWidth", "ratioHeight"].forEach(key => setupField(box, key, action.layout, key, "number"));
+        setupElement("span", "OmniZones placement", box);
+        const zone = setupElement("select", null, box);
+        (setupOptions.zones || []).forEach(z => { const option = setupElement("option", z.label, zone); option.value = z.key; });
+        zone.value = action.layout.zoneId ? action.layout.zoneLayoutId + "|" + action.layout.zoneId : "";
+        zone.onchange = () => { const parts = zone.value.split("|"); action.layout.zoneLayoutId = parts[0] || ""; action.layout.zoneId = parts[1] || ""; };
+        setupField(box, "Maximized", action.layout, "maximized", "checkbox");
+        setupButton(box, "Up", () => { if (index > 0) { const step = setup.actions.splice(index, 1)[0]; setup.actions.splice(index - 1, 0, step); editSetup(id); } });
+        setupButton(box, "Down", () => { if (index + 1 < setup.actions.length) { const step = setup.actions.splice(index, 1)[0]; setup.actions.splice(index + 1, 0, step); editSetup(id); } });
+        setupButton(box, "Remove step", () => { setup.actions.splice(index, 1); editSetup(id); });
     });
-    renderProjects();
+    setupButton(editor, "+ Add step", () => {
+        setup.actions.push({ id: generateGuid(), type: 1, path: "", arguments: "", command: "", workingDirectory: "", reuseWindow: true, positionWindow: true, isCaptured: false });
+        editSetup(id);
+    });
+    setupButton(editor, "Save setup", async () => { if (await saveSetups()) renderSetups(); });
+    setupButton(editor, "Close editor", () => { editingSetupId = null; editor.hidden = true; });
+    editor.scrollIntoView({ behavior: "smooth", block: "start" });
 }
-
-function duplicateProject(index) {
-    const source = currentProjects[index];
-    const duplicated = JSON.parse(JSON.stringify(source));
-    duplicated.id = generateGuid();
-    duplicated.name = duplicated.name + " (Copy)";
-    
-    currentProjects.push(duplicated);
-    renderProjects();
-}
-
-function removeProject(index) {
-    if (confirm(`Delete project '${currentProjects[index].name}'?`)) {
-        currentProjects.splice(index, 1);
-        renderProjects();
+async function saveSetups() {
+    const used = new Set();
+    for (const setup of currentSetups) {
+        setup.shortcut = (setup.shortcut || nextSetupShortcut()).trim().toUpperCase();
+        if (!setupShortcutKeys.includes(setup.shortcut) || used.has(setup.shortcut)) {
+            alert("Each setup needs an unused key. W, A, S and D are reserved; F1-F24 and Shift are supported."); return false;
+        }
+        used.add(setup.shortcut);
     }
-}
-
-function editProject(index) {
-    const proj = currentProjects[index];
-    const newName = prompt("Edit project name:", proj.name);
-    if (newName) proj.name = newName;
-    
-    // For now, simple editing. In a full implementation, 
-    // we'd open a modal to manage project actions.
-    // The C# side has a full editor, this is a web placeholder.
-    renderProjects();
-}
-
-async function saveProjects() {
     try {
-        await hubConnection.invoke("UpdateProjects", currentProjects);
-        const btn = event.currentTarget;
-        const originalText = btn.innerText;
-        btn.innerText = "SAVED!";
-        btn.classList.add("success");
-        setTimeout(() => {
-            btn.innerText = originalText;
-            btn.classList.remove("success");
-        }, 2000);
-    } catch (err) {
-        console.error("Error saving projects:", err);
-        alert("Failed to save projects.");
-    }
+        await hubConnection.invoke("UpdateSetups", currentSetups);
+        const settings = await hubConnection.invoke("GetSettings");
+        currentSetups = settings.setups || []; currentHotkeys = settings.hotkeys;
+        renderSetups(); renderHotkeys(); return true;
+    } catch (error) { alert("Could not save setups: " + error.message); return false; }
+}
+async function snapshotSetup(id = null) {
+    if (id && !(await saveSetups())) return;
+    try { waitingForSnapshot = true; await hubConnection.invoke("RequestSetupSnapshot", id, false); }
+    catch (error) { waitingForSnapshot = false; alert("Could not start snapshot: " + error.message); }
 }
 
 function generateGuid() {

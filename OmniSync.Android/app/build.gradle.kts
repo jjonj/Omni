@@ -1,8 +1,14 @@
+import java.security.MessageDigest
+import java.time.Instant
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
 }
+
+val updateVersionCode = (System.currentTimeMillis() / 1_000L).toInt()
+val updateVersionName = "dev.$updateVersionCode"
 
 android {
     namespace = "com.omni.sync"
@@ -12,8 +18,8 @@ android {
         applicationId = "com.omni.sync"
         minSdk = 24
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = updateVersionCode
+        versionName = updateVersionName
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -49,7 +55,44 @@ android {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
     }
+    sourceSets {
+        getByName("test").resources.srcDir(rootProject.file("../Shared"))
+    }
 }
+
+fun registerUpdateMetadata(variant: String) {
+    val variantName = variant.replaceFirstChar { it.uppercase() }
+    val apkFile = layout.buildDirectory.file("outputs/apk/$variant/app-$variant.apk")
+    val metadataFile = layout.buildDirectory.file("outputs/apk/$variant/app-$variant.update.json")
+    val metadataTask = tasks.register("write${variantName}UpdateMetadata") {
+        inputs.file(apkFile)
+        inputs.property("versionCode", updateVersionCode)
+        outputs.file(metadataFile)
+        doLast {
+            val apk = apkFile.get().asFile
+            check(apk.isFile) { "Cannot publish Android update because $apk was not created." }
+            val sha256 = MessageDigest.getInstance("SHA-256")
+                .digest(apk.readBytes())
+                .joinToString("") { "%02x".format(it.toInt() and 0xff) }
+            metadataFile.get().asFile.writeText(
+                """{
+  "versionCode": $updateVersionCode,
+  "versionName": "$updateVersionName",
+  "sha256": "$sha256",
+  "size": ${apk.length()},
+  "builtAtUtc": "${Instant.now()}"
+}
+"""
+            )
+        }
+    }
+    tasks.matching { it.name == "assemble$variantName" }.configureEach {
+        finalizedBy(metadataTask)
+    }
+}
+
+registerUpdateMetadata("debug")
+registerUpdateMetadata("release")
 
 dependencies {
 

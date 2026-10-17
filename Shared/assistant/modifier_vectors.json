@@ -1,0 +1,11 @@
+[
+  { "text": "turn on my PC in an hour", "command": "turn on my PC", "delaySeconds": 3600, "supported": true },
+  { "text": "turn on my PC in a minute", "command": "turn on my PC", "delaySeconds": 60, "supported": true },
+  { "text": "turn on my PC in twenty minutes", "command": "turn on my PC", "delaySeconds": 1200, "supported": true },
+  { "text": "turn on my PC in 1 hour and 30 minutes", "command": "turn on my PC", "delaySeconds": 5400, "supported": true },
+  { "text": "turn on my PC in an hour and a half", "command": "turn on my PC", "delaySeconds": 5400, "supported": true },
+  { "text": "turn on my PC in half an hour", "command": "turn on my PC", "delaySeconds": 1800, "supported": true },
+  { "text": "turn on my PC in 90 min", "command": "turn on my PC", "delaySeconds": 5400, "supported": true },
+  { "text": "in an hour, turn on my PC", "command": "in an hour, turn on my PC", "delaySeconds": null, "supported": false },
+  { "text": "play movie Gone in 60 Seconds", "command": "play movie Gone", "delaySeconds": 60, "supported": true, "collisionCase": true }
+]

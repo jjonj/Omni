@@ -6,6 +6,7 @@ import android.net.Uri
 import android.os.Environment
 import com.omni.sync.data.model.FileSystemEntry
 import com.omni.sync.data.repository.SignalRClient
+import com.omni.sync.data.repository.HubMediaAuth
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -78,6 +79,11 @@ class BookDownloadManager(
             .setDestinationInExternalFilesDir(context, "downloaded_books", entry.name)
             .setAllowedOverMetered(true)
             .setAllowedOverRoaming(true)
+
+        // DownloadManager is outside the app's OkHttp/Coil stack.
+        // Pass the key only to a URL on our own Hub.
+        HubMediaAuth.headersFor(Uri.parse(downloadUrl), mainViewModel)
+            .forEach { (name, value) -> request.addRequestHeader(name, value) }
 
         try {
             val id = dm.enqueue(request)

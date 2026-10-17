@@ -37,11 +37,14 @@ enum class AppScreen {
     AI_CHAT,
     AGENTS,
     AGENT_DETAIL,
+    AGENT_TERMINAL,
     DOWNLOADED_VIDEOS,
     ALARM,
     IMAGE_VIEWER,
     MACRO_MANAGER,
     WEB_SERVER,
+    TASKBOARD,
+    TESTS,
     BOOKS,
     PDF_VIEWER,
     EPUB_VIEWER
@@ -150,29 +153,37 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun recordActivity() {
         sleepTracker.recordActivity()
-        // We no longer automatically reset sleep on every activity record.
-        // Sleep is only reset via resetSleep() which is called by the "Woke up" button
-        // or potentially a manual connection to the Hub if we want that.
     }
 
     fun recordUserActivity() {
-        sleepTracker.recordActivity()
-        if (sleepTracker.isSleeping()) {
-            // Only reset if we are sure it's a manual user action
-            resetSleep()
+        recordStillAwake(startIfInactive = false, source = "user activity")
+    }
+
+    fun recordStillAwake(startIfInactive: Boolean = true, source: String = "Still awake button") {
+        val previousStart = sleepTracker.getSleepStartTime()
+        sleepTracker.recordStillAwake(startIfInactive)
+        refreshSleepState()
+        if (source != "phone interaction" || previousStart / 60_000 != sleepTracker.getSleepStartTime() / 60_000) {
+            addLog("[Sleep tracker] $source: previousEstimate=$previousStart, estimate=${sleepTracker.getSleepStartTime()}, active=${_isSleeping.value}", LogType.INFO)
         }
+    }
+
+    private fun refreshSleepState() {
+        _isSleeping.value = sleepTracker.isSleeping()
+        _sleepDuration.value = sleepTracker.getFormattedSleepDuration()
     }
 
     fun startSleep() {
         sleepTracker.recordPotentialSleepStart()
-        _isSleeping.value = true
-        _sleepDuration.value = sleepTracker.getFormattedSleepDuration()
+        refreshSleepState()
+        addLog("[Sleep tracker] Start Sleep: estimate=${sleepTracker.getSleepStartTime()}", LogType.INFO)
     }
 
-    fun resetSleep() {
+    fun resetSleep(source: String = "Woke up button") {
+        val duration = sleepTracker.getFormattedSleepDuration()
         sleepTracker.resetSleep()
-        _isSleeping.value = false
-        _sleepDuration.value = sleepTracker.getFormattedSleepDuration()
+        refreshSleepState()
+        addLog("[Sleep tracker] Session ended by $source; estimated sleep=$duration", LogType.INFO)
     }
 
     fun setActiveBaseUrl(url: String) {
@@ -339,6 +350,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun viewImages(remotePath: String, playlist: List<String> = emptyList()) {
+        val isLocal = remotePath.startsWith("/") || remotePath.startsWith("file://") || remotePath.startsWith("content://")
+
+        if (isLocal) {
+            val fixedPath = if (remotePath.startsWith("/")) "file://$remotePath" else remotePath
+            val fixedPlaylist = playlist.map { if (it.startsWith("/")) "file://$it" else it }
+
+            _imagePlaylist.value = fixedPlaylist
+            _currentImageIndex.value = if (fixedPlaylist.contains(fixedPath)) fixedPlaylist.indexOf(fixedPath) else 0
+            _currentImageUrl.value = fixedPath
+            navigateTo(AppScreen.IMAGE_VIEWER)
+            return
+        }
+
         val prefs = applicationContext.getSharedPreferences("omni_settings", Context.MODE_PRIVATE)
         val isRandom = prefs.getBoolean("image_slideshow_random", false)
         
@@ -438,7 +462,6 @@ fun setConnected(connected: Boolean) {
         _errorMessage.value = null
         addLog("Hub Connected", LogType.SUCCESS)
         showToast("Hub Connected")
-        resetSleep()
         fetchMacros()
     } else {
         addLog("Hub Disconnected", LogType.ERROR)
@@ -569,67 +592,36 @@ fun setConnected(connected: Boolean) {
     }
 
     fun sendWakeOnLan(macAddress: String, port: Int = 9) {
-        val wanIp = _appConfig.value.wanIp
-        val broadcastIp = _appConfig.value.subnetBroadcastIp
+        val config = _appConfig.value
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 addLog("Sending WOL to $macAddress (Local & Remote)...", LogType.INFO)
-                val macBytes = getMacBytes(macAddress)
-                val bytes = ByteArray(6 + 16 * macBytes.size)
-                for (i in 0 until 6) {
-                    bytes[i] = 0xff.toByte()
+                val result = com.omni.sync.logic.assistant.WakeOnLanSender.send(
+                    macAddress = macAddress,
+                    broadcastIp = config.subnetBroadcastIp,
+                    wanIp = config.wanIp,
+                    port = port
+                )
+                result.messages.forEach { message ->
+                    addLog(
+                        message,
+                        if (message.contains("failed", ignoreCase = true))
+                            LogType.WARNING
+                        else
+                            LogType.SUCCESS
+                    )
                 }
-                for (i in 6 until bytes.size step macBytes.size) {
-                    System.arraycopy(macBytes, 0, bytes, i, macBytes.size)
+                if (result.anySuccess) {
+                    val runId = java.util.UUID.randomUUID().toString()
+                    com.omni.sync.receiver.AssistantCommandReceiver.scheduleWakeVerification(
+                        applicationContext,
+                        runId
+                    )
+                    signalRClient.startConnection()
                 }
-
-                val socket = DatagramSocket()
-                
-                // 1. Send Local Broadcast (to the configured subnet)
-                try {
-                    val localAddress = InetAddress.getByName(broadcastIp)
-                    val localPacket = DatagramPacket(bytes, bytes.size, localAddress, port)
-                    socket.send(localPacket)
-                    addLog("Subnet WOL sent to $broadcastIp", LogType.SUCCESS)
-                } catch (e: Exception) {
-                    addLog("Subnet WOL Failed: ${e.message}", LogType.WARNING)
-                }
-
-                // 1b. Send Global Local Broadcast (255.255.255.255)
-                try {
-                    val globalAddress = InetAddress.getByName("255.255.255.255")
-                    val globalPacket = DatagramPacket(bytes, bytes.size, globalAddress, port)
-                    socket.setBroadcast(true)
-                    socket.send(globalPacket)
-                    addLog("Global WOL sent to 255.255.255.255", LogType.SUCCESS)
-                } catch (e: Exception) {
-                    addLog("Global WOL Failed: ${e.message}", LogType.WARNING)
-                }
-                
-                // 2. Send Remote Unicast (target WAN IP, router should forward to broadcast)
-                try {
-                    val remoteAddress = InetAddress.getByName(wanIp)
-                    val remotePacket = DatagramPacket(bytes, bytes.size, remoteAddress, port)
-                    socket.send(remotePacket)
-                    addLog("Remote WOL sent to $wanIp", LogType.SUCCESS)
-                } catch (e: Exception) {
-                    addLog("Remote WOL Failed: ${e.message}", LogType.WARNING)
-                }
-
-                socket.close()
-                addLog("All WOL packets processed.", LogType.INFO)
             } catch (e: Exception) {
                 addLog("Failed to send WOL: ${e.message}", LogType.ERROR)
             }
         }
-    }
-
-    private fun getMacBytes(macString: String): ByteArray {
-        val bytes = ByteArray(6)
-        val hex = macString.replace("[:\\-]".toRegex(), "")
-        for (i in 0 until 6) {
-            bytes[i] = hex.substring(i * 2, i * 2 + 2).toInt(16).toByte()
-        }
-        return bytes
     }
 }

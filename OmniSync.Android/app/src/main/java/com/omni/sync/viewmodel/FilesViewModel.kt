@@ -172,7 +172,9 @@ class FilesViewModel(
         loadDownloadedVideos()
         loadPendingEditPaths()
         refreshCachedPaths()
-        
+        // Plaintext copies of encrypted files only live for one app session
+        clearDecryptedCache()
+
         // Restore last opened file if any (CONTEXT ONLY, NO NAVIGATION)
         val lastOpenedPath = prefs.getString("last_opened_file_path", null)
         if (lastOpenedPath != null && !isMediaFile(lastOpenedPath)) {
@@ -845,7 +847,7 @@ class FilesViewModel(
         if (!entry.isDirectory) return
         mainViewModel.addLog("Opening CLI at: ${entry.path}", com.omni.sync.ui.screen.LogType.INFO)
         signalRClient.startCliAtWorkspace(entry.path)
-        mainViewModel.navigateTo(AppScreen.AI_CHAT)
+        mainViewModel.navigateTo(AppScreen.AGENT_TERMINAL)
     }
 
     fun startCliHookin() {
@@ -1581,7 +1583,10 @@ class FilesViewModel(
     }
 
     fun handleFileOpen(entry: FileSystemEntry) {
-        if (entry.path.contains("downloaded_videos")) {
+        val encrypted = findEncryptedVideo(entry)
+        if (encrypted != null) {
+            openDownloadedFile(encrypted, verifiedGlobalPassword, forceExternal = true)
+        } else if (entry.path.contains("downloaded_videos")) {
             // It's a local file, open it directly
             openFile(File(entry.path))
         } else {
@@ -1697,6 +1702,20 @@ class FilesViewModel(
             verifiedGlobalPassword = password
         }
         return verified
+    }
+
+    /** Forgotten-password escape hatch: deletes every encrypted file and the key pair, then clears the password. */
+    fun hardResetPassword() {
+        deleteAllEncrypted()
+        // Also remove orphaned encrypted files that are no longer in the video list
+        File(mainViewModel.applicationContext.filesDir, "downloaded_videos")
+            .listFiles { f -> f.extension == "encrypted" }
+            ?.forEach { it.delete() }
+        clearDecryptedCache()
+        encryptionManager.clearKeys()
+        verifiedGlobalPassword = null
+        mainViewModel.updateConfig { it.copy(globalPasswordHash = null) }
+        mainViewModel.addLog("Password reset; all encrypted files deleted", com.omni.sync.ui.screen.LogType.WARNING)
     }
 
     fun isGlobalPasswordSet(): Boolean {
@@ -2072,6 +2091,7 @@ class FilesViewModel(
             if (file.exists()) {
                 file.delete()
             }
+            File(getApplication<Application>().cacheDir, "decrypted/${video.id}").deleteRecursively()
 
             val updatedList = _downloadedVideos.value.toMutableList()
             updatedList.remove(video)
@@ -2088,9 +2108,18 @@ class FilesViewModel(
         }
     }
 
-    fun playDownloadedVideo(video: DownloadedVideo, password: String? = null) {
+    /** Returns the encrypted download backing a virtual-folder entry, or null if the entry is not one. */
+    fun findEncryptedVideo(entry: FileSystemEntry): DownloadedVideo? =
+        _downloadedVideos.value.firstOrNull { it.isEncrypted && it.localPath == entry.path }
+
+    /**
+     * Opens a file downloaded to app storage, decrypting it to the cache first if needed.
+     * Videos and images open in the in-app viewers; anything else goes to an external app
+     * (or always, when [forceExternal] is set).
+     */
+    fun openDownloadedFile(video: DownloadedVideo, password: String? = null, forceExternal: Boolean = false) {
         if (video.isEncrypted && password == null) {
-            _errorMessage.value = "Password required to play encrypted video."
+            _errorMessage.value = "Password required to open encrypted file."
             return
         }
 
@@ -2098,30 +2127,52 @@ class FilesViewModel(
             try {
                 val file = File(video.localPath)
                 if (!file.exists()) {
-                    _errorMessage.value = "Video file not found."
+                    _errorMessage.value = "File not found."
                     return@launch
                 }
 
-                val playableFile = if (video.isEncrypted && password != null) {
-                    val decryptedFile = File(mainViewModel.applicationContext.cacheDir, "temp_${video.id}.${video.fileName.substringAfterLast('.')}")
-                    decryptVideo(file, decryptedFile, password)
+                val openableFile = if (video.isEncrypted && password != null) {
+                    // Keep the original name so viewers/external apps can infer the type from the extension
+                    val decryptedDir = File(mainViewModel.applicationContext.cacheDir, "decrypted/${video.id}")
+                    decryptedDir.mkdirs()
+                    val decryptedFile = File(decryptedDir, video.fileName)
+                    if (!decryptedFile.exists()) {
+                        val partFile = File(decryptedDir, "${video.fileName}.part")
+                        try {
+                            decryptVideo(file, partFile, password)
+                            if (!partFile.renameTo(decryptedFile)) throw Exception("Failed to finalize decrypted file")
+                        } finally {
+                            partFile.delete()
+                        }
+                    }
                     decryptedFile
                 } else {
                     file
                 }
 
-                // CHANGED: Use simple file:// URI instead of FileProvider for internal ExoPlayer usage
-                // This avoids permission complexities and overhead within the same app
-                val uri = "file://${playableFile.absolutePath}"
-
                 viewModelScope.launch(AndroidSchedulers.mainThread().asCoroutineDispatcher()) {
-                    mainViewModel.playVideo(uri, emptyList())
+                    // In-app viewers use plain file:// URIs; external apps need a FileProvider URI
+                    val uri = "file://${openableFile.absolutePath}"
+                    when {
+                        forceExternal -> openFile(openableFile)
+                        com.omni.sync.utils.isVideoFile(video.fileName) -> mainViewModel.playVideo(uri, emptyList())
+                        com.omni.sync.utils.isImageFile(video.fileName) -> mainViewModel.viewImages(uri, emptyList())
+                        else -> openFile(openableFile)
+                    }
                 }
             } catch (e: Exception) {
-                _errorMessage.value = "Failed to play video: ${e.message}"
-                Log.e("FilesViewModel", "Play video error", e)
+                _errorMessage.value = "Failed to open file: ${e.message}"
+                Log.e("FilesViewModel", "Open downloaded file error", e)
             }
         }
+    }
+
+    /** Deletes plaintext copies left in the cache by [openDownloadedFile]. */
+    fun clearDecryptedCache() {
+        val cacheDir = getApplication<Application>().cacheDir
+        File(cacheDir, "decrypted").deleteRecursively()
+        // Older builds decrypted to cacheDir/temp_<id>.<ext>
+        cacheDir.listFiles { f -> f.isFile && f.name.startsWith("temp_") }?.forEach { it.delete() }
     }
 
     fun copyPathToClipboard(path: String) {

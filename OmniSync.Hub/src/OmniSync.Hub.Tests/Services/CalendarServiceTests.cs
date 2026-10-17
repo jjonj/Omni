@@ -114,5 +114,55 @@ END:VCALENDAR";
             Assert.NotNull(next);
             Assert.Equal("Future Event", next.Summary);
         }
+
+        [Fact]
+        public async Task RefreshCalendarAsync_ShouldRetainRecentPastEventsForReminderRecovery()
+        {
+            var recentPast = DateTime.UtcNow.AddMinutes(-30).ToString("yyyyMMdd'T'HHmmss'Z'");
+            var outsideLookback = DateTime.UtcNow
+                .Subtract(CalendarService.ReminderLookback)
+                .AddMinutes(-10)
+                .ToString("yyyyMMdd'T'HHmmss'Z'");
+
+            var icsContent = $@"BEGIN:VCALENDAR
+BEGIN:VEVENT
+UID:recent-omni
+DTSTART:{recentPast}
+SUMMARY:Omni reminder recent missed event
+END:VEVENT
+BEGIN:VEVENT
+UID:stale-omni
+DTSTART:{outsideLookback}
+SUMMARY:Omni reminder stale missed event
+END:VEVENT
+END:VCALENDAR";
+
+            _httpMessageHandlerMock.Protected()
+                .Setup<Task<HttpResponseMessage>>(
+                    "SendAsync",
+                    ItExpr.IsAny<HttpRequestMessage>(),
+                    ItExpr.IsAny<CancellationToken>()
+                )
+                .ReturnsAsync(new HttpResponseMessage
+                {
+                    StatusCode = HttpStatusCode.OK,
+                    Content = new StringContent(icsContent)
+                });
+
+            var httpClient = new HttpClient(_httpMessageHandlerMock.Object);
+            _settingsServiceMock.SetupGet(s => s.Settings)
+                .Returns(new HubSettings { CalendarUrl = "https://calendar.test/test.ics" });
+            var service = new CalendarService(
+                httpClient,
+                _monitorServiceMock.Object,
+                _settingsServiceMock.Object,
+                _loggerMock.Object);
+
+            await service.RefreshCalendarAsync();
+            var events = service.GetEventsSnapshot();
+
+            Assert.Contains(events, e => e.Uid == "recent-omni");
+            Assert.DoesNotContain(events, e => e.Uid == "stale-omni");
+        }
     }
 }

@@ -11,34 +11,43 @@ public sealed class ReminderLifecycleService : BackgroundService
 
     private readonly IReminderRepository _repository;
     private readonly ILogger<ReminderLifecycleService> _logger;
+    private readonly OmniSync.Hub.Logic.Monitoring.HubMonitorService? _monitor;
 
     public ReminderLifecycleService(
         IReminderRepository repository,
-        ILogger<ReminderLifecycleService> logger)
+        ILogger<ReminderLifecycleService> logger,
+        OmniSync.Hub.Logic.Monitoring.HubMonitorService? monitor = null)
     {
         _repository = repository;
         _logger = logger;
+        _monitor = monitor;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         using var timer = new PeriodicTimer(TickInterval);
 
-        await ClaimDueItemsAsync(DateTimeOffset.Now, stoppingToken);
+        if (!CalendarReminderOwnership.RustOwnsBackgroundWork)
+            await ClaimDueItemsAsync(DateTimeOffset.Now, stoppingToken);
 
         while (await timer.WaitForNextTickAsync(stoppingToken))
-            await ClaimDueItemsAsync(DateTimeOffset.Now, stoppingToken);
+            if (!CalendarReminderOwnership.RustOwnsBackgroundWork)
+                await ClaimDueItemsAsync(DateTimeOffset.Now, stoppingToken);
     }
 
     internal async Task<int> ClaimDueItemsAsync(
         DateTimeOffset now,
         CancellationToken cancellationToken = default)
     {
+        if (CalendarReminderOwnership.RustOwnsBackgroundWork)
+            return 0;
         var items = await _repository.GetAllAsync(cancellationToken);
         var claimed = 0;
 
         foreach (var item in items)
         {
+            if (CalendarReminderOwnership.RustOwnsBackgroundWork)
+                break;
             if (item.IsTerminal ||
                 item.State is not (ReminderState.Pending or ReminderState.SnoozedOrPostponed))
                 continue;
@@ -66,6 +75,7 @@ public sealed class ReminderLifecycleService : BackgroundService
             if (updated?.State == ReminderState.Due)
             {
                 claimed++;
+                _monitor?.AddLogMessage($"[Reminders] Due claim {updated.Id}: kind={updated.Kind}, revision={updated.Revision}, fire={(updated.NextFireAt ?? updated.DueAt):o}.");
                 _logger.LogInformation(
                     "Reminder {ReminderId} is due: {Kind} {Title}",
                     updated.Id,

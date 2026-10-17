@@ -124,8 +124,6 @@ class ForegroundService : Service() {
             AlarmService.ACTION_DISMISS -> {
                 statusMessage = null
                 AlarmService.stopAlarm(this)
-                val app = application as OmniSyncApplication
-                app.mainViewModel.resetSleep()
                 updateNotification()
             }
         }
@@ -172,7 +170,9 @@ class ForegroundService : Service() {
 
     private fun handleNotificationAction(actionId: String) {
         val actions = getSavedActions()
-        val action = actions.find { it.id == actionId } ?: return
+        val action = actions.find { it.id == actionId }
+            ?: com.omni.sync.data.config.ConfigManager(this).getPredefinedActions().find { it.id == actionId }
+            ?: return
         QuickActionDispatcher.execute(this, action)
     }
 
@@ -225,7 +225,7 @@ class ForegroundService : Service() {
         val displayStatus = when {
             statusMessage != null && isSleeping -> "$statusMessage (Asleep for $sleepDuration)"
             statusMessage != null -> statusMessage
-            isSleeping -> "Asleep for $sleepDuration"
+            isSleeping -> "Estimated sleep: $sleepDuration"
             else -> "Connected and ready"
         }
         val builder = NotificationCompat.Builder(this, CHANNEL_ID)

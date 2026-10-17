@@ -77,7 +77,7 @@ fun DownloadedVideosScreen(
                                             selectedVideo = video
                                             showPasswordDialog = true
                                         } else {
-                                            filesViewModel.playDownloadedVideo(video)
+                                            filesViewModel.openDownloadedFile(video)
                                         }
                                     },
                                     onLongClick = {
@@ -167,7 +167,7 @@ fun DownloadedVideosScreen(
                 Button(
                     onClick = {
                         showPasswordDialog = false
-                        filesViewModel.playDownloadedVideo(selectedVideo!!, password)
+                        filesViewModel.openDownloadedFile(selectedVideo!!, password)
                         password = ""
                     }
                 ) {

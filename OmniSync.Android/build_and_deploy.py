@@ -23,14 +23,12 @@ import time
 import argparse
 import hashlib
 import json
-import re
 import threading
 import queue
 import socket
 import urllib.error
 import urllib.parse
 import urllib.request
-from datetime import datetime, timezone
 from pathlib import Path
 import connectadb
 
@@ -76,35 +74,18 @@ def ensure_device(specified_device=None, pairing_code=None, pairing_endpoint=Non
     )
 
 
-def read_app_version():
-    build_script = (PROJECT_DIR / "app" / "build.gradle.kts").read_text(encoding="utf-8")
-    version_code_match = re.search(r"\bversionCode\s*=\s*(\d+)", build_script)
-    version_name_match = re.search(r'\bversionName\s*=\s*"([^"]+)"', build_script)
-    if not version_code_match or not version_name_match:
-        raise RuntimeError("Could not read versionCode/versionName from app/build.gradle.kts")
-    return int(version_code_match.group(1)), version_name_match.group(1)
-
-
 def publish_update_metadata(apk_path):
-    version_code, version_name = read_app_version()
     digest = hashlib.sha256()
     with apk_path.open("rb") as apk_file:
         for block in iter(lambda: apk_file.read(1024 * 1024), b""):
             digest.update(block)
-
-    metadata = {
-        "versionCode": version_code,
-        "versionName": version_name,
-        "sha256": digest.hexdigest(),
-        "size": apk_path.stat().st_size,
-        "builtAtUtc": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
-    }
     metadata_path = apk_path.with_suffix(".update.json")
-    temporary_path = metadata_path.with_suffix(metadata_path.suffix + ".tmp")
-    temporary_path.write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
-    temporary_path.replace(metadata_path)
-    print(f"  Update metadata: {metadata_path}")
-
+    if not metadata_path.exists():
+        raise RuntimeError(f"Android build did not publish update metadata: {metadata_path}")
+    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    if metadata.get("sha256") != digest.hexdigest():
+        raise RuntimeError("Android build published metadata for a different APK.")
+    print(f"  Published update metadata: {metadata_path}")
 
 def get_local_ipv4():
     probe = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -174,7 +155,6 @@ def deploy_via_hub(explicit_public_base_url=None):
     terminal_statuses = {
         "current",
         "permission_required",
-        "installer_started",
         "confirmation_required",
         "installed",
         "error",
@@ -195,16 +175,27 @@ def deploy_via_hub(explicit_public_base_url=None):
         if current_status != last_status:
             print(f"Android deployment status: {current_status} - {status_response.get('message', '')}")
             last_status = current_status
+
         if current_status in terminal_statuses:
-            if current_status == "error" or current_status == "busy":
+            if current_status in {"error", "busy"}:
                 print("[FAIL] Android reported that Hub deployment did not start.")
                 return False
-            print("[OK] Hub-to-Android deployment started successfully.")
+            if current_status == "permission_required":
+                print("[FAIL] Android needs the one-time 'Install unknown apps' permission before unattended updates can run.")
+                return False
+            if current_status == "confirmation_required":
+                print("[FAIL] Android required a package-install confirmation; unattended installation was not permitted.")
+                return False
+            if current_status == "installed":
+                print("[OK] Hub-to-Android deployment installed successfully.")
+                return True
+            print("[OK] The phone already has this build.")
             return True
+
         time.sleep(1)
 
-    print("[WARN] Android acknowledged deployment, but no final installer status arrived within 90 seconds.")
-    return True
+    print("[FAIL] Android never reported install success or a required confirmation within 90 seconds.")
+    return False
 
 def build_apk(clean=False, release=False):
     """Build the Android APK."""

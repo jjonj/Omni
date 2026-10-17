@@ -27,8 +27,22 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\..\OmniZones\src\OmniZones.Core\OmniZones.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\..\..\OmniSync.Misc\Ugoira\*.cs" Link="Misc\Ugoira\%(Filename)%(Extension)" />
+    <Content Include="..\..\..\OmniSync.Misc\Ugoira\*.py;..\..\..\OmniSync.Misc\Ugoira\ugoira.html">
+      <Link>Misc\Ugoira\%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
     <Content Include="appsettings.json">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Automation\*.ps1">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
     </Content>
     <Content Include="..\..\..\Resources\OmniIcon.ico">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>

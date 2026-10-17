@@ -34,6 +34,8 @@ class AlarmService : Service(), android.content.SharedPreferences.OnSharedPrefer
 
     // Metadata for the current running alarm to handle snooze logic
     private var currentAlarmId: Int = 0
+    private var currentReminderId: String? = null
+    private var currentReminderKind: Int = 0
     private var currentSoundId: String = "gentle"
     private var currentHour: Int = 0
     private var currentMinute: Int = 0
@@ -144,6 +146,14 @@ class AlarmService : Service(), android.content.SharedPreferences.OnSharedPrefer
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent?.action == "com.omni.sync.REMINDER_STOP") {
+            timeoutJob?.cancel()
+            stopSound()
+            updateState(this, isRinging = false, isSnoozing = false)
+            currentReminderId = null
+            stopSelf()
+            return START_NOT_STICKY
+        }
         val intentAlarmId = intent?.getIntExtra("ALARM_ID", 0) ?: 0
         if (intentAlarmId != 0) {
             currentAlarmId = intentAlarmId
@@ -155,9 +165,16 @@ class AlarmService : Service(), android.content.SharedPreferences.OnSharedPrefer
         }
 
         if (intent?.action == ACTION_DISMISS) {
+            if (currentReminderId == null && currentAlarmId < 0) {
+                currentReminderId = com.omni.sync.utils.ReminderDelivery.load(this).firstOrNull {
+                    com.omni.sync.utils.ReminderDelivery.requestId(this, it.id) == currentAlarmId
+                }?.id
+            }
             handleDismiss()
             return START_NOT_STICKY
         }
+        currentReminderId = intent?.getStringExtra("REMINDER_ID")
+        currentReminderKind = intent?.getIntExtra("REMINDER_KIND", 0) ?: 0
 
         // Store for global dismissal (e.g. from notification or overlay)
         updateState(this, isRinging = true, isSnoozing = false, alarmId = currentAlarmId, repeating = repeatDaily)
@@ -175,6 +192,7 @@ class AlarmService : Service(), android.content.SharedPreferences.OnSharedPrefer
         volumeIncrement = intent?.getIntExtra("VOLUME_INCREMENT", 5) ?: 5
         snoozeDurationMin = intent?.getIntExtra("SNOOZE_DURATION", 10) ?: 10
         currentRepetition = intent?.getIntExtra("CURRENT_REPETITION", 0) ?: 0
+        com.omni.sync.utils.AlarmStatistics.ring(this, currentAlarmId, currentRepetition == 0)
         repeatDaily = intent?.getBooleanExtra("REPEAT_DAILY", false) ?: false
         macroOnTrigger = intent?.getStringExtra("MACRO_ON_TRIGGER")
         macroOnDismiss = intent?.getStringExtra("MACRO_ON_DISMISS")
@@ -209,13 +227,16 @@ class AlarmService : Service(), android.content.SharedPreferences.OnSharedPrefer
         }
         
         playAlarm(currentSoundId, currentVolume)
+        if (currentReminderId != null) com.omni.sync.utils.ReminderDelivery.log(this, "Alarm service started $currentReminderId kind=$currentReminderKind volume=$currentVolume repetition=$currentRepetition")
         
         // Schedule Auto-Snooze Timeout
         timeoutJob?.cancel()
         timeoutJob = serviceScope.launch {
             Log.d("AlarmService", "Alarm playing for $currentDurationSec seconds")
-            delay(currentDurationSec * 1000L)
-            handleAutoSnooze()
+            if (currentReminderId == null || currentReminderKind != 2) {
+                delay(currentDurationSec * 1000L)
+                handleAutoSnooze()
+            }
         }
 
         return START_STICKY
@@ -257,6 +278,18 @@ class AlarmService : Service(), android.content.SharedPreferences.OnSharedPrefer
     }
 
     private fun handleAutoSnooze() {
+        currentReminderId?.let { id ->
+            stopSound()
+            val item = com.omni.sync.utils.ReminderDelivery.load(this).find { it.id == id }
+            if (item != null && !item.isTerminal) {
+                val nextVolume = (currentVolume + volumeIncrement).coerceAtMost(100)
+                com.omni.sync.utils.ReminderDelivery.setAlarm(this, item, System.currentTimeMillis() + snoozeDurationMin * 60_000L, nextVolume, currentRepetition + 1)
+                com.omni.sync.utils.ReminderDelivery.log(this, "Gradual reminder $id re-alert scheduled, volume=$nextVolume")
+                updateState(this, isRinging = false, isSnoozing = true)
+            }
+            stopSelf()
+            return
+        }
         Log.i("AlarmService", "Auto-snooze triggered.")
         stopSound()
         
@@ -308,7 +341,22 @@ class AlarmService : Service(), android.content.SharedPreferences.OnSharedPrefer
     }
 
     private fun handleDismiss() {
+        currentReminderId?.let { id ->
+            timeoutJob?.cancel()
+            stopSound()
+            updateState(this, isRinging = false, isSnoozing = false)
+            currentReminderId = null
+            (application as OmniSyncApplication).signalRClient.dismissReminder(id)
+            stopSelf()
+            return
+        }
+        com.omni.sync.utils.AlarmStatistics.dismiss(this, currentAlarmId)
         Log.i("AlarmService", "User Dismissed Alarm $currentAlarmId.")
+        val app = application as OmniSyncApplication
+        val alarmPrefs = getSharedPreferences("alarm_prefs", Context.MODE_PRIVATE)
+        if (com.omni.sync.utils.AlarmStore.load(alarmPrefs, com.google.gson.Gson()).any { it.id == currentAlarmId && it.isWakeAlarm }) {
+            app.mainViewModel.resetSleep(source = "wake alarm $currentAlarmId dismissed")
+        }
         stopSound()
         updateState(this, isRinging = false, isSnoozing = false)
         timeoutJob?.cancel()
@@ -373,6 +421,17 @@ class AlarmService : Service(), android.content.SharedPreferences.OnSharedPrefer
         val prefs = getSharedPreferences("alarm_prefs", Context.MODE_PRIVATE)
         val gson = com.google.gson.Gson()
         val alarms = com.omni.sync.utils.AlarmStore.load(prefs, gson)
+        val wakeAlarm = alarms.firstOrNull { it.id == currentAlarmId && it.isWakeAlarm }
+        if (wakeAlarm != null) {
+            com.omni.sync.utils.AlarmStore.save(prefs, gson, alarms.map {
+                if (it.id == currentAlarmId) it.copy(nextTriggerOverride = null) else it
+            })
+            val config = prefs.getString("config", null)?.let { gson.fromJson(it, com.omni.sync.ui.screen.GradualConfig::class.java) } ?: com.omni.sync.ui.screen.GradualConfig()
+            AlarmScheduler.scheduleAlarm(this, currentAlarmId, wakeAlarm.copy(nextTriggerOverride = null), config)
+            (application as? com.omni.sync.OmniSyncApplication)?.mainViewModel?.addLog(
+                "[Wake alarm $currentAlarmId] Automatic disable prevented; daily target retained", com.omni.sync.ui.screen.LogType.INFO)
+            return
+        }
         val updatedAlarms = alarms.map { alarm ->
             if (alarm.id == currentAlarmId) alarm.copy(enabled = false) else alarm
         }
@@ -424,7 +483,7 @@ class AlarmService : Service(), android.content.SharedPreferences.OnSharedPrefer
 
         var content = if (!dismissText.isNullOrBlank()) dismissText!! else "Volume: $currentVolume% | Tap to Dismiss"
         if (isSleeping) {
-            content = "$content (Asleep for $sleepDuration)"
+            content = "$content (Estimated sleep: $sleepDuration)"
         }
 
         return NotificationCompat.Builder(this, CHANNEL_ID)
@@ -437,7 +496,6 @@ class AlarmService : Service(), android.content.SharedPreferences.OnSharedPrefer
             .setContentIntent(pendingFullScreen)
             .setOngoing(true)
             .addAction(R.drawable.ic_launcher, "DISMISS", pendingDismiss)
-            .setDeleteIntent(pendingDismiss)
             .build()
     }
 

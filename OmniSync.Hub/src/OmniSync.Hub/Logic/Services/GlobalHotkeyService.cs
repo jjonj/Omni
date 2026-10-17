@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -22,6 +23,9 @@ namespace OmniSync.Hub.Logic.Services
 
         private readonly HashSet<Keys> _pressedKeys = new();
         private bool _tftAddModeActive = false;
+        private static bool SweepDelegated => File.Exists(Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+            "OmniHub", "sweep-rust.flag"));
 
         public event EventHandler? OpenHubWindowRequested;
         public event EventHandler? ShowProjectSelectorRequested;
@@ -59,6 +63,9 @@ namespace OmniSync.Hub.Logic.Services
         private void OnKeyActionOccurred(object? sender, KeyHookEventArgs e)
         {
             if (e.IsInjected) return; // Prevent feedback loops from software-simulated keys
+
+            // Ignore repeated keydowns for toggle hotkeys, but keep other key repeats working.
+            bool repeatedKeyDown = e.State == KeyState.Down && _pressedKeys.Contains(e.Key);
 
             // Track state for both Down and Up to be accurate
             if (e.State == KeyState.Down)
@@ -112,7 +119,18 @@ namespace OmniSync.Hub.Logic.Services
             // _hubMonitorService.AddLogMessage($"DEBUG: KeyDown={e.Key}, S={e.Shift}, C={e.Control}, A={e.Alt}, W={e.Win}");
 
             // Don't trigger if we are in recording mode (MainViewModel handles that)
-            if (_keyboardHook.IsRecording) return;
+            if (_keyboardHook.IsRecording || _keyboardHook.IsSnapshotActive) return;
+            if (_keyboardHook.IsSweepActive)
+            {
+                if (SweepDelegated) return;
+                var sweep = _settingsService.Settings.Hotkeys.FirstOrDefault(h => h.Action == "OPEN_OMNISWEEP" || h.Action == "SHOW_PROJECT_SELECTOR");
+                if (sweep != null && MatchHotkey(sweep.Key, e))
+                {
+                    if (!repeatedKeyDown) ExecuteHotkeyAction(sweep.Action);
+                    e.Handled = true; // Do not deliver Ctrl+Alt+P to the previous application.
+                }
+                return;
+            }
 
             // Check if TFT is active
             bool isTftActive = _hubMonitorService.IsTftActive;
@@ -204,10 +222,19 @@ namespace OmniSync.Hub.Logic.Services
             foreach (var hotkey in _settingsService.Settings.Hotkeys)
             {
                 if (string.IsNullOrEmpty(hotkey.Key)) continue;
+                if ((hotkey.Action == "OPEN_OMNISWEEP" ||
+                    hotkey.Action == "SHOW_PROJECT_SELECTOR") && SweepDelegated) continue;
                 if (hotkey.Action.StartsWith("TFT_")) continue; // Skip TFT hotkeys if not in Add Mode
+                if (repeatedKeyDown && (hotkey.Action == "OPEN_OMNISWEEP" || hotkey.Action == "SHOW_PROJECT_SELECTOR"))
+                {
+                    if (MatchHotkey(hotkey.Key, e)) e.Handled = true;
+                    continue;
+                }
 
                 if (MatchHotkey(hotkey.Key, e))
                 {
+                    // The trigger must not be processed by the old foreground app after we show Sweep.
+                    if (hotkey.Action == "OPEN_OMNISWEEP" || hotkey.Action == "SHOW_PROJECT_SELECTOR") e.Handled = true;
                     _hubMonitorService.AddLogMessage($"[Hub] Hotkey Triggered: {hotkey.Name}");
                     ExecuteHotkeyAction(hotkey.Action);
                 }
@@ -303,7 +330,7 @@ namespace OmniSync.Hub.Logic.Services
                 return;
             }
 
-            if (action == "SHOW_PROJECT_SELECTOR")
+            if (action == "SHOW_PROJECT_SELECTOR" || action == "OPEN_OMNISWEEP")
             {
                 ShowProjectSelectorRequested?.Invoke(this, EventArgs.Empty);
                 return;
@@ -311,9 +338,9 @@ namespace OmniSync.Hub.Logic.Services
 
             try
             {
-                if (action.StartsWith("LAUNCH_PROJECT_"))
+                if (action.StartsWith("LAUNCH_SETUP_") || action.StartsWith("LAUNCH_PROJECT_"))
                 {
-                    var idStr = action.Substring("LAUNCH_PROJECT_".Length);
+                    var idStr = action.Substring(action.StartsWith("LAUNCH_SETUP_") ? "LAUNCH_SETUP_".Length : "LAUNCH_PROJECT_".Length);
                     var payload = new { Id = idStr };
                     _commandDispatcher.Dispatch("LAUNCH_PROJECT", payload);
                 }

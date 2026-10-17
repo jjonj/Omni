@@ -4,6 +4,7 @@ public class CalendarEvent
 {
     public string Summary { get; set; } = "No Title";
     public DateTime Start { get; set; }
+    public DateTime? End { get; set; }
     public bool IsAllDay { get; set; }
     public string? RRule { get; set; }
     public string Uid { get; set; } = string.Empty;

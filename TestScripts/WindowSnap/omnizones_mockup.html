@@ -1,0 +1,1067 @@
+<title>OmniZones</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: a monitor on a cutting mat. The screen is always "on" (dark); zones are amber layout tape. Controls sit beside it. */
+:root {
+  --bg: #e6e9ee;
+  --panel: #f5f6f8;
+  --ink: #161a22;
+  --muted: #545c6b;
+  --line: #cdd2da;
+  --accent: #8f5208;
+  --accent-soft: rgba(201, 122, 18, .14);
+  --bezel: #1e2129;
+  /* the screen world is fixed in both themes */
+  --screen: #11141b;
+  --tape: #f5a524;
+  --tape-ink: #fbe3b4;
+  --win: #1a1e26;
+  --win-bar: #232833;
+  --win-ink: #cfd5df;
+  --win-dim: #7d8696;
+  --font-display: "Archivo", "Arial Narrow", system-ui, sans-serif;
+  --font-body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e1015; --panel: #171a21; --ink: #e5e8ed; --muted: #9aa2b1; --line: #2a2f3a;
+    --accent: #f5a524; --accent-soft: rgba(245, 165, 36, .13); --bezel: #05060a; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0e1015; --panel: #171a21; --ink: #e5e8ed; --muted: #9aa2b1; --line: #2a2f3a;
+  --accent: #f5a524; --accent-soft: rgba(245, 165, 36, .13); --bezel: #05060a; color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 14px; line-height: 1.45; }
+.page { padding-inline: 20px; padding-block: 18px 40px; max-width: 1760px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
+button { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* header */
+.top { display: flex; flex-wrap: wrap; align-items: center; gap: 14px 24px; }
+.mark { display: flex; align-items: baseline; gap: 12px; margin-right: auto; }
+.mark h1 { margin: 0; font-family: var(--font-display); font-stretch: 125%; font-weight: 800; font-size: 26px; letter-spacing: -.01em; }
+.mark h1 span { color: var(--accent); }
+.mark small { font-family: var(--font-mono); font-size: 12px; color: var(--muted); }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; padding: 3px; background: var(--panel); gap: 2px; flex-wrap: wrap; }
+.seg button { border: 0; background: none; padding: 7px 12px; border-radius: 6px; cursor: pointer; display: inline-flex; gap: 8px; align-items: center; min-height: 36px; }
+.seg button[aria-pressed="true"] { background: var(--ink); color: var(--bg); }
+.seg button kbd { font-family: var(--font-mono); font-size: 11px; opacity: .65; }
+.seg button:disabled { opacity: .4; cursor: not-allowed; }
+.label { font-family: var(--font-mono); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+
+/* main grid */
+.main { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 20px; align-items: start; }
+@media (max-width: 1100px) { .main { grid-template-columns: minmax(0, 1fr); } }
+.stagecol { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+
+/* monitor */
+.bezel { background: var(--bezel); border-radius: 14px; padding: 10px 10px 14px; }
+.monitor { position: relative; width: 100%; aspect-ratio: 3440 / 1440; background-color: var(--screen);
+  background-image: linear-gradient(rgba(255,255,255,.035) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.035) 1px, transparent 1px);
+  background-size: calc(100% / 34.4) calc(100% / 14.4); border-radius: 4px; overflow: hidden; container-type: inline-size; user-select: none; }
+.monitor:focus-visible { outline-offset: 4px; }
+.work { position: absolute; left: 0; top: 0; width: 100%; height: calc(1392 / 1440 * 100%); font-size: .5cqw; }
+.chin { display: flex; justify-content: space-between; padding: 8px 4px 0; font-family: var(--font-mono); font-size: 11px; color: #8a93a3; }
+
+.taskbar { position: absolute; left: 0; bottom: 0; width: 100%; height: calc(48 / 1440 * 100%); background: rgba(24, 27, 35, .96); border-top: 1px solid rgba(255,255,255,.06);
+  display: flex; align-items: center; justify-content: center; gap: .5cqw; font-size: .5cqw; z-index: 5000; }
+.taskbar button { height: 80%; aspect-ratio: 1; border: 0; border-radius: .5em; background: transparent; display: grid; place-items: center; cursor: pointer; position: relative; padding: 0; }
+.taskbar button:hover { background: rgba(255,255,255,.08); }
+.taskbar button.on::after { content: ""; position: absolute; bottom: 4%; width: 30%; height: 8%; border-radius: 2px; background: var(--tape); }
+.taskbar .glyph { width: 60%; height: 60%; font-size: 1.1em; }
+
+/* fake windows */
+.win { position: absolute; background: var(--win); color: var(--win-ink); border: 1px solid rgba(255,255,255,.09); border-radius: .7em; overflow: hidden;
+  display: flex; flex-direction: column; box-shadow: 0 .8em 2.4em rgba(0,0,0,.45);
+  transition: left .22s cubic-bezier(.2,.8,.2,1), top .22s cubic-bezier(.2,.8,.2,1), width .22s cubic-bezier(.2,.8,.2,1), height .22s cubic-bezier(.2,.8,.2,1); }
+.win.dragging { transition: none; opacity: .92; cursor: grabbing; }
+.win.focused { border-color: rgba(255,255,255,.28); }
+.win.attn { box-shadow: 0 0 0 .35em var(--tape), 0 .8em 2.4em rgba(0,0,0,.45); animation: attn 1.1s ease-in-out infinite; }
+@keyframes attn { 50% { box-shadow: 0 0 0 .7em rgba(245,165,36,.25), 0 .8em 2.4em rgba(0,0,0,.45); } }
+.bar { flex: none; height: 3em; display: flex; align-items: center; gap: .7em; padding: 0 .9em; background: var(--win-bar); cursor: grab; touch-action: none; white-space: nowrap; font-size: 1.15em; }
+.bar .t { overflow: hidden; text-overflow: ellipsis; flex: 1; min-width: 0; }
+.bar .ctl { display: flex; gap: 1.1em; color: var(--win-dim); }
+.bar .ctl i { width: .8em; height: .8em; border: 1px solid currentColor; border-radius: 1px; display: block; }
+.bar .ctl i:first-child { height: 0; border-width: 1px 0 0; align-self: center; }
+.glyph { width: 1.6em; height: 1.6em; border-radius: .35em; display: grid; place-items: center; font: 700 .8em/1 var(--font-mono); color: #fff; flex: none; }
+.body { flex: 1; min-height: 0; overflow: hidden; position: relative; font-size: 1.05em; }
+
+.sk { height: .7em; border-radius: .35em; background: rgba(255,255,255,.08); }
+.term { margin: 0; padding: .8em 1em; font: 1em/1.55 var(--font-mono); color: #b9c2cf; white-space: pre-wrap; word-break: break-all; }
+.term b { color: var(--tape); font-weight: 500; }
+.term .ok { color: #7fd1a3; }
+.term .ask { display: inline-block; margin-top: .4em; padding: .3em .6em; border: 1px solid rgba(245,165,36,.6); border-radius: .3em; color: var(--tape-ink); }
+
+.ff-tabs { display: flex; gap: .3em; padding: .4em .6em 0; background: #20242d; }
+.ff-tabs span { padding: .45em .9em; border-radius: .45em .45em 0 0; color: var(--win-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 16em; }
+.ff-tabs span.on { background: #2b303b; color: var(--win-ink); }
+.ff-url { margin: 0; padding: .5em .8em; background: #2b303b; font-family: var(--font-mono); color: var(--win-dim); border-bottom: 1px solid rgba(255,255,255,.06); }
+.ff-page { padding: 1.6em 2em; display: flex; flex-direction: column; gap: 1.2em; }
+.ff-page h3 { margin: 0; font: 600 2em/1.1 var(--font-body); color: #e7ebf1; }
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(12em, 1fr)); gap: .9em; }
+.cards div { background: #232833; border-radius: .6em; padding: .9em 1em; display: flex; flex-direction: column; gap: .5em; }
+.cards b { font-weight: 600; color: #e7ebf1; }
+.cards small { color: var(--win-dim); }
+
+.dc { display: grid; grid-template-columns: 4.2em 13em minmax(0, 1fr) 13em; height: 100%; }
+.dc .rail { background: #15181e; display: flex; flex-direction: column; align-items: center; gap: .6em; padding: .7em 0; }
+.dc .rail i { width: 2.8em; height: 2.8em; border-radius: 50%; background: #2b303b; }
+.dc .chans, .dc .mem { background: #1c2028; padding: .9em; display: flex; flex-direction: column; gap: .7em; color: var(--win-dim); }
+.dc .chat { padding: .9em 1.1em; display: flex; flex-direction: column; gap: 1em; }
+.dc .msg { display: grid; grid-template-columns: 2.4em 1fr; gap: .2em .7em; }
+.dc .msg i { grid-row: span 2; width: 2.4em; height: 2.4em; border-radius: 50%; background: #343a47; }
+.dc .mem .who { display: flex; align-items: center; gap: .6em; }
+.dc .mem .who i { width: 1.8em; height: 1.8em; border-radius: 50%; background: #343a47; position: relative; }
+.dc .mem .who i::after { content: ""; position: absolute; right: -.1em; bottom: -.1em; width: .7em; height: .7em; border-radius: 50%; background: #3ba55d; border: .15em solid #1c2028; }
+
+.ob { display: grid; grid-template-columns: 14em minmax(0, 1fr); height: 100%; }
+.ob .tree { background: #1d1f26; padding: .9em; display: flex; flex-direction: column; gap: .45em; color: var(--win-dim); }
+.ob .tree .on { color: #e7ebf1; background: #2b2f3a; border-radius: .3em; padding: 0 .4em; }
+.ob .doc { padding: 1.4em 1.8em; display: flex; flex-direction: column; gap: .55em; }
+.ob .doc h4 { margin: 0 0 .3em; font: 600 1.8em/1.1 var(--font-body); color: #e7ebf1; }
+.ob .doc p { margin: 0; color: #b9c2cf; }
+
+.fo-path { padding: .55em .9em; font-family: var(--font-mono); background: #20242d; color: var(--win-ink); border-bottom: 1px solid rgba(255,255,255,.06); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fo-list { list-style: none; margin: 0; padding: .4em; display: flex; flex-direction: column; }
+.fo-list li { display: flex; align-items: center; gap: .7em; padding: .35em .5em; border-radius: .35em; }
+.fo-list li:hover { background: #232833; }
+.fo-list li span { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fo-list svg { width: 1.3em; height: 1.3em; flex: none; }
+.fo-list button { border: 1px solid rgba(245,165,36,.55); background: rgba(245,165,36,.1); color: var(--tape-ink); border-radius: .35em; font: 500 .9em var(--font-mono); padding: .25em .6em; cursor: pointer; white-space: nowrap; }
+.fo-list button:hover { background: rgba(245,165,36,.25); }
+
+/* zone overlay */
+.overlay { position: absolute; inset: 0; z-index: 4000; pointer-events: none; }
+.overlay.off { display: none; }
+.oz { position: absolute; border: .2em solid rgba(245,165,36,.55); background: rgba(245,165,36,.07); border-radius: .7em; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: .5em;
+  text-align: center; color: var(--tape-ink); padding: 1em; transition: background .12s; }
+.oz.hot { background: rgba(245,165,36,.26); border-color: var(--tape); }
+.oz.scene { border-style: dashed; }
+.oz.pickable { pointer-events: auto; cursor: pointer; }
+.oz.pickable:hover { background: rgba(245,165,36,.26); border-color: var(--tape); }
+.oz .n { font: 700 2.3em/1.05 var(--font-display); font-stretch: 112%; }
+.oz .k { font: 500 1.25em/1.3 var(--font-mono); opacity: .85; }
+.oz .a { font: 600 1.45em/1.2 var(--font-body); background: var(--tape); color: #1b1305; padding: .3em .8em; border-radius: .4em; }
+.oz.peek { border-left-width: 0; border-radius: 0 .7em .7em 0; }
+
+.toast { position: absolute; left: 50%; bottom: calc(48 / 1440 * 100% + 1.4cqw); transform: translateX(-50%); z-index: 4500; background: #f4f1ea; color: #15171c;
+  border-radius: .6cqw; padding: .55cqw .9cqw; font-size: max(11px, .78cqw); display: flex; gap: .8cqw; align-items: center; box-shadow: 0 .5cqw 1.5cqw rgba(0,0,0,.5); max-width: 80%; }
+.toast button { border: 0; background: #15171c; color: #f4f1ea; border-radius: .4cqw; padding: .3cqw .7cqw; cursor: pointer; font-weight: 600; white-space: nowrap; }
+
+/* editor */
+.edit-layer { position: absolute; inset: 0; z-index: 4200; }
+.monitor.editing .win { opacity: .16; pointer-events: none; filter: grayscale(.6); }
+.ez { position: absolute; border: .2em solid rgba(245,165,36,.6); background: rgba(245,165,36,.09); border-radius: .5em; cursor: move; touch-action: none;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: .4em; color: var(--tape-ink); text-align: center; padding: .6em; }
+.ez.sel { background: rgba(245,165,36,.22); border-color: var(--tape); z-index: 2; }
+.ez .n { font: 700 2.1em/1.05 var(--font-display); font-stretch: 112%; }
+.ez .d { font: 500 1.3em var(--font-mono); font-variant-numeric: tabular-nums; }
+.ez .k { font: 500 1.15em var(--font-mono); opacity: .8; }
+.ez.peek { cursor: default; border-left-style: dashed; }
+.ez .off { position: absolute; left: .6em; top: 50%; transform: translateY(-50%); font: 500 1.1em var(--font-mono); writing-mode: vertical-rl; rotate: 180deg; opacity: .75; }
+.h { position: absolute; width: 1.6em; height: 1.6em; background: var(--tape); border: .25em solid #1b1305; border-radius: 50%; }
+.h[data-h="n"] { top: -.8em; left: calc(50% - .8em); cursor: ns-resize; }
+.h[data-h="s"] { bottom: -.8em; left: calc(50% - .8em); cursor: ns-resize; }
+.h[data-h="e"] { right: -.8em; top: calc(50% - .8em); cursor: ew-resize; }
+.h[data-h="w"] { left: -.8em; top: calc(50% - .8em); cursor: ew-resize; }
+.h[data-h="ne"] { right: -.8em; top: -.8em; cursor: nesw-resize; }
+.h[data-h="nw"] { left: -.8em; top: -.8em; cursor: nwse-resize; }
+.h[data-h="se"] { right: -.8em; bottom: -.8em; cursor: nwse-resize; }
+.h[data-h="sw"] { left: -.8em; bottom: -.8em; cursor: nesw-resize; }
+
+/* hotkey deck */
+.deck { display: flex; flex-wrap: wrap; gap: 14px 22px; }
+.deck .grp { display: flex; flex-direction: column; gap: 6px; }
+.deck .row { display: flex; flex-wrap: wrap; gap: 6px; }
+.hk { display: inline-flex; align-items: center; gap: 4px; padding: 6px 9px 6px 6px; min-height: 40px; border: 1px solid var(--line); background: var(--panel); border-radius: 8px; cursor: pointer; font-size: 13px; }
+.hk:hover { border-color: var(--accent); }
+.hk span { margin-left: 4px; }
+kbd { font-family: var(--font-mono); font-size: 11.5px; padding: 2px 6px; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 5px; background: var(--bg); line-height: 1.3; }
+.hint { margin: 0; color: var(--muted); font-size: 13px; max-width: 110ch; }
+
+/* side panel */
+.side { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px; display: flex; flex-direction: column; gap: 20px; min-width: 0; }
+.side section { display: flex; flex-direction: column; gap: 10px; }
+.side h2 { margin: 0; font: 700 15px/1.2 var(--font-display); font-stretch: 112%; }
+.try { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.try button { text-align: left; border: 1px solid var(--line); background: var(--bg); border-radius: 8px; padding: 9px 10px; cursor: pointer; display: flex; flex-direction: column; gap: 2px; min-height: 44px; }
+.try button:hover { border-color: var(--accent); }
+.try button b { font-weight: 600; font-size: 13px; }
+.try button small { color: var(--muted); font-size: 12px; line-height: 1.3; }
+.rule { display: grid; grid-template-columns: auto 1fr; gap: 10px; align-items: start; cursor: pointer; }
+.rule input { appearance: none; width: 34px; height: 20px; border-radius: 10px; background: var(--line); position: relative; cursor: pointer; margin: 1px 0 0; transition: background .15s; }
+.rule input::after { content: ""; position: absolute; left: 3px; top: 3px; width: 14px; height: 14px; border-radius: 50%; background: var(--panel); transition: left .15s; }
+.rule input:checked { background: var(--accent); }
+.rule input:checked::after { left: 17px; }
+.rule span { font-size: 13px; }
+.log { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; font-size: 12.5px; }
+.log li { display: grid; grid-template-columns: 52px 1fr; gap: 8px; color: var(--muted); }
+.log li:first-child { color: var(--ink); }
+.log time { font-family: var(--font-mono); font-size: 11px; font-variant-numeric: tabular-nums; padding-top: 1px; }
+
+.field { display: flex; flex-direction: column; gap: 5px; }
+.field input[type="text"], .field input[type="number"] { font: inherit; padding: 7px 9px; border: 1px solid var(--line); border-radius: 7px; background: var(--bg); color: var(--ink); width: 100%; min-height: 36px; }
+.field input[type="range"] { width: 100%; accent-color: var(--accent); }
+.geo { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+.geo input { font-family: var(--font-mono) !important; font-variant-numeric: tabular-nums; padding: 7px 6px !important; }
+.zlist { display: flex; flex-direction: column; gap: 4px; }
+.zlist button { display: flex; justify-content: space-between; gap: 8px; border: 1px solid transparent; background: none; padding: 7px 9px; border-radius: 7px; cursor: pointer; text-align: left; min-height: 36px; }
+.zlist button[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); }
+.zlist small { font-family: var(--font-mono); color: var(--muted); font-size: 11.5px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chips button { border: 1px solid var(--line); background: var(--bg); border-radius: 999px; padding: 5px 11px; cursor: pointer; font-size: 12.5px; min-height: 32px; }
+.chips button[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.btnrow { display: flex; flex-wrap: wrap; gap: 6px; }
+.btn { border: 1px solid var(--line); background: var(--bg); border-radius: 7px; padding: 7px 11px; cursor: pointer; font-size: 13px; min-height: 36px; }
+.btn:hover { border-color: var(--accent); }
+.btn.danger:hover { border-color: #c2412d; color: #c2412d; }
+.note { margin: 0; font-size: 12.5px; color: var(--muted); }
+.note b { color: var(--ink); font-weight: 600; }
+
+@media (prefers-reduced-motion: reduce) {
+  .win { transition: none; }
+  .win.attn { animation: none; }
+}
+</style>
+
+<div class="page">
+  <header class="top">
+    <div class="mark"><h1>Omni<span>Zones</span></h1><small>Primary · 3440 × 1440 · 21:9</small></div>
+    <div class="seg" role="group" aria-label="Mode" id="modeSeg">
+      <button type="button" data-mode="sim" aria-pressed="true">Simulate</button>
+      <button type="button" data-mode="edit" aria-pressed="false">Edit zones</button>
+    </div>
+    <div class="seg" role="group" aria-label="Layout" id="layoutSeg"></div>
+  </header>
+
+  <div class="main">
+    <div class="stagecol">
+      <div class="bezel">
+        <div class="monitor" id="monitor" tabindex="0" aria-label="Simulated 21:9 monitor. Arrow keys act as Win plus arrow.">
+          <div class="work" id="work">
+            <div class="overlay off" id="overlay"></div>
+            <div class="edit-layer" id="editLayer" hidden></div>
+          </div>
+          <div class="taskbar" id="taskbar"></div>
+          <div class="toast" id="toast" hidden></div>
+        </div>
+        <div class="chin"><span>Monitor 1 · work area 3440 × 1392</span><span>Monitor 2 is to the right →</span></div>
+      </div>
+      <div class="deck" id="deck">
+        <div class="grp"><span class="label">Move · replaces Windows Snap</span><div class="row">
+          <button class="hk" type="button" data-hk="left"><kbd>Win</kbd><kbd>←</kbd><span>Zone left</span></button>
+          <button class="hk" type="button" data-hk="right"><kbd>Win</kbd><kbd>→</kbd><span>Zone right</span></button>
+          <button class="hk" type="button" data-hk="up"><kbd>Win</kbd><kbd>↑</kbd><span>Fill screen</span></button>
+          <button class="hk" type="button" data-hk="down"><kbd>Win</kbd><kbd>↓</kbd><span>Unsnap</span></button>
+        </div></div>
+        <div class="grp"><span class="label">Stacks &amp; peek</span><div class="row">
+          <button class="hk" type="button" data-hk="cycle"><kbd>Win</kbd><kbd>Alt</kbd><kbd>↓</kbd><span>Next in stack</span></button>
+          <button class="hk" type="button" data-hk="peek"><kbd>Win</kbd><kbd>`</kbd><span>Peek</span></button>
+        </div></div>
+        <div class="grp"><span class="label">Arrange</span><div class="row">
+          <button class="hk" type="button" data-hk="gather"><kbd>Win</kbd><kbd>Alt</kbd><kbd>T</kbd><span>Gather terminals</span></button>
+          <button class="hk" type="button" data-hk="undo"><kbd>Win</kbd><kbd>Ctrl</kbd><kbd>Z</kbd><span>Undo</span></button>
+        </div></div>
+      </div>
+      <p class="hint" id="hint"></p>
+    </div>
+    <aside class="side" id="side" aria-live="polite"></aside>
+  </div>
+</div>
+
+<script>
+(() => {
+/* =====================================================================
+   OmniZones core: pure zone math. No DOM, no globals, no app state.
+   This block is the portable part (to the Hub in C#, or a standalone app).
+   Units are screen pixels of one monitor's work area.
+   layout  = { id, gap, zones: [{ id, name, kind: 'zone'|'stack'|'peek', x, y, w, h, apps[],
+               stack?: 'rows'|'accordion', visible?, winW? }] }
+   window  = { id, app, zone: zoneId|null, stackOrder, homes?: { [layoutId]: zoneId } }
+   ===================================================================== */
+const OmniZones = (() => {
+  const members = (windows, zid) => windows.filter((w) => w.zone === zid).sort((a, b) => a.stackOrder - b.stackOrder);
+
+  /** Effective rect per zone. An occupied peek dock reserves its visible sliver and zones it overlaps shrink. */
+  function zoneRects(layout, windows, screen) {
+    const R = {};
+    for (const z of layout.zones) R[z.id] = z.kind === 'peek' ? { x: 0, y: z.y, w: z.visible, h: z.h } : { x: z.x, y: z.y, w: z.w, h: z.h };
+    for (const p of layout.zones.filter((z) => z.kind === 'peek')) {
+      if (!members(windows, p.id).length) continue;
+      for (const z of layout.zones) {
+        if (z.kind === 'peek') continue;
+        const r = R[z.id];
+        if (r.y < p.y + p.h && r.y + r.h > p.y && r.x < p.visible) { const cut = p.visible - r.x; r.x += cut; r.w -= cut; }
+      }
+    }
+    return R;
+  }
+
+  /** Shrink a zone rect by the layout gap: half a gap between zones, a full gap at screen edges. */
+  function inset(r, g, screen) {
+    if (!g) return { ...r };
+    const l = r.x + (r.x <= 0 ? g : g / 2), t = r.y + (r.y <= 0 ? g : g / 2);
+    const rr = r.x + r.w - (r.x + r.w >= screen.w ? g : g / 2), b = r.y + r.h - (r.y + r.h >= screen.h ? g : g / 2);
+    return { x: l, y: t, w: rr - l, h: b - t };
+  }
+
+  /** Where a zoned window goes. ctx = { layout, windows, screen, rects, stackActive, peekOpen }. Null if its zone is gone. */
+  function windowRect(w, ctx) {
+    const { layout, windows, screen, rects, stackActive = {}, peekOpen = null } = ctx;
+    const z = layout.zones.find((q) => q.id === w.zone);
+    if (!z) return null;
+    const g = layout.gap;
+    if (z.kind === 'peek') {
+      return { x: peekOpen === w.id ? g : -(z.winW - z.visible), y: z.y + g, w: z.winW, h: z.h - 2 * g };
+    }
+    const inner = inset(rects[z.id], g, screen);
+    if (z.kind === 'zone') return inner;
+    const ms = members(windows, z.id), n = ms.length, i = ms.indexOf(w);
+    if (z.stack === 'rows') { const h = (inner.h - (n - 1) * g) / n; return { x: inner.x, y: inner.y + i * (h + g), w: inner.w, h }; }
+    const active = ms.find((m) => m.id === stackActive[z.id]) || ms[0];
+    const col = Math.min(150, inner.h / n), big = inner.h - (n - 1) * (col + g);
+    let y = inner.y;
+    for (const m of ms) { const h = m === active ? big : col; if (m === w) return { x: inner.x, y, w: inner.w, h }; y += h + g; }
+    return inner;
+  }
+
+  /** Zone under a point. Peek docks win over the zones they sit on. */
+  function zoneAt(layout, rects, p) {
+    const inside = (r) => p.x >= r.x && p.x < r.x + r.w && p.y >= r.y && p.y < r.y + r.h;
+    const peeks = layout.zones.filter((z) => z.kind === 'peek'), rest = layout.zones.filter((z) => z.kind !== 'peek').reverse();
+    return [...peeks, ...rest].find((z) => inside(rects[z.id])) || null;
+  }
+
+  /** Nearest zone left or right of a point (Win+arrow). Vertical distance counts double. */
+  function neighbor(layout, rects, from, dir, excludeId) {
+    let best = null, bs = Infinity;
+    for (const z of layout.zones) {
+      if (z.id === excludeId) continue;
+      const r = rects[z.id], dx = r.x + r.w / 2 - from.x, dy = r.y + r.h / 2 - from.y;
+      if (dir === 'left' ? dx > -1 : dx < 1) continue;
+      const s = Math.abs(dx) + 2 * Math.abs(dy);
+      if (s < bs) { bs = s; best = z; }
+    }
+    return best;
+  }
+
+  /** Assign windows to a layout: remembered zone first, then the first free zone that prefers the app. Map id -> zoneId|null. */
+  function plan(layout, windows) {
+    const out = new Map(), taken = new Set();
+    const free = (z) => z.kind === 'stack' || !taken.has(z.id);
+    const ordered = [...windows].sort((a, b) => (b.homes && b.homes[layout.id] ? 1 : 0) - (a.homes && a.homes[layout.id] ? 1 : 0));
+    for (const w of ordered) {
+      const homeId = w.homes && w.homes[layout.id], home = homeId && layout.zones.find((z) => z.id === homeId);
+      const t = home && free(home) ? home : layout.zones.find((z) => z.apps.includes(w.app) && free(z));
+      out.set(w.id, t ? t.id : null);
+      if (t) taken.add(t.id);
+    }
+    return out;
+  }
+
+  return { members, zoneRects, inset, windowRect, zoneAt, neighbor, plan };
+})();
+
+/* =====================================================================
+   Simulator: fake desktop, windows, hotkeys and editor UI around the core.
+   ===================================================================== */
+const W = 3440, H = 1392;
+const $ = (s, r = document) => r.querySelector(s);
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const clone = (o) => JSON.parse(JSON.stringify(o));
+
+const APPS = {
+  browser: { name: 'Firefox', glyph: 'Ff', color: '#d35400' },
+  cmd: { name: 'Terminal', glyph: '>_', color: '#3d4556' },
+  discord: { name: 'Discord', glyph: 'Dc', color: '#4f5bd5' },
+  obsidian: { name: 'Obsidian', glyph: 'Ob', color: '#6d3fc0' },
+  fomni: { name: 'Fomni', glyph: 'Fo', color: '#0d8a78' },
+};
+const ROOT_PATH = 'D:\\SSDProjects';
+const NOTES_PATH = 'D:\\SSDProjects\\Omni\\OmniNotes';
+const FOMNI = {
+  [ROOT_PATH]: [['Omni', 1], ['Tools', 1], ['Omnish', 1], ['Archive', 1], ['workspace.code-workspace', 0]],
+  [NOTES_PATH]: [['Inbox', 1], ['Design', 1], ['Archive', 1], ['Quick Ideas.md', 0], ['_Agent Index.md', 0]],
+};
+
+const LAYOUTS = [
+  { id: 'stage', name: 'Stage', key: '1', gap: 12, zones: [
+    { id: 'peek', name: 'Peek', kind: 'peek', visible: 300, winW: 1100, x: 0, y: 0, w: 300, h: 1392, apps: ['discord'] },
+    { id: 'term', name: 'Terminals', kind: 'stack', stack: 'rows', x: 0, y: 0, w: 760, h: 1392, apps: ['cmd'] },
+    { id: 'main', name: 'Main stage', kind: 'zone', x: 760, y: 0, w: 1920, h: 1392, apps: ['browser'] },
+    { id: 'notes', name: 'Notes', kind: 'zone', x: 2680, y: 0, w: 760, h: 760, apps: ['obsidian'] },
+    { id: 'files', name: 'Files', kind: 'zone', x: 2680, y: 760, w: 760, h: 632, apps: ['fomni'] },
+  ] },
+  { id: 'thirds', name: 'Thirds', key: '2', gap: 12, zones: [
+    { id: 'term', name: 'Terminals', kind: 'stack', stack: 'accordion', x: 0, y: 0, w: 1146, h: 1392, apps: ['cmd'] },
+    { id: 'mid', name: 'Middle', kind: 'zone', x: 1146, y: 0, w: 1148, h: 1392, apps: ['browser'] },
+    { id: 'side', name: 'Side stack', kind: 'stack', stack: 'rows', x: 2294, y: 0, w: 1146, h: 1392, apps: ['obsidian', 'fomni', 'discord'] },
+  ] },
+  { id: 'writing', name: 'Writing', key: '3', gap: 12, zones: [
+    { id: 'peek', name: 'Peek', kind: 'peek', visible: 300, winW: 1100, x: 0, y: 0, w: 300, h: 1392, apps: ['discord'] },
+    { id: 'files', name: 'Vault', kind: 'zone', x: 0, y: 0, w: 760, h: 1392, apps: ['fomni'] },
+    { id: 'write', name: 'Writing', kind: 'zone', x: 760, y: 0, w: 1920, h: 1392, apps: ['obsidian'] },
+    { id: 'ref', name: 'Reference', kind: 'zone', x: 2680, y: 0, w: 760, h: 820, apps: ['browser'] },
+    { id: 'term', name: 'Terminals', kind: 'stack', stack: 'accordion', x: 2680, y: 820, w: 760, h: 572, apps: ['cmd'] },
+  ] },
+  { id: 'center', name: 'Center', key: '4', gap: 0, zones: [
+    { id: 'center', name: 'Center', kind: 'zone', x: 860, y: 348, w: 1720, h: 696, apps: [] },
+  ] },
+];
+
+const WINDOWS = [
+  { id: 'ff', app: 'browser', title: 'Omni Hub — Mozilla Firefox', zone: 'main', float: { x: 700, y: 120, w: 1800, h: 1100 } },
+  { id: 't1', app: 'cmd', title: 'Gemini CLI · Omni', zone: 'term', float: { x: 200, y: 200, w: 1100, h: 640 } },
+  { id: 't2', app: 'cmd', title: 'Claude · OmniSync.Android', zone: 'term', float: { x: 260, y: 260, w: 1100, h: 640 } },
+  { id: 't3', app: 'cmd', title: 'pwsh · build_run_omnihub', zone: null, float: { x: 1020, y: 760, w: 1080, h: 520 } },
+  { id: 'dc', app: 'discord', title: '#general — Discord', zone: null, float: { x: 1880, y: 180, w: 1100, h: 780 } },
+  { id: 'ob', app: 'obsidian', title: 'OmniZones — OmniNotes — Obsidian', zone: 'notes', float: { x: 600, y: 160, w: 1500, h: 1000 } },
+  { id: 'fo', app: 'fomni', title: 'Fomni', zone: 'files', float: { x: 900, y: 300, w: 1000, h: 760 } },
+];
+
+const S = {
+  mode: 'sim', layoutId: 'stage', layouts: clone(LAYOUTS), windows: [], stackActive: {},
+  focus: 'ff', z: 10, order: 0, log: [], history: [], pick: null, peekOpen: null, drag: null, edrag: null,
+  sel: { stage: 'main', thirds: 'mid', writing: 'write', center: 'center' }, fomniPath: ROOT_PATH,
+  rules: { scene: true, attention: true, override: true, restore: true },
+};
+for (const w of clone(WINDOWS)) {
+  w.z = ++S.z; w.stackOrder = ++S.order; w.homes = w.zone ? { stage: w.zone } : {};
+  w.restore = { w: w.float.w, h: w.float.h }; w.attention = false; w.max = false;
+  S.windows.push(w);
+}
+S.windows.find((w) => w.id === 'ff').z = ++S.z;
+
+/* ---------- simulator glue over the core ---------- */
+const SCREEN = { w: W, h: H };
+const layout = (id = S.layoutId) => S.layouts.find((l) => l.id === id);
+const zoneById = (id) => id && layout().zones.find((z) => z.id === id);
+const win = (id) => S.windows.find((w) => w.id === id);
+const members = (zid) => OmniZones.members(S.windows, zid);
+const short = (w) => w.title.split(' — ')[0];
+const effRects = () => OmniZones.zoneRects(layout(), S.windows, SCREEN);
+const inset = (r, g) => OmniZones.inset(r, g, SCREEN);
+function geom(w, R = effRects()) {
+  if (w.max) return { x: 0, y: 0, w: W, h: H };
+  if (!w.zone) return w.float;
+  return OmniZones.windowRect(w, { layout: layout(), windows: S.windows, screen: SCREEN, rects: R, stackActive: S.stackActive, peekOpen: S.peekOpen }) || w.float;
+}
+const zoneAt = (p) => OmniZones.zoneAt(layout(), effRects(), p);
+const sceneTarget = (z) => z && z.kind === 'zone' && z.apps.includes('browser');
+const isSceneDrop = (w, z) => S.rules.scene && w.app === 'obsidian' && S.layoutId !== 'writing' && sceneTarget(z);
+
+/* ---------- history, log, toast ---------- */
+function pushHistory() {
+  S.history.push(JSON.stringify({ layoutId: S.layoutId, windows: S.windows, stackActive: S.stackActive, fomniPath: S.fomniPath }));
+  if (S.history.length > 40) S.history.shift();
+}
+function undo() {
+  const snap = S.history.pop();
+  if (!snap) { log('Nothing to undo'); return; }
+  const s = JSON.parse(snap);
+  const prevPath = S.fomniPath;
+  Object.assign(S, { layoutId: s.layoutId, windows: s.windows, stackActive: s.stackActive, fomniPath: s.fomniPath, peekOpen: null });
+  for (const id of Object.keys(winEls)) if (!win(id)) { winEls[id].remove(); delete winEls[id]; }
+  if (prevPath !== S.fomniPath) updateFomni();
+  log('Undid the last arrangement');
+  hideToast();
+  render();
+}
+function log(text) {
+  const d = new Date();
+  S.log.unshift({ t: `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`, text });
+  S.log.length = Math.min(S.log.length, 9);
+  if (S.mode === 'sim') renderSide();
+}
+let toastTimer;
+function toast(text, { undo: withUndo = false, cancel = null } = {}) {
+  const el = $('#toast');
+  el.innerHTML = `<span>${esc(text)}</span>` + (withUndo ? '<button type="button" data-t="undo">Undo</button>' : '') + (cancel ? '<button type="button" data-t="cancel">Cancel</button>' : '');
+  el.hidden = false;
+  el.onclick = (e) => {
+    const b = e.target.closest('button'); if (!b) return;
+    if (b.dataset.t === 'undo') undo();
+    if (b.dataset.t === 'cancel') cancel();
+    hideToast();
+  };
+  clearTimeout(toastTimer);
+  if (!cancel) toastTimer = setTimeout(hideToast, 6000);
+}
+function hideToast() { $('#toast').hidden = true; }
+
+/* ---------- actions ---------- */
+function focusWin(w) {
+  if (!w) return;
+  S.focus = w.id; w.z = ++S.z;
+  const z = zoneById(w.zone);
+  if (z && z.kind === 'stack') S.stackActive[z.id] = w.id;
+  if (w.attention) { w.attention = false; setTermAsk(w, false); }
+}
+function unsnap(w, R = effRects()) {
+  const r = geom(w, R), s = w.restore || { w: 1200, h: 800 };
+  w.zone = null; w.max = false;
+  w.float = { x: clamp(r.x + 90, 0, W - s.w), y: clamp(r.y + 90, 0, H - s.h), w: s.w, h: s.h };
+  w.z = ++S.z;
+}
+function dropOnZone(w, z, fromZone, fromFloat) {
+  const L = layout();
+  if (isSceneDrop(w, z)) return startWritingScene(w);
+  if (z.kind !== 'stack') {
+    const occ = members(z.id).find((m) => m !== w);
+    if (occ) {
+      const fz = zoneById(fromZone);
+      if (fz && fz.id !== z.id && fz.kind !== 'peek') {
+        occ.zone = fz.id; occ.homes[L.id] = fz.id; occ.stackOrder = ++S.order;
+        log(`Swapped ${short(w)} and ${short(occ)}`);
+      } else {
+        unsnap(occ); log(`${short(occ)} made room and now floats`);
+      }
+    }
+  }
+  if (fromFloat) w.restore = { w: w.float.w, h: w.float.h };
+  w.zone = z.id; w.max = false; w.homes[L.id] = z.id;
+  if (z.kind === 'stack') { w.stackOrder = ++S.order; S.stackActive[z.id] = w.id; log(`${short(w)} joined the ${z.name} stack (${members(z.id).length})`); }
+  else if (z.kind === 'peek') log(`${short(w)} docked to the left edge, ${z.winW - z.visible} px hidden. Hover it to peek.`);
+  else log(`${short(w)} snapped to ${z.name}`);
+  focusWin(w);
+}
+function applyLayout(id, { silent = false } = {}) {
+  if (S.mode === 'edit') { S.layoutId = id; render(); return; }
+  if (!silent) pushHistory();
+  S.layoutId = id; S.peekOpen = null;
+  const L = layout(), assign = OmniZones.plan(L, S.windows);
+  let k = 0;
+  for (const w of S.windows) {
+    const wasZoned = !!w.zone || w.max, target = assign.get(w.id);
+    w.max = false;
+    if (target) {
+      if (!wasZoned) w.restore = { w: w.float.w, h: w.float.h };
+      w.zone = target;
+      if (zoneById(target).kind === 'stack') w.stackOrder = ++S.order;
+    } else if (wasZoned) {
+      const s = w.restore || { w: 1200, h: 800 };
+      w.zone = null; w.float = { x: clamp(420 + k * 70, 0, W - s.w), y: clamp(110 + k * 70, 0, H - s.h), w: s.w, h: s.h }; k++;
+    }
+  }
+  if (!silent) log(`Layout ${L.name} (Win+Alt+${L.key}): windows went to their remembered or preferred zones`);
+  render();
+}
+function startWritingScene(ob) {
+  applyLayout('writing', { silent: true });
+  ob.zone = 'write'; ob.homes.writing = 'write'; ob.max = false;
+  S.fomniPath = NOTES_PATH; updateFomni();
+  focusWin(ob);
+  log('Obsidian dropped on the main stage: Writing scene');
+  toast('Writing scene: Obsidian in the middle, Fomni opened the vault, Firefox moved to Reference.', { undo: true });
+}
+function gather() {
+  const L = layout();
+  const st = L.zones.find((z) => z.kind === 'stack' && z.apps.includes('cmd')) || L.zones.find((z) => z.kind === 'stack');
+  if (!st) { log(`${L.name} has no stack zone for terminals`); toast(`${L.name} has no stack zone. Add one in Edit zones.`); return; }
+  pushHistory();
+  const terms = S.windows.filter((w) => w.app === 'cmd');
+  for (const t of terms) {
+    if (t.zone === st.id) continue;
+    if (!t.zone && !t.max) t.restore = { w: t.float.w, h: t.float.h };
+    t.zone = st.id; t.max = false; t.stackOrder = ++S.order; t.homes[L.id] = st.id;
+  }
+  log(`Gathered ${terms.length} terminals into ${st.name}`);
+  render();
+}
+function agentNeedsInput() {
+  const t = win('t2');
+  if (!t) return;
+  t.attention = true; setTermAsk(t, true);
+  const z = zoneById(t.zone);
+  if (S.rules.attention) {
+    if (z && z.kind === 'stack') { t.stackOrder = Math.min(...members(z.id).map((m) => m.stackOrder)) - 1; S.stackActive[z.id] = t.id; }
+    t.z = ++S.z;
+    log(`${short(t)} is waiting for input: raised to the top${z && z.kind === 'stack' ? ' of ' + z.name : ''}`);
+  } else log(`${short(t)} is waiting for input (raise rule is off)`);
+  render();
+}
+function scatter() {
+  pushHistory();
+  const spots = [[120, 90], [1500, 140], [420, 520], [2100, 600], [900, 280], [2300, 120], [700, 700], [1700, 420]];
+  S.windows.forEach((w, i) => {
+    const s = w.restore || { w: 1100, h: 700 }, [x, y] = spots[i % spots.length];
+    w.zone = null; w.max = false; w.float = { x: clamp(x, 0, W - s.w), y: clamp(y, 0, H - s.h), w: s.w, h: s.h };
+  });
+  S.peekOpen = null;
+  log('Scattered every window');
+  render();
+}
+function winArrow(dir) {
+  const w = win(S.focus);
+  if (!w) return;
+  if (!S.rules.override) {
+    pushHistory();
+    if (dir === 'left' || dir === 'right') {
+      if (w.zone || w.max) unsnap(w);
+      w.float = dir === 'left' ? { x: 0, y: 0, w: W / 2, h: H } : { x: W / 2, y: 0, w: W / 2, h: H };
+      log(`Windows Snap: ${short(w)} to the ${dir} half (1720 px wide on this monitor)`);
+    } else w.max = dir === 'up';
+    render(); return;
+  }
+  if (dir === 'up') { pushHistory(); w.max = !w.max; log(w.max ? `${short(w)} fills the screen` : `${short(w)} back in its zone`); render(); return; }
+  if (dir === 'down') {
+    if (w.max) { w.max = false; log(`${short(w)} back in its zone`); }
+    else if (w.zone) { pushHistory(); unsnap(w); log(`${short(w)} unsnapped and floats at its own size`); }
+    else log(`${short(w)} is already floating`);
+    render(); return;
+  }
+  const R = effRects(), cur = geom(w, R), z0 = zoneById(w.zone);
+  // Measure from the zone itself (not the gap-inset window), so a zone straight below never counts as "right".
+  const c = z0 ? { x: R[z0.id].x + R[z0.id].w / 2, y: R[z0.id].y + R[z0.id].h / 2 } : { x: clamp(cur.x + cur.w / 2, 0, W), y: cur.y + cur.h / 2 };
+  const best = OmniZones.neighbor(layout(), R, c, dir, w.zone);
+  if (!best) { log(dir === 'right' ? 'Right edge: the next press would move it to Monitor 2' : 'Already at the left edge'); return; }
+  pushHistory();
+  const fromFloat = !w.zone && !w.max, from = w.zone;
+  w.max = false;
+  if (fromFloat) w.restore = { w: w.float.w, h: w.float.h };
+  w.zone = null;
+  dropOnZone(w, best, from, false);
+  render();
+}
+function cycleStack(delta) {
+  const w = win(S.focus), z = w && zoneById(w.zone);
+  if (!z || z.kind !== 'stack') { log('The focused window is not in a stack'); return; }
+  const ms = members(z.id), n = ms[(ms.indexOf(w) + delta + ms.length) % ms.length];
+  focusWin(n);
+  log(`${z.name}: ${short(n)} in front`);
+  render();
+}
+function togglePeek() {
+  const L = layout(), p = L.zones.find((z) => z.kind === 'peek'), w = p && members(p.id)[0];
+  if (!w) { log('Nothing is docked in a peek zone'); return; }
+  S.peekOpen = S.peekOpen === w.id ? null : w.id;
+  if (S.peekOpen) focusWin(w);
+  syncWindows();
+}
+function startPick(path) {
+  S.pick = { path };
+  const leaf = path.split('\\').pop();
+  toast(`Pick a zone for a new terminal in ${leaf}`, { cancel: () => { S.pick = null; renderOverlay(); } });
+  renderOverlay();
+}
+function spawnTerminal(z) {
+  const path = S.pick.path, leaf = path.split('\\').pop();
+  S.pick = null; hideToast(); pushHistory();
+  const id = 't' + (S.windows.length + 1) + Date.now() % 1000;
+  const w = { id, app: 'cmd', title: `pwsh · ${leaf}`, zone: null, float: { x: 1200, y: 400, w: 1100, h: 600 }, z: ++S.z, stackOrder: ++S.order, homes: {}, restore: { w: 1100, h: 600 }, attention: false, max: false, cwd: path };
+  S.windows.push(w);
+  dropOnZone(w, z, null, false);
+  log(`Fomni opened a terminal in ${leaf} inside ${z.name}`);
+  render();
+}
+
+/* ---------- fake window content ---------- */
+const FOLDER = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 3.5h4l1.5 1.5h7.5v8h-13z" fill="#d9a441"/></svg>';
+const FILE = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 1.5h6l3 3v10h-9z" fill="none" stroke="#8b94a5"/></svg>';
+function fomniBody() {
+  const items = FOMNI[S.fomniPath] || [];
+  return `<div class="fo-path">${esc(S.fomniPath)}</div><ul class="fo-list">` + items.map(([n, dir]) =>
+    `<li>${dir ? FOLDER : FILE}<span>${esc(n)}</span>${dir ? `<button type="button" data-folder="${esc(S.fomniPath + '\\' + n)}">Terminal here</button>` : ''}</li>`).join('') + '</ul>';
+}
+const TERM = {
+  t1: '<b>gemini</b> › add zone hit-testing to WindowSnapService\n✦ Reading OmniSync.Hub/Logic/Services/…\n✦ Editing GlobalHotkeyService.cs\n<span class="ok">✓ build_run_omnihub.py: build succeeded</span>\n› _',
+  t2: '<b>claude</b> › fix drag jitter in RemoteControlScreen\n● Read RemoteControlScreen.kt\n● Update(RemoteControlScreen.kt)\n  +14 −6\n<span data-ask></span>',
+  t3: 'PS D:\\SSDProjects\\Omni> python build_run_omnihub.py\nKilling existing OmniSync.Hub…\nRestoring packages…\n<span class="ok">Build succeeded. 0 warnings</span>\nHub listening on :5000\nPS D:\\SSDProjects\\Omni> _',
+};
+function setTermAsk(w, on) {
+  const el = winEls[w.id] && winEls[w.id].querySelector('[data-ask]');
+  if (el) el.outerHTML = on ? '<span data-ask class="ask">Apply this edit?  1. Yes   2. No</span>' : '<span data-ask>› _</span>';
+}
+function body(w) {
+  if (w.app === 'cmd') return `<pre class="term">${TERM[w.id] || `PS ${esc(w.cwd || 'C:\\')}> _`}</pre>`;
+  if (w.app === 'browser') return `<div class="ff-tabs"><span class="on">Omni Hub</span><span>FancyZones · PowerToys docs</span><span>Hub settings</span></div>
+    <div class="ff-url">localhost:5000/hub</div>
+    <div class="ff-page"><h3>Omni Hub</h3><div class="cards">
+      <div><b>Agents</b><small>2 sessions running</small><span class="sk" style="width:70%"></span></div>
+      <div><b>Clipboard</b><small>Synced with phone</small><span class="sk" style="width:55%"></span></div>
+      <div><b>Reminders</b><small>3 today</small><span class="sk" style="width:62%"></span></div>
+      <div><b>Macros</b><small>12 hotkeys</small><span class="sk" style="width:48%"></span></div></div>
+      <span class="sk" style="width:92%"></span><span class="sk" style="width:84%"></span><span class="sk" style="width:88%"></span><span class="sk" style="width:60%"></span></div>`;
+  if (w.app === 'discord') return `<div class="dc"><div class="rail"><i></i><i></i><i></i><i></i></div>
+    <div class="chans"><b style="color:#e7ebf1">Omni</b><span># general</span><span># builds</span><span># ideas</span></div>
+    <div class="chat"><div class="msg"><i></i><b>build-bot</b><span class="sk" style="width:80%"></span></div><div class="msg"><i></i><b>you</b><span class="sk" style="width:55%"></span></div><div class="msg"><i></i><b>build-bot</b><span class="sk" style="width:68%"></span></div></div>
+    <div class="mem"><span>Online · 3</span><span class="who"><i></i>you</span><span class="who"><i></i>build-bot</span><span class="who"><i></i>omni-hub</span></div></div>`;
+  if (w.app === 'obsidian') return `<div class="ob"><div class="tree"><span>Inbox</span><span>Design</span><span>Archive</span><span>Quick Ideas.md</span><span class="on">OmniZones.md</span></div>
+    <div class="doc"><h4>OmniZones</h4><p>• Browser centered, full height, room on both sides</p><p>• Terminals stacked on the left</p><p>• Discord peeking in from the left edge</p><p>• Win+arrows move between zones</p><p>• Drag Obsidian in to start the Writing scene</p></div></div>`;
+  if (w.app === 'fomni') return fomniBody();
+  return '';
+}
+function glyph(app) { const a = APPS[app]; return `<span class="glyph" style="background:${a.color}">${esc(a.glyph)}</span>`; }
+
+/* ---------- DOM sync ---------- */
+const winEls = {};
+const pct = (v, of) => (v / of * 100) + '%';
+function place(el, r) { el.style.left = pct(r.x, W); el.style.top = pct(r.y, H); el.style.width = pct(r.w, W); el.style.height = pct(r.h, H); }
+function makeWin(w) {
+  const el = document.createElement('div');
+  el.className = 'win'; el.dataset.id = w.id;
+  el.innerHTML = `<div class="bar">${glyph(w.app)}<span class="t">${esc(w.title)}</span><span class="ctl" aria-hidden="true"><i></i><i></i><i></i></span></div><div class="body">${body(w)}</div>`;
+  el.addEventListener('pointerdown', (e) => {
+    if (S.mode !== 'sim') return;
+    const ww = win(w.id);
+    const folder = e.target.closest('[data-folder]');
+    if (folder) { e.stopPropagation(); return; }
+    if (e.target.closest('.bar')) startDrag(e, ww);
+    else { focusWin(ww); syncWindows(); renderTaskbar(); }
+  });
+  el.addEventListener('click', (e) => { const f = e.target.closest('[data-folder]'); if (f) startPick(f.dataset.folder); });
+  el.addEventListener('dblclick', (e) => { if (e.target.closest('.bar') && S.mode === 'sim') { focusWin(win(w.id)); winArrow('up'); } });
+  let peekT;
+  el.addEventListener('pointerenter', () => {
+    const ww = win(w.id), z = ww && zoneById(ww.zone);
+    if (S.drag || !z || z.kind !== 'peek') return;
+    clearTimeout(peekT); if (S.peekOpen !== ww.id) { S.peekOpen = ww.id; syncWindows(); }
+  });
+  el.addEventListener('pointerleave', () => {
+    clearTimeout(peekT);
+    peekT = setTimeout(() => { if (S.peekOpen === w.id && !S.drag) { S.peekOpen = null; syncWindows(); } }, 450);
+  });
+  return el;
+}
+function updateFomni() { const el = winEls.fo; if (el) el.querySelector('.body').innerHTML = fomniBody(); const w = win('fo'); if (w) { w.title = `Fomni — ${S.fomniPath.split('\\').pop()}`; if (el) el.querySelector('.t').textContent = w.title; } }
+function syncWindows() {
+  const work = $('#work'), R = effRects();
+  for (const w of S.windows) {
+    let el = winEls[w.id];
+    if (!el) { el = makeWin(w); work.insertBefore(el, $('#overlay')); winEls[w.id] = el; }
+    const z = zoneById(w.zone);
+    place(el, geom(w, R));
+    el.style.zIndex = z && z.kind === 'peek' && S.peekOpen === w.id ? 3500 : w.z;
+    el.classList.toggle('focused', S.focus === w.id);
+    el.classList.toggle('attn', !!w.attention);
+  }
+}
+function renderTaskbar() {
+  $('#taskbar').innerHTML = S.windows.map((w) => `<button type="button" data-id="${w.id}" class="${S.focus === w.id ? 'on' : ''}" aria-label="${esc(w.title)}" title="${esc(w.title)}">${glyph(w.app)}</button>`).join('');
+}
+function zoneKindText(z, R) {
+  if (z.kind === 'stack') return `stack · ${z.stack} · ${members(z.id).length} in`;
+  if (z.kind === 'peek') return `peek · ${z.winW - z.visible} px off-screen`;
+  return `${Math.round(R[z.id].w)} × ${Math.round(R[z.id].h)}`;
+}
+function dropAction(w, z) {
+  if (isSceneDrop(w, z)) return 'Start Writing scene';
+  if (z.kind === 'stack') return `Join stack (${members(z.id).length + 1})`;
+  if (z.kind === 'peek') return `Dock · show ${z.visible} px`;
+  const occ = members(z.id)[0];
+  if (occ) return zoneById(S.drag && S.drag.fromZone) ? `Swap with ${APPS[occ.app].name}` : `Replace ${APPS[occ.app].name}`;
+  return 'Snap here';
+}
+function renderOverlay() {
+  const ov = $('#overlay');
+  const active = S.mode === 'sim' && ((S.drag && S.drag.moved && !S.drag.free) || S.pick);
+  ov.classList.toggle('off', !active);
+  if (!active) { ov.innerHTML = ''; return; }
+  const L = layout(), R = effRects(), w = S.drag && win(S.drag.id);
+  ov.innerHTML = L.zones.map((z) => {
+    const r = inset(R[z.id], L.gap), hot = S.drag && S.drag.hot === z.id, scene = w && isSceneDrop(w, z);
+    const action = hot && w ? dropAction(w, z) : scene ? 'Drop for Writing scene' : S.pick ? 'Open terminal here' : '';
+    return `<div class="oz ${z.kind}${hot ? ' hot' : ''}${scene ? ' scene' : ''}${S.pick ? ' pickable' : ''}" data-z="${z.id}" style="left:${pct(r.x, W)};top:${pct(r.y, H)};width:${pct(r.w, W)};height:${pct(r.h, H)};z-index:${z.kind === 'peek' ? 2 : 1}">
+      <span class="n">${esc(z.name)}</span><span class="k">${esc(zoneKindText(z, R))}</span>${action ? `<span class="a">${esc(action)}</span>` : ''}</div>`;
+  }).join('');
+}
+
+/* ---------- window drag ---------- */
+function toReal(e) {
+  const r = $('#work').getBoundingClientRect();
+  return { x: (e.clientX - r.left) / r.width * W, y: (e.clientY - r.top) / r.height * H };
+}
+function startDrag(e, w) {
+  if (e.button !== 0) return;
+  e.preventDefault();
+  focusWin(w);
+  const p = toReal(e), r = geom(w);
+  S.drag = { id: w.id, start: p, off: { x: p.x - r.x, y: p.y - r.y }, rect: r, fromZone: w.zone, wasMax: w.max, moved: false, hot: null, free: false };
+  syncWindows(); renderTaskbar();
+  document.addEventListener('pointermove', onDragMove);
+  document.addEventListener('pointerup', onDragUp, { once: true });
+}
+function onDragMove(e) {
+  const d = S.drag; if (!d) return;
+  const p = toReal(e), w = win(d.id), el = winEls[w.id];
+  if (!d.moved) {
+    if (Math.hypot(p.x - d.start.x, p.y - d.start.y) < 14) return;
+    d.moved = true; pushHistory();
+    const snapped = !!w.zone || w.max;
+    const size = snapped && S.rules.restore ? (w.restore || { w: d.rect.w, h: d.rect.h }) : { w: d.rect.w, h: d.rect.h };
+    if (snapped) d.off = { x: d.off.x / d.rect.w * size.w, y: Math.min(d.off.y, 60) };
+    if (S.peekOpen === w.id) S.peekOpen = null;
+    w.zone = null; w.max = false; w.float = { x: p.x - d.off.x, y: p.y - d.off.y, w: size.w, h: size.h };
+    el.classList.add('dragging');
+    syncWindows();
+  }
+  w.float.x = p.x - d.off.x; w.float.y = p.y - d.off.y;
+  place(el, w.float);
+  const free = e.shiftKey, hot = free ? null : (zoneAt(p) || {}).id || null;
+  if (hot !== d.hot || free !== d.free) { d.hot = hot; d.free = free; renderOverlay(); }
+}
+function onDragUp() {
+  document.removeEventListener('pointermove', onDragMove);
+  const d = S.drag; S.drag = null;
+  if (!d) return;
+  const w = win(d.id);
+  winEls[w.id].classList.remove('dragging');
+  if (d.moved) {
+    const z = d.hot && zoneById(d.hot);
+    if (z) dropOnZone(w, z, d.fromZone, true);
+    else log(`${short(w)} floating${d.free ? ' (Shift held: zones ignored)' : ''}`);
+  }
+  render();
+}
+
+/* ---------- zone editor ---------- */
+const EZ_GRID = 20, EZ_SNAP = 28, EZ_MIN = 160;
+function renderEditor() {
+  const el = $('#editLayer'), L = layout(), sel = S.sel[L.id];
+  el.innerHTML = L.zones.map((z) => {
+    const r = z.kind === 'peek' ? { x: 0, y: z.y, w: z.visible, h: z.h } : z;
+    const handles = z.id !== sel ? '' : (z.kind === 'peek' ? ['e'] : ['n', 'e', 's', 'w', 'ne', 'nw', 'se', 'sw']).map((h) => `<span class="h" data-h="${h}"></span>`).join('');
+    return `<div class="ez ${z.kind}${z.id === sel ? ' sel' : ''}" data-z="${z.id}" style="left:${pct(r.x, W)};top:${pct(r.y, H)};width:${pct(r.w, W)};height:${pct(r.h, H)};z-index:${z.kind === 'peek' ? 3 : 1}">
+      ${z.kind === 'peek' ? `<span class="off">◂ ${z.winW - z.visible} px off-screen</span>` : ''}
+      <span class="n">${esc(z.name)}</span><span class="d">${z.kind === 'peek' ? `${z.visible} visible` : `${z.w} × ${z.h}`}</span><span class="k">${z.kind === 'stack' ? 'stack · ' + z.stack : z.kind}</span>${handles}</div>`;
+  }).join('');
+}
+function snap1(v, cands) {
+  let best = null;
+  for (const c of cands) if (Math.abs(c - v) <= EZ_SNAP && (best === null || Math.abs(c - v) < Math.abs(best - v))) best = c;
+  return best !== null ? best : Math.round(v / EZ_GRID) * EZ_GRID;
+}
+function edgeCands(zid) {
+  const xs = [0, W], ys = [0, H];
+  for (const z of layout().zones) {
+    if (z.id === zid) continue;
+    if (z.kind === 'peek') { xs.push(z.visible); continue; }
+    xs.push(z.x, z.x + z.w); ys.push(z.y, z.y + z.h);
+  }
+  return { xs, ys };
+}
+function onEditDown(e) {
+  const box = e.target.closest('.ez'); if (!box || e.button !== 0) return;
+  e.preventDefault();
+  const L = layout(), z = L.zones.find((q) => q.id === box.dataset.z);
+  const handle = e.target.closest('.h');
+  if (S.sel[L.id] !== z.id) { S.sel[L.id] = z.id; render(); if (!handle && z.kind === 'peek') return; }
+  S.edrag = { zid: z.id, h: handle ? handle.dataset.h : 'move', start: toReal(e), orig: { x: z.x, y: z.y, w: z.w, h: z.h, visible: z.visible } };
+  if (z.kind === 'peek' && S.edrag.h === 'move') { S.edrag = null; return; }
+  document.addEventListener('pointermove', onEditMove);
+  document.addEventListener('pointerup', onEditUp, { once: true });
+}
+function onEditMove(e) {
+  const d = S.edrag; if (!d) return;
+  const p = toReal(e), dx = p.x - d.start.x, dy = p.y - d.start.y, o = d.orig;
+  const z = layout().zones.find((q) => q.id === d.zid), { xs, ys } = edgeCands(z.id);
+  if (z.kind === 'peek') { z.visible = clamp(Math.round((o.visible + dx) / 10) * 10, 120, z.winW - 100); z.w = z.visible; }
+  else if (d.h === 'move') {
+    const nx = o.x + dx, ny = o.y + dy;
+    const sl = snap1(nx, xs), sr = snap1(nx + o.w, xs) - o.w, st = snap1(ny, ys), sb = snap1(ny + o.h, ys) - o.h;
+    z.x = clamp(Math.abs(sl - nx) <= Math.abs(sr - nx) ? sl : sr, 0, W - o.w);
+    z.y = clamp(Math.abs(st - ny) <= Math.abs(sb - ny) ? st : sb, 0, H - o.h);
+  } else {
+    let l = o.x, t = o.y, r = o.x + o.w, b = o.y + o.h;
+    if (d.h.includes('e')) r = clamp(snap1(r + dx, xs), l + EZ_MIN, W);
+    if (d.h.includes('w')) l = clamp(snap1(l + dx, xs), 0, r - EZ_MIN);
+    if (d.h.includes('s')) b = clamp(snap1(b + dy, ys), t + EZ_MIN, H);
+    if (d.h.includes('n')) t = clamp(snap1(t + dy, ys), 0, b - EZ_MIN);
+    Object.assign(z, { x: l, y: t, w: r - l, h: b - t });
+  }
+  renderEditor();
+}
+function onEditUp() { document.removeEventListener('pointermove', onEditMove); S.edrag = null; render(); }
+function zoneAction(act) {
+  const L = layout(), z = L.zones.find((q) => q.id === S.sel[L.id]);
+  if (act === 'add') {
+    const id = 'z' + Date.now() % 100000;
+    L.zones.push({ id, name: `Zone ${L.zones.length + 1}`, kind: 'zone', x: 1320, y: 396, w: 800, h: 600, apps: [] });
+    S.sel[L.id] = id; render(); return;
+  }
+  if (!z) return;
+  if (act === 'del') { L.zones = L.zones.filter((q) => q !== z); for (const w of S.windows) if (w.zone === z.id) unsnap(w); S.sel[L.id] = L.zones[0] && L.zones[0].id; }
+  if ((act === 'splitv' || act === 'splith') && z.kind !== 'peek') {
+    const id = 'z' + Date.now() % 100000, nz = { ...clone(z), id, name: z.name + ' 2', kind: 'zone', apps: [] };
+    if (act === 'splitv') { const half = Math.round(z.w / 2 / EZ_GRID) * EZ_GRID; nz.x = z.x + half; nz.w = z.w - half; z.w = half; }
+    else { const half = Math.round(z.h / 2 / EZ_GRID) * EZ_GRID; nz.y = z.y + half; nz.h = z.h - half; z.h = half; }
+    delete nz.stack;
+    L.zones.push(nz); S.sel[L.id] = id;
+  }
+  render();
+}
+
+/* ---------- side panel ---------- */
+function renderSide() {
+  const side = $('#side');
+  if (S.mode === 'sim') {
+    side.innerHTML = `
+      <section><h2>Try it</h2><div class="try">
+        <button type="button" data-act="drag-ob"><b>Drag Obsidian to the middle</b><small>An app rule opens the Writing scene</small></button>
+        <button type="button" data-act="agent"><b>Claude asks for input</b><small>The waiting terminal comes to the top</small></button>
+        <button type="button" data-act="gather"><b>Gather terminals</b><small>Every terminal goes into the stack</small></button>
+        <button type="button" data-act="scatter"><b>Scatter windows</b><small>Mess up the desk, then pick a layout</small></button>
+      </div><p class="note">Fomni: press <b>Terminal here</b> on a folder, then pick a zone. Discord: drop it on the left edge to dock it as a peek.</p></section>
+      <section><h2>Rules</h2>
+        ${rule('scene', 'Dropping Obsidian on the main stage starts the Writing scene')}
+        ${rule('attention', 'Raise terminals whose agent session is waiting for input')}
+        ${rule('override', 'Win+arrows move between zones instead of Windows Snap')}
+        ${rule('restore', 'Dragging a window out of a zone restores its own size')}
+      </section>
+      <section><h2>Activity</h2><ol class="log">${S.log.length ? S.log.map((l) => `<li><time>${l.t}</time><span>${esc(l.text)}</span></li>`).join('') : '<li><time>—</time><span>Drag a window by its title bar. Zones appear while you drag; hold Shift to ignore them.</span></li>'}</ol></section>`;
+    return;
+  }
+  const L = layout(), z = L.zones.find((q) => q.id === S.sel[L.id]);
+  const appChips = z ? Object.entries(APPS).map(([k, a]) => `<button type="button" data-app="${k}" aria-pressed="${z.apps.includes(k)}">${a.name}</button>`).join('') : '';
+  side.innerHTML = `
+    <section><h2>Layout</h2>
+      <div class="field"><label class="label" for="layName">Name · Win+Alt+${L.key}</label><input id="layName" type="text" value="${esc(L.name)}"></div>
+      <div class="field"><label class="label" for="layGap">Gap between zones · ${L.gap} px</label><input id="layGap" type="range" min="0" max="40" step="2" value="${L.gap}"></div>
+    </section>
+    <section><h2>Zones</h2><div class="zlist">${L.zones.map((q) => `<button type="button" data-sel="${q.id}" aria-pressed="${q === z}"><span>${esc(q.name)}</span><small>${q.kind === 'stack' ? 'stack' : q.kind}</small></button>`).join('')}</div>
+      <div class="btnrow"><button class="btn" type="button" data-za="add">Add zone</button></div></section>
+    ${z ? `<section><h2>${esc(z.name)}</h2>
+      <div class="field"><label class="label" for="zName">Name</label><input id="zName" type="text" value="${esc(z.name)}"></div>
+      <div class="field"><span class="label">Type</span><div class="seg" role="group" aria-label="Zone type">
+        ${['zone', 'stack', 'peek'].map((k) => `<button type="button" data-kind="${k}" aria-pressed="${z.kind === k}">${k === 'zone' ? 'Zone' : k === 'stack' ? 'Stack' : 'Peek'}</button>`).join('')}</div></div>
+      ${z.kind === 'stack' ? `<div class="field"><span class="label">Stack style</span><div class="seg" role="group" aria-label="Stack style">
+        <button type="button" data-stack="rows" aria-pressed="${z.stack === 'rows'}">Rows</button><button type="button" data-stack="accordion" aria-pressed="${z.stack === 'accordion'}">Accordion</button></div>
+        <p class="note">${z.stack === 'rows' ? 'Windows split the zone evenly, top to bottom.' : 'The front window gets most of the height; the others shrink to their title bars.'}</p></div>` : ''}
+      ${z.kind === 'peek' ? `<div class="field"><label class="label" for="zVis">Visible part · ${z.visible} px</label><input id="zVis" type="range" min="120" max="${z.winW - 100}" step="10" value="${z.visible}"></div>
+        <div class="field"><label class="label" for="zWinW">Window width</label><input id="zWinW" type="number" min="400" max="3000" step="10" value="${z.winW}"></div>
+        <p class="note">Docks on the <b>left edge</b>, showing the right side of the window. The right edge borders Monitor 2, so a window hanging off there would show up on the other screen.</p>` :
+      `<div class="field"><span class="label">Position and size · px</span><div class="geo">
+        ${['x', 'y', 'w', 'h'].map((k) => `<input type="number" id="zg-${k}" data-geo="${k}" aria-label="${k}" step="10" value="${z[k]}">`).join('')}</div></div>`}
+      <div class="field"><span class="label">Preferred apps</span><div class="chips">${appChips}</div>
+        <p class="note">Switching to this layout sends these apps here first.</p></div>
+      <div class="btnrow">${z.kind !== 'peek' ? '<button class="btn" type="button" data-za="splitv">Split side by side</button><button class="btn" type="button" data-za="splith">Split top and bottom</button>' : ''}<button class="btn danger" type="button" data-za="del">Delete zone</button></div>
+    </section>` : ''}`;
+}
+function rule(k, text) { return `<label class="rule"><input type="checkbox" id="rule-${k}" data-rule="${k}" ${S.rules[k] ? 'checked' : ''}><span>${esc(text)}</span></label>`; }
+
+/* ---------- header, hint, full render ---------- */
+function renderHeader() {
+  document.querySelectorAll('#modeSeg button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.mode === S.mode)));
+  $('#layoutSeg').innerHTML = S.layouts.map((l) => `<button type="button" data-layout="${l.id}" aria-pressed="${l.id === S.layoutId}">${esc(l.name)} <kbd>${l.key}</kbd></button>`).join('');
+  $('#deck').hidden = S.mode !== 'sim';
+  $('#hint').textContent = S.mode === 'sim'
+    ? 'Click the screen to give it focus. Then the arrow keys act as Win+arrows, Alt+↓ cycles a stack, T gathers terminals, 1–4 switch layouts, Z undoes and ` toggles the peek.'
+    : 'Drag a zone to move it and drag its handles to resize. Edges snap to the screen, to other zones and to a 20 px grid.';
+}
+function render() {
+  renderHeader();
+  $('#monitor').classList.toggle('editing', S.mode === 'edit');
+  $('#editLayer').hidden = S.mode !== 'edit';
+  syncWindows();
+  renderTaskbar();
+  renderOverlay();
+  if (S.mode === 'edit') renderEditor();
+  renderSide();
+}
+
+/* ---------- events ---------- */
+$('#modeSeg').addEventListener('click', (e) => {
+  const b = e.target.closest('button'); if (!b) return;
+  S.mode = b.dataset.mode; S.pick = null; hideToast();
+  if (S.mode === 'sim') applyLayout(S.layoutId, { silent: true }); else render();
+});
+$('#layoutSeg').addEventListener('click', (e) => { const b = e.target.closest('[data-layout]'); if (b) applyLayout(b.dataset.layout); });
+$('#deck').addEventListener('click', (e) => { const b = e.target.closest('[data-hk]'); if (b) hotkey(b.dataset.hk); });
+function hotkey(k) {
+  if (k === 'left' || k === 'right' || k === 'up' || k === 'down') winArrow(k);
+  else if (k === 'cycle') cycleStack(1);
+  else if (k === 'cycleUp') cycleStack(-1);
+  else if (k === 'peek') togglePeek();
+  else if (k === 'gather') gather();
+  else if (k === 'undo') undo();
+}
+$('#taskbar').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-id]'); if (!b || S.mode !== 'sim') return;
+  const w = win(b.dataset.id), z = zoneById(w.zone);
+  if (z && z.kind === 'peek') { S.peekOpen = S.peekOpen === w.id ? null : w.id; }
+  focusWin(w); syncWindows(); renderTaskbar();
+});
+$('#monitor').addEventListener('keydown', (e) => {
+  if (S.mode !== 'sim') return;
+  const map = { ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'up', ArrowDown: 'down' };
+  if (e.altKey && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) { e.preventDefault(); hotkey(e.key === 'ArrowDown' ? 'cycle' : 'cycleUp'); return; }
+  if (map[e.key]) { e.preventDefault(); hotkey(map[e.key]); return; }
+  const k = e.key.toLowerCase();
+  if (k === 't') hotkey('gather');
+  else if (k === 'z') hotkey('undo');
+  else if (k === '`') hotkey('peek');
+  else if (k === 'escape' && S.pick) { S.pick = null; hideToast(); renderOverlay(); }
+  else { const l = S.layouts.find((q) => q.key === k); if (l) applyLayout(l.id); }
+});
+$('#overlay').addEventListener('click', (e) => { const oz = e.target.closest('.oz'); if (oz && S.pick) spawnTerminal(zoneById(oz.dataset.z)); });
+$('#editLayer').addEventListener('pointerdown', onEditDown);
+$('#side').addEventListener('click', (e) => {
+  const t = e.target.closest('button'); if (!t) return;
+  const L = layout(), z = L.zones.find((q) => q.id === S.sel[L.id]);
+  if (t.dataset.act === 'agent') agentNeedsInput();
+  else if (t.dataset.act === 'gather') gather();
+  else if (t.dataset.act === 'scatter') scatter();
+  else if (t.dataset.act === 'drag-ob') demoDragObsidian();
+  else if (t.dataset.sel) { S.sel[L.id] = t.dataset.sel; render(); }
+  else if (t.dataset.za) zoneAction(t.dataset.za);
+  else if (t.dataset.kind && z) {
+    const k = t.dataset.kind;
+    if (k === 'peek' && L.zones.some((q) => q.kind === 'peek' && q !== z)) { toast('This layout already has a peek zone.'); return; }
+    if (k === 'peek') Object.assign(z, { visible: 300, winW: 1100, x: 0, w: 300 });
+    if (z.kind === 'peek' && k !== 'peek') Object.assign(z, { x: 0, w: Math.max(z.visible, 600) });
+    if (k === 'stack' && !z.stack) z.stack = 'rows';
+    z.kind = k; render();
+  }
+  else if (t.dataset.stack && z) { z.stack = t.dataset.stack; render(); }
+  else if (t.dataset.app && z) { const a = t.dataset.app; z.apps = z.apps.includes(a) ? z.apps.filter((x) => x !== a) : [...z.apps, a]; render(); }
+});
+$('#side').addEventListener('input', (e) => {
+  const t = e.target, L = layout(), z = L.zones.find((q) => q.id === S.sel[L.id]);
+  if (t.dataset.rule) { S.rules[t.dataset.rule] = t.checked; log(`Rule ${t.checked ? 'on' : 'off'}: ${t.nextElementSibling.textContent}`); return; }
+  if (t.id === 'layName') { L.name = t.value || L.name; renderHeader(); return; }
+  if (t.id === 'layGap') { L.gap = +t.value; t.previousElementSibling.textContent = `Gap between zones · ${L.gap} px`; syncWindows(); return; }
+  if (!z) return;
+  if (t.id === 'zName') { z.name = t.value; renderEditor(); return; }
+  if (t.id === 'zVis') { z.visible = +t.value; z.w = z.visible; t.previousElementSibling.textContent = `Visible part · ${z.visible} px`; renderEditor(); return; }
+  if (t.id === 'zWinW') { z.winW = clamp(+t.value || 1100, 400, 3000); z.visible = Math.min(z.visible, z.winW - 100); renderEditor(); return; }
+  if (t.dataset.geo) {
+    const k = t.dataset.geo, v = +t.value; if (!Number.isFinite(v)) return;
+    if (k === 'x') z.x = clamp(v, 0, W - z.w); if (k === 'y') z.y = clamp(v, 0, H - z.h);
+    if (k === 'w') z.w = clamp(v, EZ_MIN, W - z.x); if (k === 'h') z.h = clamp(v, EZ_MIN, H - z.y);
+    renderEditor();
+  }
+});
+$('#side').addEventListener('change', (e) => { if (e.target.dataset.geo || e.target.id === 'zName') renderSide(); });
+
+/* Animated demo: carries Obsidian along a path so the rule can be seen without dragging. */
+function demoDragObsidian() {
+  if (S.drag) return;
+  const w = win('ob'); if (!w) return;
+  if (S.layoutId === 'writing') { toast('Already in the Writing scene. Undo or pick another layout first.'); return; }
+  const target = layout().zones.find(sceneTarget);
+  if (!target) { toast(`${layout().name} has no main stage for the scene rule.`); return; }
+  focusWin(w);
+  const r = geom(w), startP = { x: r.x + r.w / 2, y: r.y + 40 }, R = effRects()[target.id];
+  const endP = { x: R.x + R.w / 2, y: R.y + R.h / 2 };
+  S.drag = { id: w.id, start: startP, off: { x: r.w / 2, y: 40 }, rect: r, fromZone: w.zone, moved: false, hot: null, free: false };
+  const t0 = performance.now(), dur = 1300;
+  const fakeAt = (p) => { const b = $('#work').getBoundingClientRect(); return { clientX: b.left + p.x / W * b.width, clientY: b.top + p.y / H * b.height, shiftKey: false }; };
+  onDragMove(fakeAt({ x: startP.x + 40, y: startP.y + 30 }));
+  const step = (now) => {
+    const k = Math.min(1, (now - t0) / dur), e2 = k < .5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2;
+    onDragMove(fakeAt({ x: startP.x + (endP.x - startP.x) * e2, y: startP.y + (endP.y - startP.y) * e2 }));
+    if (k < 1) requestAnimationFrame(step); else setTimeout(onDragUp, 650);
+  };
+  requestAnimationFrame(step);
+}
+
+render();
+})();
+</script>

@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Tiny native helper used by OmniHub's agent inbox:
+      OmniAgentHook.exe hook          Claude Code hook (stdin = hook JSON): session liveness + phone message delivery
+      OmniAgentHook.exe inject <pid> <base64 text>   type text + Enter into another process's console
+    Published NativeAOT so the per-tool-call hook costs a few milliseconds.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net9.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>OmniAgentHook</AssemblyName>
+    <PublishAot>true</PublishAot>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>true</SelfContained>
+  </PropertyGroup>
+
+</Project>

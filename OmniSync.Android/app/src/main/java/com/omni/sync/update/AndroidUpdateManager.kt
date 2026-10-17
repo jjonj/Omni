@@ -1,5 +1,6 @@
 package com.omni.sync.update
 
+import android.app.ActivityManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
@@ -8,12 +9,15 @@ import android.content.pm.PackageInstaller
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
+import android.os.SystemClock
 import android.provider.Settings
 import android.util.Log
 import com.google.gson.Gson
+import com.omni.sync.MainActivity
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -59,12 +63,19 @@ class AndroidUpdateManager(private val context: Context) {
         val onStatus: (String, String) -> Unit
     )
 
+    private data class ActiveInstall(
+        val sessionId: Int,
+        val startedAtElapsedRealtime: Long
+    )
+
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val gson = Gson()
     private val _state = MutableStateFlow(AndroidUpdateState())
     val state: StateFlow<AndroidUpdateState> = _state.asStateFlow()
     @Volatile
     private var pendingDeployment: PendingDeployment? = null
+    @Volatile
+    private var activeInstall: ActiveInstall? = null
 
     fun deployLatest(
         requestId: String,
@@ -72,10 +83,7 @@ class AndroidUpdateManager(private val context: Context) {
         apiKey: String,
         onStatus: (String, String) -> Unit
     ) {
-        if (_state.value.phase == AndroidUpdatePhase.CHECKING ||
-            _state.value.phase == AndroidUpdatePhase.DOWNLOADING ||
-            _state.value.phase == AndroidUpdatePhase.INSTALLING
-        ) {
+        if (isBusyWithUpdate()) {
             onStatus("busy", "Android updater is already processing another request.")
             return
         }
@@ -189,6 +197,8 @@ class AndroidUpdateManager(private val context: Context) {
         Log.i(TAG, "[${deployment.requestId}] Download complete; validating APK.")
         validateApk(apk, deployment.info)
         deployment.onStatus("validated", "APK hash, package, version, and signer are valid.")
+        deployment.onStatus("foregrounding", "Bringing OmniSync to the foreground for unattended self-update.")
+        bringAppToForegroundForInstall()
         Log.i(TAG, "[${deployment.requestId}] APK validated; committing PackageInstaller session.")
         commitInstall(apk, deployment.requestId)
         deployment.onStatus("installer_started", "Android PackageInstaller accepted the APK.")
@@ -278,6 +288,9 @@ class AndroidUpdateManager(private val context: Context) {
     }
 
     fun handleInstallStatus(status: Int, message: String?) {
+        if (status != PackageInstaller.STATUS_PENDING_USER_ACTION) {
+            activeInstall = null
+        }
         _state.value = when (status) {
             PackageInstaller.STATUS_PENDING_USER_ACTION -> AndroidUpdateState(
                 phase = AndroidUpdatePhase.INSTALLING,
@@ -393,6 +406,89 @@ class AndroidUpdateManager(private val context: Context) {
         Log.i(TAG, "APK validation completed successfully.")
     }
 
+    private fun isBusyWithUpdate(): Boolean {
+        val phase = _state.value.phase
+        if (phase == AndroidUpdatePhase.CHECKING || phase == AndroidUpdatePhase.DOWNLOADING) {
+            return true
+        }
+        if (phase != AndroidUpdatePhase.INSTALLING) return false
+
+        val install = activeInstall
+        if (install == null) {
+            _state.value = AndroidUpdateState()
+            return false
+        }
+
+        val installer = context.packageManager.packageInstaller
+        val sessionInfo = runCatching { installer.getSessionInfo(install.sessionId) }.getOrNull()
+        if (sessionInfo == null) {
+            Log.w(TAG, "Install session ${install.sessionId} disappeared; clearing stale updater state.")
+            activeInstall = null
+            _state.value = AndroidUpdateState()
+            return false
+        }
+
+        val ageMs = SystemClock.elapsedRealtime() - install.startedAtElapsedRealtime
+        if (ageMs >= STALE_INSTALL_TIMEOUT_MS) {
+            Log.w(
+                TAG,
+                "Install session ${install.sessionId} is stale after ${ageMs}ms " +
+                    "(active=${sessionInfo.isActive}); abandoning it so deployment can retry."
+            )
+            runCatching { installer.abandonSession(install.sessionId) }
+                .onFailure { Log.w(TAG, "Could not abandon stale install session ${install.sessionId}.", it) }
+            activeInstall = null
+            _state.value = AndroidUpdateState(
+                phase = AndroidUpdatePhase.ERROR,
+                message = "Previous Android install session timed out; retrying is allowed."
+            )
+            return false
+        }
+
+        return true
+    }
+
+    private suspend fun bringAppToForegroundForInstall() {
+        if (isAppInForeground()) return
+
+        val activityManager = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+        val movedExistingTask = runCatching {
+            activityManager.appTasks.firstOrNull()?.let { task ->
+                task.moveToFront()
+                true
+            } ?: false
+        }.onFailure {
+            Log.w(TAG, "Could not bring the existing OmniSync task to the foreground.", it)
+        }.getOrDefault(false)
+
+        if (!movedExistingTask) {
+            runCatching {
+                context.startActivity(
+                    Intent(context, MainActivity::class.java).apply {
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
+                    }
+                )
+            }.onFailure {
+                Log.w(TAG, "Could not launch OmniSync before self-update.", it)
+            }
+        }
+
+        repeat(20) {
+            if (isAppInForeground()) {
+                Log.i(TAG, "OmniSync is foreground before PackageInstaller commit.")
+                return
+            }
+            delay(100)
+        }
+        Log.w(TAG, "OmniSync did not reach foreground before PackageInstaller commit; continuing anyway.")
+    }
+
+    private fun isAppInForeground(): Boolean {
+        val processInfo = ActivityManager.RunningAppProcessInfo()
+        ActivityManager.getMyMemoryState(processInfo)
+        return processInfo.importance <= ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND
+    }
+
     private fun commitInstall(apk: File, deploymentRequestId: String? = null) {
         _state.value = AndroidUpdateState(
             phase = AndroidUpdatePhase.INSTALLING,
@@ -407,26 +503,34 @@ class AndroidUpdateManager(private val context: Context) {
             }
         }
         val sessionId = installer.createSession(parameters)
-        installer.openSession(sessionId).use { session ->
-            apk.inputStream().use { input ->
-                session.openWrite("base.apk", 0, apk.length()).use { output ->
-                    input.copyTo(output)
-                    session.fsync(output)
+        activeInstall = ActiveInstall(sessionId, SystemClock.elapsedRealtime())
+        try {
+            installer.openSession(sessionId).use { session ->
+                apk.inputStream().use { input ->
+                    session.openWrite("base.apk", 0, apk.length()).use { output ->
+                        input.copyTo(output)
+                        session.fsync(output)
+                    }
                 }
-            }
-            val callbackIntent = Intent(context, AndroidUpdateReceiver::class.java).apply {
-                action = AndroidUpdateReceiver.ACTION_INSTALL_STATUS
-                deploymentRequestId?.let {
-                    putExtra(AndroidUpdateReceiver.EXTRA_DEPLOYMENT_REQUEST_ID, it)
+                val callbackIntent = Intent(context, AndroidUpdateReceiver::class.java).apply {
+                    action = AndroidUpdateReceiver.ACTION_INSTALL_STATUS
+                    deploymentRequestId?.let {
+                        putExtra(AndroidUpdateReceiver.EXTRA_DEPLOYMENT_REQUEST_ID, it)
+                    }
                 }
+                val flags = PendingIntent.FLAG_UPDATE_CURRENT or
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) PendingIntent.FLAG_MUTABLE else 0
+                val callback = PendingIntent.getBroadcast(context, sessionId, callbackIntent, flags)
+                Log.i(TAG, "Committing PackageInstaller session $sessionId.")
+                session.commit(callback.intentSender)
             }
-            val flags = PendingIntent.FLAG_UPDATE_CURRENT or
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) PendingIntent.FLAG_MUTABLE else 0
-            val callback = PendingIntent.getBroadcast(context, sessionId, callbackIntent, flags)
-            Log.i(TAG, "Committing PackageInstaller session $sessionId.")
-            session.commit(callback.intentSender)
+        } catch (error: Exception) {
+            activeInstall = null
+            runCatching { installer.abandonSession(sessionId) }
+            throw error
+        } finally {
+            apk.delete()
         }
-        apk.delete()
     }
 
     private fun openConnection(url: String, apiKey: String): HttpURLConnection {
@@ -497,5 +601,6 @@ class AndroidUpdateManager(private val context: Context) {
 
     companion object {
         private const val TAG = "AndroidUpdateManager"
+        private const val STALE_INSTALL_TIMEOUT_MS = 120_000L
     }
 }

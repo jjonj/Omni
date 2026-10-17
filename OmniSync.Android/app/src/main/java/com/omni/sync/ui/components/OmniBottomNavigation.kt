@@ -1,4 +1,4 @@
-package com.omni.sync.ui.components
+﻿package com.omni.sync.ui.components
 
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Dashboard
@@ -28,6 +28,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.Alarm
+import androidx.compose.material.icons.filled.Assignment
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.Modifier
@@ -46,15 +47,17 @@ val navigationItems = listOf(
     NavItem(AppScreen.REMOTECONTROL, "Remote", Icons.Default.Gamepad),
     NavItem(AppScreen.BROWSER, "Browser", Icons.Default.Public),
     NavItem(AppScreen.FILES, "Files", Icons.Default.Folder),
-    NavItem(AppScreen.AI_CHAT, "AI", Icons.Default.SmartToy)
+    NavItem(AppScreen.AGENTS, "AI", Icons.Default.SmartToy)
 )
 
 // Define the burger menu items
 val burgerMenuItems = listOf(
     NavItem(AppScreen.PROCESS, "Process", Icons.Default.Memory),
-    NavItem(AppScreen.AGENTS, "Agents", Icons.Default.SmartToy),
+    NavItem(AppScreen.AI_CHAT, "OldAI", Icons.Default.SmartToy),
     NavItem(AppScreen.ALARM, "Alarm", Icons.Default.Alarm),
     NavItem(AppScreen.WEB_SERVER, "OmniWeb", Icons.Default.Public),
+    NavItem(AppScreen.TASKBOARD, "Tasks", Icons.Default.Assignment),
+    NavItem(AppScreen.TESTS, "Prototypes", Icons.Default.Assignment),
     NavItem(AppScreen.BOOKS, "Books", Icons.Default.MenuBook)
 )
 
@@ -74,7 +77,7 @@ fun OmniBottomNavigation(
     // We only want to show the Bottom Bar if we are on one of the main screens.    
     // Also hide in landscape mode.
     val allVisibleScreens = navigationItems.map { it.screen } + burgerMenuItems.map { it.screen }
-    val showBottomBar = (allVisibleScreens.any { it == currentScreen } || currentScreen == AppScreen.EDITOR) && !isLandscape
+    val showBottomBar = (allVisibleScreens.any { it == currentScreen } || currentScreen == AppScreen.EDITOR || currentScreen == AppScreen.AGENT_DETAIL || currentScreen == AppScreen.AGENT_TERMINAL) && !isLandscape
 
     if (showBottomBar) {
         NavigationBar(
@@ -96,7 +99,8 @@ fun OmniBottomNavigation(
         ) {
             // Main navigation items
             navigationItems.forEach { item ->
-                val isSelected = currentScreen == item.screen || (item.screen == AppScreen.FILES && currentScreen == AppScreen.EDITOR)
+                val isSelected = currentScreen == item.screen || (item.screen == AppScreen.FILES && currentScreen == AppScreen.EDITOR) ||
+                    (item.screen == AppScreen.AGENTS && (currentScreen == AppScreen.AGENT_DETAIL || currentScreen == AppScreen.AGENT_TERMINAL))
                 
                 NavigationBarItem(
                     selected = isSelected,
@@ -152,3 +156,4 @@ fun OmniBottomNavigation(
         }
     }
 }
+

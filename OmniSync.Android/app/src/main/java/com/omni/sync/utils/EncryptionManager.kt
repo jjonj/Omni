@@ -24,6 +24,10 @@ class EncryptionManager(private val context: Context) {
         return prefs.contains("public_key") && prefs.contains("encrypted_private_key")
     }
 
+    fun clearKeys() {
+        prefs.edit().clear().apply()
+    }
+
     fun generateKeys(password: String) {
         Log.d("EncryptionManager", "Generating new RSA KeyPair")
         val kpg = KeyPairGenerator.getInstance("RSA")

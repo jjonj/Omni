@@ -180,6 +180,17 @@ def main():
         except Exception as e:
             print(f"Warning: Could not delete {hub_log_path}: {e}")
 
+        # OmniAgentHook: native helper for delivering phone messages into agent sessions open on the PC.
+        # NativeAOT needs the MSVC linker, so publish from a VS developer environment; failure is non-fatal.
+        print("\n--- Publishing OmniAgentHook (NativeAOT) ---")
+        vcvars = r"E:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvars64.bat"
+        hook_proj = os.path.join(SCRIPT_DIR, "OmniSync.Hub", "src", "OmniSync.AgentHook", "OmniSync.AgentHook.csproj")
+        hook_out = os.path.join(os.environ.get("LOCALAPPDATA", ""), "Omni", "AgentHook")
+        publish = f'dotnet publish "{hook_proj}" -c Release -p:IlcUseEnvironmentalTools=true -o "{hook_out}" -nologo -v q'
+        hook_result = run_command(f'"{vcvars}" >nul && {publish}' if os.path.exists(vcvars) else publish, shell=True)
+        if hook_result is None or hook_result.returncode != 0:
+            print("Warning: OmniAgentHook publish failed; live-session delivery keeps the previous build (if any).")
+
         time.sleep(1) # Give it a moment
 
         print("\n--- Starting OmniSync.Hub in background (Elevated) ---")

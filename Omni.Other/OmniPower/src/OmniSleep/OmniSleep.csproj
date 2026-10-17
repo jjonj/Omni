@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Pin OmniSleep.exe to the taskbar. Runs the TV-off helper, sleeps, and keeps the PC asleep through mouse movement. -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <RootNamespace>OmniSleep</RootNamespace>
+    <AssemblyName>OmniSleep</AssemblyName>
+    <ApplicationIcon>icon.ico</ApplicationIcon>
+    <Version>1.0.0</Version>
+    <Product>OmniPower</Product>
+    <Description>Sleep the PC with OmniPower's wake-input guard.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\OmniPower.Core\OmniPower.Core.csproj" />
+  </ItemGroup>
+
+</Project>

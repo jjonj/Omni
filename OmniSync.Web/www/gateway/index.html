@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#0d1116">
+<title>Gateway · OmniHub</title>
+<link rel="icon" href="/favicon.png">
+<link rel="stylesheet" href="/gateway/gateway.css">
+<script src="/gateway/gateway.js" defer></script>
+</head>
+<body>
+<header class="bar">
+  <a class="brand" href="/gateway/"><span class="brand-mark" aria-hidden="true">O</span><span class="brand-name">OmniHub</span></a>
+  <nav class="tabs" aria-label="Sections">
+    <a class="tab active" href="/gateway/" aria-current="page">Gateway</a>
+    <a class="tab" href="/gateway/#setups" data-section="setups">OmniSweep</a>
+    <a class="tab" href="/index.html">Hub</a>
+  </nav>
+  <label class="find"><span aria-hidden="true">⌕</span><input id="search" type="search" placeholder="Search tools, setups, scenes, files…" autocomplete="off" aria-label="Search"><kbd>/</kbd></label>
+  <div class="bar-end">
+    <span class="conn" id="conn" title="Connecting to Hub"><i id="service-dot" class="dot"></i><span id="last-updated"></span></span>
+    <button class="icon-btn" type="button" id="refresh" title="Refresh (R)" aria-label="Refresh">↻</button>
+  </div>
+</header>
+<div id="agenda" class="agenda" hidden></div>
+<main class="page">
+  <div id="error" class="notice" role="alert" hidden><span id="error-text"></span><button type="button" class="btn" id="retry-data">Retry</button></div>
+
+  <section class="block" aria-labelledby="tools-title">
+    <h2 class="block-title" id="tools-title">Tools <span id="tools-count" class="count"></span></h2>
+    <div id="tools" class="tiles" aria-live="polite"><div class="empty">Checking registered tools…</div></div>
+  </section>
+
+  <section class="block" id="setups" aria-labelledby="setups-title">
+    <h2 class="block-title" id="setups-title">Setups <span id="setups-count" class="count"></span>
+      <span class="title-actions">
+        <button id="capture-setup" class="btn" type="button" title="Capture open windows into a setup (native picker on the PC)">▣ Capture</button>
+        <button id="new-setup" class="btn primary" type="button">+ New</button>
+      </span>
+    </h2>
+    <div id="setups-grid" class="setup-list" aria-live="polite"><div class="empty">Loading setups…</div></div>
+  </section>
+
+  <section class="block" id="scenes" aria-labelledby="scenes-title">
+    <h2 class="block-title" id="scenes-title">Scenes <span id="scene-count" class="count"></span></h2>
+    <div id="scenes-grid" class="chips"></div>
+    <h2 class="block-title sub-title" id="macros-title">Macros <span id="macro-count" class="count"></span></h2>
+    <div id="macros-grid" class="chips"></div>
+  </section>
+
+  <section class="block" id="files" aria-labelledby="files-title" hidden>
+    <h2 class="block-title" id="files-title">Files &amp; folders</h2>
+    <div id="file-results" class="file-results"></div>
+  </section>
+
+  <section class="block" id="network" aria-labelledby="network-title">
+    <h2 class="block-title" id="network-title">Tailscale <span id="network-status" class="count"></span>
+      <span class="title-actions"><button id="network-refresh" class="btn" type="button">↻</button></span>
+    </h2>
+    <div id="network-body" class="network"><div class="empty">Checking Tailscale…</div></div>
+  </section>
+
+  <p id="no-results" class="empty" hidden>Nothing matches. <button type="button" class="link-btn" id="clear-search">Clear search</button></p>
+</main>
+
+<div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+
+<dialog id="details-dialog" class="sheet" aria-label="Tool details">
+  <div class="sheet-head"><h2 id="details-name"></h2><button class="icon-btn" id="details-close" type="button" aria-label="Close">✕</button></div>
+  <p id="details-description" class="muted"></p>
+  <dl class="kv"><dt>Status</dt><dd id="details-status"></dd><dt>Target</dt><dd><code id="details-url"></code></dd></dl>
+  <div class="row-actions"><a class="btn primary" id="details-launch" href="#">Open ↗</a><button type="button" class="btn" id="details-copy">Copy shortcut</button><button type="button" class="btn" id="details-refresh">Refresh log</button></div>
+  <pre id="details-log" class="log">Loading…</pre>
+</dialog>
+
+<dialog id="new-dialog" class="sheet small">
+  <form id="new-form" method="dialog">
+    <div class="sheet-head"><h2>New setup</h2><button type="button" class="icon-btn" id="new-cancel" aria-label="Close">✕</button></div>
+    <label class="field">Name<input id="new-name" required maxlength="120" autocomplete="off" placeholder="e.g. Wartribes"></label>
+    <div class="sheet-foot"><span></span><button type="submit" class="btn primary">Create</button></div>
+  </form>
+</dialog>
+
+<dialog id="setup-editor" class="sheet editor">
+  <form id="edit-form">
+    <div class="sheet-head"><h2 id="editor-title">Edit setup</h2><button type="button" class="icon-btn" id="close-editor" aria-label="Close editor">✕</button></div>
+    <div id="edit-warning" class="warn" hidden>Changed elsewhere since you opened it. <button type="button" class="link-btn" id="reload-editor">Reload</button></div>
+    <div class="field-row"><label class="field grow">Name<input id="edit-name" required maxlength="120" autocomplete="off"></label>
+    <label class="field" title="Leave blank for none. Reserved shortcuts are rejected.">Shortcut<input id="edit-shortcut" class="shortcut-input" placeholder="F1, SHIFT+Q" autocomplete="off"></label></div>
+    <div class="steps-head"><h3>Steps <span id="step-count" class="count"></span></h3><button type="button" class="btn" id="add-step">+ Step</button></div>
+    <div id="edit-steps" class="edit-steps"></div>
+    <div id="edit-error" class="notice" hidden></div>
+    <div class="sheet-foot"><button type="button" class="btn danger" id="delete-setup">Delete</button>
+    <span class="row-actions"><button type="button" class="btn" id="cancel-editor">Cancel</button><button type="submit" class="btn primary" id="save-setup">Save</button></span></div>
+  </form>
+</dialog>
+</body>
+</html>

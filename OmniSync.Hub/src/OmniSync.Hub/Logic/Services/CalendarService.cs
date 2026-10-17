@@ -13,6 +13,10 @@ namespace OmniSync.Hub.Logic.Services
 {
     public class CalendarService : IHostedService, IDisposable
     {
+        // A reminder created while OmniHub is offline must not disappear just because its due time passed.
+        // Keep recent calendar history so the reminder importer can claim missed occurrences on reconnect.
+        public static readonly TimeSpan ReminderLookback = TimeSpan.FromHours(48);
+
         private readonly HttpClient _httpClient;
         private readonly HubMonitorService _monitorService;
         private readonly HubSettingsService _settingsService;
@@ -40,7 +44,8 @@ namespace OmniSync.Hub.Logic.Services
             _settingsService.SettingsChanged += (s, e) =>
             {
                 var newUrl = _settingsService.Settings?.CalendarUrl;
-                if (!string.Equals(newUrl, _lastCalendarUrl, StringComparison.OrdinalIgnoreCase))
+                if (!CalendarReminderOwnership.RustOwnsBackgroundWork &&
+                    !string.Equals(newUrl, _lastCalendarUrl, StringComparison.OrdinalIgnoreCase))
                 {
                     _lastCalendarUrl = newUrl;
                     _ = RefreshCalendarAsync();
@@ -50,7 +55,7 @@ namespace OmniSync.Hub.Logic.Services
 
         public Task StartAsync(CancellationToken cancellationToken)
         {
-            _logger.LogInformation("CalendarService starting.");
+            _logger.LogInformation("CalendarService starting (Rust delegation: {Delegated}).", CalendarReminderOwnership.RustOwnsBackgroundWork);
             // Omni reminders depend on voice corrections being picked up quickly.
             _timer = new System.Threading.Timer(DoWork, null, TimeSpan.Zero, TimeSpan.FromMinutes(1));
             return Task.CompletedTask;
@@ -70,6 +75,9 @@ namespace OmniSync.Hub.Logic.Services
 
         public async Task RefreshCalendarAsync()
         {
+            if (CalendarReminderOwnership.RustOwnsBackgroundWork)
+                return;
+
             if (Interlocked.CompareExchange(ref _isRefreshing, 1, 0) != 0)
             {
                 _logger.LogInformation("[CalendarService] Refresh already in progress, skipping.");
@@ -89,18 +97,26 @@ namespace OmniSync.Hub.Logic.Services
                 var icsData = await _httpClient.GetStringAsync(url);
                 _logger.LogInformation($"[CalendarService] Received {icsData.Length} bytes of ICS data.");
 
+                // The marker can appear while an HTTP refresh is awaiting I/O.
+                // Never publish stale results or trigger a C# mirror sync after delegation.
+                if (CalendarReminderOwnership.RustOwnsBackgroundWork)
+                    return;
+
                 var events = CalendarIcsParser.Parse(icsData);
                 _logger.LogInformation($"[CalendarService] Parsed {events.Count} total events from ICS.");
 
-                var filtered = FilterToday(events);
+                var filtered = FilterRelevantEvents(events);
+                if (CalendarReminderOwnership.RustOwnsBackgroundWork)
+                    return;
                 lock (_eventsLock)
                 {
                     _events = filtered;
                 }
 
-                _logger.LogInformation($"[CalendarService] Found {filtered.Count} valid events for today/future.");
+                _logger.LogInformation($"[CalendarService] Found {filtered.Count} relevant events within the reminder lookback/future window.");
                 _monitorService.AddLogMessage($"[Calendar] Refreshed. Found {filtered.Count} events.");
-                Refreshed?.Invoke(this, EventArgs.Empty);
+                if (!CalendarReminderOwnership.RustOwnsBackgroundWork)
+                    Refreshed?.Invoke(this, EventArgs.Empty);
             }
             catch (Exception ex)
             {
@@ -230,19 +246,30 @@ namespace OmniSync.Hub.Logic.Services
             return DateTime.MinValue;
         }
 
-        private List<CalendarEvent> FilterToday(List<CalendarEvent> events)
+        private List<CalendarEvent> FilterRelevantEvents(List<CalendarEvent> events)
         {
             var now = DateTime.Now;
             var today = DateTime.Today;
+            var lookbackCutoff = now - ReminderLookback;
+            var recurrenceStartDate = lookbackCutoff.Date;
             
             var results = new List<CalendarEvent>();
 
             foreach(var e in events)
             {
-                // 1. Non-recurring: Include if it's in the future or today
+                // 1. Non-recurring: retain recent history as well as the future.
+                // The reminder sync layer deduplicates by calendar UID/occurrence identity.
                 if (string.IsNullOrEmpty(e.RRule))
                 {
-                    if (e.Start >= today || (e.IsAllDay && e.Start.Date == today))
+                    var isWithinLookback = e.IsAllDay
+                        ? e.Start.Date >= recurrenceStartDate
+                        : e.Start >= lookbackCutoff;
+                    var isOngoing = e.End.HasValue &&
+                        (e.IsAllDay
+                            ? e.Start.Date <= today && e.End.Value.Date > today
+                            : e.Start <= now && e.End.Value > now);
+
+                    if (isWithinLookback || isOngoing)
                     {
                         results.Add(e);
                     }
@@ -250,23 +277,34 @@ namespace OmniSync.Hub.Logic.Services
                 }
 
                 // 2. Recurring (RRULE) - Expand far enough for reminder scheduling.
+                DateTime? recurrenceUntil = null;
                 if (e.RRule.Contains("UNTIL="))
                 {
                     var untilPart = e.RRule.Split(';').FirstOrDefault(p => p.StartsWith("UNTIL="));
                     if (untilPart != null)
                     {
                         var untilDate = ParseIcsDate(untilPart.Substring(6));
-                        if (untilDate != DateTime.MinValue && untilDate < today)
+                        if (untilDate != DateTime.MinValue)
                         {
-                            continue; // Recurrence ended in the past
+                            recurrenceUntil = untilDate;
+                            if (untilDate < lookbackCutoff)
+                            {
+                                continue; // Series ended before the recovery window.
+                            }
                         }
                     }
                 }
 
-                // Simplified recurrence expansion for the next year.
-                for (int i = 0; i < 366; i++)
+                // Simplified recurrence expansion from the reminder lookback through the next year.
+                var recurrenceDays = (today.AddDays(366) - recurrenceStartDate).Days;
+                for (int i = 0; i < recurrenceDays; i++)
                 {
-                    var day = today.AddDays(i);
+                    var day = recurrenceStartDate.AddDays(i);
+                    if (recurrenceUntil.HasValue && day.Date > recurrenceUntil.Value.Date)
+                    {
+                        continue;
+                    }
+
                     bool match = false;
 
                     if (e.RRule.Contains("FREQ=DAILY"))
@@ -284,14 +322,20 @@ namespace OmniSync.Hub.Logic.Services
 
                     if (match)
                     {
+                        var occurrenceStart = new DateTime(
+                            day.Year, day.Month, day.Day,
+                            e.Start.Hour, e.Start.Minute, e.Start.Second,
+                            DateTimeKind.Local);
+                        var occurrenceEnd = e.End.HasValue
+                            ? occurrenceStart + (e.End.Value - e.Start)
+                            : (DateTime?)null;
+
                         results.Add(new CalendarEvent
                         {
                             Summary = e.Summary,
                             IsAllDay = e.IsAllDay,
-                            Start = new DateTime(
-                                day.Year, day.Month, day.Day,
-                                e.Start.Hour, e.Start.Minute, e.Start.Second,
-                                DateTimeKind.Local),
+                            Start = occurrenceStart,
+                            End = occurrenceEnd,
                             RRule = e.RRule,
                             Uid = e.Uid,
                             Sequence = e.Sequence,
@@ -305,8 +349,15 @@ namespace OmniSync.Hub.Logic.Services
                 }
             }
 
-            // Final filter: only return events that haven't ended yet
-            return results.Where(e => e.IsAllDay || e.Start > now.AddMinutes(-5))
+            // Preserve recent history, but never discard an event that is still in progress.
+            return results.Where(e =>
+                          (e.End.HasValue &&
+                           (e.IsAllDay
+                               ? e.Start.Date <= today && e.End.Value.Date > today
+                               : e.Start <= now && e.End.Value > now)) ||
+                          (e.IsAllDay
+                              ? e.Start.Date >= recurrenceStartDate
+                              : e.Start >= lookbackCutoff))
                           .OrderBy(e => e.Start)
                           .GroupBy(e => new
                           {
@@ -324,6 +375,9 @@ namespace OmniSync.Hub.Logic.Services
                 Summary = e.Summary,
                 IsAllDay = e.IsAllDay,
                 Start = new DateTime(today.Year, today.Month, today.Day, e.Start.Hour, e.Start.Minute, e.Start.Second),
+                End = e.End.HasValue
+                    ? new DateTime(today.Year, today.Month, today.Day, e.Start.Hour, e.Start.Minute, e.Start.Second) + (e.End.Value - e.Start)
+                    : null,
                 RRule = e.RRule
             };
         }
@@ -334,6 +388,7 @@ namespace OmniSync.Hub.Logic.Services
             {
                 Summary = e.Summary,
                 Start = e.Start,
+                End = e.End,
                 IsAllDay = e.IsAllDay,
                 RRule = e.RRule,
                 Uid = e.Uid,

@@ -8,21 +8,30 @@ public static class AssistantCommandRegistration
     public static IServiceCollection AddAssistantCommandFoundation(
         this IServiceCollection services)
     {
-        var commandTypes = typeof(AssistantCommandRegistration).Assembly
-            .GetTypes()
-            .Where(type =>
-                !type.IsAbstract &&
-                !type.IsInterface &&
-                typeof(IAssistantCommand).IsAssignableFrom(type))
-            .ToList();
+        services.AddSingleton(TimeProvider.System);
 
-        foreach (var commandType in commandTypes)
-            services.AddSingleton(typeof(IAssistantCommand), commandType);
+        services.AddSingleton<ReflectionCommandProvider>();
+        services.AddSingleton<IAssistantCommandProvider>(provider =>
+            provider.GetRequiredService<ReflectionCommandProvider>());
 
-        services.AddSingleton<AssistantCommandRegistry>();
-        services.AddSingleton<AssistantCommandScheduler>();
+        services.AddSingleton<MacroCommandProvider>();
+        services.AddSingleton<IAssistantCommandProvider>(provider =>
+            provider.GetRequiredService<MacroCommandProvider>());
+
+        services.AddSingleton<AssistantDeviceRegistry>();
+        services.AddSingleton<DeviceCommandProvider>();
+        services.AddSingleton<IAssistantCommandProvider>(provider =>
+            provider.GetRequiredService<DeviceCommandProvider>());
+        services.AddSingleton<AssistantHostSelector>();
+
+        services.AddSingleton<AssistantCommandCatalog>();
+        services.AddSingleton<AssistantRunStore>();
+        services.AddSingleton<AssistantRunEventSink>();
+        services.AddSingleton<AssistantRemoteDispatcher>();
+        services.AddSingleton<AssistantCommandDispatcherService>();
         services.AddHostedService(provider =>
-            provider.GetRequiredService<AssistantCommandScheduler>());
+            provider.GetRequiredService<AssistantCommandDispatcherService>());
+        services.AddSingleton<AssistantRequestService>();
 
         services.AddSingleton<DeterministicCommandVoiceHandler>();
         services.AddSingleton<IVoiceTextHandler>(provider =>

@@ -94,6 +94,17 @@ import androidx.compose.material.icons.filled.Circle
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.foundation.shape.CircleShape
 
+/**
+ * LEGACY / OLD AI screen ("als1", AppScreen.AI_CHAT).
+ *
+ * This is the original PID-based AI chat. It can spawn Hub-side shells/terminals and AI CLI
+ * agents (agy / codex) and drives them through the aiMessages/aiSessions/terminalSessions
+ * SignalR state in [SignalRClient]. It is being superseded by the newer agent inbox
+ * ([AgentInboxScreen] / [AgentSessionDetailScreen], AppScreen.AGENTS / AGENT_DETAIL, "als2"),
+ * which lists every provider session (opencode, antigravity, codex, claude) and supports
+ * hand-over between them. Do not add new features here; port what is still needed to the new
+ * screens, then delete this file together with the AI_CHAT route in MainActivity.
+ */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun AiChatScreen(

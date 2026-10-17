@@ -18,6 +18,13 @@ object QuickActionDispatcher {
             mainViewModel.addLog("Notification: Triggering Tell PC...", com.omni.sync.ui.screen.LogType.INFO)
             signalRClient.triggerTellPc()
             context.startActivity(mainActivityIntent(context))
+        } else if (action.command.startsWith("VOICE:")) {
+            val mode = if (action.command.substring(6) == "JARVIS")
+                com.omni.sync.data.repository.SignalRClient.VoiceMode.JARVIS
+            else com.omni.sync.data.repository.SignalRClient.VoiceMode.TYPE
+            mainViewModel.addLog("Quick action: voice ${mode.name}...", com.omni.sync.ui.screen.LogType.INFO)
+            signalRClient.requestVoiceCapture(mode)
+            context.startActivity(mainActivityIntent(context))
         } else if (action.isWol && action.macAddress != null) {
             mainViewModel.sendWakeOnLan(action.macAddress)
         } else if (action.command.startsWith("NAV:")) {
@@ -26,6 +33,8 @@ object QuickActionDispatcher {
             context.startActivity(mainActivityIntent(context)
                 .putExtra("OPEN_SCREEN", "FILES")
                 .putExtra("FILE_PATH", action.command.substring(9)))
+        } else if (action.command == "STILL_AWAKE") {
+            com.omni.sync.utils.WakeAlarmActions.stillAwake(context)
         } else if (action.command.startsWith("ALARM:")) {
             val minutes = action.command.substring(6).toIntOrNull() ?: 0
             if (minutes > 0) {

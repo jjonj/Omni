@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Shared sleep/shutdown logic for the OmniSleep and OmniShutdown launchers. No dependency on the Omni Hub. -->
+  <PropertyGroup>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <RootNamespace>OmniPower</RootNamespace>
+    <Description>Sleep, shutdown and wake-input detection for OmniPower.</Description>
+  </PropertyGroup>
+
+</Project>

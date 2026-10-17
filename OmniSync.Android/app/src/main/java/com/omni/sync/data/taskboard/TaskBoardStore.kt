@@ -1,0 +1,881 @@
+package com.omni.sync.data.taskboard
+
+import android.os.Build
+import android.os.Environment
+import java.io.File
+import java.security.MessageDigest
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import kotlin.random.Random
+
+data class TaskBoardColumn(
+    val id: String,
+    val name: String,
+    val order: Int,
+    val terminal: Boolean,
+    val hidden: Boolean,
+    val aiReady: Boolean,
+    val color: String
+)
+
+data class TaskBoardQuestion(
+    val prompt: String,
+    val options: List<String> = emptyList(),
+    val answer: String? = null
+)
+
+data class TaskBoardTask(
+    val id: String,
+    val title: String,
+    val column: String,
+    val parent: String?,
+    val category: String?,
+    val claimedBy: String?,
+    val attention: List<String>,
+    val question: TaskBoardQuestion?,
+    val created: String?,
+    val completed: String?,
+    val description: String,
+    val acceptanceCriteria: List<String>,
+    val aiNotes: String,
+    val userNotes: String,
+    val notes: String,
+    val file: File,
+    val revision: String
+) {
+    val questionPrompt: String?
+        get() = question?.prompt
+
+    fun toDraft(): TaskBoardTaskDraft = TaskBoardTaskDraft(
+        title = title,
+        column = column,
+        parent = parent,
+        category = category,
+        attention = attention,
+        question = question,
+        description = description,
+        acceptanceCriteria = acceptanceCriteria,
+        aiNotes = aiNotes,
+        userNotes = userNotes,
+        notes = notes
+    )
+}
+
+data class TaskBoardTaskDraft(
+    val title: String,
+    val column: String,
+    val parent: String? = null,
+    val category: String? = null,
+    val attention: List<String> = emptyList(),
+    val question: TaskBoardQuestion? = null,
+    val description: String = "",
+    val acceptanceCriteria: List<String> = emptyList(),
+    val aiNotes: String = "",
+    val userNotes: String = "",
+    val notes: String = ""
+)
+
+data class TaskBoardSnapshot(
+    val name: String,
+    val schema: Int,
+    val columns: List<TaskBoardColumn>,
+    val tasks: List<TaskBoardTask>,
+    val warnings: List<String>,
+    val root: File,
+    val boardRevision: String
+)
+
+class TaskBoardConflictException(message: String) : Exception(message)
+
+class TaskBoardStore(
+    val root: File = defaultRoot()
+) {
+    companion object {
+        private val columnPalette = listOf(
+            "#718f78",
+            "#7388a8",
+            "#8e7da8",
+            "#a48669",
+            "#6f8679",
+            "#8c7d72",
+            "#6f8b91",
+            "#927b86"
+        )
+
+        fun defaultRoot(): File = File(
+            Environment.getExternalStorageDirectory(),
+            "SharedWithPc/Obsidian/jjj/Wartribes/Tasks"
+        )
+
+        fun hasStorageAccess(): Boolean =
+            Build.VERSION.SDK_INT < Build.VERSION_CODES.R || Environment.isExternalStorageManager()
+    }
+
+    fun load(): TaskBoardSnapshot {
+        requireStorageAccess()
+        val boardFile = File(root, "_board.md")
+        require(boardFile.isFile) {
+            "TaskBoard not found at ${boardFile.absolutePath}"
+        }
+
+        val boardText = boardFile.readText()
+        val (boardFrontmatter, _) = splitFrontmatter(boardText)
+        val boardFields = parseTopLevelScalars(boardFrontmatter)
+        val columns = parseColumns(boardFrontmatter)
+        require(columns.isNotEmpty()) { "TaskBoard has no columns" }
+
+        val warnings = mutableListOf<String>()
+        val activeDir = File(root, "Active")
+        val tasks = if (!activeDir.isDirectory) {
+            warnings += "Active task folder is missing: ${activeDir.absolutePath}"
+            emptyList()
+        } else {
+            activeDir.walkTopDown()
+                .filter { it.isFile && it.name.startsWith("WT-") && it.extension.equals("md", true) }
+                .mapNotNull { file ->
+                    runCatching { parseTask(file, file.readText()) }
+                        .onFailure { warnings += "${file.name}: ${it.message}" }
+                        .getOrNull()
+                }
+                .sortedBy { it.id }
+                .toList()
+        }
+
+        return TaskBoardSnapshot(
+            name = boardFields["name"] ?: "TaskBoard",
+            schema = boardFields["schema"]?.toIntOrNull() ?: 1,
+            columns = columns.sortedBy { it.order },
+            tasks = tasks,
+            warnings = warnings,
+            root = root,
+            boardRevision = revision(boardText)
+        )
+    }
+
+    fun createTask(draft: TaskBoardTaskDraft): TaskBoardTask {
+        val snapshot = load()
+        validateDraft(snapshot, draft)
+
+        val next = allTaskFiles()
+            .mapNotNull { it.nameWithoutExtension.removePrefix("WT-").toIntOrNull() }
+            .maxOrNull()
+            ?.plus(1)
+            ?: 1
+        val id = "WT-%04d".format(Locale.US, next)
+        val activeDir = File(root, "Active").apply { mkdirs() }
+        val file = File(activeDir, "$id.md")
+        if (file.exists()) throw TaskBoardConflictException("$id already exists")
+
+        val normalizedAttention = normalizeAttention(
+            draft.attention,
+            oldUserNotes = "",
+            newUserNotes = draft.userNotes,
+            isNew = true
+        )
+        val terminal = snapshot.columns.first { it.id == draft.column }.terminal
+        val created = today()
+        val text = renderNewTask(
+            schema = snapshot.schema,
+            id = id,
+            draft = draft.copy(attention = normalizedAttention),
+            created = created,
+            completed = if (terminal) created else null
+        )
+
+        if (!file.createNewFile()) {
+            throw TaskBoardConflictException("$id was created by another writer")
+        }
+        try {
+            file.writeText(text)
+        } catch (error: Exception) {
+            file.delete()
+            throw error
+        }
+        return parseTask(file, text)
+    }
+
+    fun updateTask(task: TaskBoardTask, draft: TaskBoardTaskDraft): TaskBoardTask {
+        val currentText = task.file.readText()
+        if (revision(currentText) != task.revision) {
+            throw TaskBoardConflictException(
+                "${task.id} changed on disk. Refresh before saving."
+            )
+        }
+
+        val snapshot = load()
+        validateDraft(snapshot, draft, task.id)
+        val targetColumn = snapshot.columns.first { it.id == draft.column }
+        val currentTask = parseTask(task.file, currentText)
+
+        var frontmatter = splitFrontmatter(currentText).first
+        frontmatter = replaceTopLevelField(
+            frontmatter,
+            "title",
+            listOf("title: ${yamlQuote(draft.title.trim())}")
+        )
+        frontmatter = replaceTopLevelField(
+            frontmatter,
+            "column",
+            listOf("column: ${yamlQuote(draft.column)}")
+        )
+        frontmatter = replaceTopLevelField(
+            frontmatter,
+            "parent",
+            draft.parent?.takeIf { it.isNotBlank() }?.let { listOf("parent: ${yamlQuote(it)}") }
+        )
+        frontmatter = replaceTopLevelField(
+            frontmatter,
+            "category",
+            draft.category?.trim()?.takeIf { it.isNotEmpty() }?.let {
+                listOf("category: ${yamlQuote(it)}")
+            }
+        )
+
+        val completed = when {
+            targetColumn.terminal && currentTask.completed.isNullOrBlank() -> today()
+            targetColumn.terminal -> currentTask.completed
+            else -> null
+        }
+        frontmatter = replaceTopLevelField(
+            frontmatter,
+            "completed",
+            completed?.let { listOf("completed: $it") }
+        )
+
+        val attention = normalizeAttention(
+            draft.attention,
+            oldUserNotes = currentTask.userNotes,
+            newUserNotes = draft.userNotes,
+            isNew = false
+        )
+        frontmatter = replaceTopLevelField(
+            frontmatter,
+            "attention",
+            renderStringListField("attention", attention)
+        )
+
+        val question = draft.question
+            ?.takeIf { "question" in attention && it.prompt.isNotBlank() }
+        frontmatter = replaceTopLevelField(
+            frontmatter,
+            "question",
+            question?.let(::renderQuestionField)
+        )
+
+        var body = splitFrontmatter(currentText).second
+        body = replaceMarkdownSection(body, "## Description", draft.description.trim())
+        body = replaceMarkdownSection(
+            body,
+            "## Acceptance Criteria",
+            draft.acceptanceCriteria
+                .map { it.trim() }
+                .filter { it.isNotEmpty() }
+                .joinToString("\n") { "- [ ] $it" }
+        )
+        body = replaceMarkdownSection(body, "## AI Notes", draft.aiNotes.trim())
+        body = replaceMarkdownSection(body, "## User Notes", draft.userNotes.trim())
+        body = replaceMarkdownSection(body, "## Notes", draft.notes.trim())
+
+        val updatedText = "---\n${frontmatter.trimEnd()}\n---\n$body"
+        writeSafely(task.file, updatedText)
+        return parseTask(task.file, updatedText)
+    }
+
+    fun updateTask(
+        task: TaskBoardTask,
+        newColumn: String,
+        newUserNotes: String
+    ): TaskBoardTask = updateTask(
+        task,
+        task.toDraft().copy(column = newColumn, userNotes = newUserNotes)
+    )
+
+    fun archiveTask(task: TaskBoardTask) {
+        val currentText = task.file.readText()
+        if (revision(currentText) != task.revision) {
+            throw TaskBoardConflictException(
+                "${task.id} changed on disk. Refresh before archiving."
+            )
+        }
+
+        val year = SimpleDateFormat("yyyy", Locale.US).format(Date())
+        val archiveDir = File(root, "Archive/$year").apply { mkdirs() }
+        val destination = File(archiveDir, "${task.id}.md")
+        if (destination.exists()) {
+            throw TaskBoardConflictException("Archive already contains ${task.id}")
+        }
+        if (!task.file.renameTo(destination)) {
+            task.file.copyTo(destination, overwrite = false)
+            if (!task.file.delete()) {
+                destination.delete()
+                error("Could not remove active task after archiving")
+            }
+        }
+    }
+
+    fun addColumn(name: String, expectedRevision: String) {
+        val trimmed = name.trim()
+        require(trimmed.isNotEmpty()) { "Column name cannot be empty" }
+        val snapshot = load()
+        requireBoardRevision(snapshot, expectedRevision)
+
+        val base = trimmed.lowercase(Locale.US)
+            .replace(Regex("[^a-z0-9]+"), "-")
+            .trim('-')
+            .ifEmpty { "column" }
+        var id = base
+        var suffix = 2
+        val ids = snapshot.columns.map { it.id }.toSet()
+        while (id in ids) id = "$base-${suffix++}"
+
+        val usedColors = snapshot.columns.map { it.color }
+        val available = columnPalette.filterNot { it in usedColors }
+        val color = (available.ifEmpty { columnPalette }).random(Random.Default)
+        saveColumns(
+            snapshot.columns + TaskBoardColumn(
+                id = id,
+                name = trimmed,
+                order = snapshot.columns.size,
+                terminal = false,
+                hidden = false,
+                aiReady = false,
+                color = color
+            ),
+            expectedRevision
+        )
+    }
+
+    fun saveColumns(columns: List<TaskBoardColumn>, expectedRevision: String) {
+        require(columns.isNotEmpty()) { "Board needs at least one column" }
+        validateColumns(columns)
+
+        val boardFile = File(root, "_board.md")
+        val currentText = boardFile.readText()
+        if (revision(currentText) != expectedRevision) {
+            throw TaskBoardConflictException(
+                "Board columns changed on disk. Refresh before saving."
+            )
+        }
+
+        val normalized = columns
+            .sortedBy { it.order }
+            .mapIndexed { index, column -> column.copy(order = index) }
+
+        var frontmatter = splitFrontmatter(currentText).first
+        val replacement = mutableListOf("columns:")
+        normalized.forEach { column ->
+            replacement += "- id: ${yamlQuote(column.id)}"
+            replacement += "  name: ${yamlQuote(column.name.trim())}"
+            replacement += "  order: ${column.order}"
+            replacement += "  terminal: ${column.terminal}"
+            replacement += "  hidden: ${column.hidden}"
+            replacement += "  ai_ready: ${column.aiReady}"
+            replacement += "  color: ${yamlQuote(column.color)}"
+        }
+        frontmatter = replaceTopLevelField(frontmatter, "columns", replacement)
+        val body = splitFrontmatter(currentText).second
+        writeSafely(boardFile, "---\n${frontmatter.trimEnd()}\n---\n$body")
+    }
+
+    fun deleteColumn(
+        columnId: String,
+        destinationId: String?,
+        expectedRevision: String
+    ) {
+        val snapshot = load()
+        requireBoardRevision(snapshot, expectedRevision)
+        require(snapshot.columns.size > 1) { "Board needs at least one column" }
+        require(snapshot.columns.any { it.id == columnId }) { "Unknown column: $columnId" }
+
+        val remaining = snapshot.columns.filterNot { it.id == columnId }
+        val occupied = snapshot.tasks.filter { it.column == columnId }
+        if (occupied.isNotEmpty()) {
+            val destination = destinationId
+                ?: error("Choose a destination for the ${occupied.size} task(s) in this column")
+            require(remaining.any { it.id == destination }) {
+                "Unknown destination column: $destination"
+            }
+            occupied.forEach { task ->
+                updateTask(task, task.toDraft().copy(column = destination))
+            }
+        }
+
+        saveColumns(
+            remaining.mapIndexed { index, column -> column.copy(order = index) },
+            expectedRevision
+        )
+    }
+
+    private fun requireStorageAccess() {
+        if (!hasStorageAccess()) {
+            error("Omni needs All files access to read ${root.absolutePath}")
+        }
+    }
+
+    private fun requireBoardRevision(snapshot: TaskBoardSnapshot, expectedRevision: String) {
+        if (snapshot.boardRevision != expectedRevision) {
+            throw TaskBoardConflictException(
+                "Board columns changed on disk. Refresh before saving."
+            )
+        }
+    }
+
+    private fun validateColumns(columns: List<TaskBoardColumn>) {
+        val ids = mutableSetOf<String>()
+        columns.forEach { column ->
+            require(column.id.isNotBlank() && column.name.isNotBlank()) {
+                "Column id/name cannot be empty"
+            }
+            require(ids.add(column.id)) { "Duplicate column ${column.id}" }
+            if (column.id == "ai-ready") {
+                require(column.aiReady) { "Canonical AI Ready column must remain AI ready" }
+            }
+            if (column.aiReady) {
+                require(column.id != "draft" && !column.terminal) {
+                    "Column ${column.id} cannot be AI ready"
+                }
+            }
+        }
+    }
+
+    private fun validateDraft(
+        snapshot: TaskBoardSnapshot,
+        draft: TaskBoardTaskDraft,
+        editingId: String? = null
+    ) {
+        require(draft.title.trim().isNotEmpty()) { "Task title cannot be empty" }
+        require(snapshot.columns.any { it.id == draft.column }) {
+            "Unknown column: ${draft.column}"
+        }
+        draft.parent?.takeIf { it.isNotBlank() }?.let { parent ->
+            require(parent != editingId) { "A task cannot be its own parent" }
+            require(snapshot.tasks.any { it.id == parent }) { "Unknown parent task: $parent" }
+            if (editingId != null) {
+                require(!wouldCreateParentCycle(snapshot, editingId, parent)) {
+                    "Parent selection would create a task cycle"
+                }
+            }
+        }
+        if ("question" in draft.attention) {
+            require(!draft.question?.prompt.isNullOrBlank()) {
+                "Question attention requires a question prompt"
+            }
+        }
+    }
+
+    private fun wouldCreateParentCycle(
+        snapshot: TaskBoardSnapshot,
+        taskId: String,
+        parentId: String
+    ): Boolean {
+        val parents = snapshot.tasks.associate { it.id to it.parent }
+        var current: String? = parentId
+        val seen = mutableSetOf<String>()
+        while (current != null && seen.add(current)) {
+            if (current == taskId) return true
+            current = parents[current]
+        }
+        return false
+    }
+
+    private fun normalizeAttention(
+        attention: List<String>,
+        oldUserNotes: String,
+        newUserNotes: String,
+        isNew: Boolean
+    ): List<String> {
+        val normalized = attention
+            .filter { it in setOf("question", "needs-user", "user-note", "blocked") }
+            .distinct()
+            .toMutableList()
+
+        if (isNew || oldUserNotes != newUserNotes) {
+            normalized.removeAll { it == "user-note" }
+            if (newUserNotes.isNotBlank()) normalized += "user-note"
+        }
+        return normalized
+    }
+
+    private fun allTaskFiles(): Sequence<File> = sequence {
+        listOf(File(root, "Active"), File(root, "Archive")).forEach { directory ->
+            if (directory.isDirectory) {
+                yieldAll(
+                    directory.walkTopDown()
+                        .filter {
+                            it.isFile &&
+                                it.name.startsWith("WT-") &&
+                                it.extension.equals("md", true)
+                        }
+                )
+            }
+        }
+    }
+
+    private fun parseColumns(frontmatter: String): List<TaskBoardColumn> {
+        val result = mutableListOf<TaskBoardColumn>()
+        var inColumns = false
+        var current: MutableMap<String, String?>? = null
+
+        fun flush() {
+            val map = current ?: return
+            val id = map["id"] ?: return
+            result += TaskBoardColumn(
+                id = id,
+                name = map["name"] ?: id,
+                order = map["order"]?.toIntOrNull() ?: result.size,
+                terminal = map["terminal"]?.toBoolean() ?: false,
+                hidden = map["hidden"]?.toBoolean() ?: false,
+                aiReady = map["ai_ready"]?.toBoolean() ?: false,
+                color = map["color"] ?: "#777777"
+            )
+        }
+
+        for (line in frontmatter.lines()) {
+            when {
+                line == "columns:" -> {
+                    inColumns = true
+                    continue
+                }
+                inColumns && line.startsWith("- ") -> {
+                    flush()
+                    current = mutableMapOf()
+                    parseKeyValue(line.removePrefix("- "))?.let { (key, value) ->
+                        current?.set(key, value)
+                    }
+                }
+                inColumns && line.startsWith("  ") -> {
+                    parseKeyValue(line.trimStart())?.let { (key, value) ->
+                        current?.set(key, value)
+                    }
+                }
+                inColumns && line.isNotBlank() && !line.first().isWhitespace() -> {
+                    flush()
+                    current = null
+                    inColumns = false
+                }
+            }
+        }
+        flush()
+        return result
+    }
+
+    private fun parseTask(file: File, text: String): TaskBoardTask {
+        val (frontmatter, body) = splitFrontmatter(text)
+        val fields = parseTopLevelScalars(frontmatter)
+        val id = fields["id"] ?: error("missing id")
+        val title = fields["title"] ?: error("missing title")
+        val sections = parseSections(body)
+        val questionPrompt = parseNestedScalar(frontmatter, "question", "prompt")
+
+        return TaskBoardTask(
+            id = id,
+            title = title,
+            column = fields["column"] ?: error("missing column"),
+            parent = fields["parent"],
+            category = fields["category"],
+            claimedBy = fields["claimed_by"],
+            attention = parseStringList(frontmatter, "attention"),
+            question = questionPrompt?.let {
+                TaskBoardQuestion(
+                    prompt = it,
+                    options = parseNestedStringList(frontmatter, "question", "options"),
+                    answer = parseNestedScalar(frontmatter, "question", "answer")
+                )
+            },
+            created = fields["created"],
+            completed = fields["completed"],
+            description = sections["Description"].orEmpty(),
+            acceptanceCriteria = parseCriteria(sections["Acceptance Criteria"].orEmpty()),
+            aiNotes = sections["AI Notes"].orEmpty(),
+            userNotes = sections["User Notes"].orEmpty(),
+            notes = sections["Notes"].orEmpty(),
+            file = file,
+            revision = revision(text)
+        )
+    }
+
+    private fun renderNewTask(
+        schema: Int,
+        id: String,
+        draft: TaskBoardTaskDraft,
+        created: String,
+        completed: String?
+    ): String {
+        val lines = mutableListOf(
+            "---",
+            "schema: $schema",
+            "id: ${yamlQuote(id)}",
+            "title: ${yamlQuote(draft.title.trim())}",
+            "column: ${yamlQuote(draft.column)}"
+        )
+        draft.parent?.takeIf { it.isNotBlank() }?.let {
+            lines += "parent: ${yamlQuote(it)}"
+        }
+        draft.category?.trim()?.takeIf { it.isNotEmpty() }?.let {
+            lines += "category: ${yamlQuote(it)}"
+        }
+        renderStringListField("attention", draft.attention)?.let(lines::addAll)
+        draft.question
+            ?.takeIf { "question" in draft.attention && it.prompt.isNotBlank() }
+            ?.let { lines += renderQuestionField(it) }
+        lines += "created: $created"
+        completed?.let { lines += "completed: $it" }
+        lines += "---"
+        lines += ""
+        lines += "## Description"
+        lines += ""
+        if (draft.description.isNotBlank()) lines += draft.description.trim().lines()
+        lines += ""
+        lines += "## Acceptance Criteria"
+        lines += ""
+        draft.acceptanceCriteria
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+            .forEach { lines += "- [ ] $it" }
+        lines += ""
+        lines += "## AI Notes"
+        lines += ""
+        if (draft.aiNotes.isNotBlank()) lines += draft.aiNotes.trim().lines()
+        lines += ""
+        lines += "## User Notes"
+        lines += ""
+        if (draft.userNotes.isNotBlank()) lines += draft.userNotes.trim().lines()
+        lines += ""
+        lines += "## Notes"
+        lines += ""
+        if (draft.notes.isNotBlank()) lines += draft.notes.trim().lines()
+        lines += ""
+        return lines.joinToString("\n")
+    }
+
+    private fun renderStringListField(key: String, values: List<String>): List<String>? =
+        if (values.isEmpty()) null
+        else listOf("$key:") + values.map { "- ${yamlQuote(it)}" }
+
+    private fun renderQuestionField(question: TaskBoardQuestion): List<String> {
+        val lines = mutableListOf(
+            "question:",
+            "  prompt: ${yamlQuote(question.prompt.trim())}"
+        )
+        if (question.options.isNotEmpty()) {
+            lines += "  options:"
+            question.options
+                .map { it.trim() }
+                .filter { it.isNotEmpty() }
+                .forEach { lines += "  - ${yamlQuote(it)}" }
+        }
+        question.answer?.trim()?.takeIf { it.isNotEmpty() }?.let {
+            lines += "  answer: ${yamlQuote(it)}"
+        }
+        return lines
+    }
+
+    private fun splitFrontmatter(text: String): Pair<String, String> {
+        val normalized = text.removePrefix("\uFEFF").replace("\r\n", "\n")
+        require(normalized.startsWith("---\n")) { "missing YAML frontmatter" }
+        val rest = normalized.substring(4)
+        val marker = "\n---\n"
+        val end = rest.indexOf(marker)
+        require(end >= 0) { "unterminated YAML frontmatter" }
+        return rest.substring(0, end) to rest.substring(end + marker.length)
+    }
+
+    private fun parseTopLevelScalars(frontmatter: String): Map<String, String?> {
+        val result = linkedMapOf<String, String?>()
+        frontmatter.lines().forEach { line ->
+            if (line.isBlank() || line.first().isWhitespace() || line.startsWith("- ")) return@forEach
+            parseKeyValue(line)?.let { (key, value) -> result[key] = value }
+        }
+        return result
+    }
+
+    private fun parseKeyValue(line: String): Pair<String, String?>? {
+        val colon = line.indexOf(':')
+        if (colon <= 0) return null
+        val key = line.substring(0, colon).trim()
+        val value = yamlScalar(line.substring(colon + 1).trim())
+        return key to value
+    }
+
+    private fun yamlScalar(raw: String): String? {
+        if (raw.isBlank() || raw == "null" || raw == "~") return null
+        if (raw.length >= 2 && raw.first() == '\'' && raw.last() == '\'') {
+            return raw.substring(1, raw.length - 1).replace("''", "'")
+        }
+        if (raw.length >= 2 && raw.first() == '"' && raw.last() == '"') {
+            return raw.substring(1, raw.length - 1)
+                .replace("\\\"", "\"")
+                .replace("\\n", "\n")
+                .replace("\\\\", "\\")
+        }
+        return raw
+    }
+
+    private fun yamlQuote(value: String): String =
+        "\"" + value
+            .replace("\\", "\\\\")
+            .replace("\"", "\\\"")
+            .replace("\n", "\\n") + "\""
+
+    private fun parseStringList(frontmatter: String, key: String): List<String> {
+        val lines = frontmatter.lines()
+        val start = lines.indexOfFirst { it == "$key:" }
+        if (start < 0) return emptyList()
+        val result = mutableListOf<String>()
+        for (i in start + 1 until lines.size) {
+            val line = lines[i]
+            if (isTopLevelKey(line)) break
+            if (line.startsWith("- ")) {
+                yamlScalar(line.removePrefix("- ").trim())?.let(result::add)
+            }
+        }
+        return result
+    }
+
+    private fun parseNestedStringList(
+        frontmatter: String,
+        key: String,
+        nestedKey: String
+    ): List<String> {
+        val lines = frontmatter.lines()
+        val start = lines.indexOfFirst { it == "$key:" }
+        if (start < 0) return emptyList()
+        var inList = false
+        val result = mutableListOf<String>()
+        for (i in start + 1 until lines.size) {
+            val line = lines[i]
+            if (isTopLevelKey(line)) break
+            val trimmed = line.trimStart()
+            if (trimmed == "$nestedKey:") {
+                inList = true
+                continue
+            }
+            if (inList) {
+                if (trimmed.startsWith("- ")) {
+                    yamlScalar(trimmed.removePrefix("- ").trim())?.let(result::add)
+                } else if (trimmed.isNotBlank() && ':' in trimmed) {
+                    break
+                }
+            }
+        }
+        return result
+    }
+
+    private fun parseNestedScalar(frontmatter: String, key: String, nestedKey: String): String? {
+        val lines = frontmatter.lines()
+        val start = lines.indexOfFirst { it == "$key:" }
+        if (start < 0) return null
+        for (i in start + 1 until lines.size) {
+            val line = lines[i]
+            if (isTopLevelKey(line)) break
+            val trimmed = line.trimStart()
+            if (trimmed.startsWith("$nestedKey:")) {
+                return yamlScalar(trimmed.substringAfter(':').trim())
+            }
+        }
+        return null
+    }
+
+    private fun parseSections(body: String): Map<String, String> {
+        val known = setOf("Description", "Acceptance Criteria", "AI Notes", "User Notes", "Notes")
+        val buffers = known.associateWith { mutableListOf<String>() }
+        var section: String? = null
+        for (line in body.replace("\r\n", "\n").lines()) {
+            if (line.startsWith("## ")) {
+                val heading = line.removePrefix("## ").trim()
+                section = heading.takeIf { it in known }
+                continue
+            }
+            section?.let { buffers.getValue(it).add(line) }
+        }
+        return buffers.mapValues { (_, lines) -> lines.joinToString("\n").trim() }
+    }
+
+    private fun parseCriteria(text: String): List<String> =
+        text.lines().mapNotNull { line ->
+            val trimmed = line.trim()
+            if (trimmed.isBlank()) null
+            else trimmed
+                .removePrefix("- [ ] ")
+                .removePrefix("- [x] ")
+                .removePrefix("- [X] ")
+                .removePrefix("- ")
+        }
+
+    private fun replaceTopLevelField(
+        frontmatter: String,
+        key: String,
+        replacement: List<String>?
+    ): String {
+        val lines = frontmatter.lines().toMutableList()
+        val start = lines.indexOfFirst {
+            isTopLevelKey(it) && it.substringBefore(':').trim() == key
+        }
+        if (start >= 0) {
+            var end = start + 1
+            while (end < lines.size && !isTopLevelKey(lines[end])) end++
+            repeat(end - start) { lines.removeAt(start) }
+            replacement?.let { lines.addAll(start, it) }
+        } else if (replacement != null) {
+            lines.addAll(replacement)
+        }
+        return lines.joinToString("\n").trimEnd()
+    }
+
+    private fun isTopLevelKey(line: String): Boolean =
+        line.isNotBlank() &&
+            !line.first().isWhitespace() &&
+            !line.startsWith("- ") &&
+            ':' in line
+
+    private fun replaceMarkdownSection(body: String, heading: String, content: String): String {
+        val lines = body.replace("\r\n", "\n").lines().toMutableList()
+        val start = lines.indexOfFirst { it.trim() == heading }
+        if (start >= 0) {
+            var end = start + 1
+            while (end < lines.size && !lines[end].trimStart().startsWith("## ")) end++
+            val replacement = mutableListOf(heading, "")
+            if (content.isNotBlank()) replacement += content.lines()
+            replacement += ""
+            repeat(end - start) { lines.removeAt(start) }
+            lines.addAll(start, replacement)
+        } else {
+            while (lines.lastOrNull()?.isBlank() == true) lines.removeAt(lines.lastIndex)
+            if (lines.isNotEmpty()) lines += ""
+            lines += heading
+            lines += ""
+            if (content.isNotBlank()) lines += content.lines()
+            lines += ""
+        }
+        return lines.joinToString("\n").trimEnd() + "\n"
+    }
+
+    private fun writeSafely(file: File, text: String) {
+        val temp = File(file.parentFile, ".${file.name}.omni.tmp")
+        temp.writeText(text)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            try {
+                java.nio.file.Files.move(
+                    temp.toPath(),
+                    file.toPath(),
+                    java.nio.file.StandardCopyOption.REPLACE_EXISTING,
+                    java.nio.file.StandardCopyOption.ATOMIC_MOVE
+                )
+                return
+            } catch (_: Exception) {
+                // Fall through to normal replacement for filesystems without atomic moves.
+            }
+        }
+        temp.copyTo(file, overwrite = true)
+        temp.delete()
+    }
+
+    private fun revision(text: String): String =
+        MessageDigest.getInstance("SHA-256")
+            .digest(text.toByteArray())
+            .joinToString("") { "%02x".format(it) }
+
+    private fun today(): String =
+        SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+}

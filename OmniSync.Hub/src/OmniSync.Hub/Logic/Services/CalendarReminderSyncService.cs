@@ -14,15 +14,18 @@ public sealed class CalendarReminderSyncService : IHostedService, IDisposable
     private readonly ILogger<CalendarReminderSyncService> _logger;
     private readonly SemaphoreSlim _syncGate = new(1, 1);
     private bool _started;
+    private readonly OmniSync.Hub.Logic.Monitoring.HubMonitorService? _monitor;
 
     public CalendarReminderSyncService(
         CalendarService calendarService,
         IReminderRepository repository,
-        ILogger<CalendarReminderSyncService> logger)
+        ILogger<CalendarReminderSyncService> logger,
+        OmniSync.Hub.Logic.Monitoring.HubMonitorService? monitor = null)
     {
         _calendarService = calendarService;
         _repository = repository;
         _logger = logger;
+        _monitor = monitor;
     }
 
     public async Task StartAsync(CancellationToken cancellationToken)
@@ -34,8 +37,11 @@ public sealed class CalendarReminderSyncService : IHostedService, IDisposable
         _calendarService.Refreshed += OnCalendarRefreshed;
 
         // Ensure an initial import even if CalendarService's startup timer raced us.
-        await _calendarService.RefreshCalendarAsync();
-        await SyncCurrentSnapshotAsync(cancellationToken);
+        if (!CalendarReminderOwnership.RustOwnsBackgroundWork)
+        {
+            await _calendarService.RefreshCalendarAsync();
+            await SyncCurrentSnapshotAsync(cancellationToken);
+        }
     }
 
     public Task StopAsync(CancellationToken cancellationToken)
@@ -51,22 +57,29 @@ public sealed class CalendarReminderSyncService : IHostedService, IDisposable
 
     private void OnCalendarRefreshed(object? sender, EventArgs e)
     {
-        _ = SyncCurrentSnapshotAsync(CancellationToken.None);
+        if (!CalendarReminderOwnership.RustOwnsBackgroundWork)
+            _ = SyncCurrentSnapshotAsync(CancellationToken.None);
     }
 
     internal async Task SyncCurrentSnapshotAsync(CancellationToken cancellationToken)
     {
-        if (!await _syncGate.WaitAsync(0, cancellationToken))
+        if (CalendarReminderOwnership.RustOwnsBackgroundWork ||
+            !await _syncGate.WaitAsync(0, cancellationToken))
             return;
 
         try
         {
+            if (CalendarReminderOwnership.RustOwnsBackgroundWork)
+                return;
             var snapshot = _calendarService.GetEventsSnapshot();
+            _monitor?.AddLogMessage($"[Reminders] Import evaluating {snapshot.Count} calendar events.");
             var seenSourceIdentities = new HashSet<string>(StringComparer.Ordinal);
             var activeSourceIdentities = new HashSet<string>(StringComparer.Ordinal);
 
             foreach (var calendarEvent in snapshot)
             {
+                if (CalendarReminderOwnership.RustOwnsBackgroundWork)
+                    return;
                 var sourceIdentity = CalendarReminderMapper.GetSourceIdentity(calendarEvent);
                 if (sourceIdentity is not null)
                     seenSourceIdentities.Add(sourceIdentity);
@@ -76,9 +89,12 @@ public sealed class CalendarReminderSyncService : IHostedService, IDisposable
                     continue;
 
                 activeSourceIdentities.Add(reminder.GetSourceIdentity()!);
-                await _repository.UpsertMirroredAsync(reminder, cancellationToken);
+                var persisted = await _repository.UpsertMirroredAsync(reminder, cancellationToken);
+                _monitor?.AddLogMessage($"[Reminders] Import persisted {persisted.Id}: kind={persisted.Kind}, state={persisted.State}, due={persisted.DueAt:o}, revision={persisted.Revision}.");
             }
 
+            if (CalendarReminderOwnership.RustOwnsBackgroundWork)
+                return;
             await CancelRemovedOrRenamedPendingItemsAsync(
                 seenSourceIdentities,
                 activeSourceIdentities,
@@ -95,6 +111,7 @@ public sealed class CalendarReminderSyncService : IHostedService, IDisposable
         catch (Exception ex)
         {
             _logger.LogError(ex, "Calendar reminder synchronization failed.");
+            _monitor?.AddLogMessage($"[Reminders] Calendar import failed: {ex}");
         }
         finally
         {
@@ -113,6 +130,8 @@ public sealed class CalendarReminderSyncService : IHostedService, IDisposable
 
         foreach (var item in items)
         {
+            if (CalendarReminderOwnership.RustOwnsBackgroundWork)
+                return;
             if (item.Source != ReminderSource.GoogleCalendar ||
                 item.Ownership != ReminderOwnership.Mirroring ||
                 item.IsTerminal)
@@ -126,7 +145,7 @@ public sealed class CalendarReminderSyncService : IHostedService, IDisposable
             // If it disappeared, only infer deletion inside our known recurrence horizon.
             var definitelyRemovedOrRenamed =
                 seenSourceIdentities.Contains(sourceIdentity) ||
-                (item.DueAt >= now.AddDays(-1) && item.DueAt <= cancellationLimit);
+                (item.DueAt >= now - CalendarService.ReminderLookback && item.DueAt <= cancellationLimit);
 
             if (!definitelyRemovedOrRenamed)
                 continue;

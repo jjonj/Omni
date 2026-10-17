@@ -439,7 +439,19 @@ fun FilesScreen(
                                             filesViewModel.loadDirectory(clickedEntry.path)
                                         }
                                     } else {
+                                        val encryptedVideo = filesViewModel.findEncryptedVideo(clickedEntry)
                                         when {
+                                            encryptedVideo != null -> {
+                                                val cachedPassword = filesViewModel.getVerifiedPassword()
+                                                if (cachedPassword != null) {
+                                                    filesViewModel.openDownloadedFile(encryptedVideo, cachedPassword)
+                                                } else {
+                                                    passwordAction = {
+                                                        filesViewModel.openDownloadedFile(encryptedVideo, filesViewModel.getVerifiedPassword())
+                                                    }
+                                                    showPasswordDialog = true
+                                                }
+                                            }
                                             clickedEntry.name.lowercase().endsWith(".flv") -> {
                                                 Toast.makeText(context, "FLV format not supported by player", Toast.LENGTH_SHORT).show()
                                             }
@@ -451,7 +463,8 @@ fun FilesScreen(
                                                 val playlist = fileSystemEntries.filter { isImageFile(it.name) }.map { it.path }
                                                 filesViewModel.mainViewModel.viewImages(clickedEntry.path, playlist)
                                             }
-                                            isPdfFile(clickedEntry.name) || isAudioFile(clickedEntry.name) -> {
+                                            isPdfFile(clickedEntry.name) || isAudioFile(clickedEntry.name) ||
+                                                clickedEntry.path.contains("downloaded_videos") -> {
                                                 filesViewModel.handleFileOpen(clickedEntry)
                                             }
                                             else -> {
@@ -1053,9 +1066,9 @@ fun FileSystemEntryItem(
                         onDownloadAndOpen(entry)
                     }
                 )
-                if (isVideoFile(entry.name) && !isLocal) {
+                if (!isLocal) {
                     DropdownMenuItem(
-                        text = { Text("Download Video to App") },
+                        text = { Text("Download to App") },
                         onClick = {
                             showMenu = false
                             showDownloadDialog = true
@@ -1144,7 +1157,7 @@ fun FileSystemEntryItem(
             
             AlertDialog(
                 onDismissRequest = { showDownloadDialog = false },
-                title = { Text("Download Video") },
+                title = { Text("Download to App") },
                 text = {
                     Column {
                         Text("Download '${entry.name}' to app storage?")

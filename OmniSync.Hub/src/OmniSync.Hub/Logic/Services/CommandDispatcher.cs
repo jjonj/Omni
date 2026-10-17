@@ -33,6 +33,8 @@ namespace OmniSync.Hub.Logic.Services
         public event EventHandler<string>? AddCleanupPatternRequested;
         public event EventHandler? ShowProjectSelectorRequested;
         public event EventHandler<(string Command, JsonElement Payload)>? ExternalCommandDispatched;
+        public event Action<Project?, bool>? SetupSnapshotRequested;
+        public void RequestSetupSnapshot(Project? setup = null, bool replace = false) => SetupSnapshotRequested?.Invoke(setup, replace);
 
         public CommandDispatcher(InputService inputService, FileService fileService, AudioService audioService, ProcessService processService, ScreenshotService screenshotService, ShutdownService shutdownService, HubSettingsService settingsService, PcgPersistentService pcgService, NodeRedService nodeRedService, ProjectLauncherService projectLauncherService, ResourceOpenerService resourceOpenerService, ClipboardService clipboardService, AiCliService aiCliService, HubMonitorService monitorService, IHostApplicationLifetime appLifetime, IHubContext<RpcApiHub> hubContext)
         {
@@ -91,6 +93,12 @@ namespace OmniSync.Hub.Logic.Services
                     }
                 }},
                 { "SHOW_PROJECT_SELECTOR", payload => ShowProjectSelectorRequested?.Invoke(this, EventArgs.Empty) },
+                { "OPEN_OMNISWEEP", payload => ShowProjectSelectorRequested?.Invoke(this, EventArgs.Empty) },
+                { "LAUNCH_AI_SESSION", payload => {
+                    var workspace = payload.TryGetProperty("Workspace", out var ws) ? ws.GetString() : null;
+                    var job = payload.TryGetProperty("Job", out var j) ? j.GetString() : null;
+                    _ = _aiCliService.LaunchSessionAsync(workspace, job: job);
+                }},
                 { "APPEND_NOTE", payload => _fileService.AppendToFile(payload.GetProperty("filename").GetString(), payload.GetProperty("content").GetString()) },
                 { "SAVE_FILE", payload => _fileService.WriteBrowseFile(payload.GetProperty("Path").GetString(), payload.GetProperty("Content").GetString()) },
                 { "COPY_FILE", payload => _fileService.CopyEntry(payload.GetProperty("Source").GetString(), payload.GetProperty("Dest").GetString()) },
@@ -168,7 +176,26 @@ namespace OmniSync.Hub.Logic.Services
                 { "FOMNI_WAR_TRIBES", payload => _processService.RunProcess(@"D:\SSDProjects\Tools\Fomni\target\release\fomni.exe", @"""D:/wartribes""") },
                 { "SCHEDULE_SHUTDOWN", payload => _shutdownService.ScheduleShutdown(payload.GetProperty("Minutes").GetInt32()) },
                                                 { "ADDCLEANUPPATTERN", payload => AddCleanupPatternRequested?.Invoke(this, payload.GetString() ?? "") },
-                { "HUB_EXIT", payload => _appLifetime.StopApplication() },
+                { "HUB_EXIT", payload => {
+                    var shutdownWatchdog = new Thread(() =>
+                    {
+                        Thread.Sleep(3000);
+                        try
+                        {
+                            System.Diagnostics.Process.GetCurrentProcess().Kill();
+                        }
+                        catch
+                        {
+                            Environment.FailFast("OmniSync Hub shutdown timed out.");
+                        }
+                    })
+                    {
+                        IsBackground = true,
+                        Name = "HubExitWatchdog"
+                    };
+                    shutdownWatchdog.Start();
+                    _appLifetime.StopApplication();
+                }},
                 { "WIN_MINIMIZE", payload => _processService.WinMinimize(payload.GetProperty("Title").GetString() ?? "") },
                 { "WIN_MAXIMIZE", payload => _processService.WinMaximize(payload.GetProperty("Title").GetString() ?? "") },
                 { "WIN_HIDE", payload => _processService.WinHide(payload.GetProperty("Title").GetString() ?? "") },

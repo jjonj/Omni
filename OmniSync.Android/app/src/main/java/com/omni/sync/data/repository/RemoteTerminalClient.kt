@@ -20,6 +20,9 @@ import java.nio.charset.CodingErrorAction
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicLong
 
+/** Scrollback text plus the total number of chars ever appended, so consumers can feed only the new tail. */
+data class RemoteTerminalSnapshot(val text: String, val total: Long)
+
 data class RemoteTerminalSession(
     val sessionId: String,
     val command: String,
@@ -46,6 +49,9 @@ class RemoteTerminalClient {
 
     private val _output = MutableStateFlow("")
     val output: StateFlow<String> = _output
+
+    private val _snapshot = MutableStateFlow(RemoteTerminalSnapshot("", 0))
+    val snapshot: StateFlow<RemoteTerminalSnapshot> = _snapshot
 
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error
@@ -110,7 +116,8 @@ class RemoteTerminalClient {
         if (command.isNotBlank()) _preferredCommand.value = command.trim()
     }
 
-    fun startSession(command: String, workspace: String, columns: Int = 80, rows: Int = 24) {
+    /** @param replace stop the current terminal (if any) and start this one in its place. */
+    fun startSession(command: String, workspace: String, columns: Int = 80, rows: Int = 24, replace: Boolean = false) {
         val normalizedCommand = command.trim()
         val normalizedWorkspace = workspace.trim()
         if (normalizedCommand.isEmpty()) {
@@ -121,10 +128,12 @@ class RemoteTerminalClient {
             _error.value = "Enter an absolute workspace path"
             return
         }
-        if (_session.value != null) {
+        val previous = _session.value
+        if (previous != null && !replace) {
             _error.value = "Stop the current terminal before starting another"
             return
         }
+        if (previous != null) _session.value = null
 
         setPreferredCommand(normalizedCommand)
         Log.d(TAG, "Starting remote terminal command=$normalizedCommand workspace=$normalizedWorkspace columns=$columns rows=$rows")
@@ -132,6 +141,7 @@ class RemoteTerminalClient {
             val connection = connectedHub() ?: return@launch
             try {
                 _error.value = null
+                if (previous != null) connection.send("StopRemoteTerminal", previous.sessionId)
                 _sessionStatus.value = "starting"
                 clearOutput()
                 connection.send(
@@ -192,6 +202,7 @@ class RemoteTerminalClient {
     fun clearOutput() {
         textBuffer.clear()
         _output.value = ""
+        _snapshot.value = RemoteTerminalSnapshot("", 0)
     }
 
     private fun sendBytes(bytes: ByteArray) {
@@ -284,6 +295,7 @@ class RemoteTerminalClient {
     private fun appendOutput(bytes: ByteArray) {
         Log.d(TAG, "RemoteTerminalOutput bytes=${bytes.size} preview=${debugPreview(bytes)}")
         _output.value = textBuffer.append(bytes)
+        _snapshot.value = RemoteTerminalSnapshot(_output.value, textBuffer.total)
         Log.d(TAG, "RemoteTerminalOutput bufferedChars=${_output.value.length} outputHash=${_output.value.hashCode()}")
     }
 
@@ -329,6 +341,10 @@ internal class RemoteTerminalTextBuffer(private val maxChars: Int) {
     private var pendingBytes = ByteArray(0)
     private var text = ""
 
+    /** Chars decoded since the last clear, including those trimmed from the scrollback. */
+    var total = 0L
+        private set
+
     @Synchronized
     fun append(bytes: ByteArray): String {
         if (bytes.isEmpty()) return text
@@ -343,7 +359,9 @@ internal class RemoteTerminalTextBuffer(private val maxChars: Int) {
         pendingBytes = ByteArray(input.remaining())
         input.get(pendingBytes)
         output.flip()
-        text = (text + output.toString()).takeLast(maxChars)
+        val decoded = output.toString()
+        total += decoded.length
+        text = (text + decoded).takeLast(maxChars)
         return text
     }
 
@@ -351,5 +369,6 @@ internal class RemoteTerminalTextBuffer(private val maxChars: Int) {
     fun clear() {
         pendingBytes = ByteArray(0)
         text = ""
+        total = 0
     }
 }

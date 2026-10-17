@@ -30,6 +30,11 @@ namespace OmniSync.Hub.Infrastructure.Services
             public IntPtr Color;
         }
 
+        private static readonly IntPtr PerMonitorAwareV2 = new IntPtr(-4);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        private static extern IntPtr SetThreadDpiAwarenessContext(IntPtr dpiContext);
+
         [DllImport("user32.dll")]
         [return: MarshalAs(UnmanagedType.Bool)]
         private static extern bool GetCursorInfo(ref CursorInfo cursorInfo);
@@ -93,8 +98,16 @@ namespace OmniSync.Hub.Infrastructure.Services
 
         public byte[] CapturePrimaryScreenToMemory(double scale = 1.0, long quality = 50L, int monitor = 0)
         {
+            IntPtr previousDpiContext = IntPtr.Zero;
             try
             {
+                previousDpiContext = SetThreadDpiAwarenessContext(PerMonitorAwareV2);
+                if (previousDpiContext == IntPtr.Zero)
+                {
+                    _logger.LogError("Could not enable per-monitor DPI awareness for screenshot capture. Win32 error: {Error}", Marshal.GetLastWin32Error());
+                    return Array.Empty<byte>();
+                }
+
                 var screens = Screen.AllScreens.OrderByDescending(screen => screen.Primary).ThenBy(screen => screen.DeviceName).ToArray();
                 if (monitor < 0 || monitor >= screens.Length)
                 {
@@ -163,6 +176,11 @@ namespace OmniSync.Hub.Infrastructure.Services
             {
                 _logger.LogError(ex, "Error in CapturePrimaryScreenToMemory");
                 return Array.Empty<byte>();
+            }
+            finally
+            {
+                if (previousDpiContext != IntPtr.Zero)
+                    SetThreadDpiAwarenessContext(previousDpiContext);
             }
         }
 

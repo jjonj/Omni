@@ -113,6 +113,7 @@ fun DashboardScreen(modifier: Modifier = Modifier, signalRClient: SignalRClient,
     val isShowingHubLogs by mainViewModel.isShowingHubLogs.collectAsState()
     
     val displayLogs = if (isShowingHubLogs) hubLogs else logs
+    val homeCards = rememberHomeCards(signalRClient, mainViewModel)
 
     val listState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
@@ -207,6 +208,10 @@ fun DashboardScreen(modifier: Modifier = Modifier, signalRClient: SignalRClient,
             state = listState,
             modifier = Modifier.fillMaxSize().padding(16.dp)
         ) {
+            item(key = "home-cards") {
+                HomeCardsSection(homeCards)
+            }
+
             // Connection Status Card
             item {
                 HubConnectionCard(
@@ -318,15 +323,26 @@ fun DashboardScreen(modifier: Modifier = Modifier, signalRClient: SignalRClient,
 
                             Button(
                                 onClick = {
-                                    signalRClient.triggerTellPc()
-                                    mainViewModel.addLog("Tell PC Triggered...", LogType.INFO)
+                                    signalRClient.requestVoiceCapture(com.omni.sync.data.repository.SignalRClient.VoiceMode.JARVIS)
                                 },
                                 modifier = Modifier.weight(1f),
                                 colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
                             ) {
                                 Icon(Icons.Default.Mic, null, modifier = Modifier.size(18.dp))
                                 Spacer(Modifier.width(8.dp))
-                                Text("Tell PC", fontSize = 12.sp)
+                                Text("Jarvis", fontSize = 12.sp)
+                            }
+
+                            Button(
+                                onClick = {
+                                    signalRClient.requestVoiceCapture(com.omni.sync.data.repository.SignalRClient.VoiceMode.TYPE)
+                                },
+                                modifier = Modifier.weight(1f),
+                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.tertiary)
+                            ) {
+                                Icon(Icons.Default.Mic, null, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(8.dp))
+                                Text("Type", fontSize = 12.sp)
                             }
                         }
     
@@ -725,7 +741,7 @@ fun HubConnectionCard(
     
                             Text(
     
-                                text = if (isSleeping) "Asleep for $duration" else "User is active",
+                                text = if (isSleeping) "Estimated sleep: $duration" else "Not tracking sleep",
     
                                 style = MaterialTheme.typography.bodyMedium,
     

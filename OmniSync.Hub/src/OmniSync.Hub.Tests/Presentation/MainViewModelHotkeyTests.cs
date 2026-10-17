@@ -30,7 +30,6 @@ namespace OmniSync.Hub.Tests.Presentation
         private readonly Mock<ProjectLauncherService> _mockProjectLauncherService;
         private readonly Mock<CommandDispatcher> _mockCommandDispatcher;
         private readonly Mock<HubEventSender> _mockHubEventSender;
-        private readonly AssistantService _assistantService;
 
         public MainViewModelHotkeyTests()
         {
@@ -82,7 +81,6 @@ namespace OmniSync.Hub.Tests.Presentation
                 _mockMonitorService.Object,
                 mockLifetime.Object,
                 mockHubContext.Object) { CallBase = true };
-            _assistantService = new AssistantService();
             _mockHubEventSender = new Mock<HubEventSender>(
                 new Mock<ILogger<HubEventSender>>().Object,
                 mockHubContext.Object,
@@ -94,8 +92,7 @@ namespace OmniSync.Hub.Tests.Presentation
                 mockFileService.Object,
                 _mockAiCliService.Object,
                 _mockSettingsService.Object,
-                _mockMonitorService.Object,
-                _assistantService) { CallBase = false };
+                _mockMonitorService.Object) { CallBase = false };
 
             // Setup default settings
             var settings = new HubSettings
@@ -113,7 +110,7 @@ namespace OmniSync.Hub.Tests.Presentation
         public void DeleteHotkeyCommand_ShouldRemoveHotkeyByAction()
         {
             // Arrange
-            var vm = new MainViewModel(_mockMonitorService.Object, _mockInputService.Object, _mockProcessService.Object, _mockShutdownService.Object, _mockRegistryService.Object, _mockSettingsService.Object, _mockKeyboardHook.Object, _mockAiCliService.Object, _mockLayoutCaptureService.Object, _mockProjectLauncherService.Object, _mockCommandDispatcher.Object, _mockHubEventSender.Object, _assistantService);
+            var vm = new MainViewModel(_mockMonitorService.Object, _mockInputService.Object, _mockProcessService.Object, _mockShutdownService.Object, _mockRegistryService.Object, _mockSettingsService.Object, _mockKeyboardHook.Object, _mockAiCliService.Object, _mockLayoutCaptureService.Object, _mockProjectLauncherService.Object, _mockCommandDispatcher.Object, _mockHubEventSender.Object);
             
             // Act
             vm.DeleteHotkeyCommand.Execute("TEST_ACTION");
@@ -126,7 +123,7 @@ namespace OmniSync.Hub.Tests.Presentation
         public void ChangingHotkeyCategory_ShouldUpdateSettings()
         {
             // Arrange
-            var vm = new MainViewModel(_mockMonitorService.Object, _mockInputService.Object, _mockProcessService.Object, _mockShutdownService.Object, _mockRegistryService.Object, _mockSettingsService.Object, _mockKeyboardHook.Object, _mockAiCliService.Object, _mockLayoutCaptureService.Object, _mockProjectLauncherService.Object, _mockCommandDispatcher.Object, _mockHubEventSender.Object, _assistantService);
+            var vm = new MainViewModel(_mockMonitorService.Object, _mockInputService.Object, _mockProcessService.Object, _mockShutdownService.Object, _mockRegistryService.Object, _mockSettingsService.Object, _mockKeyboardHook.Object, _mockAiCliService.Object, _mockLayoutCaptureService.Object, _mockProjectLauncherService.Object, _mockCommandDispatcher.Object, _mockHubEventSender.Object);
             var hotkey = vm.Hotkeys.First();
 
             // Act

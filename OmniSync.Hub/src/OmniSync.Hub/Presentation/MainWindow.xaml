@@ -230,7 +230,7 @@
         </Style>
     </Window.Resources>
     <Grid Margin="15">
-        <TabControl>
+        <TabControl x:Name="MainTabs">
             <TabItem Header="Dashboard">
                 <Grid Margin="10">
                     <Grid.RowDefinitions>
@@ -276,11 +276,6 @@
                                            FontStyle="Italic" Opacity="0.8"/>
                             </StackPanel>
                             <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-                                <Button Content="Launch Jarvis" 
-                                        Command="{Binding LaunchJarvisCommand}"
-                                        MinWidth="120"
-                                        Background="#4CAF50"
-                                        FontWeight="Bold"/>
                                 <Button Content="Reset AI Sessions" 
                                         Command="{Binding ResetAiSessionsCommand}"
                                         MinWidth="120"
@@ -303,8 +298,8 @@
                     </Border>
                 </Grid>
             </TabItem>
-            <TabItem Header="Settings">
-                <TabControl Margin="5" Background="Transparent" BorderThickness="0">
+            <TabItem Header="Settings" x:Name="HubSettingsTab">
+                <TabControl x:Name="SettingsTabs" Margin="5" Background="Transparent" BorderThickness="0">
                     <TabItem Header="General">
                         <Grid Margin="15">
                             <Grid.RowDefinitions>
@@ -316,6 +311,7 @@
                             </Grid.RowDefinitions>
                             
                             <TextBlock Grid.Row="0" Text="General Settings" FontSize="18" FontWeight="Bold" Margin="0,0,0,15"/>
+                            <Button Grid.Row="0" Content="OmniZones settings..." Click="OpenOmniZones_Click" HorizontalAlignment="Right" VerticalAlignment="Top" Padding="12,4" Background="#007ACC"/>
                             <CheckBox Grid.Row="1" IsChecked="{Binding IsRunOnStartupEnabled}" Content="Run OmniSync Hub on Windows Startup" 
                                       Foreground="#D4D4D4" FontSize="14" Margin="0,5,0,10"/>
                             
@@ -431,27 +427,13 @@
                                           Foreground="#D4D4D4" Margin="0,10,0,0" FontSize="14"/>
 
                                 <TextBlock Text="Calendar ICS URL" Margin="0,15,0,5" Opacity="0.7"/>
+                                <TextBlock Text="Task resurfacing times (HH:mm, comma separated)" Margin="0,10,0,5" Opacity="0.7"/>
+                                <TextBox Text="{Binding TaskResurfacingTimes, UpdateSourceTrigger=LostFocus}" Padding="5"/>
                                 <TextBox Text="{Binding CalendarUrl, UpdateSourceTrigger=PropertyChanged}" Padding="5"/>
                             </StackPanel>
 
                             <StackPanel Grid.Row="2">
                                 <Separator Background="#333337" Margin="0,0,0,20"/>
-                                <TextBlock Text="Jarvis Configuration" FontSize="18" FontWeight="Bold" Margin="0,0,0,5"/>
-                                <TextBlock Text="Configure the Jarvis voice assistant loop." FontSize="12" Opacity="0.7" Margin="0,0,0,10"/>
-
-                                <CheckBox IsChecked="{Binding JarvisAutoStart}" Content="Auto-start Jarvis loop on Hub launch" 
-                                          Foreground="#D4D4D4" Margin="0,0,0,10" FontSize="14"/>
-
-                                <TextBlock Text="Jarvis Workspace" Margin="0,10,0,5" Opacity="0.7"/>
-                                <TextBox Text="{Binding JarvisWorkspace, UpdateSourceTrigger=PropertyChanged}" Padding="5"/>
-
-                                <TextBlock Text="Jarvis Model" Margin="0,10,0,5" Opacity="0.7"/>
-                                <TextBox Text="{Binding JarvisModel, UpdateSourceTrigger=PropertyChanged}" Padding="5"/>
-
-                                <TextBlock Text="System Prompt Path (.md)" Margin="0,10,0,5" Opacity="0.7"/>
-                                <TextBox Text="{Binding JarvisSystemContextPath, UpdateSourceTrigger=PropertyChanged}" Padding="5"/>
-
-                                <Separator Background="#333337" Margin="0,20,0,20"/>
                                 <TextBlock Text="AI Model Selection" FontSize="18" FontWeight="Bold" Margin="0,0,0,5"/>
                                 <TextBlock Text="Manage models available for selection on Android." FontSize="12" Opacity="0.7" Margin="0,0,0,10"/>
 
@@ -728,145 +710,103 @@
                             </DockPanel>
                         </Grid>
                     </TabItem>
-                    <TabItem Header="Projects">
+                    <TabItem Header="Setups" x:Name="SetupsTab">
                         <Grid Margin="15">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="300"/>
-                                <ColumnDefinition Width="*"/>
-                            </Grid.ColumnDefinitions>
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto"/>
-                                <RowDefinition Height="*"/>
-                            </Grid.RowDefinitions>
-
-                            <StackPanel Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="2" Orientation="Horizontal" Margin="0,0,0,15">
-                                <TextBlock Text="Project Environment Launcher" FontSize="18" FontWeight="Bold" VerticalAlignment="Center"/>
-                                <Separator Width="20" Background="Transparent"/>
-                                <CheckBox Style="{StaticResource ToggleSwitchStyle}" Content="Use OneCommander" IsChecked="{Binding UseOneCommander}" VerticalAlignment="Center"/>
-                            </StackPanel>
-
-                            <!-- Project List -->
-                            <DockPanel Grid.Row="1" Grid.Column="0" Margin="0,0,10,0">
-                                <Button DockPanel.Dock="Top" Content="Add New Project" Command="{Binding AddProjectCommand}" HorizontalAlignment="Left" Margin="0,0,0,10"/>
-                                <Border>
-                                    <ListBox ItemsSource="{Binding Projects}" SelectedItem="{Binding Path=DataContext.CurrentEditingProject, RelativeSource={RelativeSource AncestorType=Window}, Mode=TwoWay}">
-                                        <ListBox.ItemTemplate>
-                                            <DataTemplate>
-                                                <Grid Margin="5">
-                                                    <Grid.ColumnDefinitions>
-                                                        <ColumnDefinition Width="*"/>
-                                                        <ColumnDefinition Width="Auto"/>
-                                                        <ColumnDefinition Width="Auto"/>
-                                                        <ColumnDefinition Width="Auto"/>
-                                                    </Grid.ColumnDefinitions>
-                                                    <TextBlock Text="{Binding Name}" VerticalAlignment="Center"/>
-                                                    <Button Grid.Column="1" Content="Launch" Command="{Binding DataContext.LaunchProjectCommand, RelativeSource={RelativeSource AncestorType=Window}}" 
-                                                            CommandParameter="{Binding}" Margin="5,0"/>
-                                                    <Button Grid.Column="2" Content="Copy" Command="{Binding DataContext.DuplicateProjectCommand, RelativeSource={RelativeSource AncestorType=Window}}" 
-                                                            CommandParameter="{Binding}" Margin="5,0"/>
-                                                    <Button Grid.Column="3" Content="Delete" Command="{Binding DataContext.DeleteProjectCommand, RelativeSource={RelativeSource AncestorType=Window}}" 
-                                                            CommandParameter="{Binding}" Margin="5,0" Background="#442222"/>
-                                                </Grid>
-                                            </DataTemplate>
-                                        </ListBox.ItemTemplate>
-                                    </ListBox>
-                                </Border>
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="260"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+                            <TextBlock Grid.ColumnSpan="2" Text="Setups: apps, terminals and commands" FontSize="18" FontWeight="Bold" Margin="0,0,0,15"/>
+                            <DockPanel Grid.Row="1" Margin="0,0,12,0">
+                                <Button DockPanel.Dock="Top" Content="New empty setup" Command="{Binding AddProjectCommand}" Margin="0,0,0,10"/>
+                                <ListBox ItemsSource="{Binding Projects}" SelectionChanged="SetupSelectionChanged">
+                                    <ListBox.ItemTemplate><DataTemplate>
+                                        <StackPanel Margin="4">
+                                            <TextBlock Text="{Binding Name}" FontSize="14" FontWeight="Bold"/>
+                                            <TextBlock Text="{Binding Shortcut, StringFormat=Shortcut: {0}}" Opacity="0.7" FontSize="11"/>
+                                            <StackPanel Orientation="Horizontal">
+                                                <Button Content="Launch" Command="{Binding DataContext.LaunchProjectCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" Padding="5,2"/>
+                                                <Button Content="Copy" Command="{Binding DataContext.DuplicateProjectCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" Padding="5,2"/>
+                                                <Button Content="Delete" Command="{Binding DataContext.DeleteProjectCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" Padding="5,2"/>
+                                            </StackPanel>
+                                        </StackPanel>
+                                    </DataTemplate></ListBox.ItemTemplate>
+                                </ListBox>
                             </DockPanel>
-
-                            <!-- Edit Panel -->
-                            <Border Grid.Row="1" Grid.Column="1" Visibility="{Binding IsEditingProject, Converter={StaticResource BooleanToVisibilityConverter}}">
-                                <ScrollViewer VerticalScrollBarVisibility="Auto">
-                                    <StackPanel Margin="15">
-                                        <TextBlock Text="Edit Project" FontSize="16" FontWeight="Bold" Margin="0,0,0,15"/>
-                                        
-                                        <TextBlock Text="Project Name" Margin="0,0,0,5" Opacity="0.7"/>
-                                        <TextBox Text="{Binding CurrentEditingProject.Name, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,15"/>
-
-                                        <TextBlock Text="Actions" FontSize="14" FontWeight="Bold" Margin="0,10,0,10"/>
-                                        <ItemsControl ItemsSource="{Binding CurrentEditingProject.Actions}">
-                                            <ItemsControl.ItemTemplate>
-                                                <DataTemplate>
-                                                    <Border Margin="0,0,0,10" Padding="10" Background="#2D2D30">
-                                                        <StackPanel>
-                                                            <Grid>
-                                                                <Grid.ColumnDefinitions>
-                                                                    <ColumnDefinition Width="Auto"/>
-                                                                    <ColumnDefinition Width="*"/>
-                                                                    <ColumnDefinition Width="Auto"/>
-                                                                </Grid.ColumnDefinitions>
-                                                                <ComboBox Grid.Column="0" SelectedValue="{Binding Type}" Width="120" Margin="0,0,10,0">
-                                                                    <infra:ProjectActionType>OpenFolder</infra:ProjectActionType>
-                                                                    <infra:ProjectActionType>RunProgram</infra:ProjectActionType>
-                                                                </ComboBox>
-                                                                <TextBox Grid.Column="1" Text="{Binding Path, UpdateSourceTrigger=PropertyChanged}" />
-                                                                <Button Grid.Column="2" Content="X" Command="{Binding DataContext.DeleteProjectActionCommand, RelativeSource={RelativeSource AncestorType=Window}}" 
-                                                                        CommandParameter="{Binding}" Background="#603030" Margin="5,0,0,0" Width="25"/>
-                                                            </Grid>
-                                                            <StackPanel Visibility="{Binding Type, Converter={StaticResource EnumToVisibilityConverter}, ConverterParameter=RunProgram}" Margin="0,5,0,0">
-                                                                <TextBlock Text="Arguments" FontSize="10" Opacity="0.5"/>
-                                                                <TextBox Text="{Binding Arguments, UpdateSourceTrigger=PropertyChanged}" />
-                                                            </StackPanel>
-
-                                                            <!-- Layout Editor -->
-                                                            <StackPanel Margin="0,10,0,0">
-                                                                <CheckBox Content="Use Screen Ratio" IsChecked="{Binding Layout.UseRatio}" Foreground="#D4D4D4" FontSize="11"/>
-                                                                
-                                                                <!-- Ratio Inputs -->
-                                                                <UniformGrid Columns="4" Margin="0,5,0,0" Visibility="{Binding Layout.UseRatio, Converter={StaticResource BooleanToVisibilityConverter}}">
-                                                                    <StackPanel Margin="0,0,5,0">
-                                                                        <TextBlock Text="Ratio X" FontSize="9" Opacity="0.5"/>
-                                                                        <TextBox Text="{Binding Layout.RatioX}" />
-                                                                    </StackPanel>
-                                                                    <StackPanel Margin="0,0,5,0">
-                                                                        <TextBlock Text="Ratio Y" FontSize="9" Opacity="0.5"/>
-                                                                        <TextBox Text="{Binding Layout.RatioY}" />
-                                                                    </StackPanel>
-                                                                    <StackPanel Margin="0,0,5,0">
-                                                                        <TextBlock Text="Ratio W" FontSize="9" Opacity="0.5"/>
-                                                                        <TextBox Text="{Binding Layout.RatioWidth}" />
-                                                                    </StackPanel>
-                                                                    <StackPanel>
-                                                                        <TextBlock Text="Ratio H" FontSize="9" Opacity="0.5"/>
-                                                                        <TextBox Text="{Binding Layout.RatioHeight}" />
-                                                                    </StackPanel>
-                                                                </UniformGrid>
-
-                                                                <!-- Absolute Inputs -->
-                                                                <UniformGrid Columns="4" Margin="0,5,0,0" Visibility="{Binding Layout.UseRatio, Converter={StaticResource InverseBooleanToVisibilityConverter}, ConverterParameter=Inverse}">
-                                                                    <StackPanel Margin="0,0,5,0">
-                                                                        <TextBlock Text="Abs X" FontSize="9" Opacity="0.5"/>
-                                                                        <TextBox Text="{Binding Layout.X}" />
-                                                                    </StackPanel>
-                                                                    <StackPanel Margin="0,0,5,0">
-                                                                        <TextBlock Text="Abs Y" FontSize="9" Opacity="0.5"/>
-                                                                        <TextBox Text="{Binding Layout.Y}" />
-                                                                    </StackPanel>
-                                                                    <StackPanel Margin="0,0,5,0">
-                                                                        <TextBlock Text="Abs W" FontSize="9" Opacity="0.5"/>
-                                                                        <TextBox Text="{Binding Layout.Width}" />
-                                                                    </StackPanel>
-                                                                    <StackPanel>
-                                                                        <TextBlock Text="Abs H" FontSize="9" Opacity="0.5"/>
-                                                                        <TextBox Text="{Binding Layout.Height}" />
-                                                                    </StackPanel>
-                                                                </UniformGrid>
-                                                            </StackPanel>
-                                                        </StackPanel>
-                                                    </Border>
-                                                </DataTemplate>
-                                            </ItemsControl.ItemTemplate>
-                                        </ItemsControl>
-
-                                        <Button Content="+ Add Action" Command="{Binding AddProjectActionCommand}" HorizontalAlignment="Left" Margin="0,0,0,20"/>
-                                        
-                                        <Button Content="Save Project" Command="{Binding SaveProjectCommand}" Background="#007ACC" FontWeight="Bold" Height="40" Margin="0,10,0,0"/>
-                                    </StackPanel>
-                                </ScrollViewer>
-                            </Border>
-
-                            <TextBlock Grid.Row="1" Grid.Column="1" Text="Select a project to edit or create a new one." 
-                                       VerticalAlignment="Center" HorizontalAlignment="Center" Opacity="0.5"
-                                       Visibility="{Binding IsEditingProject, Converter={StaticResource InverseBooleanToVisibilityConverter}, ConverterParameter=Inverse}"/>
+                            <ScrollViewer Grid.Row="1" Grid.Column="1" VerticalScrollBarVisibility="Auto"
+                                          Visibility="{Binding IsEditingProject, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                <StackPanel Margin="10">
+                                    <TextBlock Text="Setup name" Opacity="0.7"/>
+                                    <Button Content="Re-snapshot (keep commands)" Command="{Binding SnapshotSetupCommand}" HorizontalAlignment="Left" Margin="0,0,0,8"/>
+                                    <TextBox Text="{Binding CurrentEditingProject.Name, UpdateSourceTrigger=PropertyChanged}" Margin="0,4,0,10"/>
+                                    <UniformGrid Columns="2">
+                                        <StackPanel Margin="0,0,10,10">
+                                            <TextBlock Text="Sweep shortcut (WASD reserved)" Opacity="0.7"/>
+                                            <TextBox Text="{Binding CurrentEditingProject.Shortcut, UpdateSourceTrigger=PropertyChanged}" MaxLength="12"/>
+                                        </StackPanel>
+                                        <StackPanel Margin="0,0,0,10">
+                                            <TextBlock Text="Optional global hotkey (e.g. Ctrl+Alt+1)" Opacity="0.7"/>
+                                            <TextBox Text="{Binding CurrentEditingProject.GlobalHotkey, UpdateSourceTrigger=PropertyChanged}"/>
+                                        </StackPanel>
+                                    </UniformGrid>
+                                    <TextBlock Text="Steps run in order. Terminal commands leave their shell open; RunOnce commands exit after completion. Scripts can read $env:OMNI_CLIPBOARD (PowerShell) or %OMNI_CLIPBOARD% (cmd)." TextWrapping="Wrap" Opacity="0.7" Margin="0,0,0,12"/>
+                                    <ItemsControl ItemsSource="{Binding CurrentEditingProject.Actions}">
+                                        <ItemsControl.ItemTemplate><DataTemplate>
+                                            <Border Background="#2D2D30" Padding="12" Margin="0,0,0,12">
+                                                <StackPanel>
+                                                    <DockPanel>
+                                                        <Button DockPanel.Dock="Right" Content="Down" Command="{Binding DataContext.MoveSetupStepDownCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}"/>
+                                                        <Button DockPanel.Dock="Right" Content="Up" Command="{Binding DataContext.MoveSetupStepUpCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}"/>
+                                                        <Button DockPanel.Dock="Right" Content="Remove" Command="{Binding DataContext.DeleteProjectActionCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" Background="#603030"/>
+                                                        <ComboBox SelectedItem="{Binding Type, Mode=TwoWay}" Width="150" HorizontalAlignment="Left">
+                                                            <infra:ProjectActionType>RunProgram</infra:ProjectActionType>
+                                                            <infra:ProjectActionType>OpenFolder</infra:ProjectActionType>
+                                                            <infra:ProjectActionType>Terminal</infra:ProjectActionType>
+                                                            <infra:ProjectActionType>RunOnce</infra:ProjectActionType>
+                                                            <infra:ProjectActionType>OmniAction</infra:ProjectActionType>
+                                                            <infra:ProjectActionType>Macro</infra:ProjectActionType>
+                                                        </ComboBox>
+                                                    </DockPanel>
+                                                    <TextBlock Text="Program / folder / Omni action / macro name" Opacity="0.7" Margin="0,8,0,3"/>
+                                                    <TextBox Text="{Binding Path, UpdateSourceTrigger=PropertyChanged}"/>
+                                                    <TextBlock Text="Arguments (JSON payload for Omni actions)" Opacity="0.7" Margin="0,8,0,3"/>
+                                                    <TextBox Text="{Binding Arguments, UpdateSourceTrigger=PropertyChanged}"/>
+                                                    <TextBlock Text="Working directory" Opacity="0.7" Margin="0,8,0,3"/>
+                                                    <TextBox Text="{Binding WorkingDirectory, UpdateSourceTrigger=PropertyChanged}"/>
+                                                    <TextBlock Text="Command (Terminal / RunOnce / inline Macro)" Opacity="0.7" Margin="0,8,0,3"/>
+                                                    <TextBox Text="{Binding Command, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" MinHeight="48" MaxHeight="140" VerticalScrollBarVisibility="Auto"/>
+                                                    <TextBlock Text="Window title to match when several windows use the same program" Opacity="0.7" Margin="0,8,0,3"/>
+                                                    <TextBox Text="{Binding WindowTitle, UpdateSourceTrigger=PropertyChanged}"/>
+                                                    <CheckBox Content="Reuse existing window (turn off for a fresh terminal)" IsChecked="{Binding ReuseWindow}" Foreground="#D4D4D4" Margin="0,8,0,3"/>
+                                                    <CheckBox Content="Restore saved position and size" IsChecked="{Binding PositionWindow}" Foreground="#D4D4D4" Margin="0,4,0,3"/>
+                                                    <StackPanel Margin="0,5,0,0">
+                                                        <TextBlock Text="Target monitor" Opacity="0.7"/>
+                                                        <ComboBox ItemsSource="{Binding DataContext.SetupMonitors, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                                  DisplayMemberPath="Label" SelectedValuePath="Key" SelectedValue="{Binding MonitorTarget, Mode=TwoWay}"/>
+                                                        <CheckBox Content="Use proportions instead of exact pixels" IsChecked="{Binding Layout.UseRatio}" Foreground="#D4D4D4" Margin="0,6,0,3"/>
+                                                        <UniformGrid Columns="4">
+                                                            <StackPanel Margin="0,0,5,0"><TextBlock Text="X"/><TextBox Text="{Binding Layout.X}"/></StackPanel>
+                                                            <StackPanel Margin="0,0,5,0"><TextBlock Text="Y"/><TextBox Text="{Binding Layout.Y}"/></StackPanel>
+                                                            <StackPanel Margin="0,0,5,0"><TextBlock Text="Width"/><TextBox Text="{Binding Layout.Width}"/></StackPanel>
+                                                            <StackPanel><TextBlock Text="Height"/><TextBox Text="{Binding Layout.Height}"/></StackPanel>
+                                                        </UniformGrid>
+                                                        <UniformGrid Columns="4" Margin="0,6,0,0">
+                                                            <StackPanel Margin="0,0,5,0"><TextBlock Text="Ratio X"/><TextBox Text="{Binding Layout.RatioX}"/></StackPanel>
+                                                            <StackPanel Margin="0,0,5,0"><TextBlock Text="Ratio Y"/><TextBox Text="{Binding Layout.RatioY}"/></StackPanel>
+                                                            <StackPanel Margin="0,0,5,0"><TextBlock Text="Ratio width"/><TextBox Text="{Binding Layout.RatioWidth}"/></StackPanel>
+                                                            <StackPanel><TextBlock Text="Ratio height"/><TextBox Text="{Binding Layout.RatioHeight}"/></StackPanel>
+                                                        </UniformGrid>
+                                                        <TextBlock Text="OmniZones placement" Margin="0,8,0,3" Opacity="0.7"/>
+                                                        <ComboBox ItemsSource="{Binding DataContext.SetupZones, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                                  DisplayMemberPath="Label" SelectedValuePath="Key" SelectedValue="{Binding ZoneTarget, Mode=TwoWay}"/>
+                                                        <CheckBox Content="Maximized" IsChecked="{Binding Layout.Maximized}" Foreground="#D4D4D4" Margin="0,6,0,0"/>
+                                                    </StackPanel>
+                                                </StackPanel>
+                                            </Border>
+                                        </DataTemplate></ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                    <Button Content="+ Add step" Command="{Binding AddProjectActionCommand}" HorizontalAlignment="Left"/>
+                                    <Button Content="Save setup" Command="{Binding SaveProjectCommand}" Background="#007ACC" FontWeight="Bold" Height="40" Margin="0,12,0,0"/>
+                                </StackPanel>
+                            </ScrollViewer>
                         </Grid>
                     </TabItem>
 

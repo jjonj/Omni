@@ -46,11 +46,25 @@ namespace OmniSync.Hub.Infrastructure.Services
     public enum ProjectActionType
     {
         OpenFolder,
-        RunProgram
+        RunProgram,
+        Terminal,
+        RunOnce,
+        OmniAction,
+        Macro
     }
 
     public class WindowLayout
     {
+        public string MonitorDevice { get; set; } = "";
+        public string MonitorIdentity { get; set; } = "";
+        public bool MonitorPrimary { get; set; }
+        public double MonitorX { get; set; }
+        public double MonitorY { get; set; }
+        public double MonitorWidth { get; set; }
+        public double MonitorHeight { get; set; }
+        public string ZoneLayoutId { get; set; } = "";
+        public string ZoneId { get; set; } = "";
+        public bool Maximized { get; set; }
         public bool UseRatio { get; set; } = true;
         // Absolute
         public double X { get; set; }
@@ -64,12 +78,65 @@ namespace OmniSync.Hub.Infrastructure.Services
         public double RatioHeight { get; set; } = 0.5;
     }
 
-    public class ProjectAction
+    public class ProjectAction : System.ComponentModel.INotifyPropertyChanged
     {
-        public ProjectActionType Type { get; set; }
+        public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
+        public Guid Id { get; set; } = Guid.NewGuid();
+        private ProjectActionType _type;
+        public ProjectActionType Type
+        {
+            get => _type;
+            set { _type = value; if (value == ProjectActionType.Terminal) ReuseWindow = false; PropertyChanged?.Invoke(this, new(nameof(Type))); }
+        }
         public string Path { get; set; } = string.Empty;
         public string Arguments { get; set; } = string.Empty;
-        public WindowLayout? Layout { get; set; }
+        public string WorkingDirectory { get; set; } = "";
+        public string Command { get; set; } = "";
+        public string WindowTitle { get; set; } = "";
+        private bool _reuseWindow = true;
+        public bool ReuseWindow
+        {
+            get => _reuseWindow;
+            set { _reuseWindow = value; PropertyChanged?.Invoke(this, new(nameof(ReuseWindow))); }
+        }
+        public bool IsCaptured { get; set; }
+        // Front-to-back rank saved with a window snapshot; null for older/manual actions.
+        public int? SnapshotZOrder { get; set; }
+        public bool PositionWindow { get; set; } = true;
+        private WindowLayout? _layout = new();
+        public WindowLayout? Layout
+        {
+            get => _layout;
+            set { _layout = value; PropertyChanged?.Invoke(this, new(nameof(Layout))); }
+        }
+        [System.Text.Json.Serialization.JsonIgnore]
+        public string MonitorTarget
+        {
+            get => Layout?.MonitorDevice ?? "";
+            set
+            {
+                var screen = System.Windows.Forms.Screen.AllScreens.FirstOrDefault(s => s.DeviceName == value);
+                if (screen == null || Layout?.MonitorDevice == value) return;
+                var previous = Layout ?? new();
+                var mapped = OmniSync.Hub.Logic.LayoutHelper.CalculateBounds(previous, screen);
+                var next = OmniSync.Hub.Logic.LayoutHelper.FromRectangle(mapped, screen);
+                next.UseRatio = previous.UseRatio; next.ZoneLayoutId = previous.ZoneLayoutId;
+                next.ZoneId = previous.ZoneId; next.Maximized = previous.Maximized;
+                Layout = next;
+            }
+        }
+        [System.Text.Json.Serialization.JsonIgnore]
+        public string ZoneTarget
+        {
+            get => string.IsNullOrEmpty(Layout?.ZoneId) ? "" : Layout.ZoneLayoutId + "|" + Layout.ZoneId;
+            set
+            {
+                Layout ??= new();
+                var parts = (value ?? "").Split('|');
+                Layout.ZoneLayoutId = parts.Length == 2 ? parts[0] : "";
+                Layout.ZoneId = parts.Length == 2 ? parts[1] : "";
+            }
+        }
     }
 
     public class Project
@@ -77,6 +144,8 @@ namespace OmniSync.Hub.Infrastructure.Services
         public Guid Id { get; set; } = Guid.NewGuid();
         public string Name { get; set; } = "";
         public string HotkeyName { get; set; } = "";
+        public string Shortcut { get; set; } = "";
+        public string GlobalHotkey { get; set; } = "";
         public System.Collections.ObjectModel.ObservableCollection<ProjectAction> Actions { get; set; } = new();
     }
 
@@ -112,6 +181,8 @@ namespace OmniSync.Hub.Infrastructure.Services
 
     public class HubSettings
     {
+        public string TaskResurfacingTimes { get; set; } = "11:00,18:00";
+        public string MusicSceneLaunchTarget { get; set; } = "https://www.youtube.com/watch?v=m_EbHXhNKtA&list=PLDfKAXSi6kUZnATwAUfN6tg1dULU-7XcD&index=1&autoplay=1";
         public bool UseOneCommander { get; set; } = false;
         public bool AiDebugMode { get; set; } = true;
         public Dictionary<string, string> ExeMappings { get; set; } = new();
@@ -122,7 +193,10 @@ namespace OmniSync.Hub.Infrastructure.Services
         public List<string> AiPresets { get; set; } = new List<string>();
         public List<string> AiModels { get; set; } = new List<string>();
         public string DefaultAiModel { get; set; } = "";
-        public List<Project> Projects { get; set; } = new List<Project>();
+        public List<Project> Setups { get; set; } = new();
+        // Internal compatibility for the launcher/editor. Old saved Projects are deliberately ignored.
+        [System.Text.Json.Serialization.JsonIgnore]
+        public List<Project> Projects { get => Setups; set => Setups = value; }
         public List<string> BrowserCleanupPatterns { get; set; } = new List<string>();
         public List<MacroConfig> Macros { get; set; } = new();
         public List<ProjectRoot> ProjectRoots { get; set; } = new();
@@ -137,11 +211,6 @@ namespace OmniSync.Hub.Infrastructure.Services
         public string TellPcSystemContext { get; set; } = "You are to help the user execute commands and tools on this windows PC. You are an expert assistant with full system access. Be concise and efficient.";
         public bool TellPcSoundEnabled { get; set; } = true;
 
-        // Jarvis Settings
-        public bool JarvisAutoStart { get; set; } = false;
-        public string JarvisWorkspace { get; set; } = @"D:/SSDProjects/";
-        public string JarvisSystemContextPath { get; set; } = @"D:/SSDProjects/Omni/OmniSync.Hub/Voice/MIND/PrePrompt.md";
-        public string JarvisModel { get; set; } = "JarvisFast";
     }
 
     public class HubSettingsService
@@ -154,17 +223,17 @@ namespace OmniSync.Hub.Infrastructure.Services
 
         public event EventHandler? SettingsChanged;
 
-        public HubSettingsService(ILogger<HubSettingsService> logger)
+        public HubSettingsService(ILogger<HubSettingsService> logger, string? settingsPath = null)
         {
             _logger = logger;
             
             // Use AppData for persistent storage across reinstalls
-            string appDataPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "OmniSync");
+            string appDataPath = settingsPath == null ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "OmniSync") : Path.GetDirectoryName(Path.GetFullPath(settingsPath))!;
             if (!Directory.Exists(appDataPath))
             {
                 Directory.CreateDirectory(appDataPath);
             }
-            _settingsPath = Path.Combine(appDataPath, "settings.json");
+            _settingsPath = settingsPath ?? Path.Combine(appDataPath, "settings.json");
             
             LoadSettings();
             InitializeDefaultHotkeys();
@@ -230,28 +299,69 @@ namespace OmniSync.Hub.Infrastructure.Services
         private void InitializeDefaultMacros()
         {
             if (_settings.Macros == null) _settings.Macros = new();
+            var changed = false;
+
+            // Upgrade only our original YouTube Music default; preserve user-customized targets.
+            if (string.Equals(_settings.MusicSceneLaunchTarget, "https://music.youtube.com/", StringComparison.OrdinalIgnoreCase))
+            {
+                _settings.MusicSceneLaunchTarget = new HubSettings().MusicSceneLaunchTarget;
+                changed = true;
+            }
+
             if (_settings.Macros.Count == 0)
             {
-                _settings.Macros.Add(new MacroConfig 
-                { 
-                    Name = "Lock PC", 
+                _settings.Macros.Add(new MacroConfig
+                {
+                    Name = "Lock PC",
                     IsPinned = true,
                     Script = "send #l"
                 });
-                _settings.Macros.Add(new MacroConfig 
-                { 
-                    Name = "Open Notepad", 
+                _settings.Macros.Add(new MacroConfig
+                {
+                    Name = "Open Notepad",
                     IsPinned = true,
                     Script = "run notepad.exe"
                 });
-                _settings.Macros.Add(new MacroConfig 
-                { 
-                    Name = "Unlock", 
+                _settings.Macros.Add(new MacroConfig
+                {
+                    Name = "Unlock",
                     IsPinned = true,
                     Script = "powershell Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait('{SCROLLLOCK}')"
                 });
-                SaveSettings();
+                changed = true;
             }
+
+            changed |= EnsureVoiceMacro(
+                "Sleep",
+                @"run C:\Windows\explorer.exe ""B:\GDrive\Tools\05 Automation\sleep.bat""");
+            changed |= EnsureVoiceMacro(
+                "Shutdown",
+                @"run C:\Windows\explorer.exe ""B:\GDrive\Tools\05 Automation\shutdown.bat""");
+            changed |= EnsureVoiceMacro("Morning", "scene morning");
+            changed |= EnsureVoiceMacro("Idle", "scene idle");
+            changed |= EnsureVoiceMacro("Music", "scene music");
+            changed |= EnsureVoiceMacro("Pause", "scene pause");
+            changed |= EnsureVoiceMacro("Dictate", "scene dictate");
+
+            if (changed) SaveSettings();
+        }
+
+        private bool EnsureVoiceMacro(string name, string script)
+        {
+            if (_settings.Macros.Any(m =>
+                    string.Equals(m.Name?.Trim(), name, StringComparison.OrdinalIgnoreCase) &&
+                    string.Equals(m.Category?.Trim(), "Voice", StringComparison.OrdinalIgnoreCase)))
+            {
+                return false;
+            }
+
+            _settings.Macros.Add(new MacroConfig
+            {
+                Name = name,
+                Category = "Voice",
+                Script = script
+            });
+            return true;
         }
 
         private void InitializeDefaultProjectRoots()
@@ -284,6 +394,7 @@ namespace OmniSync.Hub.Infrastructure.Services
         private void InitializeDefaultProjects()
         {
             if (_settings.Projects == null) _settings.Projects = new();
+            SaveSettings(); // Persist Setups and discard the retired Projects collection.
         }
 
         private void InitializeDefaultPresets()
@@ -384,7 +495,7 @@ namespace OmniSync.Hub.Infrastructure.Services
                 // System
                                     new HotkeyConfig { Name = "Chrome: Reload Extension", Key = "Ctrl+Alt+R", Action = "RELOAD_CHROME_EXTENSION", Category = "System" },
                                     new HotkeyConfig { Name = "Open Hub Window", Key = "Ctrl+Alt+H", Action = "OPEN_HUB_WINDOW", Category = "System" },
-                                    new HotkeyConfig { Name = "Project Selector", Key = "Ctrl+Alt+P", Action = "SHOW_PROJECT_SELECTOR", Category = "System" },
+                                    new HotkeyConfig { Name = "OmniSweep", Key = "Ctrl+Alt+P", Action = "OPEN_OMNISWEEP", Category = "System" },
                                     new HotkeyConfig { Name = "New AI Tab (Focused)", Key = "Ctrl+Alt+D", Action = "LAUNCH_TAB_IN_FOCUSED_WORKSPACE", Category = "System" },
                                     new HotkeyConfig { Name = "Run Fomni: WarTribes", Key = "Ctrl+Alt+W", Action = "FOMNI_WAR_TRIBES", Category = "System" },
                                     new HotkeyConfig { Name = "Screenshot", Key = "PrintScreen", Action = "SCREENSHOT", Category = "System" },
@@ -446,6 +557,14 @@ namespace OmniSync.Hub.Infrastructure.Services
                 {
                     string json = File.ReadAllText(_settingsPath);
                     _settings = JsonSerializer.Deserialize<HubSettings>(json) ?? new HubSettings();
+                    _settings.Setups ??= new();
+                    _settings.Hotkeys ??= new();
+                    _settings.Hotkeys.RemoveAll(h => h.Action.StartsWith("LAUNCH_PROJECT_"));
+                    foreach (var hotkey in _settings.Hotkeys.Where(h => h.Action == "SHOW_PROJECT_SELECTOR"))
+                    {
+                        hotkey.Action = "OPEN_OMNISWEEP";
+                        hotkey.Name = "OmniSweep";
+                    }
                     if (_settings.AiSessionNames == null) _settings.AiSessionNames = new();
                     _logger?.LogInformation("Settings loaded successfully.");
                 }
@@ -466,6 +585,24 @@ namespace OmniSync.Hub.Infrastructure.Services
         {
             try
             {
+                OmniSync.Hub.Logic.SetupRules.NormalizeShortcuts(_settings.Setups);
+                foreach (var layout in _settings.Setups.SelectMany(s => s.Actions).Select(a => a.Layout).Where(l => l != null && !l.UseRatio && l.MonitorWidth > 0 && l.MonitorHeight > 0))
+                {
+                    layout!.RatioX = (layout.X - layout.MonitorX) / layout.MonitorWidth;
+                    layout.RatioY = (layout.Y - layout.MonitorY) / layout.MonitorHeight;
+                    layout.RatioWidth = layout.Width / layout.MonitorWidth;
+                    layout.RatioHeight = layout.Height / layout.MonitorHeight;
+                }
+                _settings.Hotkeys.RemoveAll(h => h.Action.StartsWith("LAUNCH_SETUP_") &&
+                    !_settings.Setups.Any(s => h.Action == $"LAUNCH_SETUP_{s.Id}" && !string.IsNullOrWhiteSpace(s.GlobalHotkey)));
+                foreach (var setup in _settings.Setups.Where(s => !string.IsNullOrWhiteSpace(s.GlobalHotkey)))
+                {
+                    var action = $"LAUNCH_SETUP_{setup.Id}";
+                    var hotkey = _settings.Hotkeys.FirstOrDefault(h => h.Action == action);
+                    if (hotkey == null) { hotkey = new HotkeyConfig { Action = action, Category = "Setups" }; _settings.Hotkeys.Add(hotkey); }
+                    hotkey.Name = setup.Name;
+                    hotkey.Key = setup.GlobalHotkey;
+                }
                 string json = JsonSerializer.Serialize(_settings, new JsonSerializerOptions { WriteIndented = true });
                 _logger?.LogInformation($"[Settings] Saving settings to {_settingsPath}. Macros: {_settings.Macros.Count}, Pinned: {_settings.Macros.Count(m => m.IsPinned)}");
                 File.WriteAllText(_settingsPath, json);
@@ -507,18 +644,21 @@ namespace OmniSync.Hub.Infrastructure.Services
 
         public virtual void RemoveHotkey(string name)
         {
+            foreach (var setup in _settings.Setups.Where(s => _settings.Hotkeys.Any(h => h.Action == $"LAUNCH_SETUP_{s.Id}" && h.Name.Equals(name, StringComparison.OrdinalIgnoreCase)))) setup.GlobalHotkey = "";
             _settings.Hotkeys.RemoveAll(h => h.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
             SaveSettings();
         }
 
         public virtual void RemoveHotkeyByAction(string action)
         {
+            foreach (var setup in _settings.Setups.Where(s => action == $"LAUNCH_SETUP_{s.Id}")) setup.GlobalHotkey = "";
             _settings.Hotkeys.RemoveAll(h => h.Action.Equals(action, StringComparison.OrdinalIgnoreCase));
             SaveSettings();
         }
 
         public virtual void UpdateHotkeys(List<HotkeyConfig> hotkeys)
         {
+            foreach (var setup in _settings.Setups) setup.GlobalHotkey = hotkeys.FirstOrDefault(h => h.Action == $"LAUNCH_SETUP_{setup.Id}")?.Key ?? "";
             _settings.Hotkeys = hotkeys;
             SaveSettings();
         }

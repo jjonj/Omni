@@ -12,6 +12,7 @@ import com.omni.sync.data.repository.SignalRClient
 class OmniAccessibilityService : AccessibilityService() {
 
     private lateinit var signalRClient: SignalRClient
+    private var lastEventLog = 0L
 
     companion object {
         private var instance: OmniAccessibilityService? = null
@@ -22,12 +23,21 @@ class OmniAccessibilityService : AccessibilityService() {
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        // Not used for key events, but can be useful for other accessibility tasks.
+        if (event?.eventType in listOf(AccessibilityEvent.TYPE_VIEW_CLICKED, AccessibilityEvent.TYPE_VIEW_LONG_CLICKED,
+                AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED, AccessibilityEvent.TYPE_VIEW_SCROLLED)) {
+            val now = System.currentTimeMillis()
+            if (now - lastEventLog >= 60_000) {
+                lastEventLog = now
+                (application as? OmniSyncApplication)?.mainViewModel?.addLog(
+                    "[Wake detection] Accessibility event type=${event?.eventType}, app=${event?.packageName}", com.omni.sync.ui.screen.LogType.INFO)
+            }
+            com.omni.sync.utils.WakeAlarmActions.stillAwake(this, automatic = true)
+        }
     }
 
     override fun onInterrupt() {
         Log.w("OmniAccessibility", "Accessibility service interrupted.")
-        instance = null
+        (application as? OmniSyncApplication)?.mainViewModel?.addLog("[Wake detection] Accessibility service interrupted", com.omni.sync.ui.screen.LogType.INFO)
     }
 
     override fun onServiceConnected() {
@@ -35,10 +45,18 @@ class OmniAccessibilityService : AccessibilityService() {
         instance = this
         signalRClient = (application as OmniSyncApplication).signalRClient
         Log.i("OmniAccessibility", "Accessibility service connected.")
+        (application as? OmniSyncApplication)?.mainViewModel?.addLog("[Wake detection] OmniSync accessibility service connected; listening for clicks, typing, scrolling and keys", com.omni.sync.ui.screen.LogType.INFO)
+    }
+
+    override fun onDestroy() {
+        instance = null
+        (application as? OmniSyncApplication)?.mainViewModel?.addLog("[Wake detection] Accessibility service disconnected", com.omni.sync.ui.screen.LogType.INFO)
+        super.onDestroy()
     }
 
     override fun onKeyEvent(event: KeyEvent?): Boolean {
         if (event?.action == KeyEvent.ACTION_DOWN) {
+            com.omni.sync.utils.WakeAlarmActions.stillAwake(this, automatic = true)
             when (event.keyCode) {
                 KeyEvent.KEYCODE_VOLUME_UP -> {
                     Log.d("OmniAccessibility", "Volume Up pressed.")

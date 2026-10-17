@@ -30,27 +30,6 @@ function discoverProjectRoot() {
 const PROJECT_ROOT = discoverProjectRoot();
 log(`Resolved Project Root: ${PROJECT_ROOT}`);
 
-async function runPythonOpcCommand(args, cwd = null) {
-  const targetRoot = cwd || PROJECT_ROOT;
-  log(`Requesting Hub to run OPC command: ${args.join(" ")} in ${targetRoot}`);
-  try {
-    const response = await postToHubApi("assistant/execute", {
-      Command: args[0],
-      Args: args.slice(1),
-      ProjectRoot: targetRoot
-    });
-
-    if (response.success) {
-      return response.output;
-    } else {
-      throw new Error(response.error || response.output || "Unknown OPC error");
-    }
-  } catch (error) {
-    log(`Hub OPC Execution Error: ${error.message}`);
-    throw error;
-  }
-}
-
 async function runPythonScript(scriptPath, args = []) {
   log(`Running Python script: ${scriptPath} with args: ${args.join(" ")}`);
   return new Promise((resolve, reject) => {
@@ -238,61 +217,6 @@ async function main() {
               inputSchema: { type: "object", properties: {} }
             },
             {
-              name: "quicksave",
-              description: "Save a checkpoint to the current session log via OPC",
-              inputSchema: {
-                type: "object",
-                properties: {
-                  summary: { type: "string", description: "Brief description of activity" },
-                  bullets: { type: "array", items: { type: "string" }, description: "Optional detail bullets" }
-                },
-                required: ["summary"]
-              }
-            },
-            {
-              name: "smart_search",
-              description: "Search sovereign memory and project context",
-              inputSchema: {
-                type: "object",
-                properties: {
-                  query: { type: "string", description: "The search query" },
-                  limit: { type: "integer", description: "Max results", default: 10 }
-                },
-                required: ["query"]
-              }
-            },
-            {
-              name: "opc_sync",
-              description: "Synchronize Omni Project Context (OPC) tracking",
-              inputSchema: {
-                type: "object",
-                properties: {
-                  project_root: { type: "string", description: "Optional project root override" }
-                }
-              }
-            },
-            {
-              name: "omni_setup",
-              description: "Initialize the Omni Assistant workspace (scaffold .omni and templates)",
-              inputSchema: {
-                type: "object",
-                properties: {
-                  project_root: { type: "string", description: "The project root to initialize" }
-                },
-                required: ["project_root"]
-              }
-            },
-            {
-              name: "omni_boot",
-              description: "Boot the Omni Assistant session (initialize log, prime context)",
-              inputSchema: {
-                type: "object",
-                properties: {
-                  project_root: { type: "string", description: "Optional project root override" }
-                }
-              }
-            },
-            {
               name: "browser_refresh",
               description: "Force a browser refresh. If url is provided, only matching pages refresh.",
               inputSchema: {
@@ -356,47 +280,6 @@ async function main() {
             sendResponse(req.id, { content: [{ type: "text", text: `Screenshot saved to: ${result.filePath}` }] });
           } catch (error) {
             sendResponse(req.id, { isError: true, content: [{ type: "text", text: `Error: ${error.message}` }] });
-          }
-        } else if (toolName === "quicksave") {
-          const { summary, bullets, project_root } = args;
-          try {
-            const cmdArgs = ["save", summary];
-            if (bullets && bullets.length > 0) {
-              bullets.forEach(b => { cmdArgs.push("--bullets"); cmdArgs.push(b); });
-            }
-            const output = await runPythonOpcCommand(cmdArgs, project_root);
-            sendResponse(req.id, { content: [{ type: "text", text: output }] });
-          } catch (error) {
-            sendResponse(req.id, { isError: true, content: [{ type: "text", text: `Quicksave Error: ${error.message}` }] });
-          }
-        } else if (toolName === "smart_search") {
-          const { query, limit } = args;
-          try {
-            const output = await runPythonOpcCommand(["omni:search", query, "--limit", (limit || 10).toString(), "--json"]);
-            sendResponse(req.id, { content: [{ type: "text", text: output }] });
-          } catch (error) {
-            sendResponse(req.id, { isError: true, content: [{ type: "text", text: `Omni Search Error: ${error.message}` }] });
-          }
-        } else if (toolName === "opc_sync") {
-          try {
-            const output = await runPythonOpcCommand(["omni:sync"], args.project_root);
-            sendResponse(req.id, { content: [{ type: "text", text: output }] });
-          } catch (error) {
-            sendResponse(req.id, { isError: true, content: [{ type: "text", text: `OPC Sync Error: ${error.message}` }] });
-          }
-        } else if (toolName === "omni_setup") {
-          try {
-            const output = await runPythonOpcCommand(["init"], args.project_root);
-            sendResponse(req.id, { content: [{ type: "text", text: output }] });
-          } catch (error) {
-            sendResponse(req.id, { isError: true, content: [{ type: "text", text: `Setup Error: ${error.message}` }] });
-          }
-        } else if (toolName === "omni_boot") {
-          try {
-            const output = await runPythonOpcCommand(["start"], args.project_root);
-            sendResponse(req.id, { content: [{ type: "text", text: output }] });
-          } catch (error) {
-            sendResponse(req.id, { isError: true, content: [{ type: "text", text: `Boot Error: ${error.message}` }] });
           }
         } else if (toolName === "browser_refresh") {
           const { url } = args;

@@ -1,4 +1,4 @@
-using Microsoft.AspNetCore.Builder;
+﻿using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Configuration;
@@ -9,7 +9,11 @@ using OmniSync.Hub.Presentation.Hubs;
 using OmniSync.Hub.Presentation;
 using OmniSync.Hub.Logic;
 using OmniSync.Hub.Logic.Monitoring; // For the new monitoring service
+using OmniSync.Hub.Logic.Services.AssistantCommands;
+using OmniSync.Hub.Logic.Services.Mcp;
 using System;
+using System.Net;
+using System.Net.Sockets;
 using System.IO; // Added for Path.Combine and Directory.GetCurrentDirectory()
 
 using Microsoft.Extensions.FileProviders; // Added for PhysicalFileProvider
@@ -156,34 +160,39 @@ string logFilePath = Path.Combine(AppContext.BaseDirectory, "hub_log.txt");
 string rootLogPath = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "..", "hub_log.txt");
 if (Directory.Exists(Path.GetDirectoryName(rootLogPath))) logFilePath = rootLogPath;
 
-// Clear the log file on startup if it exists
+// Keep the previous run's last messages: they are vital when investigating a crash.
+// Archive oversized logs without deleting their history; never truncate on startup.
 try
 {
-    if (File.Exists(logFilePath))
+    if (File.Exists(logFilePath) && new FileInfo(logFilePath).Length > 50 * 1024 * 1024)
     {
-        File.WriteAllText(logFilePath, string.Empty);
+        Directory.CreateDirectory(CrashHandler.LogDirectory);
+        var archivedPath = Path.Combine(CrashHandler.LogDirectory,
+            $"hub_log_{DateTime.UtcNow:yyyyMMdd_HHmmss_fff}_{Guid.NewGuid():N}.txt");
+        File.Move(logFilePath, archivedPath);
     }
 
-    // Also clear gemini_cli_debug.log
-    string debugLogPath = Path.Combine(Path.GetDirectoryName(logFilePath) ?? "", "gemini_cli_debug.log");
-    if (File.Exists(debugLogPath))
-    {
-        File.WriteAllText(debugLogPath, string.Empty);
-    }
+    File.AppendAllText(logFilePath,
+        $"{Environment.NewLine}===== OmniHub START {DateTimeOffset.Now:O} PID {Environment.ProcessId} ====={Environment.NewLine}");
 }
 catch (Exception ex)
 {
-    Console.WriteLine($"Warning: Could not clear log file at startup: {ex.Message}");
+    Console.WriteLine($"Warning: Could not prepare persistent log file: {ex.Message}");
 }
 
 builder.Logging.AddProvider(new FileLoggerProvider(logFilePath));
 
 
+// MCP server (full PC access). Resolved before Kestrel is configured so a busy port disables MCP instead of crashing the Hub.
+var mcpOptions = ResolveMcpOptions(builder.Configuration);
+
 // Configure Kestrel to listen on multiple ports
 builder.WebHost.ConfigureKestrel(options =>
 {
     options.ListenAnyIP(5000); // SignalR and APIs
-    options.ListenAnyIP(3333); // Webserver
+    options.ListenAnyIP(3333); // Webserver (Gateway routes delegate to Rust 3334 when opted in)
+    options.ListenAnyIP(GoogleHomePort); // Google Home bridge, the only port exposed through the public HTTPS tunnel
+    if (mcpOptions.Enabled) options.Listen(mcpOptions.Address, mcpOptions.Port); // MCP is served only on this port
 });
 
 // Explicitly load appsettings.json using absolute path - Make optional so it doesn't crash in production
@@ -211,6 +220,8 @@ builder.Services.AddSingleton<FileService>(provider =>
     return new FileService(noteRootPath, browseRootPath);
 });
 builder.Services.AddHttpClient();
+builder.Services.AddSingleton<UgoiraService>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<UgoiraService>());
 builder.Services.AddSingleton<CalendarService>();
 builder.Services.AddSingleton<IReminderRepository, ReminderRepository>();
 builder.Services.AddSingleton<CalendarReminderSyncService>();
@@ -218,8 +229,16 @@ builder.Services.AddSingleton<ProjectSearchService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<CalendarService>());
 builder.Services.AddHostedService(sp => sp.GetRequiredService<CalendarReminderSyncService>());
 builder.Services.AddHostedService<ReminderLifecycleService>();
+builder.Services.AddHostedService<ReminderAttentionService>();
 builder.Services.AddSingleton<GitService>();
+builder.Services.AddSingleton<IVoiceSceneService, VoiceSceneService>();
 builder.Services.AddSingleton<IMacroService, MacroService>();
+builder.Services.AddSingleton<GoogleHomeService>(provider => ActivatorUtilities.CreateInstance<GoogleHomeService>(
+    provider, provider.GetRequiredService<System.Net.Http.IHttpClientFactory>().CreateClient("GoogleHome")));
+// Voice inbox: deterministic catalogue first, then future resolver/skill fallbacks.
+builder.Services.AddAssistantCommandFoundation();
+builder.Services.AddSingleton<OmniSync.Hub.Logic.Services.VoiceInbox.VoiceInboxService>();
+builder.Services.AddHostedService<OmniSync.Hub.Logic.Services.VoiceInbox.KeepBridgeHostedService>();
 builder.Services.AddSingleton<ClipboardService>();
 builder.Services.AddSingleton<ProcessService>(provider =>
 {
@@ -260,9 +279,7 @@ builder.Services.AddSingleton<QuickActionService>(provider =>
     var configuration = provider.GetRequiredService<IConfiguration>();
     var hubContext = provider.GetRequiredService<IHubContext<RpcApiHub>>();
     var monitorService = provider.GetRequiredService<HubMonitorService>();
-    var aiCliService = provider.GetRequiredService<AiCliService>();
-    var settingsService = provider.GetRequiredService<HubSettingsService>();
-    return new QuickActionService(logger, configuration, provider, hubContext, monitorService, aiCliService, settingsService);
+    return new QuickActionService(logger, configuration, provider, hubContext, monitorService);
 });
 builder.Services.AddSingleton<CommandDispatcher>(provider => {
     var inputService = provider.GetRequiredService<InputService>();
@@ -301,13 +318,14 @@ builder.Services.AddSingleton<ShutdownService>(provider =>
 builder.Services.AddSingleton<RegistryService>();
 builder.Services.AddSingleton<ScreenshotService>();
 builder.Services.AddSingleton<LayoutCaptureService>();
-builder.Services.AddSingleton<AssistantService>();
 builder.Services.AddSingleton<PcgPersistentService>();
 builder.Services.AddSingleton<NodeRedService>();
 builder.Services.AddSingleton<HubMonitorService>();
 builder.Services.AddSingleton<BookProgressService>();
 builder.Services.AddHostedService<HubMonitorService>(provider => provider.GetRequiredService<HubMonitorService>());
 builder.Services.AddHostedService<MemoryWatchdogService>();
+builder.Services.AddHostedService<OmniMcpLiteWatchdogService>();
+builder.Services.AddHostedService<ConnectivityAlertService>();
 builder.Services.AddSingleton<HubEventSender>(provider =>
 {
     var logger = provider.GetRequiredService<ILogger<HubEventSender>>();
@@ -321,9 +339,8 @@ builder.Services.AddSingleton<HubEventSender>(provider =>
     var aiCliService = provider.GetRequiredService<AiCliService>(); // Get AiCliService
     var settingsService = provider.GetRequiredService<HubSettingsService>();
     var monitorService = provider.GetRequiredService<HubMonitorService>();
-    var assistantService = provider.GetRequiredService<AssistantService>();
 
-    return new HubEventSender(logger, hubContext, processService, inputService, audioService, shutdownService, commandDispatcher, fileService, aiCliService, settingsService, monitorService, assistantService);
+    return new HubEventSender(logger, hubContext, processService, inputService, audioService, shutdownService, commandDispatcher, fileService, aiCliService, settingsService, monitorService);
 });
 builder.Services.AddSingleton<TrayIconManager>(provider =>
 {
@@ -345,20 +362,29 @@ builder.Services.AddSingleton<TrayIconManager>(provider =>
     var macroService = provider.GetRequiredService<IMacroService>();
     var resourceOpenerService = provider.GetRequiredService<ResourceOpenerService>();
     var hubEventSender = provider.GetRequiredService<HubEventSender>();
-    var assistantService = provider.GetRequiredService<AssistantService>();
     var clipboardService = provider.GetRequiredService<ClipboardService>();
     var logger = provider.GetRequiredService<ILogger<TrayIconManager>>();
-    return new TrayIconManager(appLifetime, hubMonitorService, inputService, processService, shutdownService, registryService, settingsService, hotkeyService, keyboardHook, aiCliService, layoutCaptureService, projectLauncherService, commandDispatcher, calendarService, searchService, macroService, resourceOpenerService, hubEventSender, logger, assistantService, clipboardService);
+    return new TrayIconManager(appLifetime, hubMonitorService, inputService, processService, shutdownService, registryService, settingsService, hotkeyService, keyboardHook, aiCliService, layoutCaptureService, projectLauncherService, commandDispatcher, calendarService, searchService, macroService, resourceOpenerService, hubEventSender, logger, clipboardService);
 });
 builder.Services.AddHostedService<TrayIconManager>(provider =>
 provider.GetRequiredService<TrayIconManager>());
 
+builder.Services.AddHostedService<OmniZonesHostedService>(); // OmniZones window snapping (OmniZones.Core)
 builder.Services.AddHostedService<HubStartupService>(); // Auto-launch AI components
 builder.Services.AddHostedService<ScreenshotHostedService>();
 builder.Services.AddHostedService<UpnpService>();
 builder.Services.AddSingleton<ExternalIpService>();
 builder.Services.AddHostedService<ExternalIpService>(provider => provider.GetRequiredService<ExternalIpService>());
 builder.Services.AddSingleton<KeyboardHook>(); // Register KeyboardHook
+
+// MCP server: shell, background processes and file tools for the whole PC
+builder.Services.AddSingleton(mcpOptions);
+builder.Services.AddSingleton<OmniSync.Hub.Logic.Services.Gateway.GatewayToolManager>();
+builder.Services.AddSingleton<OmniSync.Hub.Logic.Services.Gateway.GatewaySweepService>();
+builder.Services.AddSingleton<ShellProcessRegistry>();
+builder.Services.AddSingleton<AgentCursorService>();
+builder.Services.AddSingleton<McpTools>();
+builder.Services.AddSingleton<McpEndpoint>();
 
 builder.Services.AddCors(options =>
 {
@@ -378,6 +404,8 @@ builder.Services.AddSignalR(options => {
 builder.Services.AddControllers();
 
 var app = builder.Build();
+
+app.Services.GetRequiredService<HubMonitorService>().AddLogMessage($"[MCP] {mcpOptions.Summary}");
 
 // Register Context Menu at startup
 using (var scope = app.Services.CreateScope())
@@ -403,8 +431,55 @@ app.Use(async (context, next) =>
 
 app.UseCors("AllowAll");
 
+// The MCP port serves only the MCP endpoint.
+app.Use(async (context, next) =>
+{
+    if (mcpOptions.Enabled && context.Connection.LocalPort == mcpOptions.Port)
+    {
+        await context.RequestServices.GetRequiredService<McpEndpoint>().HandleAsync(context);
+        return;
+    }
+    await next();
+});
+
+// The Google Home port is reachable from the internet through the tunnel: serve nothing but /google-home on it.
+app.Use(async (context, next) =>
+{
+    if (context.Connection.LocalPort == GoogleHomePort)
+    {
+        var monitor = context.RequestServices.GetRequiredService<HubMonitorService>();
+        monitor.AddLogMessage($"[GoogleHome] {context.Request.Method} {context.Request.Path}{context.Request.QueryString}");
+        try
+        {
+            File.AppendAllText(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "OmniSync", "google_home.log"),
+                $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} {context.Request.Method} {context.Request.Path}{context.Request.QueryString}{Environment.NewLine}");
+        }
+        catch { }
+        if (!context.Request.Path.StartsWithSegments("/google-home"))
+        {
+            context.Response.StatusCode = StatusCodes.Status404NotFound;
+            await context.Response.WriteAsync($"OmniHub: unknown path {context.Request.Path}. Google Home endpoints live under /google-home/ (auth, token, fulfillment).");
+            return;
+        }
+    }
+    await next();
+});
+
 app.UseWebSockets();
+// All pre-existing Android devices retain http://<hub>:5000/signalrhub.
+// During explicit Rust delegation, the C# listener relays external-device
+// traffic on those routes to Rust :5001 without stealing C# localhost clients.
+app.Use(async (context, next) =>
+{
+    if (AndroidRustPortBridge.ShouldHandle(context))
+    {
+        await AndroidRustPortBridge.ForwardAsync(context, app.Configuration);
+        return;
+    }
+    await next();
+});
 app.UseRouting();
+OmniSync.Hub.Logic.Services.Gateway.GatewayRoutes.UseRootRedirect(app);
 
 // Serve static files from OmniSync.Web\www
 // Try to find the folder relative to CWD (Dev) or relative to BaseDirectory (Prod)
@@ -434,6 +509,8 @@ if (webContentPath != null)
 app.UseAuthorization(); // Even if empty, it's good practice if Authorization is ever considered.
 
 app.MapControllers();
+OmniSync.Hub.Logic.Services.Gateway.GatewayRoutes.Map(app);
+OmniSync.Hub.Logic.Services.Gateway.GatewaySweepRoutes.Map(app);
 app.MapHub<RpcApiHub>("/signalrhub");
 app.MapHub<TerminalHub>("/terminalhub");
 app.MapHub<RemoteTerminalHub>("/remoteterminalhub");
@@ -460,4 +537,41 @@ catch (Exception ex)
 {
     CrashHandler.HandleCrash("MainLoopException", ex);
     throw;
+}
+
+partial class Program
+{
+    internal const int GoogleHomePort = 5055;
+
+    private static readonly int[] HubReservedPorts = { 5000, 3333, GoogleHomePort };
+
+    /// Resolves the "Mcp" config section. Any problem (bad host, reserved or busy port) disables MCP instead of stopping the Hub.
+    internal static McpOptions ResolveMcpOptions(IConfiguration config)
+    {
+        var host = config["Mcp:Host"] ?? "127.0.0.1";
+        var port = config.GetValue("Mcp:Port", 8765);
+        if (!config.GetValue("Mcp:Enabled", true))
+            return new McpOptions(false, IPAddress.Loopback, port, "MCP disabled in appsettings");
+
+        IPAddress? address = host.Equals("localhost", StringComparison.OrdinalIgnoreCase)
+            ? IPAddress.Loopback
+            : IPAddress.TryParse(host, out var parsed) ? parsed : null;
+        if (address == null)
+            return new McpOptions(false, IPAddress.Loopback, port, $"MCP disabled: invalid Mcp:Host '{host}'");
+        if (Array.IndexOf(HubReservedPorts, port) >= 0)
+            return new McpOptions(false, address, port, $"MCP disabled: port {port} is used by the Hub");
+
+        try
+        {
+            var probe = new TcpListener(address, port);
+            probe.Start();
+            probe.Stop();
+        }
+        catch (SocketException ex)
+        {
+            return new McpOptions(false, address, port, $"MCP disabled: port {port} unavailable ({ex.Message})");
+        }
+
+        return new McpOptions(true, address, port, $"MCP listening on http://{host}:{port}/mcp");
+    }
 }

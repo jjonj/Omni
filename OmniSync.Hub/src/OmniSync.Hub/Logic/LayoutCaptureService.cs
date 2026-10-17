@@ -1,107 +1,86 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
+using System.IO;
 using System.Runtime.InteropServices;
-using System.Text;
-using System.Windows.Forms;
 using OmniSync.Hub.Infrastructure.Services;
+using OmniSync.Hub.Logic.Services;
+using OmniZones.Native;
 
-namespace OmniSync.Hub.Logic
+namespace OmniSync.Hub.Logic;
+
+public class LayoutCaptureService
 {
-    public class LayoutCaptureService
+    private delegate bool EnumWindowsProc(IntPtr hwnd, IntPtr param);
+    [DllImport("user32.dll")] private static extern bool EnumWindows(EnumWindowsProc callback, IntPtr param);
+    [DllImport("user32.dll")] private static extern bool IsWindowVisible(IntPtr hwnd);
+    [DllImport("user32.dll")] private static extern bool IsIconic(IntPtr hwnd);
+    [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint pid);
+    [DllImport("dwmapi.dll")] private static extern int DwmGetWindowAttribute(IntPtr hwnd, int attr, out int value, int size);
+
+    public static List<(IntPtr Handle, string Path, string Title)> EnumerateWindows(bool includeMinimized = false)
     {
-        private delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
-
-        [DllImport("user32.dll")]
-        private static extern bool EnumDesktopWindows(IntPtr hDesktop, EnumWindowsProc lpFn, IntPtr lParam);
-
-        [DllImport("user32.dll")]
-        private static extern bool IsWindowVisible(IntPtr hWnd);
-
-        [DllImport("user32.dll", SetLastError = true)]
-        private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
-
-        [DllImport("user32.dll")]
-        private static extern int GetWindowText(IntPtr hWnd, StringBuilder lpString, int nMaxCount);
-
-        [DllImport("user32.dll")]
-        private static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
-
-        [StructLayout(LayoutKind.Sequential)]
-        private struct RECT
+        var windows = new List<(IntPtr, string, string)>();
+        EnumWindows((hwnd, _) =>
         {
-            public int Left;
-            public int Top;
-            public int Right;
-            public int Bottom;
-        }
-
-        public List<CapturedWindow> CaptureCurrentLayout()
-        {
-            var windows = new List<CapturedWindow>();
-
-            EnumDesktopWindows(IntPtr.Zero, (hWnd, lParam) =>
+            if (!IsWindowVisible(hwnd) || (!includeMinimized && IsIconic(hwnd))) return true;
+            if (DwmGetWindowAttribute(hwnd, 14, out var cloaked, sizeof(int)) == 0 && cloaked != 0) return true;
+            if ((!includeMinimized || !IsIconic(hwnd)) && (WindowTools.Frame(hwnd) is not { } frame || frame.W < 100 || frame.H < 80)) return true;
+            var title = WindowTools.Title(hwnd);
+            if (string.IsNullOrWhiteSpace(title)) return true;
+            GetWindowThreadProcessId(hwnd, out var pid);
+            if (pid == Environment.ProcessId) return true;
+            try
             {
-                if (IsWindowVisible(hWnd))
-                {
-                    GetWindowRect(hWnd, out RECT rect);
-                    int width = rect.Right - rect.Left;
-                    int height = rect.Bottom - rect.Top;
-
-                    if (width > 100 && height > 100) // Ignore tiny/hidden windows
-                    {
-                        GetWindowThreadProcessId(hWnd, out uint pid);
-                        try
-                        {
-                            var proc = Process.GetProcessById((int)pid);
-                            var path = proc.MainModule?.FileName;
-                            
-                            if (string.IsNullOrEmpty(path)) return true;
-
-                            // Ignore Hub itself and system shells
-                            if (path.EndsWith("OmniSync.Hub.exe", StringComparison.OrdinalIgnoreCase)) return true;
-                            if (path.EndsWith("explorer.exe", StringComparison.OrdinalIgnoreCase))
-                            {
-                                // Handle Explorer folders if possible
-                                string folderPath = WindowDetector.GetPathForExplorerWindow(hWnd);
-                                if (!string.IsNullOrEmpty(folderPath))
-                                {
-                                    windows.Add(new CapturedWindow
-                                    {
-                                        Type = ProjectActionType.OpenFolder,
-                                        Path = folderPath,
-                                        Layout = LayoutHelper.FromRectangle(new Rectangle(rect.Left, rect.Top, width, height))
-                                    });
-                                }
-                            }
-                            else
-                            {
-                                windows.Add(new CapturedWindow
-                                {
-                                    Type = ProjectActionType.RunProgram,
-                                    Path = path,
-                                    Layout = LayoutHelper.FromRectangle(new Rectangle(rect.Left, rect.Top, width, height))
-                                });
-                            }
-                        }
-                        catch
-                        {
-                            // Access denied or process exited
-                        }
-                    }
-                }
-                return true;
-            }, IntPtr.Zero);
-
-            return windows;
-        }
+                using var process = Process.GetProcessById((int)pid);
+                var path = process.MainModule?.FileName;
+                if (!string.IsNullOrEmpty(path)) windows.Add((hwnd, path, title));
+            }
+            catch { }
+            return true;
+        }, IntPtr.Zero);
+        return windows;
     }
 
-    public class CapturedWindow
+    public List<CapturedWindow> CaptureCurrentLayout()
     {
-        public ProjectActionType Type { get; set; }
-        public string Path { get; set; } = "";
-        public WindowLayout Layout { get; set; } = new();
+        var captured = new List<CapturedWindow>();
+        var zOrder = 0;
+        foreach (var window in EnumerateWindows())
+        {
+            if (WindowTools.Frame(window.Handle) is not { } frame) continue;
+            var path = window.Path;
+            var type = ProjectActionType.RunProgram;
+            var exe = Path.GetFileNameWithoutExtension(path).ToLowerInvariant();
+            if (exe == "explorer")
+            {
+                path = WindowDetector.GetPathForExplorerWindow(window.Handle);
+                if (string.IsNullOrWhiteSpace(path)) continue;
+                type = ProjectActionType.OpenFolder;
+            }
+            else if (ProjectLauncherService.IsTerminal(path)) type = ProjectActionType.Terminal;
+            var layout = LayoutHelper.FromRectangle(new Rectangle((int)frame.X, (int)frame.Y, (int)frame.W, (int)frame.H));
+            layout.Maximized = WindowTools.IsMaximized(window.Handle);
+            var zone = OmniZonesHostedService.Instance?.CaptureAssignment(window.Handle);
+            if (zone is { } assignment) { layout.ZoneLayoutId = assignment.LayoutId; layout.ZoneId = assignment.ZoneId; }
+            captured.Add(new CapturedWindow { Type = type, Path = path, WindowTitle = window.Title, Layout = layout, SnapshotZOrder = zOrder++ });
+        }
+        return captured;
     }
+
+    public List<ProjectAction> CaptureSetupActions() => CaptureCurrentLayout().ConvertAll(w => new ProjectAction
+    {
+        Type = w.Type, Path = w.Path, WindowTitle = w.WindowTitle, Layout = w.Layout,
+        IsCaptured = true, ReuseWindow = w.Type != ProjectActionType.Terminal, SnapshotZOrder = w.SnapshotZOrder
+    });
+}
+
+public class CapturedWindow
+{
+    public ProjectActionType Type { get; set; }
+    public string Path { get; set; } = "";
+    public string WindowTitle { get; set; } = "";
+    public int SnapshotZOrder { get; set; }
+    public WindowLayout Layout { get; set; } = new();
 }

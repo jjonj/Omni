@@ -21,6 +21,7 @@ function renderNav() {
 
         const navItems = [
             { name: 'Hub', href: root + 'index.html' },
+            { name: 'Gateway', href: root + 'gateway/' },
             { name: 'Scheduler', href: root + 'Scheduler.html' },
             { name: 'TFT', href: root + 'TFT.html' },
             { name: 'Test', href: root + 'Test.html' },

@@ -21,17 +21,20 @@ namespace OmniSync.Hub.Logic.Services
         private readonly InputService _inputService;
         private readonly ClipboardService _clipboardService;
         private readonly HubMonitorService _monitorService;
+        private readonly IVoiceSceneService? _voiceScenes;
 
         public MacroService(
             ProcessService processService,
             InputService inputService,
             ClipboardService clipboardService,
-            HubMonitorService monitorService)
+            HubMonitorService monitorService,
+            IVoiceSceneService? voiceScenes = null)
         {
             _processService = processService;
             _inputService = inputService;
             _clipboardService = clipboardService;
             _monitorService = monitorService;
+            _voiceScenes = voiceScenes;
         }
 
         public async Task ExecuteMacroAsync(MacroConfig macro)
@@ -60,6 +63,11 @@ namespace OmniSync.Hub.Logic.Services
                 {
                     switch (command)
                     {
+                        case "scene":
+                            if (_voiceScenes is null)
+                                throw new InvalidOperationException("Voice scenes service is unavailable.");
+                            await _voiceScenes.ExecuteAsync(args);
+                            break;
                         case "send":
                             _inputService.SendKeys(NormalizeSendKeys(ExpandVariables(args)));
                             break;

@@ -39,6 +39,8 @@ import androidx.core.view.WindowInsetsControllerCompat
 import androidx.media3.common.MediaItem
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
+import com.omni.sync.OmniSyncApplication
+import com.omni.sync.data.repository.HubMediaAuth
 import androidx.media3.ui.PlayerView
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -136,9 +138,8 @@ fun VideoPlayerScreen(
 
     // Initialize ExoPlayer
     val exoPlayer = remember {
-        ExoPlayer.Builder(context).build().apply {
-            playWhenReady = true
-        }
+        HubMediaAuth.createPlayer(context, (context.applicationContext as OmniSyncApplication).mainViewModel)
+            .apply { playWhenReady = true }
     }
 
     // Prepare the MediaSource when videoUrl or playlist changes

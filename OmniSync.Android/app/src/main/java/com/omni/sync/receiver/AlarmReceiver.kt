@@ -51,10 +51,18 @@ class AlarmReceiver : BroadcastReceiver() {
                     maxRepetitions = intent.getIntExtra("MAX_REPETITIONS", 6)
                 )
                 
-                AlarmScheduler.scheduleAlarm(context, alarmId, alarmData, config)
+                AlarmScheduler.scheduleAlarm(context, alarmId, alarmData, config, forceNextDay = true)
                 Log.d("AlarmReceiver", "Rescheduled alarm $alarmId for tomorrow.")
             }
 
+            if (!repeatDaily && !isSnooze) {
+                val prefs = context.getSharedPreferences("alarm_prefs", Context.MODE_PRIVATE)
+                val gson = Gson()
+                val alarms = AlarmStore.load(prefs, gson)
+                if (alarms.any { it.id == alarmId && it.nextTriggerOverride != null }) {
+                    AlarmStore.save(prefs, gson, alarms.map { if (it.id == alarmId) it.copy(nextTriggerOverride = null) else it })
+                }
+            }
             // 2. Start the Service to play sound
             val serviceIntent = Intent(context, AlarmService::class.java).apply {
                 action = "START_ALARM"

@@ -4,15 +4,11 @@ namespace OmniSync.Hub.Logic.Services.AssistantCommands;
 
 public sealed class DeterministicCommandVoiceHandler : IVoiceTextHandler
 {
-    private readonly AssistantCommandRegistry _registry;
-    private readonly AssistantCommandScheduler _scheduler;
+    private readonly AssistantRequestService _requests;
 
-    public DeterministicCommandVoiceHandler(
-        AssistantCommandRegistry registry,
-        AssistantCommandScheduler scheduler)
+    public DeterministicCommandVoiceHandler(AssistantRequestService requests)
     {
-        _registry = registry;
-        _scheduler = scheduler;
+        _requests = requests;
     }
 
     public string Name => "Command";
@@ -21,35 +17,65 @@ public sealed class DeterministicCommandVoiceHandler : IVoiceTextHandler
         VoiceInboxItem item,
         CancellationToken cancellationToken)
     {
-        var now = DateTimeOffset.Now;
-        var modifierBaseTime = item.OccurredAt ?? now;
-        var modifiers = ExecutionModifierParser.Parse(item.Text, modifierBaseTime);
-        var match = _registry.TryResolve(modifiers.CommandText);
-        if (match is null)
+        var source = ToSource(item);
+        var request = new AssistantRequest(
+            item.RequestId ?? Guid.NewGuid(),
+            item.Text,
+            source,
+            item.SourceId,
+            item.OccurredAt ?? item.ReceivedAt,
+            item.ReceivedAt,
+            item.ConversationId,
+            item.DryRun);
+
+        var submission = await _requests.SubmitAsync(request, cancellationToken);
+        if (submission.State == RunState.Unhandled)
             return null;
 
-        var descriptor = match.Command.Descriptor;
-        if (descriptor.Host == AssistantExecutionHost.Android)
-            return null;
-
-        if (item.IsBacklog &&
-            !descriptor.QueuePolicy.RunFromBacklog)
+        var summary = submission.State switch
         {
-            return new VoiceHandlerResult(
-                $"Skipped queued {descriptor.Id}; it is configured not to run from a startup backlog.");
-        }
+            RunState.Scheduled => $"Scheduled {submission.CommandId}.",
+            RunState.Accepted => $"Accepted {submission.CommandId}.",
+            RunState.Resolved => $"Resolved {submission.CommandId} ({submission.Decision}).",
+            RunState.Skipped => submission.Decision,
+            RunState.NeedsClarification => submission.Decision,
+            RunState.Failed => submission.Decision,
+            _ => submission.Decision
+        };
 
-        if (modifiers.RunAt is { } runAt &&
-            runAt > now.AddMilliseconds(500))
+        return new VoiceHandlerResult(
+            summary,
+            submission.RunId,
+            submission.State.ToString(),
+            submission.CommandId,
+            submission.Decision);
+    }
+
+    private static AssistantSource ToSource(VoiceInboxItem item)
+    {
+        var normalized = item.Source.Trim().ToLowerInvariant();
+        return normalized switch
         {
-            _scheduler.Schedule(match, runAt);
-            return new VoiceHandlerResult(
-                $"Scheduled {descriptor.Id} for {runAt.LocalDateTime:g}.");
-        }
-
-        var result = await _registry.ExecuteAsync(
-            match,
-            cancellationToken);
-        return new VoiceHandlerResult(result.Summary);
+            "android-voice" => new(
+                AssistantSourceKind.AndroidVoice,
+                item.SourceId,
+                AssistantTrustLevel.Trusted),
+            "google-keep" => new(
+                AssistantSourceKind.Keep,
+                null,
+                AssistantTrustLevel.Normal),
+            "pc-voice" => new(
+                AssistantSourceKind.PcVoice,
+                item.SourceId,
+                AssistantTrustLevel.Trusted),
+            "resolver" => new(
+                AssistantSourceKind.Resolver,
+                item.SourceId,
+                AssistantTrustLevel.Trusted),
+            _ => new(
+                AssistantSourceKind.Api,
+                item.SourceId,
+                AssistantTrustLevel.Normal)
+        };
     }
 }

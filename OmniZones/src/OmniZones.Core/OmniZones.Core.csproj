@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    OmniZones core: FancyZones-style window zones. No dependency on the rest of Omni.
+    Used by the Omni Hub (hosted) and by the standalone OmniZones.App tray app.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>OmniZones</RootNamespace>
+    <AssemblyName>OmniZones.Core</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Using Include="System.IO" />
+  </ItemGroup>
+
+</Project>

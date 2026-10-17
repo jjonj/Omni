@@ -14,6 +14,7 @@ import com.microsoft.signalr.HubConnection
 import com.microsoft.signalr.HubConnectionBuilder
 import com.omni.sync.OmniSyncApplication
 import com.omni.sync.service.OmniAccessibilityService
+import com.omni.sync.update.AndroidUpdateReceiver
 import com.omni.sync.viewmodel.MainViewModel
 import com.omni.sync.utils.NetworkDebugger
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -73,13 +74,135 @@ data class AiMessage(
     val isTerminal: Boolean = false
 )
 
-data class AgentSessionSummaryData(
-    @SerializedName("Id") val id: String = "",
-    @SerializedName("Provider") val provider: String = "",
-    @SerializedName("Title") val title: String = "",
-    @SerializedName("Modified") val modified: String = "",
-    @SerializedName("Cwd") val cwd: String = ""
+data class AssistantVoiceAck(
+    @SerializedName(value = "summary", alternate = ["Summary"]) val summary: String = "",
+    @SerializedName(value = "runId", alternate = ["RunId"]) val runId: String? = null,
+    @SerializedName(value = "runState", alternate = ["RunState"]) val runState: String? = null,
+    @SerializedName(value = "commandId", alternate = ["CommandId"]) val commandId: String? = null,
+    @SerializedName(value = "decision", alternate = ["Decision"]) val decision: String? = null
 )
+
+data class AssistantRunUpdateData(
+    @SerializedName(value = "runId", alternate = ["RunId"]) val runId: String = "",
+    @SerializedName(value = "requestId", alternate = ["RequestId"]) val requestId: String = "",
+    @SerializedName(value = "commandId", alternate = ["CommandId"]) val commandId: String? = null,
+    @SerializedName(value = "state", alternate = ["State"]) val state: String = "",
+    @SerializedName(value = "reason", alternate = ["Reason"]) val reason: String? = null,
+    @SerializedName(value = "summary", alternate = ["Summary"]) val summary: String? = null
+)
+
+data class AssistantDeviceArgumentData(
+    val name: String,
+    val type: String,
+    val required: Boolean,
+    val description: String
+)
+
+data class AssistantDeviceExampleData(
+    val utterance: String,
+    val arguments: Map<String, String> = emptyMap()
+)
+
+data class AssistantDeviceCommandDescriptorData(
+    val id: String,
+    val version: Int,
+    val description: String,
+    val patterns: List<String>,
+    val arguments: List<AssistantDeviceArgumentData> = emptyList(),
+    val examples: List<AssistantDeviceExampleData> = emptyList(),
+    val acceptsRelativeTime: Boolean,
+    val maxDelayMillis: Long?,
+    val risk: String,
+    val minTrustWithoutConfirmation: String,
+    val idempotent: Boolean,
+    val timeoutSeconds: Int,
+    val concurrencyKey: String? = null
+)
+
+data class RemoteAssistantInvocationData(
+    val runId: String = "",
+    val commandId: String = "",
+    val arguments: Map<String, Any?> = emptyMap(),
+    val runAtUnixMillis: Long? = null
+)
+
+data class AgentCapabilitiesData(
+    @SerializedName("CanSend") val canSend: Boolean = false,
+    @SerializedName("CanQueue") val canQueue: Boolean = false,
+    @SerializedName("CanSendParallel") val canSendParallel: Boolean = false,
+    @SerializedName("CanInterrupt") val canInterrupt: Boolean = false,
+    @SerializedName("CanAnswerQuestions") val canAnswerQuestions: Boolean = false,
+    @SerializedName("CanApproveTools") val canApproveTools: Boolean = false,
+    @SerializedName("CanChangeModel") val canChangeModel: Boolean = false,
+    @SerializedName("CanObserveLiveEvents") val canObserveLiveEvents: Boolean = false,
+    @SerializedName("CanOpenTerminal") val canOpenTerminal: Boolean = false,
+    @SerializedName("Backend") val backend: String = "",
+    @SerializedName("Note") val note: String = ""
+)
+
+data class AgentQueuedMessageData(
+    @SerializedName("Id") val id: String = "",
+    @SerializedName("Text") val text: String = "",
+    @SerializedName("At") val at: String = "",
+    /** "after-turn" (Hub sends it when the turn ends) or "pc-pickup" (waiting for the open PC client). */
+    @SerializedName("Delivery") val delivery: String = "after-turn"
+)
+
+/** One way a message can reach the session right now; the Hub lists the default first. */
+data class AgentSendOptionData(
+    @SerializedName("Mode") val mode: String = "",
+    @SerializedName("Label") val label: String = "",
+    @SerializedName("Hint") val hint: String = ""
+)
+
+data class AgentQuestionData(
+    @SerializedName("Text") val text: String = "",
+    @SerializedName("Options") val options: List<String> = emptyList()
+)
+
+/** Attention state shared by summaries and details; derived by the Hub. */
+interface AgentSessionState {
+    val id: String
+    val provider: String
+    val title: String
+    val cwd: String
+    val model: String
+    val modified: String
+    val state: String
+    val stateSince: String
+    val activity: String
+    val liveElsewhere: Boolean
+    val omniTurn: Boolean
+    val error: String?
+    val question: AgentQuestionData?
+    val queued: List<AgentQueuedMessageData>?
+    val openIn: String?
+    val sendOptions: List<AgentSendOptionData>?
+    val capabilities: AgentCapabilitiesData?
+    val terminalCommand: String
+}
+
+data class AgentSessionSummaryData(
+    @SerializedName("Id") override val id: String = "",
+    @SerializedName("Provider") override val provider: String = "",
+    @SerializedName("Title") override val title: String = "",
+    @SerializedName("SessionId") val sessionId: String = "",
+    @SerializedName("Modified") override val modified: String = "",
+    @SerializedName("Cwd") override val cwd: String = "",
+    @SerializedName("Model") override val model: String = "",
+    @SerializedName("State") override val state: String = "idle",
+    @SerializedName("StateSince") override val stateSince: String = "",
+    @SerializedName("Activity") override val activity: String = "",
+    @SerializedName("LiveElsewhere") override val liveElsewhere: Boolean = false,
+    @SerializedName("OmniTurn") override val omniTurn: Boolean = false,
+    @SerializedName("Error") override val error: String? = null,
+    @SerializedName("Question") override val question: AgentQuestionData? = null,
+    @SerializedName("Queued") override val queued: List<AgentQueuedMessageData>? = null,
+    @SerializedName("OpenIn") override val openIn: String? = null,
+    @SerializedName("SendOptions") override val sendOptions: List<AgentSendOptionData>? = null,
+    @SerializedName("Capabilities") override val capabilities: AgentCapabilitiesData? = null,
+    @SerializedName("TerminalCommand") override val terminalCommand: String = ""
+) : AgentSessionState
 
 data class AgentEventData(
     @SerializedName("Kind") val kind: String = "output",
@@ -91,20 +214,32 @@ data class AgentEventData(
 )
 
 data class AgentSessionDetailData(
-    @SerializedName("Id") val id: String = "",
-    @SerializedName("Provider") val provider: String = "",
-    @SerializedName("Title") val title: String = "",
+    @SerializedName("Id") override val id: String = "",
+    @SerializedName("Provider") override val provider: String = "",
+    @SerializedName("Title") override val title: String = "",
     @SerializedName("SessionId") val sessionId: String = "",
-    @SerializedName("Cwd") val cwd: String = "",
-    @SerializedName("Model") val model: String = "",
-    @SerializedName("Modified") val modified: String = "",
+    @SerializedName("Cwd") override val cwd: String = "",
+    @SerializedName("Model") override val model: String = "",
+    @SerializedName("Modified") override val modified: String = "",
     @SerializedName("Events") val events: List<AgentEventData> = emptyList(),
     @SerializedName("TotalEvents") val totalEvents: Int = 0,
     @SerializedName("AvailableEvents") val availableEvents: Int = 0,
     @SerializedName("HasMoreBefore") val hasMoreBefore: Boolean = false,
     @SerializedName("NextBefore") val nextBefore: Int = 0,
-    @SerializedName("Status") val status: String = ""
-)
+    @SerializedName("Status") val status: String = "",
+    @SerializedName("State") override val state: String = "idle",
+    @SerializedName("StateSince") override val stateSince: String = "",
+    @SerializedName("Activity") override val activity: String = "",
+    @SerializedName("LiveElsewhere") override val liveElsewhere: Boolean = false,
+    @SerializedName("OmniTurn") override val omniTurn: Boolean = false,
+    @SerializedName("Error") override val error: String? = null,
+    @SerializedName("Question") override val question: AgentQuestionData? = null,
+    @SerializedName("Queued") override val queued: List<AgentQueuedMessageData>? = null,
+    @SerializedName("OpenIn") override val openIn: String? = null,
+    @SerializedName("SendOptions") override val sendOptions: List<AgentSendOptionData>? = null,
+    @SerializedName("Capabilities") override val capabilities: AgentCapabilitiesData? = null,
+    @SerializedName("TerminalCommand") override val terminalCommand: String = ""
+) : AgentSessionState
 
 data class AgentSendStatusData(
     @SerializedName("Id") val id: String = "",
@@ -167,6 +302,8 @@ class SignalRClient(
     @Volatile
     private var lastSuccessfulHubUrl: String? = sharedPrefs.getString(KEY_LAST_CONNECTED_HUB_URL, null)
     private var handlersRegistered = false
+    @Volatile
+    private var isHubAuthenticated = false
 
     @Volatile
     var isUpdatingClipboardInternally: Boolean = false
@@ -175,7 +312,8 @@ class SignalRClient(
     private val _connectionState = MutableStateFlow("Disconnected")
     val connectionState: StateFlow<String> = _connectionState
 
-    private val _reminders = MutableStateFlow<List<ReminderData>>(emptyList())
+    private val _reminders = MutableStateFlow(com.omni.sync.utils.ReminderDelivery.load(context))
+    private val reminderActionInFlight = AtomicBoolean(false)
     val reminders: StateFlow<List<ReminderData>> = _reminders
 
     private val _currentBaseUrl = MutableStateFlow("")
@@ -264,6 +402,17 @@ class SignalRClient(
     val agentSessionDetail: StateFlow<AgentSessionDetailData?> = _agentSessionDetail
 
     val agentSendStatus = MutableSharedFlow<AgentSendStatusData>(extraBufferCapacity = 8)
+    val agentSessionsChanged = MutableSharedFlow<Unit>(extraBufferCapacity = 4)
+
+    init {
+        // Keep agent attention state (and its notifications) current while the Agents screen is closed.
+        coroutineScope.launch {
+            while (true) {
+                delay(45_000)
+                requestAgentSessions()
+            }
+        }
+    }
 
     fun emitAgentSendStatus(status: AgentSendStatusData) {
         agentSendStatus.tryEmit(status)
@@ -331,6 +480,13 @@ class SignalRClient(
     }
 
     init {
+        coroutineScope.launch {
+            while (true) {
+                delay(10_000)
+                flushReminderActions()
+                refreshReminders()
+            }
+        }
         observeRemoteTerminalForAiUi()
     }
 
@@ -420,8 +576,8 @@ class SignalRClient(
         if (_selectedPid.value == REMOTE_TERMINAL_PID) setSelectedPid(-1)
     }
 
-    private fun startRemoteTerminalForAiUi(command: String, workspace: String?) {
-        if (_isStartingSession) return
+    private fun startRemoteTerminalForAiUi(command: String, workspace: String?, replace: Boolean = false) {
+        if (_isStartingSession && !replace) return
         _isStartingSession = true
         isStartingSessionFlow.value = true
         messageQueue.clear()
@@ -432,7 +588,7 @@ class SignalRClient(
         )
         setSelectedPid(REMOTE_TERMINAL_PID)
         updateSessionStatus(REMOTE_TERMINAL_PID, "Starting new session...")
-        remoteTerminalClient.startSession(command, workspace ?: DEFAULT_REMOTE_WORKSPACE)
+        remoteTerminalClient.startSession(command, workspace ?: DEFAULT_REMOTE_WORKSPACE, replace = replace)
     }
 
     fun getRetryDelay(attempt: Int): Long {
@@ -539,21 +695,8 @@ class SignalRClient(
     }
 
     private fun resolveCandidateUrls(): List<String> {
-        val localUrl = mainViewModel.appConfig.value.hubUrl.trim()
-        val remoteUrl = "http://${mainViewModel.appConfig.value.wanIp}:5000/signalrhub".trim()
-
-        val ordered = mutableListOf<String>()
-        if (!lastSuccessfulHubUrl.isNullOrBlank()) ordered.add(lastSuccessfulHubUrl!!)
-
-        if (isWifiConnected()) {
-            ordered.add(localUrl)
-            ordered.add(remoteUrl)
-        } else {
-            ordered.add(remoteUrl)
-            ordered.add(localUrl)
-        }
-
-        return ordered.filter { it.isNotBlank() }.distinct()
+        val config = mainViewModel.appConfig.value
+        return HubConnectionTargets.resolve(config.hubUrl, config.wanIp, isWifiConnected())
     }
 
     /**
@@ -601,6 +744,7 @@ class SignalRClient(
         mainViewModel.addLog("Attempting connection: $url", com.omni.sync.ui.screen.LogType.INFO)
 
         val connection = HubConnectionBuilder.create(url).build()
+        isHubAuthenticated = false
         hubConnection = connection
 
         val termConnection = HubConnectionBuilder.create(terminalHubUrl).build()
@@ -663,6 +807,7 @@ class SignalRClient(
             return
         }
 
+        isHubAuthenticated = false
         val reason = error?.message ?: "Unknown reason"
         _connectionState.value = "Disconnected: $reason"
         mainViewModel.setConnected(false)
@@ -684,8 +829,6 @@ class SignalRClient(
             return
         }
 
-        // Suspect sleep if disconnected (e.g. PC shutdown at night)
-        mainViewModel.startSleep()
         mainViewModel.addLog("Connection closed. Reason: $reason. Starting auto-reconnect...", com.omni.sync.ui.screen.LogType.WARNING)
         scheduleReconnect("Closed: $reason")
     }
@@ -766,6 +909,65 @@ class SignalRClient(
     private fun registerHubHandlers() {
         if (handlersRegistered) return
         handlersRegistered = true
+        hubConnection?.on("RemindersChanged", { refreshReminders() })
+
+        hubConnection?.on("AssistantRunUpdated", { update: AssistantRunUpdateData ->
+            val message = update.summary ?: update.reason ?: update.state
+            when (update.state) {
+                "Succeeded" -> {
+                    mainViewModel.addLog(
+                        "[Assistant] ${update.commandId ?: "command"} succeeded: $message",
+                        com.omni.sync.ui.screen.LogType.SUCCESS
+                    )
+                    com.omni.sync.logic.assistant.AssistantFeedback.notify(
+                        context,
+                        "Jarvis completed",
+                        message,
+                        update.runId
+                    )
+                }
+                "Failed", "Interrupted" -> {
+                    mainViewModel.addLog(
+                        "[Assistant] ${update.commandId ?: "command"} ${update.state.lowercase()}: $message",
+                        com.omni.sync.ui.screen.LogType.ERROR
+                    )
+                    com.omni.sync.logic.assistant.AssistantFeedback.notify(
+                        context,
+                        "Jarvis ${update.state.lowercase()}",
+                        message,
+                        update.runId
+                    )
+                }
+                "Skipped", "NeedsClarification", "Cancelled" -> {
+                    mainViewModel.addLog(
+                        "[Assistant] ${update.commandId ?: "command"} ${update.state}: $message",
+                        com.omni.sync.ui.screen.LogType.WARNING
+                    )
+                    com.omni.sync.logic.assistant.AssistantFeedback.notify(
+                        context,
+                        "Jarvis ${update.state}",
+                        message,
+                        update.runId
+                    )
+                }
+            }
+        }, AssistantRunUpdateData::class.java)
+
+        hubConnection?.on(
+            "ExecuteAssistantCommand",
+            { invocation: RemoteAssistantInvocationData ->
+                handleRemoteAssistantInvocation(invocation, schedule = false)
+            },
+            RemoteAssistantInvocationData::class.java
+        )
+
+        hubConnection?.on(
+            "ScheduleAssistantCommand",
+            { invocation: RemoteAssistantInvocationData ->
+                handleRemoteAssistantInvocation(invocation, schedule = true)
+            },
+            RemoteAssistantInvocationData::class.java
+        )
 
         hubConnection?.on("AndroidUpdateRequested", { requestId: String ->
             val activeBaseUrl = mainViewModel.getBaseUrl()
@@ -1059,6 +1261,7 @@ class SignalRClient(
                 val sessions: List<AgentSessionSummaryData> = gson.fromJson(sessionsJson, type)
                 Log.d("SignalRClient", "ReceiveAgentSessions: ${sessions.size} transcripts")
                 _agentSessions.value = sessions
+                com.omni.sync.utils.AgentAttentionNotifier.onSessions(context, sessions)
             } catch (e: Exception) {
                 Log.e("SignalRClient", "Error parsing agent sessions", e)
             }
@@ -1072,6 +1275,11 @@ class SignalRClient(
             } catch (e: Exception) {
                 Log.e("SignalRClient", "Error parsing agent session detail", e)
             }
+        }, String::class.java)
+
+        hubConnection?.on("AgentSessionsChanged", { _: String ->
+            requestAgentSessions()
+            agentSessionsChanged.tryEmit(Unit)
         }, String::class.java)
 
         hubConnection?.on("ReceiveAgentSendStatus", { statusJson: String ->
@@ -1459,10 +1667,51 @@ class SignalRClient(
         }
     }
 
-    fun sendAgentMessage(id: String, message: String) {
-        if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
-            hubConnection?.send("SendAgentMessage", id, message)
+    /** Returns false when the Hub is not connected, so callers can say so instead of silently dropping. */
+    /** [mode]: "auto" (send now or queue while a turn runs), "queue", or "now" (parallel turn while another client is mid-turn). */
+    fun sendAgentMessage(id: String, message: String, mode: String = "auto"): Boolean =
+        sendAgentControl("SendAgentMessage", id, message, mode)
+
+    fun cancelQueuedAgentMessage(id: String, queuedId: String): Boolean = sendAgentControl("CancelQueuedAgentMessage", id, queuedId)
+
+    fun retryAgentTurn(id: String): Boolean = sendAgentControl("RetryAgentTurn", id)
+
+    fun interruptAgentTurn(id: String): Boolean = sendAgentControl("InterruptAgentTurn", id)
+
+    fun createAgentSession(provider: String, cwd: String, message: String): Boolean =
+        sendAgentControl("CreateAgentSession", provider, cwd, message)
+
+    /** Omni-side title; blank restores the provider's own title. */
+    fun renameAgentSession(id: String, title: String): Boolean = sendAgentControl("RenameAgentSession", id, title)
+
+    /** Permanently deletes the session's transcript files on the PC. */
+    fun deleteAgentSession(id: String): Boolean = sendAgentControl("DeleteAgentSession", id)
+
+    private fun sendAgentControl(method: String, vararg arguments: Any): Boolean {
+        val connection = hubConnection
+        if (connection?.connectionState != com.microsoft.signalr.HubConnectionState.CONNECTED) return false
+        return try {
+            connection.send(method, *arguments)
+            true
+        } catch (error: Exception) {
+            Log.e("SignalRClient", "Agent control $method failed", error)
+            false
         }
+    }
+
+    /** Raw terminal escape hatch: run the provider's interactive resume command in the session folder. */
+    fun openAgentTerminal(command: String, workspace: String) {
+        startRemoteTerminalForAiUi(command, workspace.ifBlank { null }, replace = true)
+        mainViewModel.navigateTo(com.omni.sync.viewmodel.AppScreen.AGENT_TERMINAL)
+    }
+
+    /** New raw terminal from the Agents screen; opens the terminal view without leaving it. */
+    fun startAgentTerminal(command: String, workspace: String): Boolean {
+        if (remoteTerminalClient.connectionState.value != "Connected") return false
+        if (command.isNotBlank()) setTerminalLauncher(command)
+        startRemoteTerminalForAiUi(command.ifBlank { _terminalLauncher.value }, workspace.ifBlank { null }, replace = true)
+        mainViewModel.navigateTo(com.omni.sync.viewmodel.AppScreen.AGENT_TERMINAL)
+        return true
     }
 
     fun switchAiSession(pid: Int) {
@@ -1511,6 +1760,297 @@ class SignalRClient(
             _isTriggeringTellPcLocal = true
             coroutineScope.launch { _isTriggeringTellPc.emit(Unit) }
             hubConnection?.send("TriggerTellPc")
+        }
+    }
+
+    enum class VoiceMode { JARVIS, TYPE }
+
+    private val _voiceCaptureRequests = MutableSharedFlow<VoiceMode>(extraBufferCapacity = 1)
+    val voiceCaptureRequests = _voiceCaptureRequests.asSharedFlow()
+
+    // A single Android recognizer UI may be active at once. Dashboard, Settings and
+    // quick actions all share this gate, including during Activity recreation.
+    private val voiceCaptureLock = Any()
+    private var voiceCaptureActive = false
+    private var voiceCaptureStartedAt = 0L
+
+    // Held when requested while the UI isn't collecting yet (e.g. a notification cold start).
+    @Volatile private var pendingVoiceMode: VoiceMode? = null
+
+    fun requestVoiceCapture(mode: VoiceMode) {
+        synchronized(voiceCaptureLock) {
+            val now = android.os.SystemClock.elapsedRealtime()
+            if (voiceCaptureActive && now - voiceCaptureStartedAt < 60_000L) {
+                mainViewModel.addLog("[Voice] Recognition already in progress; ignoring duplicate tap.", com.omni.sync.ui.screen.LogType.INFO)
+                return
+            }
+            voiceCaptureActive = true
+            voiceCaptureStartedAt = now
+            if (_voiceCaptureRequests.subscriptionCount.value == 0 ||
+                !_voiceCaptureRequests.tryEmit(mode)
+            ) {
+                pendingVoiceMode = mode
+            }
+        }
+    }
+
+    fun consumePendingVoiceCapture(): VoiceMode? = synchronized(voiceCaptureLock) {
+        val mode = pendingVoiceMode
+        pendingVoiceMode = null
+        mode
+    }
+
+    fun completeVoiceCapture() {
+        synchronized(voiceCaptureLock) {
+            pendingVoiceMode = null
+            voiceCaptureActive = false
+        }
+    }
+
+    private fun advertiseAssistantCommands() {
+        val connection = hubConnection ?: return
+        if (!isHubAuthenticated ||
+            connection.connectionState != com.microsoft.signalr.HubConnectionState.CONNECTED
+        ) return
+
+        val deviceId = android.provider.Settings.Secure.getString(
+            context.contentResolver,
+            android.provider.Settings.Secure.ANDROID_ID
+        ) ?: "android"
+
+        val descriptors = listOf(
+            AssistantDeviceCommandDescriptorData(
+                id = "wake.pc",
+                version = 1,
+                description = "Wake the configured PC using Wake-on-LAN.",
+                patterns = listOf(
+                    """^(?:please\s+)?(?:turn|switch|power)\s+(?:my\s+|the\s+)?(?:pc|computer)\s+on\s*[.!?]?\s*$""",
+                    """^(?:please\s+)?(?:turn|switch|power)\s+on\s+(?:my\s+|the\s+)?(?:pc|computer)\s*[.!?]?\s*$""",
+                    """^(?:please\s+)?wake\s+(?:up\s+)?(?:my\s+|the\s+)?(?:pc|computer)\s*[.!?]?\s*$""",
+                    """^(?:please\s+)?(?:boot|start)\s+(?:up\s+)?(?:my\s+|the\s+)?(?:pc|computer)\s*[.!?]?\s*$"""
+                ),
+                examples = listOf(
+                    AssistantDeviceExampleData("turn on my PC"),
+                    AssistantDeviceExampleData("wake my computer")
+                ),
+                acceptsRelativeTime = true,
+                maxDelayMillis = 15 * 60 * 1000L,
+                risk = "Low",
+                minTrustWithoutConfirmation = "Low",
+                idempotent = true,
+                timeoutSeconds = 15,
+                concurrencyKey = "wake.pc"
+            )
+        )
+
+        try {
+            connection.send("AdvertiseAssistantCommands", deviceId, descriptors)
+            mainViewModel.addLog(
+                "[Assistant] Advertised ${descriptors.size} Android command(s).",
+                com.omni.sync.ui.screen.LogType.INFO
+            )
+        } catch (error: Exception) {
+            mainViewModel.addLog(
+                "[Assistant] Could not advertise Android commands: ${error.message}",
+                com.omni.sync.ui.screen.LogType.WARNING
+            )
+        }
+    }
+
+    private fun handleRemoteAssistantInvocation(
+        invocation: RemoteAssistantInvocationData,
+        schedule: Boolean
+    ) {
+        coroutineScope.launch(Dispatchers.IO) {
+            try {
+                when (invocation.commandId) {
+                    "wake.pc" -> {
+                        if (schedule) {
+                            val runAt = invocation.runAtUnixMillis
+                                ?: throw IllegalArgumentException("Missing runAt for scheduled wake.pc")
+                            com.omni.sync.logic.assistant.AssistantScheduleStore.add(
+                                context = context,
+                                commandId = invocation.commandId,
+                                runAtMillis = runAt,
+                                origin = "hub",
+                                runId = invocation.runId
+                            )
+                            com.omni.sync.logic.assistant.AssistantFeedback.notify(
+                                context,
+                                "PC wake scheduled",
+                                "Wake-on-LAN is scheduled for ${java.util.Date(runAt)}.",
+                                invocation.runId
+                            )
+                            mainViewModel.addLog(
+                                "[Assistant] Scheduled remote wake.pc ${invocation.runId} for ${java.util.Date(runAt)}.",
+                                com.omni.sync.ui.screen.LogType.SUCCESS
+                            )
+                            reportAssistantRunResult(
+                                invocation.runId,
+                                "scheduled",
+                                "Persisted wake.pc schedule for ${java.util.Date(runAt)}."
+                            )
+                        } else {
+                            val config = mainViewModel.appConfig.value
+                            val result = com.omni.sync.logic.assistant.WakeOnLanSender.send(
+                                macAddress = config.wakeOnLanMac,
+                                broadcastIp = config.subnetBroadcastIp,
+                                wanIp = config.wanIp
+                            )
+                            result.messages.forEach { message ->
+                                mainViewModel.addLog(
+                                    "[Assistant] $message",
+                                    if (message.contains("failed", ignoreCase = true))
+                                        com.omni.sync.ui.screen.LogType.WARNING
+                                    else
+                                        com.omni.sync.ui.screen.LogType.SUCCESS
+                                )
+                            }
+
+                            if (result.anySuccess) {
+                                com.omni.sync.receiver.AssistantCommandReceiver.scheduleWakeVerification(
+                                    context,
+                                    invocation.runId,
+                                    reportToHub = true
+                                )
+                                startConnection()
+                            } else {
+                                reportAssistantRunResult(
+                                    invocation.runId,
+                                    "failed",
+                                    "No Wake-on-LAN packet could be sent."
+                                )
+                            }
+                        }
+                    }
+                    else -> reportAssistantRunResult(
+                        invocation.runId,
+                        "failed",
+                        "Android does not implement ${invocation.commandId}."
+                    )
+                }
+            } catch (error: Exception) {
+                mainViewModel.addLog(
+                    "[Assistant] Remote ${invocation.commandId} failed: ${error.message}",
+                    com.omni.sync.ui.screen.LogType.ERROR
+                )
+                reportAssistantRunResult(
+                    invocation.runId,
+                    "failed",
+                    error.message ?: "Remote assistant command failed."
+                )
+            }
+        }
+    }
+
+    fun reportAssistantRunResult(
+        runId: String,
+        state: String,
+        summary: String?
+    ) {
+        val connection = hubConnection
+        if (!isHubAuthenticated ||
+            connection?.connectionState != com.microsoft.signalr.HubConnectionState.CONNECTED
+        ) {
+            mainViewModel.addLog(
+                "[Assistant] Could not report $state for $runId because Hub is offline.",
+                com.omni.sync.ui.screen.LogType.WARNING
+            )
+            return
+        }
+
+        try {
+            connection.send("ReportAssistantRunResult", runId, state, summary)
+        } catch (error: Exception) {
+            mainViewModel.addLog(
+                "[Assistant] Failed reporting $state for $runId: ${error.message}",
+                com.omni.sync.ui.screen.LogType.WARNING
+            )
+        }
+    }
+
+    fun sendVoiceTranscript(mode: VoiceMode, transcript: String) {
+        if (mode == VoiceMode.JARVIS &&
+            com.omni.sync.logic.assistant.AndroidAssistantCommandExecutor.tryHandle(
+                context,
+                mainViewModel,
+                transcript
+            )
+        ) {
+            return
+        }
+
+        if (mode == VoiceMode.JARVIS) {
+            val item = com.omni.sync.logic.assistant.AssistantVoiceOutbox.enqueue(
+                context,
+                transcript
+            )
+            mainViewModel.addLog(
+                "[Assistant] Queued Jarvis request ${item.requestId}.",
+                com.omni.sync.ui.screen.LogType.INFO
+            )
+            com.omni.sync.logic.assistant.AssistantFeedback.toast(
+                context,
+                if (isHubAuthenticated) "Sending Jarvis request" else "Jarvis request queued until Hub is online"
+            )
+            flushAssistantVoiceOutbox()
+            return
+        }
+
+        if (isHubAuthenticated &&
+            hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED
+        ) {
+            try {
+                // Use the same payload as the functioning remote keyboard.
+                sendText(transcript)
+                mainViewModel.addLog("[Voice] Type sent ${transcript.length} characters to PC.", com.omni.sync.ui.screen.LogType.INFO)
+                com.omni.sync.logic.assistant.AssistantFeedback.toast(context, "Text sent to PC")
+            } catch (error: Exception) {
+                mainViewModel.addLog("[Voice] Type delivery failed: ${error.message}", com.omni.sync.ui.screen.LogType.ERROR)
+                com.omni.sync.logic.assistant.AssistantFeedback.toast(context, "Could not send text to PC")
+            }
+        } else {
+            mainViewModel.addLog("[Voice] Type not sent: PC is disconnected or not authenticated.", com.omni.sync.ui.screen.LogType.WARNING)
+            com.omni.sync.logic.assistant.AssistantFeedback.toast(context, "PC offline; nothing typed")
+        }
+    }
+
+    private fun flushAssistantVoiceOutbox() {
+        val connection = hubConnection ?: return
+        if (!isHubAuthenticated ||
+            connection.connectionState != com.microsoft.signalr.HubConnectionState.CONNECTED
+        ) return
+
+        coroutineScope.launch(Dispatchers.IO) {
+            for (item in com.omni.sync.logic.assistant.AssistantVoiceOutbox.items(context)) {
+                if (!isHubAuthenticated) break
+                try {
+                    val ack = connection.invoke(
+                        AssistantVoiceAck::class.java,
+                        "SubmitAssistantRequest",
+                        item.requestId,
+                        item.text,
+                        item.occurredAtMillis,
+                        item.conversationId
+                    ).blockingGet()
+                    com.omni.sync.logic.assistant.AssistantVoiceOutbox.remove(context, item.requestId)
+                    val state = ack.runState ?: "Accepted"
+                    mainViewModel.addLog(
+                        "[Assistant] $state ${ack.commandId ?: "request"}: ${ack.summary}",
+                        com.omni.sync.ui.screen.LogType.SUCCESS
+                    )
+                    com.omni.sync.logic.assistant.AssistantFeedback.toast(
+                        context,
+                        if (state == "Scheduled") "Jarvis command scheduled" else "Jarvis request accepted"
+                    )
+                } catch (error: Exception) {
+                    mainViewModel.addLog(
+                        "[Assistant] Delivery paused; request remains queued: ${error.message}",
+                        com.omni.sync.ui.screen.LogType.WARNING
+                    )
+                    break
+                }
+            }
         }
     }
 
@@ -1642,10 +2182,19 @@ class SignalRClient(
                 gson.fromJson<List<ReminderData>>(jsonElement, listType)
             }
             ?.subscribe({ loaded ->
-                _reminders.value = loaded
+                _reminders.value = com.omni.sync.utils.ReminderDelivery.merge(context, loaded)
             }, { error ->
-                Log.e("SignalRClient", "Failed to refresh reminders", error)
+                com.omni.sync.utils.ReminderDelivery.log(context, "GetReminders failed: ${error.message}", true)
             })
+        connection.invoke(String::class.java, "GetTaskResurfacingTimes").subscribe({ times ->
+            val prefs = context.getSharedPreferences("reminder_delivery", Context.MODE_PRIVATE)
+            if (prefs.getString("task_times", null) != times) {
+                prefs.edit().putString("task_times", times).commit()
+                com.omni.sync.utils.ReminderDelivery.load(context).filter { it.kind == 0 }.forEach {
+                    com.omni.sync.utils.ReminderDelivery.schedule(context, it, restore = true)
+                }
+            }
+        }, { error -> com.omni.sync.utils.ReminderDelivery.log(context, "Task window sync failed: ${error.message}", true) })
     }
 
     fun completeReminder(id: String) {
@@ -1657,7 +2206,7 @@ class SignalRClient(
     }
 
     fun snoozeReminder(id: String, minutes: Int) {
-        sendReminderAction("SnoozeReminder", id, minutes)
+        sendReminderAction("PostponeReminder", id, java.time.OffsetDateTime.now().plusMinutes(minutes.toLong()).toString())
     }
 
     fun postponeReminder(id: String, dueAtIso: String) {
@@ -1665,19 +2214,35 @@ class SignalRClient(
     }
 
     private fun sendReminderAction(method: String, vararg arguments: Any) {
+        val id = arguments.firstOrNull() as? String ?: return
+        com.omni.sync.utils.ReminderDelivery.act(context, id, method, arguments.getOrNull(1) as? String)
+        _reminders.value = com.omni.sync.utils.ReminderDelivery.load(context)
+        flushReminderActions()
+    }
+
+    private fun flushReminderActions() {
         val connection = hubConnection
         if (connection?.connectionState != com.microsoft.signalr.HubConnectionState.CONNECTED) {
             return
         }
-
+        val pending = com.omni.sync.utils.ReminderDelivery.pending(context).firstOrNull() ?: return
+        if (!reminderActionInFlight.compareAndSet(false, true)) return
         try {
-            connection.send(method, *arguments)
-            coroutineScope.launch {
-                delay(350)
+            val arguments: Array<Any> = if (pending.dueAt == null) arrayOf(pending.id) else arrayOf(pending.id, pending.dueAt)
+            com.omni.sync.utils.ReminderDelivery.log(context, "Sending ${pending.method} ${pending.id} token=${pending.token}")
+            connection.invoke(ReminderData::class.java, pending.method, *arguments).subscribe({ result ->
+                com.omni.sync.utils.ReminderDelivery.acknowledge(context, pending.token)
+                _reminders.value = com.omni.sync.utils.ReminderDelivery.merge(context, listOf(result))
+                reminderActionInFlight.set(false)
+                flushReminderActions()
                 refreshReminders()
-            }
+            }, { error ->
+                reminderActionInFlight.set(false)
+                com.omni.sync.utils.ReminderDelivery.log(context, "Action ${pending.token} failed; retained for retry: ${error.message}", true)
+            })
         } catch (error: Exception) {
-            Log.e("SignalRClient", "Reminder action $method failed", error)
+            reminderActionInFlight.set(false)
+            com.omni.sync.utils.ReminderDelivery.log(context, "Action ${pending.token} failed: ${error.message}", true)
         }
     }
 
@@ -2153,9 +2718,20 @@ class SignalRClient(
             ?.subscribe({ success ->
                 Log.d("SignalR", "Auth success: $success")
                 if (success) {
+                    isHubAuthenticated = true
+                    advertiseAssistantCommands()
+                    flushAssistantVoiceOutbox()
                     refreshReminders()
+                    AndroidUpdateReceiver.consumePendingDeploymentReport(context)?.let { report ->
+                        Log.i(
+                            "AndroidDeploy",
+                            "Re-reporting persisted install result for ${report.requestId}: ${report.status}"
+                        )
+                        reportAndroidUpdateStatus(report.requestId, report.status, report.message)
+                    }
                 }
             }, { error ->
+                isHubAuthenticated = false
                 Log.e("SignalR", "Auth failed", error)
             })
     }

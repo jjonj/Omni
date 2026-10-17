@@ -2,6 +2,8 @@ using System.Security.Cryptography;
 using System.Text.Json;
 using System.IO;
 using System.Collections.Concurrent;
+using System.Net.Http;
+using System.Net.Http.Json;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.SignalR;
@@ -17,6 +19,17 @@ namespace OmniSync.Hub.Presentation.Controllers;
 public sealed class AndroidUpdateController : ControllerBase
 {
     private const string ApiKeyHeader = "X-Omni-Api-Key";
+    // Explicitly opt-in; never automatically reassign a live Android client.
+    // Handler must never follow a redirect outside the validated loopback peer.
+    private static readonly HttpClient RustClient = new(new HttpClientHandler
+    {
+        AllowAutoRedirect = false,
+        UseCookies = false,
+        UseProxy = false
+    })
+    {
+        Timeout = TimeSpan.FromSeconds(70)
+    };
     private static readonly ConcurrentDictionary<string, DateTimeOffset> DownloadTickets = new();
     private readonly AuthService _authService;
     private readonly IConfiguration _configuration;
@@ -41,6 +54,9 @@ public sealed class AndroidUpdateController : ControllerBase
     [HttpGet]
     public async Task<IActionResult> GetMetadata()
     {
+        var delegated = await DelegateToRustAsync("/api/android-update", HttpMethod.Get,
+            cancellationToken: HttpContext.RequestAborted);
+        if (delegated is not null) return delegated;
         if (!IsAuthorized()) return Unauthorized();
 
         var apkPath = FindApkPath();
@@ -66,8 +82,12 @@ public sealed class AndroidUpdateController : ControllerBase
     }
 
     [HttpGet("apk")]
-    public IActionResult DownloadApk()
+    public async Task<IActionResult> DownloadApk()
     {
+        var delegated = await DelegateToRustAsync(
+            "/api/android-update/apk" + Request.QueryString, HttpMethod.Get,
+            cancellationToken: HttpContext.RequestAborted);
+        if (delegated is not null) return delegated;
         if (!IsAuthorized() && !HasValidDownloadTicket()) return Unauthorized();
 
         var apkPath = FindApkPath();
@@ -93,6 +113,9 @@ public sealed class AndroidUpdateController : ControllerBase
         [FromBody] AndroidDeployRequest? request,
         CancellationToken cancellationToken)
     {
+        var delegated = await DelegateToRustAsync("/api/android-update/deploy", HttpMethod.Post,
+            request, cancellationToken);
+        if (delegated is not null) return delegated;
         if (!IsAuthorized()) return Unauthorized();
         if (FindApkPath() is null)
         {
@@ -173,11 +196,80 @@ public sealed class AndroidUpdateController : ControllerBase
     }
 
     [HttpGet("deploy/{requestId}")]
-    public IActionResult GetDeploymentStatus(string requestId)
+    public async Task<IActionResult> GetDeploymentStatus(string requestId)
     {
+        var delegated = await DelegateToRustAsync(
+            "/api/android-update/deploy/" + Uri.EscapeDataString(requestId),
+            HttpMethod.Get, cancellationToken: HttpContext.RequestAborted);
+        if (delegated is not null) return delegated;
         if (!IsAuthorized()) return Unauthorized();
         var status = _deploymentCoordinator.Get(requestId);
         return status is null ? NotFound() : Ok(status);
+    }
+
+    // Proxy the *whole* Android update state machine, or none of it. A
+    // deployment ID, APK download ticket and phone acknowledgement belong to
+    // one Hub's coordinator; a best-effort per-request fallback would silently
+    // split that state and could lose an installation notification.
+    private async Task<IActionResult?> DelegateToRustAsync(
+        string relativePath, HttpMethod method, object? body = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (!System.IO.File.Exists(AndroidUpdateRustDelegatePolicy.OwnershipFlagPath))
+            return null;
+
+        var rust = AndroidUpdateRustDelegatePolicy.ResolveLoopbackBaseUrl(
+            _configuration["AndroidUpdate:RustBaseUrl"]);
+        if (rust is null)
+        {
+            return StatusCode(StatusCodes.Status503ServiceUnavailable,
+                new { message = "Android delegation requires a loopback Rust Hub on port 5001." });
+        }
+
+        using var upstream = new HttpRequestMessage(method, new Uri(rust, relativePath.TrimStart('/')));
+        if (Request.Headers.TryGetValue(ApiKeyHeader, out var key))
+            upstream.Headers.TryAddWithoutValidation(ApiKeyHeader, key.ToString());
+        // APK resume uses HTTP Range; never forward Host, cookies, bearer
+        // tokens, client IP, or arbitrary hop-by-hop request headers.
+        foreach (var name in new[] { "Range", "If-Range" })
+        {
+            if (Request.Headers.TryGetValue(name, out var value))
+                upstream.Headers.TryAddWithoutValidation(name, value.ToString());
+        }
+        if (method == HttpMethod.Post)
+            upstream.Content = JsonContent.Create(body);
+
+        try
+        {
+            using var response = await RustClient.SendAsync(
+                upstream, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+            Response.StatusCode = (int)response.StatusCode;
+            if (response.Content.Headers.ContentType is { } type)
+                Response.ContentType = type.ToString();
+            if (response.Content.Headers.ContentLength is { } length)
+                Response.ContentLength = length;
+
+            foreach (var name in new[] { "Content-Range", "Content-Disposition", "Accept-Ranges",
+                                         "ETag", "Last-Modified", "Cache-Control" })
+            {
+                if (response.Headers.TryGetValues(name, out var values)
+                    || response.Content.Headers.TryGetValues(name, out values))
+                    Response.Headers[name] = new Microsoft.Extensions.Primitives.StringValues(values.ToArray());
+            }
+            await response.Content.CopyToAsync(Response.Body, cancellationToken);
+            return new EmptyResult();
+        }
+        catch (HttpRequestException e)
+        {
+            _logger.LogWarning(e, "[AndroidDelegate] Rust Android endpoint unavailable; not falling back to a different owner.");
+            return StatusCode(StatusCodes.Status502BadGateway,
+                new { message = "Rust Android update endpoint unavailable; ownership remains delegated." });
+        }
+        catch (TaskCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            return StatusCode(StatusCodes.Status504GatewayTimeout,
+                new { message = "Rust Android update request timed out; no automatic legacy retry." });
+        }
     }
 
     private bool IsAuthorized()

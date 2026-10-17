@@ -27,6 +27,8 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
+import com.omni.sync.OmniSyncApplication
+import com.omni.sync.data.repository.HubMediaAuth
 import kotlin.OptIn
 import com.omni.sync.data.model.FileSystemEntry
 import com.omni.sync.utils.*
@@ -842,7 +844,10 @@ fun AudiobookMiniPlayer(
     onClose: () -> Unit
 ) {
     val context = LocalContext.current
-    val exoPlayer = remember { ExoPlayer.Builder(context).build().apply { playWhenReady = true } }
+    val exoPlayer = remember {
+        HubMediaAuth.createPlayer(context, (context.applicationContext as OmniSyncApplication).mainViewModel)
+            .apply { playWhenReady = true }
+    }
     var isPlaying by remember { mutableStateOf(true) }
     var currentPosition by remember { mutableStateOf(0L) }
     var duration by remember { mutableStateOf(0L) }

@@ -174,15 +174,25 @@ fun SettingsScreen(
                         }
                         Button(
                             onClick = {
-                                signalRClient.triggerTellPc()
-                                mainViewModel.addLog("Tell PC Triggered...", LogType.INFO)
+                                signalRClient.requestVoiceCapture(com.omni.sync.data.repository.SignalRClient.VoiceMode.JARVIS)
                             },
                             modifier = Modifier.weight(1f),
                             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
                         ) {
                             Icon(Icons.Default.Mic, null, modifier = Modifier.size(14.dp))
                             Spacer(Modifier.width(4.dp))
-                            Text("Tell PC", fontSize = 10.sp)
+                            Text("Jarvis", fontSize = 10.sp)
+                        }
+                        Button(
+                            onClick = {
+                                signalRClient.requestVoiceCapture(com.omni.sync.data.repository.SignalRClient.VoiceMode.TYPE)
+                            },
+                            modifier = Modifier.weight(1f),
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.tertiary)
+                        ) {
+                            Icon(Icons.Default.Mic, null, modifier = Modifier.size(14.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text("Type", fontSize = 10.sp)
                         }
                     }
                 }
@@ -665,6 +675,31 @@ fun SettingsScreen(
             var showPasswordDialog by remember { mutableStateOf(false) }
             var oldPassword by remember { mutableStateOf("") }
             var newPassword by remember { mutableStateOf("") }
+            var showResetDialog by remember { mutableStateOf(false) }
+
+            if (showResetDialog) {
+                AlertDialog(
+                    onDismissRequest = { showResetDialog = false },
+                    title = { Text("Hard Reset Password?") },
+                    text = {
+                        Text("This permanently deletes ALL encrypted files and removes the password and encryption keys. This cannot be undone. You can then set a new password.")
+                    },
+                    confirmButton = {
+                        Button(
+                            onClick = {
+                                filesViewModel.hardResetPassword()
+                                showResetDialog = false
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                        ) {
+                            Text("Delete Everything & Reset")
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showResetDialog = false }) { Text("Cancel") }
+                    }
+                )
+            }
 
             if (isPasswordSet) {
                 Text("Global password is set", color = Color.Gray, fontSize = 14.sp)
@@ -674,6 +709,13 @@ fun SettingsScreen(
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
                 ) {
                     Text("Change Password")
+                }
+                Button(
+                    onClick = { showResetDialog = true },
+                    modifier = Modifier.padding(top = 8.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Text("Forgot Password? Hard Reset")
                 }
             } else {
                 Text("No global password set", color = Color.Gray, fontSize = 14.sp)

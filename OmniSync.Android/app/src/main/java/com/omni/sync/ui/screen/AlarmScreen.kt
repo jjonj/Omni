@@ -30,6 +30,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -56,6 +57,9 @@ data class AlarmData(
     var minute: Int = 0,
     var isAM: Boolean = true,
     var quickToggleMode: Int = 0,
+    var isWakeAlarm: Boolean = false,
+    var autoStillAwake: Boolean = false,
+    var latestWakeMinutes: Int? = 720,
     var repeatDaily: Boolean = false,
     var useGradual: Boolean = true,
     var soundId: String = "gentle",
@@ -75,6 +79,9 @@ data class AlarmData(
         return override.copy(
             id = id,
             enabled = enabled,
+            isWakeAlarm = isWakeAlarm,
+            autoStillAwake = autoStillAwake,
+            latestWakeMinutes = latestWakeMinutes,
             repeatDaily = repeatDaily,
             applyChangesToNextTriggerOnly = applyChangesToNextTriggerOnly,
             nextTriggerOverride = nextTriggerOverride
@@ -83,6 +90,9 @@ data class AlarmData(
 
     fun withNextTriggerOverride(changed: AlarmData): AlarmData = copy(
         enabled = changed.enabled,
+        isWakeAlarm = changed.isWakeAlarm,
+        autoStillAwake = changed.autoStillAwake,
+        latestWakeMinutes = changed.latestWakeMinutes,
         applyChangesToNextTriggerOnly = true,
         nextTriggerOverride = changed.copy(
             id = id,
@@ -109,7 +119,34 @@ fun AlarmScreen(
     signalRClient: SignalRClient,
     onBack: () -> Unit
 ) {
+    MaterialTheme(colorScheme = darkColorScheme(
+        primary = Color(0xFF8BAAC4), onPrimary = Color(0xFF07111B),
+        primaryContainer = Color(0xFF20394F), onPrimaryContainer = Color(0xFFCDDCE8),
+        secondaryContainer = Color(0xFF192B3B), onSecondaryContainer = Color(0xFFBCCDDC),
+        background = Color(0xFF05080C), surface = Color(0xFF0C1118),
+        surfaceVariant = Color(0xFF141D28), onSurface = Color(0xFFD0D6DF),
+        onSurfaceVariant = Color(0xFF9BA8B7),
+        error = Color(0xFF74363F), onError = Color(0xFFF4DADD)
+    )) {
+        AlarmScreenContent(mainViewModel, signalRClient, onBack)
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun AlarmScreenContent(
+    mainViewModel: MainViewModel,
+    signalRClient: SignalRClient,
+    onBack: () -> Unit
+) {
     val context = LocalContext.current
+    var currentTime by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(30_000)
+            currentTime = System.currentTimeMillis()
+        }
+    }
     val appConfig by mainViewModel.appConfig.collectAsState()
     val prefs = remember { context.getSharedPreferences("alarm_prefs", Context.MODE_PRIVATE) }
     val gson = remember { com.google.gson.Gson() }
@@ -147,8 +184,10 @@ fun AlarmScreen(
     }
 
     var showTimePicker by remember { mutableStateOf<Int?>(null) } 
+    var editingTarget by remember { mutableStateOf(false) }
     var showDatePicker by remember { mutableStateOf<Int?>(null) }
     var showSoundPicker by remember { mutableStateOf<Int?>(null) }
+    var showStatistics by remember { mutableStateOf(false) }
     
     val mediaPlayer = remember { MediaPlayer() }
     val scope = rememberCoroutineScope()
@@ -176,21 +215,28 @@ fun AlarmScreen(
 
     fun updateSchedule(id: Int, data: AlarmData) {
         val existing = alarms.firstOrNull { it.id == id }
-        val updatedData = if (
+        val normalizedData = if (data.isWakeAlarm) data.copy(repeatDaily = true, scheduledDate = null) else data
+        val updatedData = if (existing != null && existing.isWakeAlarm && data.isWakeAlarm) {
+            normalizedData.copy(
+                hour = existing.hour, minute = existing.minute, isAM = existing.isAM,
+                applyChangesToNextTriggerOnly = false,
+                nextTriggerOverride = data.copy(repeatDaily = false, applyChangesToNextTriggerOnly = false, nextTriggerOverride = null)
+            )
+        } else if (
             existing?.repeatDaily == true &&
-            data.repeatDaily &&
-            data.applyChangesToNextTriggerOnly
+            normalizedData.repeatDaily &&
+            normalizedData.applyChangesToNextTriggerOnly
         ) {
             existing.withNextTriggerOverride(data)
         } else {
-            data.copy(id = id, nextTriggerOverride = null)
+            normalizedData.copy(id = id, nextTriggerOverride = null)
         }
         val updatedAlarms = alarms.map { if (it.id == id) updatedData else it }
         alarms = updatedAlarms
         saveAlarms(updatedAlarms)
+        mainViewModel.addLog("[Wake alarm $id] Settings saved: enabled=${updatedData.enabled}, wake=${updatedData.isWakeAlarm}, daily=${updatedData.repeatDaily}, nextOnly=${updatedData.nextTriggerOverride != null}", LogType.INFO)
         if (updatedData.enabled) {
             AlarmScheduler.scheduleAlarm(context, id, updatedData, config)
-            mainViewModel.startSleep()
         } else {
             AlarmScheduler.cancelAlarm(context, id)
         }
@@ -206,7 +252,14 @@ fun AlarmScreen(
 
     fun dismissUpcomingAlarm(alarm: AlarmData) {
         AlarmScheduler.cancelAlarm(context, alarm.id)
-        val updated = if (alarm.repeatDaily) {
+        val updated = if (alarm.isWakeAlarm) {
+            val nextDay = Calendar.getInstance().apply {
+                timeInMillis = com.omni.sync.utils.WakeAlarmActions.nextTrigger(alarm, System.currentTimeMillis())
+                add(Calendar.DAY_OF_YEAR, 1)
+            }
+            val target = alarm.copy(nextTriggerOverride = null)
+            target.withNextTriggerOverride(target.copy(scheduledDate = nextDay.timeInMillis))
+        } else if (alarm.repeatDaily) {
             alarm.copy(nextTriggerOverride = null)
         } else {
             alarm.copy(enabled = false, nextTriggerOverride = null)
@@ -214,7 +267,7 @@ fun AlarmScreen(
         alarms = alarms.map { if (it.id == alarm.id) updated else it }
         saveAlarms(alarms)
         if (updated.enabled) {
-            AlarmScheduler.scheduleAlarm(context, updated.id, updated, config, forceNextDay = true)
+            AlarmScheduler.scheduleAlarm(context, updated.id, updated, config, forceNextDay = !alarm.isWakeAlarm)
         }
     }
 
@@ -284,10 +337,27 @@ fun AlarmScreen(
         }
     }
     
+    if (showStatistics) {
+        val sessions = com.omni.sync.utils.AlarmStatistics.load(context)
+        AlertDialog(
+            onDismissRequest = { showStatistics = false },
+            title = { Text("Alarm 1 statistics") },
+            text = {
+                Column(Modifier.verticalScroll(rememberScrollState())) {
+                    if (sessions.isEmpty()) Text("No dismissed alarms yet")
+                    sessions.reversed().forEach { session ->
+                        Text("${SimpleDateFormat("EEE d MMM HH:mm", Locale.getDefault()).format(Date(session.firstRing))}: ${session.rings} rings · ${(session.dismissedAt - session.firstRing) / 60_000} min until dismissal")
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { showStatistics = false }) { Text("Close") } }
+        )
+    }
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text("Alarm") },
+                actions = { TextButton(onClick = { showStatistics = true }) { Text("Statistics") } },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back")
@@ -331,12 +401,46 @@ fun AlarmScreen(
                             // Try to find the actual ringing alarm from service if possible, 
                             // or fallback to the one enabled in UI
                             AlarmService.stopAlarm(context, activeAlarmId, isActiveAlarmRepeating)
-                            mainViewModel.resetSleep()
                         },
                         modifier = Modifier.fillMaxWidth().height(64.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
                     ) {
                         Text(if (isRinging) "DISMISS ALARM" else "CANCEL SNOOZE", style = MaterialTheme.typography.headlineSmall)
+                    }
+                }
+            }
+
+            val wakeAlarms = alarms.filter { it.enabled && it.isWakeAlarm }
+            if (wakeAlarms.isNotEmpty() && !isRinging) {
+                Button(
+                    onClick = { com.omni.sync.utils.WakeAlarmActions.stillAwake(context) },
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp).height(64.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.primaryContainer,
+                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                ) { Text("STILL AWAKE", style = MaterialTheme.typography.headlineSmall) }
+
+                val todayWakeAlarm = wakeAlarms.firstOrNull { alarm ->
+                    val trigger = Calendar.getInstance().apply {
+                        timeInMillis = com.omni.sync.utils.WakeAlarmActions.nextTrigger(alarm, currentTime)
+                    }
+                    val today = Calendar.getInstance().apply { timeInMillis = currentTime }
+                    trigger.get(Calendar.YEAR) == today.get(Calendar.YEAR) &&
+                        trigger.get(Calendar.DAY_OF_YEAR) == today.get(Calendar.DAY_OF_YEAR)
+                }
+                if (todayWakeAlarm != null) {
+                    Button(
+                        onClick = { dismissUpcomingAlarm(todayWakeAlarm) },
+                        modifier = Modifier.fillMaxWidth().height(56.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.errorContainer,
+                            contentColor = MaterialTheme.colorScheme.onErrorContainer
+                        )
+                    ) {
+                        Icon(Icons.Default.AlarmOff, contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("DISMISS TODAY", style = MaterialTheme.typography.titleMedium)
                     }
                 }
             }
@@ -355,9 +459,9 @@ fun AlarmScreen(
                         AlarmCard(
                             alarmNumber = index + 1,
                             alarm = alarm,
+                            targetAlarm = storedAlarm,
                             onAlarmChange = { updateSchedule(alarm.id, it) },
                             onRepeatChangeScopeChange = { updateRepeatChangeScope(alarm.id, it) },
-                            onDismissUpcoming = { dismissUpcomingAlarm(storedAlarm) },
                             onDelete = {
                                 AlarmScheduler.cancelAlarm(context, alarm.id)
                                 val updatedAlarms = alarms.filterNot { it.id == alarm.id }
@@ -366,7 +470,8 @@ fun AlarmScreen(
                             },
                             availableSounds = availableAlarmSounds,
                             timeFormat = timeFormat,
-                            onShowTimePicker = { showTimePicker = alarm.id },
+                            onShowTimePicker = { editingTarget = false; showTimePicker = alarm.id },
+                            onShowTargetPicker = { editingTarget = true; showTimePicker = alarm.id },
                             onShowDatePicker = { showDatePicker = alarm.id },
                             onShowSoundPicker = { showSoundPicker = alarm.id },
                             hideOptionsWhenDisabled = index > 0,
@@ -506,7 +611,8 @@ fun AlarmScreen(
     }
     
     showTimePicker?.let { alarmId ->
-        val currentAlarm = alarms.firstOrNull { it.id == alarmId }
+        val storedAlarm = alarms.firstOrNull { it.id == alarmId }
+        val currentAlarm = if (editingTarget) storedAlarm else storedAlarm?.resolvedForNextTrigger()
         if (currentAlarm == null) {
             showTimePicker = null
             return@let
@@ -536,7 +642,15 @@ fun AlarmScreen(
                     enabled = true // Auto-enable on time change
                 )
                 
-                updateSchedule(alarmId, updated)
+                if (editingTarget && storedAlarm != null) {
+                    val target = updated.copy(applyChangesToNextTriggerOnly = false, repeatDaily = true, scheduledDate = null,
+                        nextTriggerOverride = storedAlarm.nextTriggerOverride)
+                    alarms = alarms.map { if (it.id == alarmId) target else it }
+                    saveAlarms(alarms)
+                    AlarmScheduler.scheduleAlarm(context, alarmId, target, config)
+                } else {
+                    updateSchedule(alarmId, updated.copy(applyChangesToNextTriggerOnly = currentAlarm.isWakeAlarm || currentAlarm.applyChangesToNextTriggerOnly))
+                }
                 showTimePicker = null
             }
         )
@@ -588,7 +702,7 @@ fun AlarmScreen(
     }
     
     showSoundPicker?.let { alarmId ->
-        val currentAlarm = alarms.firstOrNull { it.id == alarmId }
+        val currentAlarm = alarms.firstOrNull { it.id == alarmId }?.resolvedForNextTrigger()
         if (currentAlarm == null) {
             showSoundPicker = null
             return@let
@@ -633,20 +747,39 @@ fun AlarmScreen(
 fun AlarmCard(
     alarmNumber: Int,
     alarm: AlarmData,
+    targetAlarm: AlarmData,
     onAlarmChange: (AlarmData) -> Unit,
     onRepeatChangeScopeChange: (Boolean) -> Unit,
-    onDismissUpcoming: () -> Unit,
     onDelete: () -> Unit,
     availableSounds: List<Pair<String, String>>,
     timeFormat: SimpleDateFormat,
     onShowTimePicker: () -> Unit,
+    onShowTargetPicker: () -> Unit,
     onShowDatePicker: () -> Unit,
     onShowSoundPicker: () -> Unit,
     hideOptionsWhenDisabled: Boolean,
     macros: List<com.omni.sync.data.model.Macro>,
     quickActions: List<com.omni.sync.data.model.NotificationAction>
 ) {
-    Card(modifier = Modifier.fillMaxWidth()) {
+    val context = LocalContext.current
+    var hoursClicked by remember { mutableStateOf(false) }
+    var latestPicker by remember { mutableStateOf(false) }
+    var accessibilityHelpUntil by remember { mutableLongStateOf(0L) }
+    LaunchedEffect(accessibilityHelpUntil) {
+        if (accessibilityHelpUntil != 0L) {
+            delay((accessibilityHelpUntil - System.currentTimeMillis()).coerceAtLeast(0))
+            accessibilityHelpUntil = 0L
+        }
+    }
+    var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(Unit) { while (true) { now = System.currentTimeMillis(); delay(30_000) } }
+    if (latestPicker) {
+        val minutes = alarm.latestWakeMinutes ?: 720
+        MaterialTimePickerDialogWrapper(minutes / 60, minutes % 60,
+            onDismiss = { latestPicker = false },
+            onConfirm = { h, m -> onAlarmChange(alarm.copy(latestWakeMinutes = h * 60 + m)); latestPicker = false })
+    }
+    Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
         Column(modifier = Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -697,7 +830,8 @@ fun AlarmCard(
 
                     Button(
                         onClick = {
-                            val newMode = (alarm.quickToggleMode + 1) % 4
+                            val newMode = if (!hoursClicked) 1 else (alarm.quickToggleMode + 1) % 4
+                            hoursClicked = true
                             val cal = Calendar.getInstance()
                             when (newMode) {
                                 1 -> cal.add(Calendar.HOUR_OF_DAY, 8).also { cal.add(Calendar.MINUTE, 30) }
@@ -718,7 +852,8 @@ fun AlarmCard(
                                 enabled = true
                             ))
                         },
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primaryContainer, contentColor = MaterialTheme.colorScheme.onPrimaryContainer)
                     ) {
                         val text = when (alarm.quickToggleMode) {
                             0 -> "Off"
@@ -740,6 +875,7 @@ fun AlarmCard(
                     val displayCal = Calendar.getInstance().apply {
                         set(Calendar.HOUR_OF_DAY, hour24)
                         set(Calendar.MINUTE, alarm.minute)
+                        if (alarm.isWakeAlarm) timeInMillis = com.omni.sync.utils.WakeAlarmActions.nextTrigger(targetAlarm, now)
                     }
                     
                     Button(
@@ -749,7 +885,41 @@ fun AlarmCard(
                     ) {
                         Icon(Icons.Default.Schedule, null, modifier = Modifier.size(20.dp))
                         Spacer(Modifier.width(8.dp))
-                        Text(timeFormat.format(displayCal.time), style = MaterialTheme.typography.headlineMedium)
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            if (alarm.isWakeAlarm) Text("Today's wake time")
+                            Text(timeFormat.format(displayCal.time), style = MaterialTheme.typography.headlineMedium)
+                            if (alarm.isWakeAlarm) Text(SimpleDateFormat("EEE d MMM", Locale.getDefault()).format(displayCal.time), style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                        Text("Wake alarm")
+                        Switch(alarm.isWakeAlarm, onCheckedChange = { onAlarmChange(alarm.copy(isWakeAlarm = it, applyChangesToNextTriggerOnly = false)) })
+                    }
+                    if (alarm.isWakeAlarm) {
+                        OutlinedButton(onClick = onShowTargetPicker, modifier = Modifier.fillMaxWidth()) {
+                            val targetHour = targetAlarm.hour % 12 + if (targetAlarm.isAM) 0 else 12
+                            Text("Target wake time: %02d:%02d · daily".format(targetHour, targetAlarm.minute))
+                        }
+                        OutlinedButton(onClick = { latestPicker = true }, modifier = Modifier.fillMaxWidth()) {
+                            val latest = alarm.latestWakeMinutes ?: 720
+                            Text("Latest wake time: %02d:%02d".format(latest / 60, latest % 60))
+                        }
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                            Text("Auto Still awake", modifier = Modifier.weight(1f))
+                            Switch(alarm.autoStillAwake, onCheckedChange = {
+                                accessibilityHelpUntil = if (it) System.currentTimeMillis() + 10_000 else 0L
+                                onAlarmChange(alarm.copy(autoStillAwake = it))
+                            })
+                        }
+                        if (accessibilityHelpUntil != 0L) {
+                            val service = remember(now) { com.omni.sync.service.OmniAccessibilityService.getInstance() }
+                            Text(if (service != null) "Phone activity detection: connected" else "Phone activity detection: not connected", style = MaterialTheme.typography.bodySmall)
+                            Text("Enable OmniSync in Android Accessibility → Installed apps.", style = MaterialTheme.typography.bodySmall)
+                            OutlinedButton(onClick = {
+                                context.startActivity(Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS))
+                            }, modifier = Modifier.fillMaxWidth()) { Text("Open accessibility settings") }
+                        }
                     }
                     
                     Row(
@@ -769,13 +939,14 @@ fun AlarmCard(
                           Text("Repeat Daily")
                         Switch(
                             checked = alarm.repeatDaily,
+                            enabled = !alarm.isWakeAlarm,
                             onCheckedChange = {
                                 onAlarmChange(alarm.copy(repeatDaily = it, scheduledDate = if (it) null else alarm.scheduledDate))
                             }
                           )
                       }
 
-                      if (alarm.repeatDaily) {
+                      if (alarm.repeatDaily && !alarm.isWakeAlarm) {
                           Row(
                               modifier = Modifier.fillMaxWidth(),
                               horizontalArrangement = Arrangement.SpaceBetween,
@@ -793,17 +964,6 @@ fun AlarmCard(
                                   checked = alarm.applyChangesToNextTriggerOnly,
                                   onCheckedChange = onRepeatChangeScopeChange
                               )
-                          }
-                      }
-
-                      if (alarm.enabled) {
-                          OutlinedButton(
-                              onClick = onDismissUpcoming,
-                              modifier = Modifier.fillMaxWidth()
-                          ) {
-                              Icon(Icons.Default.AlarmOff, contentDescription = null)
-                              Spacer(Modifier.width(8.dp))
-                              Text(if (alarm.repeatDaily) "Dismiss Next Alarm" else "Dismiss Alarm")
                           }
                       }
 
@@ -1068,7 +1228,7 @@ private fun OmniReminderCard(
         else -> null
     }
 
-    Card(modifier = Modifier.fillMaxWidth()) {
+    Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
         Column(
             modifier = Modifier.fillMaxWidth().padding(14.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)

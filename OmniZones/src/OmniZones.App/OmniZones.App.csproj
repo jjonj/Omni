@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Standalone OmniZones: a tray app with no dependency on the Omni Hub. Publish with publish.ps1. -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <RootNamespace>OmniZones.App</RootNamespace>
+    <AssemblyName>OmniZones</AssemblyName>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>omnizones.ico</ApplicationIcon>
+    <NoWarn>$(NoWarn);WFO0003</NoWarn>
+    <Version>1.0.0</Version>
+    <Product>OmniZones</Product>
+    <Description>Drag windows into zones. Layouts, stacks, scenes and an editor, from the tray.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\OmniZones.Core\OmniZones.Core.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -12,6 +12,17 @@ import com.omni.sync.ui.screen.GradualConfig
 import java.util.Calendar
 
 object AlarmScheduler {
+    fun restoreEnabledAlarms(context: Context) {
+        val prefs = context.getSharedPreferences("alarm_prefs", Context.MODE_PRIVATE)
+        val gson = com.google.gson.Gson()
+        val config = prefs.getString("config", null)?.let { gson.fromJson(it, GradualConfig::class.java) } ?: GradualConfig()
+        AlarmStore.load(prefs, gson).filter { it.enabled }.forEach { alarm ->
+            val trigger = alarm.resolvedForNextTrigger()
+            if (trigger.scheduledDate == null || WakeAlarmActions.nextTrigger(alarm, System.currentTimeMillis()) > System.currentTimeMillis()) {
+                scheduleAlarm(context, alarm.id, alarm, config)
+            }
+        }
+    }
 
     // Request Codes:
     // Main Alarm 1: 1
@@ -32,6 +43,8 @@ object AlarmScheduler {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             if (!alarmManager.canScheduleExactAlarms()) {
                 Log.e("AlarmScheduler", "Permission SCHEDULE_EXACT_ALARM not granted.")
+                (context.applicationContext as? com.omni.sync.OmniSyncApplication)?.mainViewModel?.addLog(
+                    "[Wake alarm $alarmId] Scheduling failed: exact alarm permission missing", com.omni.sync.ui.screen.LogType.ERROR)
                 return
             }
         }
@@ -93,6 +106,17 @@ object AlarmScheduler {
                 }
             }
         }
+        if (data.isWakeAlarm) {
+            val now = System.currentTimeMillis()
+            calendar.timeInMillis = WakeAlarmActions.nextTrigger(data, now)
+            if (forceNextDay) {
+                val today = Calendar.getInstance()
+                if (calendar.get(Calendar.YEAR) == today.get(Calendar.YEAR) &&
+                    calendar.get(Calendar.DAY_OF_YEAR) == today.get(Calendar.DAY_OF_YEAR)) {
+                    calendar.add(Calendar.DAY_OF_YEAR, 1)
+                }
+            }
+        }
         
         // If repeating daily, we might want to setRepeating. 
         // But for exact timing and the custom snooze logic, it's often better 
@@ -117,6 +141,8 @@ object AlarmScheduler {
         try {
             val alarmClockInfo = AlarmManager.AlarmClockInfo(calendar.timeInMillis, pendingIntent)
             alarmManager.setAlarmClock(alarmClockInfo, pendingIntent)
+            (context.applicationContext as? com.omni.sync.OmniSyncApplication)?.mainViewModel?.addLog(
+                "[Wake alarm $alarmId] Scheduled ${calendar.time}; daily=${data.repeatDaily}, wake=${data.isWakeAlarm}, nextOverride=${data.nextTriggerOverride != null}", com.omni.sync.ui.screen.LogType.INFO)
         } catch (e: SecurityException) {
             Log.e("AlarmScheduler", "Security Exception", e)
         }

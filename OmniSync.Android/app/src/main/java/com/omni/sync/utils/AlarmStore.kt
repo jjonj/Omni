@@ -42,7 +42,8 @@ object AlarmStore {
     private fun normalizeIds(alarms: List<AlarmData>): List<AlarmData> {
         val usedIds = mutableSetOf<Int>()
         var nextId = 1
-        return alarms.map { alarm ->
+        return alarms.map { original ->
+            val alarm = if (original.isWakeAlarm) original.copy(repeatDaily = true, scheduledDate = null) else original
             val id = if (alarm.id > 0 && usedIds.add(alarm.id)) {
                 alarm.id
             } else {

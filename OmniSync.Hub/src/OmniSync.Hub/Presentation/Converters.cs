@@ -6,6 +6,7 @@ using System.Windows.Controls;
 using System.Collections.Generic;
 using System.Linq;
 using OmniSync.Hub.Infrastructure.Services;
+using OmniSync.Hub.Logic.Services;
 
 namespace OmniSync.Hub.Presentation
 {
@@ -230,6 +231,37 @@ namespace OmniSync.Hub.Presentation
                 }
             }
             return "";
+        }
+
+        public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        {
+            throw new NotImplementedException();
+        }
+    }
+
+    public class CalendarEventEndConverter : IValueConverter
+    {
+        public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+        {
+            if (value is not CalendarEvent calendarEvent || !calendarEvent.End.HasValue)
+                return "";
+
+            if (calendarEvent.IsAllDay)
+            {
+                var inclusiveEnd = calendarEvent.End.Value.Date.AddDays(-1);
+                if (inclusiveEnd == DateTime.Today)
+                    return "Today";
+                if (inclusiveEnd == DateTime.Today.AddDays(1))
+                    return "Tomorrow";
+                return inclusiveEnd.ToString("MMM dd");
+            }
+
+            var end = calendarEvent.End.Value;
+            if (end.Date == DateTime.Today)
+                return $"at {end:HH:mm}";
+            if (end.Date == DateTime.Today.AddDays(1))
+                return $"Tomorrow at {end:HH:mm}";
+            return $"{end:MMM dd} at {end:HH:mm}";
         }
 
         public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)

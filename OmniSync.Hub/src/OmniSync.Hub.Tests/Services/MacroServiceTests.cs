@@ -80,6 +80,24 @@ namespace OmniSync.Hub.Tests.Services
             _processServiceMock.Verify(p => p.ShellExecute("notepad.exe", "", null), Times.Once);
         }
 
+        [Theory]
+        [InlineData(
+            @"run C:\Windows\explorer.exe ""B:\GDrive\Tools\05 Automation\sleep.bat""",
+            @"""B:\GDrive\Tools\05 Automation\sleep.bat""")]
+        [InlineData(
+            @"run C:\Windows\explorer.exe ""B:\GDrive\Tools\05 Automation\shutdown.bat""",
+            @"""B:\GDrive\Tools\05 Automation\shutdown.bat""")]
+        public async Task ExecuteMacroAsync_ShouldLaunchPowerSceneBatchThroughExplorer(
+            string script,
+            string expectedArgs)
+        {
+            await _service.ExecuteMacroAsync(script);
+
+            _processServiceMock.Verify(
+                p => p.ShellExecute(@"C:\Windows\explorer.exe", expectedArgs, null),
+                Times.Once);
+        }
+
         [Fact]
         public async Task ExecuteMacroAsync_ShouldSetClipboard()
         {

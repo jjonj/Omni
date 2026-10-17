@@ -149,7 +149,7 @@
                 <div class="settings-tab active" onclick="switchTab('general')">General</div>
                 <div class="settings-tab" onclick="switchTab('ai')">AI / Tell PC</div>
                 <div class="settings-tab" onclick="switchTab('hotkeys')">Hotkeys</div>
-                <div class="settings-tab" onclick="switchTab('projects')">Projects</div>
+                <div class="settings-tab" onclick="switchTab('setups')">Setups</div>
             </div>
 
             <div class="settings-content">
@@ -162,6 +162,9 @@
                                 <input type="checkbox" id="run-on-startup" onchange="toggleStartup(this.checked)">
                                 Run OmniSync Hub on Windows Startup
                             </label>
+                            <label for="task-resurfacing-times">Task resurfacing times (HH:mm, comma separated)</label>
+                            <input id="task-resurfacing-times" type="text" placeholder="11:00,18:00">
+                            <button class="btn" onclick="saveTaskResurfacingTimes()">Save reminder times</button>
                             
                             <div style="border-top: 1px solid var(--border); padding-top: 16px; margin-top: 8px;">
                                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
@@ -240,23 +243,26 @@
                 </div>
 
                 <!-- Projects Panel -->
-                <div id="projects" class="tab-panel">
+                <div id="setups" class="tab-panel">
                     <div class="hub-box">
-                        <h2>Project Environment Launcher</h2>
+                        <h2>Setups</h2>
                         <p style="font-size: 12px; color: var(--text-dim); margin-bottom: 20px;">
-                            Define sets of folders and programs to open simultaneously for different development projects.
+                            Open tools, keep terminals running, execute commands, and restore window positions and sizes.
                         </p>
                         
-                        <div id="projects-list" style="display: flex; flex-direction: column; gap: 16px;">
+                        <div id="setup-editor" hidden style="margin-bottom:20px"></div>
+                        <div id="setups-list" style="display: flex; flex-direction: column; gap: 16px;">
                             <!-- Populated by JS -->
                         </div>
                         
                         <div style="margin-top: 20px; border-top: 1px solid var(--border); padding-top: 20px;">
-                            <button class="modern-btn" onclick="addNewProject()">+ Add New Project</button>
+                            <button class="modern-btn" onclick="addNewSetup()">+ New Empty Setup</button>
+                            <button class="modern-btn" onclick="snapshotSetup()">Snapshot on PC</button>
+                            <button class="modern-btn" onclick="loadSettings()">Refresh</button>
                         </div>
                         
                         <div class="save-bar">
-                            <button class="modern-btn primary" onclick="saveProjects()">Save Project Configuration</button>
+                            <button class="modern-btn primary" onclick="saveSetups()">Save Setups</button>
                         </div>
                     </div>
                 </div>

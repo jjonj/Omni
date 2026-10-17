@@ -44,6 +44,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.omni.sync.data.repository.SignalRClient
 import com.omni.sync.viewmodel.MainViewModel
+import com.omni.sync.viewmodel.AppScreen
 import com.omni.sync.data.model.Macro
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.itemsIndexed
@@ -157,6 +158,8 @@ fun RemoteControlScreen(
     var showMoreButtons by remember { mutableStateOf(false) }
 
     val selectedPid by signalRClient.selectedPid.collectAsState()
+    val currentScreen by mainViewModel.currentScreen.collectAsState()
+    val isRemoteControlActive = currentScreen == AppScreen.REMOTECONTROL
     
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
@@ -185,25 +188,10 @@ fun RemoteControlScreen(
         }
     }
 
-    val voiceLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.StartActivityForResult()
-    ) { result ->
-        if (result.resultCode == Activity.RESULT_OK) {
-            val data = result.data
-            val results = data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
-            if (!results.isNullOrEmpty()) {
-                val spokenText = results[0]
-                signalRClient.sendText(spokenText)
-            }
-        }
-    }
-
+    // The remote mic and the labeled Type quick action share the same
+    // speech recognizer flow and PC text-input channel.
     fun startVoiceRecognition() {
-        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-            putExtra(RecognizerIntent.EXTRA_PROMPT, "Listening...")
-        }
-        voiceLauncher.launch(intent)
+        signalRClient.requestVoiceCapture(SignalRClient.VoiceMode.TYPE)
     }
 
     // Handle back press
@@ -230,6 +218,7 @@ fun RemoteControlScreen(
                     mainViewModel = mainViewModel,
                     appConfig = appConfig,
                     isMonitorVisible = isMonitorVisible,
+                    isRemoteControlActive = isRemoteControlActive,
                     monitorIndex = monitorIndex,
                     isLeftHeld = isLeftHeld,
                     scale = monitorScale,
@@ -528,6 +517,7 @@ fun TrackpadArea(
     appConfig: com.omni.sync.data.config.AppConfig,
     modifier: Modifier = Modifier,
     isMonitorVisible: Boolean = false,
+    isRemoteControlActive: Boolean = true,
     monitorIndex: Int = -1,
     isLeftHeld: Boolean = false,
     scale: Float = 1f,
@@ -546,12 +536,15 @@ fun TrackpadArea(
     var imageSize by remember { mutableStateOf(IntSize.Zero) }
     val currentTransform by rememberUpdatedState(onTransform)
 
-    LaunchedEffect(isMonitorVisible, monitorIndex, baseUrl, appConfig.streamFps, appConfig.streamResolution, lifecycleOwner) {
-        if (!isMonitorVisible) return@LaunchedEffect
+    LaunchedEffect(isMonitorVisible, isRemoteControlActive, monitorIndex, baseUrl, appConfig.streamFps, appConfig.streamResolution, lifecycleOwner) {
+        if (!isMonitorVisible || !isRemoteControlActive) {
+            currentFrame = null
+            return@LaunchedEffect
+        }
         val fps = appConfig.streamFps.takeIf { it > 0 } ?: 10
         val interval = (1000L / fps).coerceAtLeast(1L)
         val resolution = appConfig.streamResolution.coerceIn(1, 100)
-        lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+        lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
             Log.d("TrackpadArea", "Screen stream started: $baseUrl, fps=$fps, resolution=$resolution")
             try {
                 while (isActive) {
@@ -675,8 +668,7 @@ fun TrackpadArea(
                 painter = currentFrame!!,
                 contentDescription = "PC Monitor",
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .aspectRatio(currentFrame!!.intrinsicSize.width / currentFrame!!.intrinsicSize.height)
+                    .fillMaxSize()
                     .onSizeChanged { imageSize = it }
                     .graphicsLayer(
                         scaleX = scale,
