@@ -10,7 +10,7 @@ Status (2026-10-17): **implemented and tested in an isolated branch; NOT install
 
 ## Security model
 
-Browser control is **disabled by default**. OmniMCP exposes its five browser tools only when both `OMNI_BROWSER_CONTROL_ENABLED=1` and a strong `OMNI_BROWSER_CONTROL_TOKEN` (32+ characters) are configured in the **process environment**. When enabled, **every request to `/mcp`** (including existing shell and filesystem tools and initialization) must have `Authorization: Bearer <token>`; unauthenticated public clients fail closed with HTTP 401. This global guard is essential because the existing publicly reachable MCP service otherwise exposes privileged shell tools that could circumvent a browser-specific token.
+Browser control is **disabled by default**. OmniMCP exposes its fourteen browser tools only when both `OMNI_BROWSER_CONTROL_ENABLED=1` and a strong `OMNI_BROWSER_CONTROL_TOKEN` (32+ characters) are configured in the **process environment**. When enabled, **every request to `/mcp`** (including existing shell and filesystem tools and initialization) must have `Authorization: Bearer <token>`; unauthenticated public clients fail closed with HTTP 401. This global guard is essential because the existing publicly reachable MCP service otherwise exposes privileged shell tools that could circumvent a browser-specific token.
 
 The extension independently requires a matching pairing token and an explicit enabled toggle. Its popup obtains site host permissions through a direct Chrome user gesture. The worker also checks a separately stored per-origin allowlist and the Chrome host-permission grant for **each action**; unapproved tabs do not appear in discovery, and navigation is restricted to approved HTTPS origins (or localhost development pages). DOM scripts recheck the origin at execution to prevent cross-navigation races.
 
@@ -35,8 +35,17 @@ Do not put the token in source code, Git, plugin descriptions, logs, URL paramet
 | `browser_inspect` | `tabId` | Read-only visible text and safe interactive-element CSS selectors. |
 | `browser_click` | `tabId`, `selector` | Clicks a non-sensitive target in the current approved origin. |
 | `browser_type` | `tabId`, `selector`, `text` | Sets text on a non-sensitive editable control and dispatches input/change events. |
+| `browser_activate` | `tabId` | Activates an approved tab without forcing Chrome into the foreground. |
+| `browser_close` | `tabId` | Closes an explicitly identified approved tab. |
+| `browser_reload` | `tabId` | Reloads an approved tab. |
+| `browser_page_state` | `tabId` | Returns document-ready state, viewport/scroll metrics, origin and title; never form values. |
+| `browser_scroll` | `tabId`, `deltaX`/`deltaY`, optional `selector` | Scrolls page or a safe element; offsets limited to ±2000 CSS px. |
+| `browser_focus` | `tabId`, `selector` | Focuses a non-sensitive visible element without reading its contents. |
+| `browser_find` | `tabId`, `text`, optional `maxResults` | Finds visible text, returning bounded snippets and selectors; excludes forms/editable fields. |
+| `browser_wait_for` | `tabId`, `selector`, optional `timeoutMs` | Waits up to 8000 ms for a safe, visible element, checking permissions on each attempt. |
+| `browser_select` | `tabId`, `selector`, `optionText` | Picks a non-sensitive native dropdown option by its exact visible label. |
 
-All tools use the existing OmniMCP `/mcp` tool listing and `tools/call` conventions. No arbitrary script execution or full-page HTML scraping.
+All tools use the existing OmniMCP `/mcp` tool listing and `tools/call` conventions. No arbitrary script execution or full-page HTML scraping. Cross-origin links cannot be followed by click; use `browser_navigate` with an independently approved destination. History back/forward and raw screenshots are intentionally not offered: history targets cannot be preauthorized, and screenshots could expose sensitive forms.
 
 ## Local shadow-server validation (does not deploy or replace production)
 
@@ -44,8 +53,8 @@ Prerequisites: .NET 9 SDK, Node 22+, Python 3.13+.
 
 ```powershell
 cd D:\SSDProjects\Tools\McpHelloProbe
-dotnet publish McpHelloProbe.csproj -c Release -o published-v0.5.9-browser-dev
-python TestFiles/test_browser_control.py published-v0.5.9-browser-dev/OmniMCP.exe
+dotnet publish McpHelloProbe.csproj -c Release -o published-v0.5.10-browser-dev
+python TestFiles/test_browser_control.py published-v0.5.10-browser-dev/OmniMCP.exe
 
 cd D:\SSDProjects\Omni-browser-control\OmniSync.Chrome
 node --check background.js
@@ -65,7 +74,7 @@ $pairingToken
 $env:OMNI_BROWSER_CONTROL_ENABLED = '1'
 $env:OMNIMCP_LITE_PORT = '18871'   # shadow server; does not replace 8771
 $env:OMNI_BROWSER_BRIDGE_PORT = '18772'
-& 'D:\SSDProjects\Tools\McpHelloProbe\published-v0.5.9-browser-dev\OmniMCP.exe'
+& 'D:\SSDProjects\Tools\McpHelloProbe\published-v0.5.10-browser-dev\OmniMCP.exe'
 ```
 
 The MCP client must use `http://127.0.0.1:18871/mcp` with an `Authorization: Bearer <token>` HTTP header. The Chrome extension's popup must be given **the same token** and explicitly enabled. Treat the terminal scrollback containing the token as sensitive, close the terminal after the trial, and rotate the token if disclosed. Grant each desired origin with **Allow current site's origin**; Chrome will show its own permission dialog. To test a site, open it in Chrome, then call `browser_tabs` and use the returned `tabId` for inspection and interaction.
@@ -80,9 +89,17 @@ Not yet verified: actual Chrome MV3 service-worker longevity, real-site navigati
 
 ### Recorded checks (2026-10-17)
 
-- `dotnet publish McpHelloProbe.csproj -c Release -o published-v0.5.9-browser-dev` — PASS.
-- `python TestFiles/test_browser_control.py published-v0.5.9-browser-dev/OmniMCP.exe` — PASS (auth, local port boundary, catalog, request/response).
-- `python TestFiles/test_robustness.py published-v0.5.9-browser-dev/OmniMCP.exe` — PASS (baseline malformed RPC, canceled command and 2,000 concurrent requests).
+- `dotnet publish McpHelloProbe.csproj -c Release -o published-v0.5.10-browser-dev` — PASS.
+- `python TestFiles/test_browser_control.py published-v0.5.10-browser-dev/OmniMCP.exe` — PASS (auth, local port boundary, catalog, request/response).
+- `python TestFiles/test_robustness.py published-v0.5.10-browser-dev/OmniMCP.exe` — PASS (baseline malformed RPC, canceled command and 2,000 concurrent requests).
 - `node test-browser-control.cjs` and `node --check` — PASS (permission allow/revoke, safe DOM actions, URL redaction, MV3 script syntax).
 - The existing desktop test that captures a live user-screen screenshot was not run to avoid inadvertently capturing private screen content. No browser UI automation smoke was performed because installing/reloading the extension requires the user's explicit approval.
 - Older Chrome media scripting on arbitrary sites will now require site grants because the prior blanket `<all_urls>` host permission has been moved to optional permissions; this is a deliberate least-privilege change to review before installation.
+
+### Expanded browser tools validation (v0.5.10, 2026-10-17)
+
+- Added nine tools to the original five: tab activate/close/reload; page state; bounded scroll; safe focus; visible-text find; bounded element wait; and native select dropdown interaction.
+- Updated `TestFiles/test_browser_control.py` to verify all fourteen tool descriptions and input schemas, positive/negative argument checks, all nine new authenticated bridge round-trips, default-off advertisement, and global MCP authentication.
+- Updated `test-browser-control.cjs` with simulated Chrome tab APIs and DOM coverage for all nine additional tools, revoked origins, unsafe cross-origin anchor clicks, and sensitive-field rejection.
+- `dotnet publish ... -o published-v0.5.10-browser-dev`, `python TestFiles/test_browser_control.py published-v0.5.10-browser-dev/OmniMCP.exe`, `python TestFiles/test_robustness.py published-v0.5.10-browser-dev/OmniMCP.exe`, `node test-browser-control.cjs`, and JavaScript syntax checks: all **PASS** in isolated test environments.
+- Running production OmniMCP remains `published-v0.5.8-sessions-filter/OmniMCP-Lite.exe`; no task or extension was changed.

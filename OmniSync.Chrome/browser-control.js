@@ -83,7 +83,7 @@
 
   // Runs in Chrome's isolated world, not the page's JS world.
   // Never read any input.value, textarea.value, password, payment or OTP field.
-  function inspectOrAct(action, expectedOrigin, selector, typed) {
+  function inspectOrAct(action, expectedOrigin, selector, typed, options = {}) {
     if (location.origin !== expectedOrigin) throw Error("Tab navigated outside approved origin.");
     const sensitive = /(passw|passwd|secret|token|auth|otp|one.?time|2fa|pin|cvv|cvc|card.?num|credit|debit|payment|social.?security|iban|bank|recovery|api.?key|session)/i;
     const risky = element => {
@@ -115,6 +115,45 @@
       }
       return "body > " + parts.join(" > ");
     };
+    if (action === "page_state") {
+      return {
+        origin: location.origin, title: document.title.slice(0, 160),
+        readyState: document.readyState,
+        viewport: { width: window.innerWidth, height: window.innerHeight },
+        scroll: { x: Math.round(window.scrollX), y: Math.round(window.scrollY) },
+        pageHeight: Math.round(document.documentElement.scrollHeight)
+      };
+    }
+    if (action === "find") {
+      const needle = String(options.text || "").trim().toLocaleLowerCase();
+      if (!needle || needle.length > 120) throw Error("Invalid visible-text query.");
+      const maxResults = Number.isInteger(options.maxResults) ? options.maxResults : 12;
+      if (maxResults < 1 || maxResults > 20) throw Error("Invalid result limit.");
+      const matches = [];
+      const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+      let nodesVisited = 0, count = 0;
+      while (walker.nextNode() && nodesVisited++ < 3000 && count < 200) {
+        const node = walker.currentNode, parent = node.parentElement;
+        if (!parent || !visible(parent) ||
+            parent.closest("form, input, textarea, select, [contenteditable], script, style, noscript, [data-private]") ||
+            sensitive.test(parent.getAttribute("autocomplete") || "")) continue;
+        const text = (node.textContent || "").replace(/\s+/g, " ").trim();
+        if (!text || !text.toLocaleLowerCase().includes(needle)) continue;
+        count++;
+        if (matches.length < maxResults) matches.push({
+          selector: path(parent),
+          snippet: text.slice(0, 180)
+        });
+      }
+      return { matches, count, truncated: count >= 200 || nodesVisited > 3000 };
+    }
+    if (action === "scroll" && !selector) {
+      const dx = options.deltaX ?? 0, dy = options.deltaY ?? 0;
+      if (!Number.isInteger(dx) || !Number.isInteger(dy) ||
+          Math.abs(dx) > 2000 || Math.abs(dy) > 2000) throw Error("Invalid scroll offset.");
+      window.scrollBy({ left: dx, top: dy, behavior: "instant" });
+      return { scrolled: true };
+    }
     if (action === "inspect") {
       const chunks = [];
       const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
@@ -139,10 +178,45 @@
     if (typeof selector !== "string" || selector.length > 512)
       throw Error("Invalid selector.");
     const element = document.querySelector(selector);
+    if (action === "wait_for" && (!element || !visible(element)))
+      return { found: false };
     if (!element || !visible(element)) throw Error("Visible target not found.");
     if (risky(element) || element.closest('form:has(input[type="password"],input[autocomplete*="cc-"])'))
       throw Error("Sensitive form target is prohibited.");
+    if (action === "wait_for") return { found: true, selector };
+    if (action === "focus") {
+      if (typeof element.focus !== "function") throw Error("Element cannot be focused.");
+      element.focus({ preventScroll: true });
+      return { focused: true, selector };
+    }
+    if (action === "scroll") {
+      const dx = options.deltaX ?? 0, dy = options.deltaY ?? 0;
+      if (!Number.isInteger(dx) || !Number.isInteger(dy) ||
+          Math.abs(dx) > 2000 || Math.abs(dy) > 2000) throw Error("Invalid scroll offset.");
+      if (typeof element.scrollBy !== "function") throw Error("Element cannot scroll.");
+      element.scrollBy({ left: dx, top: dy, behavior: "instant" });
+      return { scrolled: true, selector };
+    }
+    if (action === "select") {
+      if (!(element instanceof HTMLSelectElement)) throw Error("Target is not a select dropdown.");
+      const choice = String(options.optionText || "");
+      if (choice.length < 1 || choice.length > 120) throw Error("Invalid option text.");
+      const selected = [...element.options].find(opt => opt.textContent.trim() === choice && !opt.disabled);
+      if (!selected) throw Error("Option not found or disabled.");
+      selected.selected = true;
+      element.dispatchEvent(new Event("input", { bubbles: true }));
+      element.dispatchEvent(new Event("change", { bubbles: true }));
+      return { selected: true, selector };
+    }
     if (action === "click") {
+      // Do not follow a link to a different origin via a click.
+      const anchor = element.closest("a[href]");
+      if (anchor) {
+        const destination = new URL(anchor.getAttribute("href") || "", location.href);
+        if (destination.origin !== expectedOrigin || !["https:", "http:"].includes(destination.protocol) ||
+            destination.username || destination.password)
+          throw Error("Cross-origin links must use browser_navigate.");
+      }
       // Block implicit credential/payment form submissions.
       if (element.matches('input[type="submit"], input[type="image"], button[form], input[form], a[href^="javascript:"]') ||
           (element.tagName === "BUTTON" && element.closest("form") &&
@@ -198,12 +272,42 @@
     }
     if (!Number.isInteger(a.tabId) || a.tabId <= 0) throw new Error("Invalid tab ID.");
     const tab = await getApprovedTab(a.tabId);
-    const origin = validOrigin(tab.url);
-    const result = await chrome.scripting.executeScript({
-      target: { tabId: a.tabId }, world: "ISOLATED",
-      func: inspectOrAct, args: [work.action, origin, a.selector || "", a.text || ""]
-    });
-    return result?.[0]?.result ?? { error: "Target frame unavailable." };
+    if (work.action === "activate") {
+      await chrome.tabs.update(a.tabId, { active: true });
+      return { activated: true, tabId: a.tabId };
+    }
+    if (work.action === "close") {
+      await chrome.tabs.remove(a.tabId);
+      return { closed: true, tabId: a.tabId };
+    }
+    if (work.action === "reload") {
+      await chrome.tabs.reload(a.tabId);
+      return { reloading: true, tabId: a.tabId };
+    }
+    const runDom = async () => {
+      const approvedTab = await getApprovedTab(a.tabId);
+      const origin = validOrigin(approvedTab.url);
+      const result = await chrome.scripting.executeScript({
+        target: { tabId: a.tabId }, world: "ISOLATED",
+        func: inspectOrAct, args: [work.action, origin, a.selector || "", a.text || "", a]
+      });
+      return result?.[0]?.result ?? { error: "Target frame unavailable." };
+    };
+    if (work.action === "wait_for") {
+      const timeoutMs = Number.isInteger(a.timeoutMs) ? a.timeoutMs : 4000;
+      if (timeoutMs < 0 || timeoutMs > 8000) throw new Error("Invalid wait timeout.");
+      const limit = Math.min(work.deadline, Date.now() + timeoutMs);
+      do {
+        await load();
+        if (!current.enabled) throw new Error("Browser control disabled.");
+        const result = await runDom();
+        if (result.found || result.error) return result;
+        if (Date.now() >= limit) break;
+        await delay(Math.min(250, Math.max(0, limit - Date.now())));
+      } while (Date.now() <= limit);
+      return { found: false, timedOut: true };
+    }
+    return runDom();
   }
 
   async function request(endpoint, token, payload) {
@@ -254,5 +358,5 @@
   chrome.alarms.onAlarm.addListener(alarm => { if (alarm.name === "browser-control-wake") void start(); });
   chrome.alarms.create("browser-control-wake", { periodInMinutes: 1 });
   chrome.storage.local.setAccessLevel?.({ accessLevel: "TRUSTED_CONTEXTS" }).catch(() => {});
-  globalThis.BrowserControl = { start, validOrigin, displayUrl, inspectOrAct };
+  globalThis.BrowserControl = { start, validOrigin, displayUrl, inspectOrAct, execute };
 })();
