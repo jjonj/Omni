@@ -14,12 +14,8 @@ li code{overflow-wrap:anywhere;flex:1}li button{flex-shrink:0}
 #msg{white-space:pre-wrap}#msg.error{color:#ffaaaa}
 small{color:#aebbc9}
 </style></head><body><h1>Omni browser control</h1>
-<p>Off by default. Each site requires a separate permission grant. Never permits reading password or payment fields.</p>
-<label for="token">Local pairing token (never displayed again)</label>
-<input id="token" type="password" autocomplete="off" placeholder="32+ character token">
-<button id="enable">Enable</button><button id="disable" class="danger">Disable</button>
-<hr><button id="allow">Allow current site's origin</button>
-<h2 style="font-size:13px">Approved origins</h2><ul id="sites"></ul>
+<p>Browser control starts automatically when the local OmniMCP bridge is available. No pairing code or individual site approvals.</p>
+<button id="enable">Enable</button><button id="disable" class="danger">Pause</button>
 <p id="state"></p><p id="msg" role="status"></p>
-<small>Browser controls require authenticated OmniMCP. This popup never inspects site forms.</small>
+<small>Local browser traffic stays on 127.0.0.1. Public OmniMCP still requires server-side authentication. Password and payment fields are excluded.</small>
 <script src="browser-popup.js"></script></body></html>

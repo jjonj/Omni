@@ -6,9 +6,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const data = {};
-let permit = false;
-const requested = [];
-const allowedPatterns = new Set();
+let permit = true;
 const listeners = {};
 const tab = { id: 14, url: "https://example.test/?access_token=hidden", title: "Example" };
 const tabActions = [];
@@ -19,13 +17,10 @@ const chrome = {
     async setAccessLevel() {}
   }},
   permissions: {
-    async request({ origins }) {
-      requested.push(origins);
-      if (permit) origins.forEach(x => allowedPatterns.add(x));
-      return permit;
-    },
-    async contains({ origins }) { return origins.every(x => allowedPatterns.has(x)); },
-    async remove({ origins }) { origins.forEach(x => allowedPatterns.delete(x)); return true; }
+    async contains({ origins }) {
+      return permit && origins.every(x => x.startsWith("https://") ||
+        x.startsWith("http://127.0.0.1/") || x.startsWith("http://localhost/"));
+    }
   },
   tabs: {
     async query() { return [tab]; },
@@ -36,7 +31,7 @@ const chrome = {
   },
   scripting: { async executeScript({func,args,target}) { assert.equal(target.tabId,tab.id); return [{result:func(...args)}]; } },
   alarms: { onAlarm: { addListener(fn) { listeners.alarm = fn; } }, create() {} },
-  runtime: { onMessage: { addListener(fn) { listeners.message = fn; } } }
+  runtime: { id:"test-extension-id", onMessage: { addListener(fn) { listeners.message = fn; } } }
 };
 class FakeElement {
   constructor(tag, attrs = {}, text = "") {
@@ -135,28 +130,23 @@ assert.equal(api.validOrigin("file:///C:/secrets.txt"), null);
 assert.equal(api.validOrigin("https://x.test/#access_token=abc"), null);
 assert.equal(api.displayUrl("https://example.test/a?access_token=SECRET#code=SECRET"), "https://example.test/a");
 const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, "manifest.json"), "utf8"));
-assert.ok(!manifest.host_permissions.includes("<all_urls>"), "Global site access must be optional");
-assert.ok(manifest.optional_host_permissions.includes("https://*/*"));
+assert.ok(manifest.host_permissions.includes("https://*/*"), "HTTPS sites should work without per-origin prompts");
 
 function message(command, args = {}) {
   return new Promise((resolve) => {
-    const staysOpen = listeners.message({ command, ...args }, null, resolve);
+    const staysOpen = listeners.message({ command, ...args }, {id:chrome.runtime.id}, resolve);
     assert.equal(staysOpen, true);
   });
 }
 (async () => {
   let reply = await message("status");
-  assert.equal(reply.data.enabled, false);
-  assert.equal(reply.data.paired, false);
-  reply = await message("allowOrigin", { origin: "https://example.test" });
-  assert.equal(reply.ok, false, "Missing Chrome permission must prevent approval");
-  assert.equal((await message("status")).data.origins.length, 0);
-  permit = true;
-  allowedPatterns.add("https://example.test/*"); // Popup host-grant user gesture.
-  reply = await message("allowOrigin", { origin: "https://example.test" });
-  assert.equal(reply.ok, true);
-  assert.equal(reply.data.origins[0], "https://example.test");
-  assert.ok(allowedPatterns.has("https://example.test/*"));
+  assert.equal(reply.data.enabled, true);
+  assert.equal(reply.data.mode, "local");
+  assert.equal(reply.data.paired, undefined);
+  assert.equal(reply.data.origins, undefined);
+  data.omniBrowserControl = {enabled:false, token:"old-pairing", origins:[]};
+  reply = await message("status");
+  assert.equal(reply.data.enabled, true, "Old pairing settings migrate to local mode.");
   assert.throws(() => api.inspectOrAct("type", "https://example.test", "#password", "x"), /Sensitive/);
   assert.throws(() => api.inspectOrAct("type", "https://example.test", "#otp", "x"), /Sensitive/);
   assert.throws(() => api.inspectOrAct("click", "https://evil.test", "#go", ""), /outside approved origin/);
@@ -166,7 +156,7 @@ function message(command, args = {}) {
   assert.equal(safeInput.value, "safe search");
   assert.equal(result.text, undefined, "No typed text may be returned");
   link.attrs.href = "https://another-site.test/";
-  assert.throws(() => api.inspectOrAct("click", "https://example.test", "#go", ""), /Cross-origin/);
+  assert.equal(api.inspectOrAct("click", "https://example.test", "#go", "").clicked, true);
   link.attrs.href = "https://example.test/next";
   assert.equal(api.inspectOrAct("click", "https://example.test", "#go", "").clicked, true);
   const focused = api.inspectOrAct("focus", "https://example.test", "#search", "");
@@ -192,7 +182,7 @@ function message(command, args = {}) {
   assert.match(snapshot.text, /Visible heading/);
   assert.doesNotMatch(JSON.stringify(snapshot), /NEVER-DISCLOSE|SECRET-OTP-1234|123456/);
   assert.ok(snapshot.elements.every(x => x.selector && x.tag));
-  data.omniBrowserControl = {enabled:true, token:"x".repeat(48), origins:["https://example.test"]};
+  data.omniBrowserControl = {mode:"local",enabled:true};
   const work = (action, arguments_={}) => ({action, deadline:Date.now()+10000,
     arguments:{tabId:14, ...arguments_}});
   assert.equal((await api.execute(work("page_state"))).viewport.width, 1100);
@@ -205,17 +195,19 @@ function message(command, args = {}) {
   assert.equal((await api.execute(work("activate"))).activated, true);
   assert.equal((await api.execute(work("close"))).closed, true);
   assert.equal(tabActions.filter(x=>x[0]==="remove").length, 1);
-  tab.url = "https://unapproved.test/";
-  await assert.rejects(api.execute(work("close")), /not approved/);
+  tab.url = "chrome://extensions/";
+  await assert.rejects(api.execute(work("close")), /not accessible/);
+  tab.url = "https://another-site.test/";
+  assert.equal((await api.execute(work("reload"))).reloading, true);
   tab.url = "https://example.test/?access_token=hidden";
-  allowedPatterns.delete("https://example.test/*");
-  await assert.rejects(api.execute(work("reload")), /not approved/);
-  allowedPatterns.add("https://example.test/*");
-  data.omniBrowserControl.enabled = false;
+  permit = false;
+  await assert.rejects(api.execute(work("reload")), /not accessible/);
+  permit = true;
+  reply = await message("disable");
+  assert.equal(reply.data.enabled, false);
   await assert.rejects(api.execute(work("activate")), /disabled/);
-  reply = await message("revoke", { origin: "https://example.test" });
-  assert.equal(reply.ok, true);
-  assert.equal((await message("status")).data.origins.length, 0);
-  assert.equal(allowedPatterns.size, 0);
-  console.log("PASS: permission gating, tab controls, scroll/focus/find/wait/select/page state, safe DOM and URL redaction");
+  reply = await message("enable");
+  assert.equal(reply.data.enabled, true);
+  await message("disable"); // Stop background poll loop before test exit.
+  console.log("PASS: no pairing/site prompts, local default, 14 controls, restricted sensitive fields");
 })().catch(err => { console.error(err); process.exitCode = 1; });
