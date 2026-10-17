@@ -1,0 +1,25 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Omni Browser Control</title>
+<style>
+body{font:13px system-ui;background:#161d27;color:#e5edf7;margin:0;padding:16px;width:335px;box-sizing:border-box}
+h1{font-size:16px;margin:0 0 8px} p{line-height:1.5;color:#aebbc9}
+input,button{box-sizing:border-box;font:inherit;border-radius:5px}
+input{width:100%;padding:9px;background:#263344;color:#fff;border:1px solid #58708b}
+button{background:#295a89;color:#fff;border:0;padding:8px 10px;margin:5px 4px 5px 0;cursor:pointer}
+button:focus-visible,input:focus-visible{outline:2px solid #9ed6ff}
+button.secondary{background:#435366}button.danger{background:#824343}
+#sites{list-style:none;padding:0}li{padding:5px 0;display:flex;align-items:center;gap:7px}
+li code{overflow-wrap:anywhere;flex:1}li button{flex-shrink:0}
+#msg{white-space:pre-wrap}#msg.error{color:#ffaaaa}
+small{color:#aebbc9}
+</style></head><body><h1>Omni browser control</h1>
+<p>Off by default. Each site requires a separate permission grant. Never permits reading password or payment fields.</p>
+<label for="token">Local pairing token (never displayed again)</label>
+<input id="token" type="password" autocomplete="off" placeholder="32+ character token">
+<button id="enable">Enable</button><button id="disable" class="danger">Disable</button>
+<hr><button id="allow">Allow current site's origin</button>
+<h2 style="font-size:13px">Approved origins</h2><ul id="sites"></ul>
+<p id="state"></p><p id="msg" role="status"></p>
+<small>Browser controls require authenticated OmniMCP. This popup never inspects site forms.</small>
+<script src="browser-popup.js"></script></body></html>

@@ -1,5 +1,7 @@
 # Chrome Extension Setup Instructions
 
+> **New OmniMCP browser-control development candidate:** see [BROWSER_CONTROL.md](BROWSER_CONTROL.md). It is NOT deployed. The steps below describe the existing extension's legacy SignalR installation and do not enable the new authenticated MCP control interface.
+
 ## Step 1: Download SignalR JavaScript Library
 
 You need to download `signalr.min.js` and place it in the `D:\SSDProjects\Omni\OmniSync.Chrome` folder.
