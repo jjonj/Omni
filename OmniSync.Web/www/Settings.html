@@ -2,8 +2,8 @@
 <!-- 
     REMINDER: 
     Whenever you modify features in the Web UI (Hotkeys, Exe Mappings, Projects, etc.), 
-    you MUST also update the corresponding WPF UI in the OmniSync.Hub project.
-    The WPF version is the primary interface!
+    keep the equivalent Rust OmniHub page in D:/SSDProjects/Tools/Omnish/main in sync.
+    The C# WPF Hub has been retired.
 -->
 <html lang="en">
 <head>
@@ -160,7 +160,7 @@
                         <div style="display: flex; flex-direction: column; gap: 16px;">
                             <label class="hub-status-label" style="display: flex; align-items: center; gap: 12px; cursor: pointer; text-transform: none; font-size: 14px;">
                                 <input type="checkbox" id="run-on-startup" onchange="toggleStartup(this.checked)">
-                                Run OmniSync Hub on Windows Startup
+                                Run Rust OmniHub on Windows Startup
                             </label>
                             <label for="task-resurfacing-times">Task resurfacing times (HH:mm, comma separated)</label>
                             <input id="task-resurfacing-times" type="text" placeholder="11:00,18:00">
@@ -226,7 +226,7 @@
                     <div class="hub-box">
                         <h2>Hotkey Management</h2>
                         <p style="font-size: 12px; color: var(--text-dim); margin-bottom: 20px;">
-                            Configure global hotkeys for OmniSync Hub. Click a box and press the desired key combination.
+                            Configure global hotkeys for Rust OmniHub. Click a box and press the desired key combination.
                         </p>
                         <div id="hotkeys-list" style="display: flex; flex-direction: column; gap: 10px;">
                             <!-- Populated by JS -->

@@ -1,119 +1,31 @@
-"""
-Quick diagnostic script to check Browser Control system health.
-Run this to identify where the problem is.
-"""
+#!/usr/bin/env python3
+"""Non-invasive browser bridge diagnostic for the Rust OmniHub migration."""
+from pathlib import Path
+import json
+import urllib.error
+import urllib.request
 
-import os
-import sys
-
-def check_file_exists(path, description):
-    """Check if a file exists and report status."""
-    exists = os.path.exists(path)
-    status = "✅" if exists else "❌"
-    print(f"{status} {description}: {path}")
-    return exists
-
-def main():
-    print("\n" + "="*60)
-    print("OmniSync Browser Control Diagnostic")
-    print("="*60 + "\n")
-    
-    # Change to project directory
-    project_dir = r"D:\SSDProjects\Omni"
-    os.chdir(project_dir)
-    
-    all_good = True
-    
-    # Check Hub files
-    print("Checking Hub Files...")
-    hub_file = check_file_exists(
-        "OmniSync.Hub/src/OmniSync.Hub/Presentation/Hubs/RpcApiHub.cs",
-        "Hub RpcApiHub.cs"
-    )
-    all_good = all_good and hub_file
-    
-    # Check Chrome Extension files
-    print("\nChecking Chrome Extension Files...")
-    manifest = check_file_exists(
-        "OmniSync.Chrome/manifest.json",
-        "Extension manifest"
-    )
-    background = check_file_exists(
-        "OmniSync.Chrome/background.js",
-        "Extension background script"
-    )
-    signalr = check_file_exists(
-        "OmniSync.Chrome/signalr.min.js",
-        "SignalR library (CRITICAL)"
-    )
-    all_good = all_good and manifest and background and signalr
-    
-    # Check Android files
-    print("\nChecking Android Files...")
-    signalr_client = check_file_exists(
-        "OmniSync.Android/app/src/main/java/com/omni/sync/data/repository/SignalRClient.kt",
-        "SignalRClient.kt"
-    )
-    browser_vm = check_file_exists(
-        "OmniSync.Android/app/src/main/java/com/omni/sync/viewmodel/BrowserViewModel.kt",
-        "BrowserViewModel.kt"
-    )
-    browser_screen = check_file_exists(
-        "OmniSync.Android/app/src/main/java/com/omni/sync/ui/screen/BrowserControlScreen.kt",
-        "BrowserControlScreen.kt"
-    )
-    all_good = all_good and signalr_client and browser_vm and browser_screen
-    
-    # Check test scripts
-    print("\nChecking Test Scripts...")
-    test_script = check_file_exists(
-        "TestScripts/test_browser_commands.py",
-        "Browser test script"
-    )
-    
-    # Check for SendBrowserCommand in Hub
-    print("\nChecking Hub Code...")
-    if hub_file:
-        with open("OmniSync.Hub/src/OmniSync.Hub/Presentation/Hubs/RpcApiHub.cs", 'r', encoding='utf-8') as f:
-            hub_content = f.read()
-            has_method = "SendBrowserCommand" in hub_content
-            status = "✅" if has_method else "❌"
-            print(f"{status} SendBrowserCommand method exists in Hub")
-            all_good = all_good and has_method
-    
-    # Check for sendBrowserCommand in SignalRClient
-    print("\nChecking Android Code...")
-    if signalr_client:
-        with open("OmniSync.Android/app/src/main/java/com/omni/sync/data/repository/SignalRClient.kt", 'r', encoding='utf-8') as f:
-            client_content = f.read()
-            has_method = "fun sendBrowserCommand" in client_content
-            has_cleanup = "_cleanupPatterns" in client_content
-            status = "✅" if has_method else "❌"
-            print(f"{status} sendBrowserCommand method exists in SignalRClient")
-            status2 = "✅" if has_cleanup else "❌"
-            print(f"{status2} cleanupPatterns flow exists (needed for BrowserViewModel)")
-            all_good = all_good and has_method and has_cleanup
-    
-    # Summary
-    print("\n" + "="*60)
-    if all_good:
-        print("All files and code checks passed!")
-        print("\nNext Steps:")
-        print("1. Make sure Hub is running: python run_omnihub.py")
-        print("2. Load Chrome extension: chrome://extensions/")
-        print("3. Check extension console for 'SignalR Connected.'")
-        print("4. Test with: python TestScripts/test_browser_commands.py")
-        print("5. If Python test works but Android doesn't:")
-        print("   - Check Android app connection status (Dashboard screen)")
-        print("   - Check Android Studio logcat for errors")
-    else:
-        print("Some checks failed!")
-        print("\nFix the failed items above, then run this script again.")
-        if not signalr:
-            print("\nCRITICAL: signalr.min.js is missing!")
-            print("   Download from: https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/8.0.7/signalr.min.js")
-            print("   Save to: D:\\SSDProjects\\Omni\\OmniSync.Chrome\\signalr.min.js")
-    print("="*60 + "\n")
-
-if __name__ == "__main__":
-    main()
+ROOT = Path(__file__).resolve().parents[2]
+RUST = Path(r"D:\SSDProjects\Tools\Omnish\main")
+CHECKS = (
+    (ROOT / "OmniSync.Chrome" / "background.js", "Chrome extension SignalR client"),
+    (ROOT / "OmniSync.Chrome" / "manifest.json", "Chrome manifest"),
+    (RUST / "src-omnihub-tauri" / "src" / "main.rs", "Rust Hub SignalR handler"),
+)
+failed = False
+for path, name in CHECKS:
+    good = path.is_file()
+    print(("PASS" if good else "FAIL") + f": {name}: {path}")
+    failed |= not good
+url = "http://127.0.0.1:5000/signalrhub/negotiate"
+try:
+    request = urllib.request.Request(url, data=b"{}", method="POST")
+    with urllib.request.urlopen(request, timeout=3) as response:
+        result = json.load(response)
+        ok = response.status == 200 and isinstance(result, dict)
+        print(("PASS" if ok else "FAIL") + f": Rust Hub SignalR negotiation ({response.status})")
+        failed |= not ok
+except (urllib.error.URLError, TimeoutError, ValueError) as exc:
+    print(f"FAIL: Rust Hub SignalR negotiation: {exc}")
+    failed = True
+raise SystemExit(1 if failed else 0)

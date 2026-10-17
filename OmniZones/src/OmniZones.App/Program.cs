@@ -21,7 +21,9 @@ internal static class Program
         var runtime = ZoneRuntime.TryStart();
         if (runtime == null)
         {
-            var hub = Process.GetProcessesByName("OmniSync.Hub").Length > 0;
+            var hub = Process.GetProcessesByName("omnihub-production-v3").Length > 0
+                || Process.GetProcessesByName("omnihub").Length > 0
+                || Process.GetProcessesByName("omnihub-production-v2").Length > 0;
             var other = Process.GetProcessesByName("OmniZones").Length > 1;
             var who = hub ? "The Omni Hub is running and already provides OmniZones (use its tray menu or Settings tab)."
                 : other ? "Another OmniZones is already running. Look for its icon in the system tray (check the hidden-icons arrow)."

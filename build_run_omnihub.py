@@ -1,221 +1,42 @@
+#!/usr/bin/env python3
+"""Compatibility helper for the retired C# Hub; never kills/restarts the live Rust Hub.
+
+The Rust Hub owns production services and builds in a separate repository.
+Use --build-ui for an explicitly requested, non-deploying frontend-only build.
+"""
+import argparse
 import subprocess
-import time
-import os
 import sys
-import shutil
-import ctypes
+import urllib.error
+import urllib.request
+from pathlib import Path
 
-# Define directories and executable path
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-HUB_DIR = os.path.join(SCRIPT_DIR, "OmniSync.Hub", "src", "OmniSync.Hub")
-CLI_DIR = os.path.join(SCRIPT_DIR, "OmniSync.Cli", "deprecated")
-HUB_EXE_PATH = os.path.join(HUB_DIR, "bin", "Debug", "net9.0-windows", "OmniSync.Hub.exe") 
+RUST_REPO = Path(r"D:\SSDProjects\Tools\Omnish\main")
 
-def run_command(command, cwd=None, shell=False, log_file=None):
-    """
-    Runs a shell command and optionally logs its output.
-    """
-    print(f"Executing: {command} in {cwd}")
-    
-    stdout_redirect = subprocess.PIPE
-    stderr_redirect = subprocess.PIPE
-
-    try:
-        process = subprocess.run(
-            command,
-            cwd=cwd,
-            shell=shell,
-            stdout=stdout_redirect,
-            stderr=stderr_redirect,
-            text=True,
-            encoding="utf-8",
-            errors="replace" # Handle decoding errors gracefully
-        )
-
-        if log_file:
-            with open(log_file, "a", encoding="utf-8") as f:
-                f.write(f"--- Command: {command} (CWD: {cwd}) ---\n")
-                f.write("--- STDOUT ---\n")
-                f.write(process.stdout)
-                f.write("--- STDERR ---\n")
-                f.write(process.stderr)
-                f.write(f"--- Exit Code: {process.returncode} ---\n\n")
-        else: # Print to console if no log file
-            print(process.stdout, end='')
-            print(process.stderr, end='')
-
-        if process.returncode != 0:
-            print(f"Command failed with exit code {process.returncode}. See {log_file if log_file else 'output above'} for details.")
-        
-        return process
-
-    except FileNotFoundError:
-        print(f"Error: Command '{command.split()[0]}' not found.")
-        return None
-    except Exception as e:
-        print(f"An error occurred while running command '{command}': {e}")
-        return None
-
-def kill_hub_process():
-    """
-    Kills any running OmniSync.Hub.exe processes using administrative privileges.
-    """
-    print("Attempting to kill OmniSync.Hub.exe processes as admin...")
-    if sys.platform == "win32":
-        # Check if running before requesting elevation to avoid unnecessary UAC prompts
-        check_cmd = "tasklist /FI \"IMAGENAME eq OmniSync.Hub.exe\" /NH"
-        result = subprocess.run(check_cmd, capture_output=True, text=True, shell=True)
-        
-        if "OmniSync.Hub.exe" in result.stdout:
-            # Use PowerShell's Start-Process with -Verb RunAs for elevation
-            ps_cmd = "Start-Process taskkill -ArgumentList '/IM OmniSync.Hub.exe /F' -Verb RunAs -Wait"
-            try:
-                subprocess.run(["powershell.exe", "-NoProfile", "-Command", ps_cmd], check=True)
-                print("Elevated taskkill command executed.")
-            except Exception as e:
-                print(f"Note: Elevated taskkill attempt failed or was cancelled: {e}")
-        else:
-            print("OmniSync.Hub.exe is not running.")
-    else:
-        print("Warning: Process killing not implemented for non-Windows platforms.")
-
-def on_rmtree_error(func, path, exc_info):
-    """
-    Error handler for shutil.rmtree.
-    If the error is due to a read-only file, it tries to change the permissions and retry.
-    """
-    import stat
-    if not os.access(path, os.W_OK):
-        os.chmod(path, stat.S_IWUSR)
-        func(path)
-    else:
-        raise
-
-def delete_with_retry(path, max_retries=5, delay=1):
-    """
-    Deletes a directory with retries.
-    """
-    if not os.path.exists(path):
-        return
-
-    for i in range(max_retries):
-        try:
-            shutil.rmtree(path, onerror=on_rmtree_error)
-            print(f"Successfully deleted {path}")
-            return
-        except Exception as e:
-            if i < max_retries - 1:
-                print(f"Error deleting {path}: {e}. Retrying in {delay}s... ({i+1}/{max_retries})")
-                time.sleep(delay)
-            else:
-                print(f"Failed to delete {path} after {max_retries} attempts.")
-
-def is_admin():
-    try:
-        return ctypes.windll.shell32.IsUserAnAdmin()
-    except:
-        return False
 
 def main():
-    # Elevation is now handled specifically for the kill command to minimize UAC prompts for the rest of the build
-    print(f"HUB_DIR is {HUB_DIR}")
-
-    hub_log_path = os.path.join(SCRIPT_DIR, "hub_build.log")
-    cli_log_path = os.path.join(SCRIPT_DIR, "cli_output.log")
-
-
-    # Clear previous logs
-    for log_file in [hub_log_path, cli_log_path]:
-        if os.path.exists(log_file):
-            try:
-                os.remove(log_file)
-            except OSError as e:
-                print(f"Warning: Error deleting {log_file}: {e}.")
-                # Attempt to proceed
-
-    kill_hub_process()
-    time.sleep(3) # Give the OS more time to release file handles
-
-    # Clean previous build artifacts
-    for folder in ["bin", "obj"]:
-        path_to_delete = os.path.join(HUB_DIR, folder)
-        delete_with_retry(path_to_delete)
-    
-    # Delete .vs folder if it exists
-    vs_folder = os.path.join(SCRIPT_DIR, ".vs")
-    delete_with_retry(vs_folder)
-
-
-    hub_log_file = None # Initialize to None outside try block
-    hub_process = None # Initialize to None to avoid UnboundLocalError
-    try:
-        print("\n--- Cleaning OmniSync.Hub ---")
-        clean_hub_result = run_command("dotnet clean", cwd=HUB_DIR, log_file=hub_log_path)
-        if clean_hub_result is None or clean_hub_result.returncode != 0:
-            print(f"OmniSync.Hub clean failed. Aborting. Check {hub_log_path} for details.")
-            return # Exit if clean failed
-
-        print("\n--- Clearing NuGet cache (optional) ---")
-        clear_nuget_cache_result = run_command("dotnet nuget locals all --clear", cwd=HUB_DIR, log_file=hub_log_path)
-        if clear_nuget_cache_result is None or clear_nuget_cache_result.returncode != 0:
-            print("Warning: NuGet cache clear failed. Continuing anyway.")
-
-        print("\n--- Restoring OmniSync.Hub dependencies ---")
-        restore_hub_result = run_command(f"dotnet restore \"{HUB_DIR}\"", cwd=HUB_DIR, log_file=hub_log_path)
-        if restore_hub_result is None or restore_hub_result.returncode != 0:
-            print(f"OmniSync.Hub restore failed. Aborting. Check {hub_log_path} for details.")
-            return # Exit if restore failed
-
-        print("\n--- Building OmniSync.Hub ---")
-        build_hub_result = run_command("dotnet build", cwd=HUB_DIR, log_file=hub_log_path)
-        if build_hub_result is None or build_hub_result.returncode != 0:
-            print(f"OmniSync.Hub build failed. Aborting. Check {hub_log_path} for details.")
-            return # Exit if build failed
-        
-        # Build successful, delete the build log
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--build-ui", action="store_true", help="Build Rust OmniHub frontend without restarting or deploying")
+    args = parser.parse_args()
+    if not RUST_REPO.is_dir():
+        parser.error(f"Rust OmniHub repository not found: {RUST_REPO}")
+    if args.build_ui:
+        command = [sys.executable, str(RUST_REPO / "build.py"), "omnihub", "--ui-only"]
+        return subprocess.call(command, cwd=RUST_REPO)
+    print("The C# OmniSync.Hub is retired. Rust OmniHub runs from", RUST_REPO)
+    for port, path in ((3333, "/gateway/"), (5000, "/signalrhub/negotiate")):
+        address = f"http://127.0.0.1:{port}{path}"
         try:
-            if os.path.exists(hub_log_path):
-                os.remove(hub_log_path)
-                print("Build successful. hub_build.log deleted.")
-        except Exception as e:
-            print(f"Warning: Could not delete {hub_log_path}: {e}")
+            with urllib.request.urlopen(address, timeout=3) as response:
+                print(f"{address}: HTTP {response.status}")
+        except urllib.error.HTTPError as err:
+            # Non-2xx responses still prove an HTTP listener exists.
+            print(f"{address}: HTTP {err.code}")
+        except (urllib.error.URLError, TimeoutError) as err:
+            print(f"{address}: unreachable ({err})")
+            return 1
+    return 0
 
-        # OmniAgentHook: native helper for delivering phone messages into agent sessions open on the PC.
-        # NativeAOT needs the MSVC linker, so publish from a VS developer environment; failure is non-fatal.
-        print("\n--- Publishing OmniAgentHook (NativeAOT) ---")
-        vcvars = r"E:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvars64.bat"
-        hook_proj = os.path.join(SCRIPT_DIR, "OmniSync.Hub", "src", "OmniSync.AgentHook", "OmniSync.AgentHook.csproj")
-        hook_out = os.path.join(os.environ.get("LOCALAPPDATA", ""), "Omni", "AgentHook")
-        publish = f'dotnet publish "{hook_proj}" -c Release -p:IlcUseEnvironmentalTools=true -o "{hook_out}" -nologo -v q'
-        hook_result = run_command(f'"{vcvars}" >nul && {publish}' if os.path.exists(vcvars) else publish, shell=True)
-        if hook_result is None or hook_result.returncode != 0:
-            print("Warning: OmniAgentHook publish failed; live-session delivery keeps the previous build (if any).")
-
-        time.sleep(1) # Give it a moment
-
-        print("\n--- Starting OmniSync.Hub in background (Elevated) ---")
-        
-        # Ensure the executable exists before trying to run it
-        if not os.path.exists(HUB_EXE_PATH):
-            print(f"Error: Hub executable not found at {HUB_EXE_PATH}. Did the build fail?")
-            return
-
-        # Use PowerShell to start the hub as admin
-        exe_dir = os.path.dirname(HUB_EXE_PATH)
-        ps_launch_cmd = f"Start-Process -FilePath '{HUB_EXE_PATH}' -WorkingDirectory '{exe_dir}' -Verb RunAs"
-        try:
-            subprocess.run(["powershell.exe", "-NoProfile", "-Command", ps_launch_cmd], check=True)
-            print("OmniSync.Hub launch command (elevated) sent successfully.")
-        except Exception as e:
-            print(f"Error launching OmniSync.Hub: {e}")
-            sys.exit(1)
-        
-        # We can't easily get the PID or poll when using Start-Process -Verb RunAs 
-        # because the parent process of the elevated hub will be the shell, not this script.
-        print("OmniSync.Hub should now be starting.")
-        
-    finally:
-        pass
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

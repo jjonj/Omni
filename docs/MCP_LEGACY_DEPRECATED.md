@@ -1,38 +1,14 @@
-# DEPRECATED — OmniHub-hosted MCP server (8770)
+# Retired C# MCP implementation
 
-**Status:** Deprecated as of 2026-10-14. Do not re-enable, extend, or deploy this server.
-It is retained temporarily to allow clean removal later.
+The old in-process C# OmniHub MCP server and `OmniSync.Hub` project were
+removed from the Omni Git checkout on 2026-10-18. **Port 8770 is no longer
+a retired endpoint:** it is now owned by the independent **Rust OmniHub MCP**
+sidecar, running from `D:\SSDProjects\Tools\Omnish\main` under the
+`OmniHub Rust MCP` scheduled task.
 
-The old MCP implementation is in `OmniSync.Hub/src/OmniSync.Hub/Logic/Services/Mcp/`
-(`McpEndpoint`, `McpTools`, `McpDesktopTools`, `McpWindowTools`).
-It remains in the OmniHub process source for compatibility only.
-Both source and deployed OmniHub `appsettings.json` have `Mcp.Enabled=false`.
-Normal OmniHub services on ports 5000 and 3333 are unaffected.
+The other independent server, **OmniMCP-Lite**, remains at loopback port 8771
+and is supervised by `scripts/services/omnimcp_lite_watchdog.py`.
+Do not re-enable old C# tasks or assume MCP requests are forwarded between
+Rust and Lite. These are separate implementations.
 
-**Replacement:** `D:\SSDProjects\Tools\McpHelloProbe` (OmniMCP-Lite v0.5.0+),
-hosted independently on `127.0.0.1:8771` via the `OmniMCP-Lite` Windows
-scheduled task. New MCP features must be developed there. All existing 47
-tools are served in-process by Lite, including UI Automation, Win32 window
-management, virtual desktops, screenshots, mouse/cursor actions, process/file
-tools, and ChatGPT subagent spawning. No request from Lite is forwarded to
-`127.0.0.1:8770`.
-
-**OmniHub watchdog:** `OmniMcpLiteWatchdogService` runs inside OmniHub as a
-hosted background service (enabled by `OmniMcpLiteWatchdog:Enabled`, default
-`true`). It checks `http://127.0.0.1:8771/health` every 10 seconds and, after
-three consecutive failed checks, restarts the independent `OmniMCP-Lite`
-Windows scheduled task via `schtasks /End` and `/Run`. Restart attempts are
-limited to once per 60 seconds. This respects the task's versioned executable,
-elevation, and logon-session configuration, and does not launch a hardcoded
-executable or re-enable Hub MCP. It logs failures and recovery to OmniHub.
-The scheduled task must exist and be enabled; the watchdog does not recreate
-it if it is removed. The independent server continues running after Hub exits.
-
-**Future removal checklist:** Check that all client configurations refer to
-Lite; remove deprecated Hub MCP service registration, endpoint, options and
-tool files; leave the other Hub APIs intact. Do not delete this code as part
-of the 2026-10-14 migration.
-
-**Security note:** The current Tailscale Funnel publicly exposes privileged
-MCP tools. Ensure a proper access-control mechanism before depending on this
-endpoint for unattended public access.
+See `docs/SERVICE_RECOVERY.md` and `docs/MCP_SERVER.md`.

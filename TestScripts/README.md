@@ -1,47 +1,18 @@
-# OmniSync Test Suite Index
+# OmniSync tests (Rust Hub production)
 
-This directory contains the integration and unit tests for the OmniSync ecosystem, covering the Hub (Windows), Remote (Android), and AI (Gemini) components.
+The production Hub, SignalR transport and MCP sidecar are maintained and tested in
+`D:/SSDProjects/Tools/Omnish/main`. The C# `OmniSync.Hub` source and its
+assembly-specific Windows harnesses were retired on 2026-10-18.
 
-## Folder Structure
+Run non-destructive checks from this checkout:
 
-### 🤖 [AIFeature](./AIFeature/)
-Tests for the Gemini CLI integration and AI-driven automation.
-- **Session Management:** Launching, discovery, and lifecycle of AI sessions.
-- **Roundtrip:** Verifying Hub-to-AI communication via Named Pipes.
-- **Formatting:** Ensuring diffs and thoughts are rendered correctly.
-- **Guide:** See [AI_TESTING_GUIDE.md](./AIFeature/AI_TESTING_GUIDE.md) for best practices.
+- `python -m unittest TestScripts/McpServer/test_lite_watchdog.py` — independent Lite supervisor (mocked recovery; no service restarts).
+- `python TestScripts/Browser/diagnose_browser_control.py` — browser extension files and Rust Hub SignalR negotiation (read-only).
+- `dotnet test OmniZones/tests/OmniZones.Core.Tests/OmniZones.Core.Tests.csproj` — standalone zone engine.
+- `node OmniSync.Web/tests/gateway_ui_smoke.cjs` — Web gateway UI (if Node is available).
+- `OmniSync.Android/gradlew.bat :app:compileDebugKotlin` — Android compilation (no deployment).
 
-### 🎮 [TFT](./TFT/)
-Teamfight Tactics specific automation and logic validation.
-- **Team Planner:** Unit selection and encoding/decoding of team codes.
-- **Rune Solver:** Logic for optimal rune selection.
-- **UI Debugging:** Scripts to verify unit counts and cost sorting in the web UI.
-
-### 🌐 [Browser](./Browser/)
-Integration tests for the OmniSync Chrome and Firefox extensions.
-- **Extension Control:** Verifying tab management, URL opening, and cleanup patterns.
-- **Communication:** Testing the SignalR bridge between the Hub and the Browser.
-
-### 💻 [System](./System/)
-Core Windows integration and Hub service tests.
-- **Input Emulation:** Validating `user32.dll` hooks for mouse and keyboard control.
-- **FileSystem:** Testing remote file access, directory listing, and write operations.
-- **Diagnostics:** (Under `/Diagnostics`) Low-level tools for WMI, process hierarchy, and window handles.
-
-### 🏘️ [Villages](./Villages/)
-Tests for village-based game automation (e.g., Wartribes).
-- **Data Prep:** Generating binary test data for village layouts.
-- **Restoration:** Automated state restoration for testing persistence.
-
-### 🏝️ [Islands](./Islands/)
-Procedural generation tests for the Island Generator submodule.
-- **Geometry:** Verifying shape generation and hydrology logic.
-
----
-
-## Running Tests
-Most Python tests require `signalrcore`. If missing, run:
-```bash
-pip install signalrcore
-```
-Ensure the **OmniSync Hub** is running before executing integration tests.
+Some other System scripts are *integration* tests that operate on live macros,
+input devices, external apps, downloads or remote services. Inspect side effects
+before invoking them; they are not part of the safe default smoke suite.
+For migration details and private config paths see `docs/LEGACY_HUB_RETIREMENT.md`.

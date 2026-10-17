@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-SCRIPT = Path(__file__).resolve().parents[2] / "OmniSync.Hub/scripts/omnimcp_lite_watchdog.py"
+SCRIPT = Path(__file__).resolve().parents[2] / "scripts/services/omnimcp_lite_watchdog.py"
 spec = importlib.util.spec_from_file_location("watchdog", SCRIPT)
 watchdog = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(watchdog)

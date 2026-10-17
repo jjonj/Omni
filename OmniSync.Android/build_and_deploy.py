@@ -37,7 +37,8 @@ PACKAGE = "com.omni.sync"
 PROJECT_DIR = Path(__file__).parent
 APK_DEBUG = PROJECT_DIR / "app" / "build" / "outputs" / "apk" / "debug" / "app-debug.apk"
 APK_RELEASE = PROJECT_DIR / "app" / "build" / "outputs" / "apk" / "release" / "app-release.apk"
-HUB_CONFIG = PROJECT_DIR.parent / "OmniSync.Hub" / "src" / "OmniSync.Hub" / "appsettings.json"
+HUB_CONFIG = Path(os.environ.get("OMNIHUB_AUTH_CONFIG") or
+                  Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "OmniHub" / "config" / "appsettings.json")
 
 def run_command(cmd, check=True, capture_output=True):
     """Run a shell command and return the result."""
@@ -107,9 +108,9 @@ def request_json(url, api_key, method="GET", body=None, timeout=15):
 
 
 def deploy_via_hub(explicit_public_base_url=None):
-    print("\n=== Deploying through OmniSync Hub ===")
+    print("\n=== Deploying through Rust OmniHub ===")
     if not HUB_CONFIG.exists():
-        print(f"[FAIL] Hub configuration was not found at {HUB_CONFIG}")
+        print(f"[FAIL] Rust OmniHub configuration was not found at {HUB_CONFIG}")
         return False
 
     settings = json.loads(HUB_CONFIG.read_text(encoding="utf-8"))

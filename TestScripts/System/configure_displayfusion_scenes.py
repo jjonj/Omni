@@ -34,7 +34,8 @@ class Hub:
         reply = self.receive()
         if reply.get('error'):
             raise RuntimeError(reply['error'])
-        config = json.loads((ROOT / 'OmniSync.Hub/src/OmniSync.Hub/appsettings.json').read_text())
+        config_path = Path(os.environ.get('OMNIHUB_AUTH_CONFIG') or Path(os.environ['LOCALAPPDATA']) / 'OmniHub/config/appsettings.json')
+        config = json.loads(config_path.read_text(encoding='utf-8-sig'))
         self.api_key = os.environ.get('OMNI_API_KEY', config['AuthApiKey'])
         if self.invoke('Authenticate', self.api_key) is not True:
             raise RuntimeError('Hub authentication failed; set OMNI_API_KEY to the running Hub key.')

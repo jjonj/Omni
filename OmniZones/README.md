@@ -6,7 +6,7 @@ Drag a window by its title bar, drop it in a zone. Lives in the system tray.
 
 - `src/OmniZones.Core` - everything (zone math, drag watcher, hotkeys, editor, settings window). No Omni dependencies.
 - `src/OmniZones.App` - standalone tray app (`OmniZones.exe`).
-- The Omni Hub hosts the same Core (`OmniSync.Hub/.../OmniZonesHostedService.cs`). Only one copy runs at a time.
+- Rust OmniHub in `D:/SSDProjects/Tools/Omnish/main` hosts its own OmniZones runtime, sharing the same single-instance lock with the standalone app. Only one copy runs at a time.
 - `tests/OmniZones.Core.Tests` - unit tests. `TestScripts/WindowSnap/test_omnizones_e2e.py` - real mouse-drag tests (takes over the mouse ~1 min).
 
 ## Build / share

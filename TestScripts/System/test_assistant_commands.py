@@ -5,6 +5,7 @@ writes notes, or executes macros.
 """
 import datetime
 import json
+import os
 import pathlib
 import sys
 import urllib.error
@@ -12,7 +13,7 @@ import urllib.request
 import uuid
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-CONFIG = ROOT / "OmniSync.Hub" / "src" / "OmniSync.Hub" / "appsettings.json"
+CONFIG = pathlib.Path(os.environ.get("OMNIHUB_AUTH_CONFIG") or pathlib.Path(os.environ["LOCALAPPDATA"]) / "OmniHub/config/appsettings.json")
 API_KEY = json.loads(CONFIG.read_text(encoding="utf-8"))["AuthApiKey"]
 BASE = "http://127.0.0.1:5000"
 failures = []

@@ -4,13 +4,15 @@ Uses AuthApiKey from the Hub's local appsettings without printing it. Desktop
 clicks against real test controls are validated by test_agent_cursor.py.
 """
 import json
+import os
 import pathlib
 import urllib.error
 import urllib.request
 from urllib.parse import urlencode
 
 root = pathlib.Path(__file__).resolve().parents[2]
-settings = json.loads((root / "OmniSync.Hub/src/OmniSync.Hub/appsettings.json").read_text(encoding="utf-8-sig"))
+config = pathlib.Path(os.environ.get("OMNIHUB_AUTH_CONFIG") or pathlib.Path(os.environ["LOCALAPPDATA"]) / "OmniHub/config/appsettings.json")
+settings = json.loads(config.read_text(encoding="utf-8-sig"))
 key = settings["AuthApiKey"]
 base = "http://127.0.0.1:5000/api/external/agent-cursor"
 

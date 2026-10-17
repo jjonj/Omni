@@ -11,7 +11,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 HUB_BASE_URL = os.environ.get("OMNI_HUB_URL", "http://127.0.0.1:5000").rstrip("/")
-CONFIG_PATH = ROOT / "OmniSync.Hub" / "src" / "OmniSync.Hub" / "appsettings.json"
+CONFIG_PATH = Path(os.environ.get("OMNIHUB_AUTH_CONFIG") or Path(os.environ["LOCALAPPDATA"]) / "OmniHub/config/appsettings.json")
 PER_MONITOR_AWARE_V2 = ctypes.c_void_p(-4)
 
 

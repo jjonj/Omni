@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
 import uuid
+import os
+import json
+from pathlib import Path
 import argparse
 import sys
 import time
@@ -9,11 +12,15 @@ import traceback
 from signalrcore.hub_connection_builder import HubConnectionBuilder
 
 # --- CONFIGURATION ---
-HUB_URL = "http://localhost:5000/signalrhub" # Local Hub
-API_KEY = "test_api_key"                     # Your Hub Secret
+HUB_URL = os.environ.get("OMNI_HUB_SIGNALR_URL", "http://localhost:5000/signalrhub")
+_CONFIG = Path(os.environ.get("OMNIHUB_AUTH_CONFIG") or
+    Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "OmniHub" / "config" / "appsettings.json")
+API_KEY = os.environ.get("OMNI_HUB_KEY") or (json.loads(_CONFIG.read_text(encoding="utf-8-sig")).get("AuthApiKey") if _CONFIG.is_file() else None)
+if not API_KEY:
+    raise SystemExit(f"OmniHub authentication key not configured; set OMNI_HUB_KEY or provide {_CONFIG}")
 # ---------------------
 
-parser = argparse.ArgumentParser(description="Omni CLI for sending commands to OmniSync.Hub.")
+parser = argparse.ArgumentParser(description="Omni CLI for sending commands to Rust OmniHub.")
 group = parser.add_mutually_exclusive_group(required=True)
 group.add_argument("command", nargs='?', 
                    help="The command to run in single-command mode.")

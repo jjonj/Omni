@@ -6,9 +6,6 @@ import shutil
 
 
 ROOT = r"D:\SSDProjects"
-HUB_TEST_PROJECT = os.path.join(
-    ROOT, "Omni", "OmniSync.Hub", "src", "OmniSync.Hub.Tests", "OmniSync.Hub.Tests.csproj"
-)
 CLI_ROOT = os.path.join(ROOT, "Tools", "omni-gemini-cli", "main")
 
 
@@ -32,18 +29,8 @@ def run_step(name, cmd, cwd):
 def main():
     ok = True
 
-    ok &= run_step(
-        "Hub contract tests",
-        [
-            "dotnet",
-            "test",
-            HUB_TEST_PROJECT,
-            "--filter",
-            "AiBridgeSignalRContractTests|GeminiSessionMockPipeContractTests|GeminiSessionPayloadTests",
-            "-p:BaseOutputPath=D:\\SSDProjects\\Omni\\OmniSync.Hub\\temp_test_out\\",
-        ],
-        os.path.dirname(HUB_TEST_PROJECT),
-    )
+    # C# Hub contract harness was retired; Rust SignalR contracts are tested in
+    # the separate Omnish repository. Keep the independent Gemini CLI tests.
 
     ok &= run_step(
         "CLI pipe contract test",

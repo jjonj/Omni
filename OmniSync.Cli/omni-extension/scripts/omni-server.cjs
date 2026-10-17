@@ -2,6 +2,7 @@
 const { URL } = require("url");
 const fs = require("fs");
 const path = require("path");
+const os = require("os");
 const { spawn } = require("child_process");
 
 const debugLogPath = path.join(__dirname, "..", "omni_extension_debug.log");
@@ -70,10 +71,22 @@ function sendError(id, code, message) {
   process.stdout.write(response);
 }
 
+// Credentials are sourced from the machine-local Rust Hub config, never from Git.
+function hubApiKey() {
+  if (process.env.OMNI_HUB_KEY) return process.env.OMNI_HUB_KEY;
+  const configPath = process.env.OMNIHUB_AUTH_CONFIG || path.join(
+    process.env.LOCALAPPDATA || path.join(os.homedir(), "AppData", "Local"),
+    "OmniHub", "config", "appsettings.json"
+  );
+  const config = JSON.parse(fs.readFileSync(configPath, "utf8").replace(/^\uFEFF/, ""));
+  if (!config.AuthApiKey) throw new Error("Rust OmniHub AuthApiKey is not configured");
+  return config.AuthApiKey;
+}
+
 function callHubApi(command, payload) {
   return new Promise((resolve, reject) => {
     let hubUrl = process.env.OMNI_HUB_URL || "http://localhost:5000";
-    const apiKey = process.env.OMNI_HUB_KEY || "test_api_key";
+    const apiKey = hubApiKey();
     if (hubUrl.includes(":3333")) hubUrl = hubUrl.replace(":3333", ":5000");
     const url = new URL(`${hubUrl}/api/external/command`);
     url.searchParams.append("key", apiKey);
@@ -90,7 +103,7 @@ function callHubApi(command, payload) {
 function postToHubApi(endpoint, payload) {
   return new Promise((resolve, reject) => {
     let hubUrl = process.env.OMNI_HUB_URL || "http://localhost:5000";
-    const apiKey = process.env.OMNI_HUB_KEY || "test_api_key";
+    const apiKey = hubApiKey();
     if (hubUrl.includes(":3333")) hubUrl = hubUrl.replace(":3333", ":5000");
     const url = new URL(`${hubUrl}/api/external/${endpoint}`);
     url.searchParams.append("key", apiKey);
@@ -110,7 +123,7 @@ function postToHubApi(endpoint, payload) {
 function fetchFromHubApi(endpoint, params = {}) {
   return new Promise((resolve, reject) => {
     let hubUrl = process.env.OMNI_HUB_URL || "http://localhost:5000";
-    const apiKey = process.env.OMNI_HUB_KEY || "test_api_key";
+    const apiKey = hubApiKey();
     if (hubUrl.includes(":3333")) hubUrl = hubUrl.replace(":3333", ":5000");
     const url = new URL(`${hubUrl}/api/external/${endpoint}`);
     url.searchParams.append("key", apiKey);

@@ -124,3 +124,9 @@ OmniSync.Web/www/worktrees.json
 
 # Python venv for the Google Keep voice bridge
 artifacts/keep-venv/
+
+# Retired C# Hub tree; temporary private compatibility auth remains until Rust reload.
+/OmniSync.Hub/
+
+# Generated build caches and previous retired Hub build outputs.
+/artifacts/
