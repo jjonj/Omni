@@ -1,5 +1,5 @@
 try {
-  importScripts('signalr.min.js');
+  importScripts('signalr.min.js', 'browser-control.js');
 } catch (e) {
   console.error(e);
 }
@@ -486,6 +486,9 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
 });
 
 start();
+// The independent OmniMCP browser bridge is opt-in and requires a locally
+// configured bearer token. Existing Android/Hub functionality is separate.
+void globalThis.BrowserControl?.start();
 
 async function authenticate() {
     if (connection.state === signalR.HubConnectionState.Connected) {
