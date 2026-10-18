@@ -302,8 +302,15 @@ class SignalRClient(
     @Volatile
     private var lastSuccessfulHubUrl: String? = sharedPrefs.getString(KEY_LAST_CONNECTED_HUB_URL, null)
     private var handlersRegistered = false
+    private val _hubAuthenticated = MutableStateFlow(false)
+    val hubAuthenticated: StateFlow<Boolean> = _hubAuthenticated
+
     @Volatile
     private var isHubAuthenticated = false
+        set(value) {
+            field = value
+            _hubAuthenticated.value = value
+        }
 
     @Volatile
     var isUpdatingClipboardInternally: Boolean = false
