@@ -37,6 +37,9 @@ import androidx.compose.foundation.background
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -208,7 +211,7 @@ fun FilesScreen(
                                     text = { Text("Open folder in AI chat") },
                                     onClick = {
                                         showHeaderMenu = false
-                                        filesViewModel.mainViewModel.navigateTo(com.omni.sync.viewmodel.AppScreen.AI_CHAT)
+                                        filesViewModel.mainViewModel.navigateTo(com.omni.sync.viewmodel.AppScreen.AGENTS)
                                         filesViewModel.signalRClient.sendAiMessage("/dir add $currentPath")
                                     }
                                 )
@@ -350,14 +353,26 @@ fun FilesScreen(
             // --- Search Bar ---
             OutlinedTextField(
                 value = searchQuery,
-                onValueChange = { filesViewModel.performSearch(it) },
+                onValueChange = { newText ->
+                    val wasPaste = newText.length - searchQuery.length >= 3
+                    filesViewModel.performSearch(newText)
+                    if (wasPaste && filesViewModel.isAbsoluteSearchPath(newText)) {
+                        filesViewModel.openSearchPath(newText)
+                    }
+                },
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 8.dp, vertical = 4.dp),
-                placeholder = { Text("Search in current folder...") },
+                placeholder = { Text("Search or paste a file/folder path...") },
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Go),
+                keyboardActions = KeyboardActions(onGo = {
+                    if (filesViewModel.isAbsoluteSearchPath(searchQuery)) filesViewModel.openSearchPath(searchQuery)
+                }),
                 leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
                 trailingIcon = {
-                    if (searchQuery.isNotEmpty()) {
+                    if (filesViewModel.isAbsoluteSearchPath(searchQuery)) {
+                        TextButton(onClick = { filesViewModel.openSearchPath(searchQuery) }) { Text("Go") }
+                    } else if (searchQuery.isNotEmpty()) {
                         IconButton(onClick = { filesViewModel.performSearch("") }) {
                             Icon(Icons.Default.Close, contentDescription = "Clear search")
                         }
@@ -484,7 +499,7 @@ fun FilesScreen(
                                     filesViewModel.loadDirectory(path)
                                 },
                                 onOpenInAiChat = { entry ->
-                                    filesViewModel.mainViewModel.navigateTo(com.omni.sync.viewmodel.AppScreen.AI_CHAT)
+                                    filesViewModel.mainViewModel.navigateTo(com.omni.sync.viewmodel.AppScreen.AGENTS)
                                     filesViewModel.signalRClient.sendAiMessage("/dir add ${entry.path}")
                                 },
                                 onDuplicate = { entry ->

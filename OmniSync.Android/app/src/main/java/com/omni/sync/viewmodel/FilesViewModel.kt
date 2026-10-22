@@ -143,6 +143,9 @@ class FilesViewModel(
 
     private val prefs = application.getSharedPreferences("files_prefs", Context.MODE_PRIVATE)
     private val cachePrefs = application.getSharedPreferences("files_cache_prefs", Context.MODE_PRIVATE)
+    private var directoryRequestVersion = 0L
+    private var searchRequestVersion = 0L
+    private fun pathKey(path: String) = path.replace('\\', '/').trimEnd('/').lowercase(java.util.Locale.ROOT)
     private val textCachePrefs = application.getSharedPreferences("text_cache_prefs", Context.MODE_PRIVATE)
     private val pendingEditsPrefs = application.getSharedPreferences("pending_edits_prefs", Context.MODE_PRIVATE)
     private val gson = com.google.gson.Gson()
@@ -346,10 +349,15 @@ class FilesViewModel(
     }
 
     private fun loadBookmarks() {
-        val json = prefs.getString("folder_bookmarks", null)
-        if (json != null) {
-            val type = object : com.google.gson.reflect.TypeToken<List<FileSystemEntry>>() {}.type
-            _bookmarks.value = gson.fromJson(json, type)
+        val json = prefs.getString("folder_bookmarks", null) ?: return
+        val type = object : com.google.gson.reflect.TypeToken<List<FileSystemEntry>>() {}.type
+        _bookmarks.value = runCatching {
+            (gson.fromJson<List<FileSystemEntry>>(json, type) ?: emptyList())
+                .filter { it.path.isNotBlank() }
+                .distinctBy { pathKey(it.path) }
+        }.getOrElse {
+            Log.w("FilesViewModel", "Bookmarks could not be parsed; leaving saved data untouched", it)
+            emptyList()
         }
     }
 
@@ -360,9 +368,9 @@ class FilesViewModel(
 
     private fun isPathInsideAnyBookmark(path: String): Boolean {
         if (path.isEmpty()) return true // Always cache root/drives for navigation
-        val normalizedPath = path.replace("\\", "/").lowercase()
+        val normalizedPath = pathKey(path)
         return _bookmarks.value.any { bookmark ->
-            val bookmarkPath = bookmark.path.replace("\\", "/").lowercase()
+            val bookmarkPath = pathKey(bookmark.path)
             if (bookmark.isDirectory) {
                 normalizedPath == bookmarkPath || 
                 normalizedPath.startsWith(if (bookmarkPath.endsWith("/")) bookmarkPath else "$bookmarkPath/")
@@ -380,7 +388,11 @@ class FilesViewModel(
     }
 
     private fun getFromCache(path: String): List<FileSystemEntry>? {
+        val matchingKey = cachePrefs.all.keys.firstOrNull {
+            it.startsWith("cache_") && pathKey(it.removePrefix("cache_")) == pathKey(path)
+        }
         val json = cachePrefs.getString("cache_$path", null)
+            ?: matchingKey?.let { cachePrefs.getString(it, null) }
         if (json != null) {
             val type = object : com.google.gson.reflect.TypeToken<List<FileSystemEntry>>() {}.type
             return try {
@@ -473,7 +485,7 @@ class FilesViewModel(
     fun toggleBookmark(entry: FileSystemEntry) {
         // Allow bookmarking files or folders
         val current = _bookmarks.value.toMutableList()
-        val existing = current.find { it.path == entry.path }
+        val existing = current.find { pathKey(it.path) == pathKey(entry.path) }
         
         if (existing != null) {
             current.remove(existing)
@@ -486,7 +498,7 @@ class FilesViewModel(
     }
 
     fun isBookmarked(path: String): Boolean {
-        return _bookmarks.value.any { it.path == path }
+        return _bookmarks.value.any { pathKey(it.path) == pathKey(path) }
     }
 
     fun bookmarkCurrentDirectory() {
@@ -507,7 +519,7 @@ class FilesViewModel(
 
     fun removeBookmark(entry: FileSystemEntry) {
         val current = _bookmarks.value.toMutableList()
-        current.removeAll { it.path == entry.path }
+        current.removeAll { pathKey(it.path) == pathKey(entry.path) }
         _bookmarks.value = current
         saveBookmarks()
     }
@@ -536,6 +548,8 @@ class FilesViewModel(
 
     fun loadDirectory(path: String) {
         Log.d("FilesViewModel", "loadDirectory called for: $path")
+        val requestVersion = ++directoryRequestVersion
+        ++searchRequestVersion
         if (path == "" || path == "/") {
             // Root - Request drives
             if (mainViewModel.isConnected.value) {
@@ -548,6 +562,7 @@ class FilesViewModel(
                     ?.observeOn(AndroidSchedulers.mainThread())
                     ?.subscribe(
                         { entries ->
+                            if (requestVersion != directoryRequestVersion) return@subscribe
                             _fileSystemEntries.value = enrichWithPendingFiles("", entries)
                             _currentPath.value = ""
                             _isLoading.value = false
@@ -555,7 +570,13 @@ class FilesViewModel(
                             saveToCache("", entries)
                         },
                         { error ->
-                            _errorMessage.value = "Error loading drives: ${error.message}"
+                            if (requestVersion != directoryRequestVersion) return@subscribe
+                            val cached = getFromCache("")
+                            if (cached != null) {
+                                _fileSystemEntries.value = enrichWithPendingFiles("", cached)
+                                _currentPath.value = ""
+                            }
+                            _errorMessage.value = if (cached != null) "Showing cached drives: ${error.message}" else "Error loading drives: ${error.message}"
                             _isLoading.value = false
                         }
                     )
@@ -631,6 +652,7 @@ class FilesViewModel(
             .timeout(15, java.util.concurrent.TimeUnit.SECONDS)
             .subscribe(
                 { entries ->
+                    if (requestVersion != directoryRequestVersion) return@subscribe
                     Log.d("FilesViewModel", "Successfully loaded ${entries.size} entries for: $path")
                     mainViewModel.addLog("Loaded ${entries.size} entries", com.omni.sync.ui.screen.LogType.SUCCESS)
                     val enrichedEntries = enrichWithPendingFiles(path, entries)
@@ -648,7 +670,13 @@ class FilesViewModel(
                     checkGitRepo(path)
                 },
                 { error ->
-                    _errorMessage.value = "Error loading directory: ${error.message}"
+                    if (requestVersion != directoryRequestVersion) return@subscribe
+                    val cached = getFromCache(path)
+                    if (cached != null) {
+                        _fileSystemEntries.value = enrichWithPendingFiles(path, cached)
+                        _currentPath.value = path
+                    }
+                    _errorMessage.value = if (cached != null) "Showing cached folder: ${error.message}" else "Error loading directory: ${error.message}"
                     _isLoading.value = false
                     mainViewModel.addLog("Error loading directory: ${error.message}", com.omni.sync.ui.screen.LogType.ERROR)
                     Log.e("FilesViewModel", "Error loading directory", error)
@@ -720,8 +748,55 @@ class FilesViewModel(
         )
     }
 
+    fun isAbsoluteSearchPath(value: String): Boolean {
+        val path = value.trim().trim('"', '\'')
+        return (path.length >= 3 && path[1] == ':' && path[0].isLetter() &&
+            (path[2] == '\\' || path[2] == '/')) ||
+            path.startsWith("\\\\") || path.startsWith("//") || path.startsWith("/")
+    }
+
+    /** Path input uses metadata, not a filename search; folder and file results open directly. */
+    fun openSearchPath(value: String) {
+        val path = value.trim().trim('"', '\'')
+        if (!isAbsoluteSearchPath(path)) return
+        val requestVersion = ++directoryRequestVersion // Earlier listings are stale.
+        ++searchRequestVersion // Earlier text searches are stale.
+        _errorMessage.value = null
+        if (!mainViewModel.isConnected.value) {
+            when {
+                getFromCache(path) != null -> loadDirectory(path)
+                textCachePrefs.contains("text_$path") -> {
+                    val name = path.trimEnd('\\', '/').substringAfterLast('\\').substringAfterLast('/')
+                    openForEditing(FileSystemEntry(name, path, false, 0, java.util.Date()))
+                }
+                else -> _errorMessage.value = "Path unavailable offline; connect to the Hub or cache it first."
+            }
+            return
+        }
+        _isLoading.value = true
+        viewModelScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                runCatching { signalRClient.getFileInfo(path)
+                    ?.subscribeOn(Schedulers.io())?.blockingGet() as? FileSystemEntry }.getOrNull()
+            }
+            if (requestVersion != directoryRequestVersion) return@launch
+            _isLoading.value = false
+            when {
+                result == null -> _errorMessage.value = "Path not found: $path"
+                result.isDirectory -> loadDirectory(result.path)
+                else -> {
+                    _searchQuery.value = ""
+                    if (isMediaFile(result.name)) handleFileOpen(result) else openForEditing(result)
+                }
+            }
+        }
+    }
+
     fun performSearch(query: String) {
+        val requestVersion = ++searchRequestVersion
         _searchQuery.value = query
+        _errorMessage.value = null
+        if (isAbsoluteSearchPath(query)) return
         if (query.isBlank()) {
             loadDirectory(_currentPath.value)
             return
@@ -735,10 +810,12 @@ class FilesViewModel(
             ?.observeOn(AndroidSchedulers.mainThread())
             ?.subscribe(
                 { entries ->
+                    if (requestVersion != searchRequestVersion) return@subscribe
                     _fileSystemEntries.value = entries
                     _isLoading.value = false
                 },
                 { error ->
+                    if (requestVersion != searchRequestVersion) return@subscribe
                     _errorMessage.value = "Search error: ${error.message}"
                     _isLoading.value = false
                 }
@@ -1370,8 +1447,7 @@ class FilesViewModel(
 
             while (queue.isNotEmpty()) {
                 val currentPath = queue.removeAt(0)
-                if (visited.contains(currentPath)) continue
-                visited.add(currentPath)
+                if (!visited.add(pathKey(currentPath))) continue
 
                 if (shouldExclude(currentPath, exclusionPatterns)) {
                     mainViewModel.addLog("Excluding from cache: $currentPath", com.omni.sync.ui.screen.LogType.INFO)
@@ -1446,10 +1522,9 @@ class FilesViewModel(
             val chunk = signalRClient.getFileChunk(entry.path, currentOffset, currentChunkSize)
                 ?.subscribeOn(Schedulers.io())
                 ?.blockingGet() as? ByteArray
-            if (chunk != null) {
-                contentBuilder.append(String(chunk, Charsets.UTF_8))
-                currentOffset += chunk.size
-            } else break
+            if (chunk == null || chunk.isEmpty()) throw java.io.IOException("Incomplete file download: ${entry.path}")
+            contentBuilder.append(String(chunk, Charsets.UTF_8))
+            currentOffset += chunk.size
         }
         return contentBuilder.toString()
     }

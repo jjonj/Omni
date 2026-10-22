@@ -353,9 +353,10 @@ class AlarmService : Service(), android.content.SharedPreferences.OnSharedPrefer
         com.omni.sync.utils.AlarmStatistics.dismiss(this, currentAlarmId)
         Log.i("AlarmService", "User Dismissed Alarm $currentAlarmId.")
         val app = application as OmniSyncApplication
-        val alarmPrefs = getSharedPreferences("alarm_prefs", Context.MODE_PRIVATE)
-        if (com.omni.sync.utils.AlarmStore.load(alarmPrefs, com.google.gson.Gson()).any { it.id == currentAlarmId && it.isWakeAlarm }) {
-            app.mainViewModel.resetSleep(source = "wake alarm $currentAlarmId dismissed")
+        // Any dismissed alarm indicates the user is awake. Snoozes and reminders
+        // do not end the estimate; reminders return before reaching this branch.
+        if (app.mainViewModel.sleepTracker.isSleeping()) {
+            app.mainViewModel.resetSleep(source = "alarm $currentAlarmId dismissed")
         }
         stopSound()
         updateState(this, isRinging = false, isSnoozing = false)

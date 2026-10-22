@@ -1,0 +1,5 @@
+cmake_minimum_required(VERSION 3.22.1)
+project(omni_swipe_trie LANGUAGES CXX)
+add_library(omni_swipe_trie SHARED omni_swipe_trie.cpp)
+target_compile_features(omni_swipe_trie PRIVATE cxx_std_17)
+target_compile_options(omni_swipe_trie PRIVATE -Wall -Wextra)

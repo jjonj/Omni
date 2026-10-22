@@ -51,6 +51,7 @@ class ForegroundService : Service() {
         const val ACTION_TRIGGER_NOTIFICATION_ACTION = "com.omni.sync.TRIGGER_ACTION"
         const val ACTION_TRIGGER_SMART_AI = "com.omni.sync.TRIGGER_SMART_AI"
         const val EXTRA_ACTION_ID = "extra_action_id"
+        const val EXTRA_FROM_WIDGET = "extra_from_widget"
         const val ACTION_REFRESH_NOTIFICATION = "com.omni.sync.REFRESH_NOTIFICATION"
         const val EXTRA_STATUS_MESSAGE = "extra_status_message"
         const val ACTION_SHOW_ACTIONS = "com.omni.sync.SHOW_ACTIONS"
@@ -107,11 +108,11 @@ class ForegroundService : Service() {
             ACTION_TRIGGER_NOTIFICATION_ACTION -> {
                 val actionId = intent.getStringExtra(EXTRA_ACTION_ID)
                 if (actionId != null) {
-                    handleNotificationAction(actionId)
+                    handleNotificationAction(actionId, intent.getBooleanExtra(EXTRA_FROM_WIDGET, false))
                 }
             }
             ACTION_TRIGGER_SMART_AI -> {
-                handleSmartAiAction()
+                handleSmartAiAction(intent.getBooleanExtra(EXTRA_FROM_WIDGET, false))
             }
             ACTION_REFRESH_NOTIFICATION -> {
                 statusMessage = intent.getStringExtra(EXTRA_STATUS_MESSAGE)
@@ -135,9 +136,13 @@ class ForegroundService : Service() {
         return START_STICKY
     }
 
-    private fun handleSmartAiAction() {
+    private fun handleSmartAiAction(fromWidget: Boolean) {
         val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
         val clipData = clipboard.primaryClip
+        if (clipData == null || clipData.itemCount == 0) {
+            if (fromWidget) showWidgetFeedback("AI Clip: clipboard is empty")
+            return
+        }
         if (clipData != null && clipData.itemCount > 0) {
             val text = clipData.getItemAt(0).text?.toString()
             if (!text.isNullOrBlank()) {
@@ -149,7 +154,14 @@ class ForegroundService : Service() {
                 
                 val prompt = "Summarize and analyze the following content from my clipboard:\n\n$text"
                 
-                // Ensure we are connected and maybe auto-launch session if needed
+                if (signalRClient.connectionState.value != "Connected") {
+                    if (fromWidget) showWidgetFeedback("AI Clip: Hub disconnected; not sent")
+                    return
+                }
+                if (!signalRClient.legacyAiEnabled.value && signalRClient.selectedT3Id.value == null) {
+                    if (fromWidget) showWidgetFeedback("AI Clip: choose a T3 session on the AI screen first")
+                    return
+                }
                 signalRClient.sendAiMessage(prompt)
                 
                 // Show a toast for feedback
@@ -161,19 +173,38 @@ class ForegroundService : Service() {
                 // Optionally navigate to AI screen
                 val intent = Intent(this, MainActivity::class.java).apply {
                     flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
-                    putExtra("OPEN_SCREEN", "AI_CHAT")
+                    putExtra("OPEN_SCREEN", "AGENTS")
                 }
                 startActivity(intent)
+            } else if (fromWidget) {
+                showWidgetFeedback("AI Clip: clipboard is empty")
             }
         }
     }
 
-    private fun handleNotificationAction(actionId: String) {
+    private fun handleNotificationAction(actionId: String, fromWidget: Boolean) {
         val actions = getSavedActions()
         val action = actions.find { it.id == actionId }
             ?: com.omni.sync.data.config.ConfigManager(this).getPredefinedActions().find { it.id == actionId }
-            ?: return
+        if (action == null) {
+            if (fromWidget) showWidgetFeedback("Widget action unavailable; reconfigure this widget")
+            return
+        }
         QuickActionDispatcher.execute(this, action)
+        if (fromWidget) {
+            val detail = when {
+                action.command == "STILL_AWAKE" -> com.omni.sync.utils.WakeAlarmActions.nextWakeAlarmSummary(this)
+                action.command.startsWith("ALARM:") -> com.omni.sync.utils.WakeAlarmActions.nextAlarmSummary(this)
+                else -> null
+            }
+            showWidgetFeedback("Received: ${action.label}" + (detail?.let { "\n$it" } ?: ""))
+        }
+    }
+
+    private fun showWidgetFeedback(message: String) {
+        android.os.Handler(android.os.Looper.getMainLooper()).post {
+            android.widget.Toast.makeText(applicationContext, message, android.widget.Toast.LENGTH_LONG).show()
+        }
     }
 
     private fun updateNotification() {

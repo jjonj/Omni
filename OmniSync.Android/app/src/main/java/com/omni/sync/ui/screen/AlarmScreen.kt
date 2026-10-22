@@ -570,6 +570,16 @@ private fun AlarmScreenContent(
                     }
                 }
 
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                        Text("Calendar alert tiers", style = MaterialTheme.typography.titleSmall)
+                        Text("Omni task — a task notification; no ringing alarm.", style = MaterialTheme.typography.bodySmall)
+                        Text("Omni reminder — gradual alarm: starts quiet and repeats louder until dismissed.", style = MaterialTheme.typography.bodySmall)
+                        Text("Omni alarm — immediate full-volume alarm.", style = MaterialTheme.typography.bodySmall)
+                        Text("Temporary trial: every calendar event is treated as an Omni reminder, including all-day events. This requires the updated Hub to be running.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+
                 // --- Permissions Check ---
                 if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
                     if (!android.provider.Settings.canDrawOverlays(context)) {

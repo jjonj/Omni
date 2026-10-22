@@ -87,6 +87,8 @@ fun TaskBoardScreen(parentPadding: PaddingValues = PaddingValues(0.dp)) {
     var loading by remember { mutableStateOf(false) }
     var storageAccess by remember { mutableStateOf(TaskBoardStore.hasStorageAccess()) }
     var error by remember { mutableStateOf<String?>(null) }
+    var taskQuery by remember { mutableStateOf("") }
+    var attentionOnly by remember { mutableStateOf(false) }
 
     fun refresh() {
         storageAccess = TaskBoardStore.hasStorageAccess()
@@ -208,13 +210,36 @@ fun TaskBoardScreen(parentPadding: PaddingValues = PaddingValues(0.dp)) {
                 )
 
                 else -> snapshot?.let {
-                    TaskBoardColumns(
-                        snapshot = it,
-                        onTaskClick = { task -> editingTask = task },
-                        onAddTask = { column ->
-                            createTaskRequest = CreateTaskRequest(column)
+                    Column(Modifier.fillMaxSize()) {
+                        OutlinedTextField(
+                            value = taskQuery,
+                            onValueChange = { taskQuery = it },
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
+                            label = { Text("Search tasks by title, ID or description") },
+                            singleLine = true
+                        )
+                        Row(Modifier.padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            androidx.compose.material3.FilterChip(
+                                selected = attentionOnly,
+                                onClick = { attentionOnly = !attentionOnly },
+                                label = { Text("Needs attention") }
+                            )
+                            if (taskQuery.isNotBlank()) {
+                                TextButton(onClick = { taskQuery = "" }) { Text("Clear") }
+                            }
                         }
-                    )
+                        Box(Modifier.weight(1f)) {
+                            TaskBoardColumns(
+                                snapshot = it,
+                                query = taskQuery,
+                                attentionOnly = attentionOnly,
+                                onTaskClick = { task -> editingTask = task },
+                                onAddTask = { column ->
+                                    createTaskRequest = CreateTaskRequest(column)
+                                }
+                            )
+                        }
+                    }
                 }
             }
 
@@ -424,11 +449,20 @@ private fun StoragePermissionPanel(
 @Composable
 private fun TaskBoardColumns(
     snapshot: TaskBoardSnapshot,
+    query: String,
+    attentionOnly: Boolean,
     onTaskClick: (TaskBoardTask) -> Unit,
     onAddTask: (String) -> Unit
 ) {
+    val filterText = query.trim()
+    val filteredTasks = snapshot.tasks.filter { task ->
+        (!attentionOnly || task.attention.isNotEmpty()) && (filterText.isBlank() ||
+            listOf(task.id, task.title, task.description, task.category.orEmpty(), task.parent.orEmpty())
+                .any { it.contains(filterText, ignoreCase = true) })
+    }
+    val tasksByColumn = filteredTasks.groupBy { it.column }
     val visibleColumns = snapshot.columns.filterNot { it.hidden }
-    val tasksByColumn = snapshot.tasks.groupBy { it.column }
+        .filter { filterText.isBlank() && !attentionOnly || tasksByColumn[it.id].orEmpty().isNotEmpty() }
 
     Column(modifier = Modifier.fillMaxSize()) {
         if (snapshot.warnings.isNotEmpty()) {
@@ -442,7 +476,7 @@ private fun TaskBoardColumns(
 
         if (visibleColumns.isEmpty()) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("All columns are hidden. Open Columns to show one.")
+                Text(if (query.isNotBlank() || attentionOnly) "No matching tasks." else "All columns are hidden. Open Columns to show one.")
             }
             return
         }

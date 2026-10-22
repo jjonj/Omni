@@ -119,69 +119,6 @@ fun DashboardScreen(modifier: Modifier = Modifier, signalRClient: SignalRClient,
     val coroutineScope = rememberCoroutineScope()
     val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
 
-    // WIFI DBG Dialog State
-    var showWadbDialog by remember { mutableStateOf(false) }
-    var pairingCode by remember { mutableStateOf("") }
-    var pairingPort by remember { mutableStateOf("") }
-    var connectPort by remember { mutableStateOf("") }
-
-    if (showWadbDialog) {
-        AlertDialog(
-            onDismissRequest = { showWadbDialog = false },
-            title = { Text("Wireless ADB Debugging") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(
-                        "Open Wireless debugging, choose Pair using pairing code, then enter the six-digit code. The hub discovers both ports when mDNS is available.",
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                    TextButton(onClick = {
-                        context.startActivity(
-                            android.content.Intent(android.provider.Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS)
-                        )
-                    }) {
-                        Text("Open developer settings")
-                    }
-                    OutlinedTextField(
-                        value = pairingCode,
-                        onValueChange = { pairingCode = it },
-                        label = { Text("Pairing Code") },
-                        singleLine = true,
-                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number)
-                    )
-                    OutlinedTextField(
-                        value = pairingPort,
-                        onValueChange = { pairingPort = it },
-                        label = { Text("Pairing IP:port or port (optional)") },
-                        singleLine = true,
-                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Ascii)
-                    )
-                    OutlinedTextField(
-                        value = connectPort,
-                        onValueChange = { connectPort = it },
-                        label = { Text("Connect IP:port or port (optional)") },
-                        singleLine = true,
-                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Ascii)
-                    )
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    showWadbDialog = false
-                    signalRClient.sendCommand("ConnectWadb", pairingCode, pairingPort, connectPort)
-                    mainViewModel.addLog("Wireless ADB pairing requested", LogType.INFO)
-                }, enabled = pairingCode.matches(Regex("\\d{6}"))) {
-                    Text("OK")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showWadbDialog = false }) {
-                    Text("Cancel")
-                }
-            }
-        )
-    }
-
     // Determine connection status based on actual isConnected state
     val connectionStatus = when {
         isConnected -> ConnectionStatus.CONNECTED
@@ -229,6 +166,10 @@ fun DashboardScreen(modifier: Modifier = Modifier, signalRClient: SignalRClient,
                     hubUrl = updateHubUrl,
                     apiKey = appConfig.apiKey
                 )
+            }
+
+            item {
+                CalendarDashboardCard(mainViewModel, isConnected)
             }
 
             item {
@@ -296,6 +237,12 @@ fun DashboardScreen(modifier: Modifier = Modifier, signalRClient: SignalRClient,
                         Spacer(modifier = Modifier.height(8.dp))
     
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            TooltipBox(
+                                positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
+                                tooltip = { PlainTooltip { Text("Send clipboard text to your selected T3 session. Choose a session in AI first. In Legacy mode, uses the original AI session.") } },
+                                state = rememberTooltipState(),
+                                modifier = Modifier.weight(1f)
+                            ) {
                             Button(
                                 onClick = {
                                     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
@@ -303,9 +250,17 @@ fun DashboardScreen(modifier: Modifier = Modifier, signalRClient: SignalRClient,
                                     if (clipData != null && clipData.itemCount > 0) {
                                         val text = clipData.getItemAt(0).text?.toString()
                                         if (!text.isNullOrBlank()) {
-                                            val prompt = "Summarize and analyze the following content from my clipboard:\n\n$text"
-                                            signalRClient.sendAiMessage(prompt)
-                                            mainViewModel.navigateTo(com.omni.sync.viewmodel.AppScreen.AI_CHAT)
+                                            if (!isConnected) {
+                                                android.widget.Toast.makeText(context, "AI Clip: Hub disconnected; not sent", android.widget.Toast.LENGTH_LONG).show()
+                                            } else if (!signalRClient.legacyAiEnabled.value && signalRClient.selectedT3Id.value == null) {
+                                                android.widget.Toast.makeText(context, "Open AI and choose a T3 session first", android.widget.Toast.LENGTH_LONG).show()
+                                                mainViewModel.navigateTo(AppScreen.AGENTS)
+                                            } else {
+                                                val prompt = "Summarize and analyze the following content from my clipboard:\n\n$text"
+                                                signalRClient.sendAiMessage(prompt)
+                                                android.widget.Toast.makeText(context, "AI Clip: message sent or session starting", android.widget.Toast.LENGTH_SHORT).show()
+                                                mainViewModel.navigateTo(AppScreen.AGENTS)
+                                            }
                                         } else {
                                             android.widget.Toast.makeText(context, "Clipboard is empty", android.widget.Toast.LENGTH_SHORT).show()
                                         }
@@ -313,12 +268,13 @@ fun DashboardScreen(modifier: Modifier = Modifier, signalRClient: SignalRClient,
                                         android.widget.Toast.makeText(context, "Clipboard is empty", android.widget.Toast.LENGTH_SHORT).show()
                                     }
                                 },
-                                modifier = Modifier.weight(1f),
+                                modifier = Modifier.fillMaxWidth(),
                                 colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
                             ) {
                                 Icon(Icons.Default.SmartToy, null, modifier = Modifier.size(18.dp))
                                 Spacer(Modifier.width(8.dp))
                                 Text("AI Clip", fontSize = 12.sp)
+                            }
                             }
 
                             Button(
@@ -383,18 +339,6 @@ fun DashboardScreen(modifier: Modifier = Modifier, signalRClient: SignalRClient,
                         
                         Spacer(modifier = Modifier.height(8.dp))
 
-                        Row(modifier = Modifier.fillMaxWidth()) {
-                             Button(
-                                onClick = { showWadbDialog = true },
-                                modifier = Modifier.fillMaxWidth(),
-                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
-                            ) {
-                                Icon(Icons.Default.Refresh, null, modifier = Modifier.size(18.dp))
-                                Spacer(Modifier.width(8.dp))
-                                Text("WIFI DBG")
-                            }
-                        }
-                        
                         Spacer(modifier = Modifier.height(8.dp))
                         
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {

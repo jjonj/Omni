@@ -163,7 +163,7 @@ fun SettingsScreen(
                                     val text = clipData.getItemAt(0).text?.toString()
                                     if (!text.isNullOrBlank()) {
                                         signalRClient.sendAiMessage("Summarize and analyze:\n\n$text")
-                                        mainViewModel.navigateTo(AppScreen.AI_CHAT)
+                                        mainViewModel.navigateTo(AppScreen.AGENTS)
                                     }
                                 }
                             },

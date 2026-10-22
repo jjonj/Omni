@@ -7,6 +7,9 @@ import com.omni.sync.ui.screen.AlarmData
 import com.omni.sync.ui.screen.GradualConfig
 import com.omni.sync.ui.screen.LogType
 import java.util.Calendar
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 object WakeAlarmActions {
     private const val HOUR = 3_600_000L
@@ -64,6 +67,21 @@ object WakeAlarmActions {
             fireAt > target -> "moved ${(fireAt - target) / 60_000} min later for 8h sleep (latest wake cap applied)"
             else -> "on target"
         }
+    }
+
+    /** A persisted next-trigger receipt for quick-action widgets, not a prediction of sleep. */
+    fun nextWakeAlarmSummary(context: Context): String = nextAlarmSummary(context, wakeOnly = true)
+
+    fun nextAlarmSummary(context: Context, wakeOnly: Boolean = false): String {
+        val now = System.currentTimeMillis()
+        val prefs = context.getSharedPreferences("alarm_prefs", Context.MODE_PRIVATE)
+        val alarms = AlarmStore.load(prefs, Gson())
+        val next = alarms.asSequence().filter { it.enabled && (!wakeOnly || it.isWakeAlarm) }
+            .map { nextTrigger(it, now) }.filter { it > now }.minOrNull()
+            ?: return if (wakeOnly) "No enabled wake alarm" else "No enabled alarm"
+        val minutes = (next - now + 59_999L) / 60_000L
+        val time = SimpleDateFormat("EEE HH:mm", Locale.getDefault()).format(Date(next))
+        return "Next ${if (wakeOnly) "wake alarm" else "alarm"}: $time (in ${minutes / 60}h ${minutes % 60}m)"
     }
 
     @Synchronized

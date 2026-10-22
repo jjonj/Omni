@@ -402,6 +402,18 @@ class SignalRClient(
     private val _aiSessions = MutableStateFlow<Map<Int, String>>(emptyMap())
     val aiSessions: StateFlow<Map<Int, String>> = _aiSessions
 
+    // One Hub-owned persistent mode; defaults to new T3 when disconnected.
+    private val _legacyAiEnabled = MutableStateFlow(false)
+    val legacyAiEnabled: StateFlow<Boolean> = _legacyAiEnabled
+    private val _t3SessionsJson = MutableStateFlow<String?>(null)
+    val t3SessionsJson: StateFlow<String?> = _t3SessionsJson
+    private val _t3DetailJson = MutableStateFlow<String?>(null)
+    val t3DetailJson: StateFlow<String?> = _t3DetailJson
+    private val _t3LastResult = MutableStateFlow<String?>(null)
+    val t3LastResult: StateFlow<String?> = _t3LastResult
+    private val _selectedT3Id = MutableStateFlow<String?>(null)
+    val selectedT3Id: StateFlow<String?> = _selectedT3Id
+
     private val _agentSessions = MutableStateFlow<List<AgentSessionSummaryData>>(emptyList())
     val agentSessions: StateFlow<List<AgentSessionSummaryData>> = _agentSessions
 
@@ -416,7 +428,7 @@ class SignalRClient(
         coroutineScope.launch {
             while (true) {
                 delay(45_000)
-                requestAgentSessions()
+                if (_legacyAiEnabled.value) requestAgentSessions()
             }
         }
     }
@@ -616,8 +628,8 @@ class SignalRClient(
         mainViewModel.recordActivity() // Record activity on connect
         authenticateClient()
         remoteTerminalClient.connect(url, apiKey)
-        getAiSessions()
-        getAiModels()
+        hubConnection?.send("GetOmniAiMode")
+        // Legacy Gemini discovery and model requests are gated by the Hub mode.
         lastSuccessfulHubUrl = url
         sharedPrefs.edit().putString(KEY_LAST_CONNECTED_HUB_URL, url).apply()
         mainViewModel.addLog("Connected to hub: $url", com.omni.sync.ui.screen.LogType.SUCCESS)
@@ -1208,6 +1220,35 @@ class SignalRClient(
             mainViewModel.onCortexActivityChanged(name, type)
         }, String::class.java, String::class.java)
 
+        hubConnection?.on("ReceiveOmniAiMode", { enabled: Boolean ->
+            _legacyAiEnabled.value = enabled
+            if (enabled) {
+                requestAgentSessions()
+                hubConnection?.send("GetAiSessions")
+            } else {
+                _aiSessions.value = emptyMap()
+                _agentSessions.value = emptyList()
+            }
+        }, java.lang.Boolean::class.java)
+
+        hubConnection?.on("ReceiveT3Result", { payload: String ->
+            runCatching {
+                val row = com.google.gson.JsonParser.parseString(payload).asJsonObject
+                val action = row.get("action")?.asString ?: return@runCatching
+                val ok = row.get("ok")?.asBoolean ?: false
+                if (!ok) {
+                    _t3LastResult.value = row.get("error")?.asString ?: "T3 request failed"
+                } else {
+                    val data = row.get("data")?.toString() ?: "{}"
+                    when (action) {
+                        "list" -> _t3SessionsJson.value = data
+                        "read" -> _t3DetailJson.value = data
+                        "send" -> _t3LastResult.value = "T3 received the message"
+                    }
+                }
+            }.onFailure { _t3LastResult.value = "Invalid T3 response: ${it.message}" }
+        }, String::class.java)
+
         hubConnection?.on("ReceiveAiSessions", { sessionsData: List<Any> ->
             try {
                 val jsonStr = gson.toJson(sessionsData)
@@ -1564,7 +1605,32 @@ class SignalRClient(
         }
     }
 
+    fun requestT3Sessions(): Boolean = sendAgentControl("T3ListSessions")
+    fun selectT3Session(id: String) {
+        _selectedT3Id.value = id
+        _t3DetailJson.value = null
+        sendAgentControl("T3ReadSession", id)
+    }
+    fun refreshT3Session(): Boolean {
+        val id = _selectedT3Id.value ?: return false
+        return sendAgentControl("T3ReadSession", id)
+    }
+    fun sendT3Message(message: String): Boolean {
+        val id = _selectedT3Id.value ?: return false
+        return sendAgentControl("T3SendSession", id, message)
+    }
+    fun setLegacyAiEnabled(enabled: Boolean): Boolean = sendAgentControl("SetOmniAiMode", enabled)
+    fun refreshLegacyAiMode(): Boolean = sendAgentControl("GetOmniAiMode")
+
     fun sendAiMessage(message: String, pid: Int? = null) {
+        if (!_legacyAiEnabled.value) {
+            // Old callers (clipboard, Files, editor) do not resurrect Gemini.
+            // Natural-language messages may be sent to the explicitly selected T3 session only.
+            if (message.startsWith("/") || !sendT3Message(message)) {
+                mainViewModel.addLog("AI message not sent: select a T3 session first", com.omni.sync.ui.screen.LogType.WARNING)
+            }
+            return
+        }
         var targetPid = pid ?: _selectedPid.value
 
         if (targetPid == REMOTE_TERMINAL_PID) {
@@ -1628,6 +1694,7 @@ class SignalRClient(
     }
 
     fun getAiSessions() {
+        if (!_legacyAiEnabled.value) return
         val active = remoteTerminalClient.session.value ?: return
         _terminalSessions.value = _terminalSessions.value + (
             REMOTE_TERMINAL_PID to TerminalSession(REMOTE_TERMINAL_PID, active.workspace, active.command)
@@ -1662,6 +1729,7 @@ class SignalRClient(
     }
 
     fun requestAgentSessions() {
+        if (!_legacyAiEnabled.value) return
         if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
             hubConnection?.send("RequestAgentSessions")
         }

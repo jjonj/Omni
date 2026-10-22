@@ -56,6 +56,7 @@ node_modules/
 venv/
 target/
 OmniSync.Android/app/build
+OmniSync.Android/app/.cxx
 OmniSync.Android/.gradle
 OmniSync.Android/.kotlin
 /artifacts/gradle-cache/

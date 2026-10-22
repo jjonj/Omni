@@ -438,10 +438,18 @@ class MainActivity : ComponentActivity() {
 
     override fun onStart() {
         super.onStart()
-        mainViewModel.addLog("[Android startup] Activity started; applying morning navigation", com.omni.sync.ui.screen.LogType.INFO)
-        if (java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY) < 9) {
+        // Auto-show the alarm at most once every two hours, including across
+        // activity recreation. A user-selected destination always takes priority.
+        val now = System.currentTimeMillis()
+        val hour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
+        val navPrefs = getSharedPreferences("alarm_navigation_prefs", Context.MODE_PRIVATE)
+        val lastAutoOpen = navPrefs.getLong("last_auto_open", 0L)
+        if (hour < 9 && intent?.getStringExtra("OPEN_SCREEN") == null &&
+            (lastAutoOpen <= 0L || now < lastAutoOpen || now - lastAutoOpen >= 2 * 60 * 60 * 1000L)
+        ) {
+            navPrefs.edit().putLong("last_auto_open", now).apply()
             mainViewModel.navigateTo(AppScreen.ALARM)
-            mainViewModel.addLog("[Android startup] Morning Alarm screen selected", com.omni.sync.ui.screen.LogType.INFO)
+            mainViewModel.addLog("[Android startup] Alarm auto-opened (two-hour cooldown)", com.omni.sync.ui.screen.LogType.INFO)
         }
         // Retry connection if disconnected when app comes to foreground
         val state = omniSyncApplication.signalRClient.connectionState.value
@@ -549,14 +557,7 @@ class MainActivity : ComponentActivity() {
                 signalRClient = signalRClient,
                 filesViewModel = filesViewModel
             )
-            // LEGACY: old AI screen (als1), shown as "OldAI" in the burger menu. Superseded by AppScreen.AGENTS.
-            AppScreen.AI_CHAT -> com.omni.sync.ui.screen.AiChatScreen(
-                signalRClient = signalRClient,
-                mainViewModel = mainViewModel,
-                filesViewModel = filesViewModel,
-                parentPadding = paddingValues
-            )
-            AppScreen.AGENTS -> com.omni.sync.ui.screen.AgentInboxScreen(
+            AppScreen.AGENTS -> com.omni.sync.ui.screen.OmniAiModesScreen(
                 signalRClient = signalRClient,
                 mainViewModel = mainViewModel,
                 parentPadding = paddingValues

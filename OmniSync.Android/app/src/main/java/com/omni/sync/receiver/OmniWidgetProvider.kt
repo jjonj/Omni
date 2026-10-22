@@ -36,6 +36,7 @@ class OmniWidgetProvider : AppWidgetProvider() {
                 val serviceIntent = Intent(context, ForegroundService::class.java).apply {
                     action = ForegroundService.ACTION_TRIGGER_NOTIFICATION_ACTION
                     putExtra(ForegroundService.EXTRA_ACTION_ID, actionId)
+                    putExtra(ForegroundService.EXTRA_FROM_WIDGET, true)
                 }
                 androidx.core.content.ContextCompat.startForegroundService(context, serviceIntent)
             }
@@ -81,6 +82,7 @@ class OmniWidgetProvider : AppWidgetProvider() {
                 if (action.command == "SMART_AI") {
                     val serviceIntent = Intent(context, ForegroundService::class.java).apply {
                         this.action = ForegroundService.ACTION_TRIGGER_SMART_AI
+                        putExtra(ForegroundService.EXTRA_FROM_WIDGET, true)
                         data = android.net.Uri.parse("omni://widget/smart_ai/$appWidgetId")
                     }
                     val pendingIntent = PendingIntent.getForegroundService(
@@ -92,6 +94,7 @@ class OmniWidgetProvider : AppWidgetProvider() {
                     val serviceIntent = Intent(context, ForegroundService::class.java).apply {
                         this.action = ForegroundService.ACTION_TRIGGER_NOTIFICATION_ACTION
                         putExtra(ForegroundService.EXTRA_ACTION_ID, action.id)
+                        putExtra(ForegroundService.EXTRA_FROM_WIDGET, true)
                         // Use data to make intent unique for system even with same extras/action
                         data = android.net.Uri.parse("omni://widget/$appWidgetId")
                     }

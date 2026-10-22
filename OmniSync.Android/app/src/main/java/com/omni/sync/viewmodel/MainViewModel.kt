@@ -34,7 +34,6 @@ enum class AppScreen {
     VIDEOPLAYER,
     EDITOR,
     SETTINGS,
-    AI_CHAT,
     AGENTS,
     AGENT_DETAIL,
     AGENT_TERMINAL,

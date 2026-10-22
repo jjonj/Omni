@@ -47,6 +47,10 @@ android {
     buildFeatures {
         compose = true
     }
+    // FUTO swipe's AAR needs a tiny app-owned ITrie adapter for its English lexicon.
+    externalNativeBuild {
+        cmake { path = file("src/main/cpp/CMakeLists.txt") }
+    }
     composeOptions {
         kotlinCompilerExtensionVersion = "1.5.12"
     }
@@ -95,6 +99,7 @@ registerUpdateMetadata("debug")
 registerUpdateMetadata("release")
 
 dependencies {
+    implementation(files("libs/futo-swipe-release.aar"))
 
     implementation("androidx.core:core-ktx:1.12.0")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.7.0")
