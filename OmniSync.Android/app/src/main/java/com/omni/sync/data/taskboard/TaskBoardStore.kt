@@ -9,6 +9,8 @@ import java.util.Date
 import java.util.Locale
 import kotlin.random.Random
 
+data class TaskBoardProject(val name: String, val folderName: String, val root: File)
+
 data class TaskBoardColumn(
     val id: String,
     val name: String,
@@ -29,6 +31,10 @@ data class TaskBoardTask(
     val id: String,
     val title: String,
     val column: String,
+    val kind: String,
+    val dependsOn: List<String>,
+    val relatedTo: List<String>,
+    val icon: String?,
     val parent: String?,
     val category: String?,
     val claimedBy: String?,
@@ -36,6 +42,7 @@ data class TaskBoardTask(
     val question: TaskBoardQuestion?,
     val created: String?,
     val completed: String?,
+    val completedAt: String?,
     val description: String,
     val acceptanceCriteria: List<String>,
     val aiNotes: String,
@@ -50,6 +57,10 @@ data class TaskBoardTask(
     fun toDraft(): TaskBoardTaskDraft = TaskBoardTaskDraft(
         title = title,
         column = column,
+        kind = kind,
+        dependsOn = dependsOn,
+        relatedTo = relatedTo,
+        icon = icon,
         parent = parent,
         category = category,
         attention = attention,
@@ -65,6 +76,10 @@ data class TaskBoardTask(
 data class TaskBoardTaskDraft(
     val title: String,
     val column: String,
+    val kind: String = "task",
+    val dependsOn: List<String> = emptyList(),
+    val relatedTo: List<String> = emptyList(),
+    val icon: String? = null,
     val parent: String? = null,
     val category: String? = null,
     val attention: List<String> = emptyList(),
@@ -79,12 +94,41 @@ data class TaskBoardTaskDraft(
 data class TaskBoardSnapshot(
     val name: String,
     val schema: Int,
+    val taskPrefix: String,
+    val epicPrefix: String,
     val columns: List<TaskBoardColumn>,
     val tasks: List<TaskBoardTask>,
     val warnings: List<String>,
     val root: File,
-    val boardRevision: String
-)
+    val boardRevision: String,
+    val archivedIds: Set<String>
+) {
+    fun waitingFor(task: TaskBoardTask): List<String> = task.dependsOn.filter { id ->
+        id !in archivedIds && tasks.firstOrNull { it.id == id }?.completed.isNullOrBlank()
+    }
+
+    fun epicChildren(epic: TaskBoardTask): List<TaskBoardTask> = tasks.filter { it.parent == epic.id }
+
+    fun displayColumn(task: TaskBoardTask): String {
+        if (task.kind != "epic") return task.column
+        val children = epicChildren(task)
+        if (children.isEmpty()) return columns.firstOrNull { it.id == "draft" }?.id ?: task.column
+        val inProgress = columns.firstOrNull { it.id == "in-progress" }?.id
+        if (inProgress != null && children.any { it.column == inProgress }) return inProgress
+        if (children.all { child -> columns.any { it.id == child.column && it.terminal } }) {
+            return columns.firstOrNull { it.terminal }?.id ?: task.column
+        }
+        if (children.all { it.column == "blocked" || waitingFor(it).isNotEmpty() }) {
+            return columns.firstOrNull { it.id == "blocked" }?.id ?: task.column
+        }
+        return children.firstOrNull { child ->
+            columns.any { it.id == child.column && !it.terminal && it.id != "draft" }
+        }?.column ?: children.first().column
+    }
+    fun userQueue(): List<TaskBoardTask> = tasks.filter {
+        it.completed == null && (it.kind == "for_user" || "needs-user" in it.attention)
+    }.sortedWith(compareByDescending<TaskBoardTask> { it.created.orEmpty() }.thenByDescending { it.id })
+}
 
 class TaskBoardConflictException(message: String) : Exception(message)
 
@@ -92,6 +136,8 @@ class TaskBoardStore(
     val root: File = defaultRoot()
 ) {
     companion object {
+        private val taskFileName = Regex("^[A-Za-z][A-Za-z0-9]{1,11}-[0-9]+\\.md$", RegexOption.IGNORE_CASE)
+        private val prefixFormat = Regex("^[A-Z][A-Z0-9]{1,11}$")
         private val columnPalette = listOf(
             "#718f78",
             "#7388a8",
@@ -103,10 +149,21 @@ class TaskBoardStore(
             "#927b86"
         )
 
-        fun defaultRoot(): File = File(
-            Environment.getExternalStorageDirectory(),
-            "SharedWithPc/Obsidian/jjj/Wartribes/Tasks"
-        )
+        fun projectsRoot(): File = File(Environment.getExternalStorageDirectory(), "SharedWithPc/Obsidian/jjj")
+
+        fun defaultRoot(): File = File(projectsRoot(), "Wartribes/Tasks")
+
+        fun discoverBoards(): List<TaskBoardProject> = projectsRoot().listFiles().orEmpty()
+            .filter { it.isDirectory }
+            .mapNotNull { folder ->
+                val board = File(folder, "Tasks/_board.md")
+                if (!board.isFile) return@mapNotNull null
+                val name = runCatching {
+                    board.useLines { lines -> lines.firstOrNull { it.startsWith("name: ") }
+                        ?.substringAfter(':')?.trim()?.trim('"', '\'') }
+                }.getOrNull()?.takeIf { it.isNotBlank() } ?: folder.name
+                TaskBoardProject(name, folder.name, requireNotNull(board.parentFile))
+            }.sortedWith(compareBy<TaskBoardProject> { it.folderName != "Wartribes" }.thenBy { it.name.lowercase(Locale.ROOT) })
 
         fun hasStorageAccess(): Boolean =
             Build.VERSION.SDK_INT < Build.VERSION_CODES.R || Environment.isExternalStorageManager()
@@ -132,7 +189,7 @@ class TaskBoardStore(
             emptyList()
         } else {
             activeDir.walkTopDown()
-                .filter { it.isFile && it.name.startsWith("WT-") && it.extension.equals("md", true) }
+                .filter { it.isFile && taskFileName.matches(it.name) }
                 .mapNotNull { file ->
                     runCatching { parseTask(file, file.readText()) }
                         .onFailure { warnings += "${file.name}: ${it.message}" }
@@ -145,11 +202,16 @@ class TaskBoardStore(
         return TaskBoardSnapshot(
             name = boardFields["name"] ?: "TaskBoard",
             schema = boardFields["schema"]?.toIntOrNull() ?: 1,
+            taskPrefix = boardFields["task_prefix"]?.takeIf { prefixFormat.matches(it) } ?: "WT",
+            epicPrefix = boardFields["epic_prefix"]?.takeIf { prefixFormat.matches(it) } ?: "WTE",
             columns = columns.sortedBy { it.order },
             tasks = tasks,
             warnings = warnings,
             root = root,
-            boardRevision = revision(boardText)
+            boardRevision = revision(boardText),
+            archivedIds = File(root, "Archive").takeIf { it.isDirectory }
+                ?.walkTopDown()?.filter { it.isFile && taskFileName.matches(it.name) }
+                ?.map { it.nameWithoutExtension }?.toSet().orEmpty()
         )
     }
 
@@ -157,12 +219,12 @@ class TaskBoardStore(
         val snapshot = load()
         validateDraft(snapshot, draft)
 
+        val prefix = if (draft.kind == "epic") snapshot.epicPrefix else snapshot.taskPrefix
         val next = allTaskFiles()
-            .mapNotNull { it.nameWithoutExtension.removePrefix("WT-").toIntOrNull() }
-            .maxOrNull()
-            ?.plus(1)
-            ?: 1
-        val id = "WT-%04d".format(Locale.US, next)
+            .mapNotNull { it.nameWithoutExtension.takeIf { name -> name.startsWith("$prefix-") }
+                ?.substringAfterLast('-')?.toIntOrNull() }
+            .maxOrNull()?.plus(1) ?: 1
+        val id = "%s-%04d".format(Locale.US, prefix, next)
         val activeDir = File(root, "Active").apply { mkdirs() }
         val file = File(activeDir, "$id.md")
         if (file.exists()) throw TaskBoardConflictException("$id already exists")
@@ -219,6 +281,11 @@ class TaskBoardStore(
             "column",
             listOf("column: ${yamlQuote(draft.column)}")
         )
+        val effectiveKind = if (draft.kind == "for_user" && targetColumn.terminal) "task" else draft.kind
+        frontmatter = replaceTopLevelField(frontmatter, "kind", listOf("kind: $effectiveKind"))
+        frontmatter = replaceTopLevelField(frontmatter, "depends_on", renderStringListField("depends_on", draft.dependsOn))
+        frontmatter = replaceTopLevelField(frontmatter, "related_to", renderStringListField("related_to", draft.relatedTo))
+        frontmatter = replaceTopLevelField(frontmatter, "icon", draft.icon?.let { listOf("icon: ${yamlQuote(it)}") })
         frontmatter = replaceTopLevelField(
             frontmatter,
             "parent",
@@ -233,6 +300,7 @@ class TaskBoardStore(
         )
 
         val completed = when {
+            draft.kind == "epic" -> currentTask.completed
             targetColumn.terminal && currentTask.completed.isNullOrBlank() -> today()
             targetColumn.terminal -> currentTask.completed
             else -> null
@@ -242,13 +310,19 @@ class TaskBoardStore(
             "completed",
             completed?.let { listOf("completed: $it") }
         )
+        frontmatter = replaceTopLevelField(
+            frontmatter, "completed_at",
+            if (completed == null) null else if (currentTask.completedAt != null) {
+                listOf("completed_at: ${yamlQuote(currentTask.completedAt)}")
+            } else listOf("completed_at: ${yamlQuote(java.time.Instant.now().toString())}")
+        )
 
         val attention = normalizeAttention(
             draft.attention,
             oldUserNotes = currentTask.userNotes,
             newUserNotes = draft.userNotes,
             isNew = false
-        )
+        ).filterNot { effectiveKind == "task" && draft.kind == "for_user" && it == "needs-user" }
         frontmatter = replaceTopLevelField(
             frontmatter,
             "attention",
@@ -265,15 +339,17 @@ class TaskBoardStore(
 
         var body = splitFrontmatter(currentText).second
         body = replaceMarkdownSection(body, "## Description", draft.description.trim())
-        body = replaceMarkdownSection(
-            body,
-            "## Acceptance Criteria",
-            draft.acceptanceCriteria
-                .map { it.trim() }
-                .filter { it.isNotEmpty() }
-                .joinToString("\n") { "- [ ] $it" }
-        )
-        body = replaceMarkdownSection(body, "## AI Notes", draft.aiNotes.trim())
+        if (draft.kind != "epic") {
+            body = replaceMarkdownSection(
+                body,
+                "## Acceptance Criteria",
+                draft.acceptanceCriteria
+                    .map { it.trim() }
+                    .filter { it.isNotEmpty() }
+                    .joinToString("\n") { "- [ ] $it" }
+            )
+            body = replaceMarkdownSection(body, "## AI Notes", draft.aiNotes.trim())
+        }
         body = replaceMarkdownSection(body, "## User Notes", draft.userNotes.trim())
         body = replaceMarkdownSection(body, "## Notes", draft.notes.trim())
 
@@ -445,17 +521,44 @@ class TaskBoardStore(
         editingId: String? = null
     ) {
         require(draft.title.trim().isNotEmpty()) { "Task title cannot be empty" }
+        require(draft.kind in setOf("task", "epic", "for_user")) { "Unsupported task kind" }
+        require(draft.dependsOn.distinct().size == draft.dependsOn.size) { "Duplicate dependencies" }
+        require(draft.relatedTo.distinct().size == draft.relatedTo.size) { "Duplicate relationships" }
+        if (draft.kind == "epic") {
+            require(draft.parent == null && draft.dependsOn.isEmpty() && draft.relatedTo.isEmpty()) {
+                "Epics cannot have parents or dependencies"
+            }
+            require(draft.attention.isEmpty() && draft.question == null) { "Epics cannot have attention or questions" }
+        }
+        draft.dependsOn.forEach { id ->
+            require(id != editingId && (id in snapshot.archivedIds || snapshot.tasks.any { it.id == id && it.kind != "epic" })) {
+                "Dependency must reference an executable task in this board: $id"
+            }
+        }
+        draft.relatedTo.forEach { id ->
+            require(id != editingId && (id in snapshot.archivedIds || snapshot.tasks.any { it.id == id })) { "Unknown related task: $id" }
+        }
         require(snapshot.columns.any { it.id == draft.column }) {
             "Unknown column: ${draft.column}"
         }
         draft.parent?.takeIf { it.isNotBlank() }?.let { parent ->
             require(parent != editingId) { "A task cannot be its own parent" }
-            require(snapshot.tasks.any { it.id == parent }) { "Unknown parent task: $parent" }
+            val existing = editingId?.let { id -> snapshot.tasks.firstOrNull { it.id == id } }
+            require(existing?.parent == parent || snapshot.tasks.any { it.id == parent && it.kind == "epic" }) {
+                "Parent must be an epic in this board: $parent"
+            }
             if (editingId != null) {
                 require(!wouldCreateParentCycle(snapshot, editingId, parent)) {
                     "Parent selection would create a task cycle"
                 }
             }
+        }
+        val movingIntoWork = draft.kind == "task" && draft.column in setOf("in-progress", "done")
+        if (movingIntoWork) {
+            val waiting = draft.dependsOn.filter { id ->
+                id !in snapshot.archivedIds && snapshot.tasks.firstOrNull { it.id == id }?.completed.isNullOrBlank()
+            }
+            require(waiting.isEmpty()) { "Blocked by: ${waiting.joinToString()}" }
         }
         if ("question" in draft.attention) {
             require(!draft.question?.prompt.isNullOrBlank()) {
@@ -504,8 +607,7 @@ class TaskBoardStore(
                     directory.walkTopDown()
                         .filter {
                             it.isFile &&
-                                it.name.startsWith("WT-") &&
-                                it.extension.equals("md", true)
+                                taskFileName.matches(it.name)
                         }
                 )
             }
@@ -572,6 +674,10 @@ class TaskBoardStore(
             id = id,
             title = title,
             column = fields["column"] ?: error("missing column"),
+            kind = fields["kind"] ?: "task",
+            dependsOn = parseStringList(frontmatter, "depends_on"),
+            relatedTo = parseStringList(frontmatter, "related_to"),
+            icon = fields["icon"],
             parent = fields["parent"],
             category = fields["category"],
             claimedBy = fields["claimed_by"],
@@ -585,6 +691,7 @@ class TaskBoardStore(
             },
             created = fields["created"],
             completed = fields["completed"],
+            completedAt = fields["completed_at"],
             description = sections["Description"].orEmpty(),
             acceptanceCriteria = parseCriteria(sections["Acceptance Criteria"].orEmpty()),
             aiNotes = sections["AI Notes"].orEmpty(),
@@ -607,8 +714,12 @@ class TaskBoardStore(
             "schema: $schema",
             "id: ${yamlQuote(id)}",
             "title: ${yamlQuote(draft.title.trim())}",
-            "column: ${yamlQuote(draft.column)}"
+            "column: ${yamlQuote(draft.column)}",
+            "kind: ${draft.kind}"
         )
+        renderStringListField("depends_on", draft.dependsOn)?.let(lines::addAll)
+        renderStringListField("related_to", draft.relatedTo)?.let(lines::addAll)
+        draft.icon?.let { lines += "icon: ${yamlQuote(it)}" }
         draft.parent?.takeIf { it.isNotBlank() }?.let {
             lines += "parent: ${yamlQuote(it)}"
         }
@@ -629,7 +740,7 @@ class TaskBoardStore(
         lines += ""
         lines += "## Acceptance Criteria"
         lines += ""
-        draft.acceptanceCriteria
+        draft.acceptanceCriteria.takeIf { draft.kind != "epic" }.orEmpty()
             .map { it.trim() }
             .filter { it.isNotEmpty() }
             .forEach { lines += "- [ ] $it" }
