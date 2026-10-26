@@ -118,7 +118,15 @@ fun TaskBoardScreen(parentPadding: PaddingValues = PaddingValues(0.dp)) {
             }.onSuccess { (available, board) ->
                 if (selectedRoot == currentStore.root.absolutePath) {
                     projects = available
-                    snapshot = board
+                    // A previously selected legacy alias may now be hidden because
+                    // the same-named canonical folder is present. Switch to it.
+                    val canonical = available.firstOrNull { it.name.equals(board.name, ignoreCase = true) }
+                    if (available.none { it.root.absolutePath == selectedRoot } && canonical != null) {
+                        selectedRoot = canonical.root.absolutePath
+                        boardPreferences.edit().putString("selected_board", selectedRoot).apply()
+                    } else {
+                        snapshot = board
+                    }
                 }
             }.onFailure {
                 error = it.message ?: it.toString()

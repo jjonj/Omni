@@ -153,17 +153,35 @@ class TaskBoardStore(
 
         fun defaultRoot(): File = File(projectsRoot(), "Wartribes/Tasks")
 
-        fun discoverBoards(): List<TaskBoardProject> = projectsRoot().listFiles().orEmpty()
-            .filter { it.isDirectory }
-            .mapNotNull { folder ->
-                val board = File(folder, "Tasks/_board.md")
-                if (!board.isFile) return@mapNotNull null
-                val name = runCatching {
-                    board.useLines { lines -> lines.firstOrNull { it.startsWith("name: ") }
-                        ?.substringAfter(':')?.trim()?.trim('"', '\'') }
-                }.getOrNull()?.takeIf { it.isNotBlank() } ?: folder.name
-                TaskBoardProject(name, folder.name, requireNotNull(board.parentFile))
-            }.sortedWith(compareBy<TaskBoardProject> { it.folderName != "Wartribes" }.thenBy { it.name.lowercase(Locale.ROOT) })
+        fun discoverBoards(): List<TaskBoardProject> {
+            val boards = projectsRoot().listFiles().orEmpty()
+                .filter { it.isDirectory }
+                .mapNotNull { folder ->
+                    val board = File(folder, "Tasks/_board.md")
+                    if (!board.isFile) return@mapNotNull null
+                    val name = runCatching {
+                        board.useLines { lines -> lines.firstOrNull { it.startsWith("name: ") }
+                            ?.substringAfter(':')?.trim()?.trim('"', '\'') }
+                    }.getOrNull()?.takeIf { it.isNotBlank() } ?: folder.name
+                    TaskBoardProject(name, folder.name, requireNotNull(board.parentFile))
+                }
+            return preferCanonicalNamedBoards(boards)
+                .sortedWith(compareBy<TaskBoardProject> { it.folderName != "Wartribes" }.thenBy { it.name.lowercase(Locale.ROOT) })
+        }
+
+        /** Desktop hides the legacy OmniHub/Tasks tab while keeping its files.
+         * Mirror that ONE known alias when Omni/Tasks exists. Never silently
+         * suppress other same-named boards; their contents might differ.
+         */
+        internal fun preferCanonicalNamedBoards(boards: List<TaskBoardProject>): List<TaskBoardProject> {
+            val hasCanonicalOmni = boards.any {
+                it.name.equals("Omni", ignoreCase = true) && it.folderName.equals("Omni", ignoreCase = true)
+            }
+            return boards.filterNot {
+                hasCanonicalOmni && it.name.equals("Omni", ignoreCase = true) &&
+                    it.folderName.equals("OmniHub", ignoreCase = true)
+            }
+        }
 
         fun hasStorageAccess(): Boolean =
             Build.VERSION.SDK_INT < Build.VERSION_CODES.R || Environment.isExternalStorageManager()
