@@ -107,6 +107,20 @@ class TaskBoardPhoneClient(
         return sendSaved(operationId)
     }
 
+    suspend fun submitNewBoard(name: String): Submission {
+        val operationId = UUID.randomUUID().toString()
+        val normalized = name.trim()
+        require(normalized.isNotBlank()) { "Project name is required" }
+        val digest = java.security.MessageDigest.getInstance("SHA-256")
+            .digest(normalized.toByteArray(Charsets.UTF_8))
+            .joinToString("") { "%02x".format(it) }
+        drafts.saveOffline(boardId = "new-project", taskId = "NEWBOARD",
+            baseRevision = digest, baseSource = "No previous board",
+            edited = JSONObject().put("_operation", "board_create")
+                .put("name", normalized).toString(), operationId = operationId)
+        return sendSaved(operationId)
+    }
+
     /** Replays only the SAME UUID and payload, with server-side receipt
      * deduplication. A server-side UNKNOWN remains unresolved, not retried. */
     suspend fun sendSaved(operationId: String): Submission {
@@ -116,9 +130,13 @@ class TaskBoardPhoneClient(
             "Phone edit has a conflict; compare the PC version before making a new edit"
         }
         val isCreate = pending.taskId == "CREATE"
+        val isNewBoard = pending.taskId == "NEWBOARD"
         val isColumns = pending.taskId == "COLUMNS"
         val isArchive = JSONObject(pending.edited).optString("_operation") == "archive"
-        val wire = if (isColumns) {
+        val wire = if (isNewBoard) mapOf(
+            "operationId" to pending.operationId,
+            "name" to JSONObject(pending.edited).getString("name")
+        ) else if (isColumns) {
             val columns = JSONObject(pending.edited).getJSONArray("columns")
             val data = (0 until columns.length()).map { index ->
                 val column = columns.getJSONObject(index)
@@ -148,7 +166,8 @@ class TaskBoardPhoneClient(
             "baseRevision" to pending.baseRevision,
             "draft" to com.google.gson.Gson().fromJson(pending.edited, Map::class.java)
         )
-        val method = if (isColumns) "taskboard.phone.columns" else if (isCreate)
+        val method = if (isNewBoard) "taskboard.phone.board.create" else if (isColumns)
+            "taskboard.phone.columns" else if (isCreate)
             "taskboard.phone.create" else if (isArchive)
             "taskboard.phone.archive" else "taskboard.phone.update"
         val response = try {

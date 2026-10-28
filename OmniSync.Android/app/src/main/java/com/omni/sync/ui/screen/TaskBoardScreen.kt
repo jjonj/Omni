@@ -835,16 +835,19 @@ private fun TaskBoardContents(parentPadding: PaddingValues, signalR: SignalRClie
                     loading = true
                     error = null
                     runCatching {
-                        withContext(Dispatchers.IO) { TaskBoardStore.createProject(name) }
-                    }.onSuccess { project ->
-                        showCreateBoard = false
-                        projects = (projects + project).distinctBy { it.root.absolutePath }
-                        selectedRoot = project.root.absolutePath
-                        boardPreferences.edit().putString("selected_board", selectedRoot).apply()
-                        reviewMode = false
-                        filterMode = "all"
-                        taskQuery = ""
-                    }.onFailure { error = it.message ?: it.toString() }
+                        withContext(Dispatchers.IO) { phoneWriter.submitNewBoard(name) }
+                    }.onSuccess { receipt ->
+                        if (receipt.status == "applied") {
+                            showCreateBoard = false
+                            error = "Project created on PC. Sync SharedWithPc/Obsidian/jjj to this phone, then Refresh board before selecting it."
+                        } else {
+                            error = receipt.details ?: "PC board creation not confirmed; phone draft retained"
+                        }
+                        pendingPhoneEditsRevision++
+                    }.onFailure { failure ->
+                        error = failure.message ?: failure.toString()
+                        pendingPhoneEditsRevision++
+                    }
                     loading = false
                 }
             }
