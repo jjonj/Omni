@@ -430,14 +430,16 @@ public sealed class ZoneManager
         var right = vk == Win32.VK_RIGHT;
         var area = p?.Area ?? AreaOf(f);
         var rects = Rects(area);
-        var (fx, fy) = p != null && rects.TryGetValue(p.ZoneId, out var zr) ? (zr.CenterX, zr.CenterY) : (f.CenterX, f.CenterY);
-        var best = ZoneEngine.Neighbor(LayoutAt(area), rects, fx, fy, right, p?.ZoneId, Simple);
+        // An untracked window (e.g. resized by a DPI change after a hop) steps from the zone under its center, not from its
+        // raw center, otherwise the nearest zone "to the left" can be the one it already fills and it re-snaps in place.
+        var curId = p?.ZoneId ?? ZoneEngine.ZoneAt(LayoutAt(area), rects, f.CenterX, f.CenterY, Simple)?.Id;
+        var (fx, fy) = curId != null && rects.TryGetValue(curId, out var zr) ? (zr.CenterX, zr.CenterY) : (f.CenterX, f.CenterY);
+        var best = ZoneEngine.Neighbor(LayoutAt(area), rects, fx, fy, right, curId, Simple);
         var target = area;
         if (best == null)
         {
             // Hop to the next monitor in that direction, entering at its near edge.
-            var next = WindowTools.Monitors().Select(m => m.Work).Where(a => right ? a.X >= area.Right - 1 : a.Right <= area.X + 1)
-                .OrderBy(a => Math.Abs((right ? a.X - area.Right : area.X - a.Right))).Cast<RectD?>().FirstOrDefault();
+            var next = ZoneEngine.NextArea(WindowTools.Monitors().Select(m => m.Work), area, f.Y, f.Bottom, right);
             if (next is not { } n) { Log(right ? "Already at the right edge" : "Already at the left edge"); return; }
             target = n;
             var nr = Rects(n);

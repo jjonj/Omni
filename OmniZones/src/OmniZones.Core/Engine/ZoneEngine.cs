@@ -138,6 +138,25 @@ public static class ZoneEngine
     }
 
     /// <summary>
+    /// Next monitor work area in a direction (Win+arrow hop). Judged by centers so slightly overlapping or offset monitors
+    /// still count; monitors that share vertical range with the window win over ones merely further along that way.
+    /// </summary>
+    public static RectD? NextArea(IEnumerable<RectD> areas, RectD from, double frameTop, double frameBottom, bool right)
+    {
+        RectD? best = null;
+        var bestScore = double.MaxValue;
+        foreach (var a in areas)
+        {
+            var dx = a.CenterX - from.CenterX;
+            if (a == from || (right ? dx < 1 : dx > -1)) continue;
+            var overlaps = a.Y < frameBottom && a.Bottom > frameTop;
+            var score = Math.Abs(dx) + (overlaps ? 0 : 1_000_000);
+            if (score < bestScore) { bestScore = score; best = a; }
+        }
+        return best;
+    }
+
+    /// <summary>
     /// Assign windows to zones: remembered zone first, then the first free zone that prefers the app.
     /// Stacks take any number of windows, other zones one. Result maps window id to zone id (null = no home).
     /// </summary>

@@ -1,7 +1,15 @@
+// Keep browser control and tab cleanup independent: a failure to load one
+// feature must not silently prevent the other from registering its listeners.
+importScripts('signalr.min.js');
 try {
-  importScripts('signalr.min.js', 'browser-control.js');
-} catch (e) {
-  console.error(e);
+  importScripts('browser-control.js');
+} catch (error) {
+  console.error('Omni browser control failed to load:', error);
+}
+try {
+  importScripts('tab-cleanup.js');
+} catch (error) {
+  console.error('Omni tab cleanup failed to load:', error);
 }
 
 const HUB_URL = "http://localhost:5000/signalrhub";
@@ -12,8 +20,15 @@ let customCleanupPatterns = [];
 
 // Load custom patterns on startup
 chrome.storage.local.get(['customCleanupPatterns'], (result) => {
-    customCleanupPatterns = result.customCleanupPatterns || [];
+    customCleanupPatterns = Array.isArray(result.customCleanupPatterns)
+        ? result.customCleanupPatterns.filter(pattern => typeof pattern === 'string') : [];
     console.log("Loaded custom cleanup patterns:", customCleanupPatterns);
+});
+chrome.storage.onChanged.addListener((changes, area) => {
+    if (area === 'local' && changes.customCleanupPatterns) {
+        customCleanupPatterns = Array.isArray(changes.customCleanupPatterns.newValue)
+            ? changes.customCleanupPatterns.newValue.filter(pattern => typeof pattern === 'string') : [];
+    }
 });
 
 let connection = new signalR.HubConnectionBuilder()
@@ -166,11 +181,86 @@ function shouldCleanTab(tabUrl, tabTitle) {
     return false;
 }
 
+// OmniHub is the authoritative owner of cleanup patterns. The extension's
+// local storage is only a cache, not a replacement source of truth.
+const INTERNAL_CLEANUP_DEFAULTS = ['vivaldi:*', 'chrome:*'];
+let internalDefaultSeedPromise = null;
+let patternEditQueue = Promise.resolve();
+async function readHubCleanupPatterns() {
+    if (connection.state === signalR.HubConnectionState.Disconnected) {
+        await start();
+    }
+    if (connection.state !== signalR.HubConnectionState.Connected) {
+        throw Error('OmniHub is disconnected. Reconnect before editing cleanup patterns.');
+    }
+    const settings = await connection.invoke('GetSettings');
+    const patterns = settings?.browserCleanupPatterns ?? settings?.BrowserCleanupPatterns;
+    if (!Array.isArray(patterns) || !patterns.every(value => typeof value === 'string')) {
+        throw Error('OmniHub did not return a valid browser cleanup pattern list.');
+    }
+    customCleanupPatterns = [...patterns];
+    await chrome.storage.local.set({ customCleanupPatterns });
+    return [...patterns];
+}
+function handleCleanupPatternsMessage(message) {
+    // Serialize read-modify-write to avoid racing rapid popup edits.
+    const request = patternEditQueue.then(async () => {
+        const patterns = await readHubCleanupPatterns();
+        if (message.command === 'patterns:list') return patterns;
+        if (!['patterns:add', 'patterns:remove'].includes(message.command)) {
+            throw Error('Unknown pattern action');
+        }
+        const pattern = typeof message.pattern === 'string' ? message.pattern.trim() : '';
+        if (!pattern) throw Error('Enter a cleanup pattern');
+        if (pattern.toLowerCase() === 'title:') throw Error('Provide text after title:');
+        if (pattern.length > 2048) throw Error('Cleanup pattern exceeds 2048 characters');
+        const next = message.command === 'patterns:add'
+            ? (patterns.includes(pattern) ? patterns : [...patterns, pattern])
+            : patterns.filter(value => value !== pattern);
+        if (next.length > 256) throw Error('OmniHub supports at most 256 cleanup patterns');
+        if (next.length !== patterns.length || next.some((value, index) => value !== patterns[index])) {
+            // Existing Hub RPC persists the list and broadcasts the new value
+            // to other clients. Failed RPCs never report a successful edit.
+            await connection.invoke('SendCleanupPatterns', next);
+        }
+        customCleanupPatterns = next;
+        await chrome.storage.local.set({ customCleanupPatterns });
+        return next;
+    });
+    patternEditQueue = request.catch(() => {});
+    return request;
+}
+chrome.runtime.onMessage.addListener((message, sender, reply) => {
+    if (sender.id !== chrome.runtime.id || !message?.command?.startsWith('patterns:')) return false;
+    handleCleanupPatternsMessage(message)
+        .then(data => reply({ ok: true, data }))
+        .catch(error => reply({ ok: false, error: String(error.message || error) }));
+    return true;
+});
+
+function seedInternalCleanupDefaults() {
+    if (internalDefaultSeedPromise) return internalDefaultSeedPromise;
+    internalDefaultSeedPromise = (async () => {
+        const stored = await chrome.storage.local.get('internalCleanupDefaultsSeeded');
+        if (stored.internalCleanupDefaultsSeeded) return;
+        // Seed once per extension installation, not on every startup: a
+        // pattern explicitly deleted later must stay deleted.
+        for (const pattern of INTERNAL_CLEANUP_DEFAULTS) {
+            await handleCleanupPatternsMessage({ command: 'patterns:add', pattern });
+        }
+        await chrome.storage.local.set({ internalCleanupDefaultsSeeded: true });
+    })().catch(error => {
+        console.error('Failed to seed internal cleanup defaults:', error);
+        throw error;
+    }).finally(() => { internalDefaultSeedPromise = null; });
+    return internalDefaultSeedPromise;
+}
+
 // Handle Commands from Android
 connection.on("ReceiveCleanupPatterns", (patterns) => {
     console.log("SignalR: Received master cleanup patterns from Hub:", patterns);
     if (Array.isArray(patterns)) {
-        customCleanupPatterns = patterns;
+        customCleanupPatterns = patterns.filter(pattern => typeof pattern === 'string');
         chrome.storage.local.set({ customCleanupPatterns });
     }
 });
@@ -248,11 +338,9 @@ connection.on("ReceiveBrowserCommand", async (command, url, newTab) => {
             });
         }
     } else if (command === "CleanTabs") {
-        chrome.tabs.query({}, (tabs) => {
-            const tabsToClose = tabs.filter(tab => shouldCleanTab(tab.url, tab.title));
-            console.log(`Cleaning ${tabsToClose.length} tabs`);
-            tabsToClose.forEach(tab => chrome.tabs.remove(tab.id));
-        });
+        if (!globalThis.TabCleanup) throw Error('Tab cleanup failed to initialize; reload the extension and inspect its service worker errors.');
+        const result = await globalThis.TabCleanup.run(shouldCleanTab);
+        console.log(`Cleanup closed ${result.closed} tabs (${result.archived} archived); ${result.failed} could not be closed.`);
     } else if (command === "AddCleanupPattern") {
         // url parameter contains the pattern to add
         if (url && !customCleanupPatterns.includes(url)) {
@@ -379,15 +467,8 @@ connection.on("ReceiveBrowserCommand", async (command, url, newTab) => {
             });
         }
     } else if (command === "ReloadExtension") {
-        console.log("SignalR: Reloading extension as requested...");
-        console.clear();
-        // Clear storage to simulate a fresh install state
-        chrome.storage.local.clear(() => {
-            console.log("Storage cleared. Re-initializing extension...");
-            // There is no API to clear the red 'Errors' button in chrome://extensions
-            // but runtime.reload() is the closest we have to a full reinstall.
-            chrome.runtime.reload();
-        });
+        console.log("SignalR: Reloading extension while preserving patterns and archived URLs...");
+        chrome.runtime.reload();
     }
     } catch (err) {
         console.error("SignalR: Error processing browser command:", err);
@@ -400,9 +481,25 @@ chrome.runtime.onStartup.addListener(() => {
     start();
 });
 
+// Core URL quick-add works alongside the full pattern editor.
+function getCoreUrlPattern(url) {
+    try {
+        const parsed = new URL(url);
+        if (parsed.protocol === 'vivaldi:' || parsed.protocol === 'chrome:') {
+            return `${parsed.protocol}*`;
+        }
+        if (parsed.protocol === 'file:') return 'file:///*';
+        if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+            return `${parsed.protocol}//${parsed.hostname}/*`;
+        }
+    } catch {}
+    return null;
+}
+
 chrome.runtime.onInstalled.addListener(() => {
     console.log("Extension installed/updated - connecting...");
-    
+    // Remove the retired context-menu entry on update.
+    chrome.contextMenus.removeAll(() => {
     // Create Context Menu Items
     chrome.contextMenus.create({
         id: "sendPageToPhone",
@@ -429,23 +526,19 @@ chrome.runtime.onInstalled.addListener(() => {
     });
 
     chrome.contextMenus.create({
+        id: "editCleanupPatterns",
+        title: "Edit cleanup patterns",
+        contexts: ["action", "page"]
+    });
+    chrome.contextMenus.create({
         id: "addCoreUrlToCleanup",
         title: "Add core URL for cleanup",
         contexts: ["action", "page"]
     });
+    });
 
     start();
 });
-
-// Helper function to extract base URL pattern (e.g. https://github.com/*)
-function getCoreUrlPattern(url) {
-    try {
-        const urlObj = new URL(url);
-        return `${urlObj.protocol}//${urlObj.hostname}/*`;
-    } catch (e) {
-        return url; // Fallback
-    }
-}
 
 // Handle Context Menu Clicks
 chrome.contextMenus.onClicked.addListener((info, tab) => {
@@ -466,22 +559,30 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
             }
         });
     } else if (info.menuItemId === "cleanTabs") {
-        chrome.tabs.query({}, (tabs) => {
-            const tabsToClose = tabs.filter(tab => shouldCleanTab(tab.url, tab.title));
-            console.log(`Cleaning ${tabsToClose.length} tabs via context menu`);
-            tabsToClose.forEach(tab => chrome.tabs.remove(tab.id));
+        if (!globalThis.TabCleanup) {
+            console.error("Clean Tabs unavailable: tab-cleanup.js failed to initialize.");
+            return;
+        }
+        void globalThis.TabCleanup.run(shouldCleanTab)
+            .then(result => console.log(`Cleanup closed ${result.closed} tabs (${result.archived} archived); ${result.failed} failed.`))
+            .catch(error => console.error("Clean Tabs failed:", error));
+    } else if (info.menuItemId === "editCleanupPatterns") {
+        void chrome.windows.create({
+            url: chrome.runtime.getURL("cleanup-patterns.html"),
+            type: "popup",
+            width: 520,
+            height: 580
         });
     } else if (info.menuItemId === "addCoreUrlToCleanup") {
-        if (tab && tab.url) {
-            const pattern = getCoreUrlPattern(tab.url);
-            if (!customCleanupPatterns.includes(pattern)) {
-                customCleanupPatterns.push(pattern);
-                chrome.storage.local.set({ customCleanupPatterns });
-                console.log("Added core URL pattern to cleanup:", pattern);
-                // Notify hub of updated patterns
-                connection.invoke("SendCleanupPatterns", customCleanupPatterns);
-            }
+        const pattern = getCoreUrlPattern(tab?.url);
+        if (!pattern) {
+            console.warn("Add core URL skipped: no supported page URL.");
+            return;
         }
+        // Use the same OmniHub-authoritative write path as the editor.
+        void handleCleanupPatternsMessage({ command: 'patterns:add', pattern })
+            .then(() => console.log("Added core URL cleanup pattern:", pattern))
+            .catch(error => console.error("Could not save core URL to OmniHub:", error));
     }
 });
 
@@ -495,6 +596,9 @@ async function authenticate() {
         try {
             const success = await connection.invoke("Authenticate", API_KEY);
             console.log("SignalR: Authentication result:", success);
+            if (success) {
+                await seedInternalCleanupDefaults();
+            }
             checkActiveTab(); // Check immediately after auth
         } catch (e) {
             console.error("SignalR: Authentication failed:", e);

@@ -3,10 +3,12 @@ package com.omni.sync.data.taskboard
 import android.os.Build
 import android.os.Environment
 import java.io.File
+import java.io.RandomAccessFile
 import java.security.MessageDigest
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import org.json.JSONObject
 import kotlin.random.Random
 
 data class TaskBoardProject(val name: String, val folderName: String, val root: File)
@@ -18,7 +20,10 @@ data class TaskBoardColumn(
     val terminal: Boolean,
     val hidden: Boolean,
     val aiReady: Boolean,
-    val color: String
+    val color: String,
+    val advisory: Boolean = false,
+    val snoozedUntil: String? = null,
+    val awakeUntil: String? = null
 )
 
 data class TaskBoardQuestion(
@@ -104,7 +109,12 @@ data class TaskBoardSnapshot(
     val archivedIds: Set<String>
 ) {
     fun waitingFor(task: TaskBoardTask): List<String> = task.dependsOn.filter { id ->
-        id !in archivedIds && tasks.firstOrNull { it.id == id }?.completed.isNullOrBlank()
+        if (id in archivedIds) return@filter false
+        val prerequisite = tasks.firstOrNull { it.id == id }
+        prerequisite == null || (
+            prerequisite.completed.isNullOrBlank() &&
+            columns.none { it.id == prerequisite.column && it.terminal }
+        )
     }
 
     fun epicChildren(epic: TaskBoardTask): List<TaskBoardTask> = tasks.filter { it.parent == epic.id }
@@ -126,7 +136,10 @@ data class TaskBoardSnapshot(
         }?.column ?: children.first().column
     }
     fun userQueue(): List<TaskBoardTask> = tasks.filter {
-        it.completed == null && (it.kind == "for_user" || "needs-user" in it.attention)
+        it.completed == null &&
+            columns.none { column -> column.id == it.column && column.terminal } &&
+            (it.kind == "for_user" || (it.kind == "task" && "needs-user" in it.attention)) &&
+            waitingFor(it).isEmpty()
     }.sortedWith(compareByDescending<TaskBoardTask> { it.created.orEmpty() }.thenByDescending { it.id })
 }
 
@@ -185,6 +198,63 @@ class TaskBoardStore(
 
         fun hasStorageAccess(): Boolean =
             Build.VERSION.SDK_INT < Build.VERSION_CODES.R || Environment.isExternalStorageManager()
+
+        /** Create a native Markdown board under the same synced projects root. */
+        fun createProject(name: String): TaskBoardProject {
+            require(hasStorageAccess()) { "Grant All files access before creating a board" }
+            val cleanName = name.trim()
+            require(cleanName.length in 2..60) { "Board name must contain 2–60 characters" }
+            require(!Regex("""[<>:"/\\|?*\\x00-\\x1F]""").containsMatchIn(cleanName) &&
+                cleanName !in setOf(".", "..")) { "Board name contains invalid folder characters" }
+            val project = File(projectsRoot(), cleanName)
+            require(!project.exists()) { "Board or folder already exists: $cleanName" }
+            val tasks = File(project, "Tasks")
+            check(tasks.mkdirs()) { "Could not create board folder" }
+
+            val letters = cleanName.filter { it.isLetterOrDigit() && it.code < 128 }
+                .uppercase(Locale.ROOT).take(10)
+            val taskPrefix = (if (letters.firstOrNull()?.isLetter() == true) letters else "TB" + letters)
+                .take(10).padEnd(2, 'T')
+            val epicPrefix = "${taskPrefix.take(10)}E"
+            val board = buildString {
+                appendLine("---")
+                appendLine("schema: 1")
+                appendLine("name: ${JSONObject.quote(cleanName)}")
+                appendLine("task_prefix: $taskPrefix")
+                appendLine("epic_prefix: $epicPrefix")
+                appendLine("columns:")
+                listOf(
+                    listOf("draft", "Draft", "false", "false", "#8e7da8"),
+                    listOf("ai-ready", "AI Ready", "false", "true", "#718f78"),
+                    listOf("in-progress", "In Progress", "false", "true", "#7388a8"),
+                    listOf("blocked", "Blocked", "false", "false", "#a48669"),
+                    listOf("done", "Done", "true", "false", "#6f8679")
+                ).forEachIndexed { index, data ->
+                    appendLine("- id: ${data[0]}")
+                    appendLine("  name: ${JSONObject.quote(data[1])}")
+                    appendLine("  order: $index")
+                    appendLine("  terminal: ${data[2]}")
+                    appendLine("  hidden: false")
+                    appendLine("  ai_ready: ${data[3]}")
+                    appendLine("  color: '${data[4]}'")
+                }
+                appendLine("---")
+                appendLine()
+                appendLine("# $cleanName Task Board")
+            }
+            try {
+                File(tasks, "_board.md").writeText(board)
+                File(tasks, "Active").mkdirs()
+                File(tasks, "Archive").mkdirs()
+                return TaskBoardProject(cleanName, cleanName, tasks)
+            } catch (error: Exception) {
+                if (tasks.listFiles().isNullOrEmpty()) {
+                    tasks.delete()
+                    project.delete()
+                }
+                throw error
+            }
+        }
     }
 
     fun load(): TaskBoardSnapshot {
@@ -233,7 +303,7 @@ class TaskBoardStore(
         )
     }
 
-    fun createTask(draft: TaskBoardTaskDraft): TaskBoardTask {
+    fun createTask(draft: TaskBoardTaskDraft): TaskBoardTask = withBoardLock {
         val snapshot = load()
         validateDraft(snapshot, draft)
 
@@ -258,7 +328,14 @@ class TaskBoardStore(
         val text = renderNewTask(
             schema = snapshot.schema,
             id = id,
-            draft = draft.copy(attention = normalizedAttention),
+            draft = draft.copy(
+                attention = normalizedAttention,
+                description = if (draft.kind == "epic") draft.description else TaskBoardTimeline.append(
+                    draft.description, listOf("user-note" to draft.userNotes, "legacy-ai" to draft.aiNotes)
+                ),
+                userNotes = if (draft.kind == "epic") draft.userNotes else "",
+                aiNotes = ""
+            ),
             created = created,
             completed = if (terminal) created else null
         )
@@ -272,10 +349,10 @@ class TaskBoardStore(
             file.delete()
             throw error
         }
-        return parseTask(file, text)
+        parseTask(file, text)
     }
 
-    fun updateTask(task: TaskBoardTask, draft: TaskBoardTaskDraft): TaskBoardTask {
+    fun updateTask(task: TaskBoardTask, draft: TaskBoardTaskDraft): TaskBoardTask = withBoardLock {
         val currentText = task.file.readText()
         if (revision(currentText) != task.revision) {
             throw TaskBoardConflictException(
@@ -287,6 +364,21 @@ class TaskBoardStore(
         validateDraft(snapshot, draft, task.id)
         val targetColumn = snapshot.columns.first { it.id == draft.column }
         val currentTask = parseTask(task.file, currentText)
+        // Desktop-equivalent advisory lifecycle: Done removes a temporary
+        // notice rather than leaving it as an actionable task in the archive.
+        if (targetColumn.terminal && snapshot.columns.any { it.id == currentTask.column && it.advisory }) {
+            check(task.file.delete()) { "Could not delete completed advisory ${task.id}" }
+            return@withBoardLock currentTask.copy(
+                column = targetColumn.id,
+                completed = today()
+            )
+        }
+        require(currentTask.kind != "epic" || draft.column == currentTask.column) {
+            "Epic status is derived from subtasks; it cannot be moved directly"
+        }
+        require(draft.kind != "for_user" || currentTask.claimedBy == null) {
+            "Release the agent claim before converting this task to For user"
+        }
 
         var frontmatter = splitFrontmatter(currentText).first
         frontmatter = replaceTopLevelField(
@@ -348,7 +440,11 @@ class TaskBoardStore(
         )
 
         val question = draft.question
-            ?.takeIf { "question" in attention && it.prompt.isNotBlank() }
+            ?.takeIf { it.prompt.isNotBlank() && ("question" in attention || !it.answer.isNullOrBlank()) }
+        val effectiveAttention = if (!question?.answer.isNullOrBlank()) attention - "question" else attention
+        frontmatter = replaceTopLevelField(
+            frontmatter, "attention", renderStringListField("attention", effectiveAttention)
+        )
         frontmatter = replaceTopLevelField(
             frontmatter,
             "question",
@@ -356,7 +452,14 @@ class TaskBoardStore(
         )
 
         var body = splitFrontmatter(currentText).second
-        body = replaceMarkdownSection(body, "## Description", draft.description.trim())
+        // The desktop app stores immutable dated updates inside Description, never in a
+        // second competing user/AI notes history. Import legacy notes once on save.
+        val additions = buildList {
+            if (currentTask.aiNotes.isNotBlank() && draft.kind != "epic") add("legacy-ai" to currentTask.aiNotes)
+            if (currentTask.userNotes.isNotBlank()) add("user-note" to currentTask.userNotes)
+            if (draft.userNotes.isNotBlank()) add("user-note" to draft.userNotes)
+        }
+        body = replaceMarkdownSection(body, "## Description", TaskBoardTimeline.append(draft.description, additions))
         if (draft.kind != "epic") {
             body = replaceMarkdownSection(
                 body,
@@ -366,14 +469,19 @@ class TaskBoardStore(
                     .filter { it.isNotEmpty() }
                     .joinToString("\n") { "- [ ] $it" }
             )
-            body = replaceMarkdownSection(body, "## AI Notes", draft.aiNotes.trim())
+            body = replaceMarkdownSection(body, "## AI Notes", "")
         }
-        body = replaceMarkdownSection(body, "## User Notes", draft.userNotes.trim())
+        body = replaceMarkdownSection(body, "## User Notes", "")
         body = replaceMarkdownSection(body, "## Notes", draft.notes.trim())
 
         val updatedText = "---\n${frontmatter.trimEnd()}\n---\n$body"
+        // Check again just before replace in case a non-cooperating sync writer
+        // arrived during formatting (the local lock covers Android writers only).
+        if (revision(task.file.readText()) != task.revision) {
+            throw TaskBoardConflictException("${task.id} changed during save. Refresh before retrying.")
+        }
         writeSafely(task.file, updatedText)
-        return parseTask(task.file, updatedText)
+        parseTask(task.file, updatedText)
     }
 
     fun updateTask(
@@ -385,7 +493,7 @@ class TaskBoardStore(
         task.toDraft().copy(column = newColumn, userNotes = newUserNotes)
     )
 
-    fun archiveTask(task: TaskBoardTask) {
+    fun archiveTask(task: TaskBoardTask) = withBoardLock {
         val currentText = task.file.readText()
         if (revision(currentText) != task.revision) {
             throw TaskBoardConflictException(
@@ -393,6 +501,10 @@ class TaskBoardStore(
             )
         }
 
+        val snapshot = load()
+        require(snapshot.tasks.none { it.parent == task.id }) {
+            "Archive or reassign the epic's active subtasks first"
+        }
         val year = SimpleDateFormat("yyyy", Locale.US).format(Date())
         val archiveDir = File(root, "Archive/$year").apply { mkdirs() }
         val destination = File(archiveDir, "${task.id}.md")
@@ -440,7 +552,7 @@ class TaskBoardStore(
         )
     }
 
-    fun saveColumns(columns: List<TaskBoardColumn>, expectedRevision: String) {
+    fun saveColumns(columns: List<TaskBoardColumn>, expectedRevision: String) = withBoardLock {
         require(columns.isNotEmpty()) { "Board needs at least one column" }
         validateColumns(columns)
 
@@ -464,7 +576,10 @@ class TaskBoardStore(
             replacement += "  order: ${column.order}"
             replacement += "  terminal: ${column.terminal}"
             replacement += "  hidden: ${column.hidden}"
+            column.snoozedUntil?.let { replacement += "  snoozed_until: ${yamlQuote(it)}" }
+            column.awakeUntil?.let { replacement += "  awake_until: ${yamlQuote(it)}" }
             replacement += "  ai_ready: ${column.aiReady}"
+            if (column.advisory) replacement += "  advisory: true"
             replacement += "  color: ${yamlQuote(column.color)}"
         }
         frontmatter = replaceTopLevelField(frontmatter, "columns", replacement)
@@ -530,6 +645,11 @@ class TaskBoardStore(
                     "Column ${column.id} cannot be AI ready"
                 }
             }
+            if (column.advisory) {
+                require(!column.aiReady && column.id !in setOf("draft", "ai-ready") && !column.terminal) {
+                    "Column ${column.id} cannot be Advisory"
+                }
+            }
         }
     }
 
@@ -552,7 +672,13 @@ class TaskBoardStore(
             require(id != editingId && (id in snapshot.archivedIds || snapshot.tasks.any { it.id == id && it.kind != "epic" })) {
                 "Dependency must reference an executable task in this board: $id"
             }
+            if (editingId != null) {
+                require(!dependsTransitively(snapshot, id, editingId)) {
+                    "Hard dependency cycle: $editingId -> $id -> ... -> $editingId"
+                }
+            }
         }
+        require(draft.kind != "epic" || draft.icon == null) { "Epics cannot have icons" }
         draft.relatedTo.forEach { id ->
             require(id != editingId && (id in snapshot.archivedIds || snapshot.tasks.any { it.id == id })) { "Unknown related task: $id" }
         }
@@ -571,7 +697,9 @@ class TaskBoardStore(
                 }
             }
         }
-        val movingIntoWork = draft.kind == "task" && draft.column in setOf("in-progress", "done")
+        val priorColumn = editingId?.let { id -> snapshot.tasks.firstOrNull { it.id == id }?.column }
+        val movingIntoWork = draft.kind != "epic" && priorColumn != draft.column &&
+            (draft.column == "in-progress" || snapshot.columns.any { it.id == draft.column && it.terminal })
         if (movingIntoWork) {
             val waiting = draft.dependsOn.filter { id ->
                 id !in snapshot.archivedIds && snapshot.tasks.firstOrNull { it.id == id }?.completed.isNullOrBlank()
@@ -583,6 +711,18 @@ class TaskBoardStore(
                 "Question attention requires a question prompt"
             }
         }
+    }
+
+    private fun dependsTransitively(snapshot: TaskBoardSnapshot, start: String, target: String): Boolean {
+        val byId = snapshot.tasks.associateBy { it.id }
+        val pending = ArrayDeque<String>().apply { add(start) }
+        val visited = mutableSetOf<String>()
+        while (pending.isNotEmpty()) {
+            val current = pending.removeLast()
+            if (current == target) return true
+            if (visited.add(current)) byId[current]?.dependsOn?.forEach(pending::add)
+        }
+        return false
     }
 
     private fun wouldCreateParentCycle(
@@ -607,13 +747,13 @@ class TaskBoardStore(
         isNew: Boolean
     ): List<String> {
         val normalized = attention
-            .filter { it in setOf("question", "needs-user", "user-note", "blocked") }
+            .filter { it in setOf("question", "needs-user", "user-note", "blocked", "priority") }
             .distinct()
             .toMutableList()
 
         if (isNew || oldUserNotes != newUserNotes) {
             normalized.removeAll { it == "user-note" }
-            if (newUserNotes.isNotBlank()) normalized += "user-note"
+            if (newUserNotes.isNotBlank() || oldUserNotes.isNotBlank()) normalized += "user-note"
         }
         return normalized
     }
@@ -647,7 +787,10 @@ class TaskBoardStore(
                 terminal = map["terminal"]?.toBoolean() ?: false,
                 hidden = map["hidden"]?.toBoolean() ?: false,
                 aiReady = map["ai_ready"]?.toBoolean() ?: false,
-                color = map["color"] ?: "#777777"
+                advisory = map["advisory"]?.toBoolean() ?: false,
+                color = map["color"] ?: "#777777",
+                snoozedUntil = map["snoozed_until"],
+                awakeUntil = map["awake_until"]
             )
         }
 
@@ -749,7 +892,10 @@ class TaskBoardStore(
             ?.takeIf { "question" in draft.attention && it.prompt.isNotBlank() }
             ?.let { lines += renderQuestionField(it) }
         lines += "created: $created"
-        completed?.let { lines += "completed: $it" }
+        completed?.let {
+            lines += "completed: $it"
+            lines += "completed_at: ${yamlQuote(java.time.Instant.now().toString())}"
+        }
         lines += "---"
         lines += ""
         lines += "## Description"
@@ -978,6 +1124,17 @@ class TaskBoardStore(
             lines += ""
         }
         return lines.joinToString("\n").trimEnd() + "\n"
+    }
+
+    // Serialize Android writers against other Android processes. The desktop works
+    // on a DIFFERENT synced path, so this does not replace revision checks or
+    // guarantee a distributed transaction against simultaneous desktop sync.
+    private fun <T> withBoardLock(action: () -> T): T {
+        val lockPath = File(root, ".omni-android-taskboard.lock")
+        RandomAccessFile(lockPath, "rw").use { handle ->
+            val lock = handle.channel.lock()
+            try { return action() } finally { lock.release() }
+        }
     }
 
     private fun writeSafely(file: File, text: String) {

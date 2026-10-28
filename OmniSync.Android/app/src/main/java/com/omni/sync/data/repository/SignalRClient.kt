@@ -271,7 +271,7 @@ class SignalRClient(
     private var terminalHubConnection: HubConnection? = null
     val remoteTerminalClient = RemoteTerminalClient()
     private val hubUrl: String get() = mainViewModel.appConfig.value.hubUrl
-    private val terminalHubUrl: String get() = hubUrl.replace("/signalrhub", "/terminalhub")
+
     private val apiKey: String get() = mainViewModel.appConfig.value.apiKey
 
     private val clipboardManager = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
@@ -304,6 +304,8 @@ class SignalRClient(
     private var handlersRegistered = false
     private val _hubAuthenticated = MutableStateFlow(false)
     val hubAuthenticated: StateFlow<Boolean> = _hubAuthenticated
+    val genericAgents: GenericAgentClient by lazy { GenericAgentClient(context, this) }
+    val agentEvents = MutableSharedFlow<com.google.gson.JsonObject>(extraBufferCapacity=32)
 
     @Volatile
     private var isHubAuthenticated = false
@@ -653,7 +655,15 @@ class SignalRClient(
         requestConnect(force = false, reason = "start")
     }
 
+    @Synchronized
     private fun requestConnect(force: Boolean, reason: String) {
+        // Multiple Android entry points (activity, foreground service, receivers) call startConnection.
+        // A routine ensure-connected request must not cancel an active connection or retry cycle.
+        if (!force && !manualStop.get() && (
+                hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED ||
+                isConnecting.get() || connectJob?.isActive == true || reconnectJob?.isActive == true
+            )) return
+
         manualStop.set(false)
         reconnectJob?.cancel()
         reconnectJob = null
@@ -682,6 +692,12 @@ class SignalRClient(
         }
 
         try {
+            if (token != connectionToken.get()) return false
+            // Another attempt may have connected while we waited for the connection lock.
+            if (!force && hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
+                _connectionState.value = "Connected"
+                return true
+            }
             _connectionState.value = if (allowScheduleReconnect) "Connecting..." else "Reconnecting..."
             mainViewModel.setErrorMessage(null)
 
@@ -702,6 +718,7 @@ class SignalRClient(
                 if (success) return true
             }
 
+            if (token != connectionToken.get()) return false
             _connectionState.value = "Disconnected (All attempts failed)"
             mainViewModel.setConnected(false)
             if (allowScheduleReconnect && !manualStop.get()) {
@@ -766,7 +783,8 @@ class SignalRClient(
         isHubAuthenticated = false
         hubConnection = connection
 
-        val termConnection = HubConnectionBuilder.create(terminalHubUrl).build()
+        // Follow the winning candidate: WAN fallback must not leave terminal traffic on LAN.
+        val termConnection = HubConnectionBuilder.create(url.replace("/signalrhub", "/terminalhub")).build()
         terminalHubConnection = termConnection
 
         handlersRegistered = false
@@ -799,7 +817,12 @@ class SignalRClient(
             // Asynchronously start and authenticate terminal hub
             coroutineScope.launch {
                 try {
+                    if (terminalHubConnection !== termConnection) return@launch
                     termConnection.start().blockingAwait()
+                    if (terminalHubConnection !== termConnection) {
+                        termConnection.stop().blockingAwait()
+                        return@launch
+                    }
                     termConnection.invoke(Boolean::class.java, "Authenticate", apiKey)
                         ?.subscribe({ success ->
                             Log.d("SignalR", "Terminal Auth success: $success")
@@ -852,8 +875,9 @@ class SignalRClient(
         scheduleReconnect("Closed: $reason")
     }
 
+    @Synchronized
     private fun scheduleReconnect(reason: String) {
-        if (manualStop.get()) return
+        if (manualStop.get() || hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) return
         if (reconnectJob?.isActive == true) return
 
         reconnectJob = coroutineScope.launch {
@@ -871,8 +895,10 @@ class SignalRClient(
                     mainViewModel.addLog("Attempting immediate reconnection...", com.omni.sync.ui.screen.LogType.INFO)
                 }
 
+                // A concurrent start may have recovered connectivity during the retry delay.
+                if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) return@launch
                 val token = connectionToken.incrementAndGet()
-                val success = connectInternal(token, force = true, reason = reason, allowScheduleReconnect = false)
+                val success = connectInternal(token, force = false, reason = reason, allowScheduleReconnect = false)
                 if (success) return@launch
                 attempt++
             }
@@ -883,7 +909,9 @@ class SignalRClient(
         connectionMutex.withLock {
             val hub = target ?: hubConnection ?: return
             val isCurrent = hubConnection === hub
+            val terminal = if (isCurrent) terminalHubConnection else null
             if (isCurrent) {
+                terminalHubConnection = null
                 try {
                     removeHubHandlers()
                 } catch (_: Exception) {
@@ -899,6 +927,14 @@ class SignalRClient(
                 if (isCurrent) {
                     hubConnection = null
                     remoteTerminalClient.disconnect()
+                }
+                // Do not accumulate stale terminal sockets on every hub reconnect.
+                if (terminal != null) {
+                    try {
+                        terminal.stop().timeout(5, TimeUnit.SECONDS).blockingAwait()
+                    } catch (e: Exception) {
+                        Log.w("SignalRClient", "Error stopping terminal connection: ${e.message}")
+                    }
                 }
             }
         }
@@ -1230,6 +1266,15 @@ class SignalRClient(
                 _agentSessions.value = emptyList()
             }
         }, java.lang.Boolean::class.java)
+
+        hubConnection?.on("AgentEvent", { payload: Any ->
+            try {
+                val event = com.google.gson.JsonParser.parseString(gson.toJson(payload)).asJsonObject
+                agentEvents.tryEmit(event)
+            } catch (error: Exception) {
+                Log.w("SignalRClient","Invalid provider event",error)
+            }
+        }, Any::class.java)
 
         hubConnection?.on("ReceiveT3Result", { payload: String ->
             runCatching {
@@ -1602,6 +1647,25 @@ class SignalRClient(
             hubConnection?.send("SendAiDialogResponse", response, targetPid)
             // Clear local dialog after responding
             updateSessionDialog(targetPid, null)
+        }
+    }
+
+    /**
+     * Shared v1 provider-neutral AgentCall transport. Invocations only run after
+     * SignalR Authenticate; this does not use the removed legacy AI target names.
+     * Call on Dispatchers.IO (or another background dispatcher).
+     */
+    suspend fun agentCall(method: String, params: Map<String, Any?> = emptyMap()): com.google.gson.JsonElement {
+        return kotlinx.coroutines.withContext(Dispatchers.IO) {
+            if (!isHubAuthenticated ||
+                hubConnection?.connectionState != com.microsoft.signalr.HubConnectionState.CONNECTED) {
+                throw IllegalStateException("OmniHub is offline or unauthenticated")
+            }
+            val conn = hubConnection ?: throw IllegalStateException("OmniHub connection unavailable")
+            val raw = conn.invoke(Any::class.java, "AgentCall", method, params)
+                .timeout(105, TimeUnit.SECONDS)
+                .blockingGet()
+            com.google.gson.JsonParser.parseString(gson.toJson(raw))
         }
     }
 

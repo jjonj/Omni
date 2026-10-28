@@ -6,6 +6,10 @@ import android.os.Build
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -19,10 +23,12 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -32,6 +38,8 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -44,6 +52,10 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.Surface
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -54,6 +66,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -64,9 +77,47 @@ import com.omni.sync.data.taskboard.TaskBoardSnapshot
 import com.omni.sync.data.taskboard.TaskBoardStore
 import com.omni.sync.data.taskboard.TaskBoardTask
 import com.omni.sync.data.taskboard.TaskBoardTaskDraft
+import com.omni.sync.data.taskboard.TaskBoardTimeline
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.json.JSONObject
+
+// Queue snoozes are UI-only (like desktop TaskBoard), not competing Markdown state.
+private fun queueSnoozeKey(root: String): String = "taskboard.queue.snoozed:$root"
+
+private fun readTaskQueueSnoozes(
+    preferences: android.content.SharedPreferences,
+    root: String
+): Map<String, Long> = runCatching {
+    val json = JSONObject(preferences.getString(queueSnoozeKey(root), "{}") ?: "{}")
+    buildMap {
+        val keys = json.keys()
+        while (keys.hasNext()) {
+            val id = keys.next()
+            val expiry = json.optLong(id)
+            if (expiry > System.currentTimeMillis()) put(id, expiry)
+        }
+    }
+}.getOrDefault(emptyMap())
+
+private fun saveTaskQueueSnoozes(
+    preferences: android.content.SharedPreferences,
+    root: String,
+    snoozes: Map<String, Long>
+) {
+    val json = JSONObject()
+    snoozes.filterValues { it > System.currentTimeMillis() }
+        .forEach { (id, expiry) -> json.put(id, expiry) }
+    preferences.edit().putString(queueSnoozeKey(root), json.toString()).apply()
+}
+
+private fun visibleTaskQueue(
+    board: TaskBoardSnapshot,
+    snoozes: Map<String, Long>
+): List<TaskBoardTask> = board.userQueue().filter {
+    (snoozes[it.id] ?: 0L) <= System.currentTimeMillis()
+}
 
 private data class CreateTaskRequest(
     val column: String,
@@ -75,8 +126,22 @@ private data class CreateTaskRequest(
     val kind: String = "task"
 )
 
+private fun splitPhoneDumpLine(source: String): Pair<String, String> {
+    val clean = source.trim().replace(Regex("\\s+"), " ")
+    if (clean.length <= 105) return clean to ""
+    val breakpoint = clean.lastIndexOf(' ', 105).takeIf { it >= 45 } ?: 105
+    return clean.take(breakpoint).trim() to clean.drop(breakpoint).trim()
+}
+
 @Composable
 fun TaskBoardScreen(parentPadding: PaddingValues = PaddingValues(0.dp)) {
+    TaskBoardTheme {
+        TaskBoardContents(parentPadding)
+    }
+}
+
+@Composable
+private fun TaskBoardContents(parentPadding: PaddingValues) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val boardPreferences = remember { context.getSharedPreferences("taskboard_mobile", android.content.Context.MODE_PRIVATE) }
@@ -84,8 +149,16 @@ fun TaskBoardScreen(parentPadding: PaddingValues = PaddingValues(0.dp)) {
     val store = remember(selectedRoot) { TaskBoardStore(java.io.File(selectedRoot)) }
     var projects by remember { mutableStateOf<List<TaskBoardProject>>(emptyList()) }
     var boardSelectorExpanded by remember { mutableStateOf(false) }
+    var showCreateBoard by remember { mutableStateOf(false) }
+    var actionsExpanded by remember { mutableStateOf(false) }
+    var showTaskDump by remember { mutableStateOf(false) }
+    var taskDumpText by remember { mutableStateOf("") }
+    var taskDumpPriorities by remember { mutableStateOf<Set<Int>>(emptySet()) }
     var compactView by remember { mutableStateOf(true) }
     var queueMode by remember { mutableStateOf(false) }
+    var reviewMode by remember { mutableStateOf(false) }
+    var skippedQueueIds by remember(selectedRoot) { mutableStateOf<Set<String>>(emptySet()) }
+    var queueSnoozes by remember(selectedRoot) { mutableStateOf(readTaskQueueSnoozes(boardPreferences, selectedRoot)) }
     var filterMode by remember { mutableStateOf("all") }
 
     var snapshot by remember { mutableStateOf<TaskBoardSnapshot?>(null) }
@@ -158,6 +231,48 @@ fun TaskBoardScreen(parentPadding: PaddingValues = PaddingValues(0.dp)) {
         }
     }
 
+    fun generateDump() {
+        val board = snapshot ?: return
+        val rows = taskDumpText.lines().withIndex().filter { it.value.isNotBlank() }
+        if (rows.isEmpty() || loading) return
+        val priorities = taskDumpPriorities
+        val currentStore = store
+        scope.launch {
+            loading = true
+            error = null
+            var completed = 0
+            try {
+                val nextSnapshot = withContext(Dispatchers.IO) {
+                    for (row in rows) {
+                        val (title, description) = splitPhoneDumpLine(row.value)
+                        currentStore.createTask(TaskBoardTaskDraft(
+                            title = title,
+                            description = description,
+                            column = defaultCreateColumn(board),
+                            attention = if (row.index in priorities) listOf("priority") else emptyList()
+                        ))
+                        completed++
+                    }
+                    currentStore.load()
+                }
+                snapshot = nextSnapshot
+                showTaskDump = false
+                taskDumpText = ""
+                taskDumpPriorities = emptySet()
+            } catch (failure: Exception) {
+                val rest = rows.drop(completed)
+                taskDumpText = rest.joinToString("\n") { it.value }
+                taskDumpPriorities = rest.mapIndexedNotNull { index, item ->
+                    if (item.index in priorities) index else null
+                }.toSet()
+                error = "$completed of ${rows.size} tasks created; retry will create only the remaining lines. ${failure.message}"
+                snapshot = runCatching { withContext(Dispatchers.IO) { currentStore.load() } }.getOrNull() ?: snapshot
+            } finally {
+                loading = false
+            }
+        }
+    }
+
     val storagePermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) {
@@ -175,11 +290,33 @@ fun TaskBoardScreen(parentPadding: PaddingValues = PaddingValues(0.dp)) {
             .padding(parentPadding),
         topBar = {
             TopAppBar(
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = TaskBoardColors.surface,
+                    titleContentColor = TaskBoardColors.text,
+                    actionIconContentColor = TaskBoardColors.blue
+                ),
                 title = {
                     Column {
+                        Text(
+                            "TASKBOARD / PROJECT",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = TaskBoardColors.blue,
+                            fontWeight = FontWeight.Bold
+                        )
                         Box {
-                            TextButton(onClick = { boardSelectorExpanded = true }, enabled = !loading && editingTask == null && createTaskRequest == null) {
-                                Text("${snapshot?.name ?: projects.firstOrNull { it.root.absolutePath == selectedRoot }?.name ?: "Tasks"} ▾", style = MaterialTheme.typography.titleMedium)
+                            TextButton(
+                                onClick = { boardSelectorExpanded = true },
+                                contentPadding = PaddingValues(horizontal = 0.dp, vertical = 0.dp),
+                                enabled = !loading && editingTask == null && createTaskRequest == null
+                            ) {
+                                Text(
+                                    "${snapshot?.name ?: projects.firstOrNull { it.root.absolutePath == selectedRoot }?.name ?: "Tasks"}  ▾",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = TaskBoardColors.text,
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
                             }
                             DropdownMenu(expanded = boardSelectorExpanded, onDismissRequest = { boardSelectorExpanded = false }) {
                                 projects.forEach { project ->
@@ -197,16 +334,19 @@ fun TaskBoardScreen(parentPadding: PaddingValues = PaddingValues(0.dp)) {
                                         }
                                     })
                                 }
+                                DropdownMenuItem(text = { Text("+ New board") }, onClick = {
+                                    boardSelectorExpanded = false
+                                    showCreateBoard = true
+                                })
                             }
                         }
-                        Text(
-                            text = "Phone · SharedWithPc · ${projects.firstOrNull { it.root.absolutePath == selectedRoot }?.folderName ?: "Tasks"}",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
                     }
                 },
                 actions = {
+                    TextButton(onClick = { reviewMode = !reviewMode },
+                        enabled = storageAccess && editingTask == null && createTaskRequest == null) {
+                        Text(if (reviewMode) "Board" else "Review", color = TaskBoardColors.blue)
+                    }
                     TextButton(
                         onClick = {
                             snapshot?.let {
@@ -215,16 +355,28 @@ fun TaskBoardScreen(parentPadding: PaddingValues = PaddingValues(0.dp)) {
                         },
                         enabled = snapshot != null && !loading
                     ) {
-                        Text("New")
+                        Text("+ New", fontWeight = FontWeight.Bold)
                     }
-                    TextButton(
-                        onClick = { showColumns = true },
-                        enabled = snapshot != null && !loading
-                    ) {
-                        Text("Columns")
-                    }
-                    IconButton(onClick = { refresh() }, enabled = !loading) {
-                        Icon(Icons.Default.Refresh, contentDescription = "Refresh tasks")
+                    Box {
+                        TextButton(onClick = { actionsExpanded = true }, enabled = snapshot != null && !loading) {
+                            Text("⋮", style = MaterialTheme.typography.titleLarge)
+                        }
+                        DropdownMenu(expanded = actionsExpanded, onDismissRequest = { actionsExpanded = false }) {
+                            DropdownMenuItem(text = { Text("Task Dump") }, onClick = {
+                                actionsExpanded = false
+                                taskDumpText = ""
+                                taskDumpPriorities = emptySet()
+                                showTaskDump = true
+                            })
+                            DropdownMenuItem(text = { Text("Manage columns") }, onClick = {
+                                actionsExpanded = false
+                                showColumns = true
+                            })
+                            DropdownMenuItem(text = { Text("Refresh board") }, onClick = {
+                                actionsExpanded = false
+                                refresh()
+                            })
+                        }
                     }
                 }
             )
@@ -253,6 +405,8 @@ fun TaskBoardScreen(parentPadding: PaddingValues = PaddingValues(0.dp)) {
                     }
                 )
 
+                reviewMode -> TaskBoardReviewScreen(onClose = { reviewMode = false })
+
                 loading && snapshot == null -> CircularProgressIndicator(
                     modifier = Modifier.align(Alignment.Center)
                 )
@@ -271,32 +425,62 @@ fun TaskBoardScreen(parentPadding: PaddingValues = PaddingValues(0.dp)) {
                 }
 
                 else -> snapshot?.let {
-                    Column(Modifier.fillMaxSize()) {
+                    Column(Modifier.fillMaxSize().background(TaskBoardColors.background)) {
                         Row(
-                            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.fillMaxWidth()
+                                .background(TaskBoardColors.surface)
+                                .padding(horizontal = 12.dp, vertical = 7.dp),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text("${it.tasks.count { task -> task.kind != "epic" }} tasks · ${it.tasks.count { task -> task.kind == "epic" }} epics", style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(1f))
-                            TextButton(onClick = { queueMode = true; editingTask = it.userQueue().firstOrNull() }, enabled = it.userQueue().isNotEmpty()) {
-                                Text("User queue (${it.userQueue().size})")
+                            TaskBoardBadge("${it.tasks.count { task -> task.kind != "epic" }} tasks")
+                            TaskBoardBadge("${it.tasks.count { task -> task.kind == "epic" }} epics",
+                                TaskBoardColors.purple, TaskBoardColors.purpleDark)
+                            Spacer(Modifier.weight(1f))
+                            TextButton(
+                                onClick = {
+                                    queueMode = true
+                                    skippedQueueIds = emptySet()
+                                    editingTask = visibleTaskQueue(it, queueSnoozes).firstOrNull()
+                                },
+                                enabled = visibleTaskQueue(it, queueSnoozes).isNotEmpty(),
+                                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp)
+                            ) {
+                                TaskBoardBadge("User ${visibleTaskQueue(it, queueSnoozes).size}",
+                                    TaskBoardColors.amber, TaskBoardColors.amberDark)
                             }
-                            TextButton(onClick = { compactView = !compactView }) { Text(if (compactView) "Board view" else "List view") }
+                            TextButton(onClick = { compactView = !compactView },
+                                contentPadding = PaddingValues(horizontal = 5.dp, vertical = 0.dp)) {
+                                Text(if (compactView) "▥ Board" else "☷ List",
+                                    color = TaskBoardColors.blue, style = MaterialTheme.typography.labelMedium)
+                            }
                         }
                         OutlinedTextField(
                             value = taskQuery,
                             onValueChange = { taskQuery = it },
-                            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
-                            label = { Text("Search tasks by title, ID or description") },
+                            modifier = Modifier.fillMaxWidth()
+                                .background(TaskBoardColors.surface)
+                                .padding(horizontal = 12.dp, vertical = 4.dp),
+                            placeholder = { Text("⌕  Search tasks, IDs, descriptions", color = TaskBoardColors.muted) },
+                            shape = RoundedCornerShape(8.dp),
                             singleLine = true
                         )
                         Row(
-                            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 10.dp),
+                            modifier = Modifier.fillMaxWidth()
+                                .background(TaskBoardColors.surface)
+                                .horizontalScroll(rememberScrollState())
+                                .padding(horizontal = 12.dp, vertical = 2.dp),
                             horizontalArrangement = Arrangement.spacedBy(6.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             listOf("all" to "All", "attention" to "Attention", "user" to "For user", "waiting" to "Waiting", "epics" to "Epics").forEach { (id, label) ->
-                                FilterChip(selected = filterMode == id, onClick = { filterMode = id }, label = { Text(label) })
+                                FilterChip(
+                                    selected = filterMode == id,
+                                    onClick = { filterMode = id },
+                                    label = { Text(label, style = MaterialTheme.typography.labelMedium) },
+                                    shape = RoundedCornerShape(7.dp),
+                                    modifier = Modifier.height(34.dp)
+                                )
                             }
                             TextButton(onClick = { createTaskRequest = CreateTaskRequest(it.columns.firstOrNull { column -> column.id == "draft" }?.id ?: defaultCreateColumn(it), kind = "epic") }) { Text("+ Epic") }
                             if (taskQuery.isNotBlank()) TextButton(onClick = { taskQuery = "" }) { Text("Clear") }
@@ -309,6 +493,15 @@ fun TaskBoardScreen(parentPadding: PaddingValues = PaddingValues(0.dp)) {
                                 filterMode = filterMode,
                                 compactView = compactView,
                                 onTaskClick = { task -> editingTask = task },
+                                onTaskChange = { task, draft ->
+                                    mutate(action = { store.updateTask(task, draft) })
+                                },
+                                onTaskArchive = { task ->
+                                    mutate(action = { store.archiveTask(task) })
+                                },
+                                onCreateChild = { epic ->
+                                    createTaskRequest = CreateTaskRequest(defaultCreateColumn(it), epic.id, epic.category)
+                                },
                                 onAddTask = { column ->
                                     createTaskRequest = CreateTaskRequest(column)
                                 }
@@ -384,12 +577,32 @@ fun TaskBoardScreen(parentPadding: PaddingValues = PaddingValues(0.dp)) {
                 snapshot = board,
                 busy = loading,
                 onDismiss = { editingTask = null; queueMode = false },
+                inQueue = queueMode,
+                onSkip = {
+                    skippedQueueIds = skippedQueueIds + task.id
+                    editingTask = visibleTaskQueue(board, queueSnoozes)
+                        .firstOrNull { it.id !in skippedQueueIds }
+                    if (editingTask == null) queueMode = false
+                },
+                onSnooze = {
+                    val next = queueSnoozes + (task.id to (System.currentTimeMillis() + 86_400_000L))
+                    queueSnoozes = next
+                    saveTaskQueueSnoozes(boardPreferences, selectedRoot, next)
+                    skippedQueueIds = skippedQueueIds + task.id
+                    editingTask = visibleTaskQueue(board, queueSnoozes)
+                        .firstOrNull { it.id !in skippedQueueIds }
+                    if (editingTask == null) queueMode = false
+                },
                 onSave = { draft ->
                     mutate(
                         action = { store.updateTask(task, draft) },
                         onSuccess = {
-                            editingTask = if (queueMode) board.userQueue().firstOrNull { it.id != task.id } else null
-                            if (editingTask == null) queueMode = false
+                            if (queueMode) {
+                                skippedQueueIds = skippedQueueIds + task.id
+                                editingTask = snapshot?.let { visibleTaskQueue(it, queueSnoozes)
+                                    .firstOrNull { next -> next.id !in skippedQueueIds } }
+                                if (editingTask == null) queueMode = false
+                            } else editingTask = null
                         }
                     )
                 },
@@ -425,7 +638,10 @@ fun TaskBoardScreen(parentPadding: PaddingValues = PaddingValues(0.dp)) {
                 },
                 onToggleAiReady = { column ->
                     val changed = board.columns.map {
-                        if (it.id == column.id) it.copy(aiReady = !it.aiReady) else it
+                        if (it.id == column.id) it.copy(
+                            aiReady = !it.aiReady && !it.advisory,
+                            advisory = it.aiReady
+                        ) else it
                     }
                     mutate(action = { store.saveColumns(changed, board.boardRevision) })
                 },
@@ -495,6 +711,103 @@ fun TaskBoardScreen(parentPadding: PaddingValues = PaddingValues(0.dp)) {
             )
         }
     }
+
+    if (showTaskDump) {
+        TaskDumpDialog(
+            text = taskDumpText,
+            priorityLines = taskDumpPriorities,
+            busy = loading,
+            onTextChange = { taskDumpText = it },
+            onPriorityChange = { index ->
+                taskDumpPriorities = if (index in taskDumpPriorities) taskDumpPriorities - index
+                    else taskDumpPriorities + index
+            },
+            onDismiss = { showTaskDump = false },
+            onGenerate = { generateDump() }
+        )
+    }
+
+    if (showCreateBoard) {
+        TextEntryDialog(
+            title = "New TaskBoard",
+            label = "Board name (new synced project folder)",
+            initialValue = "",
+            confirmText = "Create board",
+            busy = loading,
+            onDismiss = { showCreateBoard = false },
+            onConfirm = { name ->
+                scope.launch {
+                    loading = true
+                    error = null
+                    runCatching {
+                        withContext(Dispatchers.IO) { TaskBoardStore.createProject(name) }
+                    }.onSuccess { project ->
+                        showCreateBoard = false
+                        projects = (projects + project).distinctBy { it.root.absolutePath }
+                        selectedRoot = project.root.absolutePath
+                        boardPreferences.edit().putString("selected_board", selectedRoot).apply()
+                        reviewMode = false
+                        filterMode = "all"
+                        taskQuery = ""
+                    }.onFailure { error = it.message ?: it.toString() }
+                    loading = false
+                }
+            }
+        )
+    }
+}
+
+@Composable
+private fun TaskDumpDialog(
+    text: String,
+    priorityLines: Set<Int>,
+    busy: Boolean,
+    onTextChange: (String) -> Unit,
+    onPriorityChange: (Int) -> Unit,
+    onDismiss: () -> Unit,
+    onGenerate: () -> Unit
+) {
+    val rows = text.lines().withIndex().filter { it.value.isNotBlank() }
+    AlertDialog(
+        onDismissRequest = { if (!busy) onDismiss() },
+        title = { Text("Task Dump") },
+        text = {
+            Column(
+                modifier = Modifier.heightIn(max = 620.dp).verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text("One task per line. Mark Priority for urgent items.",
+                    style = MaterialTheme.typography.bodySmall)
+                OutlinedTextField(
+                    value = text,
+                    onValueChange = onTextChange,
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Paste or type tasks") },
+                    minLines = 6,
+                    maxLines = 12
+                )
+                Text("${rows.size} tasks · ${rows.count { it.index in priorityLines }} priority",
+                    style = MaterialTheme.typography.labelMedium)
+                rows.forEach { row ->
+                    HorizontalDivider()
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                        Checkbox(checked = row.index in priorityLines, onCheckedChange = {
+                            onPriorityChange(row.index)
+                        }, enabled = !busy)
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(row.value.trim(), style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(onClick = onGenerate, enabled = !busy && rows.isNotEmpty()) {
+                Text(if (busy) "Generating…" else "Generate")
+            }
+        },
+        dismissButton = { TextButton(onClick = onDismiss, enabled = !busy) { Text("Cancel") } }
+    )
 }
 
 @Composable
@@ -534,6 +847,9 @@ private fun TaskBoardColumns(
     filterMode: String,
     compactView: Boolean,
     onTaskClick: (TaskBoardTask) -> Unit,
+    onTaskChange: (TaskBoardTask, TaskBoardTaskDraft) -> Unit,
+    onTaskArchive: (TaskBoardTask) -> Unit,
+    onCreateChild: (TaskBoardTask) -> Unit,
     onAddTask: (String) -> Unit
 ) {
     val filterText = query.trim()
@@ -581,14 +897,33 @@ private fun TaskBoardColumns(
                         compareBy<TaskBoardTask>({ attentionRank(it) }, { it.kind != "epic" }, { it.id })
                     )
                     item(key = "heading-${column.id}") {
-                        Row(Modifier.fillMaxWidth().padding(top = 10.dp, bottom = 3.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Text(column.name, style = MaterialTheme.typography.titleSmall, color = parseColumnColor(column.color), modifier = Modifier.weight(1f))
-                            Text("${columnTasks.size}", style = MaterialTheme.typography.labelMedium)
-                            TextButton(onClick = { onAddTask(column.id) }) { Text("+ Task") }
+                        Row(
+                            Modifier.fillMaxWidth()
+                                .padding(top = 11.dp, bottom = 4.dp)
+                                .background(TaskBoardColors.surface, RoundedCornerShape(8.dp))
+                                .border(1.dp, TaskBoardColors.border, RoundedCornerShape(8.dp))
+                                .padding(start = 12.dp, end = 4.dp, top = 3.dp, bottom = 3.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(Modifier.size(8.dp).background(parseColumnColor(column.color), CircleShape))
+                            Spacer(Modifier.width(8.dp))
+                            Text(column.name, style = MaterialTheme.typography.titleSmall,
+                                color = TaskBoardColors.text, fontWeight = FontWeight.Bold,
+                                modifier = Modifier.weight(1f))
+                            TaskBoardBadge("${columnTasks.size}", parseColumnColor(column.color),
+                                TaskBoardColors.card)
+                            TextButton(onClick = { onAddTask(column.id) }) {
+                                Text("+", style = MaterialTheme.typography.titleLarge)
+                            }
                         }
                     }
-                    items(columnTasks, key = { task -> "${column.id}-${task.id}" }) { task ->
-                        TaskCard(task, snapshot, onTaskClick)
+                    itemsIndexed(columnTasks, key = { _, task -> "${column.id}-${task.id}" }) { index, task ->
+                        val epic = task.parent?.let { id -> snapshot.tasks.firstOrNull { it.id == id && it.kind == "epic" } }
+                        if (epic != null && snapshot.displayColumn(epic) != column.id &&
+                            columnTasks.getOrNull(index - 1)?.parent != epic.id) {
+                            EpicProxy(epic, onTaskClick)
+                        }
+                        TaskCard(task, snapshot, onTaskClick, onTaskChange, onTaskArchive, onCreateChild)
                     }
                 }
             }
@@ -604,6 +939,9 @@ private fun TaskBoardColumns(
                         tasks = tasksByColumn[column.id].orEmpty(),
                         snapshot = snapshot,
                         onTaskClick = onTaskClick,
+                        onTaskChange = onTaskChange,
+                        onTaskArchive = onTaskArchive,
+                        onCreateChild = onCreateChild,
                         onAddTask = { onAddTask(column.id) }
                     )
                 }
@@ -618,6 +956,9 @@ private fun TaskColumn(
     tasks: List<TaskBoardTask>,
     snapshot: TaskBoardSnapshot,
     onTaskClick: (TaskBoardTask) -> Unit,
+    onTaskChange: (TaskBoardTask, TaskBoardTaskDraft) -> Unit,
+    onTaskArchive: (TaskBoardTask) -> Unit,
+    onCreateChild: (TaskBoardTask) -> Unit,
     onAddTask: () -> Unit
 ) {
     val sortedTasks = remember(tasks) {
@@ -633,29 +974,31 @@ private fun TaskColumn(
 
     Card(
         modifier = Modifier
-            .width(300.dp)
-            .fillMaxHeight(),
+            .width(310.dp)
+            .fillMaxHeight()
+            .border(1.dp, TaskBoardColors.border, RoundedCornerShape(10.dp)),
+        shape = RoundedCornerShape(10.dp),
         colors = CardDefaults.cardColors(
-            containerColor = tint.copy(alpha = 0.14f)
+            containerColor = TaskBoardColors.surface
         )
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 8.dp),
+                .background(TaskBoardColors.card)
+                .padding(horizontal = 12.dp, vertical = 7.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            Box(Modifier.size(9.dp).background(tint, CircleShape))
+            Spacer(Modifier.width(9.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Text(column.name, fontWeight = FontWeight.Bold)
-                Text(
-                    "${tasks.size} tasks" + if (column.aiReady) " • AI ready" else "",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                Text(column.name, fontWeight = FontWeight.Bold, color = TaskBoardColors.text)
+                Text("${tasks.size} cards", style = MaterialTheme.typography.labelSmall,
+                    color = TaskBoardColors.muted)
             }
-            TextButton(onClick = onAddTask) {
-                Text("+ Task")
-            }
+            if (column.aiReady) TaskBoardBadge("AI ready", TaskBoardColors.green, TaskBoardColors.greenDark)
+            if (column.advisory) TaskBoardBadge("Notice", TaskBoardColors.amber, TaskBoardColors.amberDark)
+            TextButton(onClick = onAddTask) { Text("+", style = MaterialTheme.typography.titleLarge) }
         }
 
         LazyColumn(
@@ -665,56 +1008,91 @@ private fun TaskColumn(
             contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
             verticalArrangement = Arrangement.spacedBy(7.dp)
         ) {
-            items(sortedTasks, key = { it.id }) { task ->
-                TaskCard(task, snapshot, onTaskClick)
+            itemsIndexed(sortedTasks, key = { _, task -> task.id }) { index, task ->
+                val epic = task.parent?.let { id -> snapshot.tasks.firstOrNull { it.id == id && it.kind == "epic" } }
+                if (epic != null && snapshot.displayColumn(epic) != column.id &&
+                    sortedTasks.getOrNull(index - 1)?.parent != epic.id) {
+                    EpicProxy(epic, onTaskClick)
+                }
+                TaskCard(task, snapshot, onTaskClick, onTaskChange, onTaskArchive, onCreateChild)
             }
         }
     }
 }
 
 @Composable
+private fun EpicProxy(epic: TaskBoardTask, onTaskClick: (TaskBoardTask) -> Unit) {
+    TextButton(onClick = { onTaskClick(epic) }, modifier = Modifier.fillMaxWidth()) {
+        Text("◇ ${epic.id} · ${epic.title}  ↗", style = MaterialTheme.typography.labelMedium)
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
 private fun TaskCard(
     task: TaskBoardTask,
     snapshot: TaskBoardSnapshot,
-    onTaskClick: (TaskBoardTask) -> Unit
+    onTaskClick: (TaskBoardTask) -> Unit,
+    onTaskChange: (TaskBoardTask, TaskBoardTaskDraft) -> Unit,
+    onTaskArchive: (TaskBoardTask) -> Unit,
+    onCreateChild: (TaskBoardTask) -> Unit
 ) {
+    var menuExpanded by remember(task.id) { mutableStateOf(false) }
+    Box {
     Card(
-        onClick = { onTaskClick(task) },
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth()
+            .border(
+                1.dp,
+                when {
+                    task.kind == "for_user" || "needs-user" in task.attention -> TaskBoardColors.amber.copy(alpha = .54f)
+                    "priority" in task.attention -> TaskBoardColors.amber.copy(alpha = .65f)
+                    task.kind == "epic" -> TaskBoardColors.purple.copy(alpha = .53f)
+                    else -> TaskBoardColors.border
+                },
+                RoundedCornerShape(8.dp)
+            ).combinedClickable(
+                onClick = { onTaskClick(task) },
+                onLongClick = { menuExpanded = true }
+            ),
+        shape = RoundedCornerShape(8.dp),
         colors = CardDefaults.cardColors(
-            containerColor = when (task.kind) {
-                "epic" -> MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.55f)
-                "for_user" -> MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.75f)
-                else -> MaterialTheme.colorScheme.surface
+            containerColor = when {
+                task.kind == "epic" -> TaskBoardColors.purpleDark.copy(alpha = .65f)
+                task.kind == "for_user" || "needs-user" in task.attention ->
+                    TaskBoardColors.amberDark.copy(alpha = .82f)
+                else -> TaskBoardColors.card
             }
         )
     ) {
-        Column(modifier = Modifier.padding(11.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+        Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(5.dp)) {
                 Text(
                     text = if (task.parent != null) "↳ ${task.id}" else task.id,
                     style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.primary
+                    color = TaskBoardColors.blue,
+                    fontWeight = FontWeight.Bold
                 )
-                if (task.kind != "task") {
-                    Spacer(Modifier.width(8.dp))
-                    Text(if (task.kind == "epic") "EPIC" else "FOR USER", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                if (task.kind == "epic") {
+                    TaskBoardBadge("Epic", TaskBoardColors.purple, TaskBoardColors.purpleDark)
+                } else if (task.kind == "for_user" || "needs-user" in task.attention) {
+                    TaskBoardBadge("For user", TaskBoardColors.amber, TaskBoardColors.amberDark)
                 }
-                if (task.attention.isNotEmpty()) {
-                    Spacer(Modifier.width(8.dp))
-                    Text(
-                        attentionText(task.attention),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.error
-                    )
+                if ("priority" in task.attention) {
+                    TaskBoardBadge("Priority", TaskBoardColors.amber, TaskBoardColors.amberDark)
+                }
+                if ("blocked" in task.attention) {
+                    TaskBoardBadge("Blocked", TaskBoardColors.red, Color(0xFF483035))
                 }
             }
-            Spacer(Modifier.height(3.dp))
-            Text(task.title, fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.height(6.dp))
+            Text(task.title, fontWeight = FontWeight.SemiBold,
+                color = TaskBoardColors.text, style = MaterialTheme.typography.bodyMedium,
+                maxLines = 3, overflow = TextOverflow.Ellipsis)
             if (task.kind == "epic") {
                 val children = snapshot.epicChildren(task)
                 val done = children.count { it.completed != null }
-                Text("$done/${children.size} completed", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("$done/${children.size} completed", style = MaterialTheme.typography.labelSmall, color = TaskBoardColors.purple)
             }
             if (task.dependsOn.isNotEmpty()) {
                 val waiting = snapshot.waitingFor(task)
@@ -736,12 +1114,62 @@ private fun TaskCard(
             task.questionPrompt?.takeIf { it.isNotBlank() }?.let {
                 Spacer(Modifier.height(6.dp))
                 Text(
-                    "? $it",
+                    if (task.question?.answer.isNullOrBlank()) "? $it" else "Answered: ${task.question?.answer}",
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error
+                    color = if (task.question?.answer.isNullOrBlank()) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         }
+    }
+    DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
+        DropdownMenuItem(text = { Text("Edit task") }, onClick = {
+            menuExpanded = false
+            onTaskClick(task)
+        })
+        if (task.kind != "epic") {
+            DropdownMenuItem(
+                text = { Text(if ("priority" in task.attention) "Remove priority" else "Mark priority") },
+                onClick = {
+                    menuExpanded = false
+                    val attention = if ("priority" in task.attention)
+                        task.attention - "priority" else task.attention + "priority"
+                    onTaskChange(task, task.toDraft().copy(attention = attention))
+                }
+            )
+            if (task.claimedBy == null) DropdownMenuItem(
+                text = { Text(if (task.kind == "for_user") "Convert to task" else "Set For user") },
+                onClick = {
+                    menuExpanded = false
+                    onTaskChange(task, task.toDraft().copy(
+                        kind = if (task.kind == "for_user") "task" else "for_user"
+                    ))
+                }
+            )
+        } else {
+            DropdownMenuItem(text = { Text("Create subtask") }, onClick = {
+                menuExpanded = false
+                onCreateChild(task)
+            })
+        }
+
+        snapshot.columns.filter { !it.hidden && task.kind != "epic" && it.id != task.column }
+            .forEach { destination ->
+                DropdownMenuItem(text = {
+                    Text("Move → ${destination.name}" +
+                        if (destination.terminal && snapshot.columns.any { col -> col.id == task.column && col.advisory })
+                            " (delete notice)" else "")
+                }, onClick = {
+                    menuExpanded = false
+                    onTaskChange(task, task.toDraft().copy(column = destination.id))
+                })
+            }
+        if (task.completed != null && task.kind != "epic") {
+            DropdownMenuItem(text = { Text("Archive") }, onClick = {
+                menuExpanded = false
+                onTaskArchive(task)
+            })
+        }
+    }
     }
 }
 
@@ -756,6 +1184,9 @@ private fun TaskEditorDialog(
     busy: Boolean,
     onDismiss: () -> Unit,
     onSave: (TaskBoardTaskDraft) -> Unit,
+    inQueue: Boolean = false,
+    onSkip: (() -> Unit)? = null,
+    onSnooze: (() -> Unit)? = null,
     onCreateSubtask: (() -> Unit)? = null,
     onArchive: (() -> Unit)? = null
 ) {
@@ -793,24 +1224,26 @@ private fun TaskEditorDialog(
     var questionOptions by remember(original?.revision) {
         mutableStateOf(initial.question?.options.orEmpty().joinToString("\n"))
     }
+    val timeline = remember(original?.revision) { TaskBoardTimeline.parse(initial.description) }
     var description by remember(original?.revision) {
-        mutableStateOf(initial.description)
+        mutableStateOf(timeline.initial)
     }
+    var descriptionUpdate by remember(original?.revision) { mutableStateOf("") }
     var acceptanceCriteria by remember(original?.revision) {
         mutableStateOf(initial.acceptanceCriteria.joinToString("\n"))
     }
     var aiNotes by remember(original?.revision) {
         mutableStateOf(initial.aiNotes)
     }
-    var userNotes by remember(original?.revision) {
-        mutableStateOf(initial.userNotes)
-    }
+    // This is a new submission composer; legacy notes are imported to history by the store.
+    var userNotes by remember(original?.revision) { mutableStateOf("") }
     var notes by remember(original?.revision) {
         mutableStateOf(initial.notes)
     }
 
     val columns = snapshot.columns.sortedBy { it.order }
     val selectedColumnName = columns.firstOrNull { it.id == column }?.name ?: column
+    val isAdvisory = columns.any { it.id == column && it.advisory }
     val parentOptions = listOf("" to "No parent") +
         snapshot.tasks
             .filter { it.kind == "epic" && it.id != original?.id }
@@ -846,6 +1279,24 @@ private fun TaskEditorDialog(
                     singleLine = true
                 )
                 Spacer(Modifier.height(10.dp))
+                if (isAdvisory) {
+                    Text("Advisory: temporary instructions shared with agents. Moving to Done deletes this notice; Draft hides it from agents.",
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.tertiary)
+                    SelectionField(
+                        label = "Column",
+                        selectedText = selectedColumnName,
+                        options = columns.map { it.id to it.name },
+                        onSelected = { column = it }
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    OutlinedTextField(
+                        value = description,
+                        onValueChange = { description = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Advisory content") },
+                        minLines = 6
+                    )
+                } else {
                 if (original == null) {
                     SelectionField(
                         label = "Type",
@@ -858,6 +1309,21 @@ private fun TaskEditorDialog(
                 }
                 Spacer(Modifier.height(10.dp))
 
+                if (original != null && kind != "epic") {
+                    Spacer(Modifier.height(8.dp))
+                    if (original.claimedBy != null) {
+                        Text("Claimed by ${original.claimedBy} · release claim before setting For user", style = MaterialTheme.typography.labelSmall)
+                    } else {
+                        AttentionToggle(
+                            label = if (kind == "for_user") "◆ For user (tap to switch to Task)" else "Set For user",
+                            active = kind == "for_user",
+                            onClick = {
+                                kind = if (kind == "for_user") "task" else "for_user"
+                                if (kind == "task") attention = attention - "needs-user"
+                            }
+                        )
+                    }
+                }
                 if (kind != "epic") SelectionField(
                     label = "Column",
                     selectedText = selectedColumnName,
@@ -909,6 +1375,13 @@ private fun TaskEditorDialog(
                         }
                     )
                     AttentionToggle(
+                        label = "! Priority",
+                        active = "priority" in attention,
+                        onClick = { attention = toggleFlag(attention, "priority") }
+                    )
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    AttentionToggle(
                         label = "× Blocked",
                         active = "blocked" in attention,
                         onClick = {
@@ -940,9 +1413,20 @@ private fun TaskEditorDialog(
                 }
 
                 Spacer(Modifier.height(12.dp))
+                if (original?.userNotes?.isNotBlank() == true) {
+                    Text("Previous user note (will be preserved in history on save)", style = MaterialTheme.typography.labelSmall)
+                    Text(original.userNotes, style = MaterialTheme.typography.bodySmall)
+                    Spacer(Modifier.height(8.dp))
+                }
                 OutlinedTextField(
                     value = userNotes,
-                    onValueChange = { userNotes = it },
+                    onValueChange = {
+                        userNotes = it
+                        if (it.isNotBlank() && kind == "for_user") {
+                            kind = "task"
+                            attention = attention - "needs-user"
+                        }
+                    },
                     modifier = Modifier.fillMaxWidth(),
                     label = { Text("Note to AI") },
                     minLines = 3
@@ -968,8 +1452,23 @@ private fun TaskEditorDialog(
                     value = description,
                     onValueChange = { description = it },
                     modifier = Modifier.fillMaxWidth(),
-                    label = { Text("Description") },
+                    label = { Text("Original description") },
                     minLines = 4
+                )
+                if (timeline.updates.isNotEmpty()) {
+                    Spacer(Modifier.height(8.dp))
+                    Text("Description history (read-only)", style = MaterialTheme.typography.labelMedium)
+                    timeline.updates.forEach { update ->
+                        Text("${update.kind} · ${update.timestamp}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                        Text(update.text, style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+                OutlinedTextField(
+                    value = descriptionUpdate,
+                    onValueChange = { descriptionUpdate = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Add dated description update") },
+                    minLines = 2
                 )
 
                 Spacer(Modifier.height(10.dp))
@@ -990,6 +1489,15 @@ private fun TaskEditorDialog(
                     label = { Text("Notes") },
                     minLines = 3
                 )
+                }
+
+                if (inQueue) {
+                    Spacer(Modifier.height(12.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(onClick = { onSkip?.invoke() }, enabled = !busy) { Text("Skip") }
+                        OutlinedButton(onClick = { onSnooze?.invoke() }, enabled = !busy) { Text("Snooze 24h") }
+                    }
+                }
 
                 if (original != null && (onCreateSubtask != null || onArchive != null)) {
                     Spacer(Modifier.height(12.dp))
@@ -1021,8 +1529,10 @@ private fun TaskEditorDialog(
                         icon = if (kind == "epic") null else iconName.trim().takeIf { it.isNotBlank() },
                         parent = if (kind == "epic") null else parent.takeIf { it.isNotBlank() },
                         category = category.trim().takeIf { it.isNotEmpty() },
-                        attention = if (kind == "epic") emptyList() else attention.toList(),
-                        question = if (isQuestion && kind != "epic") {
+                        attention = if (kind == "epic") emptyList() else attention.filterNot {
+                            it == "question" && questionAnswer.isNotBlank()
+                        },
+                        question = if ((isQuestion || original?.question != null) && kind != "epic") {
                             TaskBoardQuestion(
                                 prompt = questionPrompt.trim(),
                                 options = questionOptions.lines()
@@ -1031,7 +1541,10 @@ private fun TaskEditorDialog(
                                 answer = questionAnswer.trim().ifBlank { retainedQuestionAnswer }
                             )
                         } else null,
-                        description = description,
+                        description = TaskBoardTimeline.append(
+                            TaskBoardTimeline.format(description, timeline.updates),
+                            listOf("update" to descriptionUpdate)
+                        ),
                         acceptanceCriteria = acceptanceCriteria.lines()
                             .map { it.trim() }
                             .filter { it.isNotEmpty() },
@@ -1146,6 +1659,7 @@ private fun ColumnManagerDialog(
                                             add(column.id)
                                             if (column.terminal) add("terminal")
                                             if (column.aiReady) add("AI ready")
+                                            if (column.advisory) add("Advisory")
                                             if (column.hidden) add("hidden")
                                         }.joinToString(" • "),
                                         style = MaterialTheme.typography.labelSmall,
@@ -1184,7 +1698,11 @@ private fun ColumnManagerDialog(
                                         column.id != "ai-ready" &&
                                         !column.terminal
                                 ) {
-                                    Text(if (column.aiReady) "AI off" else "AI ready")
+                                    Text(when {
+                                        column.aiReady -> "✓ AI Ready → Advisory"
+                                        column.advisory -> "! Advisory → Off"
+                                        else -> "Off → AI Ready"
+                                    })
                                 }
                                 TextButton(
                                     onClick = { onDelete(column) },
@@ -1328,7 +1846,7 @@ private fun toggleFlag(flags: Set<String>, flag: String): Set<String> =
     if (flag in flags) flags - flag else flags + flag
 
 private fun attentionRank(task: TaskBoardTask): Int = when {
-    task.attention.any { it == "question" || it == "needs-user" || it == "user-note" } -> 0
+    task.attention.any { it == "question" || it == "needs-user" || it == "user-note" || it == "priority" } || task.kind == "for_user" -> 0
     "blocked" in task.attention -> 2
     else -> 1
 }
@@ -1340,6 +1858,7 @@ private fun attentionText(attention: List<String>): String =
             "needs-user" -> "◆"
             "user-note" -> "✎"
             "blocked" -> "×"
+            "priority" -> "!"
             else -> it
         }
     }

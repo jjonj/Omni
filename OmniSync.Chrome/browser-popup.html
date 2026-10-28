@@ -1,21 +1,68 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8">
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Omni Browser Control</title>
 <style>
-body{font:13px system-ui;background:#161d27;color:#e5edf7;margin:0;padding:16px;width:335px;box-sizing:border-box}
-h1{font-size:16px;margin:0 0 8px} p{line-height:1.5;color:#aebbc9}
-input,button{box-sizing:border-box;font:inherit;border-radius:5px}
-input{width:100%;padding:9px;background:#263344;color:#fff;border:1px solid #58708b}
-button{background:#295a89;color:#fff;border:0;padding:8px 10px;margin:5px 4px 5px 0;cursor:pointer}
-button:focus-visible,input:focus-visible{outline:2px solid #9ed6ff}
-button.secondary{background:#435366}button.danger{background:#824343}
-#sites{list-style:none;padding:0}li{padding:5px 0;display:flex;align-items:center;gap:7px}
-li code{overflow-wrap:anywhere;flex:1}li button{flex-shrink:0}
+:root{color-scheme:dark}
+*{box-sizing:border-box}
+body{font:13px system-ui,-apple-system,sans-serif;background:#161d27;color:#e5edf7;margin:0;padding:16px;width:380px}
+h1{font-size:16px;margin:0 0 8px}h2{font-size:15px;margin:0}
+p{line-height:1.5;color:#aebbc9}
+button,input{font:inherit;border-radius:5px}
+button{background:#295a89;color:#fff;border:0;padding:8px 10px;cursor:pointer}
+button:focus-visible,input:focus-visible{outline:2px solid #9ed6ff;outline-offset:2px}
+button:disabled{opacity:.5;cursor:default}
+button.secondary{background:#435366}
+button.danger{background:#824343}
+.controls{display:flex;gap:8px}
 #msg{white-space:pre-wrap}#msg.error{color:#ffaaaa}
 small{color:#aebbc9}
-</style></head><body><h1>Omni browser control</h1>
+section{border-top:1px solid #344354;padding-top:14px;margin-top:16px}
+.section-head{display:flex;align-items:center;justify-content:space-between;gap:12px}
+#archive-count{font-size:12px;color:#aebbc9}
+#archive-list{list-style:none;padding:0;margin:12px 0 0;max-height:330px;overflow-y:auto}
+#archive-list li{display:flex;gap:3px;margin-bottom:4px;background:#222e3e;border-radius:6px;align-items:stretch}
+.archive-open{flex:1;min-width:0;background:transparent;text-align:left;padding:8px 7px 8px 9px;display:flex;align-items:center;gap:9px}
+.archive-open:hover{background:#2b3e54}
+.archive-title{flex:1;min-width:0;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.archive-icon{position:relative;display:flex;align-items:center;justify-content:center;width:21px;height:21px;flex-shrink:0;border-radius:5px;background:#3a4d65;color:#dce8f7;font-size:11px;font-weight:700}
+.archive-icon img{position:absolute;width:19px;height:19px;object-fit:contain}
+.archive-icon.youtube{background:#d42b2b;color:#fff}
+.archive-icon.twitch{background:#6d3cc2;color:#fff}
+.archive-icon.gmail{background:#aa3636;color:#fff}
+.archive-icon.chatgpt{background:#176c62;color:#fff}
+.archive-remove{align-self:center;flex-shrink:0;background:transparent;color:#eab6b6;font-size:18px;margin-right:6px;padding:5px 10px}
+.archive-remove:hover{background:#633743}
+#archive-empty{padding:15px 5px;text-align:center;color:#aebbc9}
+dialog{background:#202d3d;color:#e5edf7;border:1px solid #61768f;border-radius:9px;max-width:335px}
+dialog::backdrop{background:#000a}
+.dialog-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:16px}
+</style>
+</head>
+<body>
+<h1>Omni browser control</h1>
 <p>Browser control starts automatically when the local OmniMCP bridge is available. No pairing code or individual site approvals.</p>
-<button id="enable">Enable</button><button id="disable" class="danger">Pause</button>
+<div class="controls"><button id="enable">Enable</button><button id="disable" class="danger">Pause</button></div>
 <p id="state"></p><p id="msg" role="status"></p>
 <small>Local browser traffic stays on 127.0.0.1. Public OmniMCP still requires server-side authentication. Password and payment fields are excluded.</small>
-<script src="browser-popup.js"></script></body></html>
+<section aria-labelledby="archive-heading">
+<div class="section-head">
+<div><h2 id="archive-heading">Archived tabs <span id="archive-count"></span></h2></div>
+<button id="clear-archive" class="danger" disabled>Close all</button>
+</div>
+<small>Clean Tabs archives eligible tabs over three days old and tabs matching cleanup patterns. Click an entry to reopen it.</small>
+<ul id="archive-list"></ul>
+<p id="archive-empty" hidden>No archived tabs.</p>
+</section>
+<dialog id="confirm-clear" aria-labelledby="confirm-title">
+<h2 id="confirm-title">Remove all archived tabs?</h2>
+<p>This removes every saved URL from the archive. Open tabs are not affected.</p>
+<div class="dialog-actions">
+<button id="cancel-clear" class="secondary">Cancel</button>
+<button id="confirm-clear-button" class="danger">Close all</button>
+</div>
+</dialog>
+<script src="browser-popup.js"></script>
+</body></html>

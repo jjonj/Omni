@@ -138,6 +138,32 @@ public class ZoneEngineTests
         Assert.Equal("right", best?.Id);
     }
 
+    // Win+Left x3 on three side-by-side monitors must walk off the middle one onto the left one, then stop at the edge.
+    [Fact]
+    public void NextArea_WalksAcrossMonitors_EvenWithOffsetOrSlightlyOverlappingNeighbours()
+    {
+        RectD left = new(-1919, 100, 1920, 1000), mid = new(0, 0, 2560, 1400), right = new(2559, -200, 1920, 1000);
+        var all = new[] { mid, left, right };
+        Assert.Equal(left, ZoneEngine.NextArea(all, mid, 200, 900, right: false));
+        Assert.Equal(right, ZoneEngine.NextArea(all, mid, 200, 900, right: true));
+        Assert.Null(ZoneEngine.NextArea(all, left, 200, 900, right: false));
+        Assert.Equal(mid, ZoneEngine.NextArea(all, left, 200, 900, right: true));
+    }
+
+    // An untracked window wider than its zone has its center right of the zone center: stepping left from the raw center
+    // used to pick the zone it already filled (jitter in place). Stepping from the zone under the center skips it.
+    [Fact]
+    public void StepFromZoneUnderCenter_DoesNotReselectTheCurrentZone()
+    {
+        var layout = Layout(0, Z("l", 0, 0, 0.5, 1), Z("r", 0.5, 0, 0.5, 1));
+        var rects = ZoneEngine.ZoneRects(layout, Area, false);
+        double cx = rects["r"].CenterX + 300, cy = rects["r"].CenterY;           // overhanging frame center, still inside "r"
+        Assert.Equal("r", ZoneEngine.Neighbor(layout, rects, cx, cy, right: false, null, false)?.Id);   // old behaviour
+        var cur = ZoneEngine.ZoneAt(layout, rects, cx, cy, false)!;
+        Assert.Equal("l", ZoneEngine.Neighbor(layout, rects, rects[cur.Id].CenterX, rects[cur.Id].CenterY, false, cur.Id, false)?.Id);
+        Assert.Null(ZoneEngine.Neighbor(layout, rects, rects["l"].CenterX, rects["l"].CenterY, false, "l", false)); // then hop
+    }
+
     [Fact]
     public void Plan_UsesRememberedZoneFirst_ThenAppPreference_AndOneWindowPerPlainZone()
     {

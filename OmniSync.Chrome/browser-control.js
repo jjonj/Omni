@@ -3,7 +3,7 @@
  * Host permissions come from the installed extension manifest. */
 (() => {
   "use strict";
-  const BRIDGE = "http://127.0.0.1:18772/browser";
+  const BRIDGE = "http://127.0.0.1:18773/browser";
   const KEY = "omniBrowserControl";
   let current = { enabled: true };
   let polling = false;
@@ -221,6 +221,35 @@
     throw Error("Unknown DOM operation.");
   }
 
+  // Chrome can discard the frame/result when a click navigates the page.
+  // Treat missing script results as an UNKNOWN outcome, never a failed click
+  // that can safely be automatically retried. No raw Chrome error, URL query,
+  // OAuth token, or form content is returned to the MCP caller.
+  function injectionFailure(action, rawError) {
+    const message = String(rawError?.message || "");
+    const mutating = ["click", "type", "select", "focus", "scroll"].includes(action);
+    const accessRestricted = /Cannot access contents|Cannot access a chrome|extensions gallery cannot be scripted|missing host permission|cannot inject into|not allowed to access|Sensitive form target|Form submission or script-link activation/i.test(message);
+    const sensitive = /Sensitive form target|Form submission or script-link activation/i.test(message);
+    const navigated = /frame .* (removed|unavailable)|No frame with|frame .*not found|document was unloaded|Cannot find context with specified id/i.test(message);
+    const tabGone = /No tab with id|tab was closed|No tab with given id/i.test(message);
+    const code = sensitive ? "SENSITIVE_ACTION_RESTRICTED" :
+      accessRestricted ? "FRAME_ACCESS_RESTRICTED" :
+      navigated ? "FRAME_NAVIGATED" :
+      tabGone ? "TAB_UNAVAILABLE" :
+      rawError ? "FRAME_INJECTION_FAILED" : "FRAME_RESULT_UNAVAILABLE";
+    const guidance = accessRestricted
+      ? "The browser/extension rejected this target. Do not switch to desktop input to bypass OAuth, credential, payment, form-submission, or platform protections; use manual interaction for protected steps."
+      : "Inspect tabs and the current page state before any retry; navigation may have happened even when the result was lost. Physical desktop control is separate and only appropriate for independently authorized, non-sensitive actions on a verified visible window, never after a platform safety rejection.";
+    return {
+      error: code === "FRAME_RESULT_UNAVAILABLE"
+        ? "Browser frame returned no result; action outcome is unknown."
+        : "Browser frame action could not be confirmed.",
+      code, outcome: mutating ? "unknown" : "unavailable",
+      retrySafe: !mutating && !accessRestricted,
+      guidance
+    };
+  }
+
   async function execute(work) {
     await load(); // Recheck opt-in before handling any queued command.
     if (!current.enabled) throw new Error("Extension browser control disabled.");
@@ -254,6 +283,23 @@
       await chrome.tabs.update(a.tabId, { active: true });
       return { activated: true, tabId: a.tabId };
     }
+    if (work.action === "bring_to_front") {
+      // Unlike activate, also ask Chrome to foreground the containing window.
+      // Do not create a new window, launch a browser, or use OS mouse/shell input.
+      if (!Number.isInteger(tab.windowId) || tab.windowId < 0)
+        throw new Error("Tab does not belong to a valid browser window.");
+      const browserWindow = await chrome.windows.get(tab.windowId);
+      if (browserWindow.state === "minimized")
+        await chrome.windows.update(tab.windowId, { state: "normal" });
+      await chrome.tabs.update(a.tabId, { active: true });
+      await chrome.windows.update(tab.windowId, { focused: true });
+      const focusedWindow = await chrome.windows.get(tab.windowId);
+      return {
+        tabId: a.tabId, windowId: tab.windowId, activated: true,
+        restored: browserWindow.state === "minimized",
+        focused: focusedWindow.focused === true
+      };
+    }
     if (work.action === "close") {
       await chrome.tabs.remove(a.tabId);
       return { closed: true, tabId: a.tabId };
@@ -265,11 +311,15 @@
     const runDom = async () => {
       const approvedTab = await getApprovedTab(a.tabId);
       const origin = validOrigin(approvedTab.url);
-      const result = await chrome.scripting.executeScript({
-        target: { tabId: a.tabId }, world: "ISOLATED",
-        func: inspectOrAct, args: [work.action, origin, a.selector || "", a.text || "", a]
-      });
-      return result?.[0]?.result ?? { error: "Target frame unavailable." };
+      try {
+        const result = await chrome.scripting.executeScript({
+          target: { tabId: a.tabId }, world: "ISOLATED",
+          func: inspectOrAct, args: [work.action, origin, a.selector || "", a.text || "", a]
+        });
+        return result?.[0]?.result ?? injectionFailure(work.action, null);
+      } catch (error) {
+        return injectionFailure(work.action, error);
+      }
     };
     if (work.action === "wait_for") {
       const timeoutMs = Number.isInteger(a.timeoutMs) ? a.timeoutMs : 4000;
@@ -333,5 +383,5 @@
   chrome.alarms.onAlarm.addListener(alarm => { if (alarm.name === "browser-control-wake") void start(); });
   chrome.alarms.create("browser-control-wake", { periodInMinutes: 1 });
   chrome.storage.local.setAccessLevel?.({ accessLevel: "TRUSTED_CONTEXTS" }).catch(() => {});
-  globalThis.BrowserControl = { start, validOrigin, displayUrl, inspectOrAct, execute };
+  globalThis.BrowserControl = { start, validOrigin, displayUrl, inspectOrAct, injectionFailure, execute };
 })();

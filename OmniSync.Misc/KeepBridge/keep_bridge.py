@@ -151,7 +151,40 @@ def process_exists(pid):
         return False
 
 
+def watch_parent_exit(parent_pid):
+    """Exit promptly if OmniHub dies, even when a Keep network call blocks.
+
+    Rust's piped child stdio can leave listener handles inherited by this
+    process; delayed parent polling then keeps the dead Hub's ports occupied.
+    """
+    if os.name != "nt" or not parent_pid:
+        return
+    import ctypes
+    import threading
+
+    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel.OpenProcess.argtypes = (ctypes.c_uint32, ctypes.c_int, ctypes.c_uint32)
+    kernel.OpenProcess.restype = ctypes.c_void_p
+    kernel.WaitForSingleObject.argtypes = (ctypes.c_void_p, ctypes.c_uint32)
+    kernel.WaitForSingleObject.restype = ctypes.c_uint32
+    kernel.CloseHandle.argtypes = (ctypes.c_void_p,)
+    kernel.CloseHandle.restype = ctypes.c_int
+    handle = kernel.OpenProcess(0x00100000, False, parent_pid)  # SYNCHRONIZE
+    if not handle:
+        os._exit(0)  # Hub already gone; do not inherit its sockets indefinitely.
+
+    def wait_for_parent():
+        result = kernel.WaitForSingleObject(handle, 0xFFFFFFFF)  # INFINITE
+        kernel.CloseHandle(handle)
+        if result == 0:  # WAIT_OBJECT_0: parent has exited.
+            os._exit(0)
+
+    threading.Thread(target=wait_for_parent, daemon=True,
+                     name="omnihub-parent-exit").start()
+
+
 def run(interval, api_key, parent_pid=None):
+    watch_parent_exit(parent_pid)
     lock_handle = acquire_run_lock()
     if lock_handle is None:
         log("Another Keep bridge is already running; exiting duplicate process.")

@@ -8,8 +8,12 @@ const path = require("node:path");
 const data = {};
 let permit = true;
 const listeners = {};
-const tab = { id: 14, url: "https://example.test/?access_token=hidden", title: "Example" };
+const tab = { id: 14, windowId: 7, url: "https://example.test/?access_token=hidden", title: "Example" };
 const tabActions = [];
+const browserWindow = { id: 7, focused: false, state: "minimized" };
+const windowActions = [];
+let injectionMode = "normal";
+let injectionCalls = 0;
 const chrome = {
   storage: { local: {
     async get(key) { return { [key]: data[key] }; },
@@ -29,7 +33,24 @@ const chrome = {
     async reload(id) { tabActions.push(["reload",id]); },
     async remove(id) { tabActions.push(["remove",id]); }
   },
-  scripting: { async executeScript({func,args,target}) { assert.equal(target.tabId,tab.id); return [{result:func(...args)}]; } },
+  windows: {
+    async get(id) { assert.equal(id, browserWindow.id); return {...browserWindow}; },
+    async update(id, change) {
+      assert.equal(id, browserWindow.id);
+      windowActions.push([id, {...change}]);
+      Object.assign(browserWindow, change);
+      return {...browserWindow};
+    }
+  },
+  scripting: { async executeScript({func,args,target}) {
+    assert.equal(target.tabId, tab.id);
+    injectionCalls++;
+    if (injectionMode === "empty") return [];
+    if (injectionMode === "navigated") throw Error("No frame with id 0 in tab 14");
+    if (injectionMode === "restricted") throw Error("Cannot access contents of URL: https://example.test/?access_token=DO_NOT_RETURN");
+    if (injectionMode === "unexpected") throw Error("Internal injection failure: SECRET-NEVER-RETURN");
+    return [{result:func(...args)}];
+  } },
   alarms: { onAlarm: { addListener(fn) { listeners.alarm = fn; } }, create() {} },
   runtime: { id:"test-extension-id", onMessage: { addListener(fn) { listeners.message = fn; } } }
 };
@@ -185,6 +206,40 @@ function message(command, args = {}) {
   data.omniBrowserControl = {mode:"local",enabled:true};
   const work = (action, arguments_={}) => ({action, deadline:Date.now()+10000,
     arguments:{tabId:14, ...arguments_}});
+  // No result after a click can mean successful click followed by navigation.
+  // Never resend a potentially mutating action automatically.
+  injectionMode = "empty";
+  let callsBefore = injectionCalls;
+  let failure = await api.execute(work("click",{selector:"#go"}));
+  assert.equal(failure.code, "FRAME_RESULT_UNAVAILABLE");
+  assert.equal(failure.outcome, "unknown");
+  assert.equal(failure.retrySafe, false);
+  assert.equal(injectionCalls, callsBefore + 1, "Click must not retry after lost frame result");
+  assert.match(failure.guidance, /Inspect tabs/);
+  callsBefore = injectionCalls;
+  failure = await api.execute(work("inspect"));
+  assert.equal(failure.retrySafe, true);
+  assert.equal(injectionCalls, callsBefore + 1);
+  injectionMode = "navigated";
+  callsBefore = injectionCalls;
+  failure = await api.execute(work("click",{selector:"#go"}));
+  assert.equal(failure.code, "FRAME_NAVIGATED");
+  assert.equal(failure.retrySafe, false);
+  assert.equal(injectionCalls, callsBefore + 1);
+  injectionMode = "restricted";
+  failure = await api.execute(work("click",{selector:"#go"}));
+  assert.equal(failure.code, "FRAME_ACCESS_RESTRICTED");
+  assert.equal(failure.retrySafe, false);
+  assert.match(failure.guidance, /manual interaction/);
+  assert.doesNotMatch(JSON.stringify(failure), /DO_NOT_RETURN|access_token=/);
+  injectionMode = "unexpected";
+  failure = await api.execute(work("click",{selector:"#go"}));
+  assert.equal(failure.code, "FRAME_INJECTION_FAILED");
+  assert.doesNotMatch(JSON.stringify(failure), /SECRET-NEVER-RETURN/);
+  injectionMode = "normal";
+  assert.equal(api.injectionFailure("click", Error("Sensitive form target is prohibited.")).code,
+    "SENSITIVE_ACTION_RESTRICTED");
+  assert.equal(api.injectionFailure("click", Error("Form submission or script-link activation must be performed manually.")).retrySafe, false);
   assert.equal((await api.execute(work("page_state"))).viewport.width, 1100);
   assert.equal((await api.execute(work("find",{text:"Visible heading"}))).count, 1);
   assert.equal((await api.execute(work("wait_for",{selector:"#absent",timeoutMs:0}))).timedOut, true);
@@ -193,10 +248,24 @@ function message(command, args = {}) {
   assert.equal((await api.execute(work("focus",{selector:"#search"}))).focused, true);
   assert.equal((await api.execute(work("reload"))).reloading, true);
   assert.equal((await api.execute(work("activate"))).activated, true);
+  assert.equal(windowActions.length, 0, "activate must not steal focus");
+  const foreground = await api.execute(work("bring_to_front"));
+  assert.equal(foreground.activated, true);
+  assert.equal(foreground.focused, true);
+  assert.equal(foreground.restored, true);
+  assert.equal(foreground.windowId, 7);
+  assert.deepEqual(windowActions, [[7, {state:"normal"}], [7, {focused:true}]]);
+  browserWindow.focused = false;
+  const again = await api.execute(work("bring_to_front"));
+  assert.equal(again.restored, false, "Do not alter a non-minimized window's state");
+  assert.equal(again.focused, true);
+  assert.equal(windowActions.length, 3);
+  assert.deepEqual(windowActions[2], [7, {focused:true}]);
   assert.equal((await api.execute(work("close"))).closed, true);
   assert.equal(tabActions.filter(x=>x[0]==="remove").length, 1);
   tab.url = "chrome://extensions/";
   await assert.rejects(api.execute(work("close")), /not accessible/);
+  await assert.rejects(api.execute(work("bring_to_front")), /not accessible/);
   tab.url = "https://another-site.test/";
   assert.equal((await api.execute(work("reload"))).reloading, true);
   tab.url = "https://example.test/?access_token=hidden";
@@ -206,8 +275,9 @@ function message(command, args = {}) {
   reply = await message("disable");
   assert.equal(reply.data.enabled, false);
   await assert.rejects(api.execute(work("activate")), /disabled/);
+  await assert.rejects(api.execute(work("bring_to_front")), /disabled/);
   reply = await message("enable");
   assert.equal(reply.data.enabled, true);
   await message("disable"); // Stop background poll loop before test exit.
-  console.log("PASS: no pairing/site prompts, local default, 14 controls, restricted sensitive fields");
+  console.log("PASS: safe unknown-outcome frame diagnostics, no click retries, redaction, bring_to_front and sensitive form restrictions");
 })().catch(err => { console.error(err); process.exitCode = 1; });

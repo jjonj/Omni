@@ -562,11 +562,11 @@ class MainActivity : ComponentActivity() {
                 mainViewModel = mainViewModel,
                 parentPadding = paddingValues
             )
-            AppScreen.AGENT_DETAIL -> com.omni.sync.ui.screen.AgentSessionDetailScreen(
+            AppScreen.AGENT_DETAIL -> com.omni.sync.ui.screen.OmniAiModesScreen(
                 signalRClient = signalRClient,
                 mainViewModel = mainViewModel,
-                onBack = { mainViewModel.navigateTo(AppScreen.AGENTS) },
-                parentPadding = paddingValues
+                parentPadding = paddingValues,
+                initialSessionId = mainViewModel.selectedAgentSessionId.collectAsState().value
             )
             AppScreen.AGENT_TERMINAL -> com.omni.sync.ui.screen.AgentTerminalScreen(
                 signalRClient = signalRClient,
