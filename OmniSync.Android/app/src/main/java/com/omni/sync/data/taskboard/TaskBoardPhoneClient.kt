@@ -63,6 +63,23 @@ class TaskBoardPhoneClient(
         return sendSaved(operationId)
     }
 
+    suspend fun submitCreate(root: File, baseBoardRevision: String, draft: TaskBoardTaskDraft): Submission {
+        val board = boardIdentity(root)
+        val operationId = UUID.randomUUID().toString()
+        drafts.saveOffline(boardId = board, taskId = "CREATE", baseRevision = baseBoardRevision,
+            baseSource = File(root, "_board.md").readText(Charsets.UTF_8),
+            edited = draftJson(draft), operationId = operationId)
+        return sendSaved(operationId)
+    }
+
+    suspend fun submitArchive(root: File, task: TaskBoardTask): Submission {
+        val operationId = UUID.randomUUID().toString()
+        drafts.saveOffline(boardId = boardIdentity(root), taskId = task.id,
+            baseRevision = task.revision, baseSource = task.file.readText(Charsets.UTF_8),
+            edited = JSONObject().put("_operation", "archive").toString(), operationId = operationId)
+        return sendSaved(operationId)
+    }
+
     /** Replays only the SAME UUID and payload, with server-side receipt
      * deduplication. A server-side UNKNOWN remains unresolved, not retried. */
     suspend fun sendSaved(operationId: String): Submission {
@@ -71,15 +88,23 @@ class TaskBoardPhoneClient(
         check(pending.state == "draft") {
             "Phone edit has a conflict; compare the PC version before making a new edit"
         }
-        val wire = mapOf(
+        val isCreate = pending.taskId == "CREATE"
+        val isArchive = JSONObject(pending.edited).optString("_operation") == "archive"
+        val wire = if (isCreate) mapOf(
+            "operationId" to pending.operationId, "board" to pending.boardId,
+            "baseBoardRevision" to pending.baseRevision,
+            "draft" to com.google.gson.Gson().fromJson(pending.edited, Map::class.java)
+        ) else mapOf(
             "operationId" to pending.operationId,
             "board" to pending.boardId,
             "taskId" to pending.taskId,
             "baseRevision" to pending.baseRevision,
             "draft" to com.google.gson.Gson().fromJson(pending.edited, Map::class.java)
         )
+        val method = if (isCreate) "taskboard.phone.create" else if (isArchive)
+            "taskboard.phone.archive" else "taskboard.phone.update"
         val response = try {
-            signalR.agentCall("taskboard.phone.update", wire)
+            signalR.agentCall(method, wire)
         } catch (error: Exception) {
             // No synced Markdown was changed. Keep all information privately
             // so an offline edit survives app crashes or failed connectivity.

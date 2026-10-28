@@ -251,12 +251,15 @@ private fun TaskBoardContents(parentPadding: PaddingValues, signalR: SignalRClie
                 val nextSnapshot = withContext(Dispatchers.IO) {
                     for (row in rows) {
                         val (title, description) = splitPhoneDumpLine(row.value)
-                        currentStore.createTask(TaskBoardTaskDraft(
-                            title = title,
-                            description = description,
-                            column = defaultCreateColumn(board),
-                            attention = if (row.index in priorities) listOf("priority") else emptyList()
-                        ))
+                        val result = phoneWriter.submitCreate(currentStore.root, board.boardRevision,
+                            TaskBoardTaskDraft(
+                                title = title,
+                                description = description,
+                                column = defaultCreateColumn(board),
+                                attention = if (row.index in priorities) listOf("priority") else emptyList()
+                            ))
+                        if (result.status != "applied") throw TaskBoardConflictException(
+                            result.details ?: "Task creation is pending PC confirmation")
                         completed++
                     }
                     currentStore.load()
@@ -507,7 +510,11 @@ private fun TaskBoardContents(parentPadding: PaddingValues, signalR: SignalRClie
                                    })
                                 },
                                 onTaskArchive = { task ->
-                                    mutate(action = { store.archiveTask(task) })
+                                    mutate(action = {
+                                        val result = phoneWriter.submitArchive(store.root, task)
+                                        if (result.status != "applied") throw TaskBoardConflictException(
+                                            result.details ?: "Archive is pending PC confirmation")
+                                   })
                                 },
                                 onCreateChild = { epic ->
                                     createTaskRequest = CreateTaskRequest(defaultCreateColumn(it), epic.id, epic.category)
@@ -570,7 +577,11 @@ private fun TaskBoardContents(parentPadding: PaddingValues, signalR: SignalRClie
                 onDismiss = { createTaskRequest = null },
                 onSave = { draft ->
                     mutate(
-                        action = { store.createTask(draft) },
+                        action = {
+                            val result = phoneWriter.submitCreate(store.root, board.boardRevision, draft)
+                            if (result.status != "applied") throw TaskBoardConflictException(
+                                result.details ?: "Task creation is pending PC confirmation")
+                        },
                         onSuccess = { createTaskRequest = null }
                     )
                 }
@@ -630,7 +641,11 @@ private fun TaskBoardContents(parentPadding: PaddingValues, signalR: SignalRClie
                 }} else null,
                 onArchive = if (task.kind == "task" && task.completed != null) {{
                     mutate(
-                        action = { store.archiveTask(task) },
+                        action = {
+                            val result = phoneWriter.submitArchive(store.root, task)
+                            if (result.status != "applied") throw TaskBoardConflictException(
+                                result.details ?: "Archive is pending PC confirmation")
+                        },
                         onSuccess = { editingTask = null }
                     )
                 }} else null
