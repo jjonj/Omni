@@ -4,6 +4,8 @@ import android.content.Context
 import org.json.JSONObject
 import java.io.File
 import java.util.UUID
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 
 /**
  * OW-0023: local-only, durable disconnected edits. Never write a TaskBoard
@@ -83,9 +85,12 @@ class TaskBoardOfflineDrafts(context: Context) {
             System.currentTimeMillis())
         val temporary = File(root, "$operationId.tmp")
         temporary.writeText(encode(row).toString(), Charsets.UTF_8)
-        if (!temporary.renameTo(destination)) {
+        try {
+            Files.move(temporary.toPath(), destination.toPath(),
+                StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
+        } catch (error: Exception) {
             temporary.delete()
-            error("Failed to persist offline TaskBoard draft")
+            throw IllegalStateException("Failed to persist offline TaskBoard draft", error)
         }
         return row
     }
@@ -104,7 +109,13 @@ class TaskBoardOfflineDrafts(context: Context) {
         val changed = previous.copy(state = "conflict", currentSource = currentSource, explanation = reason)
         val temporary = File(root, "$operationId.tmp")
         temporary.writeText(encode(changed).toString(), Charsets.UTF_8)
-        if (!temporary.renameTo(file)) error("Failed to persist TaskBoard conflict")
+        try {
+            Files.move(temporary.toPath(), file.toPath(),
+                StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
+        } catch (error: Exception) {
+            temporary.delete()
+            throw IllegalStateException("Failed to persist TaskBoard conflict", error)
+        }
         return changed
     }
 
