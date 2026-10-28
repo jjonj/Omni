@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Edit cleanup patterns · Omni</title>
+<style>
+:root{color-scheme:dark}*{box-sizing:border-box}
+body{background:#161d27;color:#e5edf7;font:14px system-ui;margin:0;padding:20px}
+h1{font-size:20px;margin:0 0 10px}p{color:#aebbc9;line-height:1.5}
+form{display:flex;gap:8px;margin:17px 0}
+input,button{font:inherit;border-radius:6px}
+input{flex:1;min-width:0;padding:10px;background:#263344;color:#fff;border:1px solid #58708b}
+button{padding:9px 13px;background:#295a89;color:#fff;border:0;cursor:pointer}
+button:focus-visible,input:focus-visible{outline:2px solid #9ed6ff}
+button:disabled{opacity:.5}
+ul{list-style:none;padding:0;max-height:310px;overflow-y:auto}
+li{display:flex;align-items:center;gap:12px;background:#263344;margin:7px 0;border-radius:6px;padding:5px 6px 5px 12px}
+.pattern{flex:1;overflow-wrap:anywhere}
+.remove{background:#824343;flex-shrink:0}
+#status{min-height:20px}#status.error{color:#ffaaaa}
+small{color:#aebbc9}
+</style></head>
+<body>
+<h1>Edit cleanup patterns</h1>
+<p>Tabs matching any URL pattern or title pattern are archived when you run <strong>Clean Tabs</strong>. Tabs open for over three days are also archived, whether they match a pattern or not.</p>
+<form id="add-form">
+<input id="pattern" type="text" required autocomplete="off" placeholder="https://example.com/*" aria-label="New cleanup pattern">
+<button id="add" type="submit">Add</button>
+</form>
+<small>Use <code>*</code> as a URL wildcard, or <code>title:words</code> to match a tab title.</small>
+<p id="status" role="status"></p>
+<h2>Patterns</h2>
+<ul id="patterns"></ul>
+<p id="empty" hidden>No cleanup patterns configured.</p>
+<script src="cleanup-patterns.js"></script>
+</body></html>
