@@ -80,6 +80,33 @@ class TaskBoardPhoneClient(
         return sendSaved(operationId)
     }
 
+    suspend fun submitColumns(root: File, expectedBoardRevision: String,
+                              columns: List<TaskBoardColumn>): Submission {
+        val operationId = UUID.randomUUID().toString()
+        val encoded = JSONObject().put("_operation", "columns").put("columns",
+            org.json.JSONArray().apply {
+                columns.forEach { column ->
+                    put(JSONObject().apply {
+                        put("id", column.id)
+                        put("name", column.name)
+                        put("order", column.order)
+                        put("terminal", column.terminal)
+                        put("hidden", column.hidden)
+                        put("ai_ready", column.aiReady)
+                        put("advisory", column.advisory)
+                        put("color", column.color)
+                        put("snoozed_until", column.snoozedUntil)
+                        put("awake_until", column.awakeUntil)
+                    })
+                }
+            }).toString()
+        drafts.saveOffline(boardId = boardIdentity(root), taskId = "COLUMNS",
+            baseRevision = expectedBoardRevision,
+            baseSource = File(root, "_board.md").readText(Charsets.UTF_8),
+            edited = encoded, operationId = operationId)
+        return sendSaved(operationId)
+    }
+
     /** Replays only the SAME UUID and payload, with server-side receipt
      * deduplication. A server-side UNKNOWN remains unresolved, not retried. */
     suspend fun sendSaved(operationId: String): Submission {
@@ -89,8 +116,28 @@ class TaskBoardPhoneClient(
             "Phone edit has a conflict; compare the PC version before making a new edit"
         }
         val isCreate = pending.taskId == "CREATE"
+        val isColumns = pending.taskId == "COLUMNS"
         val isArchive = JSONObject(pending.edited).optString("_operation") == "archive"
-        val wire = if (isCreate) mapOf(
+        val wire = if (isColumns) {
+            val columns = JSONObject(pending.edited).getJSONArray("columns")
+            val data = (0 until columns.length()).map { index ->
+                val column = columns.getJSONObject(index)
+                mapOf<String, Any?>(
+                    "id" to column.getString("id"),
+                    "name" to column.getString("name"),
+                    "order" to column.getInt("order"),
+                    "terminal" to column.getBoolean("terminal"),
+                    "hidden" to column.getBoolean("hidden"),
+                    "ai_ready" to column.getBoolean("ai_ready"),
+                    "advisory" to column.getBoolean("advisory"),
+                    "color" to column.getString("color"),
+                    "snoozed_until" to column.optString("snoozed_until").takeUnless { it == "null" || it.isBlank() },
+                    "awake_until" to column.optString("awake_until").takeUnless { it == "null" || it.isBlank() }
+                )
+            }
+            mapOf("operationId" to pending.operationId, "board" to pending.boardId,
+                "baseBoardRevision" to pending.baseRevision, "columns" to data)
+        } else if (isCreate) mapOf(
             "operationId" to pending.operationId, "board" to pending.boardId,
             "baseBoardRevision" to pending.baseRevision,
             "draft" to com.google.gson.Gson().fromJson(pending.edited, Map::class.java)
@@ -101,7 +148,8 @@ class TaskBoardPhoneClient(
             "baseRevision" to pending.baseRevision,
             "draft" to com.google.gson.Gson().fromJson(pending.edited, Map::class.java)
         )
-        val method = if (isCreate) "taskboard.phone.create" else if (isArchive)
+        val method = if (isColumns) "taskboard.phone.columns" else if (isCreate)
+            "taskboard.phone.create" else if (isArchive)
             "taskboard.phone.archive" else "taskboard.phone.update"
         val response = try {
             signalR.agentCall(method, wire)

@@ -237,6 +237,12 @@ private fun TaskBoardContents(parentPadding: PaddingValues, signalR: SignalRClie
         }
     }
 
+    suspend fun saveColumnsViaPc(columns: List<TaskBoardColumn>, expectedRevision: String) {
+        val result = phoneWriter.submitColumns(store.root, expectedRevision, columns)
+        if (result.status != "applied") throw TaskBoardConflictException(
+            result.details ?: "PC column update is unconfirmed; offline draft retained")
+    }
+
     fun generateDump() {
         val board = snapshot ?: return
         val rows = taskDumpText.lines().withIndex().filter { it.value.isNotBlank() }
@@ -663,7 +669,7 @@ private fun TaskBoardContents(parentPadding: PaddingValues, signalR: SignalRClie
                     val changed = board.columns.map {
                         if (it.id == column.id) it.copy(hidden = !it.hidden) else it
                     }
-                    mutate(action = { store.saveColumns(changed, board.boardRevision) })
+                    mutate(action = { saveColumnsViaPc(changed, board.boardRevision) })
                 },
                 onToggleAiReady = { column ->
                     val changed = board.columns.map {
@@ -672,11 +678,11 @@ private fun TaskBoardContents(parentPadding: PaddingValues, signalR: SignalRClie
                             advisory = it.aiReady
                         ) else it
                     }
-                    mutate(action = { store.saveColumns(changed, board.boardRevision) })
+                    mutate(action = { saveColumnsViaPc(changed, board.boardRevision) })
                 },
                 onMove = { column, delta ->
                     val changed = moveColumn(board.columns, column.id, delta)
-                    mutate(action = { store.saveColumns(changed, board.boardRevision) })
+                    mutate(action = { saveColumnsViaPc(changed, board.boardRevision) })
                 },
                 onDelete = { deleteColumn = it }
             )
@@ -692,7 +698,23 @@ private fun TaskBoardContents(parentPadding: PaddingValues, signalR: SignalRClie
                 onDismiss = { showAddColumn = false },
                 onConfirm = { name ->
                     mutate(
-                        action = { store.addColumn(name, board.boardRevision) },
+                        action = {
+                            val trimmed = name.trim()
+                            require(trimmed.isNotEmpty()) { "Column name cannot be empty" }
+                            val base = trimmed.lowercase(java.util.Locale.US)
+                                .replace(Regex("[^a-z0-9]+"), "-").trim('-').ifBlank { "column" }
+                            var newId = base
+                            var suffix = 2
+                            while (board.columns.any { it.id == newId }) newId = "$base-${suffix++}"
+                            val palette = listOf("#718f78", "#7388a8", "#8e7da8", "#a48669",
+                                "#6f8679", "#8c7d72", "#6f8b91", "#927b86")
+                            val used = board.columns.map { it.color }.toSet()
+                            val color = palette.firstOrNull { it !in used } ?: palette.first()
+                            saveColumnsViaPc(board.columns + TaskBoardColumn(
+                                id = newId, name = trimmed, order = board.columns.size,
+                                terminal = false, hidden = false, aiReady = false, color = color),
+                                board.boardRevision)
+                        },
                         onSuccess = { showAddColumn = false }
                     )
                 }
@@ -712,7 +734,7 @@ private fun TaskBoardContents(parentPadding: PaddingValues, signalR: SignalRClie
                         if (it.id == column.id) it.copy(name = name.trim()) else it
                     }
                     mutate(
-                        action = { store.saveColumns(changed, board.boardRevision) },
+                        action = { saveColumnsViaPc(changed, board.boardRevision) },
                         onSuccess = { renameColumn = null }
                     )
                 }
@@ -728,11 +750,22 @@ private fun TaskBoardContents(parentPadding: PaddingValues, signalR: SignalRClie
                 onDelete = { destination ->
                     mutate(
                         action = {
-                            store.deleteColumn(
-                                column.id,
-                                destination,
-                                board.boardRevision
-                            )
+                            val remaining = board.columns.filterNot { it.id == column.id }
+                            require(remaining.isNotEmpty()) { "Board needs at least one column" }
+                            val occupied = board.tasks.filter { it.column == column.id }
+                            if (occupied.isNotEmpty()) {
+                                val target = destination ?: error("Select destination for active tasks")
+                                require(remaining.any { it.id == target }) { "Unknown destination column" }
+                                for (task in occupied) {
+                                    val moved = phoneWriter.submitUpdate(store.root, task,
+                                        task.toDraft().copy(column = target))
+                                    if (moved.status != "applied") throw TaskBoardConflictException(
+                                        moved.details ?: "PC task move unconfirmed; column not deleted")
+                                }
+                            }
+                            saveColumnsViaPc(remaining.mapIndexed { index, item ->
+                                item.copy(order = index)
+                            }, board.boardRevision)
                         },
                         onSuccess = { deleteColumn = null }
                     )
