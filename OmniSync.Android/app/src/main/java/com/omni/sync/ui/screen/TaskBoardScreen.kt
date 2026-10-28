@@ -78,6 +78,10 @@ import com.omni.sync.data.taskboard.TaskBoardStore
 import com.omni.sync.data.taskboard.TaskBoardTask
 import com.omni.sync.data.taskboard.TaskBoardTaskDraft
 import com.omni.sync.data.taskboard.TaskBoardTimeline
+import com.omni.sync.data.taskboard.TaskBoardOfflineDrafts
+import com.omni.sync.data.taskboard.TaskBoardPhoneClient
+import com.omni.sync.data.taskboard.TaskBoardConflictException
+import com.omni.sync.data.repository.SignalRClient
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -134,19 +138,21 @@ private fun splitPhoneDumpLine(source: String): Pair<String, String> {
 }
 
 @Composable
-fun TaskBoardScreen(parentPadding: PaddingValues = PaddingValues(0.dp)) {
+fun TaskBoardScreen(signalR: SignalRClient, parentPadding: PaddingValues = PaddingValues(0.dp)) {
     TaskBoardTheme {
-        TaskBoardContents(parentPadding)
+        TaskBoardContents(parentPadding, signalR)
     }
 }
 
 @Composable
-private fun TaskBoardContents(parentPadding: PaddingValues) {
+private fun TaskBoardContents(parentPadding: PaddingValues, signalR: SignalRClient) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val boardPreferences = remember { context.getSharedPreferences("taskboard_mobile", android.content.Context.MODE_PRIVATE) }
     var selectedRoot by remember { mutableStateOf(boardPreferences.getString("selected_board", TaskBoardStore.defaultRoot().absolutePath) ?: TaskBoardStore.defaultRoot().absolutePath) }
     val store = remember(selectedRoot) { TaskBoardStore(java.io.File(selectedRoot)) }
+    val offlineDrafts = remember { TaskBoardOfflineDrafts(context) }
+    val phoneWriter = remember(signalR) { TaskBoardPhoneClient(signalR, offlineDrafts) }
     var projects by remember { mutableStateOf<List<TaskBoardProject>>(emptyList()) }
     var boardSelectorExpanded by remember { mutableStateOf(false) }
     var showCreateBoard by remember { mutableStateOf(false) }
@@ -494,7 +500,11 @@ private fun TaskBoardContents(parentPadding: PaddingValues) {
                                 compactView = compactView,
                                 onTaskClick = { task -> editingTask = task },
                                 onTaskChange = { task, draft ->
-                                    mutate(action = { store.updateTask(task, draft) })
+                                    mutate(action = {
+                                        val result = phoneWriter.submitUpdate(store.root, task, draft)
+                                        if (result.status != "applied") throw TaskBoardConflictException(
+                                            result.details ?: "Phone edit is pending PC confirmation")
+                                   })
                                 },
                                 onTaskArchive = { task ->
                                     mutate(action = { store.archiveTask(task) })
@@ -595,7 +605,11 @@ private fun TaskBoardContents(parentPadding: PaddingValues) {
                 },
                 onSave = { draft ->
                     mutate(
-                        action = { store.updateTask(task, draft) },
+                        action = {
+                            val result = phoneWriter.submitUpdate(store.root, task, draft)
+                            if (result.status != "applied") throw TaskBoardConflictException(
+                                result.details ?: "Phone edit is pending PC confirmation")
+                        },
                         onSuccess = {
                             if (queueMode) {
                                 skippedQueueIds = skippedQueueIds + task.id
