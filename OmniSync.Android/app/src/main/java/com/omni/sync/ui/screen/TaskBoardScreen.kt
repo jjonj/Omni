@@ -171,6 +171,8 @@ private fun TaskBoardContents(parentPadding: PaddingValues, signalR: SignalRClie
     var editingTask by remember { mutableStateOf<TaskBoardTask?>(null) }
     var createTaskRequest by remember { mutableStateOf<CreateTaskRequest?>(null) }
     var showColumns by remember { mutableStateOf(false) }
+    var showPendingPhoneEdits by remember { mutableStateOf(false) }
+    var pendingPhoneEditsRevision by remember { mutableStateOf(0) }
     var showAddColumn by remember { mutableStateOf(false) }
     var renameColumn by remember { mutableStateOf<TaskBoardColumn?>(null) }
     var deleteColumn by remember { mutableStateOf<TaskBoardColumn?>(null) }
@@ -233,6 +235,7 @@ private fun TaskBoardContents(parentPadding: PaddingValues, signalR: SignalRClie
             }.onFailure {
                 error = it.message ?: it.toString()
             }
+            pendingPhoneEditsRevision++
             loading = false
         }
     }
@@ -382,6 +385,11 @@ private fun TaskBoardContents(parentPadding: PaddingValues, signalR: SignalRClie
                                 taskDumpText = ""
                                 taskDumpPriorities = emptySet()
                                 showTaskDump = true
+                            })
+                            DropdownMenuItem(text = { Text("Pending PC edits") }, onClick = {
+                                actionsExpanded = false
+                                pendingPhoneEditsRevision++
+                                showPendingPhoneEdits = true
                             })
                             DropdownMenuItem(text = { Text("Manage columns") }, onClick = {
                                 actionsExpanded = false
@@ -568,6 +576,31 @@ private fun TaskBoardContents(parentPadding: PaddingValues, signalR: SignalRClie
                 }
             }
         }
+    }
+
+    if (showPendingPhoneEdits) {
+        val privateDrafts = remember(pendingPhoneEditsRevision) { offlineDrafts.all() }
+        PendingPhoneTaskEditsDialog(
+            drafts = privateDrafts,
+            busy = loading,
+            onRetryExact = { operationId ->
+                scope.launch {
+                    loading = true
+                    error = null
+                    try {
+                        val result = withContext(Dispatchers.IO) { phoneWriter.sendSaved(operationId) }
+                        if (result.status != "applied") error = result.details ?: "PC operation is still unconfirmed"
+                        refresh()
+                    } catch (failure: Exception) {
+                        error = failure.message ?: failure.toString()
+                    } finally {
+                        pendingPhoneEditsRevision++
+                        loading = false
+                    }
+                }
+            },
+            onClose = { showPendingPhoneEdits = false }
+        )
     }
 
     snapshot?.let { board ->
