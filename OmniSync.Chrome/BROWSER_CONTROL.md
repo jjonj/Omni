@@ -38,6 +38,12 @@ Real Chromium end-to-end validation of the unified 14-action tool passed against
 
 2026-10-29: After manual extension reload, live `browser_control(action="tabs")` DID list the existing `http://192.168.1.1/` tab (`1542702680`), and `page_state` succeeded. The previous omission came from the extension's HTTP host filter, not a missing browser window. A subsequent source update removes HTTP origin allowlists entirely. The **separate** OMCPT server must be rebuilt/redeployed to accept arbitrary browser navigation URLs; extension reload alone does not change server-side validation.
 
+### Browser action outcomes and platform protections
+
+`DOM_TARGET_NOT_FOUND`, `DOM_INVALID_SELECTOR`, `DOM_ORIGIN_CHANGED`, and `DOM_PRECONDITION_FAILED` identify known failures before a DOM mutation began. `DOM_ACTION_FAILED` means an injected action threw after it may have started; its outcome is unknown and it must not be blindly retried. `FRAME_RESULT_UNAVAILABLE` remains unknown when Chromium returned no script result (e.g. during navigation). Returned DOM errors contain no raw page exception text or form values. `type` returns `valueMatches` for the immediate field value and `saved: "not_verified"`; `click` returns `confirmation: "CLICK_DISPATCHED_ONLY"`. Neither result certifies that router settings were persisted.
+
+A tool invocation rejected before execution with "This tool call was blocked by OpenAI's safety checks" is a separate platform-side decision, not a Chromium/extension error. Do not use another interface to replay the blocked credential entry. The user can complete protected inputs manually in Vivaldi.
+
 ### Unpacked extension automatic refresh
 
 The Vivaldi extension folder is **`D:\SSDProjects\Omni\OmniSync.Chrome`**, not `OmniSync.Android` (the Android app source). Install the unpacked **Chrome** folder once under `vivaldi:extensions` in developer mode. Its five-minute alarm calls `chrome.runtime.reload()` only for a development/unpacked install and only when no browser-control command has arrived for two minutes. Reload increments a persisted counter shown as `extension.autoReloadCount` in `browser_control(action="tabs")`; `extension.build` confirms which source version the running worker loaded. No extension-page navigation, browser-tab reload, or T3 restart is needed. Other install types are untouched; browser-required new host permission approvals still need a human.

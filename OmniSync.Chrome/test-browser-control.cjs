@@ -135,6 +135,7 @@ body.children.push(deepRoot);
 const document = {
   body, title: "Test page", readyState:"complete", documentElement:{scrollHeight:2000},
   querySelector(s) {
+    if (s === "#invalid[") throw new SyntaxError("Bad selector details");
     if (s === "#password") return secretInput;
     if (s === "#otp") return otpInput;
     if (s === "#search") return safeInput;
@@ -197,10 +198,12 @@ function message(command, args = {}) {
   assert.equal(api.inspectOrAct("type", "https://example.test", "#otp", "x").typed, true);
   assert.equal(secretInput.value, "x");
   assert.equal(otpInput.value, "x");
-  assert.throws(() => api.inspectOrAct("click", "https://evil.test", "#go", ""), /outside approved origin/);
+  assert.equal(api.inspectOrAct("click", "https://evil.test", "#go", "").code, "DOM_ORIGIN_CHANGED");
   const result = api.inspectOrAct("type", "https://example.test", "#search", "safe search");
   assert.equal(result.typed, true);
   assert.equal(result.length, 11);
+  assert.equal(result.valueMatches, true);
+  assert.equal(result.saved, "not_verified");
   assert.equal(safeInput.value, "safe search");
   assert.equal(result.text, undefined, "No typed text may be returned");
   link.attrs.href = "https://another-site.test/";
@@ -220,7 +223,7 @@ function message(command, args = {}) {
   assert.equal(window.lastScroll.top, 560);
   assert.equal(api.inspectOrAct("scroll", "https://example.test", "#search", "", {deltaY:-120}).scrolled, true);
   assert.equal(safeInput.lastScroll.top, -120);
-  assert.throws(() => api.inspectOrAct("scroll", "https://example.test", "", "", {deltaY:9000}), /Invalid/);
+  assert.equal(api.inspectOrAct("scroll", "https://example.test", "", "", {deltaY:9000}).code, "DOM_PRECONDITION_FAILED");
   const page = api.inspectOrAct("page_state", "https://example.test", "", "");
   assert.equal(page.scroll.y, 80);
   assert.equal(page.viewport.height, 700);
@@ -274,6 +277,27 @@ function message(command, args = {}) {
   assert.equal(failure.code, "FRAME_INJECTION_FAILED");
   assert.doesNotMatch(JSON.stringify(failure), /SECRET-NEVER-RETURN/);
   injectionMode = "normal";
+  failure = await api.execute(work("click", {selector:"#absent"}));
+  assert.equal(failure.code, "DOM_TARGET_NOT_FOUND");
+  assert.equal(failure.retrySafe, true);
+  assert.equal(failure.outcome, "unavailable");
+  failure = await api.execute(work("click", {selector:"#invalid["}));
+  assert.equal(failure.code, "DOM_INVALID_SELECTOR");
+  assert.equal(failure.retrySafe, true);
+  const originalClick = link.click;
+  link.click = () => { throw Error("PRIVATE_PAGE_DETAILS"); };
+  failure = await api.execute(work("click", {selector:"#go"}));
+  assert.equal(failure.code, "DOM_ACTION_FAILED");
+  assert.equal(failure.retrySafe, false);
+  assert.equal(failure.outcome, "unknown");
+  assert.doesNotMatch(JSON.stringify(failure), /PRIVATE_PAGE_DETAILS/);
+  // A page handler can throw text that resembles a precondition failure.
+  // It is still UNKNOWN once the click was dispatched.
+  link.click = () => { throw Error("Visible target not found."); };
+  failure = await api.execute(work("click", {selector:"#go"}));
+  assert.equal(failure.code, "DOM_ACTION_FAILED");
+  assert.equal(failure.retrySafe, false);
+  link.click = originalClick;
   assert.equal(api.injectionFailure("click", Error("Sensitive form target is prohibited.")).code,
     "SENSITIVE_ACTION_RESTRICTED");
   assert.equal(api.injectionFailure("click", Error("Form submission or script-link activation must be performed manually.")).retrySafe, false);

@@ -80,6 +80,11 @@
   // Runs in Chrome's isolated world, not the page's JS world.
   // DOM actions may target forms; inspection never returns field values.
   function inspectOrAct(action, expectedOrigin, selector, typed, options = {}) {
+    // Return structured outcomes from injected code; otherwise Chromium can
+    // discard an exception and report an empty frame result to the caller.
+    // Once a mutation begins, never treat an exception as safely retryable.
+    let actionStarted = false;
+    try {
     if (location.origin !== expectedOrigin) throw Error("Tab navigated outside approved origin.");
     const sensitive = /(passw|passwd|secret|token|auth|otp|one.?time|2fa|pin|cvv|cvc|card.?num|credit|debit|payment|social.?security|iban|bank|recovery|api.?key|session)/i;
     const visible = el => {
@@ -143,6 +148,7 @@
       const dx = options.deltaX ?? 0, dy = options.deltaY ?? 0;
       if (!Number.isInteger(dx) || !Number.isInteger(dy) ||
           Math.abs(dx) > 2000 || Math.abs(dy) > 2000) throw Error("Invalid scroll offset.");
+      actionStarted = true;
       window.scrollBy({ left: dx, top: dy, behavior: "instant" });
       return { scrolled: true };
     }
@@ -168,13 +174,16 @@
     }
     if (typeof selector !== "string" || selector.length > 512)
       throw Error("Invalid selector.");
-    const element = document.querySelector(selector);
+    let element;
+    try { element = document.querySelector(selector); }
+    catch { throw Error("Invalid selector."); }
     if (action === "wait_for" && (!element || !visible(element)))
       return { found: false };
     if (!element || !visible(element)) throw Error("Visible target not found.");
     if (action === "wait_for") return { found: true, selector };
     if (action === "focus") {
       if (typeof element.focus !== "function") throw Error("Element cannot be focused.");
+      actionStarted = true;
       element.focus({ preventScroll: true });
       return { focused: true, selector };
     }
@@ -183,6 +192,7 @@
       if (!Number.isInteger(dx) || !Number.isInteger(dy) ||
           Math.abs(dx) > 2000 || Math.abs(dy) > 2000) throw Error("Invalid scroll offset.");
       if (typeof element.scrollBy !== "function") throw Error("Element cannot scroll.");
+      actionStarted = true;
       element.scrollBy({ left: dx, top: dy, behavior: "instant" });
       return { scrolled: true, selector };
     }
@@ -192,6 +202,7 @@
       if (choice.length < 1 || choice.length > 120) throw Error("Invalid option text.");
       const selected = [...element.options].find(opt => opt.textContent.trim() === choice && !opt.disabled);
       if (!selected) throw Error("Option not found or disabled.");
+      actionStarted = true;
       selected.selected = true;
       element.dispatchEvent(new Event("input", { bubbles: true }));
       element.dispatchEvent(new Event("change", { bubbles: true }));
@@ -199,8 +210,10 @@
     }
     if (action === "click") {
       // Chromium controls what can be activated; do not reject normal form buttons or links.
+      actionStarted = true;
       element.click();
-      return { clicked: true, selector };
+      // A dispatched click is not proof that the site accepted or saved a change.
+      return { clicked: true, selector, confirmation: "CLICK_DISPATCHED_ONLY" };
     }
     if (action === "type") {
       if (!(element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement))
@@ -209,15 +222,34 @@
         throw Error("This control is not a text-value input.");
       if (typeof typed !== "string" || typed.length > 4000)
         throw Error("Text exceeds safety limit.");
+      actionStarted = true;
       element.focus();
       const proto = element instanceof HTMLTextAreaElement
         ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
       Object.getOwnPropertyDescriptor(proto, "value").set.call(element, typed);
       element.dispatchEvent(new Event("input", { bubbles: true }));
       element.dispatchEvent(new Event("change", { bubbles: true }));
-      return { typed: true, selector, length: typed.length };
+      return { typed: true, selector, length: typed.length,
+        valueMatches: element.value === typed, saved: "not_verified" };
     }
     throw Error("Unknown DOM operation.");
+    } catch (error) {
+      const message = String(error?.message || "");
+      const missing = message === "Visible target not found.";
+      const invalidSelector = message === "Invalid selector.";
+      const changedOrigin = message === "Tab navigated outside approved origin.";
+      const known = !actionStarted && (missing || invalidSelector || changedOrigin ||
+        /^(Only standard text controls|This control is not a text-value input|Text exceeds safety limit|Target is not a select dropdown|Invalid option text|Option not found or disabled|Invalid scroll offset|Element cannot)/.test(message));
+      const mutating = ["click", "type", "select", "focus", "scroll"].includes(action);
+      return {
+        error: known ? "DOM target or argument is unavailable." : "DOM action failed; outcome may be unknown.",
+        code: !known ? "DOM_ACTION_FAILED" : missing ? "DOM_TARGET_NOT_FOUND" :
+          invalidSelector ? "DOM_INVALID_SELECTOR" :
+          changedOrigin ? "DOM_ORIGIN_CHANGED" : "DOM_PRECONDITION_FAILED",
+        outcome: known || !mutating ? "unavailable" : "unknown",
+        retrySafe: known || !mutating
+      };
+    }
   }
 
   // Chrome can discard the frame/result when a click navigates the page.
