@@ -9,7 +9,7 @@
   let polling = false;
   const AUTO_RELOAD_ALARM = "browser-control-development-reload";
   const RELOAD_KEY = "browserControlAutoReloadCount";
-  const BUILD_MARKER = "browser-control-unrestricted-20261029";
+  const BUILD_MARKER = "browser-control-full-path-20261029";
   const AUTO_RELOAD_MINUTES = 5;
   const QUIET_BEFORE_RELOAD_MS = 2 * 60 * 1000;
   let lastCommandAt = Date.now();
@@ -89,13 +89,21 @@
       el.getAttribute("placeholder") || "").replace(/\s+/g, " ").slice(0, 90);
     const path = el => {
       const parts = [];
-      for (let cur = el; cur && cur !== document.body && parts.length < 8; cur = cur.parentElement) {
+      // Walk all the way to body: truncating after 8 levels produced selectors
+      // that looked plausible but pointed at entirely different router controls.
+      for (let cur = el; cur && cur !== document.body; cur = cur.parentElement) {
         const siblings = [...(cur.parentElement?.children || [])]
           .filter(child => child.tagName === cur.tagName);
         const tag = cur.tagName.toLowerCase();
         parts.unshift(tag + ":nth-of-type(" + (siblings.indexOf(cur) + 1) + ")");
       }
-      return "body > " + parts.join(" > ");
+      const selector = "body > " + parts.join(" > ");
+      // If the structural path is too long for tool inputs, use an exact unique ID.
+      if (selector.length > 512 && el.id) {
+        const byId = `[id=${JSON.stringify(el.id)}]`;
+        if (byId.length <= 512 && document.querySelectorAll(byId).length === 1) return byId;
+      }
+      return selector.length <= 512 ? selector : "";
     };
     if (action === "page_state") {
       return {

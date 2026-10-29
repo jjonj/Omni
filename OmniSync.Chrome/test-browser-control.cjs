@@ -117,6 +117,17 @@ const textNodes = [
   { textContent: "Visible heading", parentElement: textParent },
   { textContent: "SECRET-OTP-1234", parentElement: formParent }
 ];
+// Deeply nested router controls must not get shortened into invalid body paths.
+const deepInput = new FakeInput({id:"deep-ssid"}, "");
+let deepRoot = deepInput;
+for (let i = 0; i < 12; i++) {
+  const parent = new FakeElement("DIV");
+  parent.children = [deepRoot];
+  deepRoot.parentElement = parent;
+  deepRoot = parent;
+}
+deepRoot.parentElement = body;
+body.children.push(deepRoot);
 const document = {
   body, title: "Test page", readyState:"complete", documentElement:{scrollHeight:2000},
   querySelector(s) {
@@ -127,7 +138,7 @@ const document = {
     if (s === "#choice") return dropdown;
     return null;
   },
-  querySelectorAll() { return [link, secretInput, otpInput, safeInput, dropdown]; },
+  querySelectorAll() { return [link, secretInput, otpInput, safeInput, dropdown, deepInput]; },
   createTreeWalker() {
     let index = -1;
     return { nextNode() { index++; this.currentNode = textNodes[index]; return index < textNodes.length; } };
@@ -219,6 +230,8 @@ function message(command, args = {}) {
   assert.match(snapshot.text, /Visible heading/);
   assert.doesNotMatch(JSON.stringify(snapshot), /NEVER-DISCLOSE|SECRET-OTP-1234|123456/);
   assert.ok(snapshot.elements.some(el => el.selector), "Form controls should be discoverable");
+  const ssidPath = snapshot.elements.find(el => el.selector.includes("div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1)") && el.tag === "input");
+  assert.ok(ssidPath?.selector.split(" > ").length >= 14, "Deep controls need complete body-anchored selectors");
   assert.ok(snapshot.elements.every(x => x.selector && x.tag));
   data.omniBrowserControl = {mode:"local",enabled:true};
   tab.url = "http://192.168.1.1/?session=REDACT_ME";
