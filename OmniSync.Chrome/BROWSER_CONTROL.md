@@ -1,12 +1,12 @@
 # OmniSync Chrome extension â†” Rust OmniMCP browser_control
 
-Updated 2026-10-20. **Canonical installed extension:** `D:\SSDProjects\Omni\OmniSync.Chrome` (manifest v1.3).
+Updated 2026-10-29. **Canonical installed extension:** `D:\SSDProjects\Omni\OmniSync.Chrome` (manifest v1.3).
 **Canonical running MCP server:** Rust sidecar in `D:\SSDProjects\Tools\Omnish\main`, via scheduled task **OmniHub Rust MCP** (current loopback port 8772, bridge 18773), not the retired C# candidate `McpHelloProbe`.
 
 ## How to use
 
 The extension starts on its own, without pairing tokens or per-origin permission prompts.
-The extension requests HTTPS host permission at install/reload; localhost HTTP and the exact router host `http://192.168.1.1/*` are also permitted. No wildcard HTTP access is granted. Reload the unpacked extension in Vivaldi's Extensions page to activate manifest/source changes (and accept any new host-permission prompt); do not restart Vivaldi or T3. The popup has only **Enable/Pause**. Router login/password, OAuth, form-submission and sensitive-field protections remain in place.
+The extension now requests **all HTTP and HTTPS host permissions**, without individual LAN/IP rules. Its own DOM restrictions on password fields, normal form submission, and links have been removed; Chromium still enforces native protected-page and permission boundaries. Inspection continues to omit input values and redact query strings/fragments. The popup has **Enable/Pause**. A manifest permission expansion may still require Vivaldi's approval on first activation.
 
 ChatGPT/other MCP clients use **one tool named `browser_control`** with a required `action` string:
 
@@ -36,8 +36,8 @@ Real Chromium end-to-end validation of the unified 14-action tool passed against
 
 2026-10-22: original 8772/18773 restored after inherited socket-handle reclamation. Actual OMCP browser_control tabs succeeded; no further extension reload was needed for the running bridge.
 
-2026-10-29: source change permits only `http://192.168.1.1/` additionally. Source patch alone is not live: reload the unpacked extension and deploy/restart **only** the independent OMCPT sidecar using its documented owner-coordinated procedure, then confirm `browser_control(action="tabs")` includes the router tab. Do not equate a source commit with live Vivaldi permission or a logged-in router session.
+2026-10-29: After manual extension reload, live `browser_control(action="tabs")` DID list the existing `http://192.168.1.1/` tab (`1542702680`), and `page_state` succeeded. The previous omission came from the extension's HTTP host filter, not a missing browser window. A subsequent source update removes HTTP origin allowlists entirely. The **separate** OMCPT server must be rebuilt/redeployed to accept arbitrary browser navigation URLs; extension reload alone does not change server-side validation.
 
 ### Unpacked extension automatic refresh
 
-The Vivaldi extension folder is **`D:\\SSDProjects\\Omni\\OmniSync.Chrome`**, not `OmniSync.Android` (the Android app source). First install the unpacked **Chrome** folder once under `vivaldi:extensions` in developer mode, or reload that existing extension once to activate this updated service worker. Later, its five-minute alarm calls `chrome.runtime.reload()` only for a development/unpacked install and only when no browser-control command has arrived for two minutes. This refreshes sources already on disk without navigating extension settings or restarting browser tabs; other install types are untouched. Reloading is postponed during recent activity, and any browser-required new host permission approval still needs manual confirmation. An automatic refresh can briefly interrupt the extension's own bridge connections.
+The Vivaldi extension folder is **`D:\SSDProjects\Omni\OmniSync.Chrome`**, not `OmniSync.Android` (the Android app source). Install the unpacked **Chrome** folder once under `vivaldi:extensions` in developer mode. Its five-minute alarm calls `chrome.runtime.reload()` only for a development/unpacked install and only when no browser-control command has arrived for two minutes. Reload increments a persisted counter shown as `extension.autoReloadCount` in `browser_control(action="tabs")`; `extension.build` confirms which source version the running worker loaded. No extension-page navigation, browser-tab reload, or T3 restart is needed. Other install types are untouched; browser-required new host permission approvals still need a human.

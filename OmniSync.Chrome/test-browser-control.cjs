@@ -150,18 +150,18 @@ const source = fs.readFileSync(path.join(__dirname, "browser-control.js"), "utf8
 vm.runInContext(source, context, { filename: "browser-control.js" });
 const api = context.BrowserControl;
 assert.equal(api.validOrigin("https://example.test/path"), "https://example.test");
-assert.equal(api.validOrigin("http://example.test/"), null);
+assert.equal(api.validOrigin("http://example.test/"), "http://example.test");
 assert.equal(api.validOrigin("http://192.168.1.1/login?secret=redacted"), "http://192.168.1.1");
-assert.equal(api.validOrigin("http://192.168.1.2/"), null);
-assert.equal(api.validOrigin("http://192.168.1.1/#access_token=secret"), null);
+assert.equal(api.validOrigin("http://192.168.1.2/"), "http://192.168.1.2");
+assert.equal(api.validOrigin("http://192.168.1.1/#access_token=secret"), "http://192.168.1.1");
 assert.equal(api.validOrigin("chrome://extensions"), null);
 assert.equal(api.validOrigin("file:///C:/secrets.txt"), null);
-assert.equal(api.validOrigin("https://x.test/#access_token=abc"), null);
+assert.equal(api.validOrigin("https://x.test/#access_token=abc"), "https://x.test");
 assert.equal(api.displayUrl("https://example.test/a?access_token=SECRET#code=SECRET"), "https://example.test/a");
 const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, "manifest.json"), "utf8"));
 assert.ok(manifest.host_permissions.includes("https://*/*"), "HTTPS sites should work without per-origin prompts");
-assert.ok(manifest.host_permissions.includes("http://192.168.1.1/*"), "Permit the exact router HTTP host");
-assert.ok(!manifest.host_permissions.includes("http://*/*"), "Do not permit arbitrary HTTP hosts");
+assert.ok(manifest.host_permissions.includes("http://*/*"), "Permit HTTP on all hosts");
+assert.ok(!manifest.host_permissions.includes("http://192.168.1.1/*"), "No site-specific router rule");
 
 function message(command, args = {}) {
   return new Promise((resolve) => {
@@ -178,8 +178,10 @@ function message(command, args = {}) {
   data.omniBrowserControl = {enabled:false, token:"old-pairing", origins:[]};
   reply = await message("status");
   assert.equal(reply.data.enabled, true, "Old pairing settings migrate to local mode.");
-  assert.throws(() => api.inspectOrAct("type", "https://example.test", "#password", "x"), /Sensitive/);
-  assert.throws(() => api.inspectOrAct("type", "https://example.test", "#otp", "x"), /Sensitive/);
+  assert.equal(api.inspectOrAct("type", "https://example.test", "#password", "x").typed, true);
+  assert.equal(api.inspectOrAct("type", "https://example.test", "#otp", "x").typed, true);
+  assert.equal(secretInput.value, "x");
+  assert.equal(otpInput.value, "x");
   assert.throws(() => api.inspectOrAct("click", "https://evil.test", "#go", ""), /outside approved origin/);
   const result = api.inspectOrAct("type", "https://example.test", "#search", "safe search");
   assert.equal(result.typed, true);
@@ -193,10 +195,10 @@ function message(command, args = {}) {
   link.attrs.href = "http://192.168.1.1/";
   assert.equal(api.inspectOrAct("click", "https://example.test", "#go", "").clicked, true);
   link.attrs.href = "http://192.168.1.2/";
-  assert.throws(() => api.inspectOrAct("click", "https://example.test", "#go", ""), /Only HTTPS/);
+  assert.equal(api.inspectOrAct("click", "https://example.test", "#go", "").clicked, true);
   const focused = api.inspectOrAct("focus", "https://example.test", "#search", "");
   assert.equal(focused.focused, true);
-  assert.throws(() => api.inspectOrAct("focus", "https://example.test", "#password", ""), /Sensitive/);
+  assert.equal(api.inspectOrAct("focus", "https://example.test", "#password", "").focused, true);
   assert.equal(api.inspectOrAct("wait_for", "https://example.test", "#go", "").found, true);
   assert.equal(api.inspectOrAct("wait_for", "https://example.test", "#absent", "").found, false);
   assert.equal(api.inspectOrAct("scroll", "https://example.test", "", "", {deltaY:560}).scrolled, true);
@@ -216,6 +218,7 @@ function message(command, args = {}) {
   const snapshot = api.inspectOrAct("inspect", "https://example.test");
   assert.match(snapshot.text, /Visible heading/);
   assert.doesNotMatch(JSON.stringify(snapshot), /NEVER-DISCLOSE|SECRET-OTP-1234|123456/);
+  assert.ok(snapshot.elements.some(el => el.selector), "Form controls should be discoverable");
   assert.ok(snapshot.elements.every(x => x.selector && x.tag));
   data.omniBrowserControl = {mode:"local",enabled:true};
   tab.url = "http://192.168.1.1/?session=REDACT_ME";
@@ -281,13 +284,13 @@ function message(command, args = {}) {
   assert.equal((await api.execute(work("close"))).closed, true);
   assert.equal(tabActions.filter(x=>x[0]==="remove").length, 1);
   tab.url = "chrome://extensions/";
-  await assert.rejects(api.execute(work("close")), /not accessible/);
-  await assert.rejects(api.execute(work("bring_to_front")), /not accessible/);
+  assert.equal((await api.execute(work("bring_to_front"))).activated, true);
+  assert.equal((await api.execute(work("close"))).closed, true);
   tab.url = "https://another-site.test/";
   assert.equal((await api.execute(work("reload"))).reloading, true);
   tab.url = "https://example.test/?access_token=hidden";
   permit = false;
-  await assert.rejects(api.execute(work("reload")), /not accessible/);
+  assert.equal((await api.execute(work("reload"))).reloading, true);
   permit = true;
   reply = await message("disable");
   assert.equal(reply.data.enabled, false);
@@ -303,6 +306,7 @@ function message(command, args = {}) {
   installType = "development";
   assert.equal(await api.maybeReloadDevelopmentExtension(), true);
   assert.equal(reloaded, 1);
+  assert.equal(data.browserControlAutoReloadCount, 1);
   await message("disable"); // Stop background poll loop before test exit.
-  console.log("PASS: safe unknown-outcome frame diagnostics, no click retries, redaction, bring_to_front and sensitive form restrictions");
+  console.log("PASS: unrestricted HTTP and form actions, redacted inspection, safe click outcomes, idle unpacked reload");
 })().catch(err => { console.error(err); process.exitCode = 1; });

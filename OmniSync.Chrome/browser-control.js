@@ -8,6 +8,8 @@
   let current = { enabled: true };
   let polling = false;
   const AUTO_RELOAD_ALARM = "browser-control-development-reload";
+  const RELOAD_KEY = "browserControlAutoReloadCount";
+  const BUILD_MARKER = "browser-control-unrestricted-20261029";
   const AUTO_RELOAD_MINUTES = 5;
   const QUIET_BEFORE_RELOAD_MS = 2 * 60 * 1000;
   let lastCommandAt = Date.now();
@@ -19,6 +21,8 @@
     if (Date.now() - lastCommandAt < QUIET_BEFORE_RELOAD_MS) return false;
     const info = await chrome.management.getSelf();
     if (info.installType !== "development") return false;
+    const stored = await chrome.storage.local.get(RELOAD_KEY);
+    await chrome.storage.local.set({ [RELOAD_KEY]: (stored[RELOAD_KEY] || 0) + 1 });
     chrome.runtime.reload(); // Extension only; does not restart Vivaldi or its tabs.
     return true;
   }
@@ -26,22 +30,20 @@
   const validOrigin = url => {
     try {
       const u = new URL(url);
-      if (u.username || u.password || u.hash && /token|password|secret|key=/i.test(u.hash)) return null;
-      if (u.protocol !== "https:" && !(u.protocol === "http:" &&
-          (u.hostname === "localhost" || u.hostname === "127.0.0.1" ||
-           u.hostname === "192.168.1.1"))) return null;
+      if (u.protocol !== "https:" && u.protocol !== "http:") return null;
       return u.origin;
     } catch { return null; }
   };
-  // Chrome match patterns contain hosts, never ports, even on localhost.
-  const sitePattern = origin => { const u = new URL(origin); return u.protocol + "//" + u.hostname + "/*"; };
   // URLs often carry OAuth codes, password reset links or session tokens.
   // Never return query strings, fragments or embedded credentials to MCP.
-  const displayUrl = raw => { try { const u = new URL(raw); return u.origin + u.pathname; } catch { return ""; } };
-  async function allowed(url) {
-    const origin = validOrigin(url);
-    return !!origin && !!(await chrome.permissions.contains({ origins: [sitePattern(origin)] }));
-  }
+  const displayUrl = raw => {
+    try {
+      const u = new URL(raw);
+      // Return only the address without embedded credentials, query or fragment.
+      return u.origin === "null" ? u.protocol + (u.host ? "//" + u.host : "") + u.pathname
+        : u.origin + u.pathname;
+    } catch { return ""; }
+  };
   async function load() {
     const stored = (await chrome.storage.local.get(KEY))[KEY] || {};
     // Migrate old pairing-based settings to easy local mode on first reload.
@@ -69,28 +71,15 @@
     return status();
   }
   async function getApprovedTab(tabId) {
-    const tab = await chrome.tabs.get(tabId);
-    if (!await allowed(tab.url || "")) throw new Error("Tab URL is not accessible by this extension.");
-    return tab;
+    // Let Chrome enforce protected schemes and injection access itself.
+    return chrome.tabs.get(tabId);
   }
 
   // Runs in Chrome's isolated world, not the page's JS world.
-  // Never read any input.value, textarea.value, password, payment or OTP field.
+  // DOM actions may target forms; inspection never returns field values.
   function inspectOrAct(action, expectedOrigin, selector, typed, options = {}) {
     if (location.origin !== expectedOrigin) throw Error("Tab navigated outside approved origin.");
     const sensitive = /(passw|passwd|secret|token|auth|otp|one.?time|2fa|pin|cvv|cvc|card.?num|credit|debit|payment|social.?security|iban|bank|recovery|api.?key|session)/i;
-    const risky = element => {
-      if (!element || !(element instanceof Element)) return true;
-      const input = element.closest("input, textarea, select, [contenteditable]");
-      if (!input) return false;
-      const typ = (input.getAttribute("type") || "").toLowerCase();
-      if (["password", "hidden", "email", "tel", "number", "date", "file"].includes(typ))
-        return true;
-      const attrs = ["id", "name", "autocomplete", "placeholder", "aria-label", "data-testid"];
-      if (attrs.some(k => sensitive.test(input.getAttribute(k) || ""))) return true;
-      const form = input.closest("form");
-      return !!form && !!form.querySelector('input[type="password"],input[autocomplete*="cc-"],input[autocomplete="one-time-code"]');
-    };
     const visible = el => {
       if (!el || !el.getClientRects().length) return false;
       const css = getComputedStyle(el);
@@ -128,7 +117,7 @@
       while (walker.nextNode() && nodesVisited++ < 3000 && count < 200) {
         const node = walker.currentNode, parent = node.parentElement;
         if (!parent || !visible(parent) ||
-            parent.closest("form, input, textarea, select, [contenteditable], script, style, noscript, [data-private]") ||
+            parent.closest("input, textarea, select, [contenteditable], script, style, noscript, [data-private]") ||
             sensitive.test(parent.getAttribute("autocomplete") || "")) continue;
         const text = (node.textContent || "").replace(/\s+/g, " ").trim();
         if (!text || !text.toLocaleLowerCase().includes(needle)) continue;
@@ -153,14 +142,13 @@
       while (walker.nextNode() && chunks.join(" ").length < 5500) {
         const node = walker.currentNode, parent = node.parentElement;
         if (!parent || !visible(parent) ||
-            parent.closest("form, input, textarea, select, [contenteditable], script, style, noscript, [data-private]") ||
+            parent.closest("input, textarea, select, [contenteditable], script, style, noscript, [data-private]") ||
             sensitive.test(parent.getAttribute("autocomplete") || "")) continue;
         const text = (node.textContent || "").replace(/\s+/g, " ").trim();
         if (text && text.length < 1000) chunks.push(text);
       }
       const elements = [...document.querySelectorAll("a, button, input, textarea, [role=button], select")].slice(0, 400)
-        .filter(el => visible(el) && !risky(el) &&
-            !el.closest('form:has(input[type="password"],input[autocomplete*="cc-"])'))
+        .filter(visible)
         .slice(0, 60).map(el => ({
           tag: el.tagName.toLowerCase(), role: el.getAttribute("role") || "",
           label: label(el), selector: path(el)
@@ -174,8 +162,6 @@
     if (action === "wait_for" && (!element || !visible(element)))
       return { found: false };
     if (!element || !visible(element)) throw Error("Visible target not found.");
-    if (risky(element) || element.closest('form:has(input[type="password"],input[autocomplete*="cc-"])'))
-      throw Error("Sensitive form target is prohibited.");
     if (action === "wait_for") return { found: true, selector };
     if (action === "focus") {
       if (typeof element.focus !== "function") throw Error("Element cannot be focused.");
@@ -202,27 +188,15 @@
       return { selected: true, selector };
     }
     if (action === "click") {
-      const anchor = element.closest("a[href]");
-      if (anchor) {
-        const destination = new URL(anchor.getAttribute("href") || "", location.href);
-        if ((destination.protocol !== "https:" &&
-            !(destination.protocol === "http:" && ["localhost", "127.0.0.1", "192.168.1.1"].includes(destination.hostname))) ||
-            destination.username || destination.password)
-          throw Error("Only HTTPS, localhost HTTP, or router HTTP links can be opened.");
-      }
-      // Block implicit credential/payment form submissions.
-      if (element.matches('input[type="submit"], input[type="image"], button[form], input[form], a[href^="javascript:"]') ||
-          (element.tagName === "BUTTON" && element.closest("form") &&
-           (element.getAttribute("type") || "submit").toLowerCase() !== "button"))
-        throw Error("Form submission or script-link activation must be performed manually.");
+      // Chromium controls what can be activated; do not reject normal form buttons or links.
       element.click();
       return { clicked: true, selector };
     }
     if (action === "type") {
       if (!(element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement))
         throw Error("Only standard text controls can receive typing.");
-      if (element instanceof HTMLInputElement && !["text", "search", ""].includes(element.type))
-        throw Error("This input type is not permitted.");
+      if (element instanceof HTMLInputElement && !["text", "search", "password", "email", "tel", "url", "number", "date", "time", "datetime-local", ""].includes(element.type))
+        throw Error("This control is not a text-value input.");
       if (typeof typed !== "string" || typed.length > 4000)
         throw Error("Text exceeds safety limit.");
       element.focus();
@@ -273,17 +247,16 @@
     const a = work.arguments || {};
     if (work.action === "tabs") {
       const tabs = await chrome.tabs.query({});
-      const approved = [];
-      for (const tab of tabs) {
-        if (await allowed(tab.url || "")) approved.push({
-          tabId: tab.id, origin: validOrigin(tab.url), title: (tab.title || "").slice(0, 160),
-          url: displayUrl(tab.url || "").slice(0, 2048), active: !!tab.active
-        });
-      }
-      return { tabs: approved.slice(0, 100) };
+      const visibleTabs = tabs.map(tab => ({
+        tabId: tab.id, origin: validOrigin(tab.url || ""), title: (tab.title || "").slice(0, 160),
+        url: displayUrl(tab.url || "").slice(0, 2048), active: !!tab.active
+      }));
+      const stored = await chrome.storage.local.get(RELOAD_KEY);
+      return { tabs: visibleTabs.slice(0, 100), extension: {
+        build: BUILD_MARKER, autoReloadCount: stored[RELOAD_KEY] || 0
+      } };
     }
     if (work.action === "navigate") {
-      if (!await allowed(a.url)) throw new Error("Destination URL not accessible by extension.");
       if (a.newTab === true) {
         const tab = await chrome.tabs.create({ url: a.url, active: false });
         return { tabId: tab.id, navigated: true };
