@@ -44,6 +44,8 @@ Real Chromium end-to-end validation of the unified 14-action tool passed against
 
 A tool invocation rejected before execution with "This tool call was blocked by OpenAI's safety checks" is a separate platform-side decision, not a Chromium/extension error. Do not use another interface to replay the blocked credential entry. The user can complete protected inputs manually in Vivaldi.
 
+Live verification on 2026-10-29: the unpacked Vivaldi extension automatically reloaded to build `browser-control-dom-outcomes-20261029` (`autoReloadCount: 4`), while the original router tab `1542702680` remained discoverable. A **read-only** `wait_for` with a deliberately malformed selector returned `DOM_INVALID_SELECTOR` with `retrySafe: true`, proving the new error classification reached the live extension. No router settings were changed.
+
 ### Unpacked extension automatic refresh
 
 The Vivaldi extension folder is **`D:\SSDProjects\Omni\OmniSync.Chrome`**, not `OmniSync.Android` (the Android app source). Install the unpacked **Chrome** folder once under `vivaldi:extensions` in developer mode. Its five-minute alarm calls `chrome.runtime.reload()` only for a development/unpacked install and only when no browser-control command has arrived for two minutes. Reload increments a persisted counter shown as `extension.autoReloadCount` in `browser_control(action="tabs")`; `extension.build` confirms which source version the running worker loaded. No extension-page navigation, browser-tab reload, or T3 restart is needed. Other install types are untouched; browser-required new host permission approvals still need a human.
