@@ -58,6 +58,10 @@ class AlarmService : Service(), android.content.SharedPreferences.OnSharedPrefer
     companion object {
         const val CHANNEL_ID = "OmniAlarmChannel"
         const val ACTION_DISMISS = "com.omni.sync.ALARM_DISMISS"
+        const val ACTION_REMOTE_DISMISS = "com.omni.sync.ALARM_REMOTE_DISMISS"
+        const val ACTION_REMOTE_SNOOZE = "com.omni.sync.ALARM_REMOTE_SNOOZE"
+        @Volatile var currentRemoteToken: String? = null
+            private set
         const val ACTION_ALARM_DISABLED = "com.omni.sync.ALARM_DISABLED"
         
         private val _isRinging = MutableStateFlow(false)
@@ -154,6 +158,16 @@ class AlarmService : Service(), android.content.SharedPreferences.OnSharedPrefer
             stopSelf()
             return START_NOT_STICKY
         }
+        if (intent?.action == ACTION_REMOTE_DISMISS || intent?.action == ACTION_REMOTE_SNOOZE) {
+            val remoteId = intent.getIntExtra("ALARM_ID", 0)
+            val remoteToken = intent.getStringExtra("ALARM_TOKEN")
+            // Remote commands may arrive late, after this alarm was snoozed or replaced.
+            if (_isRinging.value && currentReminderId == null && remoteId != 0 &&
+                remoteId == currentAlarmId && remoteToken != null && remoteToken == currentRemoteToken) {
+                if (intent.action == ACTION_REMOTE_DISMISS) handleDismiss() else handleAutoSnooze()
+            }
+            return START_NOT_STICKY
+        }
         val intentAlarmId = intent?.getIntExtra("ALARM_ID", 0) ?: 0
         if (intentAlarmId != 0) {
             currentAlarmId = intentAlarmId
@@ -176,6 +190,8 @@ class AlarmService : Service(), android.content.SharedPreferences.OnSharedPrefer
         currentReminderId = intent?.getStringExtra("REMINDER_ID")
         currentReminderKind = intent?.getIntExtra("REMINDER_KIND", 0) ?: 0
 
+        // Each ring gets a new identity; a stale desktop click cannot affect a later ring.
+        currentRemoteToken = if (currentReminderId == null) java.util.UUID.randomUUID().toString() else null
         // Store for global dismissal (e.g. from notification or overlay)
         updateState(this, isRinging = true, isSnoozing = false, alarmId = currentAlarmId, repeating = repeatDaily)
 
@@ -227,6 +243,7 @@ class AlarmService : Service(), android.content.SharedPreferences.OnSharedPrefer
         }
         
         playAlarm(currentSoundId, currentVolume)
+        if (currentReminderId == null) reportDesktopAlarm(true)
         if (currentReminderId != null) com.omni.sync.utils.ReminderDelivery.log(this, "Alarm service started $currentReminderId kind=$currentReminderKind volume=$currentVolume repetition=$currentRepetition")
         
         // Schedule Auto-Snooze Timeout
@@ -275,6 +292,12 @@ class AlarmService : Service(), android.content.SharedPreferences.OnSharedPrefer
             Log.e("AlarmService", "Failed to play alarm", e)
             stopSelf()
         }
+    }
+
+    private fun reportDesktopAlarm(ringing: Boolean) {
+        val token = currentRemoteToken ?: return
+        (application as? OmniSyncApplication)?.signalRClient
+            ?.reportAndroidAlarm(currentAlarmId, token, ringing, dismissText ?: "Phone alarm")
     }
 
     private fun handleAutoSnooze() {
@@ -337,6 +360,7 @@ class AlarmService : Service(), android.content.SharedPreferences.OnSharedPrefer
             }
         }
         
+        reportDesktopAlarm(false)
         stopSelf()
     }
 
@@ -360,6 +384,7 @@ class AlarmService : Service(), android.content.SharedPreferences.OnSharedPrefer
         }
         stopSound()
         updateState(this, isRinging = false, isSnoozing = false)
+        reportDesktopAlarm(false)
         timeoutJob?.cancel()
         snoozeMessage = null
 
@@ -516,6 +541,8 @@ class AlarmService : Service(), android.content.SharedPreferences.OnSharedPrefer
     }
 
     override fun onDestroy() {
+        if (_isRinging.value && currentReminderId == null) reportDesktopAlarm(false)
+        currentRemoteToken = null
         _isRinging.value = false
         // isSnoozing is persistent across service restarts until dismissed
         timeoutJob?.cancel()

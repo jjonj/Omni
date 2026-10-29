@@ -59,6 +59,12 @@ data class ProcessInfo(
     @SerializedName("memoryUsage") val memoryUsage: Long = 0
 )
 
+data class AndroidAlarmActionData(
+    val id: Int = 0,
+    val token: String = "",
+    val action: String = ""
+)
+
 data class ReceivePayload(
     @SerializedName("Target") val target: String,
     @SerializedName("Command") val command: String,
@@ -965,6 +971,24 @@ class SignalRClient(
         if (handlersRegistered) return
         handlersRegistered = true
         hubConnection?.on("RemindersChanged", { refreshReminders() })
+        hubConnection?.on("AndroidAlarmAction", { request: AndroidAlarmActionData ->
+            val serviceAction = when (request.action) {
+                "dismiss" -> com.omni.sync.service.AlarmService.ACTION_REMOTE_DISMISS
+                "snooze" -> com.omni.sync.service.AlarmService.ACTION_REMOTE_SNOOZE
+                else -> null
+            }
+            if (serviceAction != null && request.id != 0 && request.token.isNotBlank() &&
+                com.omni.sync.service.AlarmService.isRinging.value &&
+                request.token == com.omni.sync.service.AlarmService.currentRemoteToken &&
+                request.id == com.omni.sync.service.AlarmService.lastTriggeredAlarmId) {
+                val intent = android.content.Intent(context, com.omni.sync.service.AlarmService::class.java).apply {
+                    action = serviceAction
+                    putExtra("ALARM_ID", request.id)
+                    putExtra("ALARM_TOKEN", request.token)
+                }
+                context.startService(intent)
+            }
+        }, AndroidAlarmActionData::class.java)
 
         hubConnection?.on("AssistantRunUpdated", { update: AssistantRunUpdateData ->
             val message = update.summary ?: update.reason ?: update.state
@@ -2837,6 +2861,14 @@ class SignalRClient(
         }
     }
 
+    /** Publish the phone's authoritative ringing state; Hub actions never infer completion. */
+    fun reportAndroidAlarm(id: Int, token: String, ringing: Boolean, title: String) {
+        val connection = hubConnection
+        if (!isHubAuthenticated || connection?.connectionState != com.microsoft.signalr.HubConnectionState.CONNECTED) return
+        connection.invoke(Any::class.java, "ReportAndroidAlarm", id, token, ringing, title.take(180))
+            .subscribe({}, { error -> Log.w("AndroidAlarm", "Hub alarm state report failed: ${error.message}") })
+    }
+
     fun reportAndroidUpdateStatus(requestId: String, status: String, message: String) {
         val connection = hubConnection
         if (connection?.connectionState != com.microsoft.signalr.HubConnectionState.CONNECTED) {
@@ -2861,6 +2893,14 @@ class SignalRClient(
                     advertiseAssistantCommands()
                     flushAssistantVoiceOutbox()
                     refreshReminders()
+                    com.omni.sync.service.AlarmService.currentRemoteToken?.let { token ->
+                        if (com.omni.sync.service.AlarmService.isRinging.value) {
+                            reportAndroidAlarm(
+                                com.omni.sync.service.AlarmService.lastTriggeredAlarmId,
+                                token, true, "Phone alarm"
+                            )
+                        }
+                    }
                     AndroidUpdateReceiver.consumePendingDeploymentReport(context)?.let { report ->
                         Log.i(
                             "AndroidDeploy",
