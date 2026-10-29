@@ -19,7 +19,11 @@ let reloaded = 0;
 let fakeNow = Date.now();
 const chrome = {
   storage: { local: {
-    async get(key) { return { [key]: data[key] }; },
+    async get(key) {
+      return Array.isArray(key)
+        ? Object.fromEntries(key.map(name => [name, data[name]]))
+        : { [key]: data[key] };
+    },
     async set(o) { Object.assign(data, o); },
     async setAccessLevel() {}
   }},
@@ -320,6 +324,7 @@ function message(command, args = {}) {
   assert.equal(await api.maybeReloadDevelopmentExtension(), true);
   assert.equal(reloaded, 1);
   assert.equal(data.browserControlAutoReloadCount, 1);
+  assert.equal(data.browserControlLastCommandAt, fakeNow - 3 * 60 * 1000);
   await message("disable"); // Stop background poll loop before test exit.
   console.log("PASS: unrestricted HTTP and form actions, redacted inspection, safe click outcomes, idle unpacked reload");
 })().catch(err => { console.error(err); process.exitCode = 1; });

@@ -9,7 +9,8 @@
   let polling = false;
   const AUTO_RELOAD_ALARM = "browser-control-development-reload";
   const RELOAD_KEY = "browserControlAutoReloadCount";
-  const BUILD_MARKER = "browser-control-full-path-20261029";
+  const LAST_COMMAND_KEY = "browserControlLastCommandAt";
+  const BUILD_MARKER = "browser-control-persisted-reload-20261029";
   const AUTO_RELOAD_MINUTES = 5;
   const QUIET_BEFORE_RELOAD_MS = 2 * 60 * 1000;
   let lastCommandAt = Date.now();
@@ -18,10 +19,11 @@
   // Unpacked development extensions read the source folder again on runtime.reload().
   // Only reload after a quiet period; never attempt to install a different directory.
   async function maybeReloadDevelopmentExtension() {
-    if (Date.now() - lastCommandAt < QUIET_BEFORE_RELOAD_MS) return false;
+    // MV3 may stop/restart the worker between alarms, so use persisted activity.
+    const stored = await chrome.storage.local.get([RELOAD_KEY, LAST_COMMAND_KEY]);
+    if (Date.now() - (stored[LAST_COMMAND_KEY] ?? lastCommandAt) < QUIET_BEFORE_RELOAD_MS) return false;
     const info = await chrome.management.getSelf();
     if (info.installType !== "development") return false;
-    const stored = await chrome.storage.local.get(RELOAD_KEY);
     await chrome.storage.local.set({ [RELOAD_KEY]: (stored[RELOAD_KEY] || 0) + 1 });
     chrome.runtime.reload(); // Extension only; does not restart Vivaldi or its tabs.
     return true;
@@ -249,6 +251,7 @@
 
   async function execute(work) {
     lastCommandAt = Date.now();
+    await chrome.storage.local.set({ [LAST_COMMAND_KEY]: lastCommandAt });
     await load(); // Recheck opt-in before handling any queued command.
     if (!current.enabled) throw new Error("Extension browser control disabled.");
     if (Date.now() > work.deadline) throw new Error("Command expired.");
