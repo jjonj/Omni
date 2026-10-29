@@ -6,7 +6,7 @@ Updated 2026-10-20. **Canonical installed extension:** `D:\SSDProjects\Omni\Omni
 ## How to use
 
 The extension starts on its own, without pairing tokens or per-origin permission prompts.
-The extension requests HTTPS host permission at install/reload; local localhost HTTP is also available. The popup has only **Enable/Pause**. The site and authentication-code/password protections remain in place.
+The extension requests HTTPS host permission at install/reload; localhost HTTP and the exact router host `http://192.168.1.1/*` are also permitted. No wildcard HTTP access is granted. Reload the unpacked extension in Vivaldi's Extensions page to activate manifest/source changes (and accept any new host-permission prompt); do not restart Vivaldi or T3. The popup has only **Enable/Pause**. Router login/password, OAuth, form-submission and sensitive-field protections remain in place.
 
 ChatGPT/other MCP clients use **one tool named `browser_control`** with a required `action` string:
 
@@ -35,3 +35,5 @@ If `browser_control` is absent from the ChatGPT tool menu after upgrading the Ru
 Real Chromium end-to-end validation of the unified 14-action tool passed against a **disposable** Chrome profile and isolated Rust MCP listener before the 2026-10-18 Rust sidecar cutover. The user's installed profile was not touched by the test.
 
 2026-10-22: original 8772/18773 restored after inherited socket-handle reclamation. Actual OMCP browser_control tabs succeeded; no further extension reload was needed for the running bridge.
+
+2026-10-29: source change permits only `http://192.168.1.1/` additionally. Source patch alone is not live: reload the unpacked extension and deploy/restart **only** the independent OMCPT sidecar using its documented owner-coordinated procedure, then confirm `browser_control(action="tabs")` includes the router tab. Do not equate a source commit with live Vivaldi permission or a logged-in router session.

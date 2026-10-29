@@ -23,7 +23,7 @@ const chrome = {
   permissions: {
     async contains({ origins }) {
       return permit && origins.every(x => x.startsWith("https://") ||
-        x.startsWith("http://127.0.0.1/") || x.startsWith("http://localhost/"));
+        x.startsWith("http://127.0.0.1/") || x.startsWith("http://localhost/") || x.startsWith("http://192.168.1.1/"));
     }
   },
   tabs: {
@@ -146,12 +146,17 @@ vm.runInContext(source, context, { filename: "browser-control.js" });
 const api = context.BrowserControl;
 assert.equal(api.validOrigin("https://example.test/path"), "https://example.test");
 assert.equal(api.validOrigin("http://example.test/"), null);
+assert.equal(api.validOrigin("http://192.168.1.1/login?secret=redacted"), "http://192.168.1.1");
+assert.equal(api.validOrigin("http://192.168.1.2/"), null);
+assert.equal(api.validOrigin("http://192.168.1.1/#access_token=secret"), null);
 assert.equal(api.validOrigin("chrome://extensions"), null);
 assert.equal(api.validOrigin("file:///C:/secrets.txt"), null);
 assert.equal(api.validOrigin("https://x.test/#access_token=abc"), null);
 assert.equal(api.displayUrl("https://example.test/a?access_token=SECRET#code=SECRET"), "https://example.test/a");
 const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, "manifest.json"), "utf8"));
 assert.ok(manifest.host_permissions.includes("https://*/*"), "HTTPS sites should work without per-origin prompts");
+assert.ok(manifest.host_permissions.includes("http://192.168.1.1/*"), "Permit the exact router HTTP host");
+assert.ok(!manifest.host_permissions.includes("http://*/*"), "Do not permit arbitrary HTTP hosts");
 
 function message(command, args = {}) {
   return new Promise((resolve) => {
@@ -180,6 +185,10 @@ function message(command, args = {}) {
   assert.equal(api.inspectOrAct("click", "https://example.test", "#go", "").clicked, true);
   link.attrs.href = "https://example.test/next";
   assert.equal(api.inspectOrAct("click", "https://example.test", "#go", "").clicked, true);
+  link.attrs.href = "http://192.168.1.1/";
+  assert.equal(api.inspectOrAct("click", "https://example.test", "#go", "").clicked, true);
+  link.attrs.href = "http://192.168.1.2/";
+  assert.throws(() => api.inspectOrAct("click", "https://example.test", "#go", ""), /Only HTTPS/);
   const focused = api.inspectOrAct("focus", "https://example.test", "#search", "");
   assert.equal(focused.focused, true);
   assert.throws(() => api.inspectOrAct("focus", "https://example.test", "#password", ""), /Sensitive/);
@@ -204,6 +213,9 @@ function message(command, args = {}) {
   assert.doesNotMatch(JSON.stringify(snapshot), /NEVER-DISCLOSE|SECRET-OTP-1234|123456/);
   assert.ok(snapshot.elements.every(x => x.selector && x.tag));
   data.omniBrowserControl = {mode:"local",enabled:true};
+  tab.url = "http://192.168.1.1/?session=REDACT_ME";
+  assert.equal((await api.execute({action:"tabs",deadline:Date.now()+10000})).tabs[0].url, "http://192.168.1.1/");
+  tab.url = "https://example.test/?access_token=hidden";
   const work = (action, arguments_={}) => ({action, deadline:Date.now()+10000,
     arguments:{tabId:14, ...arguments_}});
   // No result after a click can mean successful click followed by navigation.

@@ -14,7 +14,8 @@
       const u = new URL(url);
       if (u.username || u.password || u.hash && /token|password|secret|key=/i.test(u.hash)) return null;
       if (u.protocol !== "https:" && !(u.protocol === "http:" &&
-          (u.hostname === "localhost" || u.hostname === "127.0.0.1"))) return null;
+          (u.hostname === "localhost" || u.hostname === "127.0.0.1" ||
+           u.hostname === "192.168.1.1"))) return null;
       return u.origin;
     } catch { return null; }
   };
@@ -191,9 +192,9 @@
       if (anchor) {
         const destination = new URL(anchor.getAttribute("href") || "", location.href);
         if ((destination.protocol !== "https:" &&
-            !(destination.protocol === "http:" && ["localhost", "127.0.0.1"].includes(destination.hostname))) ||
+            !(destination.protocol === "http:" && ["localhost", "127.0.0.1", "192.168.1.1"].includes(destination.hostname))) ||
             destination.username || destination.password)
-          throw Error("Only regular HTTPS or localhost links can be opened.");
+          throw Error("Only HTTPS, localhost HTTP, or router HTTP links can be opened.");
       }
       // Block implicit credential/payment form submissions.
       if (element.matches('input[type="submit"], input[type="image"], button[form], input[form], a[href^="javascript:"]') ||
