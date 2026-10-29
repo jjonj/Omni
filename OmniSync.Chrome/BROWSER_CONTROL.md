@@ -37,3 +37,7 @@ Real Chromium end-to-end validation of the unified 14-action tool passed against
 2026-10-22: original 8772/18773 restored after inherited socket-handle reclamation. Actual OMCP browser_control tabs succeeded; no further extension reload was needed for the running bridge.
 
 2026-10-29: source change permits only `http://192.168.1.1/` additionally. Source patch alone is not live: reload the unpacked extension and deploy/restart **only** the independent OMCPT sidecar using its documented owner-coordinated procedure, then confirm `browser_control(action="tabs")` includes the router tab. Do not equate a source commit with live Vivaldi permission or a logged-in router session.
+
+### Unpacked extension automatic refresh
+
+The Vivaldi extension folder is **`D:\\SSDProjects\\Omni\\OmniSync.Chrome`**, not `OmniSync.Android` (the Android app source). First install the unpacked **Chrome** folder once under `vivaldi:extensions` in developer mode, or reload that existing extension once to activate this updated service worker. Later, its five-minute alarm calls `chrome.runtime.reload()` only for a development/unpacked install and only when no browser-control command has arrived for two minutes. This refreshes sources already on disk without navigating extension settings or restarting browser tabs; other install types are untouched. Reloading is postponed during recent activity, and any browser-required new host permission approval still needs manual confirmation. An automatic refresh can briefly interrupt the extension's own bridge connections.

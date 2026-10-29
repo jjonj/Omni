@@ -7,7 +7,21 @@
   const KEY = "omniBrowserControl";
   let current = { enabled: true };
   let polling = false;
+  const AUTO_RELOAD_ALARM = "browser-control-development-reload";
+  const AUTO_RELOAD_MINUTES = 5;
+  const QUIET_BEFORE_RELOAD_MS = 2 * 60 * 1000;
+  let lastCommandAt = Date.now();
   const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+  // Unpacked development extensions read the source folder again on runtime.reload().
+  // Only reload after a quiet period; never attempt to install a different directory.
+  async function maybeReloadDevelopmentExtension() {
+    if (Date.now() - lastCommandAt < QUIET_BEFORE_RELOAD_MS) return false;
+    const info = await chrome.management.getSelf();
+    if (info.installType !== "development") return false;
+    chrome.runtime.reload(); // Extension only; does not restart Vivaldi or its tabs.
+    return true;
+  }
 
   const validOrigin = url => {
     try {
@@ -252,6 +266,7 @@
   }
 
   async function execute(work) {
+    lastCommandAt = Date.now();
     await load(); // Recheck opt-in before handling any queued command.
     if (!current.enabled) throw new Error("Extension browser control disabled.");
     if (Date.now() > work.deadline) throw new Error("Command expired.");
@@ -381,8 +396,17 @@
        .catch(error => reply({ ok: false, error: String(error.message || error) }));
     return true;
   });
-  chrome.alarms.onAlarm.addListener(alarm => { if (alarm.name === "browser-control-wake") void start(); });
+  chrome.alarms.onAlarm.addListener(alarm => {
+    if (alarm.name === "browser-control-wake") void start();
+    if (alarm.name === AUTO_RELOAD_ALARM) {
+      void maybeReloadDevelopmentExtension().catch(error => console.warn("Extension auto-reload unavailable:", error));
+    }
+  });
   chrome.alarms.create("browser-control-wake", { periodInMinutes: 1 });
+  // Do not move the reload deadline every time MV3 wakes the service worker.
+  void chrome.alarms.get(AUTO_RELOAD_ALARM).then(existing => {
+    if (!existing) chrome.alarms.create(AUTO_RELOAD_ALARM, { periodInMinutes: AUTO_RELOAD_MINUTES });
+  }).catch(error => console.warn("Extension auto-reload alarm unavailable:", error));
   chrome.storage.local.setAccessLevel?.({ accessLevel: "TRUSTED_CONTEXTS" }).catch(() => {});
-  globalThis.BrowserControl = { start, validOrigin, displayUrl, inspectOrAct, injectionFailure, execute };
+  globalThis.BrowserControl = { start, validOrigin, displayUrl, inspectOrAct, injectionFailure, execute, maybeReloadDevelopmentExtension };
 })();

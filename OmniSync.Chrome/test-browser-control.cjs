@@ -14,6 +14,9 @@ const browserWindow = { id: 7, focused: false, state: "minimized" };
 const windowActions = [];
 let injectionMode = "normal";
 let injectionCalls = 0;
+let installType = "development";
+let reloaded = 0;
+let fakeNow = Date.now();
 const chrome = {
   storage: { local: {
     async get(key) { return { [key]: data[key] }; },
@@ -51,8 +54,9 @@ const chrome = {
     if (injectionMode === "unexpected") throw Error("Internal injection failure: SECRET-NEVER-RETURN");
     return [{result:func(...args)}];
   } },
-  alarms: { onAlarm: { addListener(fn) { listeners.alarm = fn; } }, create() {} },
-  runtime: { id:"test-extension-id", onMessage: { addListener(fn) { listeners.message = fn; } } }
+  alarms: { onAlarm: { addListener(fn) { listeners.alarm = fn; } }, create() {}, async get() { return null; } },
+  management: { async getSelf() { return { installType }; } },
+  runtime: { id:"test-extension-id", reload() { reloaded++; }, onMessage: { addListener(fn) { listeners.message = fn; } } }
 };
 class FakeElement {
   constructor(tag, attrs = {}, text = "") {
@@ -132,7 +136,8 @@ const document = {
 const window = {innerWidth:1100,innerHeight:700,scrollX:0,scrollY:80,
   scrollBy(settings){this.lastScroll = settings;}};
 const context = vm.createContext({
-  chrome, URL, setTimeout, clearTimeout, globalThis: null, window,
+  chrome, URL, Date: class extends Date { static now() { return fakeNow; } },
+  setTimeout, clearTimeout, globalThis: null, window,
   location: { origin: "https://example.test", href: "https://example.test/" }, document,
   getComputedStyle: () => ({ visibility: "visible", display: "block" }),
   NodeFilter: { SHOW_TEXT: 4 }, Element: FakeElement,
@@ -290,6 +295,14 @@ function message(command, args = {}) {
   await assert.rejects(api.execute(work("bring_to_front")), /disabled/);
   reply = await message("enable");
   assert.equal(reply.data.enabled, true);
+  // Auto-refresh only unpacked development builds, never packaged extensions or recent activity.
+  assert.equal(await api.maybeReloadDevelopmentExtension(), false);
+  fakeNow += 3 * 60 * 1000;
+  installType = "normal";
+  assert.equal(await api.maybeReloadDevelopmentExtension(), false);
+  installType = "development";
+  assert.equal(await api.maybeReloadDevelopmentExtension(), true);
+  assert.equal(reloaded, 1);
   await message("disable"); // Stop background poll loop before test exit.
   console.log("PASS: safe unknown-outcome frame diagnostics, no click retries, redaction, bring_to_front and sensitive form restrictions");
 })().catch(err => { console.error(err); process.exitCode = 1; });
