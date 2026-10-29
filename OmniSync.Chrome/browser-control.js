@@ -10,7 +10,7 @@
   const AUTO_RELOAD_ALARM = "browser-control-development-reload";
   const RELOAD_KEY = "browserControlAutoReloadCount";
   const LAST_COMMAND_KEY = "browserControlLastCommandAt";
-  const BUILD_MARKER = "browser-control-persisted-reload-20261029";
+  const BUILD_MARKER = "browser-control-dom-outcomes-20261029";
   const AUTO_RELOAD_MINUTES = 5;
   const QUIET_BEFORE_RELOAD_MS = 2 * 60 * 1000;
   let lastCommandAt = Date.now();
