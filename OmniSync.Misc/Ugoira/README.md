@@ -12,7 +12,8 @@
    cancel it. The page gives up waiting after two minutes and says so. The last
    folder you used is remembered in `%LOCALAPPDATA%\OmniSync\ugoira-last-output.txt`
    and prefills the box, so the picker is normally needed only once.
-4. Watch progress on the page. Videos are saved in your chosen folder, named by
+4. Click **Update cookies** whenever you want to re-read and confirm the latest Pixiv cookies from Firefox Portable. The downloader also reloads Firefox cookies before each artwork, including those in active batches.
+5. Watch progress on the page. Videos are saved in your chosen folder, named by
    artwork ID. Press play on a preview to watch it loop continuously.
 
 OmniHub serves the page and owns download jobs. No separate Python web server or
@@ -62,9 +63,12 @@ frame delays, including the final frame. The MP4 uses H.264 Baseline, contains o
 of the animation, and has no audio. Odd image dimensions are padded by one
 pixel when necessary for compatibility. A common millisecond tick determines
 the frame rate; frames repeat as needed to preserve different delays exactly.
-Unusual timing can result in a high frame rate. Temporary archives are removed
-after processing, and a completed video is moved into place only after conversion
-succeeds. Exit codes are 0 for success, 1 if any entry fails, and 130 for cancellation.
+Unusual timing can result in a high frame rate. During conversion, a
+`.ugoira-*` folder inside the chosen download directory contains `frames.zip`
+and the intermediate `video.mp4`; individual frames are streamed from the ZIP.
+The temporary directory is removed when conversion finishes or fails normally,
+though a forcibly terminated worker can leave it behind. The final video is
+published to the chosen folder only after successful conversion. Exit codes are 0 for success, 1 if any entry fails, and 130 for cancellation.
 
 Request, worker, network, frame timing, encoder, output, and failure diagnostics
 appear in the Hub activity log with the `[Ugoira]` prefix. Browser connection

@@ -24,7 +24,6 @@ def main():
     cookies = tool.ROOT / 'cookies.txt'
     def fresh_opener():
         return tool.make_browser_opener(cookies if cookies.exists() else None)
-    opener = fresh_opener()
     logging.info('Batch start: %d entries; output=%s; ffmpeg=%s', len(lines), output, ffmpeg)
     saved = skipped = failed = 0
     seen = set()
@@ -41,6 +40,9 @@ def main():
                 continue
             seen.add(identifier)
             update(status='Working', detail='Fetching animation metadata...')
+            # Each artwork uses the latest Firefox login, including cookie renewals
+            # made during a running batch.
+            opener = fresh_opener()
             try:
                 result, target = tool.download(opener, identifier, output, ffmpeg,
                                               progress=lambda message: update(detail=message))
@@ -66,9 +68,28 @@ def main():
     logging.info(summary)
 
 
+def cookie_status():
+    """Read fresh Pixiv cookie metadata; never expose session cookie values."""
+    profile = tool.FIREFOX_PROFILE
+    db = profile / 'cookies.sqlite'
+    if not db.is_file():
+        print(json.dumps({'count': 0, 'available': False,
+                          'message': 'Firefox Portable profile not found. Open Firefox and log into Pixiv.'}))
+        return
+    jar = tool.firefox_cookie_jar(profile)
+    count = len(jar)
+    print(json.dumps({'count': count, 'available': count > 0,
+                      'message': (f'Found {count} unexpired Pixiv cookie(s) in Firefox Portable. '
+                                  'New downloads and the next artwork in an active batch use the latest cookies.'
+                                  if count else 'No unexpired Pixiv cookies found. Log into Pixiv in Firefox Portable, then try again.')}))
+
+
 if __name__ == '__main__':
     try:
-        main()
+        if len(sys.argv) == 2 and sys.argv[1] == '--cookie-status':
+            cookie_status()
+        else:
+            main()
     except Exception:
         logging.exception('Worker failed before batch completion')
         sys.exit(1)
