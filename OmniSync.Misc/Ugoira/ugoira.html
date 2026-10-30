@@ -5,72 +5,87 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Ugoira downloader</title>
 <style>
-  :root { color-scheme: dark; font-family: system-ui, sans-serif; background: #12151d; color: #e8ecf5; }
+  :root { color-scheme: dark; font-family: system-ui,sans-serif; background: #12151d; color: #e8ecf5; }
   * { box-sizing: border-box; }
-  body { width: 80%; max-width: none; margin: 0 auto; padding: 48px 0; }
-  @media (max-width: 700px) { body { width: 94%; padding: 24px 0; } }
-  h1 { font-size: 32px; margin: 0 0 12px; }
-  p { color: #aeb9d1; line-height: 1.6; }
-  label { display: block; margin: 24px 0 10px; font-weight: 600; }
-  textarea { width: 100%; min-height: 230px; resize: vertical; background: #1b2130; color: #e8ecf5; border: 1px solid #404c65; border-radius: 10px; padding: 16px; font: 14px/1.7 ui-monospace, monospace; }
-  textarea:focus { outline: 2px solid #80b5ff; }
-  .actions { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; margin: 18px 0; }
-  button { background: #a9caff; color: #10233f; border: 0; border-radius: 8px; padding: 12px 22px; font: 600 15px system-ui; cursor: pointer; }
+  body { width: 80%; margin: 0 auto; padding: 12px 0 24px; }
+  .header { display: flex; align-items: center; gap: 22px; flex-wrap: wrap; margin-bottom: 10px; }
+  h1 { font-size: 22px; margin: 0; line-height: 1.2; }
+  .source-choice { display: flex; align-items: center; flex-wrap: wrap; gap: 16px; }
+  .source-choice label { display: flex; gap: 6px; align-items: center; cursor: pointer; font-weight: 500; font-size: 14px; white-space: nowrap; }
+  input[type=radio] { margin: 0; accent-color: #a9caff; }
+  .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
+  .source-input { margin: 0 0 8px; }
+  #bookmark-name, #output, textarea { background: #1b2130; color: #e8ecf5; border: 1px solid #404c65; border-radius: 7px; font: 14px system-ui,sans-serif; padding: 9px 11px; }
+  #bookmark-name { width: min(100%, 460px); }
+  textarea { width: 100%; min-height: 88px; max-height: 220px; resize: vertical; font: 13px/1.4 ui-monospace,monospace; }
+  textarea:focus, input:focus-visible { outline: 2px solid #80b5ff; outline-offset: 1px; }
+  #file { display: block; margin-top: 5px; max-width: 100%; font-size: 12px; color: #aeb9d1; }
+  .toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 7px; }
+  #output { flex: 1 1 230px; min-width: 130px; }
+  button { background: #a9caff; color: #10233f; border: 0; border-radius: 7px; padding: 9px 13px; font: 600 13px system-ui,sans-serif; min-height: 38px; cursor: pointer; white-space: nowrap; }
   button:disabled { opacity: .5; cursor: default; }
   button.secondary { background: #2b374e; color: #e8ecf5; border: 1px solid #51617d; }
-  #cookie-status { color: #aeb9d1; font-size: 14px; flex: 1 1 260px; }
-  input { max-width: 100%; }
-  #summary { padding: 16px 0; font-weight: 600; }
-  progress { width: 100%; height: 12px; accent-color: #a9caff; }
-  #error { color: #ffaaa5; }
-  #results { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); gap: 16px; align-items: start; }
-  .item { min-width: 0; padding: 16px; border: 1px solid #30394d; border-radius: 10px; background: #1b2130; }
-  .item video { width: 100%; max-height: 280px; }
-  .source-choice { display: flex; flex-wrap: wrap; gap: 24px; margin-top: 20px; }
-  .source-choice label { display: flex; gap: 8px; align-items: center; margin: 0; cursor: pointer; }
-  #bookmark-name { width: min(100%, 480px); padding: 12px; background: #1b2130; color: #e8ecf5; border: 1px solid #404c65; border-radius: 8px; font: inherit; }
-  [hidden] { display: none !important; }
+  #bookmark-info, #cookie-status { color: #aeb9d1; font-size: 12px; margin: 4px 0; }
+  #bookmark-info:empty, #cookie-status:empty, #error:empty { display: none; }
+  #error { color: #ffaaa5; font-size: 13px; margin: 4px 0; }
+  .batch-status { display: flex; align-items: center; gap: 14px; margin: 5px 0 10px; }
+  #summary { font-size: 13px; font-weight: 600; flex: 0 1 auto; }
+  progress { flex: 1; min-width: 60px; height: 7px; accent-color: #a9caff; }
+  #results { display: grid; grid-template-columns: repeat(auto-fill,minmax(min(100%,290px),1fr)); gap: 12px; align-items: start; }
+  .item { min-width: 0; padding: 12px; border: 1px solid #30394d; border-radius: 8px; background: #1b2130; }
   .top { display: flex; justify-content: space-between; gap: 12px; }
   .title { overflow-wrap: anywhere; }
   .status { flex-shrink: 0; font-weight: 600; }
-  .detail { font-size: 14px; color: #aeb9d1; margin-top: 6px; overflow-wrap: anywhere; }
-  a { color: #a9caff; margin-right: 16px; }
-  .links { margin: 10px 0; }
-  video { display: block; max-width: 100%; max-height: 400px; border-radius: 8px; background: #000; }
-  #diag { font: 13px/1.6 ui-monospace, monospace; color: #8f9bb5; margin: 6px 0 0; overflow-wrap: anywhere; }
-  details { margin: 18px 0 6px; }
-  summary { cursor: pointer; color: #a9caff; font-weight: 600; }
-  #hublog { max-height: 320px; overflow: auto; background: #171c28; border: 1px solid #30394d; border-radius: 8px; padding: 12px; font: 12px/1.6 ui-monospace, monospace; white-space: pre-wrap; overflow-wrap: anywhere; color: #c3ccdf; }
+  .detail { font-size: 13px; color: #aeb9d1; margin-top: 5px; overflow-wrap: anywhere; }
+  a { color: #a9caff; margin-right: 12px; }
+  .links { margin: 8px 0; }
+  video { display: block; width: 100%; max-height: 280px; border-radius: 6px; background: #000; }
+  #diag { font: 12px/1.5 ui-monospace,monospace; color: #8f9bb5; margin: 8px 0; overflow-wrap: anywhere; }
+  details { margin: 12px 0 0; }
+  details > summary { cursor: pointer; color: #a9caff; font-size: 12px; }
+  #hublog { max-height: 320px; overflow: auto; background: #171c28; border: 1px solid #30394d; border-radius: 8px; padding: 12px; font: 12px/1.5 ui-monospace,monospace; white-space: pre-wrap; overflow-wrap: anywhere; color: #c3ccdf; }
+  [hidden] { display: none !important; }
+  @media(max-width:700px) { body { width: 94%; } .header { gap: 10px; } }
 </style>
 </head>
 <body>
-<h1>Ugoira downloader</h1>
-<p>Turn Pixiv animations into MP4 videos. Paste links, load a text file, or download every Pixiv artwork bookmark from a named Firefox Portable folder.</p>
-<div class="source-choice" role="group" aria-label="Download source">
-  <label><input type="radio" name="source" value="links" checked> Artwork links</label>
-  <label><input type="radio" name="source" value="bookmarks"> Firefox bookmark folder</label>
+<header class="header">
+  <h1>Ugoira Downloader</h1>
+  <div class="source-choice" role="group" aria-label="Download source">
+    <label><input type="radio" name="source" value="links" checked> Links</label>
+    <label><input type="radio" name="source" value="bookmarks"> Firefox bookmarks</label>
+  </div>
+</header>
+<div id="links-mode" class="source-input">
+  <label class="sr-only" for="urls">Pixiv artwork links</label>
+  <textarea id="urls" placeholder="Pixiv artwork URLs, one per line" spellcheck="false"></textarea>
+  <input id="file" type="file" accept=".txt,text/plain" aria-label="Load links from a text file">
 </div>
-<div id="links-mode">
-  <label for="urls">Pixiv artwork links</label>
-  <textarea id="urls" placeholder="https://www.pixiv.net/en/artworks/150267771" spellcheck="false"></textarea>
-  <div class="actions"><input id="file" type="file" accept=".txt,text/plain" aria-label="Load links from a text file"></div>
+<div id="bookmarks-mode" class="source-input" hidden>
+  <label class="sr-only" for="bookmark-name">Firefox bookmark folder name</label>
+  <input id="bookmark-name" type="text" placeholder="Firefox bookmark folder name" autocomplete="off">
+  <div id="bookmark-info" role="status"></div>
 </div>
-<div id="bookmarks-mode" hidden>
-  <label for="bookmark-name">Firefox bookmark folder name</label>
-  <input id="bookmark-name" type="text" placeholder="Exact folder name" autocomplete="off">
-  <p>Uses Y:\FirefoxPortable, including nested folders. Duplicate folder names must be renamed to be unique. Non-Pixiv links are ignored.</p>
-  <p id="bookmark-info" role="status"></p>
+<div class="toolbar">
+  <label class="sr-only" for="output">Download folder on this PC</label>
+  <input id="output" type="text" placeholder="Output folder">
+  <button id="browse" type="button" class="secondary">Browse…</button>
+  <button id="start" type="button">Download MP4s</button>
+  <button id="update-cookies" class="secondary" type="button">Update cookies</button>
 </div>
-<label for="output">Download folder on this PC</label>
-<div class="actions"><input id="output" type="text" placeholder="Choose a folder, or enter its full path" style="flex:1;min-width:220px;padding:12px;background:#1b2130;color:#e8ecf5;border:1px solid #404c65;border-radius:8px"><button id="browse">Choose folder...</button></div>
-<div class="actions"><button id="start">Download MP4s</button><button id="update-cookies" class="secondary" type="button">Update cookies</button><span id="cookie-status" role="status">Cookies are automatically refreshed before each artwork.</span></div>
-<p>OmniHub handles downloads in the background. Completed videos and duplicate links are skipped. Previews loop continuously.</p>
+<div id="cookie-status" role="status"></div>
 <div id="error" role="alert"></div>
-<div id="summary" role="status">Ready.</div>
-<p id="diag"></p>
-<progress id="progress" value="0" max="1" aria-label="Batch progress"></progress>
-<details id="logpanel"><summary>OmniHub log</summary><pre id="hublog">Not loaded yet.</pre></details>
+<div class="batch-status">
+  <span id="summary" role="status">Ready.</span>
+  <progress id="progress" value="0" max="1" aria-label="Batch progress"></progress>
+</div>
 <div id="results"></div>
+<details id="logpanel">
+  <summary>Diagnostics / OmniHub log</summary>
+  <p id="diag"></p>
+  <pre id="hublog">Not loaded yet.</pre>
+</details>
+
 <script>
   const urls = document.querySelector('#urls');
   const sources = [...document.querySelectorAll('input[name="source"]')];
