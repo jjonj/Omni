@@ -38,12 +38,19 @@ python download_ugoira.py links.txt --ffmpeg "E:\Tools\ffmpeg.exe"
 python download_ugoira.py links.txt --cookies "E:\Private\pixiv-cookies.txt"
 ```
 
-For artwork requiring login in the browser page, place your own Pixiv cookies in
-Netscape text format in `cookies.txt` in the deployed `Misc/Ugoira` folder. The
-worker reads it at the start of each batch. For the command-line tool, use `--cookies`.
-The tool does not read browser profiles automatically.
-Keep the cookie file private; it contains login credentials. Still images,
-deleted artwork, and inaccessible artwork produce a failure message.
+For artwork requiring login, the downloader automatically reads first-party Pixiv
+session cookies from the active Firefox Portable profile at
+`Y:\FirefoxPortable\Data\profile\cookies.sqlite`. It reads the SQLite
+database without modifying Firefox or exporting session cookies to files. Each
+batch starts with fresh cookies; authentication-related failures reload the
+cookies and retry the affected artwork once. If your Pixiv login expires,
+log into Pixiv again in Firefox and retry.
+
+Use `UGOIRA_FIREFOX_PROFILE` to override the profile directory. When browser
+cookies are unavailable, place a Netscape-format `cookies.txt` beside
+`worker.py` as a fallback. The command-line option `--cookies PATH`
+explicitly overrides Firefox auto-detection. Cookie values must remain
+private and are not printed in logs.
 
 The script requests the original-resolution frame ZIP and uses all of Pixiv's
 frame delays, including the final frame. The MP4 uses H.264 Baseline, contains one play

@@ -6,6 +6,8 @@ import http.cookiejar
 import json
 import logging
 import math
+import os
+import sqlite3
 import shutil
 import subprocess
 import sys
@@ -21,6 +23,65 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 LOG = logging.getLogger('ugoira')
+# The browser's SQLite cookie store stays in place; its values are never exported
+# or logged. Override this path with UGOIRA_FIREFOX_PROFILE if Firefox is moved.
+FIREFOX_PROFILE = Path(os.environ.get(
+    'UGOIRA_FIREFOX_PROFILE', r'Y:\FirefoxPortable\Data\profile'))
+
+
+class PixivLoginRequired(RuntimeError):
+    """A retry with newly loaded Firefox session cookies may resolve this."""
+
+
+def firefox_cookie_jar(profile=FIREFOX_PROFILE):
+    """Load current first-party Pixiv cookies via SQLite's read-only WAL view.
+
+    Firefox may keep cookies.sqlite open; mode=ro sees committed WAL updates
+    without copying the database or changing the running browser.
+    """
+    jar = http.cookiejar.CookieJar()
+    db = Path(profile) / 'cookies.sqlite'
+    if not db.is_file():
+        return jar
+    try:
+        with sqlite3.connect('file:' + db.as_posix() + '?mode=ro',
+                             uri=True, timeout=3) as connection:
+            rows = connection.execute(
+                "SELECT name, value, host, path, expiry, isSecure, isHttpOnly "
+                "FROM moz_cookies WHERE (host = 'pixiv.net' "
+                "OR host LIKE '%.pixiv.net') AND originAttributes = ''").fetchall()
+        now = int(time.time())
+        for name, value, host, path, expiry, secure, httponly in rows:
+            if expiry and int(expiry) <= now:
+                continue
+            jar.set_cookie(http.cookiejar.Cookie(
+                version=0, name=name, value=value, port=None,
+                port_specified=False, domain=host,
+                domain_specified=host.startswith('.'),
+                domain_initial_dot=host.startswith('.'),
+                path=path or '/', path_specified=True, secure=bool(secure),
+                expires=int(expiry) if expiry else None,
+                discard=not bool(expiry), comment=None, comment_url=None,
+                rest={'HttpOnly': None} if httponly else {}, rfc2109=False))
+    except (sqlite3.Error, OSError) as exc:
+        LOG.warning('Could not read Firefox Portable Pixiv cookies (%s)', type(exc).__name__)
+        return http.cookiejar.CookieJar()
+    return jar
+
+
+def make_browser_opener(cookies=None, firefox_profile=FIREFOX_PROFILE):
+    """Prefer the live portable Firefox login, falling back to cookies.txt."""
+    jar = firefox_cookie_jar(firefox_profile)
+    if len(jar):
+        LOG.info('Loaded %d Pixiv cookies from Firefox Portable', len(jar))
+        return make_opener(jar=jar)
+    if cookies and Path(cookies).is_file():
+        LOG.info('Using manual Pixiv cookies file as fallback')
+        return make_opener(cookies=cookies)
+    LOG.info('No Pixiv login cookies found; requests will be anonymous')
+    return make_opener()
+
+
 
 
 def artwork_id(value):
@@ -35,8 +96,8 @@ def artwork_id(value):
     raise ValueError('Expected a URL like https://www.pixiv.net/en/artworks/150267771')
 
 
-def make_opener(cookies=None):
-    jar = http.cookiejar.CookieJar()
+def make_opener(cookies=None, jar=None):
+    jar = jar if jar is not None else http.cookiejar.CookieJar()
     if cookies:
         jar = http.cookiejar.MozillaCookieJar(str(cookies))
         jar.load(ignore_discard=True)
@@ -62,7 +123,10 @@ def fetch(opener, url, destination=None):
         except urllib.error.HTTPError as exc:
             LOG.warning('HTTP failure; attempt=%d status=%s', attempt + 1, exc.code)
             if exc.code not in (429, 500, 502, 503, 504) or attempt == 2:
-                raise RuntimeError(f'Pixiv returned HTTP {exc.code}. If login is required, use --cookies cookies.txt.') from None
+                if exc.code in (401, 403):
+                    raise PixivLoginRequired(
+                        f'Pixiv returned HTTP {exc.code}; check your Firefox Pixiv login.') from None
+                raise RuntimeError(f'Pixiv returned HTTP {exc.code}.') from None
         except (urllib.error.URLError, TimeoutError):
             LOG.warning('Network failure; attempt=%d', attempt + 1, exc_info=True)
             if attempt == 2:
@@ -134,7 +198,7 @@ def convert(archive, frames, destination, ffmpeg):
 
 def cookies_hint(identifier, reason):
     return (f'Artwork {identifier} {reason}. '
-            'Add a Netscape-format Pixiv cookies.txt beside worker.py, or pass --cookies PATH, then retry.')
+            'Log into Pixiv in Firefox Portable (or provide a Netscape-format cookies.txt) and retry.')
 
 
 def diagnose_missing(opener, identifier):
@@ -142,10 +206,10 @@ def diagnose_missing(opener, identifier):
     try:
         body = fetch(opener, f'https://www.pixiv.net/ajax/illust/{identifier}?lang=en').get('body') or {}
     except RuntimeError:
-        return cookies_hint(identifier, 'is not visible without login (deleted, private, or restricted)')
+        raise PixivLoginRequired(cookies_hint(identifier, 'is not visible without login (deleted, private, or restricted)'))
     restrict = body.get('xRestrict')
     if type(restrict) is int and restrict > 0:
-        return cookies_hint(identifier, f'is age-restricted (xRestrict={restrict}) and Pixiv withholds its animation data')
+        raise PixivLoginRequired(cookies_hint(identifier, f'is age-restricted (xRestrict={restrict}) and Pixiv withholds its animation data'))
     return (f'Artwork {identifier} is not an animation: Pixiv reports illustType={body.get("illustType")} with '
             f'{body.get("pageCount")} page(s) and no ugoira frames, so there is no video to build.')
 
@@ -198,7 +262,8 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('list_file', nargs='?', type=Path, default=ROOT / 'links.txt', help='Text file with one Pixiv artwork URL or ID per line (default: links.txt beside script)')
     parser.add_argument('-o', '--output', type=Path, default=ROOT / 'downloads', help='Output folder (default: downloads beside script)')
-    parser.add_argument('--cookies', type=Path, help='Optional Netscape-format Pixiv cookies file for artwork requiring login')
+    parser.add_argument('--cookies', type=Path, help='Explicit Netscape-format Pixiv cookies file (overrides Firefox auto-detection)')
+    parser.add_argument('--firefox-profile', type=Path, default=FIREFOX_PROFILE, help='Portable Firefox profile containing cookies.sqlite')
     parser.add_argument('--ffmpeg', help='FFmpeg executable path (default: beside script, then PATH)')
     parser.add_argument('--overwrite', action='store_true', help='Replace existing videos after successful conversion')
     args = parser.parse_args(argv)
@@ -208,7 +273,7 @@ def main(argv=None):
         if not ffmpeg:
             raise ValueError('FFmpeg was not found. Put ffmpeg.exe beside this script or use --ffmpeg PATH.')
         lines = args.list_file.read_text(encoding='utf-8-sig').splitlines()
-        opener = make_opener(args.cookies)
+        opener = make_opener(args.cookies) if args.cookies else make_browser_opener(firefox_profile=args.firefox_profile)
         args.output.mkdir(parents=True, exist_ok=True)
     except (OSError, ValueError, http.cookiejar.LoadError) as exc:
         print(f'ERROR: {exc}', file=sys.stderr)

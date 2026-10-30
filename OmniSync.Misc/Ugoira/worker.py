@@ -22,8 +22,10 @@ def main():
     if not ffmpeg:
         raise RuntimeError('FFmpeg was not found in the Hub environment. Put ffmpeg.exe beside worker.py or add it to PATH.')
     cookies = tool.ROOT / 'cookies.txt'
-    opener = tool.make_opener(cookies if cookies.exists() else None)
-    logging.info('Batch start: %d entries; output=%s; ffmpeg=%s; cookies=%s', len(lines), output, ffmpeg, cookies.exists())
+    def fresh_opener():
+        return tool.make_browser_opener(cookies if cookies.exists() else None)
+    opener = fresh_opener()
+    logging.info('Batch start: %d entries; output=%s; ffmpeg=%s', len(lines), output, ffmpeg)
     saved = skipped = failed = 0
     seen = set()
     for index, value in enumerate(lines):
@@ -39,8 +41,15 @@ def main():
                 continue
             seen.add(identifier)
             update(status='Working', detail='Fetching animation metadata...')
-            result, target = tool.download(opener, identifier, output, ffmpeg,
-                                          progress=lambda message: update(detail=message))
+            try:
+                result, target = tool.download(opener, identifier, output, ffmpeg,
+                                              progress=lambda message: update(detail=message))
+            except tool.PixivLoginRequired:
+                # Firefox may have renewed its session after the batch started.
+                update(detail='Refreshing Firefox Pixiv cookies and retrying...')
+                opener = fresh_opener()
+                result, target = tool.download(opener, identifier, output, ffmpeg,
+                                              progress=lambda message: update(detail=message))
             if result == 'SAVED':
                 saved += 1
                 update(status='Saved', detail=target.name, video=f'/api/ugoira/videos/{target.name}')
