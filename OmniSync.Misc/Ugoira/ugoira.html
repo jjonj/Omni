@@ -7,7 +7,8 @@
 <style>
   :root { color-scheme: dark; font-family: system-ui, sans-serif; background: #12151d; color: #e8ecf5; }
   * { box-sizing: border-box; }
-  body { max-width: 880px; margin: 0 auto; padding: 48px 24px; }
+  body { width: 80%; max-width: none; margin: 0 auto; padding: 48px 0; }
+  @media (max-width: 700px) { body { width: 94%; padding: 24px 0; } }
   h1 { font-size: 32px; margin: 0 0 12px; }
   p { color: #aeb9d1; line-height: 1.6; }
   label { display: block; margin: 24px 0 10px; font-weight: 600; }
@@ -20,7 +21,13 @@
   #summary { padding: 16px 0; font-weight: 600; }
   progress { width: 100%; height: 12px; accent-color: #a9caff; }
   #error { color: #ffaaa5; }
-  .item { padding: 16px 0; border-bottom: 1px solid #30394d; }
+  #results { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); gap: 16px; align-items: start; }
+  .item { min-width: 0; padding: 16px; border: 1px solid #30394d; border-radius: 10px; background: #1b2130; }
+  .item video { width: 100%; max-height: 280px; }
+  .source-choice { display: flex; flex-wrap: wrap; gap: 24px; margin-top: 20px; }
+  .source-choice label { display: flex; gap: 8px; align-items: center; margin: 0; cursor: pointer; }
+  #bookmark-name { width: min(100%, 480px); padding: 12px; background: #1b2130; color: #e8ecf5; border: 1px solid #404c65; border-radius: 8px; font: inherit; }
+  [hidden] { display: none !important; }
   .top { display: flex; justify-content: space-between; gap: 12px; }
   .title { overflow-wrap: anywhere; }
   .status { flex-shrink: 0; font-weight: 600; }
@@ -36,10 +43,22 @@
 </head>
 <body>
 <h1>Ugoira downloader</h1>
-<p>Turn Pixiv animations into MP4 videos. Paste one artwork link per line or load a text file, then choose where to save them.</p>
-<label for="urls">Pixiv artwork links</label>
-<textarea id="urls" placeholder="https://www.pixiv.net/en/artworks/150267771" spellcheck="false"></textarea>
-<div class="actions"><input id="file" type="file" accept=".txt,text/plain" aria-label="Load links from a text file"></div>
+<p>Turn Pixiv animations into MP4 videos. Paste links, load a text file, or download every Pixiv artwork bookmark from a named Firefox Portable folder.</p>
+<div class="source-choice" role="group" aria-label="Download source">
+  <label><input type="radio" name="source" value="links" checked> Artwork links</label>
+  <label><input type="radio" name="source" value="bookmarks"> Firefox bookmark folder</label>
+</div>
+<div id="links-mode">
+  <label for="urls">Pixiv artwork links</label>
+  <textarea id="urls" placeholder="https://www.pixiv.net/en/artworks/150267771" spellcheck="false"></textarea>
+  <div class="actions"><input id="file" type="file" accept=".txt,text/plain" aria-label="Load links from a text file"></div>
+</div>
+<div id="bookmarks-mode" hidden>
+  <label for="bookmark-name">Firefox bookmark folder name</label>
+  <input id="bookmark-name" type="text" placeholder="Exact folder name" autocomplete="off">
+  <p>Uses Y:\FirefoxPortable, including nested folders. Duplicate folder names must be renamed to be unique. Non-Pixiv links are ignored.</p>
+  <p id="bookmark-info" role="status"></p>
+</div>
 <label for="output">Download folder on this PC</label>
 <div class="actions"><input id="output" type="text" placeholder="Choose a folder, or enter its full path" style="flex:1;min-width:220px;padding:12px;background:#1b2130;color:#e8ecf5;border:1px solid #404c65;border-radius:8px"><button id="browse">Choose folder...</button></div>
 <div class="actions"><button id="start">Download MP4s</button></div>
@@ -52,6 +71,15 @@
 <div id="results"></div>
 <script>
   const urls = document.querySelector('#urls');
+  const sources = [...document.querySelectorAll('input[name="source"]')];
+  const linksMode = document.querySelector('#links-mode');
+  const bookmarksMode = document.querySelector('#bookmarks-mode');
+  const bookmarkName = document.querySelector('#bookmark-name');
+  const bookmarkInfo = document.querySelector('#bookmark-info');
+  const usingBookmarks = () => sources.find(radio => radio.checked)?.value === 'bookmarks';
+  function updateMode() { linksMode.hidden = usingBookmarks(); bookmarksMode.hidden = !usingBookmarks(); }
+  sources.forEach(radio => radio.addEventListener('change', () => { updateMode(); error.textContent = ''; }));
+  updateMode();
   const start = document.querySelector('#start');
   const file = document.querySelector('#file');
   const output = document.querySelector('#output');
@@ -129,6 +157,7 @@
     if (lastJob !== state.jobId) { console.info('[Ugoira] Job state', state.jobId, state.running ? 'running' : 'idle', state.summary); lastJob = state.jobId; }
     if (connectionLost) { error.textContent = ''; connectionLost = false; console.info('[Ugoira] Reconnected to OmniHub', state.jobId); }
     start.disabled = state.running || choosingFolder; file.disabled = state.running; urls.disabled = state.running;
+    bookmarkName.disabled = state.running; sources.forEach(radio => { radio.disabled = state.running; });
     output.disabled = state.running || choosingFolder; browse.disabled = state.running || choosingFolder;
     if (!output.value && state.output) output.value = state.output;
     summary.textContent = state.summary;
@@ -159,13 +188,22 @@
   }
   start.addEventListener('click', async () => {
     error.textContent = ''; start.disabled = true;
-    const target = urls.value.trim().split('\n').map(line => line.trim()).filter(line => line && !line.startsWith('#')).length;
-    console.info('[Ugoira] Download clicked', {entries: target, output: output.value.trim(), origin: location.origin});
+    let links = urls.value;
+    console.info('[Ugoira] Download clicked', {source: usingBookmarks() ? 'bookmarks' : 'links', output: output.value.trim(), origin: location.origin});
     try {
-      if (!urls.value.trim()) throw new Error('Paste at least one Pixiv artwork link.');
+      if (usingBookmarks()) {
+        if (!bookmarkName.value.trim()) throw new Error('Enter a Firefox bookmark folder name.');
+        bookmarkInfo.textContent = 'Finding bookmarks in Firefox Portable...';
+        const response = await fetch('/api/ugoira/bookmarks?folder=' + encodeURIComponent(bookmarkName.value.trim()), {cache: 'no-store'});
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || `Bookmark lookup failed (HTTP ${response.status}).`);
+        links = data.links.join('\n');
+        bookmarkInfo.textContent = `${data.count} Pixiv artwork link(s) found. ${data.skippedNonPixiv} non-Pixiv bookmark(s) ignored.`;
+      }
+      if (!links.trim()) throw new Error('Paste at least one Pixiv artwork link.');
       if (!output.value.trim() && !await chooseFolder()) { start.disabled = false; return; }
       console.info('[Ugoira] Starting batch', {output: output.value});
-      const response = await fetch('/api/ugoira/start', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({text: urls.value, output: output.value.trim()})});
+      const response = await fetch('/api/ugoira/start', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({text: links, output: output.value.trim()})});
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || `OmniHub refused the batch (HTTP ${response.status}).`);
       console.info('[Ugoira] Batch accepted', data);

@@ -1,7 +1,11 @@
 # Ugoira browser downloader
 
 1. Open http://127.0.0.1:3333/misc/ugoira/ugoira.html while OmniHub is running.
-2. Paste one Pixiv artwork link per line, or select a newline-separated text file.
+2. Choose **Artwork links** to paste a Pixiv artwork URL per line (or load a
+   newline-separated text file), or choose **Firefox bookmark folder** to enter
+   a folder name from `Y:\FirefoxPortable`. A matching folder is resolved at
+   download time, including nested subfolders. Non-Pixiv and duplicate links
+   are skipped; if several folders share a name, rename one first.
 3. Choose a download folder with **Choose folder...**, or enter its full path.
    Clicking **Download MP4s** without a folder opens the Windows folder picker
    on the Hub PC; that window is modal, so the page waits until you pick or
@@ -18,8 +22,9 @@ and FFmpeg processes. Restarting the Hub does not resume interrupted jobs: submi
 the list again; completed videos are skipped.
 Python 3.10+ and FFmpeg with the libx264 encoder are required. Both are already
 available on this computer. There are no Python packages to install.
-Hub builds copy this folder's Python files and `ugoira.html` into
-`Misc/Ugoira` beside the Hub executable. FFmpeg must be on the Hub's PATH, or
+Rust OmniHub packages `worker.py`, `download_ugoira.py`, `bookmarks.py`, and
+`ugoira.html` as `Automation/Ugoira` resources. The bookmark reader uses
+Firefox Portable's `places.sqlite` read-only and never modifies bookmarks. FFmpeg must be on the Hub's PATH, or
 `ffmpeg.exe` can be placed in that deployed folder.
 
 Blank lines and lines beginning with `#` are ignored. Numeric artwork IDs work
