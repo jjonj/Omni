@@ -134,11 +134,14 @@ class GenericAgentClient(
         archivePrefs.edit().putBoolean("enabled",enabled).apply()
     }
     private val _archiveQuery = MutableStateFlow("")
-    suspend fun searchArchive(phrase:String) = kotlinx.coroutines.withContext(Dispatchers.IO){
+    suspend fun searchArchive(phrase: String) {
+        // Record intent before dispatching to IO; worker startup itself can be
+        // reordered, not just completion of the underlying SQLite search.
         _archiveQuery.value = phrase
-        val results = if (!_archiveEnabled.value || phrase.isBlank()) emptyList()
+        val results = kotlinx.coroutines.withContext(Dispatchers.IO) {
+            if (!_archiveEnabled.value || phrase.isBlank()) emptyList()
             else archive.search(phrase)
-        // Search requests can finish out of order while the user types.
+        }
         if (_archiveQuery.value == phrase) _archiveSearch.value = results
     }
     private val _historyNotice = MutableStateFlow<String?>(null)
