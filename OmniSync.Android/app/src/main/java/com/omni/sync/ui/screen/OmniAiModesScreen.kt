@@ -2,27 +2,79 @@ package com.omni.sync.ui.screen
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import com.omni.sync.data.repository.AgentProviderUi
-import com.omni.sync.data.repository.AddressIdentityPreview
-import com.omni.sync.data.repository.SignalRClient
+import androidx.compose.ui.unit.sp
+import com.omni.sync.data.repository.*
 import com.omni.sync.viewmodel.MainViewModel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-/**
- * New provider-agnostic Android AI view. All operations use AgentCall; this
- * component intentionally does not depend on the old Gemini/T3 method names.
- */
+/** Tonal surfaces, rounded session rows and unobtrusive actions follow T3 Android's hierarchy. */
+private data class AiPalette(
+    val bg: Color, val surface: Color, val raised: Color, val selected: Color,
+    val border: Color, val text: Color, val muted: Color, val accent: Color,
+    val accentBg: Color, val green: Color, val amber: Color
+)
+@Composable private fun palette(): AiPalette = if (isSystemInDarkTheme()) AiPalette(
+    Color(0xFF101319), Color(0xFF191E26), Color(0xFF222A35), Color(0xFF2B394B),
+    Color(0xFF303946), Color(0xFFF1F3F6), Color(0xFF9DA8B8), Color(0xFFAFCEFF),
+    Color(0xFF334862), Color(0xFF81D6A7), Color(0xFFF1BD77)
+) else AiPalette(
+    Color(0xFFF8F9FB), Color.White, Color(0xFFF0F3F7), Color(0xFFE2ECFA),
+    Color(0xFFE0E4EA), Color(0xFF1B2533), Color(0xFF697789), Color(0xFF3262A4),
+    Color(0xFFDDEAFF), Color(0xFF267751), Color(0xFF98651A)
+)
+private fun AgentSessionUi.needsAttention() =
+    attention.isNotBlank() && !attention.equals("None", true)
+private fun AgentSessionUi.dotColor(p: AiPalette): Color = when {
+    needsAttention() -> p.amber
+    activity.equals("Working", true) || activity.equals("Running", true) ||
+        activity.equals("Active", true) -> p.green
+    activity.equals("Error", true) || activity.equals("Failed", true) -> Color(0xFFE38D8D)
+    else -> p.muted
+}
+@Composable private fun Dot(color: Color) {
+    Box(Modifier.size(8.dp).background(color, CircleShape))
+}
+@Composable private fun ActionIcon(icon: ImageVector, desc: String, p: AiPalette,
+    enabled: Boolean = true, action: () -> Unit) {
+    IconButton(onClick = action, enabled = enabled, modifier = Modifier.size(44.dp)) {
+        Icon(icon, contentDescription = desc, tint = if (enabled) p.text else p.muted)
+    }
+}
+@Composable private fun SheetTitle(title: String, detail: String?, p: AiPalette) {
+    Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+        Text(title, color = p.text, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+        if (detail != null) Text(detail, color = p.muted, style = MaterialTheme.typography.bodySmall)
+    }
+}
+@Composable private fun SheetAction(label: String, p: AiPalette, tint: Color = p.text, onClick: () -> Unit) {
+    Text(label, modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(15.dp))
+        .background(p.raised).clickable(onClick = onClick).padding(16.dp),
+        color = tint, style = MaterialTheme.typography.bodyLarge)
+}
+
+/** Session list -> conversation, with a fixed composer and secondary tools in focused sheets. */
 @Composable
 fun OmniAiModesScreen(
     signalRClient: SignalRClient,
@@ -30,370 +82,619 @@ fun OmniAiModesScreen(
     parentPadding: PaddingValues = PaddingValues(0.dp),
     initialSessionId: String? = null
 ) {
-    val agents = remember(signalRClient) { signalRClient.genericAgents }
+    val client = remember(signalRClient) { signalRClient.genericAgents }
     val scope = rememberCoroutineScope()
-    val providers by agents.providers.collectAsState()
-    val sessions by agents.sessions.collectAsState()
-    val lastProvider by agents.lastProvider.collectAsState()
-    val selectedKey by agents.selected.collectAsState()
-    val history by agents.history.collectAsState()
-    val olderHistoryCursor by agents.olderHistoryCursor.collectAsState()
-    val archiveEnabled by agents.archiveEnabled.collectAsState()
-    val archiveMatches by agents.archiveSearch.collectAsState()
-    var archivePhrase by remember { mutableStateOf("") }
-    val historyNotice by agents.historyNotice.collectAsState()
-    val queued by agents.outbox.collectAsState()
-    val remoteQueue by agents.remoteQueue.collectAsState()
-    val status by agents.status.collectAsState()
-    val authenticated by signalRClient.hubAuthenticated.collectAsState()
-    var draft by remember { mutableStateOf("") }
-    var showSessions by remember { mutableStateOf(true) }
-    var showHumanInbox by remember { mutableStateOf(false) }
-    var toAddress by remember { mutableStateOf(false) }
-    var address by remember { mutableStateOf("") }
-    var switching by remember { mutableStateOf<AgentProviderUi?>(null) }
-    var feedback by remember { mutableStateOf<String?>(null) }
-    var rename by remember { mutableStateOf(false) }
-    var renameValue by remember { mutableStateOf("") }
-    var confirmDelete by remember { mutableStateOf(false) }
-    var createSession by remember { mutableStateOf(false) }
-    var createKind by remember { mutableStateOf("") }
-    var createWorkspace by remember { mutableStateOf("") }
-    var createMessage by remember { mutableStateOf("") }
-    var verifyCandidate by remember { mutableStateOf<AddressIdentityPreview?>(null) }
+    val p = palette()
+    val providers by client.providers.collectAsState()
+    val sessions by client.sessions.collectAsState()
+    val selectedKey by client.selected.collectAsState()
+    val history by client.history.collectAsState()
+    val older by client.olderHistoryCursor.collectAsState()
+    val historyNotice by client.historyNotice.collectAsState()
+    val archiveOn by client.archiveEnabled.collectAsState()
+    val archiveResults by client.archiveSearch.collectAsState()
+    val outbox by client.outbox.collectAsState()
+    val remoteQueue by client.remoteQueue.collectAsState()
+    val lastProvider by client.lastProvider.collectAsState()
+    val status by client.status.collectAsState()
+    val online by signalRClient.hubAuthenticated.collectAsState()
+
+    var listMode by rememberSaveable { mutableStateOf(initialSessionId == null) }
     var initialApplied by remember(initialSessionId) { mutableStateOf(false) }
+    var sessionSearch by rememberSaveable { mutableStateOf("") }
+    var sessionFilter by rememberSaveable { mutableStateOf("All") }
+    var message by rememberSaveable { mutableStateOf("") }
+    var addressMode by rememberSaveable { mutableStateOf(false) }
+    var address by rememberSaveable { mutableStateOf("") }
+    var sheet by remember { mutableStateOf<String?>(null) }
+    var note by remember { mutableStateOf<String?>(null) }
+    var humanInbox by remember { mutableStateOf(false) }
+    var rename by remember { mutableStateOf(false) }
+    var renameText by remember { mutableStateOf("") }
+    var deleteConfirm by remember { mutableStateOf(false) }
+    var switchProvider by remember { mutableStateOf<AgentProviderUi?>(null) }
+    var create by remember { mutableStateOf(false) }
+    var kind by remember { mutableStateOf("") }
+    var workspace by remember { mutableStateOf("") }
+    var firstMessage by remember { mutableStateOf("") }
+    var archiveQuery by rememberSaveable { mutableStateOf("") }
+    var verify by remember { mutableStateOf<AddressIdentityPreview?>(null) }
+    var olderLoaded by remember(selectedKey) { mutableStateOf(false) }
+
+    val active = providers.firstOrNull { it.active }
+    val selected = sessions.firstOrNull { it.key == selectedKey }
+    val pending = outbox.count { it.state !in listOf("Delivered", "Failed") }
+    val attention = sessions.count { it.needsAttention() || it.unread == true }
+    val canCreate = online && active?.capabilities?.contains("CreateSession") == true
+    val canSend = message.isNotBlank() && (if (addressMode)
+        address.trim().contains("@") && (active?.id ?: lastProvider) != null else selected != null)
+    val visibleSessions = remember(sessions, sessionSearch, sessionFilter) {
+        sessions.asSequence().filter {
+            sessionSearch.isBlank() || it.title.contains(sessionSearch, true) ||
+                it.id.contains(sessionSearch, true) || it.kind.contains(sessionSearch, true)
+        }.filter {
+            sessionFilter != "Attention" || it.needsAttention() || it.unread == true
+        }.filter {
+            sessionFilter != "Active" || it.activity.equals("Working", true) ||
+                it.activity.equals("Running", true) || it.activity.equals("Active", true)
+        }.sortedWith(compareByDescending<AgentSessionUi> { it.needsAttention() }
+            .thenByDescending { it.unread == true }
+            .thenByDescending { it.activity.equals("Working", true) || it.activity.equals("Running", true) })
+            .toList()
+    }
+
     LaunchedEffect(initialSessionId, sessions) {
         if (!initialApplied && initialSessionId != null) {
-            sessions.firstOrNull { it.id == initialSessionId || it.key == initialSessionId }
-                ?.let {
-                    initialApplied = true
-                    agents.select(it.key)
-                    showSessions = false
-                }
+            sessions.firstOrNull { it.id == initialSessionId || it.key == initialSessionId }?.let {
+                initialApplied = true
+                listMode = false
+                client.select(it.key)
+            }
         }
     }
-    val selected = sessions.firstOrNull { it.key == selectedKey }
-    val active = providers.firstOrNull { it.active }
-    val accent = Color(0xFF8FC7E9)
-    val background = Color(0xFF182B40)
-    fun queueMessage() {
-        val text = draft.trim()
-        if (text.isEmpty()) return
+    // Live refresh while following latest; do not overwrite manually paged older history.
+    LaunchedEffect(online, listMode, selectedKey, olderLoaded) {
+        if (online && !listMode && selectedKey != null && !olderLoaded) {
+            while (true) {
+                delay(12_000)
+                client.select(selectedKey)
+            }
+        }
+    }
+    fun openCreate() {
+        val provider = active ?: return
+        kind = provider.kinds.filter {
+            it == "t3/chatgpt" || (provider.id != "t3" && it != "local/opencode")
+        }.firstOrNull().orEmpty()
+        workspace = ""; firstMessage = ""; create = true
+    }
+    fun submit() {
+        if (message.isBlank()) return
         try {
-            if (toAddress) {
-                agents.enqueueAddress(address.trim(),text,active?.id ?: lastProvider
-                    ?: throw IllegalStateException("Connect once to select an address provider before queuing offline"))
-            } else {
-                val session = selected ?: throw IllegalStateException("Select a session or use a contact address")
-                agents.enqueueSession(session,text)
-            }
-            draft = ""
-            feedback = if (authenticated) "Message stored; delivery status will be shown below."
-                else "Saved on this phone and queued for reconnection."
-        } catch (e: Exception) {
-            feedback = e.message
+            if (addressMode) client.enqueueAddress(address.trim(), message.trim(),
+                active?.id ?: lastProvider ?: error("No provider selected"))
+            else client.enqueueSession(selected ?: error("Select a session"), message.trim())
+            message = ""
+            note = if (online) "Message queued. See its delivery receipt in Outbox."
+                else "Message saved on this phone for reconnect."
+        } catch (e: Exception) { note = "Unable to queue: " + e.message }
+    }
+    fun operation(action: String, extras: Map<String, Any?> = emptyMap()) {
+        val target = selected ?: return
+        scope.launch {
+            try { client.sessionAction(target, action, extras); note = action + " requested" }
+            catch (e: Exception) { note = action + " failed: " + e.message }
         }
     }
-    if (showHumanInbox) {
+
+    if (humanInbox) {
         Box(Modifier.fillMaxSize().padding(parentPadding)) {
-            HumanInboxScreen(signalRClient = signalRClient, onBack = { showHumanInbox = false })
+            HumanInboxScreen(signalRClient, onBack = { humanInbox = false })
         }
-        return
-    }
-    Column(Modifier.fillMaxSize().padding(parentPadding).background(background.copy(alpha = 0.2f))) {
-        Row(Modifier.fillMaxWidth().background(background).padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text("AI · Direct T3 sessions", style=MaterialTheme.typography.titleLarge,
-                    color=accent,fontWeight=FontWeight.Bold)
-                Text(if (authenticated) "Connected to OmniHub" else "Offline · local drafts and history",
-                    style=MaterialTheme.typography.labelMedium)
-            }
-            TextButton(onClick={showSessions=!showSessions}) {
-                Text(if(showSessions) "Conversation" else "Sessions")
-            }
-            TextButton(onClick={ showHumanInbox = true }) { Text("Inbox") }
-            TextButton(onClick={scope.launch { agents.refresh() }},enabled=authenticated) {
-                Text("Refresh")
-            }
-        }
-        if (showSessions) {
-        Row(Modifier.fillMaxWidth().padding(horizontal=10.dp, vertical=6.dp),
-            horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-            providers.forEach { provider ->
-                OutlinedButton(
-                    onClick={ if (!provider.active) switching=provider },
-                    enabled=authenticated && !provider.active,
-                    contentPadding=PaddingValues(horizontal=10.dp,vertical=3.dp)
-                ) { Text("${provider.name} ${if (provider.active) "· active" else "· activate"}") }
-            }
-        }
-        Row(Modifier.fillMaxWidth().padding(start=12.dp,end=10.dp),
-            verticalAlignment=Alignment.CenterVertically){
-            Text("Sessions",Modifier.weight(1f),
-                style=MaterialTheme.typography.titleSmall)
-            if(authenticated && active?.id=="t3") {
-                TextButton(onClick={scope.launch {
-                    try { feedback=agents.checkLastWork() }
-                    catch(e:Exception) { feedback="AI status unavailable: ${e.message}" }
-                }}) { Text("Check last AI") }
-            }
-            if(authenticated && active?.capabilities?.contains("CreateSession")==true){
-                TextButton(onClick={
-                    createKind=active.kinds.firstOrNull { it=="t3/chatgpt" || (active.id!="t3" && it!="local/opencode") }.orEmpty()
-                    createWorkspace=""
-                    createMessage=""
-                    createSession=true
-                }){Text("New session")}
-            }
-        }
-        LazyColumn(Modifier.fillMaxWidth().weight(1f)) {
-            items(sessions,key={it.key}) { session ->
-                val chosen = selectedKey==session.key
-                Column(Modifier.fillMaxWidth()
-                    .background(if(chosen) background else Color.Transparent, RoundedCornerShape(6.dp))
-                    .clickable { scope.launch { agents.select(session.key); showSessions=false } }
-                    .padding(horizontal=14.dp,vertical=8.dp)) {
-                    Text(session.title, fontWeight=if(chosen) FontWeight.Bold else FontWeight.Normal,
-                        color=if(chosen) accent else MaterialTheme.colorScheme.onSurface)
-                    Text("${session.kind} · ${session.activity} (${session.confidence})" +
-                        (if (session.attention!="None") " · ${session.attention}" else "") +
-                        (if (session.unread == true) " · unread" else ""),
-                        style=MaterialTheme.typography.labelSmall,
-                        color=MaterialTheme.colorScheme.onSurfaceVariant)
+    } else {
+        Column(Modifier.fillMaxSize().padding(parentPadding).background(p.bg).imePadding()) {
+            // Dense, predictable toolbar; everything else lives in an overflow menu.
+            Row(Modifier.fillMaxWidth().background(p.surface).heightIn(min = 60.dp)
+                .padding(horizontal = 8.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
+                if (!listMode) ActionIcon(Icons.Default.ArrowBack, "All sessions", p) { listMode = true }
+                else Box(Modifier.padding(horizontal = 10.dp).size(34.dp)
+                    .background(p.accentBg, RoundedCornerShape(12.dp)), contentAlignment = Alignment.Center) {
+                    Icon(Icons.Default.AutoAwesome, null, tint = p.accent, modifier = Modifier.size(20.dp))
                 }
-            }
-            if(sessions.isEmpty()) item {
-                Text("No sessions cached. Choose a contact address or connect to refresh.",
-                    Modifier.padding(12.dp),style=MaterialTheme.typography.bodySmall)
-            }
-        }
-        }
-        else {
-        HorizontalDivider()
-        Row(Modifier.fillMaxWidth().padding(horizontal=12.dp),verticalAlignment=Alignment.CenterVertically) {
-            Text(selected?.title ?: "History",Modifier.weight(1f),style=MaterialTheme.typography.titleSmall)
-            if(olderHistoryCursor != null)
-                TextButton(onClick={scope.launch {agents.loadOlderHistory()}},
-                    enabled=authenticated && selectedKey!=null) {Text("Older")}
-            TextButton(onClick={scope.launch { agents.select(selectedKey) }},
-                enabled=authenticated && selectedKey!=null) {Text("Read latest")}
-        }
-        Row(Modifier.fillMaxWidth().padding(horizontal=12.dp),verticalAlignment=Alignment.CenterVertically) {
-            Checkbox(checked=archiveEnabled,onCheckedChange={agents.setArchiveEnabled(it)})
-            Text("Save observed history for offline search (local only)",
-                style=MaterialTheme.typography.labelSmall)
-        }
-        if(archiveEnabled) {
-            OutlinedTextField(
-                value=archivePhrase,
-                onValueChange={
-                    archivePhrase=it.take(100)
-                    scope.launch {agents.searchArchive(archivePhrase)}
-                },
-                modifier=Modifier.fillMaxWidth().padding(horizontal=12.dp),
-                singleLine=true,label={Text("Search offline archive across sessions")}
-            )
-            if(archivePhrase.isNotBlank() && archiveMatches.isNotEmpty()) {
-                LazyColumn(Modifier.fillMaxWidth().heightIn(max=110.dp).padding(horizontal=12.dp)){
-                    items(archiveMatches.take(30)){(sessionKey,item)->
-                        Text("${sessionKey.take(20)} · ${item.text.take(120)}",
-                            Modifier.fillMaxWidth().clickable {
-                                scope.launch {agents.select(sessionKey)}
-                            }.padding(vertical=5.dp),
-                            style=MaterialTheme.typography.labelSmall)
+                Column(Modifier.weight(1f)) {
+                    Text(if (listMode) "AI sessions" else selected?.title ?: "Conversation",
+                        color = p.text, style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Dot(if (online) p.green else p.amber)
+                        Text(if (!online) "Offline · cached data"
+                            else if (listMode) (active?.name ?: "OmniHub") + " · " + sessions.size + " sessions"
+                            else (selected?.kind ?: "Session") + " · " + (selected?.activity ?: "Unknown"),
+                            style = MaterialTheme.typography.labelSmall, color = p.muted, maxLines = 1)
+                    }
+                }
+                ActionIcon(Icons.Default.Refresh, "Refresh", p, online) {
+                    scope.launch {
+                        client.refresh()
+                        if (!listMode && selectedKey != null) client.select(selectedKey)
+                    }
+                }
+                if (listMode) ActionIcon(Icons.Default.MailOutline, "Human inbox", p) { humanInbox = true }
+                Box {
+                    var menu by remember { mutableStateOf(false) }
+                    ActionIcon(Icons.Default.MoreVert, "More options", p) { menu = true }
+                    DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                        if (!listMode) {
+                            DropdownMenuItem(text = { Text("Session actions") }, onClick = {
+                                menu = false; sheet = "actions"
+                            })
+                            DropdownMenuItem(text = { Text("Native queue") }, onClick = {
+                                menu = false; sheet = "queue"
+                                selected?.let { scope.launch { client.fetchQueue(it) } }
+                            }, enabled = selected?.capabilities?.contains("NativeQueue") == true)
+                        }
+                        DropdownMenuItem(text = { Text("Outbox (" + pending + " pending)") },
+                            onClick = { menu = false; sheet = "outbox" })
+                        DropdownMenuItem(text = { Text("Offline history search") },
+                            onClick = { menu = false; sheet = "archive" })
+                        DropdownMenuItem(text = { Text("AI providers") },
+                            onClick = { menu = false; sheet = "providers" })
+                        if (!listMode) DropdownMenuItem(text = { Text("Human inbox") },
+                            onClick = { menu = false; humanInbox = true })
                     }
                 }
             }
-        }
-        if(selected!=null && authenticated) {
-            Row(Modifier.fillMaxWidth().padding(horizontal=12.dp),
-                horizontalArrangement=Arrangement.spacedBy(4.dp)) {
-                if(selected.capabilities.contains("Interrupt"))
-                    TextButton(onClick={scope.launch {
-                        try { agents.sessionAction(selected,"Interrupt") }
-                        catch(e: Exception) { feedback="Interrupt failed: ${e.message}" }
-                    }}) {Text("Stop turn")}
-                if(selected.capabilities.contains("RenameSession"))
-                    TextButton(onClick={renameValue=selected.title;rename=true}) {Text("Rename")}
-                if(selected.capabilities.contains("DeleteSession"))
-                    TextButton(onClick={confirmDelete=true}) {Text("Delete")}
-                if(selected.capabilities.contains("NativeQueue"))
-                    TextButton(onClick={scope.launch {agents.fetchQueue(selected)}}) {Text("Queue")}
+            if (note != null) Row(Modifier.fillMaxWidth().background(p.accentBg)
+                .padding(start = 14.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(note!!, Modifier.weight(1f), color = p.text, style = MaterialTheme.typography.bodySmall)
+                ActionIcon(Icons.Default.Close, "Dismiss notice", p) { note = null }
             }
-        }
-        LazyColumn(Modifier.weight(1f).fillMaxWidth().padding(horizontal=12.dp)) {
-            if(!historyNotice.isNullOrBlank()) item {
-                Text(historyNotice!!,color=MaterialTheme.colorScheme.tertiary,
-                    style=MaterialTheme.typography.labelSmall)
-            }
-            items(history,key={it.id}) { item ->
-                Column(Modifier.fillMaxWidth().padding(vertical=7.dp)) {
-                    Text(item.kind + if(item.partial) " · partial" else "",
-                        style=MaterialTheme.typography.labelMedium,fontWeight=FontWeight.Bold)
-                    Text(item.text,style=MaterialTheme.typography.bodySmall)
-                }
-            }
-        }
-        HorizontalDivider()
-        if(remoteQueue.isNotEmpty() && selected!=null){
-            Text("Provider's native queue",Modifier.padding(start=12.dp,top=7.dp),
-                style=MaterialTheme.typography.titleSmall)
-            LazyColumn(Modifier.fillMaxWidth().heightIn(max=90.dp)) {
-                items(remoteQueue,key={it.id}) { item ->
-                    Row(Modifier.fillMaxWidth().padding(horizontal=12.dp),
-                        verticalAlignment=Alignment.CenterVertically) {
-                        Text(item.text.take(100),Modifier.weight(1f),
-                            style=MaterialTheme.typography.labelSmall)
-                        if(selected.capabilities.contains("EditQueue"))
-                            TextButton(onClick={scope.launch {
-                                try {
-                                    agents.sessionAction(selected,"QueueEdit",mapOf(
-                                        "edit" to mapOf("id" to item.id,"action" to "Cancel")))
-                                } catch (e: Exception) {feedback="Queue edit failed: ${e.message}"}
-                            }}) {Text("Cancel")}
+
+            if (listMode) {
+                OutlinedTextField(sessionSearch, { sessionSearch = it }, Modifier.fillMaxWidth()
+                    .padding(start = 16.dp, end = 16.dp, top = 16.dp), singleLine = true,
+                    placeholder = { Text("Search conversations") },
+                    leadingIcon = { Icon(Icons.Default.Search, null) },
+                    trailingIcon = if (sessionSearch.isNotEmpty()) {{
+                        IconButton(onClick = { sessionSearch = "" }) { Icon(Icons.Default.Close, "Clear search") }
+                    }} else null,
+                    shape = RoundedCornerShape(18.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedContainerColor = p.surface, unfocusedContainerColor = p.surface,
+                        focusedBorderColor = p.accent, unfocusedBorderColor = p.border))
+                Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf("All", "Active", "Attention").forEach { value ->
+                        FilterChip(selected = sessionFilter == value, onClick = { sessionFilter = value },
+                            label = { Text(if (value == "Attention" && attention > 0)
+                                "Attention " + attention else value) },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = p.accentBg, selectedLabelColor = p.accent,
+                                labelColor = p.muted))
                     }
                 }
-            }
-        }
-        if(queued.isNotEmpty()) {
-            Text("Device outbox",Modifier.padding(start=12.dp,top=7.dp),
-                style=MaterialTheme.typography.titleSmall)
-            LazyColumn(Modifier.fillMaxWidth().heightIn(max=108.dp)) {
-                items(queued,key={it.id}) { item ->
-                    Row(Modifier.fillMaxWidth().padding(horizontal=12.dp,vertical=4.dp),
-                        verticalAlignment=Alignment.CenterVertically) {
-                        Text("${item.target.take(30)}: ${item.text.take(36)} · ${item.state}",
-                            Modifier.weight(1f),style=MaterialTheme.typography.labelSmall)
-                        if(item.needsVerification && authenticated && item.state in listOf("Pending","Blocked"))
-                            TextButton(onClick={scope.launch {
-                                try {
-                                    verifyCandidate=agents.previewAddressRecipient(item.id)
-                                }catch(e: Exception){feedback="Recipient verification failed: ${e.message}"}
-                            }}) {Text("Verify")}
-                        if(item.state=="Delivered") TextButton(onClick={agents.dismissDelivered(item.id)}) {
-                            Text("Clear")
+                Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 5.dp)) {
+                    Text("CONVERSATIONS", Modifier.weight(1f), color = p.muted, fontSize = 11.sp,
+                        letterSpacing = 1.1.sp, fontWeight = FontWeight.SemiBold)
+                    Text(visibleSessions.size.toString(), color = p.muted,
+                        style = MaterialTheme.typography.labelSmall)
+                }
+                LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(
+                    start = 10.dp, end = 10.dp, top = 6.dp, bottom = 20.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    items(visibleSessions, key = { it.key }) { session ->
+                        Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp))
+                            .background(if (session.key == selectedKey) p.selected else p.surface)
+                            .clickable {
+                                listMode = false
+                                scope.launch { client.select(session.key) }
+                            }.padding(horizontal = 14.dp, vertical = 13.dp),
+                            verticalAlignment = Alignment.CenterVertically) {
+                            Box(Modifier.size(42.dp).background(p.raised, RoundedCornerShape(14.dp)),
+                                contentAlignment = Alignment.Center) {
+                                Text(session.title.trim().take(1).uppercase().ifBlank { "A" },
+                                    color = p.accent, fontWeight = FontWeight.SemiBold,
+                                    style = MaterialTheme.typography.titleMedium)
+                            }
+                            Spacer(Modifier.width(12.dp))
+                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Text(session.title, color = p.text, maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis,
+                                    fontWeight = if (session.unread == true) FontWeight.Bold else FontWeight.Medium,
+                                    style = MaterialTheme.typography.bodyLarge)
+                                Row(verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                                    Dot(session.dotColor(p))
+                                    Text(if (session.needsAttention()) session.attention
+                                        else session.activity + " · " + session.kind.substringAfterLast('/'),
+                                        color = if (session.needsAttention()) p.amber else p.muted,
+                                        maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                        style = MaterialTheme.typography.labelSmall)
+                                }
+                            }
+                            if (session.unread == true) Dot(p.accent)
+                            Icon(Icons.Default.ChevronRight, null, tint = p.muted,
+                                modifier = Modifier.padding(start = 6.dp).size(18.dp))
                         }
                     }
-                    if(item.error!=null) Text(item.error,
-                        Modifier.padding(horizontal=12.dp),color=MaterialTheme.colorScheme.error,
-                        style=MaterialTheme.typography.labelSmall)
+                    if (visibleSessions.isEmpty()) item {
+                        Column(Modifier.fillMaxWidth().padding(top = 60.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                            Icon(Icons.Default.Forum, null, tint = p.muted, modifier = Modifier.size(35.dp))
+                            Text(if (sessionSearch.isNotBlank() || sessionFilter != "All") "No matches"
+                                else if (online) "No sessions available" else "Connect to load sessions",
+                                style = MaterialTheme.typography.titleMedium, color = p.text)
+                            Text(if (online) "Try another filter or create a session"
+                                else "Cached conversations will appear here when available",
+                                color = p.muted, style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                }
+                if (canCreate) Row(Modifier.fillMaxWidth().padding(15.dp),
+                    horizontalArrangement = Arrangement.End) {
+                    Button(onClick = { openCreate() }, shape = RoundedCornerShape(18.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = p.accentBg, contentColor = p.accent)) {
+                        Icon(Icons.Default.Add, null, modifier = Modifier.size(19.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("New session")
+                    }
+                }
+            } else {
+                Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 7.dp),
+                    verticalAlignment = Alignment.CenterVertically) {
+                    Dot(selected?.dotColor(p) ?: p.muted)
+                    Spacer(Modifier.width(8.dp))
+                    Text(if (selected == null) "Select a session"
+                        else if (selected.needsAttention()) selected.attention
+                        else selected.activity + " · " + selected.confidence,
+                        modifier = Modifier.weight(1f), color = p.muted, maxLines = 1,
+                        style = MaterialTheme.typography.labelSmall)
+                    if (online && selected?.capabilities?.contains("Interrupt") == true)
+                        TextButton(onClick = { operation("Interrupt") }) {
+                            Icon(Icons.Default.StopCircle, null, modifier = Modifier.size(17.dp))
+                            Spacer(Modifier.width(3.dp)); Text("Stop")
+                        }
+                }
+                HorizontalDivider(color = p.border)
+                val scroll = rememberLazyListState()
+                LaunchedEffect(selectedKey, history.lastOrNull()?.id, history.size) {
+                    if (history.isNotEmpty() && !olderLoaded) {
+                        val headers = (if (older != null) 1 else 0) +
+                            (if (!historyNotice.isNullOrBlank()) 1 else 0)
+                        scroll.animateScrollToItem(headers + history.size - 1)
+                    }
+                }
+                LazyColumn(Modifier.fillMaxWidth().weight(1f), state = scroll,
+                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 18.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                    if (older != null) item {
+                        TextButton(onClick = {
+                            olderLoaded = true
+                            scope.launch { client.loadOlderHistory() }
+                        }, enabled = online, modifier = Modifier.fillMaxWidth()) {
+                            Icon(Icons.Default.History, null, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(6.dp)); Text("Load earlier messages")
+                        }
+                    }
+                    if (!historyNotice.isNullOrBlank()) item {
+                        Text(historyNotice!!, color = p.muted,
+                            style = MaterialTheme.typography.labelSmall)
+                    }
+                    if (history.isEmpty()) item {
+                        Column(Modifier.fillMaxWidth().padding(top = 65.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Icon(Icons.Default.ChatBubbleOutline, null, tint = p.muted,
+                                modifier = Modifier.size(35.dp))
+                            Text("Conversation history", color = p.text,
+                                style = MaterialTheme.typography.titleMedium)
+                            Text(if (online) "No messages yet, or no history exposed by provider"
+                                else "Cached history is available offline",
+                                color = p.muted, style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                    items(history, key = { it.id }) { item -> MessageRow(item, p) }
+                    item { if (online && selected != null)
+                        Text("LATEST", Modifier.fillMaxWidth().padding(8.dp), textAlign = TextAlign.Center,
+                            color = p.muted, style = MaterialTheme.typography.labelSmall)
+                    }
+                }
+                if (pending > 0 || remoteQueue.isNotEmpty()) Row(
+                    Modifier.fillMaxWidth().background(p.raised)
+                        .clickable { sheet = "outbox" }.padding(horizontal = 16.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Schedule, null, tint = p.amber, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text((if (pending > 0) pending.toString() + " pending on device" else "Provider queue") +
+                        (if (remoteQueue.isNotEmpty()) " · " + remoteQueue.size + " provider queued" else ""),
+                        Modifier.weight(1f), color = p.text, style = MaterialTheme.typography.bodySmall)
+                    Icon(Icons.Default.ChevronRight, null, tint = p.muted, modifier = Modifier.size(18.dp))
+                }
+                Column(Modifier.fillMaxWidth().background(p.surface)
+                    .padding(horizontal = 12.dp, vertical = 8.dp)) {
+                    if (addressMode) OutlinedTextField(address, { address = it.take(320) },
+                        Modifier.fillMaxWidth().padding(bottom = 8.dp), singleLine = true,
+                        label = { Text("Contact address") }, shape = RoundedCornerShape(16.dp))
+                    Row(verticalAlignment = Alignment.Bottom,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedTextField(message, { message = it.take(30_000) },
+                            modifier = Modifier.weight(1f), minLines = 1, maxLines = 5,
+                            placeholder = { Text(if (addressMode) "Message contact…" else "Message agent…") },
+                            shape = RoundedCornerShape(20.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedContainerColor = p.raised, unfocusedContainerColor = p.raised,
+                                focusedBorderColor = p.accent, unfocusedBorderColor = p.border))
+                        IconButton(onClick = { submit() }, enabled = canSend,
+                            modifier = Modifier.size(50.dp).background(
+                                if (canSend) p.accent else p.raised, CircleShape)) {
+                            Icon(Icons.Default.ArrowUpward, contentDescription = "Send message",
+                                tint = if (canSend) p.bg else p.muted)
+                        }
+                    }
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        TextButton(onClick = { addressMode = !addressMode },
+                            enabled = active?.capabilities?.contains("SubmitToAgent") == true,
+                            contentPadding = PaddingValues(horizontal = 4.dp)) {
+                            Icon(if (addressMode) Icons.Default.AlternateEmail
+                                else Icons.Default.ChatBubbleOutline,
+                                null, modifier = Modifier.size(15.dp))
+                            Spacer(Modifier.width(5.dp))
+                            Text(if (addressMode) "To contact" else "To session",
+                                style = MaterialTheme.typography.labelSmall)
+                        }
+                        Spacer(Modifier.weight(1f))
+                        Text(if (online) "Queued delivery" else "Offline · saved on phone",
+                            style = MaterialTheme.typography.labelSmall, color = p.muted)
+                    }
+                }
+            }
+            if (status.isNotBlank() && note == null) Text(status,
+                Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 3.dp),
+                color = p.muted, style = MaterialTheme.typography.labelSmall,
+                maxLines = 2, overflow = TextOverflow.Ellipsis)
+        }
+    }
+
+    if (sheet != null) ModalBottomSheet(onDismissRequest = { sheet = null },
+        containerColor = p.surface, contentColor = p.text,
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
+        Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 20.dp)
+            .padding(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            when (sheet) {
+                "providers" -> {
+                    SheetTitle("AI providers", "Choose the active backend", p)
+                    providers.forEach { provider ->
+                        Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp))
+                            .background(p.raised).clickable(enabled = online && !provider.active) {
+                                switchProvider = provider; sheet = null
+                            }.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Dot(if (provider.active) p.green else p.muted)
+                            Spacer(Modifier.width(12.dp))
+                            Text(provider.name, Modifier.weight(1f), color = p.text)
+                            Text(if (provider.active) "Active" else "Switch", color = p.accent)
+                        }
+                    }
+                    if (providers.isEmpty()) Text("Connect to discover providers", color = p.muted)
+                }
+                "actions" -> {
+                    SheetTitle("Session options", selected?.title, p)
+                    if (selected?.capabilities?.contains("RenameSession") == true)
+                        SheetAction("Rename session", p) {
+                            renameText = selected.title; rename = true; sheet = null
+                        }
+                    if (selected?.capabilities?.contains("NativeQueue") == true)
+                        SheetAction("View native queue", p) {
+                            sheet = "queue"; scope.launch { client.fetchQueue(selected) }
+                        }
+                    if (selected?.capabilities?.contains("Interrupt") == true)
+                        SheetAction("Stop turn", p) { operation("Interrupt"); sheet = null }
+                    if (active?.id == "t3") SheetAction("Check last AI creation", p) {
+                        scope.launch { try { note = client.checkLastWork() }
+                            catch (e: Exception) { note = e.message } }
+                        sheet = null
+                    }
+                    if (selected?.capabilities?.contains("DeleteSession") == true)
+                        SheetAction("Delete session", p, p.amber) {
+                            deleteConfirm = true; sheet = null
+                        }
+                }
+                "queue" -> {
+                    SheetTitle("Provider queue", selected?.title, p)
+                    if (remoteQueue.isEmpty()) Text("No queued messages", color = p.muted)
+                    remoteQueue.forEach { item ->
+                        Row(Modifier.fillMaxWidth().background(p.raised, RoundedCornerShape(14.dp))
+                            .padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text(item.text, Modifier.weight(1f), color = p.text,
+                                maxLines = 3, overflow = TextOverflow.Ellipsis)
+                            if (selected?.capabilities?.contains("EditQueue") == true)
+                                TextButton(onClick = { operation("QueueEdit", mapOf(
+                                    "edit" to mapOf("id" to item.id, "action" to "Cancel"))) }) {
+                                    Text("Cancel")
+                                }
+                        }
+                    }
+                }
+                "outbox" -> {
+                    SheetTitle("Delivery outbox", "Durable receipts and offline drafts", p)
+                    if (outbox.isEmpty()) Text("Outbox is empty", color = p.muted)
+                    LazyColumn(Modifier.heightIn(max = 480.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        items(outbox.take(50), key = { it.id }) { item ->
+                            Column(Modifier.fillMaxWidth().background(p.raised, RoundedCornerShape(15.dp))
+                                .padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Text(item.target + " · " + item.state, color = p.accent,
+                                    style = MaterialTheme.typography.labelMedium)
+                                Text(item.text, maxLines = 3, overflow = TextOverflow.Ellipsis,
+                                    color = p.text, style = MaterialTheme.typography.bodyMedium)
+                                if (item.error != null) Text(item.error, color = p.amber,
+                                    style = MaterialTheme.typography.labelSmall)
+                                if (item.needsVerification && online &&
+                                    item.state in listOf("Pending", "Blocked"))
+                                    TextButton(onClick = {
+                                        scope.launch {
+                                            try { verify = client.previewAddressRecipient(item.id) }
+                                            catch (e: Exception) { note = "Verification failed: " + e.message }
+                                        }
+                                    }) { Text("Verify recipient") }
+                                if (item.state == "Delivered") TextButton(onClick = {
+                                    client.dismissDelivered(item.id)
+                                }) { Text("Dismiss receipt") }
+                            }
+                        }
+                    }
+                }
+                "archive" -> {
+                    SheetTitle("Offline history", "Locally searchable when enabled", p)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("Save observed history", Modifier.weight(1f), color = p.text)
+                        Switch(checked = archiveOn, onCheckedChange = { client.setArchiveEnabled(it) })
+                    }
+                    OutlinedTextField(archiveQuery, {
+                        archiveQuery = it.take(100)
+                        scope.launch { client.searchArchive(archiveQuery) }
+                    }, Modifier.fillMaxWidth(), singleLine = true, enabled = archiveOn,
+                        label = { Text("Search archived messages") },
+                        leadingIcon = { Icon(Icons.Default.Search, null) })
+                    if (archiveOn && archiveQuery.isNotBlank()) {
+                        if (archiveResults.isEmpty()) Text("No saved matches", color = p.muted)
+                        LazyColumn(Modifier.heightIn(max = 280.dp)) {
+                            items(archiveResults.take(30)) { (key, item) ->
+                                Column(Modifier.fillMaxWidth().clickable {
+                                    sheet = null; listMode = false
+                                    scope.launch { client.select(key) }
+                                }.padding(10.dp)) {
+                                    Text(key.substringAfter(':'), color = p.accent,
+                                        maxLines = 1, style = MaterialTheme.typography.labelSmall)
+                                    Text(item.text, color = p.text, maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis)
+                                }
+                                HorizontalDivider(color = p.border)
+                            }
+                        }
+                    }
                 }
             }
         }
-        Row(Modifier.fillMaxWidth().padding(horizontal=12.dp),verticalAlignment=Alignment.CenterVertically) {
-            Checkbox(checked=toAddress,onCheckedChange={toAddress=it},
-                enabled=active?.capabilities?.contains("SubmitToAgent")==true)
-            Text("Managed contact (OpenRig M7)",style=MaterialTheme.typography.labelMedium)
-        }
-        if(toAddress) OutlinedTextField(
-            value=address,onValueChange={address=it.take(320)},singleLine=true,
-            modifier=Modifier.fillMaxWidth().padding(horizontal=12.dp),
-            label={Text("Contact address (e.g. myagent@system)")})
-        OutlinedTextField(
-            value=draft,onValueChange={draft=it.take(30_000)},
-            modifier=Modifier.fillMaxWidth().padding(horizontal=12.dp),
-            label={Text("Message (saved offline when disconnected)")},maxLines=4)
-        Button(
-            onClick={ queueMessage() },
-            enabled=draft.isNotBlank() && (if(toAddress) address.contains("@") && (active?.id ?: lastProvider)!=null else selected != null),
-            modifier=Modifier.fillMaxWidth().padding(horizontal=12.dp,vertical=6.dp)
-        ) { Text(if(authenticated) "Submit with delivery receipt" else "Queue on this phone") }
-        if(feedback!=null) Text(feedback!!,Modifier.padding(horizontal=12.dp),
-            style=MaterialTheme.typography.labelSmall)
-        if(status.isNotBlank()) Text(status,Modifier.padding(horizontal=12.dp,vertical=4.dp),
-            style=MaterialTheme.typography.labelSmall,
-            color=MaterialTheme.colorScheme.tertiary)
-        }
     }
-    verifyCandidate?.let { preview ->
-        AlertDialog(
-            onDismissRequest={verifyCandidate=null},
-            title={Text("Confirm contact identity")},
-            text={Text("This queued message will follow the same verified recipient across sessions. If the address changes owners, delivery will stop.\n\n${preview.summary}")},
-            confirmButton={TextButton(onClick={
-                verifyCandidate=null
-                try {agents.confirmAddressRecipient(preview)}
-                catch(e: Exception){feedback="Verification was not saved: ${e.message}"}
-            }) {Text("Confirm recipient")}},
-            dismissButton={TextButton(onClick={verifyCandidate=null}){Text("Cancel")}}
-        )
+    verify?.let { candidate ->
+        AlertDialog(onDismissRequest = { verify = null }, title = { Text("Confirm recipient identity") },
+            text = { Text("Message will only reach this verified recipient:\n\n" + candidate.summary) },
+            confirmButton = { TextButton(onClick = {
+                verify = null
+                try { client.confirmAddressRecipient(candidate); note = "Recipient verified" }
+                catch (e: Exception) { note = "Verification failed: " + e.message }
+            }) { Text("Confirm") } },
+            dismissButton = { TextButton(onClick = { verify = null }) { Text("Cancel") } })
     }
-    if(rename && selected!=null) AlertDialog(
-        onDismissRequest={rename=false},
-        title={Text("Rename session")},
-        text={OutlinedTextField(renameValue,{renameValue=it.take(256)},label={Text("Session title")})},
-        confirmButton={TextButton(onClick={
-            rename=false
-            scope.launch {
-                try {agents.sessionAction(selected,"Rename",mapOf("title" to renameValue))}
-                catch(e: Exception){feedback="Rename failed: ${e.message}"}
-            }
-        }){Text("Rename")}},
-        dismissButton={TextButton(onClick={rename=false}){Text("Cancel")}}
-    )
-    if(confirmDelete && selected!=null) AlertDialog(
-        onDismissRequest={confirmDelete=false},
-        title={Text("Permanently delete this session?")},
-        text={Text("This deletes the local provider's transcript. It cannot be undone.")},
-        confirmButton={TextButton(onClick={
-            confirmDelete=false
+    if (rename && selected != null) AlertDialog(onDismissRequest = { rename = false },
+        title = { Text("Rename session") },
+        text = { OutlinedTextField(renameText, { renameText = it.take(256) },
+            label = { Text("Session title") }, singleLine = true) },
+        confirmButton = { TextButton(onClick = {
+            rename = false; operation("Rename", mapOf("title" to renameText))
+        }, enabled = renameText.isNotBlank()) { Text("Save") } },
+        dismissButton = { TextButton(onClick = { rename = false }) { Text("Cancel") } })
+    if (deleteConfirm && selected != null) AlertDialog(onDismissRequest = { deleteConfirm = false },
+        title = { Text("Permanently delete session?") },
+        text = { Text("This deletes the provider's local transcript and cannot be undone.") },
+        confirmButton = { TextButton(onClick = {
+            deleteConfirm = false
             scope.launch {
                 try {
-                    agents.sessionAction(selected,"Delete",mapOf("scope" to "transcript"))
-                    agents.select(null)
-                } catch(e: Exception){feedback="Delete failed: ${e.message}"}
+                    client.sessionAction(selected, "Delete", mapOf("scope" to "transcript"))
+                    client.select(null); listMode = true; note = "Session deleted"
+                } catch (e: Exception) { note = "Delete failed: " + e.message }
             }
-        }){Text("Delete")}},
-        dismissButton={TextButton(onClick={confirmDelete=false}){Text("Cancel")}}
-    )
-    if(createSession && active!=null) AlertDialog(
-        onDismissRequest={createSession=false},
-        title={Text("Create AI session")},
-        text={
-            Column(verticalArrangement=Arrangement.spacedBy(6.dp)){
-                Text("Select execution kind",style=MaterialTheme.typography.labelMedium)
-                active.kinds.filter { it=="t3/chatgpt" || (active.id!="t3" && it!="local/opencode") }.forEach { kind ->
-                    Row(verticalAlignment=Alignment.CenterVertically){
-                        RadioButton(selected=createKind==kind,
-                            onClick={createKind=kind})
-                        Text(kind,Modifier.clickable{createKind=kind},
-                            style=MaterialTheme.typography.labelMedium)
-                    }
+        }) { Text("Delete") } },
+        dismissButton = { TextButton(onClick = { deleteConfirm = false }) { Text("Cancel") } })
+    if (create && active != null) AlertDialog(onDismissRequest = { create = false },
+        title = { Text("New AI session") },
+        text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Execution kind", style = MaterialTheme.typography.labelMedium)
+            active.kinds.filter { it == "t3/chatgpt" ||
+                (active.id != "t3" && it != "local/opencode") }.forEach { option ->
+                Row(Modifier.fillMaxWidth().clickable { kind = option },
+                    verticalAlignment = Alignment.CenterVertically) {
+                    RadioButton(selected = kind == option, onClick = { kind = option })
+                    Text(option, style = MaterialTheme.typography.bodySmall)
                 }
-                OutlinedTextField(createWorkspace,{createWorkspace=it.take(4096)},
-                    label={Text("Existing working folder")},singleLine=true)
-                OutlinedTextField(createMessage,{createMessage=it.take(30_000)},
-                    label={Text("First message")},maxLines=4)
             }
-        },
-        confirmButton={TextButton(
-            enabled=createKind.isNotEmpty()&&createWorkspace.isNotBlank()&&createMessage.isNotBlank(),
-            onClick={
-                createSession=false
+            OutlinedTextField(workspace, { workspace = it.take(4096) },
+                label = { Text("Existing working folder") }, singleLine = true)
+            OutlinedTextField(firstMessage, { firstMessage = it.take(30_000) },
+                label = { Text("First instruction") }, maxLines = 4)
+        }},
+        confirmButton = { TextButton(enabled = kind.isNotBlank() &&
+            workspace.isNotBlank() && firstMessage.isNotBlank(), onClick = {
+            create = false
+            scope.launch {
+                try { client.createSession(active, kind, workspace, firstMessage)
+                    note = "Session creation submitted; check status for receipt"
+                } catch (e: Exception) { note = "Create failed: " + e.message }
+            }
+        }) { Text("Create") } },
+        dismissButton = { TextButton(onClick = { create = false }) { Text("Cancel") } })
+    switchProvider?.let { provider ->
+        AlertDialog(onDismissRequest = { switchProvider = null },
+            title = { Text("Activate " + provider.name + "?") },
+            text = { Text("The previous provider will be deactivated. Queued messages remain on your phone.") },
+            confirmButton = { TextButton(onClick = {
+                switchProvider = null
                 scope.launch {
-                    try {
-                        agents.createSession(active,createKind,createWorkspace,createMessage)
-                    }catch(e: Exception){feedback="Create failed: ${e.message}"}
+                    try { client.activate(provider); listMode = true
+                        note = "Activated " + provider.name
+                    } catch (e: Exception) { note = "Switch failed: " + e.message }
                 }
-            }){Text("Create")}},
-        dismissButton={TextButton(onClick={createSession=false}){Text("Cancel")}}
-    )
-    switching?.let { provider ->
-        AlertDialog(
-            onDismissRequest={switching=null},
-            title={Text("Activate ${provider.name}?")},
-            text={Text("Only you can switch providers. The previous provider will be deactivated; any failure aborts the switch. Local Agents activation may install Claude hooks and resume local queues.")},
-            confirmButton={
-                TextButton(onClick={
-                    switching=null
-                    scope.launch {
-                        try { agents.activate(provider) }
-                        catch (e: Exception) { feedback="Provider switch failed: ${e.message}" }
-                    }
-                }){Text("Activate")}
-            },
-            dismissButton={TextButton(onClick={switching=null}) {Text("Cancel")}}
-        )
+            }) { Text("Switch") } },
+            dismissButton = { TextButton(onClick = { switchProvider = null }) { Text("Cancel") } })
+    }
+}
+
+@Composable private fun MessageRow(item: AgentHistoryUi, p: AiPalette) {
+    val kind = item.kind.lowercase()
+    val outgoing = kind.contains("user") || kind.contains("human") || kind.contains("request")
+    val technical = kind.contains("tool") || kind.contains("command") || kind.contains("progress") ||
+        kind.contains("event") || kind.contains("notice")
+    var expanded by remember(item.id) { mutableStateOf(false) }
+    if (technical) {
+        Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp))
+            .background(p.raised).clickable { expanded = !expanded }
+            .padding(horizontal = 12.dp, vertical = 10.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.Terminal, null, tint = p.muted, modifier = Modifier.size(16.dp))
+                Spacer(Modifier.width(8.dp))
+                Text(item.kind + (if (item.partial) " · partial" else ""),
+                    Modifier.weight(1f), color = p.muted,
+                    style = MaterialTheme.typography.labelMedium)
+                Icon(if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                    "Expand", tint = p.muted, modifier = Modifier.size(18.dp))
+            }
+            Text(if (expanded || item.text.length <= 90) item.text
+                else item.text.lineSequence().firstOrNull().orEmpty().take(90),
+                color = if (expanded) p.text else p.muted,
+                style = MaterialTheme.typography.bodySmall,
+                maxLines = if (expanded) Int.MAX_VALUE else 2,
+                modifier = Modifier.padding(top = 6.dp))
+        }
+    } else {
+        Column(Modifier.fillMaxWidth(), horizontalAlignment =
+            if (outgoing) Alignment.End else Alignment.Start) {
+            Text(if (outgoing) "YOU" else item.kind.uppercase(),
+                color = p.muted, fontSize = 10.sp, fontWeight = FontWeight.SemiBold,
+                letterSpacing = 0.8.sp,
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp))
+            Box(Modifier.widthIn(max = if (outgoing) 310.dp else 500.dp)
+                .clip(RoundedCornerShape(18.dp))
+                .background(if (outgoing) p.accentBg else p.surface)
+                .padding(horizontal = 15.dp, vertical = 12.dp)) {
+                Text(item.text.ifBlank { if (item.partial) "Waiting for content…" else "(empty)" },
+                    color = p.text, style = MaterialTheme.typography.bodyMedium,
+                    lineHeight = 21.sp)
+            }
+            if (item.partial) Text("Partial history", color = p.muted,
+                style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(7.dp))
+        }
     }
 }
