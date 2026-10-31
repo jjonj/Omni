@@ -4,13 +4,25 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.foundation.verticalScroll
+import androidx.activity.compose.BackHandler
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -46,6 +58,17 @@ private data class AiPalette(
 )
 private fun AgentSessionUi.needsAttention() =
     attention.isNotBlank() && !attention.equals("None", true)
+private fun AgentSessionUi.groupName(): String = when {
+    needsAttention() || unread == true -> "NEEDS YOU"
+    activity.equals("Working", true) || activity.equals("Running", true) ||
+        activity.equals("Active", true) -> "WORKING"
+    else -> "CONVERSATIONS"
+}
+private fun AgentSessionUi.groupRank(): Int = when (groupName()) {
+    "NEEDS YOU" -> 0
+    "WORKING" -> 1
+    else -> 2
+}
 private fun AgentSessionUi.dotColor(p: AiPalette): Color = when {
     needsAttention() -> p.amber
     activity.equals("Working", true) || activity.equals("Running", true) ||
@@ -85,6 +108,7 @@ fun OmniAiModesScreen(
     val client = remember(signalRClient) { signalRClient.genericAgents }
     val scope = rememberCoroutineScope()
     val p = palette()
+    val clipboard = LocalClipboardManager.current
     val providers by client.providers.collectAsState()
     val sessions by client.sessions.collectAsState()
     val selectedKey by client.selected.collectAsState()
@@ -97,6 +121,8 @@ fun OmniAiModesScreen(
     val remoteQueue by client.remoteQueue.collectAsState()
     val lastProvider by client.lastProvider.collectAsState()
     val status by client.status.collectAsState()
+    val historyLoading by client.historyLoading.collectAsState()
+    val createdKey by client.createdSessionKey.collectAsState()
     val online by signalRClient.hubAuthenticated.collectAsState()
 
     var listMode by rememberSaveable { mutableStateOf(initialSessionId == null) }
@@ -104,6 +130,9 @@ fun OmniAiModesScreen(
     var sessionSearch by rememberSaveable { mutableStateOf("") }
     var sessionFilter by rememberSaveable { mutableStateOf("All") }
     var message by rememberSaveable { mutableStateOf("") }
+    var loadedDraftFor by remember { mutableStateOf<String?>(null) }
+    var actionBusy by remember { mutableStateOf(false) }
+    var creationBusy by remember { mutableStateOf(false) }
     var addressMode by rememberSaveable { mutableStateOf(false) }
     var address by rememberSaveable { mutableStateOf("") }
     var sheet by remember { mutableStateOf<String?>(null) }
@@ -119,15 +148,26 @@ fun OmniAiModesScreen(
     var firstMessage by remember { mutableStateOf("") }
     var archiveQuery by rememberSaveable { mutableStateOf("") }
     var verify by remember { mutableStateOf<AddressIdentityPreview?>(null) }
-    var olderLoaded by remember(selectedKey) { mutableStateOf(false) }
+    var followingLatest by remember(selectedKey) { mutableStateOf(true) }
 
     val active = providers.firstOrNull { it.active }
     val selected = sessions.firstOrNull { it.key == selectedKey }
     val pending = outbox.count { it.state !in listOf("Delivered", "Failed") }
+    val localSessionMessages = outbox.filter { it.provider == selected?.provider &&
+        it.targetType == "session" && it.target == selected?.id &&
+        it.state !in listOf("Delivered", "Failed") }
+    val draftKey = if (addressMode) "contact-composer" else "session:" + (selectedKey ?: "")
+    LaunchedEffect(draftKey) {
+        loadedDraftFor = null
+        message = client.getDraft(draftKey)
+        loadedDraftFor = draftKey
+    }
     val attention = sessions.count { it.needsAttention() || it.unread == true }
     val canCreate = online && active?.capabilities?.contains("CreateSession") == true
-    val canSend = message.isNotBlank() && (if (addressMode)
-        address.trim().contains("@") && (active?.id ?: lastProvider) != null else selected != null)
+    val canSend = loadedDraftFor == draftKey && message.isNotBlank() && (if (addressMode)
+        address.trim().contains("@") && (active?.id ?: lastProvider) != null &&
+            (!online || active?.capabilities?.contains("SubmitToAgent") == true)
+        else selected != null)
     val visibleSessions = remember(sessions, sessionSearch, sessionFilter) {
         sessions.asSequence().filter {
             sessionSearch.isBlank() || it.title.contains(sessionSearch, true) ||
@@ -137,9 +177,9 @@ fun OmniAiModesScreen(
         }.filter {
             sessionFilter != "Active" || it.activity.equals("Working", true) ||
                 it.activity.equals("Running", true) || it.activity.equals("Active", true)
-        }.sortedWith(compareByDescending<AgentSessionUi> { it.needsAttention() }
-            .thenByDescending { it.unread == true }
-            .thenByDescending { it.activity.equals("Working", true) || it.activity.equals("Running", true) })
+        }.sortedWith(compareBy<AgentSessionUi> { it.groupRank() }
+            .thenByDescending { it.needsAttention() }
+            .thenByDescending { it.unread == true })
             .toList()
     }
 
@@ -153,13 +193,18 @@ fun OmniAiModesScreen(
         }
     }
     // Live refresh while following latest; do not overwrite manually paged older history.
-    LaunchedEffect(online, listMode, selectedKey, olderLoaded) {
-        if (online && !listMode && selectedKey != null && !olderLoaded) {
+    LaunchedEffect(online, listMode, selectedKey) {
+        if (online && !listMode && selectedKey != null) {
+            // Opening offline and reconnecting must mark the visible history seen.
+            client.select(selectedKey)
             while (true) {
-                delay(12_000)
-                client.select(selectedKey)
+                delay(8_000)
+                client.select(selectedKey, reload = true)
             }
         }
+    }
+    BackHandler(enabled = humanInbox || !listMode) {
+        if (humanInbox) humanInbox = false else listMode = true
     }
     fun openCreate() {
         val provider = active ?: return
@@ -169,24 +214,50 @@ fun OmniAiModesScreen(
         workspace = ""; firstMessage = ""; create = true
     }
     fun submit() {
-        if (message.isBlank()) return
+        if (!canSend) return
         try {
-            if (addressMode) client.enqueueAddress(address.trim(), message.trim(),
+            val contactReceipt = if (addressMode) client.enqueueAddress(address.trim(), message.trim(),
                 active?.id ?: lastProvider ?: error("No provider selected"))
-            else client.enqueueSession(selected ?: error("Select a session"), message.trim())
+                else null
+            if (!addressMode) client.enqueueSession(selected ?: error("Select a session"), message.trim())
             message = ""
-            note = if (online) "Message queued. See its delivery receipt in Outbox."
-                else "Message saved on this phone for reconnect."
+            client.saveDraft(draftKey, "")
+            note = when {
+                addressMode && online -> "Message saved. Confirm the contact before it can be delivered."
+                online -> "Message queued. See its delivery receipt in Outbox."
+                else -> "Message saved on this phone for reconnect."
+            }
+            if (contactReceipt != null && online) scope.launch {
+                try { verify = client.previewAddressRecipient(contactReceipt) }
+                catch (e: Exception) {
+                    note = "Message saved. Verify the contact from Outbox: " + e.message
+                }
+            }
         } catch (e: Exception) { note = "Unable to queue: " + e.message }
     }
     fun operation(action: String, extras: Map<String, Any?> = emptyMap()) {
         val target = selected ?: return
+        if (actionBusy) return
+        actionBusy = true
         scope.launch {
-            try { client.sessionAction(target, action, extras); note = action + " requested" }
-            catch (e: Exception) { note = action + " failed: " + e.message }
+            try {
+                val receipt = client.sessionAction(target, action, extras)
+                note = "$action: $receipt"
+            } catch (e: Exception) { note = action + " failed: " + e.message }
+            finally { actionBusy = false }
         }
     }
 
+    // The app-wide disconnected theme uses white-on-burgundy text. Scope a
+    // consistent tonal Material palette to every AI popup, sheet and field.
+    MaterialTheme(colorScheme = MaterialTheme.colorScheme.copy(
+        primary = p.accent, onPrimary = p.bg,
+        secondary = p.accent, onSecondary = p.bg,
+        tertiary = p.accent, background = p.bg, onBackground = p.text,
+        surface = p.surface, onSurface = p.text,
+        surfaceVariant = p.raised, onSurfaceVariant = p.muted,
+        outline = p.border, surfaceTint = p.accent
+    )) {
     if (humanInbox) {
         Box(Modifier.fillMaxSize().padding(parentPadding)) {
             HumanInboxScreen(signalRClient, onBack = { humanInbox = false })
@@ -196,25 +267,26 @@ fun OmniAiModesScreen(
             // Dense, predictable toolbar; everything else lives in an overflow menu.
             Row(Modifier.fillMaxWidth().background(p.surface).heightIn(min = 60.dp)
                 .padding(horizontal = 8.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
-                if (!listMode) ActionIcon(Icons.Default.ArrowBack, "All sessions", p) { listMode = true }
+                if (!listMode) ActionIcon(Icons.AutoMirrored.Filled.ArrowBack, "All sessions", p) { listMode = true }
                 else Box(Modifier.padding(horizontal = 10.dp).size(34.dp)
                     .background(p.accentBg, RoundedCornerShape(12.dp)), contentAlignment = Alignment.Center) {
                     Icon(Icons.Default.AutoAwesome, null, tint = p.accent, modifier = Modifier.size(20.dp))
                 }
-                Column(Modifier.weight(1f)) {
-                    Text(if (listMode) "AI sessions" else selected?.title ?: "Conversation",
+                Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                    Text(if (listMode) "AI" else selected?.title ?: "Conversation",
                         color = p.text, style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Dot(if (online) p.green else p.amber)
-                        Text(if (!online) "Offline · cached data"
-                            else if (listMode) (active?.name ?: "OmniHub") + " · " + sessions.size + " sessions"
-                            else (selected?.kind ?: "Session") + " · " + (selected?.activity ?: "Unknown"),
-                            style = MaterialTheme.typography.labelSmall, color = p.muted, maxLines = 1)
-                    }
+                        fontWeight = FontWeight.SemiBold, maxLines = 1,
+                        overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                    Spacer(Modifier.width(9.dp))
+                    Dot(if (online) p.green else p.amber)
+                    if (!online && listMode) Text("  Offline", color = p.amber,
+                        style = MaterialTheme.typography.labelSmall)
                 }
-                ActionIcon(Icons.Default.Refresh, "Refresh", p, online) {
-                    scope.launch {
+                ActionIcon(Icons.Default.Refresh, if (online) "Refresh" else "Reconnect", p) {
+                    if (!online) {
+                        signalRClient.startConnection()
+                        note = "Connecting to OmniHub…"
+                    } else scope.launch {
                         client.refresh()
                         if (!listMode && selectedKey != null) client.select(selectedKey)
                     }
@@ -237,6 +309,29 @@ fun OmniAiModesScreen(
                             onClick = { menu = false; sheet = "outbox" })
                         DropdownMenuItem(text = { Text("Offline history search") },
                             onClick = { menu = false; sheet = "archive" })
+                        if (online && active?.id == "t3") DropdownMenuItem(
+                            text = { Text("Check last AI creation") },
+                            onClick = {
+                                menu = false
+                                scope.launch {
+                                    try { note = client.checkLastWork() }
+                                    catch (e: Exception) { note = "Creation check failed: " + e.message }
+                                }
+                            })
+                        if (createdKey != null) DropdownMenuItem(
+                            text = { Text("Open last created session") },
+                            onClick = {
+                                menu = false
+                                if (sessions.any { it.key == createdKey }) {
+                                    listMode = false
+                                    scope.launch { client.select(createdKey) }
+                                } else scope.launch {
+                                    client.refresh()
+                                    if (client.sessions.value.any { it.key == createdKey }) {
+                                        listMode = false; client.select(createdKey)
+                                    } else note = "New session not in the list yet. Refresh again later."
+                                }
+                            })
                         DropdownMenuItem(text = { Text("AI providers") },
                             onClick = { menu = false; sheet = "providers" })
                         if (!listMode) DropdownMenuItem(text = { Text("Human inbox") },
@@ -261,28 +356,37 @@ fun OmniAiModesScreen(
                     shape = RoundedCornerShape(18.dp),
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedContainerColor = p.surface, unfocusedContainerColor = p.surface,
-                        focusedBorderColor = p.accent, unfocusedBorderColor = p.border))
+                        focusedBorderColor = p.accent, unfocusedBorderColor = p.border,
+                        focusedTextColor = p.text, unfocusedTextColor = p.text,
+                        focusedPlaceholderColor = p.muted, unfocusedPlaceholderColor = p.muted,
+                        focusedLeadingIconColor = p.muted, unfocusedLeadingIconColor = p.muted,
+                        focusedTrailingIconColor = p.muted, unfocusedTrailingIconColor = p.muted))
                 Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     listOf("All", "Active", "Attention").forEach { value ->
                         FilterChip(selected = sessionFilter == value, onClick = { sessionFilter = value },
                             label = { Text(if (value == "Attention" && attention > 0)
                                 "Attention " + attention else value) },
+                            shape = RoundedCornerShape(13.dp),
+                            border = null,
                             colors = FilterChipDefaults.filterChipColors(
+                                containerColor = p.raised,
                                 selectedContainerColor = p.accentBg, selectedLabelColor = p.accent,
                                 labelColor = p.muted))
                     }
                 }
-                Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 5.dp)) {
-                    Text("CONVERSATIONS", Modifier.weight(1f), color = p.muted, fontSize = 11.sp,
-                        letterSpacing = 1.1.sp, fontWeight = FontWeight.SemiBold)
-                    Text(visibleSessions.size.toString(), color = p.muted,
-                        style = MaterialTheme.typography.labelSmall)
-                }
                 LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(
                     start = 10.dp, end = 10.dp, top = 6.dp, bottom = 20.dp),
                     verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    items(visibleSessions, key = { it.key }) { session ->
+                    itemsIndexed(visibleSessions, key = { _, session -> session.key }) { index, session ->
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            if (sessionSearch.isBlank() && sessionFilter == "All" &&
+                                (index == 0 || visibleSessions[index - 1].groupName() != session.groupName())) {
+                                Text(session.groupName(),
+                                    Modifier.fillMaxWidth().padding(start = 10.dp, top = 14.dp, bottom = 5.dp),
+                                    color = p.muted, fontSize = 11.sp, letterSpacing = 1.1.sp,
+                                    fontWeight = FontWeight.SemiBold)
+                            }
                         Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp))
                             .background(if (session.key == selectedKey) p.selected else p.surface)
                             .clickable {
@@ -306,7 +410,7 @@ fun OmniAiModesScreen(
                                     horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                                     Dot(session.dotColor(p))
                                     Text(if (session.needsAttention()) session.attention
-                                        else session.activity + " · " + session.kind.substringAfterLast('/'),
+                                        else session.activity,
                                         color = if (session.needsAttention()) p.amber else p.muted,
                                         maxLines = 1, overflow = TextOverflow.Ellipsis,
                                         style = MaterialTheme.typography.labelSmall)
@@ -315,6 +419,7 @@ fun OmniAiModesScreen(
                             if (session.unread == true) Dot(p.accent)
                             Icon(Icons.Default.ChevronRight, null, tint = p.muted,
                                 modifier = Modifier.padding(start = 6.dp).size(18.dp))
+                        }
                         }
                     }
                     if (visibleSessions.isEmpty()) item {
@@ -325,9 +430,17 @@ fun OmniAiModesScreen(
                             Text(if (sessionSearch.isNotBlank() || sessionFilter != "All") "No matches"
                                 else if (online) "No sessions available" else "Connect to load sessions",
                                 style = MaterialTheme.typography.titleMedium, color = p.text)
-                            Text(if (online) "Try another filter or create a session"
+                            Text(if (sessionSearch.isNotBlank() || sessionFilter != "All")
+                                "Try another search or filter"
+                                else if (online && status.startsWith("Provider refresh failed"))
+                                "Couldn't load conversations. Check the connection and retry."
+                                else if (online) "Try another filter or create a session"
                                 else "Cached conversations will appear here when available",
                                 color = p.muted, style = MaterialTheme.typography.bodySmall)
+                            TextButton(onClick = {
+                                if (online) scope.launch { client.refresh() }
+                                else signalRClient.startConnection()
+                            }) { Text(if (online) "Refresh" else "Reconnect") }
                         }
                     }
                 }
@@ -347,23 +460,50 @@ fun OmniAiModesScreen(
                     Dot(selected?.dotColor(p) ?: p.muted)
                     Spacer(Modifier.width(8.dp))
                     Text(if (selected == null) "Select a session"
+                        else if (!online) "Last known: " + selected.activity + " · cached"
                         else if (selected.needsAttention()) selected.attention
                         else selected.activity + " · " + selected.confidence,
                         modifier = Modifier.weight(1f), color = p.muted, maxLines = 1,
                         style = MaterialTheme.typography.labelSmall)
-                    if (online && selected?.capabilities?.contains("Interrupt") == true)
+                    if (online && !actionBusy && selected?.capabilities?.contains("Interrupt") == true)
                         TextButton(onClick = { operation("Interrupt") }) {
                             Icon(Icons.Default.StopCircle, null, modifier = Modifier.size(17.dp))
                             Spacer(Modifier.width(3.dp)); Text("Stop")
                         }
                 }
+                if (selected?.needsAttention() == true) {
+                    Row(Modifier.fillMaxWidth().background(p.accentBg)
+                        .padding(horizontal = 15.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.PriorityHigh, null, tint = p.amber,
+                            modifier = Modifier.size(20.dp))
+                        Spacer(Modifier.width(9.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text("Needs your attention", color = p.text,
+                                style = MaterialTheme.typography.labelLarge)
+                            Text("${selected.attention} · Check the conversation or human inbox for a required response.",
+                                color = p.muted, style = MaterialTheme.typography.bodySmall)
+                        }
+                        TextButton(onClick = { humanInbox = true }) { Text("Inbox") }
+                    }
+                }
                 HorizontalDivider(color = p.border)
+                if (historyLoading) LinearProgressIndicator(
+                    modifier = Modifier.fillMaxWidth().height(2.dp), color = p.accent,
+                    trackColor = p.bg)
                 val scroll = rememberLazyListState()
-                LaunchedEffect(selectedKey, history.lastOrNull()?.id, history.size) {
-                    if (history.isNotEmpty() && !olderLoaded) {
-                        val headers = (if (older != null) 1 else 0) +
-                            (if (!historyNotice.isNullOrBlank()) 1 else 0)
-                        scroll.animateScrollToItem(headers + history.size - 1)
+                LaunchedEffect(selectedKey, history.lastOrNull()?.id, history.lastOrNull()?.revision) {
+                    if (history.isNotEmpty() && followingLatest) scroll.scrollToItem(
+                        (if (older != null) 1 else 0) +
+                        (if (!historyNotice.isNullOrBlank()) 1 else 0) + history.size - 1)
+                }
+                LaunchedEffect(scroll, selectedKey) {
+                    snapshotFlow {
+                        scroll.isScrollInProgress to (
+                            (scroll.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0) >=
+                                scroll.layoutInfo.totalItemsCount - 2)
+                    }.collect { (scrolling, atBottom) ->
+                        if (scrolling) followingLatest = atBottom
                     }
                 }
                 LazyColumn(Modifier.fillMaxWidth().weight(1f), state = scroll,
@@ -371,7 +511,7 @@ fun OmniAiModesScreen(
                     verticalArrangement = Arrangement.spacedBy(14.dp)) {
                     if (older != null) item {
                         TextButton(onClick = {
-                            olderLoaded = true
+                            followingLatest = false
                             scope.launch { client.loadOlderHistory() }
                         }, enabled = online, modifier = Modifier.fillMaxWidth()) {
                             Icon(Icons.Default.History, null, modifier = Modifier.size(16.dp))
@@ -401,9 +541,39 @@ fun OmniAiModesScreen(
                             color = p.muted, style = MaterialTheme.typography.labelSmall)
                     }
                 }
-                if (pending > 0 || remoteQueue.isNotEmpty()) Row(
-                    Modifier.fillMaxWidth().background(p.raised)
+                if (!followingLatest && history.isNotEmpty()) {
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
+                        horizontalArrangement = Arrangement.End) {
+                        TextButton(onClick = {
+                            followingLatest = true
+                            scope.launch {
+                                client.select(selectedKey, reload = true)
+                                scroll.scrollToItem((scroll.layoutInfo.totalItemsCount - 1).coerceAtLeast(0))
+                            }
+                        }) {
+                            Icon(Icons.Default.ArrowDownward, null, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(5.dp)); Text("Latest messages")
+                        }
+                    }
+                }
+                if (localSessionMessages.isNotEmpty()) Row(
+                    Modifier.fillMaxWidth().background(p.accentBg)
                         .clickable { sheet = "outbox" }.padding(horizontal = 16.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Schedule, null, tint = p.accent, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(localSessionMessages.size.toString() + " messages awaiting delivery",
+                            color = p.text, style = MaterialTheme.typography.labelMedium)
+                        Text(localSessionMessages.first().text, color = p.muted,
+                            maxLines = 1, overflow = TextOverflow.Ellipsis,
+                            style = MaterialTheme.typography.labelSmall)
+                    }
+                    Icon(Icons.Default.ChevronRight, null, tint = p.muted)
+                }
+                if ((pending > 0 || remoteQueue.isNotEmpty()) && localSessionMessages.isEmpty()) Row(
+                    Modifier.fillMaxWidth().background(p.raised)
+                        .clickable { sheet = if (pending == 0) "queue" else "outbox" }.padding(horizontal = 16.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Default.Schedule, null, tint = p.amber, modifier = Modifier.size(16.dp))
                     Spacer(Modifier.width(8.dp))
@@ -416,16 +586,29 @@ fun OmniAiModesScreen(
                     .padding(horizontal = 12.dp, vertical = 8.dp)) {
                     if (addressMode) OutlinedTextField(address, { address = it.take(320) },
                         Modifier.fillMaxWidth().padding(bottom = 8.dp), singleLine = true,
-                        label = { Text("Contact address") }, shape = RoundedCornerShape(16.dp))
+                        label = { Text("Contact address") }, shape = RoundedCornerShape(16.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = p.text, unfocusedTextColor = p.text,
+                            focusedLabelColor = p.muted, unfocusedLabelColor = p.muted,
+                            focusedBorderColor = p.accent, unfocusedBorderColor = p.border))
                     Row(verticalAlignment = Alignment.Bottom,
                         horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedTextField(message, { message = it.take(30_000) },
+                        OutlinedTextField(
+                            value = if (loadedDraftFor == draftKey) message else "",
+                            onValueChange = { text ->
+                                if (loadedDraftFor == draftKey) {
+                                    message = text.take(30_000)
+                                    client.saveDraft(draftKey, message)
+                                }
+                            },
                             modifier = Modifier.weight(1f), minLines = 1, maxLines = 5,
                             placeholder = { Text(if (addressMode) "Message contact…" else "Message agent…") },
                             shape = RoundedCornerShape(20.dp),
                             colors = OutlinedTextFieldDefaults.colors(
                                 focusedContainerColor = p.raised, unfocusedContainerColor = p.raised,
-                                focusedBorderColor = p.accent, unfocusedBorderColor = p.border))
+                                focusedBorderColor = p.accent, unfocusedBorderColor = p.border,
+                                focusedTextColor = p.text, unfocusedTextColor = p.text,
+                                focusedPlaceholderColor = p.muted, unfocusedPlaceholderColor = p.muted))
                         IconButton(onClick = { submit() }, enabled = canSend,
                             modifier = Modifier.size(50.dp).background(
                                 if (canSend) p.accent else p.raised, CircleShape)) {
@@ -435,7 +618,8 @@ fun OmniAiModesScreen(
                     }
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         TextButton(onClick = { addressMode = !addressMode },
-                            enabled = active?.capabilities?.contains("SubmitToAgent") == true,
+                            enabled = active?.capabilities?.contains("SubmitToAgent") == true ||
+                                (!online && lastProvider != null),
                             contentPadding = PaddingValues(horizontal = 4.dp)) {
                             Icon(if (addressMode) Icons.Default.AlternateEmail
                                 else Icons.Default.ChatBubbleOutline,
@@ -445,15 +629,15 @@ fun OmniAiModesScreen(
                                 style = MaterialTheme.typography.labelSmall)
                         }
                         Spacer(Modifier.weight(1f))
-                        Text(if (online) "Queued delivery" else "Offline · saved on phone",
+                        Text(if (!online) "Offline · saved on phone"
+                            else if (selected?.kind == "t3/thread") "Native queue"
+                            else "Delivers when idle",
                             style = MaterialTheme.typography.labelSmall, color = p.muted)
                     }
                 }
             }
-            if (status.isNotBlank() && note == null) Text(status,
-                Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 3.dp),
-                color = p.muted, style = MaterialTheme.typography.labelSmall,
-                maxLines = 2, overflow = TextOverflow.Ellipsis)
+            // Keep transport diagnostics out of the main interface. Actionable
+            // errors appear in the relevant workflow; details live under Providers.
         }
     }
 
@@ -465,6 +649,8 @@ fun OmniAiModesScreen(
             when (sheet) {
                 "providers" -> {
                     SheetTitle("AI providers", "Choose the active backend", p)
+                    if (status.isNotBlank()) Text(status, color = p.muted,
+                        style = MaterialTheme.typography.bodySmall)
                     providers.forEach { provider ->
                         Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp))
                             .background(p.raised).clickable(enabled = online && !provider.active) {
@@ -519,6 +705,9 @@ fun OmniAiModesScreen(
                 "outbox" -> {
                     SheetTitle("Delivery outbox", "Durable receipts and offline drafts", p)
                     if (outbox.isEmpty()) Text("Outbox is empty", color = p.muted)
+                    if (outbox.any { it.state == "Unknown" }) Text(
+                        "Unconfirmed messages must not be sent twice automatically. Check the destination before composing another.",
+                        color = p.amber, style = MaterialTheme.typography.bodySmall)
                     LazyColumn(Modifier.heightIn(max = 480.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         items(outbox.take(50), key = { it.id }) { item ->
@@ -530,6 +719,10 @@ fun OmniAiModesScreen(
                                     color = p.text, style = MaterialTheme.typography.bodyMedium)
                                 if (item.error != null) Text(item.error, color = p.amber,
                                     style = MaterialTheme.typography.labelSmall)
+                                TextButton(onClick = {
+                                    clipboard.setText(AnnotatedString(item.text))
+                                    note = "Message copied"
+                                }) { Text("Copy text") }
                                 if (item.needsVerification && online &&
                                     item.state in listOf("Pending", "Blocked"))
                                     TextButton(onClick = {
@@ -599,19 +792,24 @@ fun OmniAiModesScreen(
     if (deleteConfirm && selected != null) AlertDialog(onDismissRequest = { deleteConfirm = false },
         title = { Text("Permanently delete session?") },
         text = { Text("This deletes the provider's local transcript and cannot be undone.") },
-        confirmButton = { TextButton(onClick = {
+        confirmButton = { TextButton(enabled = !actionBusy, onClick = {
             deleteConfirm = false
+            actionBusy = true
             scope.launch {
                 try {
-                    client.sessionAction(selected, "Delete", mapOf("scope" to "transcript"))
-                    client.select(null); listMode = true; note = "Session deleted"
+                    val result = client.sessionAction(selected, "Delete", mapOf("scope" to "transcript"))
+                    if (result == "Accepted" || result == "Delivered") {
+                        client.select(null); listMode = true; note = "Deletion accepted"
+                    } else note = "Deletion $result — verify state before retrying"
                 } catch (e: Exception) { note = "Delete failed: " + e.message }
+                finally { actionBusy = false }
             }
         }) { Text("Delete") } },
         dismissButton = { TextButton(onClick = { deleteConfirm = false }) { Text("Cancel") } })
     if (create && active != null) AlertDialog(onDismissRequest = { create = false },
         title = { Text("New AI session") },
-        text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        text = { Column(Modifier.heightIn(max = 410.dp).verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("Execution kind", style = MaterialTheme.typography.labelMedium)
             active.kinds.filter { it == "t3/chatgpt" ||
                 (active.id != "t3" && it != "local/opencode") }.forEach { option ->
@@ -626,20 +824,28 @@ fun OmniAiModesScreen(
             OutlinedTextField(firstMessage, { firstMessage = it.take(30_000) },
                 label = { Text("First instruction") }, maxLines = 4)
         }},
-        confirmButton = { TextButton(enabled = kind.isNotBlank() &&
+        confirmButton = { TextButton(enabled = !creationBusy && kind.isNotBlank() &&
             workspace.isNotBlank() && firstMessage.isNotBlank(), onClick = {
+            if (creationBusy) return@TextButton
+            creationBusy = true
             create = false
             scope.launch {
-                try { client.createSession(active, kind, workspace, firstMessage)
-                    note = "Session creation submitted; check status for receipt"
+                try {
+                    note = client.createSession(active, kind, workspace, firstMessage)
+                    val newKey = client.createdSessionKey.value
+                    if (newKey != null && client.sessions.value.any { it.key == newKey }) {
+                        listMode = false
+                        client.select(newKey)
+                    }
                 } catch (e: Exception) { note = "Create failed: " + e.message }
+                finally { creationBusy = false }
             }
         }) { Text("Create") } },
         dismissButton = { TextButton(onClick = { create = false }) { Text("Cancel") } })
     switchProvider?.let { provider ->
         AlertDialog(onDismissRequest = { switchProvider = null },
             title = { Text("Activate " + provider.name + "?") },
-            text = { Text("The previous provider will be deactivated. Queued messages remain on your phone.") },
+            text = { Text("The previous provider will be deactivated. Messages already queued for that provider stay tied to it and will wait until it becomes active again.") },
             confirmButton = { TextButton(onClick = {
                 switchProvider = null
                 scope.launch {
@@ -649,6 +855,7 @@ fun OmniAiModesScreen(
                 }
             }) { Text("Switch") } },
             dismissButton = { TextButton(onClick = { switchProvider = null }) { Text("Cancel") } })
+    }
     }
 }
 
@@ -671,12 +878,15 @@ fun OmniAiModesScreen(
                 Icon(if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
                     "Expand", tint = p.muted, modifier = Modifier.size(18.dp))
             }
-            Text(if (expanded || item.text.length <= 90) item.text
-                else item.text.lineSequence().firstOrNull().orEmpty().take(90),
-                color = if (expanded) p.text else p.muted,
-                style = MaterialTheme.typography.bodySmall,
-                maxLines = if (expanded) Int.MAX_VALUE else 2,
-                modifier = Modifier.padding(top = 6.dp))
+            SelectionContainer {
+                Text(if (expanded || item.text.length <= 90) item.text
+                    else item.text.lineSequence().firstOrNull().orEmpty().take(90),
+                    color = if (expanded) p.text else p.muted,
+                    style = MaterialTheme.typography.bodySmall,
+                    fontFamily = FontFamily.Monospace,
+                    maxLines = if (expanded) Int.MAX_VALUE else 2,
+                    modifier = Modifier.padding(top = 6.dp))
+            }
         }
     } else {
         Column(Modifier.fillMaxWidth(), horizontalAlignment =
@@ -689,12 +899,60 @@ fun OmniAiModesScreen(
                 .clip(RoundedCornerShape(18.dp))
                 .background(if (outgoing) p.accentBg else p.surface)
                 .padding(horizontal = 15.dp, vertical = 12.dp)) {
-                Text(item.text.ifBlank { if (item.partial) "Waiting for content…" else "(empty)" },
-                    color = p.text, style = MaterialTheme.typography.bodyMedium,
-                    lineHeight = 21.sp)
+                SelectionContainer {
+                    Text(remember(item.text, p) { aiMarkdown(
+                        item.text.ifBlank { if (item.partial) "Waiting for content…" else "(empty)" }, p
+                    ) }, color = p.text, style = MaterialTheme.typography.bodyMedium,
+                        lineHeight = 21.sp)
+                }
             }
             if (item.partial) Text("Partial history", color = p.muted,
                 style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(7.dp))
         }
+    }
+}
+
+
+private val aiInlineMd = Regex("""\*\*(.+?)\*\*|`([^`]+)`|\[([^\]]+)]\(([^)]+)\)""")
+private val aiHeadingMd = Regex("""^#{1,6}\s+""")
+private val aiBulletMd = Regex("""^(\s*)[-*]\s+""")
+
+/** Compact, selectable Markdown reading experience; tool output remains monospace. */
+private fun aiMarkdown(text: String, p: AiPalette) = buildAnnotatedString {
+    var inCode = false
+    text.lines().forEachIndexed { index, raw ->
+        if (index > 0) append("\n")
+        if (raw.trimStart().startsWith("```")) {
+            inCode = !inCode
+            return@forEachIndexed
+        }
+        if (inCode) {
+            withStyle(SpanStyle(fontFamily = FontFamily.Monospace, fontSize = 12.sp,
+                color = p.muted)) { append(raw) }
+            return@forEachIndexed
+        }
+        val heading = aiHeadingMd.find(raw)
+        var line = if (heading != null) raw.substring(heading.range.last + 1) else raw
+        val bullet = aiBulletMd.find(line)
+        if (bullet != null) {
+            append(bullet.groupValues[1] + "• ")
+            line = line.substring(bullet.range.last + 1)
+        }
+        val start = length
+        var cursor = 0
+        aiInlineMd.findAll(line).forEach { match ->
+            append(line.substring(cursor, match.range.first))
+            when {
+                match.groupValues[1].isNotEmpty() ->
+                    withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append(match.groupValues[1]) }
+                match.groupValues[2].isNotEmpty() ->
+                    withStyle(SpanStyle(fontFamily = FontFamily.Monospace,
+                        fontSize = 12.sp, background = p.raised)) { append(match.groupValues[2]) }
+                else -> withStyle(SpanStyle(color = p.accent)) { append(match.groupValues[3]) }
+            }
+            cursor = match.range.last + 1
+        }
+        append(line.substring(cursor))
+        if (heading != null) addStyle(SpanStyle(fontWeight = FontWeight.Bold), start, length)
     }
 }

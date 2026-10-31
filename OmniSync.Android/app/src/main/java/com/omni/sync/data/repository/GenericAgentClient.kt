@@ -44,7 +44,9 @@ data class AgentQueuedUi(val id: String, val text: String)
 data class PendingAgentUi(
     val id: String, val target: String, val text: String, val state: String,
     val error: String?, val createdAt: Long,
-    val needsVerification: Boolean = false
+    val needsVerification: Boolean = false,
+    val provider: String = "",
+    val targetType: String = "session"
 )
 data class AddressIdentityPreview(
     val requestId: String, val summary: String, val stableRecipientJson: String
@@ -91,7 +93,18 @@ class GenericAgentClient(
     private val entries = linkedMapOf<String, SavedAgentRequest>()
     private val historyCache = mutableMapOf<String, List<AgentHistoryUi>>()
     private val historyOlderCursors = mutableMapOf<String, String?>()
+    @Volatile private var lastSessionEventReadAt = 0L
     private val historyLoadMutex = Mutex()
+    private val refreshMutex = Mutex()
+    private val draftPrefs = context.getSharedPreferences("agent-compose-drafts-v1", Context.MODE_PRIVATE)
+
+    // Drafts are scoped to a specific session (or the contact composer), never shared
+    // across recipients. Keep them after process death, but clear only after durable enqueue.
+    fun getDraft(key: String): String = draftPrefs.getString(key, "").orEmpty()
+    fun saveDraft(key: String, text: String) {
+        if (text.isEmpty()) draftPrefs.edit().remove(key).apply()
+        else draftPrefs.edit().putString(key, text.take(30_000)).apply()
+    }
 
     private val _providers = MutableStateFlow<List<AgentProviderUi>>(emptyList())
     val providers: StateFlow<List<AgentProviderUi>> = _providers
@@ -128,6 +141,10 @@ class GenericAgentClient(
     val outbox: StateFlow<List<PendingAgentUi>> = _outbox
     private val _status = MutableStateFlow<String>("")
     val status: StateFlow<String> = _status
+    private val _historyLoading = MutableStateFlow(false)
+    val historyLoading: StateFlow<Boolean> = _historyLoading
+    private val _createdSessionKey = MutableStateFlow<String?>(null)
+    val createdSessionKey: StateFlow<String?> = _createdSessionKey
 
     init {
         synchronized(diskGuard) {
@@ -159,6 +176,42 @@ class GenericAgentClient(
             signalR.agentEvents.collectLatest { event ->
                 when (event.get("method")?.asString) {
                     "providers.changed" -> {refresh();drain()}
+                    "session.changed" -> {
+                        val summary = event.obj("payload")
+                        val updated = summary?.let { parseSession(it) }
+                        if (updated != null) {
+                            val previous = _sessions.value.firstOrNull { it.key == updated.key }
+                            // Some providers emit compact state-only deltas. Preserve
+                            // identity/capabilities rather than briefly erasing the
+                            // controls or changing a title to an opaque ID.
+                            val preserved = updated.copy(
+                                title = if (summary.has("title")) updated.title
+                                    else previous?.title ?: updated.title,
+                                kind = if (summary.has("kind")) updated.kind
+                                    else previous?.kind ?: updated.kind,
+                                conversation = updated.conversation ?: previous?.conversation,
+                                modes = if (updated.modes.isNotEmpty()) updated.modes
+                                    else previous?.modes.orEmpty(),
+                                capabilities = if (updated.capabilities.isNotEmpty()) updated.capabilities
+                                    else previous?.capabilities.orEmpty(),
+                                attention = if (summary.has("attention")) updated.attention
+                                    else previous?.attention ?: updated.attention,
+                                unread = updated.unread ?: previous?.unread,
+                                activity = if (summary.obj("state")?.has("activity") == true)
+                                    updated.activity else previous?.activity ?: updated.activity,
+                                confidence = if (summary.obj("state")?.has("confidence") == true)
+                                    updated.confidence else previous?.confidence ?: updated.confidence
+                            )
+                            _sessions.value = if (previous == null) listOf(preserved) + _sessions.value
+                                else _sessions.value.map { if (it.key == updated.key) preserved else it }
+                            val current = _selected.value
+                            val now = System.currentTimeMillis()
+                            if (current == updated.key && now - lastSessionEventReadAt > 1800) {
+                                lastSessionEventReadAt = now
+                                scope.launch { select(current, reload = true) }
+                            }
+                        }
+                    }
                     "operation.changed" -> {
                         val payload = event.get("payload")?.takeIf { it.isJsonObject }?.asJsonObject
                         val id = payload?.str("clientRequestId")
@@ -183,7 +236,9 @@ class GenericAgentClient(
                 delay(30_000)
                 if (signalR.hubAuthenticated.value) {
                     refresh()
-                    if (_outbox.value.any { it.state == "Pending" || it.state=="Blocked" }) drain()
+                    // Accepted/Queued operations also need periodic reconciliation even
+                    // when no new pending items exist.
+                    drain()
                 }
             }
         }
@@ -203,7 +258,8 @@ class GenericAgentClient(
     private fun publishOutbox() {
         _outbox.value = entries.values.sortedByDescending { it.createdAt }.map {
             PendingAgentUi(it.id, it.target, it.message, it.state, it.error, it.createdAt,
-                it.targetType=="address" && it.stableRecipientJson.isNullOrBlank())
+                it.targetType=="address" && it.stableRecipientJson.isNullOrBlank(),
+                it.provider, it.targetType)
         }
     }
     private fun loadOutbox() {
@@ -243,19 +299,19 @@ class GenericAgentClient(
     private fun loadSessions() {
         if (!sessionDisk.baseFile.exists()) return
         try {
-            if (sessionDisk.baseFile.length() > 512 * 1024) return
+            if (sessionDisk.baseFile.length() > 2 * 1024 * 1024) return
             val rows = sessionDisk.openRead().bufferedReader().use {
                 JsonParser.parseReader(it).asJsonArray
             }
-            _sessions.value = rows.take(200).mapNotNull {
+            _sessions.value = rows.take(1500).mapNotNull {
                 runCatching { gson.fromJson(it,AgentSessionUi::class.java) }.getOrNull()
             }
         } catch (e: Exception) { Log.w("GenericAgents", "Offline session listing unavailable", e) }
     }
     private fun saveSessions() {
         try {
-            val encoded=gson.toJson(_sessions.value.take(200)).toByteArray(Charsets.UTF_8)
-            if (encoded.size>512*1024) return
+            val encoded=gson.toJson(_sessions.value.take(1500)).toByteArray(Charsets.UTF_8)
+            if (encoded.size>2*1024*1024) return
             val stream=sessionDisk.startWrite()
             try {stream.write(encoded);sessionDisk.finishWrite(stream)}
             catch (e: Exception) {sessionDisk.failWrite(stream);throw e}
@@ -301,8 +357,22 @@ class GenericAgentClient(
                     "provider" to session.provider,"id" to session.id)))))
         }.onFailure {Log.d("GenericAgents","Watch unavailable: ${it.message}")}
     }
-    suspend fun refresh() {
-        if (!signalR.hubAuthenticated.value) return
+    private fun parseSession(obj: JsonObject): AgentSessionUi? {
+        val ref = obj.obj("ref") ?: return null
+        val provider = ref.str("provider") ?: return null
+        val id = ref.str("id") ?: return null
+        return AgentSessionUi(provider, id, obj.str("title") ?: id,
+            obj.str("kind") ?: "session", obj.obj("state")?.str("activity") ?: "Unknown",
+            obj.obj("state")?.str("confidence") ?: "Unknown",
+            obj.str("conversation"), obj.strings("deliveryModes"), obj.strings("capabilities"),
+            obj.str("attention") ?: "None",
+            obj.get("unread")?.takeIf { it.isJsonPrimitive }?.let {
+                runCatching { it.asBoolean }.getOrNull()
+            })
+    }
+
+    suspend fun refresh() = refreshMutex.withLock {
+        if (!signalR.hubAuthenticated.value) return@withLock
         try {
             val rows = signalR.agentCall("providers.list").asJsonArray
             _providers.value = rows.mapNotNull { item ->
@@ -315,38 +385,52 @@ class GenericAgentClient(
                 _lastProvider.value=it.id
                 providerPrefs.edit().putString("lastActive",it.id).apply()
             }
-            val page = signalR.agentCall("sessions.list",mapOf("clientId" to clientId)).asJsonObject
-            _sessions.value = page.array("items")?.mapNotNull { item ->
-                val obj = item.asObjectOrNull() ?: return@mapNotNull null
-                val ref = obj.obj("ref") ?: return@mapNotNull null
-                val provider = ref.str("provider") ?: return@mapNotNull null
-                val id = ref.str("id") ?: return@mapNotNull null
-                AgentSessionUi(provider, id, obj.str("title") ?: id,
-                    obj.str("kind") ?: "session", obj.obj("state")?.str("activity") ?: "Unknown",
-                    obj.obj("state")?.str("confidence") ?: "Unknown",
-                    obj.str("conversation"), obj.strings("deliveryModes"),obj.strings("capabilities"),
-                    obj.str("attention") ?: "None",
-                    obj.get("unread")?.takeIf { it.isJsonPrimitive }?.let {runCatching {it.asBoolean}.getOrNull()})
-            } ?: emptyList()
+            // The Hub exposes a paginated listing; the old UI silently stopped after
+            // the first page. Bound traversal and deduplicate overlapping observations.
+            val collected = LinkedHashMap<String, AgentSessionUi>()
+            val cursors = HashSet<String>()
+            var cursor: String? = null
+            var warning: String? = null
+            for (pageIndex in 0 until 4) {
+                val params = mutableMapOf<String, Any>("clientId" to clientId, "limit" to 400)
+                cursor?.let { params["page"] = it }
+                val page = signalR.agentCall("sessions.list", params).asJsonObject
+                page.array("items")?.forEach { item ->
+                    val session = item.asObjectOrNull()?.let { parseSession(it) } ?: return@forEach
+                    collected[session.key] = session
+                }
+                warning = page.str("warning") ?: warning
+                val next = page.str("next")
+                if (next.isNullOrBlank() || !cursors.add(next)) {
+                    cursor = null
+                    break
+                }
+                cursor = next
+                if (pageIndex == 3) warning = "Only the most recent 1600 sessions are loaded; older history may be missing."
+            }
+            _sessions.value = collected.values.toList()
             saveSessions()
-            // Refresh connection-scoped watch interest while the screen is
-            // foregrounded; expires automatically if the socket disappears.
             watchSelection()
-            _status.value = page.str("warning") ?: ""
+            _status.value = warning ?: ""
         } catch (e: Exception) {
             _status.value = "Provider refresh failed: ${e.message}"
         }
     }
-    suspend fun select(key: String?) {
-        _selected.value = key
-        if (signalR.hubAuthenticated.value) watchSelection()
-        _history.value = if (key!=null && _archiveEnabled.value) {
-            runCatching {archive.read(key,500)}.getOrElse {historyCache[key].orEmpty()}
-        } else historyCache[key].orEmpty()
-        _remoteQueue.value = emptyList()
-        _olderHistoryCursor.value = key?.let { historyOlderCursors[it] }
-        _historyNotice.value = if (key != null) "Offline cache may be partial." else null
+    suspend fun select(key: String?, reload: Boolean = false) {
+        val switched = _selected.value != key
+        if (switched || !reload) {
+            _selected.value = key
+            if (signalR.hubAuthenticated.value) watchSelection()
+            _history.value = if (key!=null && _archiveEnabled.value) {
+                runCatching {archive.read(key,500)}.getOrElse {historyCache[key].orEmpty()}
+            } else historyCache[key].orEmpty()
+            _remoteQueue.value = emptyList()
+            _olderHistoryCursor.value = key?.let { historyOlderCursors[it] }
+            _historyNotice.value = if (key != null) "Offline cache may be partial." else null
+        }
         if (key == null || !signalR.hubAuthenticated.value) return
+        if (reload && switched) return
+        if (_selected.value == key && !reload) _historyLoading.value = true
         try {
             val session = _sessions.value.firstOrNull { it.key == key } ?: return
             val page = signalR.agentCall("sessions.history", mapOf(
@@ -363,30 +447,46 @@ class GenericAgentClient(
                     parts.joinToString("\n"), obj.str("completeness") != "Full",
                     obj.get("revision")?.let { runCatching { it.asLong }.getOrNull() } ?: 1L)
             } ?: emptyList()
-            historyCache[key] = rows
-            historyOlderCursors[key] = page.str("older")
-            if (_selected.value == key) _olderHistoryCursor.value = page.str("older")
+            // Live refresh must not discard pages explicitly loaded with Older.
+            val merged = if (reload) {
+                val byId = linkedMapOf<String, AgentHistoryUi>()
+                (historyCache[key].orEmpty() + rows).forEach { item ->
+                    val prev = byId[item.id]
+                    if (prev == null || prev.revision <= item.revision) byId[item.id] = item
+                }
+                byId.values.toList().takeLast(500)
+            } else rows
+            historyCache[key] = merged
+            if (!reload || historyOlderCursors[key] == null) historyOlderCursors[key] = page.str("older")
+            if (_selected.value == key) _olderHistoryCursor.value = historyOlderCursors[key]
             saveHistory()
             if (_archiveEnabled.value) {
-                runCatching {archive.record(key,rows)}
+                runCatching {archive.record(key,merged)}
                     .onFailure {Log.w("GenericAgents","Offline history archive write failed",it)}
             }
-            if (session.capabilities.contains("NativeQueue")) fetchQueue(session)
+            if (session.capabilities.contains("NativeQueue") && !reload) fetchQueue(session)
             if (_selected.value == key) {
-                rows.lastOrNull()?.let { latest ->
+                if (!reload) rows.lastOrNull()?.let { latest ->
                     runCatching {
                         signalR.agentCall("sessions.markSeen",mapOf(
                             "session" to mapOf("provider" to session.provider, "id" to session.id),
                             "item" to latest.id, "clientId" to clientId))
+                    }.onSuccess {
+                        _sessions.value = _sessions.value.map { item ->
+                            if (item.key == key) item.copy(unread = false) else item
+                        }
                     }.onFailure {Log.d("GenericAgents","MarkSeen not supported: ${it.message}")}
                 }
                 _history.value = if (_archiveEnabled.value) {
-                    runCatching {archive.read(key,500)}.getOrDefault(rows)
-                } else rows
+                    runCatching {archive.read(key,500)}.getOrDefault(merged)
+                } else merged
                 _historyNotice.value = page.str("warning") ?: if (!page.flag("complete")) "History is partial." else null
             }
         } catch (e: Exception) {
-            _historyNotice.value = "History read failed; displaying cached entries: ${e.message}"
+            if (_selected.value == key) _historyNotice.value =
+                "History read failed; displaying cached entries: ${e.message}"
+        } finally {
+            if (_selected.value == key) _historyLoading.value = false
         }
     }
     /** One true provider-owned history page at a time. The cursor is opaque;
@@ -695,7 +795,7 @@ class GenericAgentClient(
         } catch (e: Exception) {_status.value="Queue read failed: ${e.message}"}
     }
     suspend fun sessionAction(session: AgentSessionUi, action:String,
-        extra: Map<String, Any?> = emptyMap()) {
+        extra: Map<String, Any?> = emptyMap()): String {
         if (!signalR.hubAuthenticated.value) throw IllegalStateException("Hub offline")
         val method=when(action) {
             "Interrupt"->"sessions.interrupt"
@@ -710,11 +810,14 @@ class GenericAgentClient(
         )
         params.putAll(extra)
         val receipt=signalR.agentCall(method,params).asJsonObject
-        _status.value="Provider operation: ${receipt.str("state") ?: "Unknown"}"
+        val state = receipt.str("state") ?: "Unknown"
+        if (state == "Failed") throw IllegalStateException(receipt.str("error") ?: "Provider rejected $action")
         refresh()
         if (action=="QueueEdit") fetchQueue(session)
+        _status.value="Provider operation: $state"
+        return state
     }
-    suspend fun createSession(provider: AgentProviderUi,kind:String,workspace:String,firstMessage:String){
+    suspend fun createSession(provider: AgentProviderUi,kind:String,workspace:String,firstMessage:String): String {
         require(provider.active&&provider.capabilities.contains("CreateSession")) {
             "Selected provider cannot create a session"
         }
@@ -722,7 +825,8 @@ class GenericAgentClient(
         require(workspace.isNotBlank()&&firstMessage.isNotBlank()) {
             "Workspace and first message are required"
         }
-        if (provider.id == "t3") {
+        _createdSessionKey.value = null
+        val resultText = if (provider.id == "t3") {
             require(kind == "t3/chatgpt") { "Native T3 MAIN does not support session creation" }
             // A repeated tap with the same work request must recover its
             // original operation instead of silently creating a second T3 tab.
@@ -738,10 +842,12 @@ class GenericAgentClient(
                 title = "Android AI work", kind = kind,
                 send = { method, params -> signalR.agentCall(method, params).asJsonObject },
             )
-            _status.value = when (receipt.state) {
-                "Started" -> "Created T3 session ${receipt.sessionId ?: "(ID pending)"}. Initial prompt: ${receipt.delivery ?: "unconfirmed"}; assistant completion not yet observed."
+            if (receipt.state == "Started" && receipt.sessionId != null)
+                _createdSessionKey.value = "${receipt.sessionProvider ?: provider.id}:${receipt.sessionId}"
+            when (receipt.state) {
+                "Started" -> "T3 session ${receipt.sessionId ?: "ID pending"} created. Initial prompt: ${receipt.delivery ?: "unconfirmed"}."
                 "Failed" -> "T3 creation failed: ${receipt.error ?: "provider rejected"}"
-                else -> "T3 creation uncertain; do not create another worker until reconciled."
+                else -> "T3 creation uncertain; check last creation before trying again."
             }
         } else {
             val receipt = signalR.agentCall("sessions.create",mapOf(
@@ -749,9 +855,14 @@ class GenericAgentClient(
                 "workspace" to workspace, "initialMessage" to firstMessage,
                 "clientRequestId" to UUID.randomUUID().toString()
             )).asJsonObject
-            _status.value = "Create session: ${receipt.str("state") ?: "Unknown"}"
+            val ref = receipt.obj("result")?.obj("session") ?: receipt.obj("session")
+            if (ref != null && ref.str("provider") != null && ref.str("id") != null)
+                _createdSessionKey.value = "${ref.str("provider")}:${ref.str("id")}"
+            "Session creation: ${receipt.str("state") ?: "Unknown"}"
         }
         refresh()
+        _status.value = resultText
+        return resultText
     }
     /** Read-only recovery by the original durable Android client request ID.
      * Never calls work.create or starts another session. */
@@ -767,8 +878,10 @@ class GenericAgentClient(
         val id = observed.sessionId?.let { " · T3 session $it" } ?: ""
         val turn = observed.delivery?.let { " · first prompt $it" } ?: ""
         val message = "$state$id$turn"
-        _status.value = message
+        if (observed.state == "Started" && observed.sessionId != null)
+            _createdSessionKey.value = "${observed.sessionProvider ?: "t3"}:${observed.sessionId}"
         refresh()
+        _status.value = message
         return message
     }
     suspend fun activate(provider: AgentProviderUi) {

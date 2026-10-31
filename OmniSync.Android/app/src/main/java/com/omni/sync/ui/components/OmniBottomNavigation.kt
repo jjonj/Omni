@@ -9,6 +9,11 @@ import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
+import androidx.compose.material3.NavigationBarDefaults
+import androidx.compose.material3.contentColorFor
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.ui.graphics.Color
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -78,8 +83,25 @@ fun OmniBottomNavigation(
     val allVisibleScreens = navigationItems.map { it.screen } + burgerMenuItems.map { it.screen }
     val showBottomBar = (allVisibleScreens.any { it == currentScreen } || currentScreen == AppScreen.EDITOR || currentScreen == AppScreen.AGENT_DETAIL || currentScreen == AppScreen.AGENT_TERMINAL) && !isLandscape
 
+    // Match the AI workspace's neutral T3-like surfaces even when disconnected;
+    // the global offline palette otherwise renders a burgundy navigation bar.
+    val aiWorkspace = currentScreen == AppScreen.AGENTS || currentScreen == AppScreen.AGENT_DETAIL ||
+        currentScreen == AppScreen.AGENT_TERMINAL
+    val aiDark = isSystemInDarkTheme()
+    val aiSurface = if (aiDark) Color(0xFF191E26) else Color.White
+    val aiText = if (aiDark) Color(0xFFF1F3F6) else Color(0xFF1B2533)
+    val aiMuted = if (aiDark) Color(0xFF9DA8B8) else Color(0xFF697789)
+    val aiSelected = if (aiDark) Color(0xFF334862) else Color(0xFFDDEAFF)
+    val aiAccent = if (aiDark) Color(0xFFAFCEFF) else Color(0xFF3262A4)
+    val aiBarColors = NavigationBarItemDefaults.colors(
+        selectedIconColor = aiAccent, selectedTextColor = aiAccent,
+        indicatorColor = aiSelected, unselectedIconColor = aiMuted,
+        unselectedTextColor = aiMuted)
+
     if (showBottomBar) {
         NavigationBar(
+            containerColor = if (aiWorkspace) aiSurface else NavigationBarDefaults.containerColor,
+            contentColor = if (aiWorkspace) aiText else contentColorFor(NavigationBarDefaults.containerColor),
             modifier = Modifier.pointerInput(Unit) {
                 detectHorizontalDragGestures(
                     onDragEnd = {
@@ -102,6 +124,7 @@ fun OmniBottomNavigation(
                     (item.screen == AppScreen.AGENTS && (currentScreen == AppScreen.AGENT_DETAIL || currentScreen == AppScreen.AGENT_TERMINAL))
                 
                 NavigationBarItem(
+                    colors = if (aiWorkspace) aiBarColors else NavigationBarItemDefaults.colors(),
                     selected = isSelected,
                     onClick = { onNavigate(item.screen) },
                     icon = { 
@@ -117,6 +140,7 @@ fun OmniBottomNavigation(
             
             // Burger menu button
             NavigationBarItem(
+                colors = if (aiWorkspace) aiBarColors else NavigationBarItemDefaults.colors(),
                 selected = burgerMenuItems.any { it.screen == currentScreen },
                 onClick = { showBurgerMenu = true },
                 icon = { 
