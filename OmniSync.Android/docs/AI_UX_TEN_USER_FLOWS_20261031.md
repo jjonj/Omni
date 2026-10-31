@@ -122,3 +122,59 @@ completed the action; actual device-side verification must not be inferred.
   briefly showed an ANR while first-run permission UI was involved. After
   emulator setup/permissions settled, the test client rendered consistently;
   no conclusion about production cold-start responsiveness from that incident.
+
+## Second pass — overlooked edge cases (31 Oct 2026)
+
+Focused on switching/reconnecting mid-read, offline outbox cleanup, duplicate
+creation, recipient confusion and archive chronology.
+
+- **History lost by manual Refresh:** `select(reload=false)` replaced cached
+  history with a single latest page, discarding previously loaded older pages.
+  Both manual and background reads now merge stable IDs/revisions against the
+  current cache snapshot, rather than replacing the cache. Concurrent older
+  and newer responses merge under a per-cache lock.
+- **Infinite older-page loop:** after reaching the oldest message, refresh used
+  to restore the previously exhausted cursor. Null now remains exhausted; an
+  unchanged server cursor is also treated as exhausted.
+- **Duplicate initial reads:** opening a conversation already requests history;
+  the background watcher issued another full request simultaneously. New screen
+  openings use the explicit selection read; the watcher performs subsequent
+  reloads. Reconnection still triggers the full selection read.
+- **Incorrect send affordance:** connected sessions without advertised Submit
+  + Queue/WhenIdle capabilities, or belonging to a now-inactive provider, used
+  to expose an enabled Send button. These are now disabled with an explanation.
+  Offline recipients may still save a queued intent for later capability checks.
+- **Misleading offline composer hint:** a draft is *not* a queued message. The
+  composer now explicitly distinguishes saved draft from tapping Send to queue.
+- **Reuse of identical new-session requests:** a successful T3 creation with the
+  same first instruction could cause an intentional second Create to reuse the
+  old worker. Only unresolved Unknown requests reuse their durable incident ID;
+  a confirmed prior creation permits a new explicit Create.
+- **Misleading pending count:** Unknown receipts were included in "pending".
+  They are now a distinct "unconfirmed" count; no automatic retry is possible.
+- **No cancellation/reconciliation cleanup:** users could not cancel an
+  offline Pending/Blocked message or dismiss a Failed/Unknown receipt after
+  manual inspection. Added confirmation dialogs with explicit states, persistence
+  and a non-retransmitting removal path.
+- **Archive ordering:** observed entries could appear in arbitrary hash-ID
+  order because archive replay sorted ties lexically. Schema v2 stores observed
+  positions and replays in batch source order, preserving old records during
+  migration. Historic v1 entries acquire ordered positions when re-observed.
+- **Archive search race:** outdated search results could overwrite newer queries
+  when typing rapidly. Results now commit only for the current query.
+- **Recipient leakage between conversations:** changing selected session now
+  exits contact-address mode to avoid sending to a contact left over from a
+  different conversation. Each session's own draft remains separate.
+- **Outbox readability:** concise horizontal Copy / Cancel / Remove actions,
+  clearer uncertain receipt instructions and a corrected outbox subtitle.
+
+**Focused emulator evidence:** using an isolated Android 36.1 emulator with
+synthetic offline session and outbox records, the Outbox sheet rendered a Pending
+and an Unknown message distinctly. Confirmed the Pending cancel dialog and
+verified its removal from the app-private JSON ledger: only the Unknown receipt
+remained. These actions did not contact a real Hub or send a real message.
+
+**Limit:** Real provider-side acceptance, network loss during InFlight, T3
+creation, historical pagination and production-phone delivery still require
+a connected-device observation. A successful APK build or synthetic emulator
+run is not evidence of provider-side completion.

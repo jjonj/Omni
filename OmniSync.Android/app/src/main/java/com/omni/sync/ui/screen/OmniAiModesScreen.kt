@@ -148,11 +148,19 @@ fun OmniAiModesScreen(
     var firstMessage by remember { mutableStateOf("") }
     var archiveQuery by rememberSaveable { mutableStateOf("") }
     var verify by remember { mutableStateOf<AddressIdentityPreview?>(null) }
+    var receiptToRemove by remember { mutableStateOf<PendingAgentUi?>(null) }
     var followingLatest by remember(selectedKey) { mutableStateOf(true) }
 
     val active = providers.firstOrNull { it.active }
     val selected = sessions.firstOrNull { it.key == selectedKey }
-    val pending = outbox.count { it.state !in listOf("Delivered", "Failed") }
+    val pending = outbox.count { it.state in listOf("Pending", "Blocked", "InFlight", "Accepted", "Queued") }
+    val uncertain = outbox.count { it.state == "Unknown" }
+    val outboxLabel = "Outbox" + when {
+        pending > 0 && uncertain > 0 -> " ($pending pending · $uncertain unconfirmed)"
+        pending > 0 -> " ($pending pending)"
+        uncertain > 0 -> " ($uncertain unconfirmed)"
+        else -> ""
+    }
     val localSessionMessages = outbox.filter { it.provider == selected?.provider &&
         it.targetType == "session" && it.target == selected?.id &&
         it.state !in listOf("Delivered", "Failed") }
@@ -162,12 +170,29 @@ fun OmniAiModesScreen(
         message = client.getDraft(draftKey)
         loadedDraftFor = draftKey
     }
+    // Selecting another session always returns to direct session messaging.
+    // Otherwise the old contact address can silently follow the user between
+    // conversations and turn a normal Send tap into a contact message.
+    LaunchedEffect(selectedKey) { addressMode = false }
     val attention = sessions.count { it.needsAttention() || it.unread == true }
     val canCreate = online && active?.capabilities?.contains("CreateSession") == true
+    val sessionDeliveryReady = selected != null &&
+        (!online || (selected.provider == active?.id &&
+            selected.capabilities.contains("Submit") &&
+            (selected.modes.contains("WhenIdle") || selected.modes.contains("Queue"))))
     val canSend = loadedDraftFor == draftKey && message.isNotBlank() && (if (addressMode)
         address.trim().contains("@") && (active?.id ?: lastProvider) != null &&
             (!online || active?.capabilities?.contains("SubmitToAgent") == true)
-        else selected != null)
+        else sessionDeliveryReady)
+    val deliveryHint = when {
+        !online -> "Offline · draft saved; tap Send to queue"
+        addressMode -> "Recipient confirmation required"
+        selected == null -> "Select a conversation"
+        selected.provider != active?.id -> "Activate ${selected.provider} to send"
+        !sessionDeliveryReady -> "This session cannot receive messages here"
+        selected.modes.contains("Queue") -> "Native queue"
+        else -> "Delivers when idle"
+    }
     val visibleSessions = remember(sessions, sessionSearch, sessionFilter) {
         sessions.asSequence().filter {
             sessionSearch.isBlank() || it.title.contains(sessionSearch, true) ||
@@ -192,11 +217,15 @@ fun OmniAiModesScreen(
             }
         }
     }
-    // Live refresh while following latest; do not overwrite manually paged older history.
+    // Opening a row already starts its full history read. Do not issue a second
+    // simultaneous read merely because the conversation screen became visible.
+    var wasConnected by remember { mutableStateOf(online) }
+    LaunchedEffect(online) {
+        if (online && !wasConnected && selectedKey != null) client.select(selectedKey)
+        wasConnected = online
+    }
     LaunchedEffect(online, listMode, selectedKey) {
         if (online && !listMode && selectedKey != null) {
-            // Opening offline and reconnecting must mark the visible history seen.
-            client.select(selectedKey)
             while (true) {
                 delay(8_000)
                 client.select(selectedKey, reload = true)
@@ -305,7 +334,7 @@ fun OmniAiModesScreen(
                                 selected?.let { scope.launch { client.fetchQueue(it) } }
                             }, enabled = selected?.capabilities?.contains("NativeQueue") == true)
                         }
-                        DropdownMenuItem(text = { Text("Outbox (" + pending + " pending)") },
+                        DropdownMenuItem(text = { Text(outboxLabel) },
                             onClick = { menu = false; sheet = "outbox" })
                         DropdownMenuItem(text = { Text("Offline history search") },
                             onClick = { menu = false; sheet = "archive" })
@@ -629,9 +658,7 @@ fun OmniAiModesScreen(
                                 style = MaterialTheme.typography.labelSmall)
                         }
                         Spacer(Modifier.weight(1f))
-                        Text(if (!online) "Offline · saved on phone"
-                            else if (selected?.kind == "t3/thread") "Native queue"
-                            else "Delivers when idle",
+                        Text(deliveryHint, maxLines = 2,
                             style = MaterialTheme.typography.labelSmall, color = p.muted)
                     }
                 }
@@ -703,10 +730,10 @@ fun OmniAiModesScreen(
                     }
                 }
                 "outbox" -> {
-                    SheetTitle("Delivery outbox", "Durable receipts and offline drafts", p)
+                    SheetTitle("Delivery outbox", "Messages and delivery receipts", p)
                     if (outbox.isEmpty()) Text("Outbox is empty", color = p.muted)
                     if (outbox.any { it.state == "Unknown" }) Text(
-                        "Unconfirmed messages must not be sent twice automatically. Check the destination before composing another.",
+                        "A message has an unconfirmed outcome. Check its destination before sending the same text again.",
                         color = p.amber, style = MaterialTheme.typography.bodySmall)
                     LazyColumn(Modifier.heightIn(max = 480.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -719,21 +746,30 @@ fun OmniAiModesScreen(
                                     color = p.text, style = MaterialTheme.typography.bodyMedium)
                                 if (item.error != null) Text(item.error, color = p.amber,
                                     style = MaterialTheme.typography.labelSmall)
-                                TextButton(onClick = {
-                                    clipboard.setText(AnnotatedString(item.text))
-                                    note = "Message copied"
-                                }) { Text("Copy text") }
-                                if (item.needsVerification && online &&
-                                    item.state in listOf("Pending", "Blocked"))
+                                Row(Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    verticalAlignment = Alignment.CenterVertically) {
                                     TextButton(onClick = {
-                                        scope.launch {
-                                            try { verify = client.previewAddressRecipient(item.id) }
-                                            catch (e: Exception) { note = "Verification failed: " + e.message }
+                                        clipboard.setText(AnnotatedString(item.text))
+                                        note = "Message copied"
+                                    }) { Text("Copy") }
+                                    if (item.needsVerification && online &&
+                                        item.state in listOf("Pending", "Blocked"))
+                                        TextButton(onClick = {
+                                            scope.launch {
+                                                try { verify = client.previewAddressRecipient(item.id) }
+                                                catch (e: Exception) { note = "Verification failed: " + e.message }
+                                            }
+                                        }) { Text("Verify recipient") }
+                                    if (item.state in listOf("Pending", "Blocked"))
+                                        TextButton(onClick = { receiptToRemove = item }) {
+                                            Text("Cancel pending")
                                         }
-                                    }) { Text("Verify recipient") }
-                                if (item.state == "Delivered") TextButton(onClick = {
-                                    client.dismissDelivered(item.id)
-                                }) { Text("Dismiss receipt") }
+                                    if (item.state in listOf("Delivered", "Failed", "Unknown"))
+                                        TextButton(onClick = { receiptToRemove = item }) {
+                                            Text("Remove receipt")
+                                        }
+                                }
                             }
                         }
                     }
@@ -770,6 +806,27 @@ fun OmniAiModesScreen(
                 }
             }
         }
+    }
+    receiptToRemove?.let { candidate ->
+        val pendingCancel = candidate.state in listOf("Pending", "Blocked")
+        val uncertain = candidate.state == "Unknown"
+        AlertDialog(onDismissRequest = { receiptToRemove = null },
+            title = { Text(if (pendingCancel) "Cancel queued message?"
+                else if (uncertain) "Discard unconfirmed receipt?" else "Remove receipt?") },
+            text = { Text(when {
+                pendingCancel -> "This message is still on your phone and has not been submitted. Remove it from the outbox?"
+                uncertain -> "Delivery might already have happened. Check the destination first. This only removes your local receipt; it never retracts or resends the message."
+                else -> "Remove this completed delivery receipt from your phone?"
+            }) },
+            confirmButton = { TextButton(onClick = {
+                receiptToRemove = null
+                try {
+                    if (pendingCancel) client.cancelPending(candidate.id)
+                    else client.dismissReceipt(candidate.id)
+                    note = if (pendingCancel) "Pending message cancelled" else "Receipt removed"
+                } catch (e: Exception) { note = "Unable to remove message: " + e.message }
+            }) { Text(if (pendingCancel) "Cancel message" else "Remove receipt") } },
+            dismissButton = { TextButton(onClick = { receiptToRemove = null }) { Text("Keep") } })
     }
     verify?.let { candidate ->
         AlertDialog(onDismissRequest = { verify = null }, title = { Text("Confirm recipient identity") },

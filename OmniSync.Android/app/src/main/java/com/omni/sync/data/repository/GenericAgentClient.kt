@@ -20,6 +20,8 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.io.File
 import java.util.UUID
+import java.util.Collections
+import java.util.LinkedHashMap
 
 data class AgentProviderUi(
     val id: String, val name: String, val enabled: Boolean, val active: Boolean,
@@ -91,8 +93,12 @@ class GenericAgentClient(
     private val workCreate by lazy { AgentWorkCreateStore(context) }
     @Volatile private var outboxWritable = true
     private val entries = linkedMapOf<String, SavedAgentRequest>()
-    private val historyCache = mutableMapOf<String, List<AgentHistoryUi>>()
-    private val historyOlderCursors = mutableMapOf<String, String?>()
+    // History paging and live session events can finish on different IO threads.
+    // Preserve recent-session cache ordering without exposing an unsynchronized map.
+    private val historyCache: MutableMap<String, List<AgentHistoryUi>> =
+        Collections.synchronizedMap(LinkedHashMap<String, List<AgentHistoryUi>>(64, .75f, true))
+    private val historyOlderCursors: MutableMap<String, String?> =
+        Collections.synchronizedMap(mutableMapOf())
     @Volatile private var lastSessionEventReadAt = 0L
     private val historyLoadMutex = Mutex()
     private val refreshMutex = Mutex()
@@ -127,9 +133,13 @@ class GenericAgentClient(
         _archiveEnabled.value=enabled
         archivePrefs.edit().putBoolean("enabled",enabled).apply()
     }
+    private val _archiveQuery = MutableStateFlow("")
     suspend fun searchArchive(phrase:String) = kotlinx.coroutines.withContext(Dispatchers.IO){
-        _archiveSearch.value=if(!_archiveEnabled.value || phrase.isBlank()) emptyList()
+        _archiveQuery.value = phrase
+        val results = if (!_archiveEnabled.value || phrase.isBlank()) emptyList()
             else archive.search(phrase)
+        // Search requests can finish out of order while the user types.
+        if (_archiveQuery.value == phrase) _archiveSearch.value = results
     }
     private val _historyNotice = MutableStateFlow<String?>(null)
     val historyNotice: StateFlow<String?> = _historyNotice
@@ -334,7 +344,8 @@ class GenericAgentClient(
     }
     private fun saveHistory() = synchronized(diskGuard) {
         val root = JsonObject()
-        for ((id, items) in historyCache.entries.toList().takeLast(64)) {
+        val recent = synchronized(historyCache) { historyCache.entries.toList().takeLast(64) }
+        for ((id, items) in recent) {
             root.add(id, gson.toJsonTree(items.takeLast(200)))
         }
         val encoded = gson.toJson(root).toByteArray(Charsets.UTF_8)
@@ -447,17 +458,21 @@ class GenericAgentClient(
                     parts.joinToString("\n"), obj.str("completeness") != "Full",
                     obj.get("revision")?.let { runCatching { it.asLong }.getOrNull() } ?: 1L)
             } ?: emptyList()
-            // Live refresh must not discard pages explicitly loaded with Older.
-            val merged = if (reload) {
+            // A full read is only the *latest page*, not a replacement for pages
+            // fetched with Load earlier. Even a manual refresh/reconnect preserves them.
+            // Merge against the cache as it stands after the network call, since an
+            // older-page request can finish while the latest page is in flight.
+            val merged = synchronized(historyCache) {
                 val byId = linkedMapOf<String, AgentHistoryUi>()
                 (historyCache[key].orEmpty() + rows).forEach { item ->
                     val prev = byId[item.id]
                     if (prev == null || prev.revision <= item.revision) byId[item.id] = item
                 }
-                byId.values.toList().takeLast(500)
-            } else rows
-            historyCache[key] = merged
-            if (!reload || historyOlderCursors[key] == null) historyOlderCursors[key] = page.str("older")
+                byId.values.toList().takeLast(500).also { historyCache[key] = it }
+            }
+            // A null cursor after paging to the beginning means 'exhausted', not
+            // 'uninitialized'. Do not resurrect the Load earlier button on refresh.
+            if (!historyOlderCursors.containsKey(key)) historyOlderCursors[key] = page.str("older")
             if (_selected.value == key) _olderHistoryCursor.value = historyOlderCursors[key]
             saveHistory()
             if (_archiveEnabled.value) {
@@ -512,19 +527,22 @@ class GenericAgentClient(
                     row.get("revision")?.let { runCatching { it.asLong }.getOrNull() } ?: 1L)
             }.orEmpty()
             // Preserve provider ordering while deduplicating by stable source ID.
-            val byId = linkedMapOf<String,AgentHistoryUi>()
-            (olderRows + historyCache[key].orEmpty()).forEach { row ->
-                val existing=byId[row.id]
-                if(existing==null || existing.revision<=row.revision) byId[row.id]=row
+            val merged = synchronized(historyCache) {
+                val byId = linkedMapOf<String,AgentHistoryUi>()
+                (olderRows + historyCache[key].orEmpty()).forEach { row ->
+                    val existing=byId[row.id]
+                    if(existing==null || existing.revision<=row.revision) byId[row.id]=row
+                }
+                byId.values.toList().takeLast(500).also { historyCache[key] = it }
             }
-            val merged=byId.values.toList().takeLast(500)
-            historyCache[key] = merged
-            historyOlderCursors[key] = page.str("older")
+            // A provider repeating the same cursor must not create an infinite
+            // 'Load earlier' button that keeps fetching the same page.
+            historyOlderCursors[key] = page.str("older")?.takeIf { it != cursor }
             saveHistory()
             if (_archiveEnabled.value) runCatching { archive.record(key,merged) }
                 .onFailure { Log.w("GenericAgents","Older history archive write failed",it) }
             if (_selected.value == key) {
-                _olderHistoryCursor.value = page.str("older")
+                _olderHistoryCursor.value = historyOlderCursors[key]
                 _history.value = if(_archiveEnabled.value)
                     runCatching {archive.read(key,500)}.getOrDefault(merged) else merged
                 _historyNotice.value = page.str("warning") ?: if (!page.flag("complete"))
@@ -755,9 +773,11 @@ class GenericAgentClient(
         }
     }
     private suspend fun reconcileAccepted() {
+        // A large offline backlog must not monopolize the single serialized
+        // drain with hundreds of network round trips on reconnect.
         val statuses = synchronized(diskGuard) { entries.values.filter {
             it.state in listOf("Accepted","Queued") && it.operationId != null
-        }.map { it.id to it.operationId!! } }
+        }.take(12).map { it.id to it.operationId!! } }
         for ((id, operation) in statuses) {
             if (!signalR.hubAuthenticated.value) return
             try {
@@ -765,20 +785,39 @@ class GenericAgentClient(
                 val state = result.str("state") ?: "Unknown"
                 synchronized(diskGuard) {
                     if (state in listOf("Delivered","Failed","Unknown","Accepted","Queued")) {
-                        entries[id]?.state = state
-                        entries[id]?.error = result.str("error")
-                        persistOutbox()
-                        publishOutbox()
+                        val item = entries[id]
+                        val error = result.str("error")
+                        if (item != null && (item.state != state || item.error != error)) {
+                            item.state = state
+                            item.error = error
+                            persistOutbox()
+                            publishOutbox()
+                        }
                     }
                 }
             } catch (_: Exception) { /* a missing journal entry is not proof of failed delivery */ }
         }
     }
-    fun dismissDelivered(id: String) = synchronized(diskGuard) {
-        val item=entries[id] ?: return@synchronized
-        require(item.state == "Delivered") { "Only confirmed delivered items may be removed" }
+    /** Discard only messages known not to be in transport. A concurrent drain
+     * rechecks their existence/state before transitioning to InFlight. */
+    fun cancelPending(id: String) = synchronized(diskGuard) {
+        val item = entries[id] ?: return@synchronized
+        require(item.state in listOf("Pending", "Blocked")) {
+            "Message is already being processed; cannot cancel locally"
+        }
         entries.remove(id)
-        persistOutbox()
+        try { persistOutbox() } catch (e: Exception) { entries[id] = item; throw e }
+        publishOutbox()
+    }
+    /** The user has checked the destination and explicitly accepted losing the
+     * uncertain local receipt. This NEVER retransmits an ambiguous message. */
+    fun dismissReceipt(id: String) = synchronized(diskGuard) {
+        val item = entries[id] ?: return@synchronized
+        require(item.state in listOf("Delivered", "Failed", "Unknown")) {
+            "Only finished/unconfirmed receipts may be dismissed"
+        }
+        entries.remove(id)
+        try { persistOutbox() } catch (e: Exception) { entries[id] = item; throw e }
         publishOutbox()
     }
     suspend fun fetchQueue(session: AgentSessionUi) {
@@ -831,10 +870,12 @@ class GenericAgentClient(
             // A repeated tap with the same work request must recover its
             // original operation instead of silently creating a second T3 tab.
             val previous = workCreate.latest("OmniHub.Android")
-            val same = previous?.let {
-                it.kind == kind && it.project == workspace &&
-                    it.instructions == firstMessage && it.title == "Android AI work"
-            } == true
+            // Identical instructions can legitimately start *another* session.
+            // Only reuse an unresolved request: successful prior work must not
+            // silently swallow an explicit second Create tap.
+            val same = previous?.state == "Unknown" && previous.kind == kind &&
+                previous.project == workspace && previous.instructions == firstMessage &&
+                previous.title == "Android AI work"
             val incidentId = if (same) previous!!.incidentId else "manual-" + UUID.randomUUID()
             val receipt = workCreate.create(
                 source = "OmniHub.Android", incidentId = incidentId,

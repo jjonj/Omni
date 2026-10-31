@@ -1,6 +1,5 @@
 package com.omni.sync.data.repository
 
-import android.content.ContentValues
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
@@ -13,7 +12,7 @@ import android.database.sqlite.SQLiteOpenHelper
  * excerpts as full history, and never launches provider history scans itself.
  */
 class AgentHistoryArchive(context: Context) :
-    SQLiteOpenHelper(context.applicationContext, "agent-history-v1.db", null, 1) {
+    SQLiteOpenHelper(context.applicationContext, "agent-history-v1.db", null, 2) {
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL("""
             CREATE TABLE history (
@@ -23,6 +22,7 @@ class AgentHistoryArchive(context: Context) :
                 kind TEXT NOT NULL,
                 body TEXT NOT NULL,
                 partial INTEGER NOT NULL,
+                position INTEGER NOT NULL DEFAULT 0,
                 updated_at INTEGER NOT NULL,
                 PRIMARY KEY(session, item_id)
             )
@@ -30,8 +30,10 @@ class AgentHistoryArchive(context: Context) :
         db.execSQL("CREATE INDEX history_by_session ON history(session, updated_at DESC)")
     }
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
-        // Do not delete observed history during a future schema migration.
-        throw IllegalStateException("No automatic history migration available")
+        // Preserve all previously observed messages while enabling provider-order
+        // replay of future batches. Older rows acquire position on next observation.
+        if (oldVersion < 2) db.execSQL(
+            "ALTER TABLE history ADD COLUMN position INTEGER NOT NULL DEFAULT 0")
     }
     fun record(session: String, page: List<AgentHistoryUi>) {
         require(session.length <= 300)
@@ -39,29 +41,20 @@ class AgentHistoryArchive(context: Context) :
         db.beginTransaction()
         try {
             val stamp=System.currentTimeMillis()
-            for (item in page) {
+            for ((position,item) in page.withIndex()) {
                 if(item.id.length !in 1..256 || item.text.length > 1_000_000) continue
-                val values=ContentValues().apply {
-                    put("session",session)
-                    put("item_id",item.id)
-                    put("revision",item.revision)
-                    put("kind",item.kind)
-                    put("body",item.text)
-                    put("partial",if(item.partial) 1 else 0)
-                    put("updated_at",stamp)
-                }
                 // Preserve newer streamed revisions already in the archive.
                 db.execSQL("""
-                    INSERT INTO history (session,item_id,revision,kind,body,partial,updated_at)
-                    VALUES (?,?,?,?,?,?,?)
+                    INSERT INTO history (session,item_id,revision,kind,body,partial,position,updated_at)
+                    VALUES (?,?,?,?,?,?,?,?)
                     ON CONFLICT(session,item_id) DO UPDATE SET
                       revision=excluded.revision, kind=excluded.kind,
                       body=excluded.body, partial=excluded.partial,
-                      updated_at=excluded.updated_at
+                      position=excluded.position, updated_at=excluded.updated_at
                     WHERE excluded.revision>=history.revision
                 """.trimIndent(),arrayOf(
                     session,item.id,item.revision,item.kind,item.text,
-                    if(item.partial)1 else 0,stamp
+                    if(item.partial)1 else 0,position,stamp
                 ))
             }
             db.setTransactionSuccessful()
@@ -71,7 +64,7 @@ class AgentHistoryArchive(context: Context) :
         require(session.length<=300)
         val items=mutableListOf<AgentHistoryUi>()
         readableDatabase.rawQuery(
-            "SELECT item_id,revision,kind,body,partial FROM history WHERE session=? ORDER BY updated_at DESC, item_id DESC LIMIT ? OFFSET ?",
+            "SELECT item_id,revision,kind,body,partial FROM history WHERE session=? ORDER BY updated_at DESC, position DESC LIMIT ? OFFSET ?",
             arrayOf(session,limit.coerceIn(1,500).toString(),offset.coerceAtLeast(0).toString())
         ).use {cursor->
             while(cursor.moveToNext()){
