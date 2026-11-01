@@ -210,6 +210,11 @@ class AlarmService : Service(), android.content.SharedPreferences.OnSharedPrefer
         currentRepetition = intent?.getIntExtra("CURRENT_REPETITION", 0) ?: 0
         com.omni.sync.utils.AlarmStatistics.ring(this, currentAlarmId, currentRepetition == 0)
         repeatDaily = intent?.getBooleanExtra("REPEAT_DAILY", false) ?: false
+        // An alarm can start a cold app process without MainActivity or the
+        // regular foreground sync service. Reconnect directly from this service.
+        if (currentReminderId == null) {
+            (application as? OmniSyncApplication)?.signalRClient?.startConnection()
+        }
         macroOnTrigger = intent?.getStringExtra("MACRO_ON_TRIGGER")
         macroOnDismiss = intent?.getStringExtra("MACRO_ON_DISMISS")
         quickActionOnTriggerId = intent?.getStringExtra("QUICK_ACTION_ON_TRIGGER_ID")

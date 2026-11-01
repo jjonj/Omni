@@ -2861,12 +2861,39 @@ class SignalRClient(
         }
     }
 
-    /** Publish the phone's authoritative ringing state; Hub actions never infer completion. */
+    /** Keep the last phone-alarm transition so reconnection can clear a stale desktop popup. */
     fun reportAndroidAlarm(id: Int, token: String, ringing: Boolean, title: String) {
+        if (id <= 0 || token.isBlank()) return
+        sharedPrefs.edit()
+            .putInt("android_alarm_id", id)
+            .putString("android_alarm_token", token)
+            .apply()
         val connection = hubConnection
-        if (!isHubAuthenticated || connection?.connectionState != com.microsoft.signalr.HubConnectionState.CONNECTED) return
+        if (!isHubAuthenticated || connection?.connectionState != com.microsoft.signalr.HubConnectionState.CONNECTED) {
+            Log.w("AndroidAlarm", "Alarm state not delivered (Hub disconnected or authenticating); ringing=$ringing")
+            if (ringing) startConnection()
+            return
+        }
         connection.invoke(Any::class.java, "ReportAndroidAlarm", id, token, ringing, title.take(180))
-            .subscribe({}, { error -> Log.w("AndroidAlarm", "Hub alarm state report failed: ${error.message}") })
+            .subscribe({}, { error ->
+                Log.w("AndroidAlarm", "Hub alarm state report failed: ${error.message}")
+                if (ringing) startConnection()
+            })
+    }
+
+    private fun replayAndroidAlarmAfterAuthentication() {
+        val activeToken = com.omni.sync.service.AlarmService.currentRemoteToken
+        if (com.omni.sync.service.AlarmService.isRinging.value && activeToken != null) {
+            reportAndroidAlarm(com.omni.sync.service.AlarmService.lastTriggeredAlarmId, activeToken, true, "Phone alarm")
+        } else {
+            // The phone may already have auto-snoozed while reconnecting or restarted.
+            // Send a token-matched clear instead of leaving the old desktop alarm visible.
+            val previousId = sharedPrefs.getInt("android_alarm_id", 0)
+            val previousToken = sharedPrefs.getString("android_alarm_token", null)
+            if (previousId > 0 && previousToken != null) {
+                reportAndroidAlarm(previousId, previousToken, false, "Phone alarm")
+            }
+        }
     }
 
     fun reportAndroidUpdateStatus(requestId: String, status: String, message: String) {
@@ -2893,14 +2920,7 @@ class SignalRClient(
                     advertiseAssistantCommands()
                     flushAssistantVoiceOutbox()
                     refreshReminders()
-                    com.omni.sync.service.AlarmService.currentRemoteToken?.let { token ->
-                        if (com.omni.sync.service.AlarmService.isRinging.value) {
-                            reportAndroidAlarm(
-                                com.omni.sync.service.AlarmService.lastTriggeredAlarmId,
-                                token, true, "Phone alarm"
-                            )
-                        }
-                    }
+                    replayAndroidAlarmAfterAuthentication()
                     AndroidUpdateReceiver.consumePendingDeploymentReport(context)?.let { report ->
                         Log.i(
                             "AndroidDeploy",
