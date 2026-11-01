@@ -130,6 +130,9 @@ fun OmniAiModesScreen(
     var sessionSearch by rememberSaveable { mutableStateOf("") }
     var sessionFilter by rememberSaveable { mutableStateOf("All") }
     var message by rememberSaveable { mutableStateOf("") }
+    var deliveryMode by rememberSaveable { mutableStateOf("WhenIdle") }
+    var maxActiveWorkers by rememberSaveable { mutableIntStateOf(4) }
+    var createDeliveryMode by rememberSaveable { mutableStateOf("WhenIdle") }
     var loadedDraftFor by remember { mutableStateOf<String?>(null) }
     var actionBusy by remember { mutableStateOf(false) }
     var creationBusy by remember { mutableStateOf(false) }
@@ -179,7 +182,8 @@ fun OmniAiModesScreen(
     val sessionDeliveryReady = selected != null &&
         (!online || (selected.provider == active?.id &&
             selected.capabilities.contains("Submit") &&
-            (selected.modes.contains("WhenIdle") || selected.modes.contains("Queue"))))
+            (selected.modes.contains("WhenIdle") || selected.modes.contains("Queue") ||
+             selected.modes.contains("WaitForSlot") || selected.modes.contains("Steer"))))
     val canSend = loadedDraftFor == draftKey && message.isNotBlank() && (if (addressMode)
         address.trim().contains("@") && (active?.id ?: lastProvider) != null &&
             (!online || active?.capabilities?.contains("SubmitToAgent") == true)
@@ -190,6 +194,8 @@ fun OmniAiModesScreen(
         selected == null -> "Select a conversation"
         selected.provider != active?.id -> "Activate ${selected.provider} to send"
         !sessionDeliveryReady -> "This session cannot receive messages here"
+        deliveryMode == "WaitForSlot" -> "Waits for capacity; T3 queues the message"
+        deliveryMode == "Steer" -> "Immediate; may interrupt current reply"
         selected.modes.contains("Queue") -> "Native queue"
         else -> "Delivers when idle"
     }
@@ -240,7 +246,7 @@ fun OmniAiModesScreen(
         kind = provider.kinds.filter {
             it == "t3/chatgpt" || (provider.id != "t3" && it != "local/opencode")
         }.firstOrNull().orEmpty()
-        workspace = ""; firstMessage = ""; create = true
+        workspace = ""; firstMessage = ""; createDeliveryMode = "WhenIdle"; create = true
     }
     fun submit() {
         if (!canSend) return
@@ -248,12 +254,15 @@ fun OmniAiModesScreen(
             val contactReceipt = if (addressMode) client.enqueueAddress(address.trim(), message.trim(),
                 active?.id ?: lastProvider ?: error("No provider selected"))
                 else null
-            if (!addressMode) client.enqueueSession(selected ?: error("Select a session"), message.trim())
+            if (!addressMode) client.enqueueSession(selected ?: error("Select a session"), message.trim(),
+                deliveryMode, if (deliveryMode=="WaitForSlot") maxActiveWorkers else null)
             message = ""
             client.saveDraft(draftKey, "")
             note = when {
                 addressMode && online -> "Message saved. Confirm the contact before it can be delivered."
-                online -> "Message queued. See its delivery receipt in Outbox."
+                online -> if (deliveryMode == "WaitForSlot")
+                    "Message queued for an available worker slot. See Outbox for receipts."
+                    else "Message queued. See its delivery receipt in Outbox."
                 else -> "Message saved on this phone for reconnect."
             }
             if (contactReceipt != null && online) scope.launch {
@@ -613,6 +622,24 @@ fun OmniAiModesScreen(
                 }
                 Column(Modifier.fillMaxWidth().background(p.surface)
                     .padding(horizontal = 12.dp, vertical = 8.dp)) {
+                    if (!addressMode && selected != null) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                            listOf("Steer" to "Steer now", "WhenIdle" to "Queue",
+                                "WaitForSlot" to "Wait for slot").forEach { (value,label) ->
+                                FilterChip(selected = deliveryMode==value,
+                                    onClick = { deliveryMode=value },
+                                    label = {Text(label, style=MaterialTheme.typography.labelSmall)},
+                                    enabled = !online || selected.modes.contains(value))
+                            }
+                        }
+                        if (deliveryMode == "WaitForSlot") Row(verticalAlignment=Alignment.CenterVertically) {
+                            Text("Max working agents",color=p.muted,style=MaterialTheme.typography.labelSmall)
+                            Spacer(Modifier.width(8.dp))
+                            OutlinedTextField(value=maxActiveWorkers.toString(),
+                                onValueChange={it.toIntOrNull()?.takeIf{n->n in 1..100}?.let{n->maxActiveWorkers=n}},
+                                modifier=Modifier.width(74.dp),singleLine=true)
+                        }
+                    }
                     if (addressMode) OutlinedTextField(address, { address = it.take(320) },
                         Modifier.fillMaxWidth().padding(bottom = 8.dp), singleLine = true,
                         label = { Text("Contact address") }, shape = RoundedCornerShape(16.dp),
@@ -880,6 +907,20 @@ fun OmniAiModesScreen(
                 label = { Text("Existing working folder") }, singleLine = true)
             OutlinedTextField(firstMessage, { firstMessage = it.take(30_000) },
                 label = { Text("First instruction") }, maxLines = 4)
+            Text("When to start",style=MaterialTheme.typography.labelMedium)
+            Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                FilterChip(selected=createDeliveryMode=="WhenIdle",onClick={createDeliveryMode="WhenIdle"},
+                    label={Text("Start now")})
+                FilterChip(selected=createDeliveryMode=="WaitForSlot",onClick={createDeliveryMode="WaitForSlot"},
+                    label={Text("Wait for slot")},enabled=active.id=="t3")
+            }
+            if(createDeliveryMode=="WaitForSlot") Row(verticalAlignment=Alignment.CenterVertically) {
+                Text("Max working agents",style=MaterialTheme.typography.labelSmall)
+                Spacer(Modifier.width(8.dp))
+                OutlinedTextField(value=maxActiveWorkers.toString(),
+                    onValueChange={it.toIntOrNull()?.takeIf{n->n in 1..100}?.let{n->maxActiveWorkers=n}},
+                    modifier=Modifier.width(74.dp),singleLine=true)
+            }
         }},
         confirmButton = { TextButton(enabled = !creationBusy && kind.isNotBlank() &&
             workspace.isNotBlank() && firstMessage.isNotBlank(), onClick = {
@@ -888,7 +929,8 @@ fun OmniAiModesScreen(
             create = false
             scope.launch {
                 try {
-                    note = client.createSession(active, kind, workspace, firstMessage)
+                    note = client.createSession(active, kind, workspace, firstMessage,
+                        createDeliveryMode,maxActiveWorkers)
                     val newKey = client.createdSessionKey.value
                     if (newKey != null && client.sessions.value.any { it.key == newKey }) {
                         listMode = false

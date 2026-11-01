@@ -65,7 +65,9 @@ private data class SavedAgentRequest(
     var operationId: String? = null,
     var error: String? = null,
     var stableRecipientJson: String? = null,
-    val kind: String? = null
+    val kind: String? = null,
+    val deliveryMode: String? = null,
+    val maxActiveWorkers: Int? = null
 )
 
 /**
@@ -82,6 +84,7 @@ class GenericAgentClient(
 ) {
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private val operationMutex = Mutex()
+    private val capacityCreateMutex = Mutex()
     private val diskGuard = Any()
     private val gson = Gson()
     private val disk = AtomicFile(File(context.filesDir, "agent-offline-outbox-v1.json"))
@@ -179,6 +182,7 @@ class GenericAgentClient(
             signalR.hubAuthenticated.collectLatest { authenticated ->
                 if (authenticated) {
                     refresh()
+                    recoverCapacityCreate()
                     drain()
                 } else {
                     _status.value = "Offline; messages are saved on this device."
@@ -557,9 +561,14 @@ class GenericAgentClient(
         }
     }
 
-    fun enqueueSession(session: AgentSessionUi, text: String): String {
-        return enqueue(SavedAgentRequest(UUID.randomUUID().toString(), session.provider,
-            "session", session.id, session.conversation, text, kind = session.kind))
+    fun enqueueSession(session: AgentSessionUi, text: String,
+                       deliveryMode: String = "WhenIdle", maxActiveWorkers: Int? = null,
+                       stableMessageId: String? = null): String {
+        require(deliveryMode in listOf("WhenIdle","Steer","WaitForSlot")) { "Unknown delivery choice" }
+        require(maxActiveWorkers==null || maxActiveWorkers in 1..100) { "Max working agents must be 1..100" }
+        return enqueue(SavedAgentRequest(stableMessageId ?: UUID.randomUUID().toString(), session.provider,
+            "session", session.id, session.conversation, text, kind = session.kind,
+            deliveryMode = deliveryMode, maxActiveWorkers = maxActiveWorkers))
     }
     fun enqueueAddress(address: String, text: String, provider: String): String {
         require(address.contains("@") && address.length in 3..320) { "Invalid contact address" }
@@ -570,6 +579,15 @@ class GenericAgentClient(
         require(item.message.isNotBlank() && item.message.length <= 30_000) { "Message is empty or too long" }
         synchronized(diskGuard) {
             check(outboxWritable) { "Outbox unreadable. Original preserved; queue disabled." }
+            entries[item.id]?.let { previous ->
+                require(previous.provider==item.provider && previous.target==item.target &&
+                    previous.conversation==item.conversation && previous.message==item.message &&
+                    previous.deliveryMode==item.deliveryMode &&
+                    previous.maxActiveWorkers==item.maxActiveWorkers) {
+                    "Original queued message identity conflicts; never overwrite an existing outbox entry"
+                }
+                return item.id
+            }
             check(entries.size < 1000) { "Outbox is full" }
             entries[item.id] = item
             try { persistOutbox() }
@@ -590,7 +608,8 @@ class GenericAgentClient(
             "provider" to item.provider,
             "recipient" to recipient,
             "content" to listOf(mapOf("type" to "Text", "markdown" to item.message)),
-            "delivery" to if (item.kind == "t3/thread") "Queue" else "WhenIdle",
+            "delivery" to if (item.kind == "t3/thread") "Queue" else (item.deliveryMode ?: "WhenIdle"),
+            "maxActiveWorkers" to if (item.deliveryMode == "WaitForSlot") item.maxActiveWorkers else null,
             "routing" to if (item.targetType == "session") "pinSession" else "followAgent",
             "clientRequestId" to item.id,
             "expectedConversation" to item.conversation,
@@ -701,8 +720,11 @@ class GenericAgentClient(
                 notePending(item.id, "Native T3 queue is unavailable; keeping message on the phone")
                 return false
             }
-            if (!nativeQueue && (status!="Idle" || !detail.strings("deliveryModes").contains("WhenIdle"))) {
-                notePending(item.id, "Waiting until the selected session accepts a WhenIdle message")
+            val mode=item.deliveryMode ?: "WhenIdle"
+            if (!nativeQueue && (!detail.strings("deliveryModes").contains(mode) ||
+                    !detail.strings("capabilities").contains("Submit") ||
+                    (mode == "WhenIdle" && status!="Idle"))) {
+                notePending(item.id, "Waiting until the original session supports $mode delivery")
                 return false
             }
             notePending(item.id,null)
@@ -859,7 +881,92 @@ class GenericAgentClient(
         _status.value="Provider operation: $state"
         return state
     }
-    suspend fun createSession(provider: AgentProviderUi,kind:String,workspace:String,firstMessage:String): String {
+    /** A blank T3 session and its first capacity-gated prompt are two durable
+     * operations. Persist their stable IDs and instructions before creating a
+     * guest; on restart we can complete the queueing step without spawning
+     * another browser or guessing an ambiguous creation result. */
+    private fun pendingCapacityCreate(): JsonObject? =
+        runCatching { providerPrefs.getString("capacityCreatePending", null)?.let {
+            JsonParser.parseString(it).takeIf { value -> value.isJsonObject }?.asJsonObject
+        } }.getOrNull()
+
+    private fun persistCapacityCreate(value: JsonObject?) {
+        val ok=providerPrefs.edit().apply {
+            if(value==null) remove("capacityCreatePending")
+            else putString("capacityCreatePending",value.toString())
+        }.commit()
+        check(ok) { "Could not durably save the capacity session operation" }
+    }
+
+    private suspend fun recoverCapacityCreate(): String? = capacityCreateMutex.withLock {
+        val intent=pendingCapacityCreate() ?: return@withLock null
+        val target=intent.str("sessionId") ?: return@withLock "Blank-session creation outcome is uncertain; do not create another tab."
+        val first=intent.str("message") ?: return@withLock "Missing preserved first instruction"
+        val messageId=intent.str("queueId") ?: return@withLock "Missing first message identity"
+        val workers=intent.get("maxWorkers")?.takeIf { it.isJsonPrimitive }?.asInt ?: 4
+        val kind=intent.str("kind") ?: "t3/chatgpt"
+        val session=AgentSessionUi("t3",target,"Queued first instruction",kind,
+            "Unknown","Unknown",null,listOf("WaitForSlot"))
+        enqueueSession(session,first,"WaitForSlot",workers,messageId)
+        // The mobile outbox now owns delivery/restart recovery. Do not keep a
+        // second pending creator that could queue it twice.
+        persistCapacityCreate(null)
+        _createdSessionKey.value="t3:$target"
+        "Blank T3 session $target created. Initial instruction waits for a worker slot."
+    }
+
+    private suspend fun createCapacitySession(
+        kind:String,workspace:String,firstMessage:String,maxWorkers:Int
+    ): String = capacityCreateMutex.withLock {
+        require(kind=="t3/chatgpt" && maxWorkers in 1..100)
+        val pending=pendingCapacityCreate()
+        val intent = pending ?: JsonObject().apply {
+            addProperty("requestId",UUID.randomUUID().toString())
+            addProperty("queueId",UUID.randomUUID().toString())
+            addProperty("kind",kind)
+            addProperty("workspace",workspace)
+            addProperty("message",firstMessage)
+            addProperty("maxWorkers",maxWorkers)
+        }.also {persistCapacityCreate(it)}
+        require(intent.str("workspace")==workspace && intent.str("message")==firstMessage &&
+            intent.str("kind")==kind) {
+            "A previous blank T3 create is unresolved. Recover it before starting another."
+        }
+        val existing=intent.str("sessionId")
+        if(existing!=null){
+            val session=AgentSessionUi("t3",existing,"Queued first instruction",kind,
+                "Unknown","Unknown",null,listOf("WaitForSlot"))
+            enqueueSession(session,firstMessage,"WaitForSlot",maxWorkers,intent.str("queueId"))
+            persistCapacityCreate(null)
+            _createdSessionKey.value="t3:$existing"
+            return@withLock "T3 session $existing created; first instruction waits for capacity."
+        }
+        val result=try {
+            signalR.agentCall("sessions.create",mapOf(
+                "provider" to "t3","kind" to kind,"workspace" to workspace,
+                "project" to workspace,"title" to "Android AI work",
+                "clientRequestId" to intent.str("requestId")
+                // Omit initialMessage: blank guest must not begin working yet.
+            )).asJsonObject
+        } catch(e:Exception) {
+            return@withLock "Blank T3 creation outcome uncertain: ${e.message}. Original request ID preserved."
+        }
+        val ref=result.obj("result")?.obj("session") ?: result.obj("session")
+        val id=ref?.str("id")
+        if(id==null) return@withLock "Blank T3 creation not confirmed; original request preserved."
+        intent.addProperty("sessionId",id)
+        persistCapacityCreate(intent) // crash after this cannot lose first message
+        val session=AgentSessionUi("t3",id,"Queued first instruction",kind,
+            "Unknown","Unknown",null,listOf("WaitForSlot"))
+        enqueueSession(session,firstMessage,"WaitForSlot",maxWorkers,intent.str("queueId"))
+        persistCapacityCreate(null)
+        _createdSessionKey.value="t3:$id"
+        "T3 session $id created blank; first instruction waits for a worker slot."
+    }
+
+    suspend fun createSession(provider: AgentProviderUi,kind:String,workspace:String,
+                              firstMessage:String,deliveryMode:String="WhenIdle",
+                              maxActiveWorkers:Int=4): String {
         require(provider.active&&provider.capabilities.contains("CreateSession")) {
             "Selected provider cannot create a session"
         }
@@ -868,7 +975,9 @@ class GenericAgentClient(
             "Workspace and first message are required"
         }
         _createdSessionKey.value = null
-        val resultText = if (provider.id == "t3") {
+        val resultText = if (provider.id == "t3" && deliveryMode=="WaitForSlot") {
+            createCapacitySession(kind,workspace,firstMessage,maxActiveWorkers)
+        } else if (provider.id == "t3") {
             require(kind == "t3/chatgpt") { "Native T3 MAIN does not support session creation" }
             // A repeated tap with the same work request must recover its
             // original operation instead of silently creating a second T3 tab.
