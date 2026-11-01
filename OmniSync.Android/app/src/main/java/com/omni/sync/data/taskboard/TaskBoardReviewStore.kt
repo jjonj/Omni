@@ -50,12 +50,15 @@ data class MobileReviewPin(
         put("note", note)
     }
 }
+data class MobileReviewAttachment(val name: String, val mime: String, val bytes: ByteArray)
+
 data class MobileReviewDecision(
     val verdict: String,
     val choices: List<String> = emptyList(),
     val ranking: List<String> = emptyList(),
     val pins: List<MobileReviewPin> = emptyList(),
     val note: String = "",
+    val attachments: List<MobileReviewAttachment> = emptyList(),
 )
 
 /** No assumptions about project prefix: review dirs are keyed by the manifest task_id. */
@@ -190,12 +193,31 @@ object TaskBoardReviewStore {
                     "Round was already answered."
                 }
                 val now = quoteTime()
+                require(decision.attachments.size <= 10) { "Maximum 10 images per review." }
+                // Desktop uses the same content-addressed Attachments/<task-id>/<hash>.<ext> paths.
+                val imageRefs = decision.attachments.map { image ->
+                    val ext = when (image.mime) {
+                        "image/png" -> "png"; "image/jpeg" -> "jpg"
+                        "image/webp" -> "webp"; "image/gif" -> "gif"
+                        else -> error("Unsupported image type")
+                    }
+                    require(image.bytes.size <= 20 * 1024 * 1024) { "Each image must be under 20 MB." }
+                    val relative = "Attachments/${review.taskId}/${sha(image.bytes)}.$ext"
+                    val file = File(root, relative)
+                    if (!file.exists()) {
+                        file.parentFile?.mkdirs()
+                        atomicWrite(file, image.bytes)
+                    }
+                    "![${image.name.replace("[", "").replace("]", "")}]($relative)"
+                }
+                val combinedNote = (listOf(decision.note) + imageRefs).filter { it.isNotBlank() }
+                    .joinToString("\n\n")
                 val answer = JSONObject().apply {
                     put("verdict", decision.verdict)
                     put("choices", array(decision.choices))
                     put("ranking", array(decision.ranking))
                     put("pins", JSONArray().apply { decision.pins.forEach { put(it.json()) } })
-                    put("note", decision.note)
+                    put("note", combinedNote)
                     put("resolved_at", now)
                 }
                 currentRound.put("result", answer)
@@ -225,7 +247,7 @@ object TaskBoardReviewStore {
                 val summary = "Review round ${manifest.optInt("current_round")}: ${decision.verdict}. " +
                     "Choice: [${decision.choices.joinToString(", ")}]. " +
                     "Ranking: [${decision.ranking.joinToString(", ")}]. " +
-                    "Pins: ${JSONArray().apply { decision.pins.forEach { put(it.json()) } }}. Note: ${decision.note}"
+                    "Pins: ${JSONArray().apply { decision.pins.forEach { put(it.json()) } }}. Note: ${combinedNote}"
                 val timeline = "<!-- taskboard:update:user-note|$now -->\n" +
                     summary.lines().joinToString("\n") { if (it.isBlank()) ">" else "> $it" } +
                     "\n<!-- taskboard:end-update -->"

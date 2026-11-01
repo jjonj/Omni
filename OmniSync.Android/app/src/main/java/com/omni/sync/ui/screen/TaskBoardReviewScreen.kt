@@ -1,6 +1,8 @@
 package com.omni.sync.ui.screen
 
 import android.graphics.BitmapFactory
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.webkit.WebResourceRequest
@@ -81,6 +83,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import com.omni.sync.data.taskboard.MobileReview
 import com.omni.sync.data.taskboard.MobileReviewDecision
 import com.omni.sync.data.taskboard.MobileReviewPin
+import com.omni.sync.data.taskboard.MobileReviewAttachment
 import com.omni.sync.data.taskboard.TaskBoardReviewStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -106,6 +109,29 @@ fun TaskBoardReviewScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
     val ranking = remember { mutableStateListOf<String>() }
     val pins = remember { mutableStateListOf<MobileReviewPin>() }
     var note by remember { mutableStateOf("") }
+    val reviewImages = remember { mutableStateListOf<MobileReviewAttachment>() }
+    val context = LocalContext.current
+    val gallery = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris ->
+        if (uris.isEmpty()) return@rememberLauncherForActivityResult
+        scope.launch {
+            runCatching {
+                withContext(Dispatchers.IO) {
+                    uris.take((10 - reviewImages.size).coerceAtLeast(0)).mapIndexed { index, uri ->
+                        val mime = context.contentResolver.getType(uri) ?: ""
+                        require(mime in setOf("image/png", "image/jpeg", "image/webp", "image/gif")) {
+                            "Please choose PNG, JPEG, WebP or GIF images."
+                        }
+                        val bytes = context.contentResolver.openInputStream(uri)?.use { input ->
+                            input.readNBytes(20 * 1024 * 1024 + 1)
+                        } ?: error("Could not read the selected image.")
+                        require(bytes.size <= 20 * 1024 * 1024) { "Each image must be under 20 MB." }
+                        MobileReviewAttachment("Image ${reviewImages.size + index + 1}", mime, bytes)
+                    }
+                }
+            }.onSuccess { reviewImages.addAll(it) }
+                .onFailure { error = it.message ?: "Could not attach gallery images." }
+        }
+    }
     var pinMode by remember { mutableStateOf(false) }
     var videoPosition by remember { mutableStateOf(0.0) }
     var videoView by remember { mutableStateOf<VideoView?>(null) }
@@ -136,6 +162,7 @@ fun TaskBoardReviewScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
         ranking.clear()
         pins.clear()
         note = review?.round?.optJSONObject("result")?.optString("note") ?: ""
+        reviewImages.clear()
         pinMode = review?.mode == "markup"
         videoPosition = 0.0
         videoView = null
@@ -177,12 +204,14 @@ fun TaskBoardReviewScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
                         ranking = if (verdict == "ranked") ranking.toList() else emptyList(),
                         pins = pins.toList(),
                         note = note,
+                        attachments = reviewImages.toList(),
                     ))
                     TaskBoardReviewStore.queue(showResolved)
                 }
             }.onSuccess { fresh ->
                 queue = fresh
                 selected = fresh.firstOrNull()?.let { it.project.root.path + "/" + it.taskId }
+                reviewImages.clear()
                 error = null
             }.onFailure { error = "Review conflict or save error: ${it.message}. Refresh to retry." }
             saving = false
@@ -360,6 +389,29 @@ fun TaskBoardReviewScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
             OutlinedTextField(value = note, onValueChange = { note = it },
                 modifier = Modifier.fillMaxWidth(), minLines = 2, label = { Text("Overall note") },
                 readOnly = !canAnswer)
+            if (canAnswer) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    OutlinedButton(onClick = { gallery.launch("image/*") }, enabled = !saving && reviewImages.size < 10) {
+                        Text("Add images")
+                    }
+                    if (reviewImages.isNotEmpty()) {
+                        Spacer(Modifier.width(8.dp))
+                        Text("${reviewImages.size} attached", style = MaterialTheme.typography.labelSmall)
+                    }
+                }
+                reviewImages.forEachIndexed { index, attachment ->
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        val bitmap = remember(attachment) {
+                            BitmapFactory.decodeByteArray(attachment.bytes, 0, attachment.bytes.size,\n                                BitmapFactory.Options().apply { inSampleSize = 8; inPreferredConfig = android.graphics.Bitmap.Config.RGB_565 })\n                                ?.asImageBitmap()
+                        }
+                        if (bitmap != null) Image(bitmap, attachment.name, Modifier.size(46.dp),
+                            contentScale = ContentScale.Crop)
+                        Text(attachment.name, Modifier.weight(1f).padding(start = 8.dp),
+                            style = MaterialTheme.typography.bodySmall)
+                        TextButton(onClick = { reviewImages.removeAt(index) }, enabled = !saving) { Text("Remove") }
+                    }
+                }
+            }
         }
         // Full-width sticky action bar: prominent primary, More, Reject.
         val primaryLabel = when (review.mode) {
