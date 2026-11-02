@@ -22,6 +22,7 @@ data class TaskBoardColumn(
     val aiReady: Boolean,
     val color: String,
     val advisory: Boolean = false,
+    val autoQueue: Boolean = false,
     val snoozedUntil: String? = null,
     val awakeUntil: String? = null
 )
@@ -580,6 +581,7 @@ class TaskBoardStore(
             column.awakeUntil?.let { replacement += "  awake_until: ${yamlQuote(it)}" }
             replacement += "  ai_ready: ${column.aiReady}"
             if (column.advisory) replacement += "  advisory: true"
+            if (column.autoQueue) replacement += "  auto_queue: true"
             replacement += "  color: ${yamlQuote(column.color)}"
         }
         frontmatter = replaceTopLevelField(frontmatter, "columns", replacement)
@@ -788,6 +790,7 @@ class TaskBoardStore(
                 hidden = map["hidden"]?.toBoolean() ?: false,
                 aiReady = map["ai_ready"]?.toBoolean() ?: false,
                 advisory = map["advisory"]?.toBoolean() ?: false,
+                autoQueue = map["auto_queue"]?.toBoolean() ?: false,
                 color = map["color"] ?: "#777777",
                 snoozedUntil = map["snoozed_until"],
                 awakeUntil = map["awake_until"]

@@ -8,6 +8,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
@@ -38,6 +39,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.CircularProgressIndicator
@@ -63,6 +65,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -70,6 +73,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
 import com.omni.sync.data.taskboard.TaskBoardColumn
 import com.omni.sync.data.taskboard.TaskBoardProject
 import com.omni.sync.data.taskboard.TaskBoardQuestion
@@ -129,12 +134,53 @@ private fun saveTaskQueueSnoozes(
     preferences.edit().putString(queueSnoozeKey(root), json.toString()).apply()
 }
 
+private fun readCollapsedEpics(preferences: android.content.SharedPreferences, root: String): Set<String> =
+    preferences.getStringSet("collapsed_epics:$root", emptySet())?.toSet() ?: emptySet()
+
 private fun visibleTaskQueue(
     board: TaskBoardSnapshot,
     snoozes: Map<String, Long>
 ): List<TaskBoardTask> = board.userQueue().filter {
     (snoozes[it.id] ?: 0L) <= System.currentTimeMillis()
 }
+
+/** Phone workbench uses the same task/column concepts as desktop but keeps
+ * filters and selection local. No transient UI state is written to Markdown. */
+private fun mobileTaskMatches(task: TaskBoardTask, board: TaskBoardSnapshot, mode: String,
+    queueModes: Map<String, String> = emptyMap()): Boolean {
+    val terminal = task.completed != null || board.columns.any { it.id == task.column && it.terminal }
+    val waiting = board.waitingFor(task).isNotEmpty()
+    return when (mode) {
+        "focus" -> !terminal && task.kind != "epic" &&
+            ("priority" in task.attention || task.kind == "for_user" ||
+                "needs-user" in task.attention || (task.question != null && task.question.answer.isNullOrBlank()))
+        "doing" -> !terminal && (task.column == "in-progress" || task.claimedBy != null)
+        "ready" -> !terminal && board.columns.any { it.id == task.column && it.aiReady }
+        "queued" -> !terminal && queueModes[task.id] == "queue"
+        "priority" -> !terminal && "priority" in task.attention
+        "attention" -> task.attention.isNotEmpty() || task.question != null
+        "user" -> task.kind == "for_user" || "needs-user" in task.attention
+        "waiting" -> waiting
+        "blocked" -> "blocked" in task.attention || task.column == "blocked"
+        "done" -> terminal && task.kind != "epic"
+        "epics" -> task.kind == "epic"
+        else -> true
+    }
+}
+
+private fun mobileTaskSort(mode: String): Comparator<TaskBoardTask> = when (mode) {
+    "newest" -> compareByDescending<TaskBoardTask> { it.created.orEmpty() }.thenByDescending { it.id }
+    "oldest" -> compareBy<TaskBoardTask> { it.created.orEmpty() }.thenBy { it.id }
+    "title" -> compareBy<TaskBoardTask> { it.title.lowercase() }.thenBy { it.id }
+    else -> compareBy<TaskBoardTask>({ attentionRank(it) }, { it.kind != "epic" }, { it.id })
+}
+
+private val mobileFilters = listOf(
+    "all" to "All", "focus" to "Focus", "doing" to "In progress",
+    "ready" to "AI ready", "queued" to "Queued", "priority" to "Priority", "user" to "For me",
+    "blocked" to "Blocked", "waiting" to "Waiting", "done" to "Done",
+    "epics" to "Epics"
+)
 
 private data class CreateTaskRequest(
     val column: String,
@@ -178,7 +224,19 @@ private fun TaskBoardContents(parentPadding: PaddingValues, signalR: SignalRClie
     var reviewMode by remember { mutableStateOf(false) }
     var skippedQueueIds by remember(selectedRoot) { mutableStateOf<Set<String>>(emptySet()) }
     var queueSnoozes by remember(selectedRoot) { mutableStateOf(readTaskQueueSnoozes(boardPreferences, selectedRoot)) }
-    var filterMode by remember { mutableStateOf("all") }
+    var filterMode by remember { mutableStateOf(boardPreferences.getString("mobile_filter", "all") ?: "all") }
+    var sortMode by remember { mutableStateOf(boardPreferences.getString("mobile_sort", "priority") ?: "priority") }
+    var queueModes by remember(selectedRoot) { mutableStateOf<Map<String, String>>(emptyMap()) }
+    var hideWaiting by remember { mutableStateOf(boardPreferences.getBoolean("mobile_hide_waiting", false)) }
+    var advancedOpen by remember { mutableStateOf(boardPreferences.getBoolean("mobile_tools_open", false)) }
+    var focusedColumn by remember(selectedRoot) { mutableStateOf<String?>(null) }
+    var collapsedEpics by remember(selectedRoot) { mutableStateOf(readCollapsedEpics(boardPreferences, selectedRoot)) }
+    var selection by remember(selectedRoot) { mutableStateOf<Set<String>>(emptySet()) }
+    var selecting by remember(selectedRoot) { mutableStateOf(false) }
+    var showBatchActions by remember { mutableStateOf(false) }
+    var batchDestination by remember { mutableStateOf<String?>(null) }
+    var batchArchiveConfirm by remember { mutableStateOf(false) }
+
 
     var snapshot by remember { mutableStateOf<TaskBoardSnapshot?>(null) }
     var editingTask by remember { mutableStateOf<TaskBoardTask?>(null) }
@@ -257,6 +315,60 @@ private fun TaskBoardContents(parentPadding: PaddingValues, signalR: SignalRClie
             }
             pendingPhoneEditsRevision++
             loading = false
+        }
+    }
+
+    /** Batch edits preserve original operation IDs and stop on real conflicts. */
+    fun applyBatch(mode: String, destination: String? = null) {
+        val board = snapshot ?: return
+        val tasks = board.tasks.filter { it.id in selection && it.kind != "epic" }
+        if (tasks.isEmpty()) return
+        showBatchActions = false
+        batchArchiveConfirm = false
+        scope.launch {
+            loading = true
+            error = null
+            var confirmed = 0
+            var queued = 0
+            try {
+                withContext(Dispatchers.IO) {
+                    for (task in tasks) {
+                        val receipt = when (mode) {
+                            "archive" -> phoneWriter.submitArchive(store.root, task)
+                            "priority" -> phoneWriter.submitUpdate(store.root, task,
+                                task.toDraft().copy(attention = (task.attention + "priority").distinct()))
+                            "unpriority" -> phoneWriter.submitUpdate(store.root, task,
+                                task.toDraft().copy(attention = task.attention - "priority"))
+                            "move" -> phoneWriter.submitUpdate(store.root, task,
+                                task.toDraft().copy(column = requireNotNull(destination)))
+                            "queue", "backlog" -> phoneWriter.submitQueue(store.root, task, mode == "queue")
+                            else -> error("Unknown bulk action")
+                        }
+                        when (receipt.status) {
+                            "applied" -> confirmed++
+                            "queued" -> queued++
+                            else -> throw TaskBoardConflictException(
+                                receipt.details ?: "Batch edit needs review")
+                        }
+                    }
+                }
+                if (queued > 0) syncNotice = "$queued edits saved on phone; syncing automatically"
+                if (mode == "queue" || mode == "backlog") {
+                    runCatching { withContext(Dispatchers.IO) { phoneWriter.queueModes(store.root) } }
+                        .onSuccess { queueModes = it }
+                }
+                selection = emptySet()
+                selecting = false
+            } catch (failure: Exception) {
+                if (failure is CancellationException) throw failure
+                error = "$confirmed confirmed, $queued queued. " +
+                    (failure.message ?: "Remaining edits not applied")
+            } finally {
+                snapshot = runCatching { withContext(Dispatchers.IO) { store.load() } }
+                    .getOrNull() ?: snapshot
+                pendingPhoneEditsRevision++
+                loading = false
+            }
         }
     }
 
@@ -344,6 +456,34 @@ private fun TaskBoardContents(parentPadding: PaddingValues, signalR: SignalRClie
         }
     }
 
+    // The synced vault can change while Android TaskBoard remains open.
+    LaunchedEffect(selectedRoot, reviewMode) {
+        while (!reviewMode) {
+            delay(7000)
+            if (loading || editingTask != null || createTaskRequest != null) continue
+            runCatching { withContext(Dispatchers.IO) { store.load() } }.onSuccess { fresh ->
+                val previous = snapshot
+                if (previous != null && (fresh.boardRevision != previous.boardRevision ||
+                    fresh.tasks.size != previous.tasks.size ||
+                    fresh.tasks.zip(previous.tasks).any { (a, b) ->
+                        a.id != b.id || a.revision != b.revision })) {
+                    snapshot = fresh
+                }
+            }
+        }
+    }
+
+    // Queue state is server-owned, not guessed from stale synced task files.
+    LaunchedEffect(selectedRoot, reviewMode) {
+        while (!reviewMode) {
+            if (signalR.hubAuthenticated.value) {
+                runCatching { withContext(Dispatchers.IO) { phoneWriter.queueModes(store.root) } }
+                    .onSuccess { queueModes = it }
+            }
+            delay(9000)
+        }
+    }
+
     LaunchedEffect(syncNotice) {
         if (syncNotice != null) {
             delay(4200)
@@ -395,7 +535,9 @@ private fun TaskBoardContents(parentPadding: PaddingValues, signalR: SignalRClie
                                             editingTask = null
                                             createTaskRequest = null
                                             showColumns = false
-                                            filterMode = "all"
+                                            focusedColumn = null
+                                            selecting = false
+                                            selection = emptySet()
                                             taskQuery = ""
                                             queueMode = false
                                         }
@@ -443,6 +585,16 @@ private fun TaskBoardContents(parentPadding: PaddingValues, signalR: SignalRClie
                             DropdownMenuItem(text = { Text("Manage columns") }, onClick = {
                                 actionsExpanded = false
                                 showColumns = true
+                            })
+                            DropdownMenuItem(text = { Text("Select multiple cards") }, onClick = {
+                                actionsExpanded = false
+                                selecting = true
+                                selection = emptySet()
+                            })
+                            DropdownMenuItem(text = { Text(if (hideWaiting) "Show waiting tasks" else "Hide dependent tasks") }, onClick = {
+                                actionsExpanded = false
+                                hideWaiting = !hideWaiting
+                                boardPreferences.edit().putBoolean("mobile_hide_waiting", hideWaiting).apply()
                             })
                             DropdownMenuItem(text = { Text("Refresh board") }, onClick = {
                                 actionsExpanded = false
@@ -498,33 +650,47 @@ private fun TaskBoardContents(parentPadding: PaddingValues, signalR: SignalRClie
 
                 else -> snapshot?.let {
                     Column(Modifier.fillMaxSize().background(TaskBoardColors.background)) {
+                        val terminalCount = it.tasks.count { task ->
+                            task.completed != null || it.columns.any { c -> c.id == task.column && c.terminal }
+                        }
+                        val priorityCount = it.tasks.count { task ->
+                            "priority" in task.attention && task.completed == null
+                        }
+                        val forMeCount = it.tasks.count { task ->
+                            task.kind == "for_user" || "needs-user" in task.attention
+                        }
                         Row(
                             modifier = Modifier.fillMaxWidth()
                                 .background(TaskBoardColors.surface)
-                                .padding(horizontal = 12.dp, vertical = 7.dp),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                .horizontalScroll(rememberScrollState())
+                                .padding(horizontal = 10.dp, vertical = 4.dp),
+                            horizontalArrangement = Arrangement.spacedBy(5.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            TaskBoardBadge("${it.tasks.count { task -> task.kind != "epic" }} tasks")
-                            TaskBoardBadge("${it.tasks.count { task -> task.kind == "epic" }} epics",
-                                TaskBoardColors.purple, TaskBoardColors.purpleDark)
-                            Spacer(Modifier.weight(1f))
+                            listOf(
+                                Triple("all", "${it.tasks.count { task -> task.kind != "epic" }} Tasks", TaskBoardColors.blue),
+                                Triple("focus", "$forMeCount For me", TaskBoardColors.amber),
+                                Triple("priority", "$priorityCount Priority", TaskBoardColors.amber),
+                                Triple("doing", "${it.tasks.count { task -> task.column == "in-progress" }} Doing", TaskBoardColors.green),
+                                Triple("done", "$terminalCount Done", TaskBoardColors.muted)
+                            ).forEach { (mode, label, color) ->
+                                TextButton(onClick = { filterMode = mode; focusedColumn = null },
+                                    contentPadding = PaddingValues(horizontal = 5.dp, vertical = 0.dp)) {
+                                    Text(label, color = if (filterMode == mode) color else TaskBoardColors.text,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = if (filterMode == mode) FontWeight.Bold else FontWeight.Normal)
+                                }
+                            }
                             TextButton(
                                 onClick = {
                                     queueMode = true
                                     skippedQueueIds = emptySet()
                                     editingTask = visibleTaskQueue(it, queueSnoozes).firstOrNull()
                                 },
-                                enabled = visibleTaskQueue(it, queueSnoozes).isNotEmpty(),
-                                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp)
-                            ) {
-                                TaskBoardBadge("User ${visibleTaskQueue(it, queueSnoozes).size}",
-                                    TaskBoardColors.amber, TaskBoardColors.amberDark)
-                            }
-                            TextButton(onClick = { compactView = !compactView },
-                                contentPadding = PaddingValues(horizontal = 5.dp, vertical = 0.dp)) {
-                                Text(if (compactView) "▥ Board" else "☷ List",
-                                    color = TaskBoardColors.blue, style = MaterialTheme.typography.labelMedium)
+                                enabled = visibleTaskQueue(it, queueSnoozes).isNotEmpty()
+                            ) { Text("User queue ${visibleTaskQueue(it, queueSnoozes).size}", color = TaskBoardColors.amber) }
+                            TextButton(onClick = { compactView = !compactView }) {
+                                Text(if (compactView) "Columns" else "List", color = TaskBoardColors.blue)
                             }
                         }
                         OutlinedTextField(
@@ -545,17 +711,107 @@ private fun TaskBoardContents(parentPadding: PaddingValues, signalR: SignalRClie
                             horizontalArrangement = Arrangement.spacedBy(6.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            listOf("all" to "All", "attention" to "Attention", "user" to "For user", "waiting" to "Waiting", "epics" to "Epics").forEach { (id, label) ->
+                            mobileFilters.forEach { (id, label) ->
                                 FilterChip(
                                     selected = filterMode == id,
-                                    onClick = { filterMode = id },
+                                    onClick = {
+                                        filterMode = id
+                                        focusedColumn = null
+                                        boardPreferences.edit().putString("mobile_filter", id).apply()
+                                    },
                                     label = { Text(label, style = MaterialTheme.typography.labelMedium) },
                                     shape = RoundedCornerShape(7.dp),
                                     modifier = Modifier.height(34.dp)
                                 )
                             }
+                            FilterChip(
+                                selected = advancedOpen,
+                                onClick = {
+                                    advancedOpen = !advancedOpen
+                                    boardPreferences.edit().putBoolean("mobile_tools_open", advancedOpen).apply()
+                                },
+                                label = { Text(if (advancedOpen) "Less tools" else "Tools") },
+                                modifier = Modifier.height(34.dp)
+                            )
                             TextButton(onClick = { createTaskRequest = CreateTaskRequest(it.columns.firstOrNull { column -> column.id == "draft" }?.id ?: defaultCreateColumn(it), kind = "epic") }) { Text("+ Epic") }
                             if (taskQuery.isNotBlank()) TextButton(onClick = { taskQuery = "" }) { Text("Clear") }
+                        }
+                        if (advancedOpen) {
+                        Row(
+                            Modifier.fillMaxWidth().background(TaskBoardColors.surface)
+                                .horizontalScroll(rememberScrollState())
+                                .padding(horizontal = 10.dp, vertical = 2.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(5.dp)
+                        ) {
+                            Box {
+                                var sortsOpen by remember { mutableStateOf(false) }
+                                TextButton(onClick = { sortsOpen = true }) {
+                                    Text("Sort: " + when (sortMode) {
+                                        "newest" -> "Newest"; "oldest" -> "Oldest"
+                                        "title" -> "A–Z"; else -> "Priority"
+                                    }, style = MaterialTheme.typography.labelMedium)
+                                }
+                                DropdownMenu(expanded = sortsOpen, onDismissRequest = { sortsOpen = false }) {
+                                    listOf("priority" to "Priority", "newest" to "Newest",
+                                        "oldest" to "Oldest", "title" to "Title A–Z").forEach { (id, label) ->
+                                        DropdownMenuItem(text = { Text(label) }, onClick = {
+                                            sortsOpen = false; sortMode = id
+                                            boardPreferences.edit().putString("mobile_sort", id).apply()
+                                        })
+                                    }
+                                }
+                            }
+                            FilterChip(
+                                selected = hideWaiting,
+                                onClick = {
+                                    hideWaiting = !hideWaiting
+                                    boardPreferences.edit().putBoolean("mobile_hide_waiting", hideWaiting).apply()
+                                },
+                                label = { Text("Hide dependent") }, modifier = Modifier.height(32.dp)
+                            )
+                            TextButton(onClick = {
+                                if (collapsedEpics.isEmpty()) collapsedEpics = it.tasks.filter { task -> task.kind == "epic" }.map { task -> task.id }.toSet()
+                                else collapsedEpics = emptySet()
+                                boardPreferences.edit().putStringSet("collapsed_epics:$selectedRoot", collapsedEpics).apply()
+                            }) { Text(if (collapsedEpics.isEmpty()) "Fold epics" else "Expand epics", style = MaterialTheme.typography.labelMedium) }
+                            TextButton(onClick = {
+                                selecting = !selecting
+                                if (!selecting) selection = emptySet()
+                            }) { Text(if (selecting) "Cancel select" else "Select", style = MaterialTheme.typography.labelMedium) }
+                            TextButton(onClick = { refresh() }) { Text("Refresh", style = MaterialTheme.typography.labelMedium) }
+                        }
+                        if (filterMode == "all" && !selecting) {
+                            Row(Modifier.fillMaxWidth().background(TaskBoardColors.surface)
+                                .horizontalScroll(rememberScrollState()).padding(horizontal = 10.dp, vertical = 1.dp),
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                FilterChip(selected = focusedColumn == null, onClick = { focusedColumn = null },
+                                    label = { Text("All columns") }, modifier = Modifier.height(30.dp))
+                                it.columns.filter { column -> !column.hidden }.forEach { column ->
+                                    FilterChip(selected = focusedColumn == column.id,
+                                        onClick = { focusedColumn = if (focusedColumn == column.id) null else column.id },
+                                        label = { Text(column.name) }, modifier = Modifier.height(30.dp))
+                                }
+                            }
+                        }
+                        }
+                        if (selecting) {
+                            Row(Modifier.fillMaxWidth().background(TaskBoardColors.card)
+                                .horizontalScroll(rememberScrollState()).padding(horizontal = 10.dp, vertical = 5.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically) {
+                                Text("${selection.size} selected", fontWeight = FontWeight.Bold, color = TaskBoardColors.text)
+                                TextButton(onClick = {
+                                    selection = it.tasks.filter { task ->
+                                        task.kind != "epic" && mobileTaskMatches(task, it, filterMode) &&
+                                            (focusedColumn == null || it.displayColumn(task) == focusedColumn)
+                                    }.map { task -> task.id }.toSet()
+                                }) { Text("All") }
+                                TextButton(onClick = { selection = emptySet() }) { Text("None") }
+                                TextButton(onClick = { showBatchActions = true }, enabled = selection.isNotEmpty()) {
+                                    Text("Actions…", fontWeight = FontWeight.Bold)
+                                }
+                            }
                         }
                         Box(Modifier.weight(1f)) {
                             TaskBoardColumns(
@@ -564,6 +820,39 @@ private fun TaskBoardContents(parentPadding: PaddingValues, signalR: SignalRClie
                                 attentionOnly = attentionOnly,
                                 filterMode = filterMode,
                                 compactView = compactView,
+                                sortMode = sortMode,
+                                queueModes = queueModes,
+                                onQueueToggle = { task ->
+                                    val current = queueModes[task.id] ?: "backlog"
+                                    val desired = current != "queue"
+                                    mutate(action = {
+                                        requirePcApplied(phoneWriter.submitQueue(store.root, task, desired))
+                                    }, onSuccess = {
+                                        scope.launch {
+                                            runCatching { withContext(Dispatchers.IO) { phoneWriter.queueModes(store.root) } }
+                                                .onSuccess { queueModes = it }
+                                        }
+                                    })
+                                },
+                                hideWaiting = hideWaiting,
+                                focusedColumn = focusedColumn,
+                                collapsedEpics = collapsedEpics,
+                                selection = selection,
+                                selecting = selecting,
+                                onSelect = { task ->
+                                    selection = if (task.id in selection) selection - task.id
+                                        else selection + task.id
+                                },
+                                onStartSelection = { task ->
+                                    selecting = true
+                                    selection = selection + task.id
+                                },
+                                onToggleEpic = { epic ->
+                                    collapsedEpics = if (epic.id in collapsedEpics) collapsedEpics - epic.id
+                                        else collapsedEpics + epic.id
+                                    boardPreferences.edit().putStringSet(
+                                        "collapsed_epics:$selectedRoot", collapsedEpics).apply()
+                                },
                                 onTaskClick = { task -> editingTask = task },
                                 onTaskChange = { task, draft ->
                                     mutate(action = {
@@ -752,6 +1041,12 @@ private fun TaskBoardContents(parentPadding: PaddingValues, signalR: SignalRClie
                     }
                     mutate(action = { saveColumnsViaPc(changed, board.boardRevision) })
                 },
+                onToggleQueue = { column ->
+                    val changed = board.columns.map {
+                        if (it.id == column.id) it.copy(autoQueue = !it.autoQueue) else it
+                    }
+                    mutate(action = { saveColumnsViaPc(changed, board.boardRevision) })
+                },
                 onToggleAiReady = { column ->
                     val changed = board.columns.map {
                         if (it.id == column.id) it.copy(
@@ -852,6 +1147,58 @@ private fun TaskBoardContents(parentPadding: PaddingValues, signalR: SignalRClie
                 }
             )
         }
+    }
+
+    if (showBatchActions && selection.isNotEmpty()) {
+        val board = snapshot
+        AlertDialog(
+            onDismissRequest = { showBatchActions = false },
+            title = { Text("Batch actions · ${selection.size} cards") },
+            text = {
+                Column(
+                    Modifier.fillMaxWidth().heightIn(max = 460.dp).verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(5.dp)
+                ) {
+                    Text("PC writes are sent per card. Conflicts stop the batch.",
+                        style = MaterialTheme.typography.bodySmall)
+                    TextButton(onClick = { applyBatch("priority") }) { Text("Mark priority") }
+                    TextButton(onClick = { applyBatch("unpriority") }) { Text("Remove priority") }
+                    if (board?.tasks?.filter { it.id in selection }?.all {
+                        it.column == "ai-ready" && it.claimedBy == null && it.completed == null &&
+                            it.kind == "task" && board.waitingFor(it).isEmpty()
+                    } == true) {
+                        TextButton(onClick = { applyBatch("queue") }) { Text("Queue selected for AI") }
+                        TextButton(onClick = { applyBatch("backlog") }) { Text("Move selected to Backlog") }
+                    }
+                    Text("Move selected to", fontWeight = FontWeight.Bold)
+                    board?.columns?.filter { !it.hidden }?.forEach { column ->
+                        TextButton(onClick = { applyBatch("move", column.id) }) {
+                            Text(column.name)
+                        }
+                    }
+                    TextButton(onClick = {
+                        showBatchActions = false
+                        batchArchiveConfirm = true
+                    }) { Text("Archive selected…", color = MaterialTheme.colorScheme.error) }
+                }
+            },
+            confirmButton = { TextButton(onClick = { showBatchActions = false }) { Text("Close") } }
+        )
+    }
+    if (batchArchiveConfirm) {
+        AlertDialog(
+            onDismissRequest = { batchArchiveConfirm = false },
+            title = { Text("Archive ${selection.size} cards?") },
+            text = { Text("Move these cards to the PC Archive?") },
+            confirmButton = {
+                TextButton(onClick = { applyBatch("archive") }) {
+                    Text("Archive", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { batchArchiveConfirm = false }) { Text("Cancel") }
+            }
+        )
     }
 
     archiveConfirmation?.let { task ->
@@ -1013,6 +1360,17 @@ private fun TaskBoardColumns(
     attentionOnly: Boolean,
     filterMode: String,
     compactView: Boolean,
+    sortMode: String,
+    queueModes: Map<String, String>,
+    onQueueToggle: (TaskBoardTask) -> Unit,
+    hideWaiting: Boolean,
+    focusedColumn: String?,
+    collapsedEpics: Set<String>,
+    selection: Set<String>,
+    selecting: Boolean,
+    onSelect: (TaskBoardTask) -> Unit,
+    onStartSelection: (TaskBoardTask) -> Unit,
+    onToggleEpic: (TaskBoardTask) -> Unit,
     onTaskClick: (TaskBoardTask) -> Unit,
     onTaskChange: (TaskBoardTask, TaskBoardTaskDraft) -> Unit,
     onTaskArchive: (TaskBoardTask) -> Unit,
@@ -1021,20 +1379,21 @@ private fun TaskBoardColumns(
 ) {
     val filterText = query.trim()
     val filteredTasks = snapshot.tasks.filter { task ->
-        val matchMode = when (filterMode) {
-            "attention" -> task.attention.isNotEmpty() || task.question != null
-            "user" -> task.kind == "for_user" || "needs-user" in task.attention
-            "waiting" -> snapshot.waitingFor(task).isNotEmpty() || "blocked" in task.attention
-            "epics" -> task.kind == "epic"
-            else -> true
-        }
-        matchMode && (!attentionOnly || task.attention.isNotEmpty()) && (filterText.isBlank() ||
-            listOf(task.id, task.title, task.description, task.category.orEmpty(), task.parent.orEmpty(), task.kind)
+        val matchMode = mobileTaskMatches(task, snapshot, filterMode, queueModes)
+        val folded = filterText.isBlank() && task.parent in collapsedEpics && filterMode == "all"
+        matchMode && !folded &&
+            (!hideWaiting || snapshot.waitingFor(task).isEmpty() || task.kind == "epic") &&
+            (focusedColumn == null || snapshot.displayColumn(task) == focusedColumn) &&
+            (!attentionOnly || task.attention.isNotEmpty()) && (filterText.isBlank() ||
+            listOf(task.id, task.title, task.description, task.category.orEmpty(), task.parent.orEmpty(),
+                task.aiNotes, task.userNotes, task.claimedBy.orEmpty(), task.kind)
                 .any { it.contains(filterText, ignoreCase = true) })
     }
     val tasksByColumn = filteredTasks.groupBy { snapshot.displayColumn(it) }
     val visibleColumns = snapshot.columns.filterNot { it.hidden }
-        .filter { (filterText.isBlank() && filterMode == "all" && !attentionOnly) || tasksByColumn[it.id].orEmpty().isNotEmpty() }
+        .filter { focusedColumn == null || it.id == focusedColumn }
+        .filter { (filterText.isBlank() && filterMode == "all" && !attentionOnly) ||
+            tasksByColumn[it.id].orEmpty().isNotEmpty() }
 
     Column(modifier = Modifier.fillMaxSize()) {
         if (snapshot.warnings.isNotEmpty()) {
@@ -1060,9 +1419,7 @@ private fun TaskBoardColumns(
                 verticalArrangement = Arrangement.spacedBy(7.dp)
             ) {
                 visibleColumns.forEach { column ->
-                    val columnTasks = tasksByColumn[column.id].orEmpty().sortedWith(
-                        compareBy<TaskBoardTask>({ attentionRank(it) }, { it.kind != "epic" }, { it.id })
-                    )
+                    val columnTasks = tasksByColumn[column.id].orEmpty().sortedWith(mobileTaskSort(sortMode))
                     item(key = "heading-${column.id}") {
                         Row(
                             Modifier.fillMaxWidth()
@@ -1090,7 +1447,10 @@ private fun TaskBoardColumns(
                             columnTasks.getOrNull(index - 1)?.parent != epic.id) {
                             EpicProxy(epic, onTaskClick)
                         }
-                        TaskCard(task, snapshot, onTaskClick, onTaskChange, onTaskArchive, onCreateChild)
+                        TaskCard(task, snapshot, onTaskClick, onTaskChange, onTaskArchive, onCreateChild,
+                            selecting, task.id in selection, onSelect, onStartSelection,
+                            task.id in collapsedEpics, onToggleEpic,
+                            queueModes[task.id], onQueueToggle)
                     }
                 }
             }
@@ -1109,7 +1469,16 @@ private fun TaskBoardColumns(
                         onTaskChange = onTaskChange,
                         onTaskArchive = onTaskArchive,
                         onCreateChild = onCreateChild,
-                        onAddTask = { onAddTask(column.id) }
+                        onAddTask = { onAddTask(column.id) },
+                        sortMode = sortMode,
+                        queueModes = queueModes,
+                        onQueueToggle = onQueueToggle,
+                        collapsedEpics = collapsedEpics,
+                        selection = selection,
+                        selecting = selecting,
+                        onSelect = onSelect,
+                        onStartSelection = onStartSelection,
+                        onToggleEpic = onToggleEpic
                     )
                 }
             }
@@ -1126,17 +1495,18 @@ private fun TaskColumn(
     onTaskChange: (TaskBoardTask, TaskBoardTaskDraft) -> Unit,
     onTaskArchive: (TaskBoardTask) -> Unit,
     onCreateChild: (TaskBoardTask) -> Unit,
-    onAddTask: () -> Unit
+    onAddTask: () -> Unit,
+    sortMode: String,
+    queueModes: Map<String, String>,
+    onQueueToggle: (TaskBoardTask) -> Unit,
+    collapsedEpics: Set<String>,
+    selection: Set<String>,
+    selecting: Boolean,
+    onSelect: (TaskBoardTask) -> Unit,
+    onStartSelection: (TaskBoardTask) -> Unit,
+    onToggleEpic: (TaskBoardTask) -> Unit
 ) {
-    val sortedTasks = remember(tasks) {
-        tasks.sortedWith(
-            compareBy<TaskBoardTask>(
-                { attentionRank(it) },
-                { if (it.parent == null) 0 else 1 },
-                { it.id }
-            )
-        )
-    }
+    val sortedTasks = remember(tasks, sortMode) { tasks.sortedWith(mobileTaskSort(sortMode)) }
     val tint = parseColumnColor(column.color)
 
     Card(
@@ -1181,7 +1551,10 @@ private fun TaskColumn(
                     sortedTasks.getOrNull(index - 1)?.parent != epic.id) {
                     EpicProxy(epic, onTaskClick)
                 }
-                TaskCard(task, snapshot, onTaskClick, onTaskChange, onTaskArchive, onCreateChild)
+                TaskCard(task, snapshot, onTaskClick, onTaskChange, onTaskArchive, onCreateChild,
+                    selecting, task.id in selection, onSelect, onStartSelection,
+                    task.id in collapsedEpics, onToggleEpic,
+                            queueModes[task.id], onQueueToggle)
             }
         }
     }
@@ -1202,9 +1575,18 @@ private fun TaskCard(
     onTaskClick: (TaskBoardTask) -> Unit,
     onTaskChange: (TaskBoardTask, TaskBoardTaskDraft) -> Unit,
     onTaskArchive: (TaskBoardTask) -> Unit,
-    onCreateChild: (TaskBoardTask) -> Unit
+    onCreateChild: (TaskBoardTask) -> Unit,
+    selecting: Boolean,
+    selected: Boolean,
+    onSelect: (TaskBoardTask) -> Unit,
+    onStartSelection: (TaskBoardTask) -> Unit,
+    folded: Boolean,
+    onToggleEpic: (TaskBoardTask) -> Unit,
+    queueMode: String?,
+    onQueueToggle: (TaskBoardTask) -> Unit
 ) {
     var menuExpanded by remember(task.id) { mutableStateOf(false) }
+    val clipboard = LocalClipboardManager.current
     Box {
     Card(
         modifier = Modifier.fillMaxWidth()
@@ -1218,8 +1600,8 @@ private fun TaskCard(
                 },
                 RoundedCornerShape(8.dp)
             ).combinedClickable(
-                onClick = { onTaskClick(task) },
-                onLongClick = { menuExpanded = true }
+                onClick = { if (selecting) onSelect(task) else onTaskClick(task) },
+                onLongClick = { if (selecting) onSelect(task) else menuExpanded = true }
             ),
         shape = RoundedCornerShape(8.dp),
         colors = CardDefaults.cardColors(
@@ -1234,12 +1616,27 @@ private fun TaskCard(
         Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                if (selecting) Checkbox(checked = selected, onCheckedChange = { onSelect(task) },
+                    modifier = Modifier.size(30.dp))
+                if (task.kind == "epic") TextButton(
+                    onClick = { onToggleEpic(task) }, contentPadding = PaddingValues(0.dp)
+                ) { Text(if (folded) "▸" else "▾", color = TaskBoardColors.purple) }
                 Text(
                     text = if (task.parent != null) "↳ ${task.id}" else task.id,
                     style = MaterialTheme.typography.labelSmall,
                     color = TaskBoardColors.blue,
                     fontWeight = FontWeight.Bold
                 )
+                if (task.column == "ai-ready" && task.kind == "task" &&
+                    task.claimedBy == null && task.completed == null &&
+                    snapshot.waitingFor(task).isEmpty() && queueMode != null) {
+                    TextButton(onClick = { onQueueToggle(task) },
+                        contentPadding = PaddingValues(horizontal = 3.dp, vertical = 0.dp)) {
+                        Text(if (queueMode == "queue") "↻ Queued" else "○ Queue",
+                            color = if (queueMode == "queue") TaskBoardColors.green else TaskBoardColors.muted,
+                            style = MaterialTheme.typography.labelSmall)
+                    }
+                }
                 if (task.kind == "epic") {
                     TaskBoardBadge("Epic", TaskBoardColors.purple, TaskBoardColors.purpleDark)
                 } else if (task.kind == "for_user" || "needs-user" in task.attention) {
@@ -1259,7 +1656,9 @@ private fun TaskCard(
             if (task.kind == "epic") {
                 val children = snapshot.epicChildren(task)
                 val done = children.count { it.completed != null }
-                Text("$done/${children.size} completed", style = MaterialTheme.typography.labelSmall, color = TaskBoardColors.purple)
+                Text("$done/${children.size} completed · " +
+                    (if (folded) "collapsed" else "expanded"),
+                    style = MaterialTheme.typography.labelSmall, color = TaskBoardColors.purple)
             }
             if (task.dependsOn.isNotEmpty()) {
                 val waiting = snapshot.waitingFor(task)
@@ -1293,6 +1692,25 @@ private fun TaskCard(
             menuExpanded = false
             onTaskClick(task)
         })
+        DropdownMenuItem(text = { Text("Select multiple") }, onClick = {
+            menuExpanded = false
+            onStartSelection(task)
+        })
+        DropdownMenuItem(text = { Text("Copy ID") }, onClick = {
+            menuExpanded = false
+            clipboard.setText(AnnotatedString(task.id))
+        })
+        if (queueMode != null && task.column == "ai-ready" && task.kind == "task" &&
+            task.claimedBy == null && task.completed == null &&
+            snapshot.waitingFor(task).isEmpty()) {
+            DropdownMenuItem(
+                text = { Text(if (queueMode == "queue") "Remove from AI queue" else "Queue for AI") },
+                onClick = {
+                    menuExpanded = false
+                    onQueueToggle(task)
+                }
+            )
+        }
         if (task.kind != "epic") {
             DropdownMenuItem(
                 text = { Text(if ("priority" in task.attention) "Remove priority" else "Mark priority") },
@@ -1319,7 +1737,16 @@ private fun TaskCard(
             })
         }
 
-        snapshot.columns.filter { !it.hidden && task.kind != "epic" && it.id != task.column }
+        if (task.kind != "epic" && task.completed == null) {
+            snapshot.columns.firstOrNull { it.terminal }?.let { done ->
+                DropdownMenuItem(text = { Text("Move to " + done.name) }, onClick = {
+                    menuExpanded = false
+                    onTaskChange(task, task.toDraft().copy(column = done.id))
+                })
+            }
+        }
+        snapshot.columns.filter { !it.hidden && task.kind != "epic" && it.id != task.column &&
+                !(it.terminal && task.completed == null) }
             .forEach { destination ->
                 DropdownMenuItem(text = {
                     Text("Move → ${destination.name}" +
@@ -1797,6 +2224,7 @@ private fun ColumnManagerDialog(
     onRename: (TaskBoardColumn) -> Unit,
     onToggleHidden: (TaskBoardColumn) -> Unit,
     onToggleAiReady: (TaskBoardColumn) -> Unit,
+    onToggleQueue: (TaskBoardColumn) -> Unit,
     onMove: (TaskBoardColumn, Int) -> Unit,
     onDelete: (TaskBoardColumn) -> Unit
 ) {
@@ -1858,6 +2286,9 @@ private fun ColumnManagerDialog(
                                 ) { Text(if (column.hidden) "Show" else "Hide") }
                             }
                             Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                                if (column.id == "ai-ready") TextButton(
+                                    onClick = { onToggleQueue(column) }, enabled = !busy
+                                ) { Text(if (column.autoQueue) "✓ Queue all: ON" else "Queue all: OFF") }
                                 TextButton(
                                     onClick = { onToggleAiReady(column) },
                                     enabled = !busy &&

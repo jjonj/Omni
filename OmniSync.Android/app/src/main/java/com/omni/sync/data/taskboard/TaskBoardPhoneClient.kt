@@ -91,6 +91,26 @@ class TaskBoardPhoneClient(
         return sendSaved(operationId)
     }
 
+    /** Real desktop execution intents, not a phone-only simulated queue. */
+    suspend fun queueModes(root: File): Map<String, String> {
+        val response = signalR.agentCall("taskboard.phone.queue.list",
+            mapOf("board" to boardIdentity(root)))
+        val modes = response.asJsonObject.getAsJsonObject("modes") ?: return emptyMap()
+        return modes.entrySet().associate { (id, intent) ->
+            id to intent.asJsonObject.get("mode").asString
+        }
+    }
+
+    suspend fun submitQueue(root: File, task: TaskBoardTask, queue: Boolean): Submission {
+        val operationId = UUID.randomUUID().toString()
+        drafts.saveOffline(boardId = boardIdentity(root), taskId = task.id,
+            baseRevision = task.revision, baseSource = task.file.readText(Charsets.UTF_8),
+            edited = JSONObject().put("_operation", "queue")
+                .put("mode", if (queue) "queue" else "backlog").toString(),
+            operationId = operationId)
+        return sendSaved(operationId)
+    }
+
     suspend fun submitArchive(root: File, task: TaskBoardTask): Submission {
         val operationId = UUID.randomUUID().toString()
         drafts.saveOffline(boardId = boardIdentity(root), taskId = task.id,
@@ -113,6 +133,7 @@ class TaskBoardPhoneClient(
                         put("hidden", column.hidden)
                         put("ai_ready", column.aiReady)
                         put("advisory", column.advisory)
+                        put("auto_queue", column.autoQueue)
                         put("color", column.color)
                         put("snoozed_until", column.snoozedUntil)
                         put("awake_until", column.awakeUntil)
@@ -153,6 +174,7 @@ class TaskBoardPhoneClient(
         val isNewBoard = pending.taskId == "NEWBOARD"
         val isColumns = pending.taskId == "COLUMNS"
         val isArchive = JSONObject(pending.edited).optString("_operation") == "archive"
+        val isQueue = JSONObject(pending.edited).optString("_operation") == "queue"
         val wire = if (isNewBoard) mapOf(
             "operationId" to pending.operationId,
             "name" to JSONObject(pending.edited).getString("name")
@@ -168,6 +190,7 @@ class TaskBoardPhoneClient(
                     "hidden" to column.getBoolean("hidden"),
                     "ai_ready" to column.getBoolean("ai_ready"),
                     "advisory" to column.getBoolean("advisory"),
+                    "auto_queue" to column.optBoolean("auto_queue"),
                     "color" to column.getString("color"),
                     "snoozed_until" to column.optString("snoozed_until").takeUnless { it == "null" || it.isBlank() },
                     "awake_until" to column.optString("awake_until").takeUnless { it == "null" || it.isBlank() }
@@ -179,6 +202,10 @@ class TaskBoardPhoneClient(
             "operationId" to pending.operationId, "board" to pending.boardId,
             "baseBoardRevision" to pending.baseRevision,
             "draft" to com.google.gson.Gson().fromJson(pending.edited, Map::class.java)
+        ) else if (isQueue) mapOf(
+            "operationId" to pending.operationId, "board" to pending.boardId,
+            "taskId" to pending.taskId, "baseRevision" to pending.baseRevision,
+            "mode" to JSONObject(pending.edited).getString("mode")
         ) else mapOf(
             "operationId" to pending.operationId,
             "board" to pending.boardId,
@@ -189,7 +216,8 @@ class TaskBoardPhoneClient(
         val method = if (isNewBoard) "taskboard.phone.board.create" else if (isColumns)
             "taskboard.phone.columns" else if (isCreate)
             "taskboard.phone.create" else if (isArchive)
-            "taskboard.phone.archive" else "taskboard.phone.update"
+            "taskboard.phone.archive" else if (isQueue) "taskboard.phone.queue.set"
+            else "taskboard.phone.update"
         val response = try {
             signalR.agentCall(method, wire)
         } catch (error: CancellationException) {
