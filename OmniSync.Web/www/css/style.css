@@ -1267,3 +1267,11 @@ button.danger:hover,
 
 }
 `n/* TFT Emblem Pool Enhancements */`n.pool-subheader { width: 100%; font-size: 9px; text-transform: uppercase; color: var(--text-dim); margin: 8px 0 4px 4px; font-weight: bold; border-bottom: 1px solid var(--border-light); padding-bottom: 2px; }`n.selected-in-pool { border: 1px solid var(--accent); background: rgba(10, 132, 255, 0.1); border-radius: 4px; }`n.selected-in-pool .item-icon { box-shadow: 0 0 8px var(--accent); }
+/* Shared legacy OmniHub navigation */
+.nav-menu .omni-more{position:relative;display:flex;align-items:center}
+.nav-menu .omni-more summary{cursor:pointer;list-style:none}
+.nav-menu .omni-more summary::-webkit-details-marker{display:none}
+.nav-menu .omni-more-menu{position:absolute;top:100%;left:0;z-index:200;min-width:185px;padding:6px;background:#151b23;border:1px solid #33404e;border-radius:9px;box-shadow:0 12px 30px #0008}
+.nav-menu .omni-more-menu a{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:9px 11px;color:#e6edf3;text-decoration:none;border-radius:6px;white-space:nowrap}
+.nav-menu .omni-more-menu a:hover{background:#232d39}
+.nav-menu .omni-more-menu small{font-size:10px;color:#8a97a6}
