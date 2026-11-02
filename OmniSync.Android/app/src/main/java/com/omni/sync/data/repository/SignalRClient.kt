@@ -19,6 +19,8 @@ import com.omni.sync.viewmodel.MainViewModel
 import com.omni.sync.utils.NetworkDebugger
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
@@ -1691,11 +1693,18 @@ class SignalRClient(
      */
     suspend fun agentCall(method: String, params: Map<String, Any?> = emptyMap()): com.google.gson.JsonElement {
         return kotlinx.coroutines.withContext(Dispatchers.IO) {
-            if (!isHubAuthenticated ||
-                hubConnection?.connectionState != com.microsoft.signalr.HubConnectionState.CONNECTED) {
-                throw IllegalStateException("OmniHub is offline or unauthenticated")
+            if (hubConnection?.connectionState != com.microsoft.signalr.HubConnectionState.CONNECTED) {
+                throw IllegalStateException("OmniHub connection unavailable")
             }
+            // The socket reports Connected before Authenticate has received its ACK.
+            // A TaskBoard write must wait for the authenticated session, not fail in that gap.
+            withTimeoutOrNull(15_000) { hubAuthenticated.first { it } }
+                ?: throw IllegalStateException("OmniHub authentication did not complete")
             val conn = hubConnection ?: throw IllegalStateException("OmniHub connection unavailable")
+            check(isHubAuthenticated &&
+                conn.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
+                "OmniHub authentication lost before TaskBoard write"
+            }
             val raw = conn.invoke(Any::class.java, "AgentCall", method, params)
                 .timeout(105, TimeUnit.SECONDS)
                 .blockingGet()
@@ -2940,12 +2949,27 @@ class SignalRClient(
         }
     }
 
+    private val lastAgentAuthAttemptMs = AtomicLong(0L)
+
+    /** A live socket can outlast an unsuccessful Authenticate RPC. Retry auth
+     * without requiring the user to reconnect or to retry a TaskBoard edit. */
+    fun ensureAgentAuthentication() {
+        if (isHubAuthenticated ||
+            hubConnection?.connectionState != com.microsoft.signalr.HubConnectionState.CONNECTED) return
+        val now = android.os.SystemClock.elapsedRealtime()
+        val previous = lastAgentAuthAttemptMs.get()
+        if (now - previous < 12_000L || !lastAgentAuthAttemptMs.compareAndSet(previous, now)) return
+        authenticateClient()
+    }
     private fun authenticateClient() {
-        hubConnection?.invoke(Boolean::class.java, "Authenticate", apiKey)
-            ?.subscribe({ success ->
+        val connection = hubConnection ?: return
+        lastAgentAuthAttemptMs.set(android.os.SystemClock.elapsedRealtime())
+        connection.invoke(Boolean::class.java, "Authenticate", apiKey)
+            .subscribe({ success ->
+                if (hubConnection !== connection) return@subscribe
                 Log.d("SignalR", "Auth success: $success")
+                isHubAuthenticated = success
                 if (success) {
-                    isHubAuthenticated = true
                     advertiseAssistantCommands()
                     flushAssistantVoiceOutbox()
                     refreshReminders()
@@ -2959,7 +2983,9 @@ class SignalRClient(
                     }
                 }
             }, { error ->
-                isHubAuthenticated = false
+                if (hubConnection === connection) {
+                    isHubAuthenticated = false
+                            }
                 Log.e("SignalR", "Auth failed", error)
             })
     }

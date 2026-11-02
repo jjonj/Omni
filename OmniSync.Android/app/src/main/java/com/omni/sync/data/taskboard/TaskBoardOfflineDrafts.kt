@@ -119,6 +119,23 @@ class TaskBoardOfflineDrafts(context: Context) {
         return changed
     }
 
+    /** A PC journal UNKNOWN is not transient transport failure: never blindly retry it. */
+    @Synchronized
+    fun uncertain(operationId: String, reason: String) {
+        val file = fileFor(operationId)
+        val previous = decode(file)
+        val changed = previous.copy(state = "unknown", explanation = reason)
+        val temporary = File(root, "$operationId.tmp")
+        temporary.writeText(encode(changed).toString(), Charsets.UTF_8)
+        try {
+            Files.move(temporary.toPath(), file.toPath(),
+                StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
+        } catch (error: Exception) {
+            temporary.delete()
+            throw IllegalStateException("Failed to persist uncertain operation", error)
+        }
+    }
+
     /** Only call this after the PC returns a durable receipt for this exact ID. */
     @Synchronized
     fun acknowledge(operationId: String, receiptOperationId: String) {

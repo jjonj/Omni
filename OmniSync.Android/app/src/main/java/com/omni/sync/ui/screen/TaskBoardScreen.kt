@@ -81,11 +81,24 @@ import com.omni.sync.data.taskboard.TaskBoardTimeline
 import com.omni.sync.data.taskboard.TaskBoardOfflineDrafts
 import com.omni.sync.data.taskboard.TaskBoardPhoneClient
 import com.omni.sync.data.taskboard.TaskBoardConflictException
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
 import com.omni.sync.data.repository.SignalRClient
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
+
+/** Transient transport failure means a durable phone draft, not a failed user edit. */
+private class TaskBoardQueuedException : Exception()
+
+private fun requirePcApplied(receipt: TaskBoardPhoneClient.Submission) {
+    when (receipt.status) {
+        "applied" -> Unit
+        "queued" -> throw TaskBoardQueuedException()
+        else -> throw TaskBoardConflictException(receipt.details ?: "PC edit needs review")
+    }
+}
 
 // Queue snoozes are UI-only (like desktop TaskBoard), not competing Markdown state.
 private fun queueSnoozeKey(root: String): String = "taskboard.queue.snoozed:$root"
@@ -179,6 +192,8 @@ private fun TaskBoardContents(parentPadding: PaddingValues, signalR: SignalRClie
     var loading by remember { mutableStateOf(false) }
     var storageAccess by remember { mutableStateOf(TaskBoardStore.hasStorageAccess()) }
     var error by remember { mutableStateOf<String?>(null) }
+    var syncNotice by remember { mutableStateOf<String?>(null) }
+    var archiveConfirmation by remember { mutableStateOf<TaskBoardTask?>(null) }
     var taskQuery by remember { mutableStateOf("") }
     var attentionOnly by remember { mutableStateOf(false) }
 
@@ -233,7 +248,12 @@ private fun TaskBoardContents(parentPadding: PaddingValues, signalR: SignalRClie
                 snapshot = it
                 onSuccess()
             }.onFailure {
-                error = it.message ?: it.toString()
+                if (it is TaskBoardQueuedException) {
+                    syncNotice = "Saved on phone; syncing to PC automatically"
+                    onSuccess() // Close the editor, but never claim the PC board has updated.
+                } else {
+                    error = it.message ?: it.toString()
+                }
             }
             pendingPhoneEditsRevision++
             loading = false
@@ -242,8 +262,7 @@ private fun TaskBoardContents(parentPadding: PaddingValues, signalR: SignalRClie
 
     suspend fun saveColumnsViaPc(columns: List<TaskBoardColumn>, expectedRevision: String) {
         val result = phoneWriter.submitColumns(store.root, expectedRevision, columns)
-        if (result.status != "applied") throw TaskBoardConflictException(
-            result.details ?: "PC column update is unconfirmed; offline draft retained")
+        requirePcApplied(result)
     }
 
     fun generateDump() {
@@ -267,8 +286,7 @@ private fun TaskBoardContents(parentPadding: PaddingValues, signalR: SignalRClie
                                 column = defaultCreateColumn(board),
                                 attention = if (row.index in priorities) listOf("priority") else emptyList()
                             ))
-                        if (result.status != "applied") throw TaskBoardConflictException(
-                            result.details ?: "Task creation is pending PC confirmation")
+                        requirePcApplied(result)
                         completed++
                     }
                     currentStore.load()
@@ -278,12 +296,14 @@ private fun TaskBoardContents(parentPadding: PaddingValues, signalR: SignalRClie
                 taskDumpText = ""
                 taskDumpPriorities = emptySet()
             } catch (failure: Exception) {
-                val rest = rows.drop(completed)
+                val pending = failure is TaskBoardQueuedException
+                val rest = rows.drop(completed + if (pending) 1 else 0)
+                if (pending) syncNotice = "Saved on phone; syncing automatically"
                 taskDumpText = rest.joinToString("\n") { it.value }
                 taskDumpPriorities = rest.mapIndexedNotNull { index, item ->
                     if (item.index in priorities) index else null
                 }.toSet()
-                error = "$completed of ${rows.size} tasks created; retry will create only the remaining lines. ${failure.message}"
+                if (!pending) error = "$completed of ${rows.size} tasks created; remaining lines preserved. ${failure.message}"
                 snapshot = runCatching { withContext(Dispatchers.IO) { currentStore.load() } }.getOrNull() ?: snapshot
             } finally {
                 loading = false
@@ -300,6 +320,35 @@ private fun TaskBoardContents(parentPadding: PaddingValues, signalR: SignalRClie
     LaunchedEffect(selectedRoot) {
         snapshot = null
         refresh()
+    }
+
+    // No manual retry dialog for ordinary connectivity changes. Pending drafts
+    // survive app restarts and replay with the original idempotent operation ID.
+    LaunchedEffect(phoneWriter) {
+        delay(1200) // Allow a newly submitted edit to complete its first attempt.
+        while (true) {
+            val hasPending = offlineDrafts.all().any { it.state == "draft" }
+            if (hasPending) signalR.ensureAgentAuthentication()
+            if (hasPending && signalR.hubAuthenticated.value) {
+                try {
+                    val delivered = withContext(Dispatchers.IO) { phoneWriter.syncPending() }
+                    if (delivered > 0) refresh()
+                    pendingPhoneEditsRevision++
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (failure: Exception) {
+                    android.util.Log.w("TaskBoardPhone", "Deferred draft sync: ${failure.message}")
+                }
+            }
+            delay(4000)
+        }
+    }
+
+    LaunchedEffect(syncNotice) {
+        if (syncNotice != null) {
+            delay(4200)
+            syncNotice = null
+        }
     }
 
     Scaffold(
@@ -519,17 +568,10 @@ private fun TaskBoardContents(parentPadding: PaddingValues, signalR: SignalRClie
                                 onTaskChange = { task, draft ->
                                     mutate(action = {
                                         val result = phoneWriter.submitUpdate(store.root, task, draft)
-                                        if (result.status != "applied") throw TaskBoardConflictException(
-                                            result.details ?: "Phone edit is pending PC confirmation")
+                                        requirePcApplied(result)
                                    })
                                 },
-                                onTaskArchive = { task ->
-                                    mutate(action = {
-                                        val result = phoneWriter.submitArchive(store.root, task)
-                                        if (result.status != "applied") throw TaskBoardConflictException(
-                                            result.details ?: "Archive is pending PC confirmation")
-                                   })
-                                },
+                                onTaskArchive = { task -> archiveConfirmation = task },
                                 onCreateChild = { epic ->
                                     createTaskRequest = CreateTaskRequest(defaultCreateColumn(it), epic.id, epic.category)
                                 },
@@ -548,6 +590,17 @@ private fun TaskBoardContents(parentPadding: PaddingValues, signalR: SignalRClie
                         .align(Alignment.TopCenter)
                         .padding(top = 8.dp)
                 )
+            }
+
+            if (error == null) syncNotice?.let { message ->
+                Surface(
+                    modifier = Modifier.align(Alignment.BottomCenter).padding(12.dp),
+                    color = TaskBoardColors.card,
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Text(message, modifier = Modifier.padding(12.dp),
+                        color = TaskBoardColors.text, style = MaterialTheme.typography.bodySmall)
+                }
             }
 
             error?.let { message ->
@@ -589,10 +642,13 @@ private fun TaskBoardContents(parentPadding: PaddingValues, signalR: SignalRClie
                     error = null
                     try {
                         val result = withContext(Dispatchers.IO) { phoneWriter.sendSaved(operationId) }
-                        if (result.status != "applied") error = result.details ?: "PC operation is still unconfirmed"
+                        if (result.status == "queued") syncNotice = "Saved on phone; syncing automatically"
+                        else if (result.status != "applied") error = result.details ?: "PC operation needs review"
                         refresh()
                     } catch (failure: Exception) {
-                        error = failure.message ?: failure.toString()
+                        if (failure is TaskBoardQueuedException)
+                            syncNotice = "Saved on phone; syncing automatically"
+                        else error = failure.message ?: failure.toString()
                     } finally {
                         pendingPhoneEditsRevision++
                         loading = false
@@ -618,8 +674,7 @@ private fun TaskBoardContents(parentPadding: PaddingValues, signalR: SignalRClie
                     mutate(
                         action = {
                             val result = phoneWriter.submitCreate(store.root, board.boardRevision, draft)
-                            if (result.status != "applied") throw TaskBoardConflictException(
-                                result.details ?: "Task creation is pending PC confirmation")
+                            requirePcApplied(result)
                         },
                         onSuccess = { createTaskRequest = null }
                     )
@@ -657,8 +712,7 @@ private fun TaskBoardContents(parentPadding: PaddingValues, signalR: SignalRClie
                     mutate(
                         action = {
                             val result = phoneWriter.submitUpdate(store.root, task, draft)
-                            if (result.status != "applied") throw TaskBoardConflictException(
-                                result.details ?: "Phone edit is pending PC confirmation")
+                            requirePcApplied(result)
                         },
                         onSuccess = {
                             if (queueMode) {
@@ -678,15 +732,9 @@ private fun TaskBoardContents(parentPadding: PaddingValues, signalR: SignalRClie
                     )
                     editingTask = null
                 }} else null,
-                onArchive = if (task.kind == "task" && task.completed != null) {{
-                    mutate(
-                        action = {
-                            val result = phoneWriter.submitArchive(store.root, task)
-                            if (result.status != "applied") throw TaskBoardConflictException(
-                                result.details ?: "Archive is pending PC confirmation")
-                        },
-                        onSuccess = { editingTask = null }
-                    )
+                onArchive = if (task.kind != "epic" || board.epicChildren(task).isEmpty()) {{
+                    editingTask = null
+                    archiveConfirmation = task
                 }} else null
             )
         }
@@ -792,8 +840,7 @@ private fun TaskBoardContents(parentPadding: PaddingValues, signalR: SignalRClie
                                 for (task in occupied) {
                                     val moved = phoneWriter.submitUpdate(store.root, task,
                                         task.toDraft().copy(column = target))
-                                    if (moved.status != "applied") throw TaskBoardConflictException(
-                                        moved.details ?: "PC task move unconfirmed; column not deleted")
+                                    requirePcApplied(moved)
                                 }
                             }
                             saveColumnsViaPc(remaining.mapIndexed { index, item ->
@@ -805,6 +852,25 @@ private fun TaskBoardContents(parentPadding: PaddingValues, signalR: SignalRClie
                 }
             )
         }
+    }
+
+    archiveConfirmation?.let { task ->
+        AlertDialog(
+            onDismissRequest = { archiveConfirmation = null },
+            title = { Text("Archive ${task.id}?") },
+            text = { Text("Move this card to Archive? You can restore it later on PC.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    archiveConfirmation = null
+                    mutate(action = {
+                        requirePcApplied(phoneWriter.submitArchive(store.root, task))
+                    })
+                }) { Text("Archive") }
+            },
+            dismissButton = {
+                TextButton(onClick = { archiveConfirmation = null }) { Text("Cancel") }
+            }
+        )
     }
 
     if (showTaskDump) {
@@ -840,8 +906,11 @@ private fun TaskBoardContents(parentPadding: PaddingValues, signalR: SignalRClie
                         if (receipt.status == "applied") {
                             showCreateBoard = false
                             error = "Project created on PC. Sync SharedWithPc/Obsidian/jjj to this phone, then Refresh board before selecting it."
+                        } else if (receipt.status == "queued") {
+                            syncNotice = "Saved on phone; project will sync automatically"
+                            showCreateBoard = false
                         } else {
-                            error = receipt.details ?: "PC board creation not confirmed; phone draft retained"
+                            error = receipt.details ?: "PC board creation needs review"
                         }
                         pendingPhoneEditsRevision++
                     }.onFailure { failure ->
@@ -1261,7 +1330,7 @@ private fun TaskCard(
                     onTaskChange(task, task.toDraft().copy(column = destination.id))
                 })
             }
-        if (task.completed != null && task.kind != "epic") {
+        if (task.kind != "epic" || snapshot.epicChildren(task).isEmpty()) {
             DropdownMenuItem(text = { Text("Archive") }, onClick = {
                 menuExpanded = false
                 onTaskArchive(task)
