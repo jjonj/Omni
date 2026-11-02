@@ -278,6 +278,7 @@ class SignalRClient(
     private var hubConnection: HubConnection? = null
     private var terminalHubConnection: HubConnection? = null
     val remoteTerminalClient = RemoteTerminalClient()
+    val phoneCommands by lazy { com.omni.sync.logic.terminal.PhoneCommandService(context, this) }
     private val hubUrl: String get() = mainViewModel.appConfig.value.hubUrl
 
     private val apiKey: String get() = mainViewModel.appConfig.value.apiKey
@@ -1108,6 +1109,10 @@ class SignalRClient(
         hubConnection?.on("ReceiveCommandOutput", { output: String ->
             mainViewModel.appendCommandOutput(output)
         }, String::class.java)
+
+        hubConnection?.on("PhoneCommandRequested", { requestId: String, command: String ->
+            if (isHubAuthenticated) phoneCommands.run(command, "Agent", requestId)
+        }, String::class.java, String::class.java)
 
         hubConnection?.on("ModifierStateUpdated", { modifierName: String, isPressed: Boolean ->
             mainViewModel.addLog("[Remote] Hub reports $modifierName is ${if (isPressed) "DOWN" else "UP"}", com.omni.sync.ui.screen.LogType.INFO)
@@ -2521,6 +2526,23 @@ class SignalRClient(
         }
     }
 
+    // Android reports both local and agent commands to the Hub's shared transcript.
+    private fun reportPhoneCommand(method: String, vararg args: Any) {
+        if (isHubAuthenticated &&
+            hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
+            hubConnection?.send(method, *args)
+        }
+    }
+
+    fun reportPhoneCommandStarted(id: String, command: String, source: String) =
+        reportPhoneCommand("ReportPhoneCommandStarted", id, command, source)
+
+    fun reportPhoneCommandOutput(id: String, chunk: String) =
+        reportPhoneCommand("ReportPhoneCommandOutput", id, chunk)
+
+    fun reportPhoneCommandCompleted(id: String, exitCode: Int) =
+        reportPhoneCommand("ReportPhoneCommandCompleted", id, exitCode)
+
     fun executeCommand(command: String) {
         if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
             hubConnection?.send("ExecuteCommand", command)
@@ -3158,6 +3180,7 @@ class SignalRClient(
         hub.remove("ClipboardUpdated")
         hub.remove("InjectText")
         hub.remove("ReceiveCommandOutput")
+        hub.remove("PhoneCommandRequested")
         hub.remove("ModifierStateUpdated")
         hub.remove("ShutdownScheduled")
         hub.remove("ShutdownModeUpdated")

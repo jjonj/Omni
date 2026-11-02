@@ -1,11 +1,15 @@
 package com.omni.sync.service
 
 import android.accessibilityservice.AccessibilityService
+import android.accessibilityservice.GestureDescription
+import android.graphics.Path
 import android.os.Bundle
 import android.util.Log
 import android.view.KeyEvent
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import com.omni.sync.MainActivity
+import com.omni.sync.viewmodel.AppScreen
 import com.omni.sync.OmniSyncApplication
 import com.omni.sync.data.repository.SignalRClient
 
@@ -57,20 +61,41 @@ class OmniAccessibilityService : AccessibilityService() {
     override fun onKeyEvent(event: KeyEvent?): Boolean {
         if (event?.action == KeyEvent.ACTION_DOWN) {
             com.omni.sync.utils.WakeAlarmActions.stillAwake(this, automatic = true)
-            when (event.keyCode) {
-                KeyEvent.KEYCODE_VOLUME_UP -> {
-                    Log.d("OmniAccessibility", "Volume Up pressed.")
-                    signalRClient.sendKeyEvent("INPUT_KEY_PRESS", 0xAFu)
-                    return true // Consume the event
-                }
-                KeyEvent.KEYCODE_VOLUME_DOWN -> {
-                    Log.d("OmniAccessibility", "Volume Down pressed.")
-                    signalRClient.sendKeyEvent("INPUT_KEY_PRESS", 0xAEu)
-                    return true // Consume the event
+            // Only hijack volume keys for PC remote control while Omni is the open app.
+            // Everywhere else Android must receive the original volume key.
+            val remoteControlActive = MainActivity.isForeground &&
+                (application as? OmniSyncApplication)?.mainViewModel?.currentScreen?.value == AppScreen.REMOTECONTROL
+            if (remoteControlActive) {
+                when (event.keyCode) {
+                    KeyEvent.KEYCODE_VOLUME_UP -> {
+                        signalRClient.sendKeyEvent("INPUT_KEY_PRESS", 0xAFu)
+                        return true
+                    }
+                    KeyEvent.KEYCODE_VOLUME_DOWN -> {
+                        signalRClient.sendKeyEvent("INPUT_KEY_PRESS", 0xAEu)
+                        return true
+                    }
                 }
             }
         }
         return super.onKeyEvent(event)
+    }
+
+    /** Dispatch a screen-coordinate tap using the already-enabled Accessibility service. */
+    fun tap(x: Float, y: Float): Boolean {
+        val path = Path().apply { moveTo(x, y) }
+        val gesture = GestureDescription.Builder()
+            .addStroke(GestureDescription.StrokeDescription(path, 0, 80))
+            .build()
+        return dispatchGesture(gesture, null, null)
+    }
+
+    fun swipe(x1: Float, y1: Float, x2: Float, y2: Float, durationMs: Long): Boolean {
+        val path = Path().apply { moveTo(x1, y1); lineTo(x2, y2) }
+        val gesture = GestureDescription.Builder()
+            .addStroke(GestureDescription.StrokeDescription(path, 0, durationMs))
+            .build()
+        return dispatchGesture(gesture, null, null)
     }
 
     fun injectText(text: String) {

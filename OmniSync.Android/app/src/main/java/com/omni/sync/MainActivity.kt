@@ -88,6 +88,12 @@ import android.content.Context
 import android.content.IntentFilter
 
 class MainActivity : ComponentActivity() {
+    companion object {
+        // Accessibility may intercept PC volume keys only while Omni is foregrounded.
+        @Volatile var isForeground: Boolean = false
+            private set
+    }
+
     private lateinit var mainViewModel: MainViewModel
     private lateinit var omniSyncApplication: OmniSyncApplication
     
@@ -466,10 +472,16 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        isForeground = true
         mainViewModel.addLog("[Android startup] Activity resumed; checking pending deployment", com.omni.sync.ui.screen.LogType.INFO)
         (application as? OmniSyncApplication)
             ?.androidUpdateManager
             ?.continuePendingDeploymentIfPermitted()
+    }
+
+    override fun onPause() {
+        isForeground = false
+        super.onPause()
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {

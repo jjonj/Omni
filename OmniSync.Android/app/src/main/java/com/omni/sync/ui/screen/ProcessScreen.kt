@@ -15,6 +15,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -43,6 +44,16 @@ fun ProcessScreen(
 ) {
     // --- STATE ---
     var commandInput by remember { mutableStateOf("") }
+    var target by rememberSaveable { mutableStateOf("Remote") }
+    val phoneHistory = signalRClient?.phoneCommands?.history?.collectAsState()?.value ?: emptyList()
+
+    fun sendInput() {
+        val command = commandInput.trim()
+        if (command.isBlank()) return
+        if (target == "Local") signalRClient?.phoneCommands?.run(command)
+        else executeCommands(command, signalRClient)
+        commandInput = ""
+    }
     // Local state for processes
     var processes by remember { mutableStateOf(listOf<ProcessInfo>()) }
     var isLoading by remember { mutableStateOf(false) }
@@ -89,26 +100,42 @@ fun ProcessScreen(
         
         // ================= COMMAND SECTION =================
         Text("Command Execution", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-        
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            FilterChip(selected = target == "Remote", onClick = { target = "Remote" }, label = { Text("Remote · PC") })
+            FilterChip(selected = target == "Local", onClick = { target = "Local" }, label = { Text("Local · Phone") })
+        }
+        Text(
+            if (target == "Remote") "Commands run on your Windows PC."
+            else "Commands run on this Android phone. Agent commands appear here live.",
+            fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
         OutlinedTextField(
             value = commandInput,
             onValueChange = { commandInput = it },
-            label = { Text("Commands (split by ';' or 'ø')") },
+            label = { Text(if (target == "Remote") "PC commands (split by ';' or 'ø')" else "Phone command, e.g. help or volume show") },
             modifier = Modifier.fillMaxWidth(),
             singleLine = true,
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
             keyboardActions = KeyboardActions(
                 onSend = {
-                    executeCommands(commandInput, signalRClient)
-                    commandInput = "" 
+                    sendInput()
                 }
             )
         )
-        
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+            TextButton(onClick = { sendInput() }, enabled = commandInput.isNotBlank()) {
+                Text(if (target == "Remote") "Run on PC" else "Run on Phone")
+            }
+        }
+
         // Output Window with Auto-Scroll
         val scrollState = rememberScrollState()
         var isAutoScrollEnabled by remember { mutableStateOf(true) }
-        val outputText by mainViewModel.commandOutput.collectAsState()
+        val remoteOutput by mainViewModel.commandOutput.collectAsState()
+        val outputText = if (target == "Remote") remoteOutput else phoneHistory.joinToString("\n\n") { entry ->
+            "[${entry.source}] $ ${entry.command}  ·  ${entry.state}\n${entry.output}" +
+                (entry.exitCode?.let { "[exit $it]" } ?: "")
+        }.ifBlank { "Type help to see Android commands. Commands from agents will appear here too." }
 
         // Detect manual scroll direction
         LaunchedEffect(scrollState.value) {
@@ -131,7 +158,7 @@ fun ProcessScreen(
         Card(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(120.dp)
+                .height(if (target == "Local") 250.dp else 120.dp)
                 .padding(vertical = 8.dp),
             colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1E1E))
         ) {
@@ -150,6 +177,7 @@ fun ProcessScreen(
         Spacer(modifier = Modifier.height(16.dp))
 
         // ================= PROCESS SECTION =================
+        if (target == "Remote") {
         
         // Header & Manual Refresh
         Row(
@@ -208,6 +236,7 @@ fun ProcessScreen(
                 )
             }
         }
+        } // PC processes only apply in Remote mode.
     }
 }
 
