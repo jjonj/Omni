@@ -198,6 +198,7 @@ class TaskBoardPhoneClient(
             // The phone cannot know whether the PC received a timed-out call.
             // A journaled operation ID makes the *same* replay safe, never a new write.
             Log.w("TaskBoardPhone", "Delivery deferred for ${pending.operationId}: ${error.message}")
+            signalR.schedulePhoneTaskBoardRecovery()
             return@withLock Submission(pending.operationId, "queued",
                 details = "Saved on phone; will sync automatically")
         }

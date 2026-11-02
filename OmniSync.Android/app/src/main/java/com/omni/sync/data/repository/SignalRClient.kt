@@ -637,6 +637,7 @@ class SignalRClient(
         mainViewModel.setConnected(true)
         mainViewModel.recordActivity() // Record activity on connect
         authenticateClient()
+        schedulePhoneTaskBoardRecovery()
         remoteTerminalClient.connect(url, apiKey)
         hubConnection?.send("GetOmniAiMode")
         // Legacy Gemini discovery and model requests are gated by the Hub mode.
@@ -2949,6 +2950,34 @@ class SignalRClient(
         }
     }
 
+    private val recoveringPhoneTaskBoard = AtomicBoolean(false)
+
+    /** A previously saved phone edit is retried even if TaskBoard is not open.
+     * PC journal receipts deduplicate replayed operation IDs. */
+    fun schedulePhoneTaskBoardRecovery() {
+        if (!recoveringPhoneTaskBoard.compareAndSet(false, true)) return
+        coroutineScope.launch {
+            try {
+                val drafts = com.omni.sync.data.taskboard.TaskBoardOfflineDrafts(context)
+                val writer = com.omni.sync.data.taskboard.TaskBoardPhoneClient(this@SignalRClient, drafts)
+                while (drafts.all().any { it.state == "draft" }) {
+                    ensureAgentAuthentication()
+                    if (hubAuthenticated.value) {
+                        try {
+                            writer.syncPending()
+                        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                            throw cancelled
+                        } catch (failure: Exception) {
+                            Log.w("TaskBoardPhone", "Background recovery deferred: ${failure.message}")
+                        }
+                    }
+                    delay(10_000)
+                }
+            } finally {
+                recoveringPhoneTaskBoard.set(false)
+            }
+        }
+    }
     private val lastAgentAuthAttemptMs = AtomicLong(0L)
 
     /** A live socket can outlast an unsuccessful Authenticate RPC. Retry auth
@@ -2985,7 +3014,7 @@ class SignalRClient(
             }, { error ->
                 if (hubConnection === connection) {
                     isHubAuthenticated = false
-                            }
+                }
                 Log.e("SignalR", "Auth failed", error)
             })
     }
