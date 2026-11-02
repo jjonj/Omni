@@ -972,6 +972,8 @@ class SignalRClient(
         handlersRegistered = true
         hubConnection?.on("RemindersChanged", { refreshReminders() })
         hubConnection?.on("AndroidAlarmAction", { request: AndroidAlarmActionData ->
+            com.omni.sync.service.AlarmService.logBridge(context, "desktop_action_received action=${request.action} id=${request.id} token=${request.token.take(8)}")
+            Log.i("AndroidAlarm", "Desktop command received action=${request.action} id=${request.id} token=${request.token.take(8)}")
             val serviceAction = when (request.action) {
                 "dismiss" -> com.omni.sync.service.AlarmService.ACTION_REMOTE_DISMISS
                 "snooze" -> com.omni.sync.service.AlarmService.ACTION_REMOTE_SNOOZE
@@ -989,7 +991,12 @@ class SignalRClient(
                     putExtra("ALARM_ID", request.id)
                     putExtra("ALARM_TOKEN", request.token)
                 }
+                com.omni.sync.service.AlarmService.logBridge(context, "desktop_action_forwarded id=${request.id} action=${request.action}")
+                Log.i("AndroidAlarm", "Desktop action accepted and forwarded to AlarmService id=${request.id}")
                 context.startService(intent)
+            } else {
+                com.omni.sync.service.AlarmService.logBridge(context, "desktop_action_ignored id=${request.id} ringing=$ringing snoozed=$snoozed")
+                Log.w("AndroidAlarm", "Desktop action ignored (stale token, inactive alarm, or invalid action) id=${request.id} ringing=$ringing snoozed=$snoozed")
             }
         }, AndroidAlarmActionData::class.java)
 
@@ -2881,19 +2888,28 @@ class SignalRClient(
             .putString("android_alarm_title", title.take(180))
             .apply()
         val connection = hubConnection
+        com.omni.sync.service.AlarmService.logBridge(context, "report_attempt id=$id token=${token.take(8)} active=$active snoozed=$snoozed authenticated=$isHubAuthenticated state=${connection?.connectionState}")
+        Log.i("AndroidAlarm", "Report pending id=$id token=${token.take(8)} active=$active snoozed=$snoozed hubAuthenticated=$isHubAuthenticated state=${connection?.connectionState}")
         if (!isHubAuthenticated || connection?.connectionState != com.microsoft.signalr.HubConnectionState.CONNECTED) {
+            com.omni.sync.service.AlarmService.logBridge(context, "report_deferred id=$id token=${token.take(8)} no_authenticated_connection")
             Log.w("AndroidAlarm", "Alarm state not delivered (Hub disconnected or authenticating); active=$active snoozed=$snoozed")
             if (active) startConnection()
             return
         }
         connection.invoke(Any::class.java, "ReportAndroidAlarm", id, token, active, title.take(180), snoozed)
-            .subscribe({}, { error ->
-                Log.w("AndroidAlarm", "Hub alarm state report failed: ${error.message}")
+            .subscribe({
+                com.omni.sync.service.AlarmService.logBridge(context, "hub_ack id=$id token=${token.take(8)} active=$active snoozed=$snoozed")
+                Log.i("AndroidAlarm", "Hub ACK id=$id token=${token.take(8)} active=$active snoozed=$snoozed")
+            }, { error ->
+                com.omni.sync.service.AlarmService.logBridge(context, "hub_error id=$id token=${token.take(8)} active=$active reason=${error.message?.take(240)}")
+                Log.e("AndroidAlarm", "Hub REJECT id=$id token=${token.take(8)} active=$active: ${error.message}", error)
                 if (active) startConnection()
             })
     }
 
     private fun replayAndroidAlarmAfterAuthentication() {
+        com.omni.sync.service.AlarmService.logBridge(context, "hub_authenticated replay_ringing=${com.omni.sync.service.AlarmService.isRinging.value} replay_snoozing=${com.omni.sync.service.AlarmService.isSnoozing.value}")
+        Log.i("AndroidAlarm", "Hub authenticated; reconciling local ring/snooze state")
         val activeToken = com.omni.sync.service.AlarmService.currentRemoteToken
         val previousId = sharedPrefs.getInt("android_alarm_id", 0)
         val previousToken = sharedPrefs.getString("android_alarm_token", null)

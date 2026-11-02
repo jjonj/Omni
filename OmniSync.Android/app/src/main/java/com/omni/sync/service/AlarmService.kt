@@ -62,6 +62,25 @@ class AlarmService : Service(), android.content.SharedPreferences.OnSharedPrefer
         const val ACTION_REMOTE_SNOOZE = "com.omni.sync.ALARM_REMOTE_SNOOZE"
         @Volatile var currentRemoteToken: String? = null
             private set
+
+        /** Local evidence survives process restarts when Hub delivery fails. */
+        fun logBridge(context: Context, message: String) {
+            try {
+                synchronized(AlarmService::class.java) {
+                    val log = java.io.File(context.filesDir, "android-alarm-bridge.log")
+                    if (log.length() > 256_000L) {
+                        val old = java.io.File(context.filesDir, "android-alarm-bridge.previous.log")
+                        if (old.exists()) old.delete()
+                        log.renameTo(old)
+                    }
+                    val stamp = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSXXX", java.util.Locale.US)
+                        .format(java.util.Date())
+                    log.appendText("$stamp $message\n")
+                }
+            } catch (error: Exception) {
+                Log.w("AndroidAlarm", "Could not persist alarm diagnostics", error)
+            }
+        }
         const val ACTION_ALARM_DISABLED = "com.omni.sync.ALARM_DISABLED"
         
         private val _isRinging = MutableStateFlow(false)
@@ -170,6 +189,8 @@ class AlarmService : Service(), android.content.SharedPreferences.OnSharedPrefer
                 remoteToken == client?.currentDesktopAlarmToken(remoteId)
             val ringing = _isRinging.value && currentReminderId == null && remoteId != 0 &&
                 remoteId == currentAlarmId && remoteToken != null && remoteToken == currentRemoteToken
+            logBridge(this, "desktop_command action=${intent.action} id=$remoteId token=${remoteToken?.take(8)} ringing=$ringing snoozed=$snoozed")
+            Log.i("AndroidAlarm", "Service desktop command action=${intent.action} id=$remoteId token=${remoteToken?.take(8)} ringing=$ringing snoozed=$snoozed")
             if (snoozed || ringing) {
                 if (snoozed) {
                     currentAlarmId = remoteId
@@ -219,6 +240,10 @@ class AlarmService : Service(), android.content.SharedPreferences.OnSharedPrefer
         volumeIncrement = intent?.getIntExtra("VOLUME_INCREMENT", 5) ?: 5
         snoozeDurationMin = intent?.getIntExtra("SNOOZE_DURATION", 10) ?: 10
         currentRepetition = intent?.getIntExtra("CURRENT_REPETITION", 0) ?: 0
+        if (currentReminderId == null) {
+            logBridge(this, "ring_start id=$currentAlarmId rep=$currentRepetition/$maxRepetitions token=${currentRemoteToken?.take(8)} duration=${currentDurationSec}s snooze=${snoozeDurationMin}m")
+            Log.i("AndroidAlarm", "Ring start id=$currentAlarmId rep=$currentRepetition/$maxRepetitions token=${currentRemoteToken?.take(8)} duration=${currentDurationSec}s snooze=${snoozeDurationMin}m")
+        }
         com.omni.sync.utils.AlarmStatistics.ring(this, currentAlarmId, currentRepetition == 0)
         repeatDaily = intent?.getBooleanExtra("REPEAT_DAILY", false) ?: false
         // An alarm can start a cold app process without MainActivity or the
@@ -311,8 +336,16 @@ class AlarmService : Service(), android.content.SharedPreferences.OnSharedPrefer
     }
 
     private fun reportDesktopAlarm(active: Boolean, snoozed: Boolean = false) {
-        val client = (application as? OmniSyncApplication)?.signalRClient ?: return
-        val token = currentRemoteToken ?: client.currentDesktopAlarmToken(currentAlarmId) ?: return
+        val client = (application as? OmniSyncApplication)?.signalRClient ?: run {
+            Log.w("AndroidAlarm", "Cannot report: SignalRClient unavailable id=$currentAlarmId")
+            return
+        }
+        val token = currentRemoteToken ?: client.currentDesktopAlarmToken(currentAlarmId) ?: run {
+            Log.w("AndroidAlarm", "Cannot report: no active desktop token id=$currentAlarmId active=$active")
+            return
+        }
+        logBridge(this, "service_transition id=$currentAlarmId rep=$currentRepetition/$maxRepetitions token=${token.take(8)} active=$active snoozed=$snoozed")
+        Log.i("AndroidAlarm", "Service transition id=$currentAlarmId rep=$currentRepetition/$maxRepetitions token=${token.take(8)} active=$active snoozed=$snoozed")
         client.reportAndroidAlarm(currentAlarmId, token, active, dismissText ?: "Phone alarm", snoozed)
     }
 
@@ -378,6 +411,8 @@ class AlarmService : Service(), android.content.SharedPreferences.OnSharedPrefer
         
         // The phone cycle stays active on the desktop through every snooze gap.
         // Only the final repetition (or an explicit dismissal) ends it.
+        logBridge(this, "auto_snooze id=$currentAlarmId rep=$currentRepetition/$maxRepetitions continuation=${currentRepetition < maxRepetitions}")
+        Log.i("AndroidAlarm", "Automatic ${if (currentRepetition < maxRepetitions) "snooze" else "cycle exhausted"} id=$currentAlarmId rep=$currentRepetition/$maxRepetitions")
         reportDesktopAlarm(currentRepetition < maxRepetitions,
             snoozed = currentRepetition < maxRepetitions)
         stopSelf()
@@ -395,6 +430,8 @@ class AlarmService : Service(), android.content.SharedPreferences.OnSharedPrefer
         }
         com.omni.sync.utils.AlarmStatistics.dismiss(this, currentAlarmId)
         Log.i("AlarmService", "User Dismissed Alarm $currentAlarmId.")
+        logBridge(this, "dismiss id=$currentAlarmId ringing=${_isRinging.value} snoozing=${_isSnoozing.value}")
+        Log.i("AndroidAlarm", "Dismiss alarm id=$currentAlarmId ringing=${_isRinging.value} snoozing=${_isSnoozing.value}")
         val app = application as OmniSyncApplication
         // Any dismissed alarm indicates the user is awake. Snoozes and reminders
         // do not end the estimate; reminders return before reaching this branch.
