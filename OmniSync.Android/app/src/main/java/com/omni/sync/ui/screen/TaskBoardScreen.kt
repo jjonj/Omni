@@ -33,12 +33,16 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.material3.Button
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
@@ -1647,6 +1651,9 @@ private fun TaskCard(
     var detailsExpanded by remember(task.id) { mutableStateOf(false) }
     val clipboard = LocalClipboardManager.current
     val visual = taskBoardCardVisual(task, snapshot, queueMode)
+    val isEpicChild = task.parent?.let { parentId ->
+        snapshot.tasks.any { it.id == parentId && it.kind == "epic" }
+    } == true
     val waiting = snapshot.waitingFor(task)
     val related = task.relatedTo
     val childTasks = if (task.kind == "epic") snapshot.epicChildren(task) else emptyList()
@@ -1659,6 +1666,15 @@ private fun TaskCard(
     Box {
         Card(
             modifier = Modifier.fillMaxWidth()
+                .drawBehind {
+                    if (isEpicChild) drawLine(
+                        color = TaskBoardColors.purple.copy(alpha = .65f),
+                        start = Offset(6.dp.toPx(), 1.dp.toPx()),
+                        end = Offset(6.dp.toPx(), size.height - 1.dp.toPx()),
+                        strokeWidth = 2.dp.toPx()
+                    )
+                }
+                .padding(start = if (isEpicChild) 16.dp else 0.dp)
                 .border(1.dp, visual.accent.copy(alpha = if (selected) .95f else .45f),
                     RoundedCornerShape(7.dp))
                 .combinedClickable(
@@ -1682,6 +1698,8 @@ private fun TaskCard(
                         onClick = { onToggleEpic(task) }, contentPadding = PaddingValues(0.dp),
                         modifier = Modifier.size(28.dp)
                     ) { Text(if (folded) "▸" else "▾", color = TaskBoardColors.purple) }
+                    if (isEpicChild) Text("↳", color = TaskBoardColors.purple,
+                        style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
                     Text(task.id, style = MaterialTheme.typography.labelSmall,
                         fontWeight = FontWeight.Bold,
                         color = if (task.kind == "epic") TaskBoardColors.purple else visual.accent,
@@ -1960,10 +1978,6 @@ private fun TaskEditorDialog(
         mutableStateOf(initial.notes)
     }
 
-    var showAdvancedFields by remember(original?.id) {
-        mutableStateOf(initial.dependsOn.isNotEmpty() || initial.relatedTo.isNotEmpty() ||
-            initial.icon != null)
-    }
     var showHistory by remember(original?.id) { mutableStateOf(false) }
     val columns = snapshot.columns.sortedBy { it.order }
     val selectedColumnName = columns.firstOrNull { it.id == column }?.name ?: column
@@ -1975,26 +1989,71 @@ private fun TaskEditorDialog(
     val parentName = parentOptions.firstOrNull { it.first == parent }?.second ?: "No parent"
     val isQuestion = "question" in attention
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = {
-            Column {
-                Text(if (original == null) "New ${when (kind) { "epic" -> "epic"; "for_user" -> "user action"; else -> "task" }}" else original.title)
-                original?.let {
-                    Text(
-                        it.id,
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.primary
-                    )
+
+    var editorSection by remember(original?.id, initialColumn) { mutableStateOf("Basics") }
+    val sectionAccent = when (kind) {
+        "epic" -> TaskBoardColors.purple
+        "for_user" -> TaskBoardColors.orange
+        else -> TaskBoardColors.blue
+    }
+    Dialog(onDismissRequest = { if (!busy) onDismiss() },
+        properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Surface(modifier = Modifier.fillMaxWidth().fillMaxHeight(.95f)
+            .padding(horizontal = 7.dp, vertical = 6.dp),
+            color = TaskBoardColors.background, shape = RoundedCornerShape(14.dp)) {
+            Column(Modifier.fillMaxSize()) {
+                Row(Modifier.fillMaxWidth().background(TaskBoardColors.surface)
+                    .padding(start = 17.dp, end = 7.dp, top = 13.dp, bottom = 11.dp),
+                    verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.width(3.dp).height(35.dp)
+                        .background(sectionAccent, RoundedCornerShape(3.dp)))
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(if (original != null) "Edit task"
+                            else when (kind) {
+                                "epic" -> "Create epic"
+                                "for_user" -> "Create user action"
+                                else -> "Create task"
+                            },
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold, color = TaskBoardColors.text)
+                        Text(original?.id ?: "Set up the task",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = TaskBoardColors.muted, maxLines = 1,
+                            overflow = TextOverflow.Ellipsis)
+                    }
+                    IconButton(onClick = onDismiss, enabled = !busy) {
+                        Icon(Icons.Filled.Close, contentDescription = "Close",
+                            tint = TaskBoardColors.muted)
+                    }
                 }
-            }
-        },
-        text = {
-            Column(
-                modifier = Modifier
-                    .heightIn(max = 650.dp)
-                    .verticalScroll(rememberScrollState())
-            ) {
+                Row(Modifier.fillMaxWidth().background(TaskBoardColors.surface)
+                    .padding(start = 12.dp, end = 12.dp, bottom = 10.dp),
+                    horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                    listOf("Basics", "Content", "More").forEach { tab ->
+                        val current = tab == editorSection
+                        Box(Modifier.weight(1f)
+                            .background(if (current) TaskBoardColors.raised else TaskBoardColors.surface,
+                                RoundedCornerShape(8.dp))
+                            .border(1.dp, if (current) sectionAccent else TaskBoardColors.border,
+                                RoundedCornerShape(8.dp))
+                            .clickable { editorSection = tab }.padding(vertical = 11.dp),
+                            contentAlignment = Alignment.Center) {
+                            Text(tab, style = MaterialTheme.typography.labelMedium,
+                                fontWeight = if (current) FontWeight.Bold else FontWeight.Normal,
+                                color = if (current) sectionAccent else TaskBoardColors.muted)
+                        }
+                    }
+                }
+                Column(Modifier.weight(1f).fillMaxWidth()
+                    .verticalScroll(remember(editorSection) { androidx.compose.foundation.ScrollState(0) })
+                    .padding(horizontal = 18.dp, vertical = 15.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    when(editorSection) {
+                        "Basics" -> {
+                            Text("Identity & workflow", color = sectionAccent,
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold)
                 OutlinedTextField(
                     value = title,
                     onValueChange = { title = it },
@@ -2074,24 +2133,6 @@ private fun TaskEditorDialog(
                 )
 
                 if (kind != "epic") {
-                    TextButton(onClick = { showAdvancedFields = !showAdvancedFields },
-                        modifier = Modifier.fillMaxWidth()) {
-                        Text(if (showAdvancedFields) "▾ Hide links & metadata"
-                            else "▸ Links & metadata",
-                            color = TaskBoardColors.blue, style = MaterialTheme.typography.labelMedium)
-                    }
-                    if (showAdvancedFields) {
-                        OutlinedTextField(value = dependsOn, onValueChange = { dependsOn = it },
-                            modifier = Modifier.fillMaxWidth(), label = { Text("Prerequisite task IDs") },
-                            supportingText = { Text("Tasks that must finish before work begins") })
-                        OutlinedTextField(value = relatedTo, onValueChange = { relatedTo = it },
-                            modifier = Modifier.fillMaxWidth(), label = { Text("Related task / epic IDs") })
-                        OutlinedTextField(value = iconName, onValueChange = { iconName = it },
-                            modifier = Modifier.fillMaxWidth(), label = { Text("Icon (optional)") },
-                            singleLine = true)
-                    }
-                }
-                if (kind != "epic") {
                 Spacer(Modifier.height(14.dp))
                 Text("Attention", style = MaterialTheme.typography.labelLarge)
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -2147,41 +2188,13 @@ private fun TaskEditorDialog(
                 }
                 }
 
-                Spacer(Modifier.height(12.dp))
-                if (original?.userNotes?.isNotBlank() == true) {
-                    Text("Previous user note (will be preserved in history on save)", style = MaterialTheme.typography.labelSmall)
-                    Text(original.userNotes, style = MaterialTheme.typography.bodySmall)
-                    Spacer(Modifier.height(8.dp))
                 }
-                OutlinedTextField(
-                    value = userNotes,
-                    onValueChange = {
-                        userNotes = it
-                        if (it.isNotBlank() && kind == "for_user") {
-                            kind = "task"
-                            attention = attention - "needs-user"
+
                         }
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    label = { Text("Note to AI") },
-                    minLines = 3
-                )
-                Text(
-                    "Changing this note marks the task for AI attention.",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-
-                Spacer(Modifier.height(10.dp))
-                if (kind != "epic" && aiNotes.isNotBlank()) OutlinedTextField(
-                    value = aiNotes,
-                    onValueChange = { aiNotes = it },
-                    modifier = Modifier.fillMaxWidth(),
-                    label = { Text("Historical AI Notes") },
-                    minLines = 3,
-                    readOnly = true
-                )
-
+                        "Content" -> {
+                            Text("Description, feedback & criteria",
+                                color = sectionAccent, style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold)
                 Spacer(Modifier.height(10.dp))
                 OutlinedTextField(
                     value = description,
@@ -2220,6 +2233,52 @@ private fun TaskEditorDialog(
                     minLines = 3
                 )
 
+
+
+                HorizontalDivider(color = TaskBoardColors.border)
+                Text("Feedback to AI", style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold, color = sectionAccent)
+                Spacer(Modifier.height(12.dp))
+                if (original?.userNotes?.isNotBlank() == true) {
+                    Text("Previous user note (will be preserved in history on save)", style = MaterialTheme.typography.labelSmall)
+                    Text(original.userNotes, style = MaterialTheme.typography.bodySmall)
+                    Spacer(Modifier.height(8.dp))
+                }
+                OutlinedTextField(
+                    value = userNotes,
+                    onValueChange = {
+                        userNotes = it
+                        if (it.isNotBlank() && kind == "for_user") {
+                            kind = "task"
+                            attention = attention - "needs-user"
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Note to AI") },
+                    minLines = 3
+                )
+                Text(
+                    "Changing this note marks the task for AI attention.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                        }
+                        else -> {
+                            Text("Dependencies, metadata & actions",
+                                color = sectionAccent, style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold)
+                if (kind != "epic") {
+                        OutlinedTextField(value = dependsOn, onValueChange = { dependsOn = it },
+                            modifier = Modifier.fillMaxWidth(), label = { Text("Prerequisite task IDs") },
+                            supportingText = { Text("Tasks that must finish before work begins") })
+                        OutlinedTextField(value = relatedTo, onValueChange = { relatedTo = it },
+                            modifier = Modifier.fillMaxWidth(), label = { Text("Related task / epic IDs") })
+                        OutlinedTextField(value = iconName, onValueChange = { iconName = it },
+                            modifier = Modifier.fillMaxWidth(), label = { Text("Icon (optional)") },
+                            singleLine = true)
+                }
+
                 Spacer(Modifier.height(10.dp))
                 OutlinedTextField(
                     value = notes,
@@ -2228,7 +2287,17 @@ private fun TaskEditorDialog(
                     label = { Text("Notes") },
                     minLines = 3
                 )
-                }
+
+                Spacer(Modifier.height(10.dp))
+                if (kind != "epic" && aiNotes.isNotBlank()) OutlinedTextField(
+                    value = aiNotes,
+                    onValueChange = { aiNotes = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Historical AI Notes") },
+                    minLines = 3,
+                    readOnly = true
+                )
+
 
                 if (inQueue) {
                     Spacer(Modifier.height(12.dp))
@@ -2253,11 +2322,19 @@ private fun TaskEditorDialog(
                         }
                     }
                 }
-            }
-        },
-        confirmButton = {
-            Button(
-                onClick = {
+
+                        }
+                    }
+                }
+                HorizontalDivider(color = TaskBoardColors.border)
+                Row(Modifier.fillMaxWidth().background(TaskBoardColors.surface)
+                    .padding(horizontal = 17.dp, vertical = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    OutlinedButton(onClick = onDismiss, enabled = !busy,
+                        modifier = Modifier.weight(1f).heightIn(min = 48.dp)) {
+                        Text("Cancel")
+                    }
+                    Button(onClick = {
                     val retainedQuestionAnswer = original?.question?.answer
                     val draft = TaskBoardTaskDraft(
                         title = title.trim(),
@@ -2292,20 +2369,16 @@ private fun TaskEditorDialog(
                         notes = notes
                     )
                     onSave(draft)
-                },
-                enabled = !busy &&
-                    title.isNotBlank() &&
-                    (!isQuestion || questionPrompt.isNotBlank())
-            ) {
-                Text(if (busy) "Saving…" else "Save")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss, enabled = !busy) {
-                Text("Cancel")
+                    }, enabled = !busy && title.isNotBlank() &&
+                            (!isQuestion || questionPrompt.isNotBlank()),
+                        modifier = Modifier.weight(1.4f).heightIn(min = 48.dp)) {
+                        Text(if (busy) "Saving…" else if (original == null) "Create" else "Save changes")
+                    }
+                }
             }
         }
-    )
+    }
+
 }
 
 @Composable
@@ -2316,14 +2389,22 @@ private fun SelectionField(
     onSelected: (String) -> Unit
 ) {
     var expanded by remember { mutableStateOf(false) }
-    Column {
-        Text(label, style = MaterialTheme.typography.labelMedium)
+    Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+        Text(label, style = MaterialTheme.typography.labelMedium,
+            color = TaskBoardColors.muted)
         Box {
             OutlinedButton(
                 onClick = { expanded = true },
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 9.dp)
             ) {
-                Text(selectedText)
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text(selectedText, modifier = Modifier.weight(1f),
+                        maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        color = TaskBoardColors.text)
+                    Spacer(Modifier.width(8.dp))
+                    Text("▾", color = TaskBoardColors.blue)
+                }
             }
             DropdownMenu(
                 expanded = expanded,
