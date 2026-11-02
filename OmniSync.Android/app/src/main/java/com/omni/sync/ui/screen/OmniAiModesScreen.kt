@@ -117,8 +117,8 @@ fun OmniAiModesScreen(
     val p = palette()
     val clipboard = LocalClipboardManager.current
     val context = LocalContext.current
-    // These view preferences are local to the phone; the Hub does not yet expose
-    // T3's desktop hidden/snoozed state or a remote mutation API for it.
+    // Sorting/filter toggles are local; T3 browser hide/snooze state is desktop-owned
+    // and comes from the authenticated provider snapshot.
     val viewPrefs = remember(context) { context.getSharedPreferences("ai-session-view-v1", Context.MODE_PRIVATE) }
     var viewRevision by remember { mutableIntStateOf(0) }
     var sortMode by rememberSaveable { mutableStateOf(viewPrefs.getString("sort", "started") ?: "started") }
@@ -220,21 +220,67 @@ fun OmniAiModesScreen(
         selected.modes.contains("Queue") -> "Native queue"
         else -> "Delivers when idle"
     }
-    fun isHidden(s: AgentSessionUi) = viewPrefs.getBoolean("hidden:${s.key}", false)
-    fun snoozedUntil(s: AgentSessionUi) = viewPrefs.getLong("snooze:${s.key}", 0L)
+    fun isT3Browser(s: AgentSessionUi) = s.provider == "t3" && s.kind == "t3/chatgpt"
+    fun isHidden(s: AgentSessionUi) = if (isT3Browser(s)) s.visibilityHidden == true
+        else viewPrefs.getBoolean("hidden:${s.key}", false)
+    fun snoozedUntil(s: AgentSessionUi) = if (isT3Browser(s)) s.visibilitySnoozedUntil ?: 0L
+        else viewPrefs.getLong("snooze:${s.key}", 0L)
     fun isSnoozed(s: AgentSessionUi) = snoozedUntil(s) > now
     fun setHidden(s: AgentSessionUi, hidden: Boolean) {
-        viewPrefs.edit().putBoolean("hidden:${s.key}", hidden).apply()
-        viewRevision++
+        if (isT3Browser(s)) {
+            if (!online || !s.capabilities.contains("ManageVisibility")) {
+                note = "T3 visibility controls unavailable. Reconnect and refresh."; return
+            }
+            scope.launch {
+                try {
+                    client.sessionAction(s, "Visibility", mapOf("hidden" to hidden))
+                    delay(400) // Wait for the desktop's catalog-change publication.
+                    client.refresh()
+                } catch (e: Exception) { note = "T3 hide failed: " + e.message }
+            }
+        } else {
+            viewPrefs.edit().putBoolean("hidden:${s.key}", hidden).apply()
+            viewRevision++
+        }
     }
     fun setSnooze(s: AgentSessionUi, until: Long) {
-        viewPrefs.edit().putLong("snooze:${s.key}", until).apply()
-        viewRevision++
+        if (isT3Browser(s)) {
+            if (!online || !s.capabilities.contains("ManageVisibility")) {
+                note = "T3 snooze controls unavailable. Reconnect and refresh."; return
+            }
+            scope.launch {
+                try {
+                    client.sessionAction(s, "Visibility",
+                        mapOf("snoozedUntil" to until.takeIf { it > 0 }))
+                    delay(400)
+                    client.refresh()
+                } catch (e: Exception) { note = "T3 snooze failed: " + e.message }
+            }
+        } else {
+            viewPrefs.edit().putLong("snooze:${s.key}", until).apply()
+            viewRevision++
+        }
     }
     fun openSession(s: AgentSessionUi) {
-        // A deliberate open returns parked sessions to the regular list.
-        if (isSnoozed(s)) setSnooze(s, 0L)
-        if (isHidden(s)) setHidden(s, false)
+        // Restore both parked flags in one server operation, not two competing
+        // desktop jobs. Opening never waits on this cosmetic change.
+        if (isT3Browser(s)) {
+            val patch = mutableMapOf<String, Any?>()
+            if (isHidden(s)) patch["hidden"] = false
+            if (isSnoozed(s)) patch["snoozedUntil"] = null
+            if (patch.isNotEmpty()) {
+                scope.launch {
+                    try {
+                        client.sessionAction(s, "Visibility", patch)
+                        delay(400)
+                        client.refresh()
+                    } catch (e: Exception) { note = "Unable to restore T3 visibility: " + e.message }
+                }
+            }
+        } else {
+            if (isSnoozed(s)) setSnooze(s, 0L)
+            if (isHidden(s)) setHidden(s, false)
+        }
         viewPrefs.edit().putLong("visited:${s.key}", System.currentTimeMillis()).apply()
         viewRevision++
         listMode = false
@@ -270,13 +316,16 @@ fun OmniAiModesScreen(
                         viewPrefs.getLong("visited:${s.key}", 0L)) > now - 2 * HOUR_MS)
         }.toList().let { list ->
             when (sessionFilter) {
-                "Hidden" -> list.sortedByDescending { viewPrefs.getLong("hiddenAt:${it.key}", 0L) }
-                "Snoozed" -> list.sortedByDescending { viewPrefs.getLong("snoozedAt:${it.key}", 0L) }
+                "Hidden" -> list.sortedByDescending { if (isT3Browser(it)) it.visibilityHiddenAt ?: 0L
+                    else viewPrefs.getLong("hiddenAt:${it.key}", 0L) }
+                "Snoozed" -> list.sortedByDescending { if (isT3Browser(it)) it.visibilitySnoozedAt ?: 0L
+                    else viewPrefs.getLong("snoozedAt:${it.key}", 0L) }
                 else -> list.sortedWith(compareBy<AgentSessionUi> { it.groupRank() }
                     .thenByDescending { it.needsAttention() }
                     .thenByDescending { it.unread == true }
                     .thenByDescending { if (sortMode == "activity")
                         maxOf(activityMillis(it.lastActivityAt), viewPrefs.getLong("visited:${it.key}", 0L))
+                        else if (isT3Browser(it)) it.visibilityCreatedAt ?: 0L
                         else 0L })
             }
         }
@@ -826,7 +875,8 @@ fun OmniAiModesScreen(
                         }
                     }
                 }
-                Text("Visibility and snooze settings currently apply on this phone only.",
+                Text(if (isT3Browser(target)) "Synced with the T3 desktop sidebar."
+                    else "Visibility applies only on this phone for this provider.",
                     color = p.muted, style = MaterialTheme.typography.labelSmall)
             }
         }

@@ -37,7 +37,12 @@ data class AgentSessionUi(
     val unread: Boolean? = null,
     val parentId: String? = null,
     val reachability: String = "Unknown",
-    val lastActivityAt: String? = null
+    val lastActivityAt: String? = null,
+    val visibilityHidden: Boolean? = null,
+    val visibilityHiddenAt: Long? = null,
+    val visibilitySnoozedUntil: Long? = null,
+    val visibilitySnoozedAt: Long? = null,
+    val visibilityCreatedAt: Long? = null
 ) {
     val key get() = "$provider:$id"
 }
@@ -218,6 +223,11 @@ class GenericAgentClient(
                                     else previous?.attention ?: updated.attention,
                                 unread = updated.unread ?: previous?.unread,
                                 parentId = if (summary.has("parent")) updated.parentId else previous?.parentId,
+                                visibilityHidden = if (summary.has("visibility")) updated.visibilityHidden else previous?.visibilityHidden,
+                                visibilityHiddenAt = if (summary.has("visibility")) updated.visibilityHiddenAt else previous?.visibilityHiddenAt,
+                                visibilitySnoozedUntil = if (summary.has("visibility")) updated.visibilitySnoozedUntil else previous?.visibilitySnoozedUntil,
+                                visibilitySnoozedAt = if (summary.has("visibility")) updated.visibilitySnoozedAt else previous?.visibilitySnoozedAt,
+                                visibilityCreatedAt = if (summary.has("visibility")) updated.visibilityCreatedAt else previous?.visibilityCreatedAt,
                                 reachability = if (summary.obj("state")?.has("reachability") == true)
                                     updated.reachability else previous?.reachability ?: updated.reachability,
                                 lastActivityAt = if (summary.has("lastActivityAt")) updated.lastActivityAt else previous?.lastActivityAt,
@@ -395,7 +405,12 @@ class GenericAgentClient(
                 runCatching { it.asBoolean }.getOrNull()
             }, obj.obj("parent")?.str("id"),
             obj.obj("state")?.str("reachability") ?: "Unknown",
-            obj.str("lastActivityAt"))
+            obj.str("lastActivityAt"),
+            obj.obj("visibility")?.get("hidden")?.let { runCatching { it.asBoolean }.getOrNull() },
+            obj.obj("visibility")?.get("hiddenAt")?.let { runCatching { it.asLong }.getOrNull() },
+            obj.obj("visibility")?.get("snoozedUntil")?.let { runCatching { it.asLong }.getOrNull() },
+            obj.obj("visibility")?.get("snoozedAt")?.let { runCatching { it.asLong }.getOrNull() },
+            obj.obj("visibility")?.get("createdAt")?.let { runCatching { it.asLong }.getOrNull() })
     }
 
     suspend fun refresh() = refreshMutex.withLock {
@@ -873,6 +888,7 @@ class GenericAgentClient(
         val method=when(action) {
             "Interrupt"->"sessions.interrupt"
             "Rename"->"sessions.update"
+            "Visibility"->"sessions.visibility"
             "Delete"->"sessions.delete"
             "QueueEdit"->"sessions.queue.edit"
             else->throw IllegalArgumentException("Unknown agent operation")
