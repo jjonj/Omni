@@ -402,7 +402,9 @@ fun TaskBoardReviewScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
                 reviewImages.forEachIndexed { index, attachment ->
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         val bitmap = remember(attachment) {
-                            BitmapFactory.decodeByteArray(attachment.bytes, 0, attachment.bytes.size,\n                                BitmapFactory.Options().apply { inSampleSize = 8; inPreferredConfig = android.graphics.Bitmap.Config.RGB_565 })\n                                ?.asImageBitmap()
+                            BitmapFactory.decodeByteArray(attachment.bytes, 0, attachment.bytes.size,
+                                BitmapFactory.Options().apply { inSampleSize = 8; inPreferredConfig = android.graphics.Bitmap.Config.RGB_565 })
+                                ?.asImageBitmap()
                         }
                         if (bitmap != null) Image(bitmap, attachment.name, Modifier.size(46.dp),
                             contentScale = ContentScale.Crop)
