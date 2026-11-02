@@ -1,6 +1,7 @@
 package com.omni.sync.ui.screen
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
@@ -13,6 +14,8 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.foundation.verticalScroll
 import androidx.activity.compose.BackHandler
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
+import android.content.Context
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -69,6 +72,10 @@ private fun AgentSessionUi.groupRank(): Int = when (groupName()) {
     "WORKING" -> 1
     else -> 2
 }
+/** Activity timestamps are optional in the provider protocol; unknown is always oldest. */
+private fun activityMillis(iso: String?): Long =
+    runCatching { java.time.Instant.parse(iso ?: "").toEpochMilli() }.getOrDefault(0L)
+
 private fun AgentSessionUi.dotColor(p: AiPalette): Color = when {
     needsAttention() -> p.amber
     activity.equals("Working", true) || activity.equals("Running", true) ||
@@ -109,6 +116,15 @@ fun OmniAiModesScreen(
     val scope = rememberCoroutineScope()
     val p = palette()
     val clipboard = LocalClipboardManager.current
+    val context = LocalContext.current
+    // These view preferences are local to the phone; the Hub does not yet expose
+    // T3's desktop hidden/snoozed state or a remote mutation API for it.
+    val viewPrefs = remember(context) { context.getSharedPreferences("ai-session-view-v1", Context.MODE_PRIVATE) }
+    var viewRevision by remember { mutableIntStateOf(0) }
+    var sortMode by rememberSaveable { mutableStateOf(viewPrefs.getString("sort", "started") ?: "started") }
+    var hideUnloaded by rememberSaveable { mutableStateOf(viewPrefs.getBoolean("hideUnloaded", false)) }
+    var showWorkers by rememberSaveable { mutableStateOf(viewPrefs.getBoolean("showWorkers", true)) }
+    val now = rememberNow()
     val providers by client.providers.collectAsState()
     val sessions by client.sessions.collectAsState()
     val selectedKey by client.selected.collectAsState()
@@ -129,6 +145,7 @@ fun OmniAiModesScreen(
     var initialApplied by remember(initialSessionId) { mutableStateOf(false) }
     var sessionSearch by rememberSaveable { mutableStateOf("") }
     var sessionFilter by rememberSaveable { mutableStateOf("All") }
+    var rowOptions by remember { mutableStateOf<AgentSessionUi?>(null) }
     var message by rememberSaveable { mutableStateOf("") }
     var deliveryMode by rememberSaveable { mutableStateOf("WhenIdle") }
     var maxActiveWorkers by rememberSaveable { mutableIntStateOf(4) }
@@ -178,6 +195,10 @@ fun OmniAiModesScreen(
     // conversations and turn a normal Send tap into a contact message.
     LaunchedEffect(selectedKey) { addressMode = false }
     val attention = sessions.count { it.needsAttention() || it.unread == true }
+    // Hub connectivity alone does not prove the T3 provider is responding.
+    val t3Connected = online && providers.any {
+        it.id == "t3" && it.active && it.capabilities.contains("Submit")
+    }
     val canCreate = online && active?.capabilities?.contains("CreateSession") == true
     val sessionDeliveryReady = selected != null &&
         (!online || (selected.provider == active?.id &&
@@ -199,19 +220,66 @@ fun OmniAiModesScreen(
         selected.modes.contains("Queue") -> "Native queue"
         else -> "Delivers when idle"
     }
-    val visibleSessions = remember(sessions, sessionSearch, sessionFilter) {
-        sessions.asSequence().filter {
-            sessionSearch.isBlank() || it.title.contains(sessionSearch, true) ||
-                it.id.contains(sessionSearch, true) || it.kind.contains(sessionSearch, true)
-        }.filter {
-            sessionFilter != "Attention" || it.needsAttention() || it.unread == true
-        }.filter {
-            sessionFilter != "Active" || it.activity.equals("Working", true) ||
-                it.activity.equals("Running", true) || it.activity.equals("Active", true)
-        }.sortedWith(compareBy<AgentSessionUi> { it.groupRank() }
-            .thenByDescending { it.needsAttention() }
-            .thenByDescending { it.unread == true })
-            .toList()
+    fun isHidden(s: AgentSessionUi) = viewPrefs.getBoolean("hidden:${s.key}", false)
+    fun snoozedUntil(s: AgentSessionUi) = viewPrefs.getLong("snooze:${s.key}", 0L)
+    fun isSnoozed(s: AgentSessionUi) = snoozedUntil(s) > now
+    fun setHidden(s: AgentSessionUi, hidden: Boolean) {
+        viewPrefs.edit().putBoolean("hidden:${s.key}", hidden).apply()
+        viewRevision++
+    }
+    fun setSnooze(s: AgentSessionUi, until: Long) {
+        viewPrefs.edit().putLong("snooze:${s.key}", until).apply()
+        viewRevision++
+    }
+    fun openSession(s: AgentSessionUi) {
+        // A deliberate open returns parked sessions to the regular list.
+        if (isSnoozed(s)) setSnooze(s, 0L)
+        if (isHidden(s)) setHidden(s, false)
+        viewPrefs.edit().putLong("visited:${s.key}", System.currentTimeMillis()).apply()
+        viewRevision++
+        listMode = false
+        scope.launch { client.select(s.key) }
+    }
+    val hiddenCount = remember(sessions, viewRevision) { sessions.count { isHidden(it) } }
+    val snoozedCount = remember(sessions, viewRevision, now / MINUTE_MS) {
+        sessions.count { !isHidden(it) && isSnoozed(it) }
+    }
+    val visibleSessions = remember(sessions, sessionSearch, sessionFilter, sortMode,
+        hideUnloaded, showWorkers, viewRevision, now / MINUTE_MS) {
+        sessions.asSequence().filter { s ->
+            sessionSearch.isBlank() || s.title.contains(sessionSearch, true) ||
+                s.id.contains(sessionSearch, true) || s.kind.contains(sessionSearch, true)
+        }.filter { s ->
+            when (sessionFilter) {
+                "Hidden" -> isHidden(s)
+                "Snoozed" -> !isHidden(s) && isSnoozed(s)
+                else -> !isHidden(s) && !isSnoozed(s)
+            }
+        }.filter { s ->
+            sessionFilter != "Attention" || s.needsAttention() || s.unread == true
+        }.filter { s ->
+            sessionFilter != "Active" || s.activity.equals("Working", true) ||
+                s.activity.equals("Running", true) || s.activity.equals("Active", true)
+        }.filter { s ->
+            sessionFilter == "Hidden" || sessionFilter == "Snoozed" ||
+                (showWorkers || s.parentId == null) &&
+                (!hideUnloaded || s.kind != "t3/chatgpt" ||
+                    s.reachability == "Reachable" ||
+                    // Recently active sessions remain visible, as in T3.
+                    maxOf(activityMillis(s.lastActivityAt),
+                        viewPrefs.getLong("visited:${s.key}", 0L)) > now - 2 * HOUR_MS)
+        }.toList().let { list ->
+            when (sessionFilter) {
+                "Hidden" -> list.sortedByDescending { viewPrefs.getLong("hiddenAt:${it.key}", 0L) }
+                "Snoozed" -> list.sortedByDescending { viewPrefs.getLong("snoozedAt:${it.key}", 0L) }
+                else -> list.sortedWith(compareBy<AgentSessionUi> { it.groupRank() }
+                    .thenByDescending { it.needsAttention() }
+                    .thenByDescending { it.unread == true }
+                    .thenByDescending { if (sortMode == "activity")
+                        maxOf(activityMillis(it.lastActivityAt), viewPrefs.getLong("visited:${it.key}", 0L))
+                        else 0L })
+            }
+        }
     }
 
     LaunchedEffect(initialSessionId, sessions) {
@@ -316,8 +384,9 @@ fun OmniAiModesScreen(
                         fontWeight = FontWeight.SemiBold, maxLines = 1,
                         overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
                     Spacer(Modifier.width(9.dp))
-                    Dot(if (online) p.green else p.amber)
-                    if (!online && listMode) Text("  Offline", color = p.amber,
+                    Dot(if (t3Connected) p.green else p.amber)
+                    if (listMode) Text(if (t3Connected) "  T3" else "  T3 offline",
+                        color = if (t3Connected) p.green else p.amber,
                         style = MaterialTheme.typography.labelSmall)
                 }
                 ActionIcon(Icons.Default.Refresh, if (online) "Refresh" else "Reconnect", p) {
@@ -334,6 +403,31 @@ fun OmniAiModesScreen(
                     var menu by remember { mutableStateOf(false) }
                     ActionIcon(Icons.Default.MoreVert, "More options", p) { menu = true }
                     DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                        if (listMode) {
+                            DropdownMenuItem(text = { Text("Sort: " + (if (sortMode == "activity") "Last active" else "Started")) },
+                                onClick = {
+                                    sortMode = if (sortMode == "started") "activity" else "started"
+                                    viewPrefs.edit().putString("sort", sortMode).apply()
+                                    menu = false
+                                })
+                            DropdownMenuItem(text = { Text((if (showWorkers) "✓ " else "") + "Show workers") },
+                                onClick = {
+                                    showWorkers = !showWorkers
+                                    viewPrefs.edit().putBoolean("showWorkers", showWorkers).apply()
+                                    menu = false
+                                })
+                            DropdownMenuItem(text = { Text((if (hideUnloaded) "✓ " else "") + "Hide unloaded") },
+                                onClick = {
+                                    hideUnloaded = !hideUnloaded
+                                    viewPrefs.edit().putBoolean("hideUnloaded", hideUnloaded).apply()
+                                    menu = false
+                                })
+                            DropdownMenuItem(text = { Text("Snoozed sessions ($snoozedCount)") },
+                                onClick = { sessionFilter = "Snoozed"; menu = false })
+                            DropdownMenuItem(text = { Text("Hidden sessions ($hiddenCount)") },
+                                onClick = { sessionFilter = "Hidden"; menu = false })
+                            HorizontalDivider(color = p.border)
+                        }
                         if (!listMode) {
                             DropdownMenuItem(text = { Text("Session actions") }, onClick = {
                                 menu = false; sheet = "actions"
@@ -399,12 +493,17 @@ fun OmniAiModesScreen(
                         focusedPlaceholderColor = p.muted, unfocusedPlaceholderColor = p.muted,
                         focusedLeadingIconColor = p.muted, unfocusedLeadingIconColor = p.muted,
                         focusedTrailingIconColor = p.muted, unfocusedTrailingIconColor = p.muted))
-                Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
+                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())
+                    .padding(horizontal = 16.dp, vertical = 10.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf("All", "Active", "Attention").forEach { value ->
+                    listOf("All", "Active", "Attention", "Snoozed", "Hidden").forEach { value ->
                         FilterChip(selected = sessionFilter == value, onClick = { sessionFilter = value },
-                            label = { Text(if (value == "Attention" && attention > 0)
-                                "Attention " + attention else value) },
+                            label = { Text(when (value) {
+                                "Attention" -> if (attention > 0) "Attention $attention" else value
+                                "Snoozed" -> if (snoozedCount > 0) "Snoozed $snoozedCount" else value
+                                "Hidden" -> if (hiddenCount > 0) "Hidden $hiddenCount" else value
+                                else -> value
+                            }) },
                             shape = RoundedCornerShape(13.dp),
                             border = null,
                             colors = FilterChipDefaults.filterChipColors(
@@ -427,10 +526,8 @@ fun OmniAiModesScreen(
                             }
                         Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp))
                             .background(if (session.key == selectedKey) p.selected else p.surface)
-                            .clickable {
-                                listMode = false
-                                scope.launch { client.select(session.key) }
-                            }.padding(horizontal = 14.dp, vertical = 13.dp),
+                            .clickable { openSession(session) }
+                            .padding(horizontal = 14.dp, vertical = 13.dp),
                             verticalAlignment = Alignment.CenterVertically) {
                             Box(Modifier.size(42.dp).background(p.raised, RoundedCornerShape(14.dp)),
                                 contentAlignment = Alignment.Center) {
@@ -447,16 +544,23 @@ fun OmniAiModesScreen(
                                 Row(verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                                     Dot(session.dotColor(p))
-                                    Text(if (session.needsAttention()) session.attention
-                                        else session.activity,
+                                    Text(when {
+                                        sessionFilter == "Hidden" -> "Hidden on this phone"
+                                        sessionFilter == "Snoozed" -> "Snoozed · " +
+                                            ((snoozedUntil(session) - now + MINUTE_MS - 1) / MINUTE_MS).coerceAtLeast(1) + "m left"
+                                        session.needsAttention() -> session.attention
+                                        else -> session.activity
+                                    },
                                         color = if (session.needsAttention()) p.amber else p.muted,
                                         maxLines = 1, overflow = TextOverflow.Ellipsis,
                                         style = MaterialTheme.typography.labelSmall)
                                 }
                             }
                             if (session.unread == true) Dot(p.accent)
-                            Icon(Icons.Default.ChevronRight, null, tint = p.muted,
-                                modifier = Modifier.padding(start = 6.dp).size(18.dp))
+                            IconButton(onClick = { rowOptions = session }, modifier = Modifier.size(36.dp)) {
+                                Icon(Icons.Default.MoreVert, "Snooze or hide session", tint = p.muted,
+                                    modifier = Modifier.size(19.dp))
+                            }
                         }
                         }
                     }
@@ -695,6 +799,38 @@ fun OmniAiModesScreen(
         }
     }
 
+    rowOptions?.let { target ->
+        ModalBottomSheet(onDismissRequest = { rowOptions = null },
+            containerColor = p.surface, contentColor = p.text,
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
+            Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 20.dp)
+                .padding(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                SheetTitle("Session visibility", target.title, p)
+                if (isHidden(target)) SheetAction("Unhide session", p) {
+                    setHidden(target, false); rowOptions = null
+                } else SheetAction("Hide session", p) {
+                    viewPrefs.edit().putLong("hiddenAt:${target.key}", now).apply()
+                    setHidden(target, true); rowOptions = null
+                }
+                if (isSnoozed(target)) SheetAction("Unsnooze", p) {
+                    setSnooze(target, 0L); rowOptions = null
+                } else {
+                    Text("Snooze for", color = p.muted, style = MaterialTheme.typography.labelMedium)
+                    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf(1, 2, 4, 8, 24).forEach { hours ->
+                            FilterChip(selected = false, onClick = {
+                                viewPrefs.edit().putLong("snoozedAt:${target.key}", now).apply()
+                                setSnooze(target, now + hours * HOUR_MS); rowOptions = null
+                            }, label = { Text("${hours}h") })
+                        }
+                    }
+                }
+                Text("Visibility and snooze settings currently apply on this phone only.",
+                    color = p.muted, style = MaterialTheme.typography.labelSmall)
+            }
+        }
+    }
     if (sheet != null) ModalBottomSheet(onDismissRequest = { sheet = null },
         containerColor = p.surface, contentColor = p.text,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {

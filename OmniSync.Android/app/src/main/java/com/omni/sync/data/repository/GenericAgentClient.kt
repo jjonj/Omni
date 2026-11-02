@@ -34,7 +34,10 @@ data class AgentSessionUi(
     val conversation: String?, val modes: List<String>,
     val capabilities: List<String> = emptyList(),
     val attention: String = "None",
-    val unread: Boolean? = null
+    val unread: Boolean? = null,
+    val parentId: String? = null,
+    val reachability: String = "Unknown",
+    val lastActivityAt: String? = null
 ) {
     val key get() = "$provider:$id"
 }
@@ -214,6 +217,10 @@ class GenericAgentClient(
                                 attention = if (summary.has("attention")) updated.attention
                                     else previous?.attention ?: updated.attention,
                                 unread = updated.unread ?: previous?.unread,
+                                parentId = if (summary.has("parent")) updated.parentId else previous?.parentId,
+                                reachability = if (summary.obj("state")?.has("reachability") == true)
+                                    updated.reachability else previous?.reachability ?: updated.reachability,
+                                lastActivityAt = if (summary.has("lastActivityAt")) updated.lastActivityAt else previous?.lastActivityAt,
                                 activity = if (summary.obj("state")?.has("activity") == true)
                                     updated.activity else previous?.activity ?: updated.activity,
                                 confidence = if (summary.obj("state")?.has("confidence") == true)
@@ -386,7 +393,9 @@ class GenericAgentClient(
             obj.str("attention") ?: "None",
             obj.get("unread")?.takeIf { it.isJsonPrimitive }?.let {
                 runCatching { it.asBoolean }.getOrNull()
-            })
+            }, obj.obj("parent")?.str("id"),
+            obj.obj("state")?.str("reachability") ?: "Unknown",
+            obj.str("lastActivityAt"))
     }
 
     suspend fun refresh() = refreshMutex.withLock {
