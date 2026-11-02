@@ -977,9 +977,12 @@ class SignalRClient(
                 "snooze" -> com.omni.sync.service.AlarmService.ACTION_REMOTE_SNOOZE
                 else -> null
             }
+            val ringing = com.omni.sync.service.AlarmService.isRinging.value &&
+                request.token == com.omni.sync.service.AlarmService.currentRemoteToken
+            val snoozed = com.omni.sync.service.AlarmService.isSnoozing.value &&
+                request.action == "dismiss" && request.token == currentDesktopAlarmToken(request.id)
             if (serviceAction != null && request.id != 0 && request.token.isNotBlank() &&
-                com.omni.sync.service.AlarmService.isRinging.value &&
-                request.token == com.omni.sync.service.AlarmService.currentRemoteToken &&
+                (ringing || snoozed) &&
                 request.id == com.omni.sync.service.AlarmService.lastTriggeredAlarmId) {
                 val intent = android.content.Intent(context, com.omni.sync.service.AlarmService::class.java).apply {
                     action = serviceAction
@@ -2861,38 +2864,48 @@ class SignalRClient(
         }
     }
 
-    /** Keep the last phone-alarm transition so reconnection can clear a stale desktop popup. */
-    fun reportAndroidAlarm(id: Int, token: String, ringing: Boolean, title: String) {
+    /** Last phone-alarm cycle identity remains valid while Android is snoozing. */
+    fun currentDesktopAlarmToken(id: Int): String? =
+        if (id > 0 && sharedPrefs.getBoolean("android_alarm_active", false) &&
+            sharedPrefs.getInt("android_alarm_id", 0) == id)
+            sharedPrefs.getString("android_alarm_token", null) else null
+
+    /** Active remains true through auto-snooze; only dismissal/exhaustion clears the desktop. */
+    fun reportAndroidAlarm(id: Int, token: String, active: Boolean, title: String, snoozed: Boolean = false) {
         if (id <= 0 || token.isBlank()) return
         sharedPrefs.edit()
             .putInt("android_alarm_id", id)
             .putString("android_alarm_token", token)
+            .putBoolean("android_alarm_active", active)
+            .putBoolean("android_alarm_snoozed", snoozed)
+            .putString("android_alarm_title", title.take(180))
             .apply()
         val connection = hubConnection
         if (!isHubAuthenticated || connection?.connectionState != com.microsoft.signalr.HubConnectionState.CONNECTED) {
-            Log.w("AndroidAlarm", "Alarm state not delivered (Hub disconnected or authenticating); ringing=$ringing")
-            if (ringing) startConnection()
+            Log.w("AndroidAlarm", "Alarm state not delivered (Hub disconnected or authenticating); active=$active snoozed=$snoozed")
+            if (active) startConnection()
             return
         }
-        connection.invoke(Any::class.java, "ReportAndroidAlarm", id, token, ringing, title.take(180))
+        connection.invoke(Any::class.java, "ReportAndroidAlarm", id, token, active, title.take(180), snoozed)
             .subscribe({}, { error ->
                 Log.w("AndroidAlarm", "Hub alarm state report failed: ${error.message}")
-                if (ringing) startConnection()
+                if (active) startConnection()
             })
     }
 
     private fun replayAndroidAlarmAfterAuthentication() {
         val activeToken = com.omni.sync.service.AlarmService.currentRemoteToken
+        val previousId = sharedPrefs.getInt("android_alarm_id", 0)
+        val previousToken = sharedPrefs.getString("android_alarm_token", null)
+        val title = sharedPrefs.getString("android_alarm_title", "Phone alarm") ?: "Phone alarm"
         if (com.omni.sync.service.AlarmService.isRinging.value && activeToken != null) {
-            reportAndroidAlarm(com.omni.sync.service.AlarmService.lastTriggeredAlarmId, activeToken, true, "Phone alarm")
-        } else {
-            // The phone may already have auto-snoozed while reconnecting or restarted.
-            // Send a token-matched clear instead of leaving the old desktop alarm visible.
-            val previousId = sharedPrefs.getInt("android_alarm_id", 0)
-            val previousToken = sharedPrefs.getString("android_alarm_token", null)
-            if (previousId > 0 && previousToken != null) {
-                reportAndroidAlarm(previousId, previousToken, false, "Phone alarm")
-            }
+            reportAndroidAlarm(com.omni.sync.service.AlarmService.lastTriggeredAlarmId, activeToken, true, title)
+        } else if (previousId > 0 && previousToken != null) {
+            // A snoozing cycle outlives AlarmService. Reaffirm it on reconnect,
+            // instead of the old behavior that cleared the popup between rings.
+            val snoozed = sharedPrefs.getBoolean("android_alarm_active", false) &&
+                com.omni.sync.service.AlarmService.isSnoozing.value
+            reportAndroidAlarm(previousId, previousToken, snoozed, title, snoozed)
         }
     }
 

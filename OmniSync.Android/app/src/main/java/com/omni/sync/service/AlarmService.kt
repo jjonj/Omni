@@ -161,9 +161,20 @@ class AlarmService : Service(), android.content.SharedPreferences.OnSharedPrefer
         if (intent?.action == ACTION_REMOTE_DISMISS || intent?.action == ACTION_REMOTE_SNOOZE) {
             val remoteId = intent.getIntExtra("ALARM_ID", 0)
             val remoteToken = intent.getStringExtra("ALARM_TOKEN")
-            // Remote commands may arrive late, after this alarm was snoozed or replaced.
-            if (_isRinging.value && currentReminderId == null && remoteId != 0 &&
-                remoteId == currentAlarmId && remoteToken != null && remoteToken == currentRemoteToken) {
+            // Desktop Dismiss also works between rings, when this service was stopped
+            // but an Android AlarmManager snooze is still pending.
+            val client = (application as? OmniSyncApplication)?.signalRClient
+            val snoozed = intent.action == ACTION_REMOTE_DISMISS &&
+                prefs.getBoolean("is_snoozing", false) && remoteId != 0 &&
+                remoteId == lastTriggeredAlarmId && remoteToken != null &&
+                remoteToken == client?.currentDesktopAlarmToken(remoteId)
+            val ringing = _isRinging.value && currentReminderId == null && remoteId != 0 &&
+                remoteId == currentAlarmId && remoteToken != null && remoteToken == currentRemoteToken
+            if (snoozed || ringing) {
+                if (snoozed) {
+                    currentAlarmId = remoteId
+                    repeatDaily = lastTriggeredAlarmRepeating
+                }
                 if (intent.action == ACTION_REMOTE_DISMISS) handleDismiss() else handleAutoSnooze()
             }
             return START_NOT_STICKY
@@ -299,10 +310,10 @@ class AlarmService : Service(), android.content.SharedPreferences.OnSharedPrefer
         }
     }
 
-    private fun reportDesktopAlarm(ringing: Boolean) {
-        val token = currentRemoteToken ?: return
-        (application as? OmniSyncApplication)?.signalRClient
-            ?.reportAndroidAlarm(currentAlarmId, token, ringing, dismissText ?: "Phone alarm")
+    private fun reportDesktopAlarm(active: Boolean, snoozed: Boolean = false) {
+        val client = (application as? OmniSyncApplication)?.signalRClient ?: return
+        val token = currentRemoteToken ?: client.currentDesktopAlarmToken(currentAlarmId) ?: return
+        client.reportAndroidAlarm(currentAlarmId, token, active, dismissText ?: "Phone alarm", snoozed)
     }
 
     private fun handleAutoSnooze() {
@@ -365,7 +376,10 @@ class AlarmService : Service(), android.content.SharedPreferences.OnSharedPrefer
             }
         }
         
-        reportDesktopAlarm(false)
+        // The phone cycle stays active on the desktop through every snooze gap.
+        // Only the final repetition (or an explicit dismissal) ends it.
+        reportDesktopAlarm(currentRepetition < maxRepetitions,
+            snoozed = currentRepetition < maxRepetitions)
         stopSelf()
     }
 
