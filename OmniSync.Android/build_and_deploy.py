@@ -157,14 +157,16 @@ def deploy_via_hub(explicit_public_base_url=None):
         "current",
         "permission_required",
         "confirmation_required",
+        "installer_started",
         "installed",
         "error",
         "busy",
     }
-    deadline = time.monotonic() + 90
     last_status = None
     status_url = f"{controller_base_url}/api/android-update/deploy/{request_id}"
-    while time.monotonic() < deadline:
+    # The phone installation can await human approval indefinitely. Once
+    # PackageInstaller starts, hand off as pending rather than timing out.
+    while True:
         try:
             status_response = request_json(status_url, api_key)
         except Exception as error:
@@ -184,9 +186,9 @@ def deploy_via_hub(explicit_public_base_url=None):
             if current_status == "permission_required":
                 print("[FAIL] Android needs the one-time 'Install unknown apps' permission before unattended updates can run.")
                 return False
-            if current_status == "confirmation_required":
-                print("[FAIL] Android required a package-install confirmation; unattended installation was not permitted.")
-                return False
+            if current_status in {"installer_started", "confirmation_required"}:
+                print("waiting user install approval on phone")
+                return True
             if current_status == "installed":
                 print("[OK] Hub-to-Android deployment installed successfully.")
                 return True
@@ -194,9 +196,6 @@ def deploy_via_hub(explicit_public_base_url=None):
             return True
 
         time.sleep(1)
-
-    print("[FAIL] Android never reported install success or a required confirmation within 90 seconds.")
-    return False
 
 def build_apk(clean=False, release=False):
     """Build the Android APK."""
