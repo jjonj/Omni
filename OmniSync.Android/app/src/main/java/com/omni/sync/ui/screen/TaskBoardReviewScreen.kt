@@ -137,7 +137,7 @@ fun TaskBoardReviewScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
     var videoView by remember { mutableStateOf<VideoView?>(null) }
     var webView by remember { mutableStateOf<WebView?>(null) }
     var focused by remember { mutableStateOf(0) }
-    var queueOpen by remember { mutableStateOf(false) }
+    var queueOpen by remember { mutableStateOf(true) }
 
     fun refresh() {
         scope.launch {
@@ -488,31 +488,41 @@ private fun ReviewCandidateChip(
 
 @Composable
 private fun ReviewQueueCard(item: MobileReview, isSelected: Boolean, onClick: () -> Unit) {
-    Card(onClick = onClick, modifier = Modifier.fillMaxWidth(),
+    val accent = when {
+        item.status != "open" -> TaskBoardColors.muted
+        item.mode == "approve" -> TaskBoardColors.green
+        item.mode == "pick" -> TaskBoardColors.purple
+        item.mode == "rank" -> TaskBoardColors.blue
+        else -> TaskBoardColors.orange
+    }
+    Card(onClick = onClick,
+        modifier = Modifier.fillMaxWidth()
+            .border(1.dp, accent.copy(alpha = if (isSelected) .8f else .35f),
+                RoundedCornerShape(7.dp)),
+        shape = RoundedCornerShape(7.dp),
         colors = CardDefaults.cardColors(containerColor = if (isSelected)
-            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f)
-            else MaterialTheme.colorScheme.surface)) {
+            TaskBoardColors.raised else TaskBoardColors.card)) {
         Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min)) {
-            Box(Modifier.width(4.dp).fillMaxHeight().background(
-                if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent))
-            Column(Modifier.weight(1f).padding(horizontal = 10.dp, vertical = 8.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.width(4.dp).fillMaxHeight().background(accent))
+            Column(Modifier.weight(1f).padding(horizontal = 9.dp, vertical = 5.dp),
+                verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                     Text(item.taskId, style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.primary)
-                    Spacer(Modifier.width(8.dp))
+                        color = TaskBoardColors.blue, fontWeight = FontWeight.Bold)
                     Text(item.mode.uppercase(), style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.Bold)
-                    Spacer(Modifier.width(8.dp))
+                        color = accent, fontWeight = FontWeight.Bold)
                     Text("R${item.round.optInt("number")}", style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        color = TaskBoardColors.muted)
                     Spacer(Modifier.weight(1f))
-                    Text(item.status, style = MaterialTheme.typography.labelSmall,
-                        color = if (item.status == "open") MaterialTheme.colorScheme.error
-                            else MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(if (item.status == "open") "Needs review" else "Resolved",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (item.status == "open") TaskBoardColors.orange else TaskBoardColors.muted)
                 }
-                Text(item.title, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text(item.title, fontWeight = FontWeight.SemiBold, maxLines = 2,
+                    overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall)
                 Text(item.project.name, style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                    color = TaskBoardColors.muted, maxLines = 1)
             }
         }
     }

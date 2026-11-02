@@ -32,11 +32,16 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ButtonDefaults
@@ -175,6 +180,11 @@ private fun mobileTaskSort(mode: String): Comparator<TaskBoardTask> = when (mode
     else -> compareBy<TaskBoardTask>({ attentionRank(it) }, { it.kind != "epic" }, { it.id })
 }
 
+private fun TaskBoardColumn.snoozedNow(): Boolean =
+    snoozedUntil?.let { runCatching {
+        java.time.Instant.parse(it).isAfter(java.time.Instant.now())
+    }.getOrDefault(false) } ?: false
+
 private val mobileFilters = listOf(
     "all" to "All", "focus" to "Focus", "doing" to "In progress",
     "ready" to "AI ready", "queued" to "Queued", "priority" to "Priority", "user" to "For me",
@@ -216,10 +226,16 @@ private fun TaskBoardContents(parentPadding: PaddingValues, signalR: SignalRClie
     var boardSelectorExpanded by remember { mutableStateOf(false) }
     var showCreateBoard by remember { mutableStateOf(false) }
     var actionsExpanded by remember { mutableStateOf(false) }
+    var newMenuExpanded by remember { mutableStateOf(false) }
+    var searchOpen by remember { mutableStateOf(false) }
+    var showColumnTabs by remember { mutableStateOf(boardPreferences.getBoolean("mobile_column_tabs", false)) }
+    var showHiddenColumns by remember { mutableStateOf(false) }
     var showTaskDump by remember { mutableStateOf(false) }
     var taskDumpText by remember { mutableStateOf("") }
     var taskDumpPriorities by remember { mutableStateOf<Set<Int>>(emptySet()) }
-    var compactView by remember { mutableStateOf(true) }
+    var compactView by remember {
+        mutableStateOf(boardPreferences.getBoolean("mobile_list_view", true))
+    }
     var queueMode by remember { mutableStateOf(false) }
     var reviewMode by remember { mutableStateOf(false) }
     var skippedQueueIds by remember(selectedRoot) { mutableStateOf<Set<String>>(emptySet()) }
@@ -496,21 +512,14 @@ private fun TaskBoardContents(parentPadding: PaddingValues, signalR: SignalRClie
             .fillMaxSize()
             .padding(parentPadding),
         topBar = {
-            TopAppBar(
+            if (!reviewMode) TopAppBar(
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = TaskBoardColors.surface,
                     titleContentColor = TaskBoardColors.text,
                     actionIconContentColor = TaskBoardColors.blue
                 ),
                 title = {
-                    Column {
-                        Text(
-                            "TASKBOARD / PROJECT",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = TaskBoardColors.blue,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Box {
+                    Box {
                             TextButton(
                                 onClick = { boardSelectorExpanded = true },
                                 contentPadding = PaddingValues(horizontal = 0.dp, vertical = 0.dp),
@@ -548,7 +557,6 @@ private fun TaskBoardContents(parentPadding: PaddingValues, signalR: SignalRClie
                                     showCreateBoard = true
                                 })
                             }
-                        }
                     }
                 },
                 actions = {
@@ -556,15 +564,29 @@ private fun TaskBoardContents(parentPadding: PaddingValues, signalR: SignalRClie
                         enabled = storageAccess && editingTask == null && createTaskRequest == null) {
                         Text(if (reviewMode) "Board" else "Review", color = TaskBoardColors.blue)
                     }
-                    TextButton(
-                        onClick = {
-                            snapshot?.let {
-                                createTaskRequest = CreateTaskRequest(defaultCreateColumn(it))
-                            }
-                        },
-                        enabled = snapshot != null && !loading
-                    ) {
-                        Text("+ New", fontWeight = FontWeight.Bold)
+                    Box {
+                        TextButton(onClick = { newMenuExpanded = true },
+                            enabled = snapshot != null && !loading) {
+                            Text("+ New", fontWeight = FontWeight.Bold)
+                        }
+                        DropdownMenu(expanded = newMenuExpanded, onDismissRequest = { newMenuExpanded = false }) {
+                            DropdownMenuItem(text = { Text("New task") }, onClick = {
+                                newMenuExpanded = false
+                                snapshot?.let { createTaskRequest = CreateTaskRequest(defaultCreateColumn(it)) }
+                            })
+                            DropdownMenuItem(text = { Text("New epic") }, onClick = {
+                                newMenuExpanded = false
+                                snapshot?.let { createTaskRequest = CreateTaskRequest(
+                                    it.columns.firstOrNull { c -> c.id == "draft" }?.id ?: defaultCreateColumn(it),
+                                    kind = "epic") }
+                            })
+                            DropdownMenuItem(text = { Text("Paste task list") }, onClick = {
+                                newMenuExpanded = false
+                                taskDumpText = ""
+                                taskDumpPriorities = emptySet()
+                                showTaskDump = true
+                            })
+                        }
                     }
                     Box {
                         TextButton(onClick = { actionsExpanded = true }, enabled = snapshot != null && !loading) {
@@ -576,6 +598,18 @@ private fun TaskBoardContents(parentPadding: PaddingValues, signalR: SignalRClie
                                 taskDumpText = ""
                                 taskDumpPriorities = emptySet()
                                 showTaskDump = true
+                            })
+                            DropdownMenuItem(text = { Text("User attention queue") }, onClick = {
+                                actionsExpanded = false
+                                snapshot?.let { board ->
+                                    queueMode = true
+                                    skippedQueueIds = emptySet()
+                                    editingTask = visibleTaskQueue(board, queueSnoozes).firstOrNull()
+                                    if (editingTask == null) {
+                                        queueMode = false
+                                        filterMode = "user"
+                                    }
+                                }
                             })
                             DropdownMenuItem(text = { Text("Pending PC edits") }, onClick = {
                                 actionsExpanded = false
@@ -650,68 +684,35 @@ private fun TaskBoardContents(parentPadding: PaddingValues, signalR: SignalRClie
 
                 else -> snapshot?.let {
                     Column(Modifier.fillMaxSize().background(TaskBoardColors.background)) {
-                        val terminalCount = it.tasks.count { task ->
-                            task.completed != null || it.columns.any { c -> c.id == task.column && c.terminal }
-                        }
-                        val priorityCount = it.tasks.count { task ->
-                            "priority" in task.attention && task.completed == null
-                        }
-                        val forMeCount = it.tasks.count { task ->
-                            task.kind == "for_user" || "needs-user" in task.attention
-                        }
-                        Row(
-                            modifier = Modifier.fillMaxWidth()
-                                .background(TaskBoardColors.surface)
-                                .horizontalScroll(rememberScrollState())
-                                .padding(horizontal = 10.dp, vertical = 4.dp),
-                            horizontalArrangement = Arrangement.spacedBy(5.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            listOf(
-                                Triple("all", "${it.tasks.count { task -> task.kind != "epic" }} Tasks", TaskBoardColors.blue),
-                                Triple("focus", "$forMeCount For me", TaskBoardColors.amber),
-                                Triple("priority", "$priorityCount Priority", TaskBoardColors.amber),
-                                Triple("doing", "${it.tasks.count { task -> task.column == "in-progress" }} Doing", TaskBoardColors.green),
-                                Triple("done", "$terminalCount Done", TaskBoardColors.muted)
-                            ).forEach { (mode, label, color) ->
-                                TextButton(onClick = { filterMode = mode; focusedColumn = null },
-                                    contentPadding = PaddingValues(horizontal = 5.dp, vertical = 0.dp)) {
-                                    Text(label, color = if (filterMode == mode) color else TaskBoardColors.text,
-                                        style = MaterialTheme.typography.labelSmall,
-                                        fontWeight = if (filterMode == mode) FontWeight.Bold else FontWeight.Normal)
-                                }
-                            }
-                            TextButton(
-                                onClick = {
-                                    queueMode = true
-                                    skippedQueueIds = emptySet()
-                                    editingTask = visibleTaskQueue(it, queueSnoozes).firstOrNull()
-                                },
-                                enabled = visibleTaskQueue(it, queueSnoozes).isNotEmpty()
-                            ) { Text("User queue ${visibleTaskQueue(it, queueSnoozes).size}", color = TaskBoardColors.amber) }
-                            TextButton(onClick = { compactView = !compactView }) {
-                                Text(if (compactView) "Columns" else "List", color = TaskBoardColors.blue)
+                        val filterCounts = remember(it, queueModes) {
+                            mobileFilters.associate { (id, _) ->
+                                id to it.tasks.count { task -> mobileTaskMatches(task, it, id, queueModes) }
                             }
                         }
-                        OutlinedTextField(
-                            value = taskQuery,
-                            onValueChange = { taskQuery = it },
-                            modifier = Modifier.fillMaxWidth()
-                                .background(TaskBoardColors.surface)
-                                .padding(horizontal = 12.dp, vertical = 4.dp),
-                            placeholder = { Text("⌕  Search tasks, IDs, descriptions", color = TaskBoardColors.muted) },
-                            shape = RoundedCornerShape(8.dp),
-                            singleLine = true
-                        )
                         Row(
-                            modifier = Modifier.fillMaxWidth()
-                                .background(TaskBoardColors.surface)
+                            Modifier.fillMaxWidth().background(TaskBoardColors.surface)
                                 .horizontalScroll(rememberScrollState())
-                                .padding(horizontal = 12.dp, vertical = 2.dp),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                .padding(horizontal = 7.dp, vertical = 2.dp),
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
+                            IconButton(onClick = { searchOpen = !searchOpen },
+                                modifier = Modifier.size(36.dp)) {
+                                Icon(Icons.Filled.Search, contentDescription = "Search tasks",
+                                    tint = if (searchOpen || taskQuery.isNotEmpty()) TaskBoardColors.blue
+                                    else TaskBoardColors.muted, modifier = Modifier.size(20.dp))
+                            }
                             mobileFilters.forEach { (id, label) ->
+                                val tint = when (id) {
+                                    "focus", "user" -> TaskBoardColors.orange
+                                    "priority", "waiting" -> TaskBoardColors.amber
+                                    "blocked" -> TaskBoardColors.red
+                                    "doing" -> TaskBoardColors.green
+                                    "ready" -> TaskBoardColors.blue
+                                    "queued" -> TaskBoardColors.teal
+                                    "epics" -> TaskBoardColors.purple
+                                    else -> TaskBoardColors.muted
+                                }
                                 FilterChip(
                                     selected = filterMode == id,
                                     onClick = {
@@ -719,9 +720,13 @@ private fun TaskBoardContents(parentPadding: PaddingValues, signalR: SignalRClie
                                         focusedColumn = null
                                         boardPreferences.edit().putString("mobile_filter", id).apply()
                                     },
-                                    label = { Text(label, style = MaterialTheme.typography.labelMedium) },
-                                    shape = RoundedCornerShape(7.dp),
-                                    modifier = Modifier.height(34.dp)
+                                    label = {
+                                        Text("$label ${filterCounts[id] ?: 0}",
+                                            color = if (filterMode == id) tint else TaskBoardColors.text,
+                                            style = MaterialTheme.typography.labelSmall)
+                                    },
+                                    shape = RoundedCornerShape(6.dp),
+                                    modifier = Modifier.height(32.dp)
                                 )
                             }
                             FilterChip(
@@ -730,11 +735,23 @@ private fun TaskBoardContents(parentPadding: PaddingValues, signalR: SignalRClie
                                     advancedOpen = !advancedOpen
                                     boardPreferences.edit().putBoolean("mobile_tools_open", advancedOpen).apply()
                                 },
-                                label = { Text(if (advancedOpen) "Less tools" else "Tools") },
-                                modifier = Modifier.height(34.dp)
+                                label = { Text("Tools", style = MaterialTheme.typography.labelSmall) },
+                                modifier = Modifier.height(32.dp)
                             )
-                            TextButton(onClick = { createTaskRequest = CreateTaskRequest(it.columns.firstOrNull { column -> column.id == "draft" }?.id ?: defaultCreateColumn(it), kind = "epic") }) { Text("+ Epic") }
-                            if (taskQuery.isNotBlank()) TextButton(onClick = { taskQuery = "" }) { Text("Clear") }
+                        }
+                        if (searchOpen || taskQuery.isNotBlank()) {
+                            OutlinedTextField(
+                                value = taskQuery, onValueChange = { taskQuery = it },
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 2.dp),
+                                placeholder = { Text("Search ID, title, description, notes…") },
+                                singleLine = true, shape = RoundedCornerShape(7.dp),
+                                trailingIcon = {
+                                    TextButton(onClick = {
+                                        taskQuery = ""
+                                        searchOpen = false
+                                    }) { Text("Close") }
+                                }
+                            )
                         }
                         if (advancedOpen) {
                         Row(
@@ -779,15 +796,29 @@ private fun TaskBoardContents(parentPadding: PaddingValues, signalR: SignalRClie
                                 selecting = !selecting
                                 if (!selecting) selection = emptySet()
                             }) { Text(if (selecting) "Cancel select" else "Select", style = MaterialTheme.typography.labelMedium) }
+                            TextButton(onClick = {
+                                compactView = !compactView
+                                boardPreferences.edit().putBoolean("mobile_list_view", compactView).apply()
+                            }) { Text(if (compactView) "Board view" else "List view",
+                                style = MaterialTheme.typography.labelMedium) }
+                            TextButton(onClick = {
+                                showColumnTabs = !showColumnTabs
+                                boardPreferences.edit().putBoolean("mobile_column_tabs", showColumnTabs).apply()
+                            }) { Text(if (showColumnTabs) "Hide columns" else "Columns",
+                                style = MaterialTheme.typography.labelMedium) }
+                            TextButton(onClick = { showHiddenColumns = !showHiddenColumns }) {
+                                Text(if (showHiddenColumns) "Hide hidden" else "Show hidden",
+                                    style = MaterialTheme.typography.labelMedium)
+                            }
                             TextButton(onClick = { refresh() }) { Text("Refresh", style = MaterialTheme.typography.labelMedium) }
                         }
-                        if (filterMode == "all" && !selecting) {
+                        if (showColumnTabs && filterMode == "all" && !selecting) {
                             Row(Modifier.fillMaxWidth().background(TaskBoardColors.surface)
                                 .horizontalScroll(rememberScrollState()).padding(horizontal = 10.dp, vertical = 1.dp),
                                 horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                                 FilterChip(selected = focusedColumn == null, onClick = { focusedColumn = null },
                                     label = { Text("All columns") }, modifier = Modifier.height(30.dp))
-                                it.columns.filter { column -> !column.hidden }.forEach { column ->
+                                it.columns.filter { column -> showHiddenColumns || !column.hidden }.forEach { column ->
                                     FilterChip(selected = focusedColumn == column.id,
                                         onClick = { focusedColumn = if (focusedColumn == column.id) null else column.id },
                                         label = { Text(column.name) }, modifier = Modifier.height(30.dp))
@@ -836,6 +867,7 @@ private fun TaskBoardContents(parentPadding: PaddingValues, signalR: SignalRClie
                                 },
                                 hideWaiting = hideWaiting,
                                 focusedColumn = focusedColumn,
+                                showHiddenColumns = showHiddenColumns,
                                 collapsedEpics = collapsedEpics,
                                 selection = selection,
                                 selecting = selecting,
@@ -1038,6 +1070,14 @@ private fun TaskBoardContents(parentPadding: PaddingValues, signalR: SignalRClie
                 onToggleHidden = { column ->
                     val changed = board.columns.map {
                         if (it.id == column.id) it.copy(hidden = !it.hidden) else it
+                    }
+                    mutate(action = { saveColumnsViaPc(changed, board.boardRevision) })
+                },
+                onToggleSnooze = { column, hours ->
+                    val next = if (hours <= 0) null
+                        else java.time.Instant.now().plusSeconds(hours.toLong() * 3600L).toString()
+                    val changed = board.columns.map {
+                        if (it.id == column.id) it.copy(snoozedUntil = next) else it
                     }
                     mutate(action = { saveColumnsViaPc(changed, board.boardRevision) })
                 },
@@ -1365,6 +1405,7 @@ private fun TaskBoardColumns(
     onQueueToggle: (TaskBoardTask) -> Unit,
     hideWaiting: Boolean,
     focusedColumn: String?,
+    showHiddenColumns: Boolean,
     collapsedEpics: Set<String>,
     selection: Set<String>,
     selecting: Boolean,
@@ -1382,7 +1423,8 @@ private fun TaskBoardColumns(
         val matchMode = mobileTaskMatches(task, snapshot, filterMode, queueModes)
         val folded = filterText.isBlank() && task.parent in collapsedEpics && filterMode == "all"
         matchMode && !folded &&
-            (!hideWaiting || snapshot.waitingFor(task).isEmpty() || task.kind == "epic") &&
+            (!hideWaiting || filterMode == "waiting" || filterMode == "blocked" ||
+                snapshot.waitingFor(task).isEmpty() || task.kind == "epic") &&
             (focusedColumn == null || snapshot.displayColumn(task) == focusedColumn) &&
             (!attentionOnly || task.attention.isNotEmpty()) && (filterText.isBlank() ||
             listOf(task.id, task.title, task.description, task.category.orEmpty(), task.parent.orEmpty(),
@@ -1390,11 +1432,13 @@ private fun TaskBoardColumns(
                 .any { it.contains(filterText, ignoreCase = true) })
     }
     val tasksByColumn = filteredTasks.groupBy { snapshot.displayColumn(it) }
-    val visibleColumns = snapshot.columns.filterNot { it.hidden }
+    val visibleColumns = snapshot.columns.filter { showHiddenColumns ||
+        (!it.hidden && !it.snoozedNow()) }
         .filter { focusedColumn == null || it.id == focusedColumn }
         .filter { (filterText.isBlank() && filterMode == "all" && !attentionOnly) ||
             tasksByColumn[it.id].orEmpty().isNotEmpty() }
 
+    var foldedColumns by remember(snapshot.root.absolutePath) { mutableStateOf<Set<String>>(emptySet()) }
     Column(modifier = Modifier.fillMaxSize()) {
         if (snapshot.warnings.isNotEmpty()) {
             Text(
@@ -1407,7 +1451,8 @@ private fun TaskBoardColumns(
 
         if (visibleColumns.isEmpty()) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text(if (query.isNotBlank() || attentionOnly) "No matching tasks." else "All columns are hidden. Open Columns to show one.")
+                Text(if (query.isNotBlank() || attentionOnly || filterMode != "all")
+                    "No matching tasks." else "No visible columns. Tools → Show hidden, or Manage columns.")
             }
             return
         }
@@ -1415,25 +1460,36 @@ private fun TaskBoardColumns(
         if (compactView) {
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                verticalArrangement = Arrangement.spacedBy(7.dp)
+                contentPadding = PaddingValues(horizontal = 7.dp, vertical = 3.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 visibleColumns.forEach { column ->
                     val columnTasks = tasksByColumn[column.id].orEmpty().sortedWith(mobileTaskSort(sortMode))
                     item(key = "heading-${column.id}") {
                         Row(
                             Modifier.fillMaxWidth()
-                                .padding(top = 11.dp, bottom = 4.dp)
-                                .background(TaskBoardColors.surface, RoundedCornerShape(8.dp))
-                                .border(1.dp, TaskBoardColors.border, RoundedCornerShape(8.dp))
-                                .padding(start = 12.dp, end = 4.dp, top = 3.dp, bottom = 3.dp),
+                                .padding(top = 7.dp, bottom = 2.dp)
+                                .background(TaskBoardColors.surface, RoundedCornerShape(6.dp))
+                                .border(1.dp, parseColumnColor(column.color).copy(alpha = .38f), RoundedCornerShape(6.dp))
+                                .clickable {
+                                    foldedColumns = if (column.id in foldedColumns)
+                                        foldedColumns - column.id else foldedColumns + column.id
+                                }
+                                .padding(start = 8.dp, end = 3.dp, top = 2.dp, bottom = 2.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Box(Modifier.size(8.dp).background(parseColumnColor(column.color), CircleShape))
-                            Spacer(Modifier.width(8.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text(if (column.id in foldedColumns) "▸" else "▾",
+                                color = TaskBoardColors.muted, style = MaterialTheme.typography.labelSmall)
+                            Spacer(Modifier.width(4.dp))
                             Text(column.name, style = MaterialTheme.typography.titleSmall,
                                 color = TaskBoardColors.text, fontWeight = FontWeight.Bold,
                                 modifier = Modifier.weight(1f))
+                            if (column.hidden) Text("HIDDEN", color = TaskBoardColors.muted,
+                                style = MaterialTheme.typography.labelSmall)
+                            if (column.snoozedNow()) Text("SNOOZED", color = TaskBoardColors.amber,
+                                style = MaterialTheme.typography.labelSmall)
                             TaskBoardBadge("${columnTasks.size}", parseColumnColor(column.color),
                                 TaskBoardColors.card)
                             TextButton(onClick = { onAddTask(column.id) }) {
@@ -1441,6 +1497,7 @@ private fun TaskBoardColumns(
                             }
                         }
                     }
+                    if (column.id !in foldedColumns)
                     itemsIndexed(columnTasks, key = { _, task -> "${column.id}-${task.id}" }) { index, task ->
                         val epic = task.parent?.let { id -> snapshot.tasks.firstOrNull { it.id == id && it.kind == "epic" } }
                         if (epic != null && snapshot.displayColumn(epic) != column.id &&
@@ -1511,7 +1568,7 @@ private fun TaskColumn(
 
     Card(
         modifier = Modifier
-            .width(310.dp)
+            .width(286.dp)
             .fillMaxHeight()
             .border(1.dp, TaskBoardColors.border, RoundedCornerShape(10.dp)),
         shape = RoundedCornerShape(10.dp),
@@ -1586,107 +1643,148 @@ private fun TaskCard(
     onQueueToggle: (TaskBoardTask) -> Unit
 ) {
     var menuExpanded by remember(task.id) { mutableStateOf(false) }
+    var showMoveDialog by remember(task.id) { mutableStateOf(false) }
+    var detailsExpanded by remember(task.id) { mutableStateOf(false) }
     val clipboard = LocalClipboardManager.current
+    val visual = taskBoardCardVisual(task, snapshot, queueMode)
+    val waiting = snapshot.waitingFor(task)
+    val related = task.relatedTo
+    val childTasks = if (task.kind == "epic") snapshot.epicChildren(task) else emptyList()
+    val canToggleQueue = task.column == "ai-ready" && task.kind == "task" &&
+        task.claimedBy == null && task.completed == null && waiting.isEmpty() && queueMode != null
+    val hasDetails = childTasks.isNotEmpty() || task.dependsOn.isNotEmpty() ||
+        related.isNotEmpty() || task.claimedBy != null || task.question != null ||
+        task.description.isNotBlank() || task.parent != null
+
     Box {
-    Card(
-        modifier = Modifier.fillMaxWidth()
-            .border(
-                1.dp,
-                when {
-                    task.kind == "for_user" || "needs-user" in task.attention -> TaskBoardColors.amber.copy(alpha = .54f)
-                    "priority" in task.attention -> TaskBoardColors.amber.copy(alpha = .65f)
-                    task.kind == "epic" -> TaskBoardColors.purple.copy(alpha = .53f)
-                    else -> TaskBoardColors.border
-                },
-                RoundedCornerShape(8.dp)
-            ).combinedClickable(
-                onClick = { if (selecting) onSelect(task) else onTaskClick(task) },
-                onLongClick = { if (selecting) onSelect(task) else menuExpanded = true }
-            ),
-        shape = RoundedCornerShape(8.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = when {
-                task.kind == "epic" -> TaskBoardColors.purpleDark.copy(alpha = .65f)
-                task.kind == "for_user" || "needs-user" in task.attention ->
-                    TaskBoardColors.amberDark.copy(alpha = .82f)
-                else -> TaskBoardColors.card
-            }
-        )
-    ) {
-        Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                if (selecting) Checkbox(checked = selected, onCheckedChange = { onSelect(task) },
-                    modifier = Modifier.size(30.dp))
-                if (task.kind == "epic") TextButton(
-                    onClick = { onToggleEpic(task) }, contentPadding = PaddingValues(0.dp)
-                ) { Text(if (folded) "▸" else "▾", color = TaskBoardColors.purple) }
-                Text(
-                    text = if (task.parent != null) "↳ ${task.id}" else task.id,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = TaskBoardColors.blue,
-                    fontWeight = FontWeight.Bold
-                )
-                if (task.column == "ai-ready" && task.kind == "task" &&
-                    task.claimedBy == null && task.completed == null &&
-                    snapshot.waitingFor(task).isEmpty() && queueMode != null) {
-                    TextButton(onClick = { onQueueToggle(task) },
-                        contentPadding = PaddingValues(horizontal = 3.dp, vertical = 0.dp)) {
-                        Text(if (queueMode == "queue") "↻ Queued" else "○ Queue",
-                            color = if (queueMode == "queue") TaskBoardColors.green else TaskBoardColors.muted,
-                            style = MaterialTheme.typography.labelSmall)
+        Card(
+            modifier = Modifier.fillMaxWidth()
+                .border(1.dp, visual.accent.copy(alpha = if (selected) .95f else .45f),
+                    RoundedCornerShape(7.dp))
+                .combinedClickable(
+                    onClick = { if (selecting) onSelect(task) else onTaskClick(task) },
+                    onLongClick = { if (selecting) onSelect(task) else menuExpanded = true }
+                ),
+            shape = RoundedCornerShape(7.dp),
+            colors = CardDefaults.cardColors(containerColor = visual.background)
+        ) {
+            Column(
+                modifier = Modifier.fillMaxWidth().drawBehind {
+                    drawRect(visual.accent, size = Size(4.dp.toPx(), size.height))
+                }.padding(start = 12.dp, end = 5.dp, top = 5.dp, bottom = 5.dp),
+                verticalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    if (selecting) Checkbox(checked = selected, onCheckedChange = { onSelect(task) },
+                        modifier = Modifier.size(32.dp))
+                    if (task.kind == "epic") TextButton(
+                        onClick = { onToggleEpic(task) }, contentPadding = PaddingValues(0.dp),
+                        modifier = Modifier.size(28.dp)
+                    ) { Text(if (folded) "▸" else "▾", color = TaskBoardColors.purple) }
+                    Text(task.id, style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = if (task.kind == "epic") TaskBoardColors.purple else visual.accent,
+                        maxLines = 1)
+                    if (task.claimedBy != null) Box(
+                        Modifier.size(7.dp).background(TaskBoardColors.green, CircleShape))
+                    Spacer(Modifier.weight(1f))
+                    IconButton(onClick = { menuExpanded = true }, modifier = Modifier.size(34.dp)) {
+                        Icon(Icons.Filled.MoreVert, contentDescription = "Actions for ${task.id}",
+                            tint = TaskBoardColors.muted, modifier = Modifier.size(18.dp))
                     }
                 }
-                if (task.kind == "epic") {
-                    TaskBoardBadge("Epic", TaskBoardColors.purple, TaskBoardColors.purpleDark)
-                } else if (task.kind == "for_user" || "needs-user" in task.attention) {
-                    TaskBoardBadge("For user", TaskBoardColors.amber, TaskBoardColors.amberDark)
+                Text(task.title, fontWeight = FontWeight.SemiBold,
+                    color = TaskBoardColors.text, style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.fillMaxWidth().padding(end = 5.dp),
+                    maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Row(verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                    TaskBoardBadge(visual.label, visual.accent, visual.background)
+                    if (task.kind == "epic") {
+                        val completed = childTasks.count { it.completed != null ||
+                            snapshot.columns.any { col -> col.id == it.column && col.terminal } }
+                        Text("$completed/${childTasks.size}", color = TaskBoardColors.purple,
+                            style = MaterialTheme.typography.labelSmall)
+                    }
+                    if (queueMode == "queue" && visual.label != "Queued")
+                        Text("Queued", color = TaskBoardColors.teal,
+                            style = MaterialTheme.typography.labelSmall)
+                    if (task.category != null)
+                        Text(task.category, color = TaskBoardColors.muted,
+                            style = MaterialTheme.typography.labelSmall, maxLines = 1,
+                            overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                    else Spacer(Modifier.weight(1f))
+                    if (canToggleQueue) TextButton(
+                        onClick = { onQueueToggle(task) },
+                        contentPadding = PaddingValues(horizontal = 3.dp, vertical = 0.dp),
+                        modifier = Modifier.height(30.dp)
+                    ) {
+                        Text(if (queueMode == "queue") "Unqueue" else "Queue",
+                            color = if (queueMode == "queue") TaskBoardColors.teal else TaskBoardColors.blue,
+                            style = MaterialTheme.typography.labelSmall)
+                    }
+                    if (hasDetails) TextButton(onClick = { detailsExpanded = !detailsExpanded },
+                        contentPadding = PaddingValues(0.dp), modifier = Modifier.size(30.dp)) {
+                        Text(if (detailsExpanded) "⌃" else "⌄", color = TaskBoardColors.muted)
+                    }
                 }
-                if ("priority" in task.attention) {
-                    TaskBoardBadge("Priority", TaskBoardColors.amber, TaskBoardColors.amberDark)
+                if (task.kind == "epic" && childTasks.isNotEmpty()) {
+                    val complete = childTasks.count { it.completed != null ||
+                        snapshot.columns.any { col -> col.id == it.column && col.terminal } }
+                    Box(Modifier.fillMaxWidth().padding(end = 6.dp).height(3.dp)
+                        .background(TaskBoardColors.border, RoundedCornerShape(3.dp))) {
+                        Box(Modifier.fillMaxWidth(complete.toFloat() / childTasks.size)
+                            .height(3.dp).background(TaskBoardColors.purple, RoundedCornerShape(3.dp)))
+                    }
                 }
-                if ("blocked" in task.attention) {
-                    TaskBoardBadge("Blocked", TaskBoardColors.red, Color(0xFF483035))
+                if (detailsExpanded) {
+                    if (task.parent != null) {
+                        snapshot.tasks.firstOrNull { it.id == task.parent }?.let { parent ->
+                            TextButton(onClick = { onTaskClick(parent) },
+                                contentPadding = PaddingValues(0.dp)) {
+                                Text("Parent: ${parent.id} · ${parent.title}",
+                                    color = TaskBoardColors.purple,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
+                        }
+                    }
+                    if (waiting.isNotEmpty())
+                        Text("Waiting on ${waiting.joinToString(", ")}",
+                            color = TaskBoardColors.amber, style = MaterialTheme.typography.bodySmall)
+                    if (task.dependsOn.isNotEmpty() || related.isNotEmpty()) {
+                        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            verticalAlignment = Alignment.CenterVertically) {
+                            (task.dependsOn + related).distinct().forEach { id ->
+                                val linked = snapshot.tasks.firstOrNull { it.id == id }
+                                if (linked != null) TextButton(onClick = { onTaskClick(linked) },
+                                    contentPadding = PaddingValues(horizontal = 4.dp)) {
+                                    Text(id, color = if (id in waiting) TaskBoardColors.amber
+                                        else TaskBoardColors.blue,
+                                        style = MaterialTheme.typography.labelSmall)
+                                } else Text(id, color = TaskBoardColors.muted,
+                                    style = MaterialTheme.typography.labelSmall)
+                            }
+                        }
+                    }
+                    if (task.claimedBy != null)
+                        Text("Claimed: ${task.claimedBy}", color = TaskBoardColors.green,
+                            style = MaterialTheme.typography.labelSmall, maxLines = 1)
+                    task.question?.let { question ->
+                        Text(if (question.answer.isNullOrBlank()) "Question: ${question.prompt}"
+                            else "Answered: ${question.answer}",
+                            color = if (question.answer.isNullOrBlank()) TaskBoardColors.amber
+                                else TaskBoardColors.muted,
+                            style = MaterialTheme.typography.bodySmall, maxLines = 3)
+                    }
+                    if (task.description.isNotBlank())
+                        Text(task.description.trim().take(250), color = TaskBoardColors.muted,
+                            style = MaterialTheme.typography.bodySmall, maxLines = 4)
                 }
-            }
-            Spacer(Modifier.height(6.dp))
-            Text(task.title, fontWeight = FontWeight.SemiBold,
-                color = TaskBoardColors.text, style = MaterialTheme.typography.bodyMedium,
-                maxLines = 3, overflow = TextOverflow.Ellipsis)
-            if (task.kind == "epic") {
-                val children = snapshot.epicChildren(task)
-                val done = children.count { it.completed != null }
-                Text("$done/${children.size} completed · " +
-                    (if (folded) "collapsed" else "expanded"),
-                    style = MaterialTheme.typography.labelSmall, color = TaskBoardColors.purple)
-            }
-            if (task.dependsOn.isNotEmpty()) {
-                val waiting = snapshot.waitingFor(task)
-                Text(if (waiting.isEmpty()) "Prerequisites satisfied" else "Waiting for ${waiting.joinToString()}", style = MaterialTheme.typography.labelSmall, color = if (waiting.isEmpty()) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error)
-            }
-            if (task.relatedTo.isNotEmpty()) {
-                Text("Related: ${task.relatedTo.joinToString()}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-
-            val meta = listOfNotNull(task.category, task.claimedBy?.let { "claimed: $it" })
-            if (meta.isNotEmpty()) {
-                Spacer(Modifier.height(5.dp))
-                Text(
-                    meta.joinToString(" • "),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-            task.questionPrompt?.takeIf { it.isNotBlank() }?.let {
-                Spacer(Modifier.height(6.dp))
-                Text(
-                    if (task.question?.answer.isNullOrBlank()) "? $it" else "Answered: ${task.question?.answer}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = if (task.question?.answer.isNullOrBlank()) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
-                )
             }
         }
-    }
     DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
         DropdownMenuItem(text = { Text("Edit task") }, onClick = {
             menuExpanded = false
@@ -1737,6 +1835,15 @@ private fun TaskCard(
             })
         }
 
+        if (task.kind != "epic" && task.completed == null && task.claimedBy == null &&
+            task.column != "blocked") {
+            snapshot.columns.firstOrNull { it.id == "blocked" }?.let { blocked ->
+                DropdownMenuItem(text = { Text("Move to Blocked") }, onClick = {
+                    menuExpanded = false
+                    onTaskChange(task, task.toDraft().copy(column = blocked.id))
+                })
+            }
+        }
         if (task.kind != "epic" && task.completed == null) {
             snapshot.columns.firstOrNull { it.terminal }?.let { done ->
                 DropdownMenuItem(text = { Text("Move to " + done.name) }, onClick = {
@@ -1745,24 +1852,42 @@ private fun TaskCard(
                 })
             }
         }
-        snapshot.columns.filter { !it.hidden && task.kind != "epic" && it.id != task.column &&
-                !(it.terminal && task.completed == null) }
-            .forEach { destination ->
-                DropdownMenuItem(text = {
-                    Text("Move → ${destination.name}" +
-                        if (destination.terminal && snapshot.columns.any { col -> col.id == task.column && col.advisory })
-                            " (delete notice)" else "")
-                }, onClick = {
-                    menuExpanded = false
-                    onTaskChange(task, task.toDraft().copy(column = destination.id))
-                })
+        if (task.kind != "epic") DropdownMenuItem(
+            text = { Text("Move to column…") }, onClick = {
+                menuExpanded = false
+                showMoveDialog = true
             }
+        )
         if (task.kind != "epic" || snapshot.epicChildren(task).isEmpty()) {
             DropdownMenuItem(text = { Text("Archive") }, onClick = {
                 menuExpanded = false
                 onTaskArchive(task)
             })
         }
+    }
+    if (showMoveDialog) {
+        AlertDialog(
+            onDismissRequest = { showMoveDialog = false },
+            title = { Text("Move ${task.id}") },
+            text = {
+                Column(Modifier.heightIn(max = 460.dp).verticalScroll(rememberScrollState())) {
+                    snapshot.columns.sortedBy { it.order }.forEach { column ->
+                        Row(Modifier.fillMaxWidth().clickable {
+                            showMoveDialog = false
+                            if (column.id != task.column)
+                                onTaskChange(task, task.toDraft().copy(column = column.id))
+                        }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Box(Modifier.size(8.dp).background(parseColumnColor(column.color), CircleShape))
+                            Spacer(Modifier.width(9.dp))
+                            Text(column.name, modifier = Modifier.weight(1f))
+                            if (column.id == task.column) Text("Current", color = TaskBoardColors.muted,
+                                style = MaterialTheme.typography.labelSmall)
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { showMoveDialog = false }) { Text("Cancel") } }
+        )
     }
     }
 }
@@ -1835,6 +1960,11 @@ private fun TaskEditorDialog(
         mutableStateOf(initial.notes)
     }
 
+    var showAdvancedFields by remember(original?.id) {
+        mutableStateOf(initial.dependsOn.isNotEmpty() || initial.relatedTo.isNotEmpty() ||
+            initial.icon != null)
+    }
+    var showHistory by remember(original?.id) { mutableStateOf(false) }
     val columns = snapshot.columns.sortedBy { it.order }
     val selectedColumnName = columns.firstOrNull { it.id == column }?.name ?: column
     val isAdvisory = columns.any { it.id == column && it.advisory }
@@ -1944,12 +2074,23 @@ private fun TaskEditorDialog(
                 )
 
                 if (kind != "epic") {
-                    Spacer(Modifier.height(8.dp))
-                    OutlinedTextField(value = dependsOn, onValueChange = { dependsOn = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Prerequisites (IDs, comma-separated)") }, placeholder = { Text("WT-0001, T3-0002") }, supportingText = { Text("Hard dependencies must be completed before work can start") })
-                    OutlinedTextField(value = relatedTo, onValueChange = { relatedTo = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Related tasks and epics") }, supportingText = { Text("References within this board only") })
+                    TextButton(onClick = { showAdvancedFields = !showAdvancedFields },
+                        modifier = Modifier.fillMaxWidth()) {
+                        Text(if (showAdvancedFields) "▾ Hide links & metadata"
+                            else "▸ Links & metadata",
+                            color = TaskBoardColors.blue, style = MaterialTheme.typography.labelMedium)
+                    }
+                    if (showAdvancedFields) {
+                        OutlinedTextField(value = dependsOn, onValueChange = { dependsOn = it },
+                            modifier = Modifier.fillMaxWidth(), label = { Text("Prerequisite task IDs") },
+                            supportingText = { Text("Tasks that must finish before work begins") })
+                        OutlinedTextField(value = relatedTo, onValueChange = { relatedTo = it },
+                            modifier = Modifier.fillMaxWidth(), label = { Text("Related task / epic IDs") })
+                        OutlinedTextField(value = iconName, onValueChange = { iconName = it },
+                            modifier = Modifier.fillMaxWidth(), label = { Text("Icon (optional)") },
+                            singleLine = true)
+                    }
                 }
-                Spacer(Modifier.height(8.dp))
-                if (kind != "epic") OutlinedTextField(value = iconName, onValueChange = { iconName = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Task icon (optional)") }, singleLine = true)
                 if (kind != "epic") {
                 Spacer(Modifier.height(14.dp))
                 Text("Attention", style = MaterialTheme.typography.labelLarge)
@@ -2050,10 +2191,14 @@ private fun TaskEditorDialog(
                     minLines = 4
                 )
                 if (timeline.updates.isNotEmpty()) {
-                    Spacer(Modifier.height(8.dp))
-                    Text("Description history (read-only)", style = MaterialTheme.typography.labelMedium)
-                    timeline.updates.forEach { update ->
-                        Text("${update.kind} · ${update.timestamp}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                    TextButton(onClick = { showHistory = !showHistory }) {
+                        Text(if (showHistory) "▾ Hide description history"
+                            else "▸ Description history (${timeline.updates.size})",
+                            color = TaskBoardColors.muted, style = MaterialTheme.typography.labelMedium)
+                    }
+                    if (showHistory) timeline.updates.forEach { update ->
+                        Text("${update.kind} · ${update.timestamp}",
+                            style = MaterialTheme.typography.labelSmall, color = TaskBoardColors.blue)
                         Text(update.text, style = MaterialTheme.typography.bodySmall)
                     }
                 }
@@ -2204,15 +2349,23 @@ private fun AttentionToggle(
     active: Boolean,
     onClick: () -> Unit
 ) {
-    if (active) {
-        Button(onClick = onClick) {
-            Text(label)
-        }
-    } else {
-        OutlinedButton(onClick = onClick) {
-            Text(label)
-        }
+    val accent = when {
+        label.contains("Blocked", ignoreCase = true) -> TaskBoardColors.red
+        label.contains("Priority", ignoreCase = true) -> TaskBoardColors.amber
+        label.contains("user", ignoreCase = true) -> TaskBoardColors.orange
+        else -> TaskBoardColors.blue
     }
+    FilterChip(
+        selected = active,
+        onClick = onClick,
+        label = { Text(label, style = MaterialTheme.typography.labelSmall,
+            color = if (active) accent else TaskBoardColors.muted) },
+        colors = FilterChipDefaults.filterChipColors(
+            selectedContainerColor = TaskBoardColors.card,
+            selectedLabelColor = accent),
+        modifier = Modifier.height(34.dp),
+        shape = RoundedCornerShape(6.dp)
+    )
 }
 
 @Composable
@@ -2225,6 +2378,7 @@ private fun ColumnManagerDialog(
     onToggleHidden: (TaskBoardColumn) -> Unit,
     onToggleAiReady: (TaskBoardColumn) -> Unit,
     onToggleQueue: (TaskBoardColumn) -> Unit,
+    onToggleSnooze: (TaskBoardColumn, Int) -> Unit,
     onMove: (TaskBoardColumn, Int) -> Unit,
     onDelete: (TaskBoardColumn) -> Unit
 ) {
@@ -2256,6 +2410,7 @@ private fun ColumnManagerDialog(
                                             if (column.aiReady) add("AI ready")
                                             if (column.advisory) add("Advisory")
                                             if (column.hidden) add("hidden")
+                                            if (column.snoozedNow()) add("snoozed")
                                         }.joinToString(" • "),
                                         style = MaterialTheme.typography.labelSmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -2284,6 +2439,22 @@ private fun ColumnManagerDialog(
                                     onClick = { onToggleHidden(column) },
                                     enabled = !busy
                                 ) { Text(if (column.hidden) "Show" else "Hide") }
+                                Box {
+                                    var snoozeMenu by remember(column.id) { mutableStateOf(false) }
+                                    TextButton(onClick = { snoozeMenu = true }, enabled = !busy) {
+                                        Text(if (column.snoozedNow()) "Wake" else "Snooze")
+                                    }
+                                    DropdownMenu(expanded = snoozeMenu,
+                                        onDismissRequest = { snoozeMenu = false }) {
+                                        listOf(0 to "Wake now", 1 to "1 hour",
+                                            6 to "6 hours", 24 to "24 hours").forEach { (hours, text) ->
+                                            DropdownMenuItem(text = { Text(text) }, onClick = {
+                                                snoozeMenu = false
+                                                onToggleSnooze(column, hours)
+                                            })
+                                        }
+                                    }
+                                }
                             }
                             Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
                                 if (column.id == "ai-ready") TextButton(

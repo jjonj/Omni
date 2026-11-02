@@ -3,6 +3,8 @@ package com.omni.sync.ui.screen
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
@@ -13,6 +15,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.omni.sync.data.taskboard.TaskBoardTask
+import com.omni.sync.data.taskboard.TaskBoardSnapshot
+import androidx.compose.ui.graphics.lerp
 
 /** The Android TaskBoard intentionally shares the desktop's blue-slate palette
  * rather than inheriting Android's dynamic wallpaper / purple Material palette.
@@ -31,10 +36,47 @@ internal object TaskBoardColors {
     val green = Color(0xFF9ADBB8)
     val greenDark = Color(0xFF28483A)
     val amber = Color(0xFFF2C77C)
+    val orange = Color(0xFFF2A84E)
+    val teal = Color(0xFF65D1C4)
     val amberDark = Color(0xFF493927)
     val purple = Color(0xFFCCB9F4)
     val purpleDark = Color(0xFF423952)
     val red = Color(0xFFFFAEA9)
+}
+
+/** Semantic accents match desktop. Column tint is subordinate to urgent status. */
+internal data class TaskBoardCardVisual(val accent: Color, val background: Color, val label: String)
+
+internal fun taskBoardCardVisual(task: TaskBoardTask, board: TaskBoardSnapshot,
+                                 queueMode: String?): TaskBoardCardVisual {
+    val column = board.columns.firstOrNull { it.id == task.column }
+    val waiting = board.waitingFor(task).isNotEmpty()
+    val done = task.completed != null || column?.terminal == true
+    return when {
+        task.kind == "epic" ->
+            TaskBoardCardVisual(TaskBoardColors.purple, TaskBoardColors.purpleDark, "Epic")
+        done ->
+            TaskBoardCardVisual(TaskBoardColors.muted, TaskBoardColors.surface, "Done")
+        task.column == "blocked" || "blocked" in task.attention ->
+            TaskBoardCardVisual(TaskBoardColors.red, Color(0xFF38252B), "Blocked")
+        task.kind == "for_user" || "needs-user" in task.attention ->
+            TaskBoardCardVisual(TaskBoardColors.orange, Color(0xFF3E2B21), "For user")
+        "priority" in task.attention ->
+            TaskBoardCardVisual(TaskBoardColors.amber, Color(0xFF373122), "Priority")
+        waiting ->
+            TaskBoardCardVisual(TaskBoardColors.amber, TaskBoardColors.card, "Waiting")
+        task.claimedBy != null ->
+            TaskBoardCardVisual(TaskBoardColors.green, Color(0xFF253B34), "Claimed")
+        queueMode == "queue" ->
+            TaskBoardCardVisual(TaskBoardColors.teal, Color(0xFF203A3B), "Queued")
+        else -> {
+            val tint = column?.color?.let { raw ->
+                runCatching { Color(android.graphics.Color.parseColor(raw)) }.getOrNull()
+            } ?: TaskBoardColors.blue
+            TaskBoardCardVisual(tint, lerp(TaskBoardColors.card, tint, .07f),
+                column?.name ?: "Task")
+        }
+    }
 }
 
 private val taskBoardColorScheme = darkColorScheme(
