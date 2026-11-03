@@ -325,8 +325,8 @@ fun OmniAiModesScreen(
                     .thenByDescending { it.unread == true }
                     .thenByDescending { if (sortMode == "activity")
                         maxOf(activityMillis(it.lastActivityAt), viewPrefs.getLong("visited:${it.key}", 0L))
-                        else if (isT3Browser(it)) it.visibilityCreatedAt ?: 0L
-                        else 0L })
+                        else it.createdAt ?: it.visibilityCreatedAt ?: 0L }
+                    .thenBy { it.key })
             }
         }
     }

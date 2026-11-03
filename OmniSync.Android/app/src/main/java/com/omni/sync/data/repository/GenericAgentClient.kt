@@ -42,7 +42,8 @@ data class AgentSessionUi(
     val visibilityHiddenAt: Long? = null,
     val visibilitySnoozedUntil: Long? = null,
     val visibilitySnoozedAt: Long? = null,
-    val visibilityCreatedAt: Long? = null
+    val visibilityCreatedAt: Long? = null,
+    val createdAt: Long? = null
 ) {
     val key get() = "$provider:$id"
 }
@@ -410,7 +411,8 @@ class GenericAgentClient(
             obj.obj("visibility")?.get("hiddenAt")?.let { runCatching { it.asLong }.getOrNull() },
             obj.obj("visibility")?.get("snoozedUntil")?.let { runCatching { it.asLong }.getOrNull() },
             obj.obj("visibility")?.get("snoozedAt")?.let { runCatching { it.asLong }.getOrNull() },
-            obj.obj("visibility")?.get("createdAt")?.let { runCatching { it.asLong }.getOrNull() })
+            obj.obj("visibility")?.get("createdAt")?.let { runCatching { it.asLong }.getOrNull() },
+            obj.get("createdAt")?.let { runCatching { it.asLong }.getOrNull() })
     }
 
     suspend fun refresh() = refreshMutex.withLock {
