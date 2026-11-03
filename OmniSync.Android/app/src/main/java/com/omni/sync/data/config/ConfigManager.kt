@@ -31,6 +31,7 @@ data class AppConfig(
     var browserCleanupPatterns: List<String> = emptyList(),
     var lastOpenedFilePath: String? = null,
     var overlayEnabled: Boolean = false,
+    var swipeNavigationEnabled: Boolean = false, // Opt-in: touch gestures must not interfere with screen sharing
     var terminalLauncher: String = "agy"
 )
 

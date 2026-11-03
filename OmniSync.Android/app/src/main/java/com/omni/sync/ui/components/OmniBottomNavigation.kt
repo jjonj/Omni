@@ -70,6 +70,7 @@ val burgerMenuItems = listOf(
 fun OmniBottomNavigation(
     currentScreen: AppScreen,
     onNavigate: (AppScreen) -> Unit,
+    swipeNavigationEnabled: Boolean = false,
     onSwipe: (Int) -> Unit = {}
 ) {
     var showBurgerMenu by remember { mutableStateOf(false) }
@@ -102,7 +103,7 @@ fun OmniBottomNavigation(
         NavigationBar(
             containerColor = if (aiWorkspace) aiSurface else NavigationBarDefaults.containerColor,
             contentColor = if (aiWorkspace) aiText else contentColorFor(NavigationBarDefaults.containerColor),
-            modifier = Modifier.pointerInput(Unit) {
+            modifier = if (swipeNavigationEnabled) Modifier.pointerInput(swipeNavigationEnabled) {
                 detectHorizontalDragGestures(
                     onDragEnd = {
                         if (abs(totalDrag) > 100) {
@@ -116,7 +117,7 @@ fun OmniBottomNavigation(
                         change.consume()
                     }
                 )
-            }
+            } else Modifier
         ) {
             // Main navigation items
             navigationItems.forEach { item ->

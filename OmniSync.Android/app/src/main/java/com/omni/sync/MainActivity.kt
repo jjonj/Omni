@@ -201,6 +201,7 @@ class MainActivity : ComponentActivity() {
                             val isConnected by mainViewModel.isConnected.collectAsState()
                             OmniSyncTheme(isConnected = isConnected) {
                                 val currentScreen by mainViewModel.currentScreen.collectAsState()
+                                 val appConfig by mainViewModel.appConfig.collectAsState()
                                 val canGoBack by mainViewModel.canGoBack.collectAsState()
             
                                 // Handle Orientation
@@ -353,6 +354,7 @@ class MainActivity : ComponentActivity() {
                                 val coroutineScope = androidx.compose.runtime.rememberCoroutineScope()
                                 OmniBottomNavigation(
                                     currentScreen = currentScreen,
+                                    swipeNavigationEnabled = appConfig.swipeNavigationEnabled,
                                     onNavigate = { screen -> 
                                         if (screen == AppScreen.FILES) {
                                             if (currentScreen == AppScreen.FILES || currentScreen == AppScreen.EDITOR) {
@@ -384,7 +386,7 @@ class MainActivity : ComponentActivity() {
                     ) { innerPadding ->
                         val isSwipeable = currentScreen in swipeableScreens
                         val wordWrap by filesViewModel.wordWrap.collectAsState()
-                        val canSwipe = when (currentScreen) {
+                        val canSwipe = appConfig.swipeNavigationEnabled && when (currentScreen) {
                             AppScreen.EDITOR -> wordWrap
                             else -> isSwipeable
                         }

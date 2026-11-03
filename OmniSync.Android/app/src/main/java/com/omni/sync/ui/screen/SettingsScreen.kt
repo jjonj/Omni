@@ -303,6 +303,27 @@ fun SettingsScreen(
             HorizontalDivider()
             Spacer(modifier = Modifier.height(24.dp))
             
+            Text("Navigation", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text("Swipe between main screens")
+                Switch(
+                    checked = appConfig.swipeNavigationEnabled,
+                    onCheckedChange = {
+                        appConfig.swipeNavigationEnabled = it
+                        mainViewModel.saveAppConfig()
+                    }
+                )
+            }
+            Text("Off by default so Remote Control gestures stay inside that screen.",
+                style = MaterialTheme.typography.bodySmall)
+            Spacer(modifier = Modifier.height(24.dp))
+            HorizontalDivider()
+            Spacer(modifier = Modifier.height(24.dp))
+
             Text("Video Player", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
             Spacer(modifier = Modifier.height(8.dp))
             
