@@ -1,7 +1,7 @@
 {
   "manifest_version": 2,
   "name": "OmniSync",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "A collection of tools for website interaction.",
   "browser_specific_settings": {
     "gecko": {
@@ -14,10 +14,11 @@
   },
   "permissions": [
     "tabs",
-    "storage"
+    "storage",
+    "http://127.0.0.1:18775/*"
   ],
   "background": {
-    "scripts": ["signalr.min.js", "background.js"]
+    "scripts": ["signalr.min.js", "background.js", "workstack-bridge.js"]
   },
   "browser_action": {
     "default_icon": {
