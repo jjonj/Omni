@@ -87,6 +87,10 @@ object WakeAlarmActions {
     @Synchronized
     fun stillAwake(context: Context, alarmId: Int? = null, automatic: Boolean = false) {
         val now = System.currentTimeMillis()
+        if (!automatic) {
+            val minutes = com.omni.sync.data.config.ConfigManager(context).loadConfig().stillAwakeMediaPauseMinutes
+            com.omni.sync.receiver.MediaPauseScheduler.schedule(context, minutes)
+        }
         val viewModel = (context.applicationContext as? OmniSyncApplication)?.mainViewModel
         val prefs = context.getSharedPreferences("alarm_prefs", Context.MODE_PRIVATE)
         val gson = Gson()

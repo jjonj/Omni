@@ -381,6 +381,21 @@ fun SettingsScreen(
 
             Text("Scheduling", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
             Spacer(modifier = Modifier.height(8.dp))
+            Text("Pause phone media after Still Awake: " +
+                if (appConfig.stillAwakeMediaPauseMinutes == 0) "Off" else "${appConfig.stillAwakeMediaPauseMinutes} min")
+            Slider(
+                value = appConfig.stillAwakeMediaPauseMinutes.toFloat(),
+                onValueChange = {
+                    appConfig.stillAwakeMediaPauseMinutes = it.toInt()
+                    mainViewModel.saveAppConfig()
+                    if (it == 0f) com.omni.sync.receiver.MediaPauseScheduler.schedule(context, 0)
+                },
+                valueRange = 0f..120f,
+                steps = 23
+            )
+            Text("Only manual Still Awake starts the timer. Setting Off cancels a pending pause.",
+                style = MaterialTheme.typography.bodySmall)
+            Spacer(modifier = Modifier.height(12.dp))
 
             Row(
                 modifier = Modifier.fillMaxWidth(),

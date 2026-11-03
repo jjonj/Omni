@@ -62,6 +62,7 @@ data class AlarmData(
     var latestWakeMinutes: Int? = 720,
     var repeatDaily: Boolean = false,
     var useGradual: Boolean = true,
+    var gradualOverride: GradualConfig? = null, // null = use global gradual settings
     var soundId: String = "gentle",
     var macroOnTrigger: String? = null,
     var macroOnDismiss: String? = null,
@@ -460,6 +461,7 @@ private fun AlarmScreenContent(
                             alarmNumber = index + 1,
                             alarm = alarm,
                             targetAlarm = storedAlarm,
+                            gradualDefaults = config,
                             onAlarmChange = { updateSchedule(alarm.id, it) },
                             onRepeatChangeScopeChange = { updateRepeatChangeScope(alarm.id, it) },
                             onDelete = {
@@ -758,6 +760,7 @@ fun AlarmCard(
     alarmNumber: Int,
     alarm: AlarmData,
     targetAlarm: AlarmData,
+    gradualDefaults: GradualConfig,
     onAlarmChange: (AlarmData) -> Unit,
     onRepeatChangeScopeChange: (Boolean) -> Unit,
     onDelete: () -> Unit,
@@ -939,6 +942,27 @@ fun AlarmCard(
                     ) {
                         Text("Use Gradual Wake")
                         Switch(checked = alarm.useGradual, onCheckedChange = { onAlarmChange(alarm.copy(useGradual = it)) })
+                    }
+                    if (alarm.useGradual) {
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically) {
+                            Text("Override gradual settings for this alarm")
+                            Switch(checked = alarm.gradualOverride != null, onCheckedChange = {
+                                onAlarmChange(alarm.copy(gradualOverride = if (it) gradualDefaults.copy() else null))
+                            })
+                        }
+                        alarm.gradualOverride?.let { override ->
+                            AdjustableSettingRow("Initial Volume: ${override.initialVolume}%", override.initialVolume,
+                                { onAlarmChange(alarm.copy(gradualOverride = override.copy(initialVolume = it))) }, 0, 100)
+                            AdjustableSettingRow("Alarm Duration: ${override.alarmDuration}s", override.alarmDuration,
+                                { onAlarmChange(alarm.copy(gradualOverride = override.copy(alarmDuration = it))) }, 1, 300)
+                            AdjustableSettingRow("Auto-Snooze: ${override.snoozeDuration}m", override.snoozeDuration,
+                                { onAlarmChange(alarm.copy(gradualOverride = override.copy(snoozeDuration = it))) }, 1, 60)
+                            AdjustableSettingRow("Volume Increase: +${override.volumeIncrement}%", override.volumeIncrement,
+                                { onAlarmChange(alarm.copy(gradualOverride = override.copy(volumeIncrement = it))) }, 1, 20)
+                            AdjustableSettingRow("Max Repetitions: ${override.maxRepetitions}", override.maxRepetitions,
+                                { onAlarmChange(alarm.copy(gradualOverride = override.copy(maxRepetitions = it))) }, 1, 20)
+                        }
                     }
                     
                       Row(

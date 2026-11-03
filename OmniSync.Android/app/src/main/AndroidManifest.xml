@@ -128,6 +128,8 @@
         <receiver
             android:name=".receiver.AssistantCommandReceiver"
             android:exported="false" />
+        <receiver android:name=".receiver.MediaPauseReceiver" android:exported="false" />
+
         <!-- New Alarm Receiver -->
         <receiver 
             android:name=".receiver.AlarmReceiver"

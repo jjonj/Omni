@@ -32,6 +32,7 @@ data class AppConfig(
     var lastOpenedFilePath: String? = null,
     var overlayEnabled: Boolean = false,
     var swipeNavigationEnabled: Boolean = false, // Opt-in: touch gestures must not interfere with screen sharing
+    var stillAwakeMediaPauseMinutes: Int = 30, // 0 disables the media pause timer
     var terminalLauncher: String = "agy"
 )
 

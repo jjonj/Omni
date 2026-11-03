@@ -158,7 +158,11 @@ class AlarmService : Service(), android.content.SharedPreferences.OnSharedPrefer
             val configJson = sharedPreferences?.getString("config", null)
             if (configJson != null) {
                 val gson = com.google.gson.Gson()
-                val config = gson.fromJson(configJson, com.omni.sync.ui.screen.GradualConfig::class.java)
+                val globalConfig = gson.fromJson(configJson, com.omni.sync.ui.screen.GradualConfig::class.java)
+                val prefs = getSharedPreferences("alarm_prefs", Context.MODE_PRIVATE)
+                val override = com.omni.sync.utils.AlarmStore.load(prefs, gson)
+                    .firstOrNull { it.id == currentAlarmId }?.resolvedForNextTrigger()?.gradualOverride
+                val config = override ?: globalConfig
                 maxRepetitions = config.maxRepetitions
                 volumeIncrement = config.volumeIncrement
                 snoozeDurationMin = config.snoozeDuration

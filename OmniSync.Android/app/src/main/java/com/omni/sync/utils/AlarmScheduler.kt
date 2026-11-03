@@ -39,6 +39,7 @@ object AlarmScheduler {
     ) {
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
         val triggerData = data.resolvedForNextTrigger()
+        val effectiveConfig = triggerData.gradualOverride ?: config
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             if (!alarmManager.canScheduleExactAlarms()) {
@@ -58,11 +59,11 @@ object AlarmScheduler {
             putExtra("IS_AM", triggerData.isAM)
             
             // Initial Config
-            putExtra("CURRENT_VOLUME", config.initialVolume)
-            putExtra("ALARM_DURATION", config.alarmDuration)
-            putExtra("MAX_REPETITIONS", config.maxRepetitions)
-            putExtra("VOLUME_INCREMENT", config.volumeIncrement)
-            putExtra("SNOOZE_DURATION", config.snoozeDuration)
+            putExtra("CURRENT_VOLUME", effectiveConfig.initialVolume)
+            putExtra("ALARM_DURATION", effectiveConfig.alarmDuration)
+            putExtra("MAX_REPETITIONS", effectiveConfig.maxRepetitions)
+            putExtra("VOLUME_INCREMENT", effectiveConfig.volumeIncrement)
+            putExtra("SNOOZE_DURATION", effectiveConfig.snoozeDuration)
             putExtra("REPEAT_DAILY", data.repeatDaily)
             putExtra("CURRENT_REPETITION", 0)
             putExtra("MACRO_ON_TRIGGER", triggerData.macroOnTrigger)
