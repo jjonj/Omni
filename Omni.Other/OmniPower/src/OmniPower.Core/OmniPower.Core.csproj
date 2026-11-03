@@ -3,6 +3,7 @@
   <!-- Shared sleep/shutdown logic for the OmniSleep and OmniShutdown launchers. No dependency on the Omni Hub. -->
   <PropertyGroup>
     <TargetFramework>net9.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
     <Nullable>enable</Nullable>
     <ImplicitUsings>disable</ImplicitUsings>
     <RootNamespace>OmniPower</RootNamespace>

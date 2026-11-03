@@ -18,7 +18,7 @@ namespace OmniSleep
                 return InputTest.Run(Array.IndexOf(args, "--simulate") >= 0);
             }
 
-            using System.Threading.Mutex? instance = SingleInstance.TryAcquire(@"Local\OmniPower.Sleep");
+            using System.Threading.Mutex? instance = SingleInstance.TryAcquire(@"Local\OmniPower.Action");
             if (instance == null)
             {
                 MessageBox.Show("OmniSleep is already running.", "OmniSleep", MessageBoxButtons.OK, MessageBoxIcon.Information);
@@ -31,10 +31,8 @@ namespace OmniSleep
                 PowerOptions options = PowerOptions.Parse(args);
                 log.Write("Sleep requested.");
 
-                if (PowerActions.StartTvOff(options, log))
-                {
-                    PowerActions.WaitForTvLeadTime(SleepTvLeadTime);
-                }
+                PowerActions.StartTvOff(options, log); // TV may be switched off while the countdown is visible.
+                if (!PowerCountdown.Confirm("Sleep", log)) return 0;
 
                 // Returns only once the PC has woken and the input decision says to stay awake.
                 using (var guard = new SleepGuard(log, options.WakeConfirmationWindow))

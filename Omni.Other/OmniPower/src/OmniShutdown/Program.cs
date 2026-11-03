@@ -13,7 +13,7 @@ namespace OmniShutdown
         [STAThread]
         private static int Main(string[] args)
         {
-            using System.Threading.Mutex? instance = SingleInstance.TryAcquire(@"Local\OmniPower.Shutdown");
+            using System.Threading.Mutex? instance = SingleInstance.TryAcquire(@"Local\OmniPower.Action");
             if (instance == null)
             {
                 MessageBox.Show("OmniShutdown is already running.", "OmniShutdown", MessageBoxButtons.OK, MessageBoxIcon.Information);
@@ -26,10 +26,8 @@ namespace OmniShutdown
                 PowerOptions options = PowerOptions.Parse(args);
                 log.Write("Shutdown requested.");
 
-                if (PowerActions.StartTvOff(options, log))
-                {
-                    PowerActions.WaitForTvLeadTime(ShutdownTvLeadTime);
-                }
+                PowerActions.StartTvOff(options, log); // Monitor control runs before the power action.
+                if (!PowerCountdown.Confirm("Shutdown", log)) return 0;
 
                 int exitCode = PowerActions.Shutdown();
                 if (exitCode != 0)

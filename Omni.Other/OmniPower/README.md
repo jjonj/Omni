@@ -1,4 +1,4 @@
-﻿# OmniPower
+# OmniPower
 
 Sleep and shutdown launchers that replace `sleep.bat` and `shutdown.bat` from `B:\GDrive\Tools\05 Automation`.
 
@@ -21,9 +21,9 @@ Once they work, unpin the old `sleep.bat`/`shutdown.bat` shortcuts.
 
 ## What each one does
 
-**OmniShutdown.exe**: starts `tv_off.bat`, waits 8 seconds, then runs `shutdown.exe /f /s /t 0`.
+**OmniShutdown.exe**: starts `tv_off.bat`, shows a shared cancelable 10-second countdown, then runs `shutdown.exe /f /s /t 0` only if not canceled.
 
-**OmniSleep.exe**: starts `tv_off.bat`, waits 6 seconds, then sleeps the PC. After resume:
+**OmniSleep.exe**: starts `tv_off.bat`, shows the same cancelable 10-second countdown, then sleeps the PC only if not canceled. The TV control begins while the countdown is visible. After resume:
 
 | Wake input (within 10 s) | Result |
 | :--- | :--- |
