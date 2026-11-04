@@ -489,7 +489,9 @@ class AlarmService : Service(), android.content.SharedPreferences.OnSharedPrefer
         val executor = com.omni.sync.logic.macro.MacroExecutor(signalRClient, app.mainViewModel.appConfig.value.macros)
         
         serviceScope.launch {
-            executor.execute(parser.parse(script, applicationContext), applicationContext)
+            if (com.omni.sync.utils.AlarmMacroPolicy.isCurrent(applicationContext, signalRClient, script)) {
+                executor.execute(parser.parse(script, applicationContext), applicationContext)
+            }
         }
     }
 

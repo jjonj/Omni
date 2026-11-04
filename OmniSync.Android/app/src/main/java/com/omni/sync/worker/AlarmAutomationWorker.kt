@@ -38,6 +38,7 @@ class AlarmAutomationWorker(
 
     private suspend fun executeMacro(script: String) {
         val app = applicationContext as OmniSyncApplication
+        if (!com.omni.sync.utils.AlarmMacroPolicy.isCurrent(applicationContext, app.signalRClient, script)) return
         val executor = MacroExecutor(app.signalRClient, app.mainViewModel.appConfig.value.macros)
         executor.execute(MacroParser().parse(script, applicationContext), applicationContext)
     }

@@ -255,7 +255,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val current = _appConfig.value
         _appConfig.value = current.copy(macros = macros)
         saveAppConfig()
-        
+        com.omni.sync.utils.AlarmMacroPolicy.pruneDeleted(
+            applicationContext, macros.map { it.script }.toSet()
+        )
+
         // Sync to Hub
         if (syncToHub && isConnected.value) {
             macros.forEach { signalRClient.saveMacro(it) }
@@ -279,20 +282,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     ?.subscribeOn(io.reactivex.rxjava3.schedulers.Schedulers.io())
                     ?.observeOn(io.reactivex.rxjava3.android.schedulers.AndroidSchedulers.mainThread())
                     ?.subscribe({ hubMacros ->
-                        // Merge logic: Hub is source of truth for overlapping IDs
-                        val localMacros = _appConfig.value.macros
-                        val merged = localMacros.toMutableList()
-                        
-                        hubMacros.forEach { hm ->
-                            val existingIndex = merged.indexOfFirst { it.id == hm.id }
-                            if (existingIndex != -1) {
-                                merged[existingIndex] = hm
-                            } else {
-                                merged.add(hm)
-                            }
-                        }
-                        
-                        updateMacros(merged, syncToHub = false)
+                        // Hub is authoritative for both updates AND deletions. Merging
+                        // local rows back in resurrected macros removed on the desktop.
+                        updateMacros(hubMacros, syncToHub = false)
                         addLog("Synced ${hubMacros.size} macros from Hub.", LogType.SUCCESS)
                     }, { error ->
                         addLog("Failed to fetch macros: ${error.message}", LogType.ERROR)
