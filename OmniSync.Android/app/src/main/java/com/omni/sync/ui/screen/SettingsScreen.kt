@@ -815,6 +815,24 @@ fun SettingsScreen(
             HorizontalDivider()
             Spacer(modifier = Modifier.height(24.dp))
 
+            Text("Android Accessibility Shortcuts", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+            Text(
+                "Choose Omni's built-in actions directly in Android Accessibility settings. " +
+                    "Quick Action Slots 1-6 match the notification actions below, in order. " +
+                    "Use 'Omni: Choose Action' for macros and bookmarks.",
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.padding(top = 6.dp, bottom = 8.dp)
+            )
+            OutlinedButton(onClick = {
+                context.startActivity(
+                    Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS)
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                )
+            }) {
+                Text("Open Android Accessibility Settings")
+            }
+            Spacer(modifier = Modifier.height(16.dp))
+
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,

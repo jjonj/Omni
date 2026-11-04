@@ -6,4 +6,6 @@
     <string name="action_sleep">Sleep</string>
     <string name="action_tv">TV</string>
     <string name="action_wol">WOL</string>
+    <string name="accessibility_shortcut_description">Run an Omni quick action with your Android accessibility shortcut.</string>
+    <string name="accessibility_shortcut_summary">Omni quick actions for volume keys and accessibility shortcuts</string>
 </resources>

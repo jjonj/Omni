@@ -71,6 +71,476 @@
             </intent-filter>
         </activity>
 
+
+        <!-- Accessibility shortcut target activities appear individually in Android Settings.
+             Unlike launcher shortcuts, these must be declared at build time. -->
+        <activity
+            android:name=".ui.AccessibilityQuickActionActivity"
+            android:exported="false"
+            android:excludeFromRecents="true" />
+        <activity-alias
+            android:name=".access_choose"
+            android:targetActivity=".ui.AccessibilityQuickActionActivity"
+            android:label="Omni: Choose Action"
+            android:icon="@drawable/ic_launcher"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.ACCESSIBILITY_SHORTCUT_TARGET" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityshortcut.target"
+                android:resource="@xml/accessibility_shortcut_target" />
+        </activity-alias>
+        <activity-alias
+            android:name=".access_pre_1"
+            android:targetActivity=".ui.AccessibilityQuickActionActivity"
+            android:label="Omni: Shutdown PC"
+            android:icon="@drawable/ic_launcher"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.ACCESSIBILITY_SHORTCUT_TARGET" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityshortcut.target"
+                android:resource="@xml/accessibility_shortcut_target" />
+        </activity-alias>
+        <activity-alias
+            android:name=".access_pre_2"
+            android:targetActivity=".ui.AccessibilityQuickActionActivity"
+            android:label="Omni: Sleep PC"
+            android:icon="@drawable/ic_launcher"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.ACCESSIBILITY_SHORTCUT_TARGET" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityshortcut.target"
+                android:resource="@xml/accessibility_shortcut_target" />
+        </activity-alias>
+        <activity-alias
+            android:name=".access_pre_3"
+            android:targetActivity=".ui.AccessibilityQuickActionActivity"
+            android:label="Omni: Toggle TV"
+            android:icon="@drawable/ic_launcher"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.ACCESSIBILITY_SHORTCUT_TARGET" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityshortcut.target"
+                android:resource="@xml/accessibility_shortcut_target" />
+        </activity-alias>
+        <activity-alias
+            android:name=".access_pre_4"
+            android:targetActivity=".ui.AccessibilityQuickActionActivity"
+            android:label="Omni: Wake PC"
+            android:icon="@drawable/ic_launcher"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.ACCESSIBILITY_SHORTCUT_TARGET" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityshortcut.target"
+                android:resource="@xml/accessibility_shortcut_target" />
+        </activity-alias>
+        <activity-alias
+            android:name=".access_pre_tell_pc"
+            android:targetActivity=".ui.AccessibilityQuickActionActivity"
+            android:label="Omni: Tell PC"
+            android:icon="@drawable/ic_launcher"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.ACCESSIBILITY_SHORTCUT_TARGET" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityshortcut.target"
+                android:resource="@xml/accessibility_shortcut_target" />
+        </activity-alias>
+        <activity-alias
+            android:name=".access_pre_voice_jarvis"
+            android:targetActivity=".ui.AccessibilityQuickActionActivity"
+            android:label="Omni: Jarvis voice"
+            android:icon="@drawable/ic_launcher"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.ACCESSIBILITY_SHORTCUT_TARGET" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityshortcut.target"
+                android:resource="@xml/accessibility_shortcut_target" />
+        </activity-alias>
+        <activity-alias
+            android:name=".access_pre_voice_type"
+            android:targetActivity=".ui.AccessibilityQuickActionActivity"
+            android:label="Omni: Voice to text"
+            android:icon="@drawable/ic_launcher"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.ACCESSIBILITY_SHORTCUT_TARGET" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityshortcut.target"
+                android:resource="@xml/accessibility_shortcut_target" />
+        </activity-alias>
+        <activity-alias
+            android:name=".access_pre_smart_ai"
+            android:targetActivity=".ui.AccessibilityQuickActionActivity"
+            android:label="Omni: Smart AI clipboard"
+            android:icon="@drawable/ic_launcher"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.ACCESSIBILITY_SHORTCUT_TARGET" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityshortcut.target"
+                android:resource="@xml/accessibility_shortcut_target" />
+        </activity-alias>
+        <activity-alias
+            android:name=".access_pre_alarm_830"
+            android:targetActivity=".ui.AccessibilityQuickActionActivity"
+            android:label="Omni: Alarm in 8h30m"
+            android:icon="@drawable/ic_launcher"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.ACCESSIBILITY_SHORTCUT_TARGET" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityshortcut.target"
+                android:resource="@xml/accessibility_shortcut_target" />
+        </activity-alias>
+        <activity-alias
+            android:name=".access_pre_still_awake"
+            android:targetActivity=".ui.AccessibilityQuickActionActivity"
+            android:label="Omni: Still awake"
+            android:icon="@drawable/ic_launcher"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.ACCESSIBILITY_SHORTCUT_TARGET" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityshortcut.target"
+                android:resource="@xml/accessibility_shortcut_target" />
+        </activity-alias>
+        <activity-alias
+            android:name=".access_pre_alarm_845"
+            android:targetActivity=".ui.AccessibilityQuickActionActivity"
+            android:label="Omni: Alarm in 8h45m"
+            android:icon="@drawable/ic_launcher"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.ACCESSIBILITY_SHORTCUT_TARGET" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityshortcut.target"
+                android:resource="@xml/accessibility_shortcut_target" />
+        </activity-alias>
+        <activity-alias
+            android:name=".access_pre_alarm_900"
+            android:targetActivity=".ui.AccessibilityQuickActionActivity"
+            android:label="Omni: Alarm in 9h"
+            android:icon="@drawable/ic_launcher"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.ACCESSIBILITY_SHORTCUT_TARGET" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityshortcut.target"
+                android:resource="@xml/accessibility_shortcut_target" />
+        </activity-alias>
+        <activity-alias
+            android:name=".access_pre_br_yt_phone"
+            android:targetActivity=".ui.AccessibilityQuickActionActivity"
+            android:label="Omni: YouTube to Phone"
+            android:icon="@drawable/ic_launcher"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.ACCESSIBILITY_SHORTCUT_TARGET" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityshortcut.target"
+                android:resource="@xml/accessibility_shortcut_target" />
+        </activity-alias>
+        <activity-alias
+            android:name=".access_pre_br_yt_pc"
+            android:targetActivity=".ui.AccessibilityQuickActionActivity"
+            android:label="Omni: YouTube to PC"
+            android:icon="@drawable/ic_launcher"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.ACCESSIBILITY_SHORTCUT_TARGET" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityshortcut.target"
+                android:resource="@xml/accessibility_shortcut_target" />
+        </activity-alias>
+        <activity-alias
+            android:name=".access_pre_br_phone"
+            android:targetActivity=".ui.AccessibilityQuickActionActivity"
+            android:label="Omni: Browser tab to Phone"
+            android:icon="@drawable/ic_launcher"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.ACCESSIBILITY_SHORTCUT_TARGET" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityshortcut.target"
+                android:resource="@xml/accessibility_shortcut_target" />
+        </activity-alias>
+        <activity-alias
+            android:name=".access_pre_nav_dash"
+            android:targetActivity=".ui.AccessibilityQuickActionActivity"
+            android:label="Omni: Open Dashboard"
+            android:icon="@drawable/ic_launcher"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.ACCESSIBILITY_SHORTCUT_TARGET" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityshortcut.target"
+                android:resource="@xml/accessibility_shortcut_target" />
+        </activity-alias>
+        <activity-alias
+            android:name=".access_pre_nav_remote"
+            android:targetActivity=".ui.AccessibilityQuickActionActivity"
+            android:label="Omni: Open Remote"
+            android:icon="@drawable/ic_launcher"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.ACCESSIBILITY_SHORTCUT_TARGET" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityshortcut.target"
+                android:resource="@xml/accessibility_shortcut_target" />
+        </activity-alias>
+        <activity-alias
+            android:name=".access_pre_nav_browser"
+            android:targetActivity=".ui.AccessibilityQuickActionActivity"
+            android:label="Omni: Open Browser"
+            android:icon="@drawable/ic_launcher"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.ACCESSIBILITY_SHORTCUT_TARGET" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityshortcut.target"
+                android:resource="@xml/accessibility_shortcut_target" />
+        </activity-alias>
+        <activity-alias
+            android:name=".access_pre_nav_files"
+            android:targetActivity=".ui.AccessibilityQuickActionActivity"
+            android:label="Omni: Open Files"
+            android:icon="@drawable/ic_launcher"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.ACCESSIBILITY_SHORTCUT_TARGET" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityshortcut.target"
+                android:resource="@xml/accessibility_shortcut_target" />
+        </activity-alias>
+        <activity-alias
+            android:name=".access_pre_nav_ai"
+            android:targetActivity=".ui.AccessibilityQuickActionActivity"
+            android:label="Omni: Open AI Chat"
+            android:icon="@drawable/ic_launcher"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.ACCESSIBILITY_SHORTCUT_TARGET" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityshortcut.target"
+                android:resource="@xml/accessibility_shortcut_target" />
+        </activity-alias>
+        <activity-alias
+            android:name=".access_pre_nav_alarm"
+            android:targetActivity=".ui.AccessibilityQuickActionActivity"
+            android:label="Omni: Open Alarm"
+            android:icon="@drawable/ic_launcher"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.ACCESSIBILITY_SHORTCUT_TARGET" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityshortcut.target"
+                android:resource="@xml/accessibility_shortcut_target" />
+        </activity-alias>
+        <activity-alias
+            android:name=".access_pre_br_back"
+            android:targetActivity=".ui.AccessibilityQuickActionActivity"
+            android:label="Omni: Browser Back"
+            android:icon="@drawable/ic_launcher"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.ACCESSIBILITY_SHORTCUT_TARGET" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityshortcut.target"
+                android:resource="@xml/accessibility_shortcut_target" />
+        </activity-alias>
+        <activity-alias
+            android:name=".access_pre_br_refresh"
+            android:targetActivity=".ui.AccessibilityQuickActionActivity"
+            android:label="Omni: Browser Refresh"
+            android:icon="@drawable/ic_launcher"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.ACCESSIBILITY_SHORTCUT_TARGET" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityshortcut.target"
+                android:resource="@xml/accessibility_shortcut_target" />
+        </activity-alias>
+        <activity-alias
+            android:name=".access_pre_br_forward"
+            android:targetActivity=".ui.AccessibilityQuickActionActivity"
+            android:label="Omni: Browser Forward"
+            android:icon="@drawable/ic_launcher"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.ACCESSIBILITY_SHORTCUT_TARGET" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityshortcut.target"
+                android:resource="@xml/accessibility_shortcut_target" />
+        </activity-alias>
+        <activity-alias
+            android:name=".access_pre_br_close"
+            android:targetActivity=".ui.AccessibilityQuickActionActivity"
+            android:label="Omni: Close Browser Tab"
+            android:icon="@drawable/ic_launcher"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.ACCESSIBILITY_SHORTCUT_TARGET" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityshortcut.target"
+                android:resource="@xml/accessibility_shortcut_target" />
+        </activity-alias>
+        <activity-alias
+            android:name=".access_pre_br_play"
+            android:targetActivity=".ui.AccessibilityQuickActionActivity"
+            android:label="Omni: Browser Play Pause"
+            android:icon="@drawable/ic_launcher"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.ACCESSIBILITY_SHORTCUT_TARGET" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityshortcut.target"
+                android:resource="@xml/accessibility_shortcut_target" />
+        </activity-alias>
+        <activity-alias
+            android:name=".access_favorite_1"
+            android:targetActivity=".ui.AccessibilityQuickActionActivity"
+            android:label="Omni: Quick Action Slot 1"
+            android:icon="@drawable/ic_launcher"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.ACCESSIBILITY_SHORTCUT_TARGET" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityshortcut.target"
+                android:resource="@xml/accessibility_shortcut_target" />
+        </activity-alias>
+        <activity-alias
+            android:name=".access_favorite_2"
+            android:targetActivity=".ui.AccessibilityQuickActionActivity"
+            android:label="Omni: Quick Action Slot 2"
+            android:icon="@drawable/ic_launcher"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.ACCESSIBILITY_SHORTCUT_TARGET" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityshortcut.target"
+                android:resource="@xml/accessibility_shortcut_target" />
+        </activity-alias>
+        <activity-alias
+            android:name=".access_favorite_3"
+            android:targetActivity=".ui.AccessibilityQuickActionActivity"
+            android:label="Omni: Quick Action Slot 3"
+            android:icon="@drawable/ic_launcher"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.ACCESSIBILITY_SHORTCUT_TARGET" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityshortcut.target"
+                android:resource="@xml/accessibility_shortcut_target" />
+        </activity-alias>
+        <activity-alias
+            android:name=".access_favorite_4"
+            android:targetActivity=".ui.AccessibilityQuickActionActivity"
+            android:label="Omni: Quick Action Slot 4"
+            android:icon="@drawable/ic_launcher"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.ACCESSIBILITY_SHORTCUT_TARGET" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityshortcut.target"
+                android:resource="@xml/accessibility_shortcut_target" />
+        </activity-alias>
+        <activity-alias
+            android:name=".access_favorite_5"
+            android:targetActivity=".ui.AccessibilityQuickActionActivity"
+            android:label="Omni: Quick Action Slot 5"
+            android:icon="@drawable/ic_launcher"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.ACCESSIBILITY_SHORTCUT_TARGET" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityshortcut.target"
+                android:resource="@xml/accessibility_shortcut_target" />
+        </activity-alias>
+        <activity-alias
+            android:name=".access_favorite_6"
+            android:targetActivity=".ui.AccessibilityQuickActionActivity"
+            android:label="Omni: Quick Action Slot 6"
+            android:icon="@drawable/ic_launcher"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.ACCESSIBILITY_SHORTCUT_TARGET" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityshortcut.target"
+                android:resource="@xml/accessibility_shortcut_target" />
+        </activity-alias>
+
         <activity
             android:name=".ui.WidgetConfigActivity"
             android:exported="true">
