@@ -639,8 +639,10 @@ fun OmniAiModesScreen(
                                     overflow = TextOverflow.Ellipsis,
                                     fontWeight = if (session.unread == true) FontWeight.Bold else FontWeight.Medium,
                                     style = MaterialTheme.typography.bodyLarge)
-                                if (sortMode != "project" && session.workspace?.isNotBlank() == true)
-                                    Text(session.projectName(), color = p.muted, style = MaterialTheme.typography.labelSmall)
+                                Text((if (session.kind == "t3/thread") "T3 native agent" else if (session.kind == "t3/chatgpt") "ChatGPT" else session.kind) +
+                                    (if (sortMode != "project" && session.workspace?.isNotBlank() == true)
+                                        " · " + session.projectName() else ""),
+                                    color = p.muted, style = MaterialTheme.typography.labelSmall)
                                 Row(verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                                     Dot(session.dotColor(p))
