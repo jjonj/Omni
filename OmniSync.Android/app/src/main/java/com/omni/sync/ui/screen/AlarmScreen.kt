@@ -72,7 +72,9 @@ data class AlarmData(
     var scheduledDate: Long? = null,
     var dismissText: String? = null,
     var applyChangesToNextTriggerOnly: Boolean = false,
-    var nextTriggerOverride: AlarmData? = null
+    var nextTriggerOverride: AlarmData? = null,
+    // Null means a pre-migration override; treat it as manual to protect existing wake choices.
+    var nextTriggerSource: String? = null
 ) {
     /** Returns the one-off settings when a daily alarm has a pending next-trigger change. */
     fun resolvedForNextTrigger(): AlarmData {
@@ -89,7 +91,8 @@ data class AlarmData(
         )
     }
 
-    fun withNextTriggerOverride(changed: AlarmData): AlarmData = copy(
+    fun withNextTriggerOverride(changed: AlarmData, source: String = "manual"): AlarmData = copy(
+        nextTriggerSource = source,
         enabled = changed.enabled,
         isWakeAlarm = changed.isWakeAlarm,
         autoStillAwake = changed.autoStillAwake,
@@ -100,7 +103,8 @@ data class AlarmData(
             enabled = true,
             repeatDaily = false,
             applyChangesToNextTriggerOnly = false,
-            nextTriggerOverride = null
+            nextTriggerOverride = null,
+            nextTriggerSource = null
         )
     )
 }
@@ -215,7 +219,7 @@ private fun AlarmScreenContent(
         }
     }
 
-    fun updateSchedule(id: Int, data: AlarmData) {
+    fun updateSchedule(id: Int, data: AlarmData, manualNextWakeEdit: Boolean = false) {
         com.omni.sync.utils.AlarmTrace.record("USER_EDIT", "old=" +
             alarms.firstOrNull { it.id == id }?.let { com.omni.sync.utils.AlarmTrace.describe(it) } +
             " requested=" + com.omni.sync.utils.AlarmTrace.describe(data))
@@ -224,8 +228,9 @@ private fun AlarmScreenContent(
         val updatedData = if (existing != null && existing.isWakeAlarm && data.isWakeAlarm) {
             // Settings such as latest wake, sound, and Auto Still Awake must not reset
             // an explicitly selected next wake time. Only the one-time picker changes it.
-            val selected = if (data.applyChangesToNextTriggerOnly) {
-                data.copy(repeatDaily = false, applyChangesToNextTriggerOnly = false, nextTriggerOverride = null)
+            val selected = if (manualNextWakeEdit) {
+                data.copy(repeatDaily = false, applyChangesToNextTriggerOnly = false,
+                    nextTriggerOverride = null, nextTriggerSource = null)
             } else {
                 existing.nextTriggerOverride?.copy(
                     enabled = data.enabled,
@@ -245,6 +250,11 @@ private fun AlarmScreenContent(
             normalizedData.copy(
                 hour = existing.hour, minute = existing.minute, isAM = existing.isAM,
                 applyChangesToNextTriggerOnly = selected != null,
+                nextTriggerSource = when {
+                    selected == null -> null
+                    manualNextWakeEdit -> "manual"
+                    else -> existing.nextTriggerSource
+                },
                 nextTriggerOverride = selected
             )
         } else if (
@@ -689,7 +699,9 @@ private fun AlarmScreenContent(
                     saveAlarms(alarms)
                     AlarmScheduler.scheduleAlarm(context, alarmId, target, config)
                 } else {
-                    updateSchedule(alarmId, updated.copy(applyChangesToNextTriggerOnly = currentAlarm.isWakeAlarm || currentAlarm.applyChangesToNextTriggerOnly))
+                    updateSchedule(alarmId,
+                        updated.copy(applyChangesToNextTriggerOnly = currentAlarm.isWakeAlarm || currentAlarm.applyChangesToNextTriggerOnly),
+                        manualNextWakeEdit = currentAlarm.isWakeAlarm)
                 }
                 showTimePicker = null
             }
@@ -702,8 +714,9 @@ private fun AlarmScreenContent(
             showDatePicker = null
             return@let
         }
+        val datedAlarm = if (currentAlarm.isWakeAlarm) currentAlarm.resolvedForNextTrigger() else currentAlarm
         val cal = Calendar.getInstance()
-        if (currentAlarm.scheduledDate != null) cal.timeInMillis = currentAlarm.scheduledDate!!
+        if (datedAlarm.scheduledDate != null) cal.timeInMillis = datedAlarm.scheduledDate!!
         
         android.app.DatePickerDialog(
             context,
@@ -718,12 +731,12 @@ private fun AlarmScreenContent(
                     set(Calendar.SECOND, 0)
                     set(Calendar.MILLISECOND, 0)
                 }
-                val updated = currentAlarm.copy(
+                val updated = datedAlarm.copy(
                     scheduledDate = newCal.timeInMillis,
-                    repeatDaily = currentAlarm.repeatDaily && currentAlarm.applyChangesToNextTriggerOnly,
+                    repeatDaily = currentAlarm.isWakeAlarm || (currentAlarm.repeatDaily && currentAlarm.applyChangesToNextTriggerOnly),
                     enabled = true
                 )
-                updateSchedule(alarmId, updated)
+                updateSchedule(alarmId, updated, manualNextWakeEdit = currentAlarm.isWakeAlarm)
                 showDatePicker = null
             },
             cal.get(Calendar.YEAR),

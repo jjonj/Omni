@@ -108,8 +108,12 @@ object WakeAlarmActions {
         viewModel?.addLog("[Wake detection] ${if (automatic) "Phone activity" else "Still awake button"} received; alarmId=$alarmId", LogType.INFO)
         val updated = alarms.map { alarm ->
             if (!alarm.isWakeAlarm || (alarmId != null && alarm.id != alarmId)) return@map alarm
-            // Never silently replace a saved one-time wake choice with background activity.
-            if (automatic && alarm.nextTriggerOverride != null) return@map alarm
+            // An explicitly selected next wake time wins over every Still Awake signal,
+            // including the button. Only a previous sleep-based adjustment may be refined.
+            if (alarm.nextTriggerOverride != null && alarm.nextTriggerSource != "still_awake") {
+                AlarmTrace.record("STILL_AWAKE_PRESERVE_MANUAL", "automatic=" + automatic + " " + AlarmTrace.describe(alarm))
+                return@map alarm
+            }
             val remaining = nextTrigger(alarm, now) - now
             if (!alarm.enabled || (automatic && (!alarm.autoStillAwake || remaining !in 1..AUTO_WINDOW))) {
                 viewModel?.addLog("[Wake detection ${alarm.id}] Skipped: enabled=${alarm.enabled}, auto=${alarm.autoStillAwake}, minutesUntilAlarm=${remaining / 60_000}", LogType.INFO)
@@ -123,7 +127,7 @@ object WakeAlarmActions {
             val cal = Calendar.getInstance().apply { timeInMillis = fireAt }
             val changed = alarm.copy(hour = cal.get(Calendar.HOUR_OF_DAY).let { if (it % 12 == 0) 12 else it % 12 },
                 minute = cal.get(Calendar.MINUTE), isAM = cal.get(Calendar.AM_PM) == Calendar.AM, scheduledDate = fireAt)
-            val result = alarm.withNextTriggerOverride(changed)
+            val result = alarm.withNextTriggerOverride(changed, source = "still_awake")
             AlarmTrace.record("STILL_AWAKE_ADJUST", "automatic=" + automatic + " before=" +
                 AlarmTrace.describe(alarm) + " after=" + AlarmTrace.describe(result) +
                 " scheduled=" + AlarmTrace.time(fireAt))

@@ -514,10 +514,12 @@ class AlarmService : Service(), android.content.SharedPreferences.OnSharedPrefer
         val wakeAlarm = alarms.firstOrNull { it.id == currentAlarmId && it.isWakeAlarm }
         if (wakeAlarm != null) {
             com.omni.sync.utils.AlarmStore.save(prefs, gson, alarms.map {
-                if (it.id == currentAlarmId) it.copy(nextTriggerOverride = null) else it
+                if (it.id == currentAlarmId) it.copy(nextTriggerOverride = null,
+                    nextTriggerSource = null, applyChangesToNextTriggerOnly = false) else it
             })
             val config = prefs.getString("config", null)?.let { gson.fromJson(it, com.omni.sync.ui.screen.GradualConfig::class.java) } ?: com.omni.sync.ui.screen.GradualConfig()
-            AlarmScheduler.scheduleAlarm(this, currentAlarmId, wakeAlarm.copy(nextTriggerOverride = null), config)
+            AlarmScheduler.scheduleAlarm(this, currentAlarmId, wakeAlarm.copy(nextTriggerOverride = null,
+                nextTriggerSource = null, applyChangesToNextTriggerOnly = false), config)
             (application as? com.omni.sync.OmniSyncApplication)?.mainViewModel?.addLog(
                 "[Wake alarm $currentAlarmId] Automatic disable prevented; daily target retained", com.omni.sync.ui.screen.LogType.INFO)
             return

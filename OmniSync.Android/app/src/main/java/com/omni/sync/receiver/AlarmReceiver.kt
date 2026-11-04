@@ -37,7 +37,8 @@ class AlarmReceiver : BroadcastReceiver() {
                 val gson = Gson()
                 val savedAlarm = AlarmStore.load(prefs, gson).firstOrNull { it.id == alarmId }
                 // A one-off override must never become tomorrow's recurring alarm.
-                val alarmData = savedAlarm?.copy(nextTriggerOverride = null) ?: AlarmData(
+                val alarmData = savedAlarm?.copy(nextTriggerOverride = null, nextTriggerSource = null,
+                    applyChangesToNextTriggerOnly = false) ?: AlarmData(
                     id = alarmId,
                     enabled = true,
                     hour = intent.getIntExtra("HOUR", 0),
@@ -48,7 +49,8 @@ class AlarmReceiver : BroadcastReceiver() {
                 )
                 if (savedAlarm?.nextTriggerOverride != null) {
                     val updated = AlarmStore.load(prefs, gson).map { alarm ->
-                        if (alarm.id == alarmId) alarm.copy(nextTriggerOverride = null) else alarm
+                        if (alarm.id == alarmId) alarm.copy(nextTriggerOverride = null,
+                            nextTriggerSource = null, applyChangesToNextTriggerOnly = false) else alarm
                     }
                     AlarmStore.save(prefs, gson, updated)
                 }
@@ -69,7 +71,8 @@ class AlarmReceiver : BroadcastReceiver() {
                 val gson = Gson()
                 val alarms = AlarmStore.load(prefs, gson)
                 if (alarms.any { it.id == alarmId && it.nextTriggerOverride != null }) {
-                    AlarmStore.save(prefs, gson, alarms.map { if (it.id == alarmId) it.copy(nextTriggerOverride = null) else it })
+                    AlarmStore.save(prefs, gson, alarms.map { if (it.id == alarmId) it.copy(nextTriggerOverride = null,
+                        nextTriggerSource = null, applyChangesToNextTriggerOnly = false) else it })
                 }
             }
             // 2. Start the Service to play sound

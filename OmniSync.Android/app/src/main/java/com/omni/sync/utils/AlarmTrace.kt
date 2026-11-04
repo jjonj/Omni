@@ -21,7 +21,8 @@ object AlarmTrace {
         return "id=" + a.id + " enabled=" + a.enabled + " wake=" + a.isWakeAlarm +
             " daily=" + a.repeatDaily + " target=" + clock(a) + " next=" + clock(n) +
             " latest=" + a.latestWakeMinutes + " auto=" + a.autoStillAwake +
-            " date=" + time(n.scheduledDate) + " override=" + (a.nextTriggerOverride != null)
+            " date=" + time(n.scheduledDate) + " override=" + (a.nextTriggerOverride != null) +
+            " source=" + (a.nextTriggerSource ?: "legacy/manual")
     }
     @Synchronized fun init(ctx: Context, reason: String) {
         output = File(ctx.applicationContext.filesDir, "alarm_history.log")
