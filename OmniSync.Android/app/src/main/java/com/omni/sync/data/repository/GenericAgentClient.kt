@@ -1055,21 +1055,25 @@ class GenericAgentClient(
         if (provider.id != "t3") require(workspace.isNotBlank() && firstMessage.isNotBlank()) {
             "Workspace and first message are required for this provider"
         }
-        val resultText = if (provider.id == "t3" && firstMessage.isBlank()) {
+        val resultText = if (provider.id == "t3" && (firstMessage.isBlank() ||
+            (workspace.isBlank() && deliveryMode != "WaitForSlot"))) {
             require(kind == "t3/chatgpt") { "Blank sessions are supported for ChatGPT only" }
             // Persist before contacting T3. A lost ACK is not proof of failure;
             // subsequent Create retries use the same idempotent request ID.
             val project = workspace.trim()
+            val instruction = firstMessage.trim()
             val pendingId = blankCreatePrefs.getString("requestId", null)
             if (pendingId != null) {
                 check(blankCreatePrefs.getString("kind", null) == kind &&
-                    blankCreatePrefs.getString("project", null) == project) {
+                    blankCreatePrefs.getString("project", null) == project &&
+                    blankCreatePrefs.getString("instruction", "") == instruction) {
                     "A different blank creation is unresolved. Retry with its original settings."
                 }
             }
             val requestId = pendingId ?: UUID.randomUUID().toString().also { id ->
                 check(blankCreatePrefs.edit().putString("requestId", id)
-                    .putString("kind", kind).putString("project", project).commit()) {
+                    .putString("kind", kind).putString("project", project)
+                    .putString("instruction", instruction).commit()) {
                     "Could not persist create identity; no new session started"
                 }
             }
@@ -1077,6 +1081,7 @@ class GenericAgentClient(
                 "provider" to provider.id, "kind" to kind, "clientRequestId" to requestId
             )
             if (project.isNotEmpty()) params["project"] = project
+            if (instruction.isNotEmpty()) params["initialMessage"] = instruction
             val receipt = try {
                 signalR.agentCall("sessions.create", params).asJsonObject
             } catch (_: Exception) {
@@ -1088,7 +1093,8 @@ class GenericAgentClient(
                 _createdSessionKey.value = "t3:$id"
                 providerPrefs.edit().putString("lastCreatedSession", "t3:$id").commit()
                 blankCreatePrefs.edit().clear().commit()
-                "Created blank ChatGPT session $id."
+                if (instruction.isEmpty()) "Created empty ChatGPT session $id."
+                else "Created ChatGPT session $id. Initial instruction requested."
             } else if (receipt?.str("state") == "Failed") {
                 blankCreatePrefs.edit().clear().commit()
                 "ChatGPT creation rejected: " + (receipt.str("error") ?: "unknown reason")
