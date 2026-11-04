@@ -2,4 +2,10 @@
 <resources>
     <style name="Theme.OmniSync" parent="@android:style/Theme.NoTitleBar">
     </style>
+    <!-- Keep the phone screen visible behind Omni's PC keyboard shortcut. -->
+    <style name="Theme.PcKeyboardShortcut" parent="@android:style/Theme.Translucent.NoTitleBar">
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:backgroundDimEnabled">false</item>
+        <item name="android:windowIsTranslucent">true</item>
+    </style>
 </resources>

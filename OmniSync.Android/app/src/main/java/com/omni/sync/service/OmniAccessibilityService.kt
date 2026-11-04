@@ -98,6 +98,12 @@ class OmniAccessibilityService : AccessibilityService() {
         return dispatchGesture(gesture, null, null)
     }
 
+    /** Paste into whichever Android text field currently has input focus. */
+    fun pasteIntoFocusedApp(): Boolean {
+        val node = rootInActiveWindow?.findFocus(AccessibilityNodeInfo.FOCUS_INPUT) ?: return false
+        return node.performAction(AccessibilityNodeInfo.ACTION_PASTE)
+    }
+
     fun injectText(text: String) {
         val focus = findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
         if (focus != null) {

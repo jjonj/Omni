@@ -2503,7 +2503,7 @@ class SignalRClient(
         }
     }
 
-    fun requestClipboard() {
+    fun requestClipboard(pasteIntoFocusedApp: Boolean = false) {
         if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
             hubConnection?.invoke(String::class.java, "GetClipboardText")
                 ?.subscribe({ text ->
@@ -2515,6 +2515,23 @@ class SignalRClient(
                                 clipboardManager.setPrimaryClip(clip)
                                 mainViewModel.updateClipboardContent(text)
                                 mainViewModel.addLog("Synced clipboard from PC", com.omni.sync.ui.screen.LogType.SUCCESS)
+                                if (pasteIntoFocusedApp) {
+                                    // The shortcut activity will have closed; allow the former app to regain focus.
+                                    val handler = android.os.Handler(android.os.Looper.getMainLooper())
+                                    fun pasteWhenFocused(remainingAttempts: Int) {
+                                        val pasted = OmniAccessibilityService.getInstance()?.pasteIntoFocusedApp() == true
+                                        if (!pasted && remainingAttempts > 0) {
+                                            handler.postDelayed({ pasteWhenFocused(remainingAttempts - 1) }, 200)
+                                        } else if (!pasted) {
+                                            android.widget.Toast.makeText(
+                                                context,
+                                                "PC clipboard copied; paste manually or enable Omni Accessibility",
+                                                android.widget.Toast.LENGTH_LONG
+                                            ).show()
+                                        }
+                                    }
+                                    handler.postDelayed({ pasteWhenFocused(6) }, 350)
+                                }
                             } finally {
                                 isUpdatingClipboardInternally = false
                             }

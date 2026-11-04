@@ -2,6 +2,8 @@ package com.omni.sync.service
 
 import android.content.Context
 import android.content.Intent
+import android.content.ClipboardManager
+import android.widget.Toast
 import androidx.lifecycle.viewModelScope
 import com.omni.sync.MainActivity
 import com.omni.sync.OmniSyncApplication
@@ -35,6 +37,21 @@ object QuickActionDispatcher {
                 .putExtra("FILE_PATH", action.command.substring(9)))
         } else if (action.command == "STILL_AWAKE") {
             com.omni.sync.utils.WakeAlarmActions.stillAwake(context)
+        } else if (action.command == "CLIPBOARD_PHONE_TO_PC_PASTE") {
+            // A visible shortcut Activity is needed to read Android 10+ clipboard reliably.
+            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+            val text = clipboard.primaryClip?.takeIf { it.itemCount > 0 }
+                ?.getItemAt(0)?.coerceToText(context)?.toString()
+            if (!text.isNullOrEmpty()) {
+                signalRClient.sendText(text)
+            } else {
+                Toast.makeText(context, "Phone clipboard is empty or unavailable", Toast.LENGTH_SHORT).show()
+            }
+        } else if (action.command == "CLIPBOARD_PC_TO_PHONE_PASTE") {
+            signalRClient.requestClipboard(pasteIntoFocusedApp = true)
+        } else if (action.command == "PC_KEYBOARD") {
+            context.startActivity(Intent(context, com.omni.sync.ui.PcKeyboardShortcutActivity::class.java)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         } else if (action.command.startsWith("ALARM:")) {
             val minutes = action.command.substring(6).toIntOrNull() ?: 0
             if (minutes > 0) {
