@@ -84,10 +84,11 @@ private fun activityMillis(iso: String?): Long =
     runCatching { java.time.Instant.parse(iso ?: "").toEpochMilli() }.getOrDefault(0L)
 
 private fun AgentSessionUi.dotColor(p: AiPalette): Color = when {
-    needsAttention() -> p.amber
     activity.equals("Working", true) || activity.equals("Running", true) ||
         activity.equals("Active", true) -> p.green
-    activity.equals("Error", true) || activity.equals("Failed", true) -> Color(0xFFE38D8D)
+    activity.equals("Error", true) || activity.equals("Errored", true) ||
+        activity.equals("Failed", true) -> Color(0xFFE38D8D)
+    needsAttention() -> p.amber
     else -> p.muted
 }
 @Composable private fun Dot(color: Color) {
@@ -651,7 +652,7 @@ fun OmniAiModesScreen(
                                         session.kind == "t3/chatgpt" && session.reachability != "Reachable" -> "Unloaded"
                                         else -> session.activity
                                     },
-                                        color = if (session.needsAttention()) p.amber else p.muted,
+                                        color = session.dotColor(p),
                                         maxLines = 1, overflow = TextOverflow.Ellipsis,
                                         style = MaterialTheme.typography.labelSmall)
                                 }
