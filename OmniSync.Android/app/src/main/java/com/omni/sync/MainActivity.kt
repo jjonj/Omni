@@ -1,6 +1,7 @@
 package com.omni.sync
 
 import android.content.Intent
+import android.app.ActivityManager
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -161,6 +162,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         omniSyncApplication = application as OmniSyncApplication
         mainViewModel = omniSyncApplication.mainViewModel
+        restoreRecentsVisibility()
         mainViewModel.addLog("[Android startup] Activity dependencies initialized; handling launch intent", com.omni.sync.ui.screen.LogType.INFO)
 
         handleIntent(intent)
@@ -474,6 +476,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        restoreRecentsVisibility()
         isForeground = true
         mainViewModel.addLog("[Android startup] Activity resumed; checking pending deployment", com.omni.sync.ui.screen.LogType.INFO)
         (application as? OmniSyncApplication)
@@ -484,6 +487,18 @@ class MainActivity : ComponentActivity() {
     override fun onPause() {
         isForeground = false
         super.onPause()
+    }
+
+    // A task launched by an external intent can retain an excluded-from-recents bit.
+    // Clear it on the existing task so returning Home or opening Recents preserves Omni.
+    private fun restoreRecentsVisibility() {
+        try {
+            val activityManager = getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+            activityManager.appTasks.firstOrNull { it.taskInfo.taskId == taskId }
+                ?.setExcludeFromRecents(false)
+        } catch (error: RuntimeException) {
+            android.util.Log.w("OmniRecents", "Unable to restore task visibility", error)
+        }
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {

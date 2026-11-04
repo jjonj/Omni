@@ -59,6 +59,9 @@
         </activity>
         <activity
             android:name=".MainActivity"
+            android:excludeFromRecents="false"
+            android:noHistory="false"
+            android:alwaysRetainTaskState="true"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden"
             android:windowSoftInputMode="adjustResize"
             android:exported="true">
