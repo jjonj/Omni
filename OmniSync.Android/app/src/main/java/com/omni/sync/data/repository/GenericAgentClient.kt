@@ -43,7 +43,8 @@ data class AgentSessionUi(
     val visibilitySnoozedUntil: Long? = null,
     val visibilitySnoozedAt: Long? = null,
     val visibilityCreatedAt: Long? = null,
-    val createdAt: Long? = null
+    val createdAt: Long? = null,
+    val workspace: String? = null
 ) {
     val key get() = "$provider:$id"
 }
@@ -412,7 +413,8 @@ class GenericAgentClient(
             obj.obj("visibility")?.get("snoozedUntil")?.let { runCatching { it.asLong }.getOrNull() },
             obj.obj("visibility")?.get("snoozedAt")?.let { runCatching { it.asLong }.getOrNull() },
             obj.obj("visibility")?.get("createdAt")?.let { runCatching { it.asLong }.getOrNull() },
-            obj.get("createdAt")?.let { runCatching { it.asLong }.getOrNull() })
+            obj.get("createdAt")?.let { runCatching { it.asLong }.getOrNull() },
+            obj.str("workspace"))
     }
 
     suspend fun refresh() = refreshMutex.withLock {
@@ -998,11 +1000,27 @@ class GenericAgentClient(
             "Selected provider cannot create a session"
         }
         require(kind in provider.kinds) {"Session kind not supported by this provider"}
-        require(workspace.isNotBlank()&&firstMessage.isNotBlank()) {
-            "Workspace and first message are required"
+
+        if (provider.id != "t3") require(workspace.isNotBlank() && firstMessage.isNotBlank()) {
+            "Workspace and first message are required for this provider"
         }
         _createdSessionKey.value = null
-        val resultText = if (provider.id == "t3" && deliveryMode=="WaitForSlot") {
+        val resultText = if (provider.id == "t3" && firstMessage.isBlank()) {
+            // Blank browser sessions are ordinary T3 tabs, not work.create jobs.
+            // Omit the project and initial message entirely when not supplied.
+            require(kind == "t3/chatgpt") { "Blank sessions are supported for ChatGPT only" }
+            val params = mutableMapOf<String, Any>(
+                "provider" to provider.id, "kind" to kind,
+                "clientRequestId" to UUID.randomUUID().toString()
+            )
+            if (workspace.isNotBlank()) params["project"] = workspace.trim()
+            val receipt = signalR.agentCall("sessions.create", params).asJsonObject
+            val ref = receipt.obj("result")?.obj("session") ?: receipt.obj("session")
+            val id = ref?.str("id")
+            if (id != null) _createdSessionKey.value = "t3:$id"
+            if (id != null) "Created blank ChatGPT session $id."
+            else "Session creation ${receipt.str("state") ?: "unconfirmed"}; refresh before retrying."
+        } else if (provider.id == "t3" && deliveryMode=="WaitForSlot") {
             createCapacitySession(kind,workspace,firstMessage,maxActiveWorkers)
         } else if (provider.id == "t3") {
             require(kind == "t3/chatgpt") { "Native T3 MAIN does not support session creation" }

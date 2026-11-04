@@ -61,6 +61,13 @@ private data class AiPalette(
 )
 private fun AgentSessionUi.needsAttention() =
     attention.isNotBlank() && !attention.equals("None", true)
+private fun AgentSessionUi.projectName(): String =
+    workspace?.trimEnd('/', '\\')?.substringAfterLast('/')?.substringAfterLast('\\')
+        ?.takeIf { it.isNotBlank() } ?: "No project"
+
+private fun AgentSessionUi.listGroup(sortMode: String): String =
+    if (sortMode == "project") projectName() else groupName()
+
 private fun AgentSessionUi.groupName(): String = when {
     needsAttention() || unread == true -> "NEEDS YOU"
     activity.equals("Working", true) || activity.equals("Running", true) ||
@@ -121,7 +128,7 @@ fun OmniAiModesScreen(
     // and comes from the authenticated provider snapshot.
     val viewPrefs = remember(context) { context.getSharedPreferences("ai-session-view-v1", Context.MODE_PRIVATE) }
     var viewRevision by remember { mutableIntStateOf(0) }
-    var sortMode by rememberSaveable { mutableStateOf(viewPrefs.getString("sort", "started") ?: "started") }
+    var sortMode by rememberSaveable { mutableStateOf(viewPrefs.getString("sort", "activity") ?: "activity") }
     var hideUnloaded by rememberSaveable { mutableStateOf(viewPrefs.getBoolean("hideUnloaded", false)) }
     var showWorkers by rememberSaveable { mutableStateOf(viewPrefs.getBoolean("showWorkers", true)) }
     val now = rememberNow()
@@ -320,12 +327,12 @@ fun OmniAiModesScreen(
                     else viewPrefs.getLong("hiddenAt:${it.key}", 0L) }
                 "Snoozed" -> list.sortedByDescending { if (isT3Browser(it)) it.visibilitySnoozedAt ?: 0L
                     else viewPrefs.getLong("snoozedAt:${it.key}", 0L) }
-                else -> list.sortedWith(compareBy<AgentSessionUi> { it.groupRank() }
+                else -> list.sortedWith(compareBy<AgentSessionUi> { if (sortMode == "project") 0 else it.groupRank() }
+                    .thenBy { if (sortMode == "project") it.projectName().lowercase() else "" }
                     .thenByDescending { it.needsAttention() }
                     .thenByDescending { it.unread == true }
-                    .thenByDescending { if (sortMode == "activity")
-                        maxOf(activityMillis(it.lastActivityAt), viewPrefs.getLong("visited:${it.key}", 0L))
-                        else it.createdAt ?: it.visibilityCreatedAt ?: 0L }
+                    .thenByDescending { if (sortMode == "started") it.createdAt ?: it.visibilityCreatedAt ?: 0L
+                        else maxOf(activityMillis(it.lastActivityAt), viewPrefs.getLong("visited:${it.key}", 0L)) }
                     .thenBy { it.key })
             }
         }
@@ -453,12 +460,15 @@ fun OmniAiModesScreen(
                     ActionIcon(Icons.Default.MoreVert, "More options", p) { menu = true }
                     DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                         if (listMode) {
-                            DropdownMenuItem(text = { Text("Sort: " + (if (sortMode == "activity") "Last active" else "Started")) },
-                                onClick = {
-                                    sortMode = if (sortMode == "started") "activity" else "started"
-                                    viewPrefs.edit().putString("sort", sortMode).apply()
-                                    menu = false
-                                })
+                            listOf("activity" to "Recent activity", "project" to "Project",
+                                "started" to "Creation date").forEach { (value, label) ->
+                                DropdownMenuItem(text = { Text((if (sortMode == value) "✓ " else "") + "Sort: " + label) },
+                                    onClick = {
+                                        sortMode = value
+                                        viewPrefs.edit().putString("sort", value).apply()
+                                        menu = false
+                                    })
+                            }
                             DropdownMenuItem(text = { Text((if (showWorkers) "✓ " else "") + "Show workers") },
                                 onClick = {
                                     showWorkers = !showWorkers
@@ -561,14 +571,28 @@ fun OmniAiModesScreen(
                                 labelColor = p.muted))
                     }
                 }
+                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())
+                    .padding(horizontal = 16.dp, vertical = 2.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(selected = sortMode == "activity", onClick = {
+                        sortMode = "activity"; viewPrefs.edit().putString("sort", sortMode).apply()
+                    }, label = { Text("Recent") })
+                    FilterChip(selected = sortMode == "project", onClick = {
+                        sortMode = "project"; viewPrefs.edit().putString("sort", sortMode).apply()
+                    }, label = { Text("By project") })
+                    FilterChip(selected = hideUnloaded, onClick = {
+                        hideUnloaded = !hideUnloaded
+                        viewPrefs.edit().putBoolean("hideUnloaded", hideUnloaded).apply()
+                    }, label = { Text("Hide unloaded") })
+                }
                 LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(
                     start = 10.dp, end = 10.dp, top = 6.dp, bottom = 20.dp),
                     verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     itemsIndexed(visibleSessions, key = { _, session -> session.key }) { index, session ->
                         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             if (sessionSearch.isBlank() && sessionFilter == "All" &&
-                                (index == 0 || visibleSessions[index - 1].groupName() != session.groupName())) {
-                                Text(session.groupName(),
+                                (index == 0 || visibleSessions[index - 1].listGroup(sortMode) != session.listGroup(sortMode))) {
+                                Text(session.listGroup(sortMode),
                                     Modifier.fillMaxWidth().padding(start = 10.dp, top = 14.dp, bottom = 5.dp),
                                     color = p.muted, fontSize = 11.sp, letterSpacing = 1.1.sp,
                                     fontWeight = FontWeight.SemiBold)
@@ -590,6 +614,8 @@ fun OmniAiModesScreen(
                                     overflow = TextOverflow.Ellipsis,
                                     fontWeight = if (session.unread == true) FontWeight.Bold else FontWeight.Medium,
                                     style = MaterialTheme.typography.bodyLarge)
+                                if (sortMode != "project" && session.workspace?.isNotBlank() == true)
+                                    Text(session.projectName(), color = p.muted, style = MaterialTheme.typography.labelSmall)
                                 Row(verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                                     Dot(session.dotColor(p))
@@ -710,8 +736,15 @@ fun OmniAiModesScreen(
                         }
                     }
                     if (!historyNotice.isNullOrBlank()) item {
-                        Text(historyNotice!!, color = p.muted,
-                            style = MaterialTheme.typography.labelSmall)
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text(historyNotice!!, color = p.muted,
+                                style = MaterialTheme.typography.labelSmall)
+                            if (online && historyNotice!!.contains("failed", ignoreCase = true)) {
+                                TextButton(onClick = {
+                                    selectedKey?.let { key -> scope.launch { client.select(key, reload = true) } }
+                                }) { Text("Retry loading conversation") }
+                            }
+                        }
                     }
                     if (history.isEmpty()) item {
                         Column(Modifier.fillMaxWidth().padding(top = 65.dp),
@@ -1090,9 +1123,9 @@ fun OmniAiModesScreen(
                 }
             }
             OutlinedTextField(workspace, { workspace = it.take(4096) },
-                label = { Text("Existing working folder") }, singleLine = true)
+                label = { Text(if (active.id == "t3") "Project / folder (optional)" else "Working folder") }, singleLine = true)
             OutlinedTextField(firstMessage, { firstMessage = it.take(30_000) },
-                label = { Text("First instruction") }, maxLines = 4)
+                label = { Text(if (active.id == "t3") "First message (optional)" else "First instruction") }, maxLines = 4)
             Text("When to start",style=MaterialTheme.typography.labelMedium)
             Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
                 FilterChip(selected=createDeliveryMode=="WhenIdle",onClick={createDeliveryMode="WhenIdle"},
@@ -1109,7 +1142,7 @@ fun OmniAiModesScreen(
             }
         }},
         confirmButton = { TextButton(enabled = !creationBusy && kind.isNotBlank() &&
-            workspace.isNotBlank() && firstMessage.isNotBlank(), onClick = {
+            (active.id == "t3" || (workspace.isNotBlank() && firstMessage.isNotBlank())), onClick = {
             if (creationBusy) return@TextButton
             creationBusy = true
             create = false
@@ -1118,9 +1151,18 @@ fun OmniAiModesScreen(
                     note = client.createSession(active, kind, workspace, firstMessage,
                         createDeliveryMode,maxActiveWorkers)
                     val newKey = client.createdSessionKey.value
-                    if (newKey != null && client.sessions.value.any { it.key == newKey }) {
-                        listMode = false
-                        client.select(newKey)
+                    if (newKey != null) {
+                        // New T3 browser tabs may appear in the provider snapshot shortly
+                        // after creation. Retry reads, never the create mutation itself.
+                        repeat(3) { attempt ->
+                            if (client.sessions.value.any { it.key == newKey }) return@repeat
+                            delay(350L * (attempt + 1))
+                            client.refresh()
+                        }
+                        if (client.sessions.value.any { it.key == newKey }) {
+                            listMode = false
+                            client.select(newKey)
+                        } else note = "Session created but not listed yet. Refresh to open it."
                     }
                 } catch (e: Exception) { note = "Create failed: " + e.message }
                 finally { creationBusy = false }
