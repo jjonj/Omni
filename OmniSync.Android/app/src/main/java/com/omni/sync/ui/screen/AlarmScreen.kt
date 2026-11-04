@@ -222,10 +222,30 @@ private fun AlarmScreenContent(
         val existing = alarms.firstOrNull { it.id == id }
         val normalizedData = if (data.isWakeAlarm) data.copy(repeatDaily = true, scheduledDate = null) else data
         val updatedData = if (existing != null && existing.isWakeAlarm && data.isWakeAlarm) {
+            // Settings such as latest wake, sound, and Auto Still Awake must not reset
+            // an explicitly selected next wake time. Only the one-time picker changes it.
+            val selected = if (data.applyChangesToNextTriggerOnly) {
+                data.copy(repeatDaily = false, applyChangesToNextTriggerOnly = false, nextTriggerOverride = null)
+            } else {
+                existing.nextTriggerOverride?.copy(
+                    enabled = data.enabled,
+                    latestWakeMinutes = data.latestWakeMinutes,
+                    autoStillAwake = data.autoStillAwake,
+                    soundId = data.soundId,
+                    gradualOverride = data.gradualOverride,
+                    useGradual = data.useGradual,
+                    quickActionOnTriggerId = data.quickActionOnTriggerId,
+                    quickActionOnDismissId = data.quickActionOnDismissId,
+                    macroOnTrigger = data.macroOnTrigger,
+                    macroOnDismiss = data.macroOnDismiss,
+                    dismissText = data.dismissText,
+                    dismissActionDelaySeconds = data.dismissActionDelaySeconds
+                )
+            }
             normalizedData.copy(
                 hour = existing.hour, minute = existing.minute, isAM = existing.isAM,
-                applyChangesToNextTriggerOnly = false,
-                nextTriggerOverride = data.copy(repeatDaily = false, applyChangesToNextTriggerOnly = false, nextTriggerOverride = null)
+                applyChangesToNextTriggerOnly = selected != null,
+                nextTriggerOverride = selected
             )
         } else if (
             existing?.repeatDaily == true &&
