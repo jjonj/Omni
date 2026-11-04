@@ -269,28 +269,51 @@ fun OmniAiModesScreen(
         }
     }
     fun openSession(s: AgentSessionUi) {
-        // Restore both parked flags in one server operation, not two competing
-        // desktop jobs. Opening never waits on this cosmetic change.
-        if (isT3Browser(s)) {
-            val patch = mutableMapOf<String, Any?>()
-            if (isHidden(s)) patch["hidden"] = false
-            if (isSnoozed(s)) patch["snoozedUntil"] = null
-            if (patch.isNotEmpty()) {
-                scope.launch {
-                    try {
-                        client.sessionAction(s, "Visibility", patch)
-                        delay(400)
-                        client.refresh()
-                    } catch (e: Exception) { note = "Unable to restore T3 visibility: " + e.message }
-                }
-            }
-        } else {
-            if (isSnoozed(s)) setSnooze(s, 0L)
-            if (isHidden(s)) setHidden(s, false)
-        }
-        viewPrefs.edit().putLong("visited:${s.key}", System.currentTimeMillis()).apply()
+        viewPrefs.edit().putLong("visited:\${s.key}", System.currentTimeMillis()).apply()
         viewRevision++
         listMode = false
+        scope.launch {
+            // Keep the cached conversation visible immediately. Cold T3 browser
+            // sessions need an explicit user wake on the desktop before history
+            // can be read; retrying history without waking can never succeed.
+            if (isT3Browser(s) && online && s.capabilities.contains("ManageVisibility")) {
+                val cold = s.reachability != "Reachable" || s.conversation.isNullOrBlank()
+                val patch = mutableMapOf<String, Any?>()
+                if (isHidden(s) || cold) patch["hidden"] = false
+                if (isSnoozed(s)) patch["snoozedUntil"] = null
+                if (patch.isNotEmpty()) {
+                    note = if (cold) "Opening ChatGPT on the PC…" else null
+                    try {
+                        client.sessionAction(s, "Visibility", patch)
+                    } catch (e: Exception) {
+                        note = "PC could not wake this session: \${e.message}"
+                    }
+                    // Catalog publishing and browser load are asynchronous. Refresh
+                    // just the selected conversation, never repeat the wake mutation.
+                    if (cold) {
+                        repeat(6) { attempt ->
+                            if (client.selected.value != s.key) return@launch
+                            delay(1_500L + attempt * 500L)
+                            client.refresh()
+                            val updated = client.sessions.value.firstOrNull { it.key == s.key }
+                            if (updated?.reachability == "Reachable" &&
+                                !updated.conversation.isNullOrBlank()) {
+                                client.select(s.key, reload = true)
+                                if (note?.startsWith("Opening ChatGPT") == true) note = null
+                                return@launch
+                            }
+                        }
+                        if (note?.startsWith("Opening ChatGPT") == true)
+                            note = "PC session has not finished loading. Use Retry or refresh; cached messages remain available."
+                    } else {
+                        client.refresh()
+                    }
+                }
+            } else {
+                if (isSnoozed(s)) setSnooze(s, 0L)
+                if (isHidden(s)) setHidden(s, false)
+            }
+        }
         scope.launch { client.select(s.key) }
     }
     val hiddenCount = remember(sessions, viewRevision) { sessions.count { isHidden(it) } }
@@ -301,7 +324,8 @@ fun OmniAiModesScreen(
         hideUnloaded, showWorkers, viewRevision, now / MINUTE_MS) {
         sessions.asSequence().filter { s ->
             sessionSearch.isBlank() || s.title.contains(sessionSearch, true) ||
-                s.id.contains(sessionSearch, true) || s.kind.contains(sessionSearch, true)
+                s.id.contains(sessionSearch, true) || s.kind.contains(sessionSearch, true) ||
+                s.workspace?.contains(sessionSearch, true) == true
         }.filter { s ->
             when (sessionFilter) {
                 "Hidden" -> isHidden(s)
@@ -517,10 +541,10 @@ fun OmniAiModesScreen(
                                     listMode = false
                                     scope.launch { client.select(createdKey) }
                                 } else scope.launch {
-                                    client.refresh()
-                                    if (client.sessions.value.any { it.key == createdKey }) {
-                                        listMode = false; client.select(createdKey)
-                                    } else note = "New session not in the list yet. Refresh again later."
+                                    if (client.ensureSession(createdKey!!)) {
+                                        listMode = false
+                                        client.select(createdKey)
+                                    } else note = "Created session not available yet. Retry opening it."
                                 }
                             })
                         DropdownMenuItem(text = { Text("AI providers") },
@@ -624,6 +648,7 @@ fun OmniAiModesScreen(
                                         sessionFilter == "Snoozed" -> "Snoozed · " +
                                             ((snoozedUntil(session) - now + MINUTE_MS - 1) / MINUTE_MS).coerceAtLeast(1) + "m left"
                                         session.needsAttention() -> session.attention
+                                        session.kind == "t3/chatgpt" && session.reachability != "Reachable" -> "Unloaded"
                                         else -> session.activity
                                     },
                                         color = if (session.needsAttention()) p.amber else p.muted,
@@ -702,6 +727,18 @@ fun OmniAiModesScreen(
                                 color = p.muted, style = MaterialTheme.typography.bodySmall)
                         }
                         TextButton(onClick = { humanInbox = true }) { Text("Inbox") }
+                    }
+                }
+                if (selected?.kind == "t3/chatgpt" &&
+                    selected.reachability != "Reachable" && online) {
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 7.dp),
+                        verticalAlignment = Alignment.CenterVertically) {
+                        Text("Unloaded on PC", color = p.muted,
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.weight(1f))
+                        TextButton(onClick = { selected.let { openSession(it) } }) {
+                            Text("Load on PC")
+                        }
                     }
                 }
                 HorizontalDivider(color = p.border)

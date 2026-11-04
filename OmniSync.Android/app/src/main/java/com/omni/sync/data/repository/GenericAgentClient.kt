@@ -102,6 +102,7 @@ class GenericAgentClient(
     private val sessionDisk = AtomicFile(File(context.filesDir, "agent-sessions-cache-v1.json"))
     private val archivePrefs=context.getSharedPreferences("agent-history-archive",Context.MODE_PRIVATE)
     private val providerPrefs=context.getSharedPreferences("agent-provider-binding",Context.MODE_PRIVATE)
+    private val blankCreatePrefs=context.getSharedPreferences("agent-blank-create-v1",Context.MODE_PRIVATE)
     private val archive:AgentHistoryArchive by lazy {AgentHistoryArchive(context)}
     private val workCreate by lazy { AgentWorkCreateStore(context) }
     @Volatile private var outboxWritable = true
@@ -169,7 +170,7 @@ class GenericAgentClient(
     val status: StateFlow<String> = _status
     private val _historyLoading = MutableStateFlow(false)
     val historyLoading: StateFlow<Boolean> = _historyLoading
-    private val _createdSessionKey = MutableStateFlow<String?>(null)
+    private val _createdSessionKey = MutableStateFlow(providerPrefs.getString("lastCreatedSession", null))
     val createdSessionKey: StateFlow<String?> = _createdSessionKey
 
     init {
@@ -187,6 +188,11 @@ class GenericAgentClient(
             }
             if (outboxWritable) persistOutbox()
             publishOutbox()
+        }
+        scope.launch {
+            _createdSessionKey.collectLatest { id ->
+                if (id != null) providerPrefs.edit().putString("lastCreatedSession", id).apply()
+            }
         }
         scope.launch {
             signalR.hubAuthenticated.collectLatest { authenticated ->
@@ -230,6 +236,7 @@ class GenericAgentClient(
                                 visibilitySnoozedUntil = if (summary.has("visibility")) updated.visibilitySnoozedUntil else previous?.visibilitySnoozedUntil,
                                 visibilitySnoozedAt = if (summary.has("visibility")) updated.visibilitySnoozedAt else previous?.visibilitySnoozedAt,
                                 visibilityCreatedAt = if (summary.has("visibility")) updated.visibilityCreatedAt else previous?.visibilityCreatedAt,
+                                workspace = if (summary.has("workspace")) updated.workspace else previous?.workspace,
                                 reachability = if (summary.obj("state")?.has("reachability") == true)
                                     updated.reachability else previous?.reachability ?: updated.reachability,
                                 lastActivityAt = if (summary.has("lastActivityAt")) updated.lastActivityAt else previous?.lastActivityAt,
@@ -431,35 +438,67 @@ class GenericAgentClient(
                 _lastProvider.value=it.id
                 providerPrefs.edit().putString("lastActive",it.id).apply()
             }
-            // The Hub exposes a paginated listing; the old UI silently stopped after
-            // the first page. Bound traversal and deduplicate overlapping observations.
+            // Publish each page as it arrives. Waiting for the entire desktop
+            // catalog makes the AI screen appear empty if any later page stalls.
+            // The first page also carries cached entries until traversal finishes.
+            val previouslyKnown = _sessions.value
             val collected = LinkedHashMap<String, AgentSessionUi>()
             val cursors = HashSet<String>()
             var cursor: String? = null
             var warning: String? = null
-            for (pageIndex in 0 until 4) {
-                val params = mutableMapOf<String, Any>("clientId" to clientId, "limit" to 400)
+            var complete = false
+            for (pageIndex in 0 until 20) {
+                val params = mutableMapOf<String, Any>("clientId" to clientId, "limit" to 100)
                 cursor?.let { params["page"] = it }
-                val page = signalR.agentCall("sessions.list", params).asJsonObject
+                val page = try {
+                    signalR.agentCall("sessions.list", params).asJsonObject
+                } catch (e: Exception) {
+                    warning = "Session catalog partially refreshed (\${collected.size} loaded): \${e.message}"
+                    break
+                }
                 page.array("items")?.forEach { item ->
                     val session = item.asObjectOrNull()?.let { parseSession(it) } ?: return@forEach
                     collected[session.key] = session
                 }
+                _sessions.value = (collected.values +
+                    previouslyKnown.filterNot { collected.containsKey(it.key) }).toList()
+                if (pageIndex == 0) saveSessions()
                 warning = page.str("warning") ?: warning
                 val next = page.str("next")
                 if (next.isNullOrBlank() || !cursors.add(next)) {
-                    cursor = null
+                    complete = next.isNullOrBlank()
                     break
                 }
                 cursor = next
-                if (pageIndex == 3) warning = "Only the most recent 1600 sessions are loaded; older history may be missing."
             }
-            _sessions.value = collected.values.toList()
-            saveSessions()
+            if (complete) _sessions.value = collected.values.toList()
+            if (collected.isNotEmpty()) saveSessions()
+            if (!complete && warning.isNullOrBlank())
+                warning = "Session catalog is incomplete; showing cached conversations too."
             watchSelection()
             _status.value = warning ?: ""
         } catch (e: Exception) {
             _status.value = "Provider refresh failed: ${e.message}"
+        }
+    }
+    /** Resolve an exact session independently of the paginated catalog.
+     * Useful immediately after Create, while the desktop publication catches up. */
+    suspend fun ensureSession(key: String): Boolean {
+        if (_sessions.value.any { it.key == key }) return true
+        if (!signalR.hubAuthenticated.value) return false
+        val parts = key.split(':', limit = 2)
+        if (parts.size != 2 || parts.any { it.isBlank() }) return false
+        return try {
+            val result = signalR.agentCall("sessions.get", mapOf(
+                "session" to mapOf("provider" to parts[0], "id" to parts[1])
+            )).asJsonObject
+            val row = parseSession(result) ?: return false
+            _sessions.value = listOf(row) + _sessions.value.filterNot { it.key == row.key }
+            saveSessions()
+            true
+        } catch (e: Exception) {
+            Log.d("GenericAgents", "Exact session lookup not yet available: $key", e)
+            false
         }
     }
     suspend fun select(key: String?, reload: Boolean = false) {
@@ -475,6 +514,18 @@ class GenericAgentClient(
             _historyNotice.value = if (key != null) "Offline cache may be partial." else null
         }
         if (key == null || !signalR.hubAuthenticated.value) return
+        val chosen = _sessions.value.firstOrNull { it.key == key } ?: return
+        if (chosen.kind == "t3/chatgpt" &&
+            (chosen.reachability != "Reachable" || chosen.conversation.isNullOrBlank())) {
+            // A cold guest cannot expose verified DOM history. Do not repeatedly
+            // issue a guaranteed-failing history RPC every eight seconds.
+            _historyLoading.value = false
+            if (_selected.value == key) _historyNotice.value =
+                if (chosen.reachability != "Reachable")
+                    "ChatGPT is unloaded on the PC. Opening it on your phone requests a wake."
+                else "New ChatGPT tab. Conversation history appears after the first message."
+            return
+        }
         if (reload && switched) return
         if (_selected.value == key && !reload) _historyLoading.value = true
         try {
@@ -1004,22 +1055,44 @@ class GenericAgentClient(
         if (provider.id != "t3") require(workspace.isNotBlank() && firstMessage.isNotBlank()) {
             "Workspace and first message are required for this provider"
         }
-        _createdSessionKey.value = null
         val resultText = if (provider.id == "t3" && firstMessage.isBlank()) {
-            // Blank browser sessions are ordinary T3 tabs, not work.create jobs.
-            // Omit the project and initial message entirely when not supplied.
             require(kind == "t3/chatgpt") { "Blank sessions are supported for ChatGPT only" }
+            // Persist before contacting T3. A lost ACK is not proof of failure;
+            // subsequent Create retries use the same idempotent request ID.
+            val project = workspace.trim()
+            val pendingId = blankCreatePrefs.getString("requestId", null)
+            if (pendingId != null) {
+                check(blankCreatePrefs.getString("kind", null) == kind &&
+                    blankCreatePrefs.getString("project", null) == project) {
+                    "A different blank creation is unresolved. Retry with its original settings."
+                }
+            }
+            val requestId = pendingId ?: UUID.randomUUID().toString().also { id ->
+                check(blankCreatePrefs.edit().putString("requestId", id)
+                    .putString("kind", kind).putString("project", project).commit()) {
+                    "Could not persist create identity; no new session started"
+                }
+            }
             val params = mutableMapOf<String, Any>(
-                "provider" to provider.id, "kind" to kind,
-                "clientRequestId" to UUID.randomUUID().toString()
+                "provider" to provider.id, "kind" to kind, "clientRequestId" to requestId
             )
-            if (workspace.isNotBlank()) params["project"] = workspace.trim()
-            val receipt = signalR.agentCall("sessions.create", params).asJsonObject
-            val ref = receipt.obj("result")?.obj("session") ?: receipt.obj("session")
+            if (project.isNotEmpty()) params["project"] = project
+            val receipt = try {
+                signalR.agentCall("sessions.create", params).asJsonObject
+            } catch (_: Exception) {
+                null
+            }
+            val ref = receipt?.obj("result")?.obj("session") ?: receipt?.obj("session")
             val id = ref?.str("id")
-            if (id != null) _createdSessionKey.value = "t3:$id"
-            if (id != null) "Created blank ChatGPT session $id."
-            else "Session creation ${receipt.str("state") ?: "unconfirmed"}; refresh before retrying."
+            if (id != null) {
+                _createdSessionKey.value = "t3:$id"
+                providerPrefs.edit().putString("lastCreatedSession", "t3:$id").commit()
+                blankCreatePrefs.edit().clear().commit()
+                "Created blank ChatGPT session $id."
+            } else if (receipt?.str("state") == "Failed") {
+                blankCreatePrefs.edit().clear().commit()
+                "ChatGPT creation rejected: " + (receipt.str("error") ?: "unknown reason")
+            } else "Creation unconfirmed. Original request saved; retry Create to reconcile without duplicates."
         } else if (provider.id == "t3" && deliveryMode=="WaitForSlot") {
             createCapacitySession(kind,workspace,firstMessage,maxActiveWorkers)
         } else if (provider.id == "t3") {
@@ -1058,7 +1131,8 @@ class GenericAgentClient(
                 _createdSessionKey.value = "${ref.str("provider")}:${ref.str("id")}"
             "Session creation: ${receipt.str("state") ?: "Unknown"}"
         }
-        refresh()
+        _createdSessionKey.value?.let { ensureSession(it) }
+        scope.launch { refresh() }
         _status.value = resultText
         return resultText
     }
