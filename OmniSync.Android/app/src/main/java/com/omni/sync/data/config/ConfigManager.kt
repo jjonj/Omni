@@ -90,6 +90,7 @@ class ConfigManager(private val context: Context) {
             NotificationAction("pre-tell-pc", "Tell PC", "TELL_PC", isTellPc = true),
             NotificationAction("pre-voice-jarvis", "Jarvis", "VOICE:JARVIS"),
             NotificationAction("pre-voice-type", "Type", "VOICE:TYPE"),
+            NotificationAction("pre-chatgpt-voice", "ChatGPT Voice", "CHATGPT_VOICE"),
             NotificationAction("pre-smart-ai", "Smart AI (Clipboard)", "SMART_AI"),
              NotificationAction("pre-alarm-830", "Alarm 8h30m", "ALARM:510"),
              NotificationAction("pre-still-awake", "Still awake", "STILL_AWAKE"),

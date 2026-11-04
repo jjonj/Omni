@@ -28,6 +28,8 @@
     <uses-permission android:name="android.permission.UPDATE_PACKAGES_WITHOUT_USER_ACTION" />
 
     <queries>
+        <!-- Optional external voice shortcut target; checked at launch. -->
+        <package android:name="com.openai.chatgpt" />
         <!-- Required for SpeechRecognizer service discovery on Android 11+. -->
         <intent>
             <action android:name="android.speech.RecognitionService" />
@@ -224,6 +226,20 @@
             android:name=".access_pre_voice_jarvis"
             android:targetActivity=".ui.AccessibilityQuickActionActivity"
             android:label="Omni: Jarvis voice"
+            android:icon="@drawable/ic_mic"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.ACCESSIBILITY_SHORTCUT_TARGET" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityshortcut.target"
+                android:resource="@xml/accessibility_shortcut_target" />
+        </activity-alias>
+        <activity-alias
+            android:name=".access_pre_chatgpt_voice"
+            android:targetActivity=".ui.AccessibilityQuickActionActivity"
+            android:label="Omni: ChatGPT Voice"
             android:icon="@drawable/ic_mic"
             android:exported="true">
             <intent-filter>

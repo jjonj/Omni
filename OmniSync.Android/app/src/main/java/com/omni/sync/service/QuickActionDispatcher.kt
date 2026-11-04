@@ -30,6 +30,35 @@ object QuickActionDispatcher {
             context.startActivity(Intent(context, com.omni.sync.ui.VoiceShortcutActivity::class.java)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
                 .putExtra(com.omni.sync.ui.VoiceShortcutActivity.EXTRA_MODE, mode.name))
+        } else if (action.command == "CHATGPT_VOICE") {
+            // ChatGPT's launcher/widget voice entry is not a public stable API. These
+            // exported activities have been observed in different app versions;
+            // fail without switching away from the current Android app if neither works.
+            val packageName = "com.openai.chatgpt"
+            val voiceActivities = listOf(
+                "com.openai.voice.assistant.AssistantActivity",
+                "com.openai.voice.VoiceModeActivity"
+            )
+            val launched = voiceActivities.any { activity ->
+                try {
+                    context.startActivity(
+                        Intent(Intent.ACTION_MAIN)
+                            .setClassName(packageName, activity)
+                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                    )
+                    true
+                } catch (error: Exception) {
+                    android.util.Log.d("OmniChatGPTVoice", "Voice entry unavailable: $activity", error)
+                    false
+                }
+            }
+            if (!launched) {
+                Toast.makeText(
+                    context,
+                    "ChatGPT voice shortcut unavailable in this app version",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
         } else if (action.isWol && action.macAddress != null) {
             mainViewModel.sendWakeOnLan(action.macAddress)
         } else if (action.command.startsWith("NAV:")) {

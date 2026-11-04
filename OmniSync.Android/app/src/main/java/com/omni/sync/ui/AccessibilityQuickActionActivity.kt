@@ -145,7 +145,8 @@ class AccessibilityQuickActionActivity : ComponentActivity() {
 
     /** PC commands need an established SignalR session; cold-starting a shortcut must not drop them. */
     private fun runAction(action: NotificationAction) {
-        val localAction = action.isWol || action.command == "PC_KEYBOARD" ||
+        val localAction = action.isWol || action.command == "CHATGPT_VOICE" ||
+            action.command == "PC_KEYBOARD" ||
             action.command.startsWith("VOICE:") ||
             action.command == "STILL_AWAKE" ||
             action.command.startsWith("ALARM:") ||
