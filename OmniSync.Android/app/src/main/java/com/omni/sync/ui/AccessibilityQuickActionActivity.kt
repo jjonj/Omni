@@ -39,6 +39,19 @@ import com.omni.sync.ui.theme.OmniSyncTheme
  * This activity never needs Omni's existing AccessibilityService to be enabled.
  */
 class AccessibilityQuickActionActivity : ComponentActivity() {
+    private var pendingClipboardAction: NotificationAction? = null
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) {
+            pendingClipboardAction?.let { action ->
+                pendingClipboardAction = null
+                dispatch(action)
+                finish()
+            }
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -140,8 +153,7 @@ class AccessibilityQuickActionActivity : ComponentActivity() {
 
         if (localAction || (application as com.omni.sync.OmniSyncApplication)
                 .signalRClient.connectionState.value == "Connected") {
-            dispatch(action)
-            finish()
+            dispatchAndFinish(action)
             return
         }
 
@@ -158,7 +170,7 @@ class AccessibilityQuickActionActivity : ComponentActivity() {
                     .first { it == "Connected" }
             } != null
             if (connected) {
-                dispatch(action)
+                dispatchAndFinish(action)
             } else {
                 Log.w("OmniAccessibilityAction", "Hub unavailable for ${action.label}")
                 Toast.makeText(
@@ -166,9 +178,19 @@ class AccessibilityQuickActionActivity : ComponentActivity() {
                     "Omni Hub disconnected: ${action.label}",
                     Toast.LENGTH_LONG
                 ).show()
+                finish()
             }
-            finish()
         }
+    }
+
+    private fun dispatchAndFinish(action: NotificationAction) {
+        // Android 10+ limits clipboard reads to the focused app. onCreate is too early.
+        if (action.command == "CLIPBOARD_PHONE_TO_PC_PASTE" && !hasWindowFocus()) {
+            pendingClipboardAction = action
+            return
+        }
+        dispatch(action)
+        finish()
     }
 
     private fun dispatch(action: NotificationAction) {
