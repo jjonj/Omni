@@ -902,6 +902,7 @@ fun AlarmCard(
                             if (alarm.isWakeAlarm) Text("Today's wake time")
                             Text(timeFormat.format(displayCal.time), style = MaterialTheme.typography.headlineMedium)
                             if (alarm.isWakeAlarm) Text(SimpleDateFormat("EEE d MMM", Locale.getDefault()).format(displayCal.time), style = MaterialTheme.typography.bodySmall)
+                            if (alarm.isWakeAlarm && targetAlarm.nextTriggerOverride != null) Text("One-time wake time (saved across restarts)", style = MaterialTheme.typography.bodySmall)
                         }
                     }
 

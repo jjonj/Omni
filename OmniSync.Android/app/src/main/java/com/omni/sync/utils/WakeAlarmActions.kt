@@ -31,7 +31,8 @@ object WakeAlarmActions {
             set(Calendar.SECOND, 0)
             set(Calendar.MILLISECOND, 0)
             if (data.scheduledDate == null && timeInMillis <= now) add(Calendar.DAY_OF_YEAR, 1)
-            if (alarm.isWakeAlarm) {
+            // A manually chosen next wake time takes precedence over the automatic latest-wake cap.
+            if (alarm.isWakeAlarm && alarm.nextTriggerOverride == null) {
                 val latestMinutes = alarm.latestWakeMinutes ?: 720
                 val latest = (clone() as Calendar).apply {
                     set(Calendar.HOUR_OF_DAY, latestMinutes / 60)
@@ -107,6 +108,8 @@ object WakeAlarmActions {
         viewModel?.addLog("[Wake detection] ${if (automatic) "Phone activity" else "Still awake button"} received; alarmId=$alarmId", LogType.INFO)
         val updated = alarms.map { alarm ->
             if (!alarm.isWakeAlarm || (alarmId != null && alarm.id != alarmId)) return@map alarm
+            // Never silently replace a saved one-time wake choice with background activity.
+            if (automatic && alarm.nextTriggerOverride != null) return@map alarm
             val remaining = nextTrigger(alarm, now) - now
             if (!alarm.enabled || (automatic && (!alarm.autoStillAwake || remaining !in 1..AUTO_WINDOW))) {
                 viewModel?.addLog("[Wake detection ${alarm.id}] Skipped: enabled=${alarm.enabled}, auto=${alarm.autoStillAwake}, minutesUntilAlarm=${remaining / 60_000}", LogType.INFO)
