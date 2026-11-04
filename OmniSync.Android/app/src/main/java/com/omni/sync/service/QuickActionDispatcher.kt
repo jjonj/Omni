@@ -25,8 +25,11 @@ object QuickActionDispatcher {
                 com.omni.sync.data.repository.SignalRClient.VoiceMode.JARVIS
             else com.omni.sync.data.repository.SignalRClient.VoiceMode.TYPE
             mainViewModel.addLog("Quick action: voice ${mode.name}...", com.omni.sync.ui.screen.LogType.INFO)
-            signalRClient.requestVoiceCapture(mode)
-            context.startActivity(mainActivityIntent(context))
+            // Do not navigate to Omni's main UI: the recognizer lives in a translucent
+            // bottom panel so the previously active app remains visible.
+            context.startActivity(Intent(context, com.omni.sync.ui.VoiceShortcutActivity::class.java)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                .putExtra(com.omni.sync.ui.VoiceShortcutActivity.EXTRA_MODE, mode.name))
         } else if (action.isWol && action.macAddress != null) {
             mainViewModel.sendWakeOnLan(action.macAddress)
         } else if (action.command.startsWith("NAV:")) {
