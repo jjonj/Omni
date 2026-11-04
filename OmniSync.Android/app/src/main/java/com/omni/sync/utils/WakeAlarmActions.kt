@@ -124,6 +124,9 @@ object WakeAlarmActions {
             val changed = alarm.copy(hour = cal.get(Calendar.HOUR_OF_DAY).let { if (it % 12 == 0) 12 else it % 12 },
                 minute = cal.get(Calendar.MINUTE), isAM = cal.get(Calendar.AM_PM) == Calendar.AM, scheduledDate = fireAt)
             val result = alarm.withNextTriggerOverride(changed)
+            AlarmTrace.record("STILL_AWAKE_ADJUST", "automatic=" + automatic + " before=" +
+                AlarmTrace.describe(alarm) + " after=" + AlarmTrace.describe(result) +
+                " scheduled=" + AlarmTrace.time(fireAt))
             AlarmScheduler.scheduleAlarm(context, alarm.id, result, config)
             (context.applicationContext as? OmniSyncApplication)?.mainViewModel?.addLog(
                 "[Wake alarm ${alarm.id}] Still awake${if (automatic) " (phone interaction)" else ""}: next occurrence ${cal.time}; ${capNote(alarm, now, fireAt)}", LogType.INFO)

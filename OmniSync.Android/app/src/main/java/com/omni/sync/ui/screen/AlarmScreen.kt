@@ -177,11 +177,12 @@ private fun AlarmScreenContent(
     }
     
     fun saveAlarms(updatedAlarms: List<AlarmData> = alarms) {
-        prefs.edit().apply {
-            putString(AlarmStore.ALARMS_KEY, gson.toJson(updatedAlarms))
-            putString("config", gson.toJson(config))
-            apply()
-        }
+        val saved = prefs.edit()
+            .putString(AlarmStore.ALARMS_KEY, gson.toJson(updatedAlarms))
+            .putString("config", gson.toJson(config))
+            .commit()
+        com.omni.sync.utils.AlarmTrace.record("UI_SAVE", "committed=" + saved + " " +
+            updatedAlarms.joinToString(" | ") { com.omni.sync.utils.AlarmTrace.describe(it) })
     }
 
     var showTimePicker by remember { mutableStateOf<Int?>(null) } 
@@ -215,6 +216,9 @@ private fun AlarmScreenContent(
     }
 
     fun updateSchedule(id: Int, data: AlarmData) {
+        com.omni.sync.utils.AlarmTrace.record("USER_EDIT", "old=" +
+            alarms.firstOrNull { it.id == id }?.let { com.omni.sync.utils.AlarmTrace.describe(it) } +
+            " requested=" + com.omni.sync.utils.AlarmTrace.describe(data))
         val existing = alarms.firstOrNull { it.id == id }
         val normalizedData = if (data.isWakeAlarm) data.copy(repeatDaily = true, scheduledDate = null) else data
         val updatedData = if (existing != null && existing.isWakeAlarm && data.isWakeAlarm) {
@@ -235,6 +239,7 @@ private fun AlarmScreenContent(
         val updatedAlarms = alarms.map { if (it.id == id) updatedData else it }
         alarms = updatedAlarms
         saveAlarms(updatedAlarms)
+        com.omni.sync.utils.AlarmTrace.record("USER_EDIT_SAVED", com.omni.sync.utils.AlarmTrace.describe(updatedData))
         mainViewModel.addLog("[Wake alarm $id] Settings saved: enabled=${updatedData.enabled}, wake=${updatedData.isWakeAlarm}, daily=${updatedData.repeatDaily}, nextOnly=${updatedData.nextTriggerOverride != null}", LogType.INFO)
         if (updatedData.enabled) {
             AlarmScheduler.scheduleAlarm(context, id, updatedData, config)
@@ -658,6 +663,9 @@ private fun AlarmScreenContent(
                     val target = updated.copy(applyChangesToNextTriggerOnly = false, repeatDaily = true, scheduledDate = null,
                         nextTriggerOverride = storedAlarm.nextTriggerOverride)
                     alarms = alarms.map { if (it.id == alarmId) target else it }
+                    com.omni.sync.utils.AlarmTrace.record("TARGET_EDIT", "before=" +
+                        com.omni.sync.utils.AlarmTrace.describe(storedAlarm) + " after=" +
+                        com.omni.sync.utils.AlarmTrace.describe(target))
                     saveAlarms(alarms)
                     AlarmScheduler.scheduleAlarm(context, alarmId, target, config)
                 } else {

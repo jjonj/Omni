@@ -18,13 +18,16 @@ object AlarmStore {
         val normalized = normalizeIds(source)
 
         if (stored == null || stored != normalized) {
+            AlarmTrace.record("NORMALIZE", "existingList=" + (stored != null) +
+                " " + normalized.joinToString(" | ") { AlarmTrace.describe(it) })
             save(prefs, gson, normalized)
         }
         return normalized
     }
 
     fun save(prefs: SharedPreferences, gson: Gson, alarms: List<AlarmData>) {
-        prefs.edit().putString(ALARMS_KEY, gson.toJson(alarms)).apply()
+        val success = prefs.edit().putString(ALARMS_KEY, gson.toJson(alarms)).commit()
+        AlarmTrace.record("STORE_WRITE", "success=" + success + " " + alarms.joinToString(" | ") { AlarmTrace.describe(it) })
     }
 
     fun nextId(alarms: List<AlarmData>): Int = (alarms.maxOfOrNull { it.id } ?: 0) + 1

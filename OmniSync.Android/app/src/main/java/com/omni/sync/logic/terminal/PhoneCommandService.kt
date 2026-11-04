@@ -83,6 +83,9 @@ class PhoneCommandService(private val context: Context, private val hub: SignalR
         val action = words.first().lowercase()
         val argument = command.substringAfter(' ', "").trim()
         when (action) {
+            "alarm-log" -> {
+                emit(com.omni.sync.utils.AlarmTrace.export(context) + "\n")
+            }
             "help" -> {
                 emit("Commands: help, info, apps, open <package>, url <url>, settings [wifi|sound|display|bluetooth|accessibility|apps|battery], volume [show|up|down|media N|ring N], home, back, recents, tap X Y, swipe X1 Y1 X2 Y2 [milliseconds], shell <command>.\n")
                 emit("Other commands run through Android /system/bin/sh under Omni's app permissions.\n")

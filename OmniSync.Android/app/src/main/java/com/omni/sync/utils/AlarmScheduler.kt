@@ -13,13 +13,18 @@ import java.util.Calendar
 
 object AlarmScheduler {
     fun restoreEnabledAlarms(context: Context) {
+        AlarmTrace.init(context, "restoreEnabledAlarms")
         val prefs = context.getSharedPreferences("alarm_prefs", Context.MODE_PRIVATE)
         val gson = com.google.gson.Gson()
         val config = prefs.getString("config", null)?.let { gson.fromJson(it, GradualConfig::class.java) } ?: GradualConfig()
-        AlarmStore.load(prefs, gson).filter { it.enabled }.forEach { alarm ->
+        val all = AlarmStore.load(prefs, gson)
+        AlarmTrace.record("RESTORE_READ", all.joinToString(" | ") { AlarmTrace.describe(it) })
+        all.filter { it.enabled }.forEach { alarm ->
             val trigger = alarm.resolvedForNextTrigger()
             if (trigger.scheduledDate == null || WakeAlarmActions.nextTrigger(alarm, System.currentTimeMillis()) > System.currentTimeMillis()) {
                 scheduleAlarm(context, alarm.id, alarm, config)
+            } else {
+                AlarmTrace.record("RESTORE_SKIPPED", AlarmTrace.describe(alarm))
             }
         }
     }
@@ -44,6 +49,7 @@ object AlarmScheduler {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             if (!alarmManager.canScheduleExactAlarms()) {
                 Log.e("AlarmScheduler", "Permission SCHEDULE_EXACT_ALARM not granted.")
+                AlarmTrace.record("PERMISSION_DENIED", AlarmTrace.describe(data))
                 (context.applicationContext as? com.omni.sync.OmniSyncApplication)?.mainViewModel?.addLog(
                     "[Wake alarm $alarmId] Scheduling failed: exact alarm permission missing", com.omni.sync.ui.screen.LogType.ERROR)
                 return
@@ -139,12 +145,16 @@ object AlarmScheduler {
 
         Log.i("AlarmScheduler", "Scheduling Alarm $alarmId for: ${calendar.time}")
 
+        AlarmTrace.record("SCHEDULE_ATTEMPT", "alarm=" + alarmId + " at=" +
+            AlarmTrace.time(calendar.timeInMillis) + " nextDay=" + forceNextDay + " " + AlarmTrace.describe(data))
         try {
             val alarmClockInfo = AlarmManager.AlarmClockInfo(calendar.timeInMillis, pendingIntent)
             alarmManager.setAlarmClock(alarmClockInfo, pendingIntent)
+            AlarmTrace.record("SCHEDULE_SUCCESS", "alarm=" + alarmId + " at=" + AlarmTrace.time(calendar.timeInMillis))
             (context.applicationContext as? com.omni.sync.OmniSyncApplication)?.mainViewModel?.addLog(
                 "[Wake alarm $alarmId] Scheduled ${calendar.time}; daily=${data.repeatDaily}, wake=${data.isWakeAlarm}, nextOverride=${data.nextTriggerOverride != null}", com.omni.sync.ui.screen.LogType.INFO)
         } catch (e: SecurityException) {
+            AlarmTrace.record("SCHEDULE_ERROR", "alarm=" + alarmId + " cause=" + e)
             Log.e("AlarmScheduler", "Security Exception", e)
         }
     }
@@ -205,6 +215,8 @@ object AlarmScheduler {
         val triggerTime = System.currentTimeMillis() + (snoozeMin * 60 * 1000L)
         
         Log.i("AlarmScheduler", "Scheduling Snooze for Alarm $alarmId at $triggerTime (in $snoozeMin min)")
+        AlarmTrace.record("SNOOZE_SCHEDULE", "alarm=" + alarmId +
+            " at=" + AlarmTrace.time(triggerTime) + " repetition=" + repetition)
 
         try {
             val alarmClockInfo = AlarmManager.AlarmClockInfo(triggerTime, pendingIntent)
@@ -226,6 +238,7 @@ object AlarmScheduler {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         alarmManager.cancel(pendingIntent)
+        AlarmTrace.record("CANCEL_MAIN", "id=" + alarmId)
         
         // Also cancel potential snooze
         cancelSnooze(context, alarmId)
@@ -245,5 +258,6 @@ object AlarmScheduler {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         alarmManager.cancel(pendingIntent)
+        AlarmTrace.record("CANCEL_SNOOZE", "id=" + alarmId)
     }
 }

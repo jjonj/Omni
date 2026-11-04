@@ -19,6 +19,8 @@ class ReminderReceiver : BroadcastReceiver() {
                 "Tomorrow" -> client.postponeReminder(id, java.time.OffsetDateTime.now().plusDays(1).toString())
             }
         } else {
+            com.omni.sync.utils.AlarmTrace.init(context, "receiver")
+            com.omni.sync.utils.AlarmTrace.record("REBOOT_OR_TIME_BROADCAST", intent.action ?: "unknown")
             ReminderDelivery.restore(context)
             com.omni.sync.utils.AlarmScheduler.restoreEnabledAlarms(context)
             com.omni.sync.logic.assistant.AssistantScheduleStore.restore(context)

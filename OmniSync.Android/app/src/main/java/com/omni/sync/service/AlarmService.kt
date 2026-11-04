@@ -354,6 +354,7 @@ class AlarmService : Service(), android.content.SharedPreferences.OnSharedPrefer
     }
 
     private fun handleAutoSnooze() {
+        com.omni.sync.utils.AlarmTrace.record("AUTO_SNOOZE", "alarm=" + currentAlarmId + " rep=" + currentRepetition)
         currentReminderId?.let { id ->
             stopSound()
             val item = com.omni.sync.utils.ReminderDelivery.load(this).find { it.id == id }
@@ -423,6 +424,7 @@ class AlarmService : Service(), android.content.SharedPreferences.OnSharedPrefer
     }
 
     private fun handleDismiss() {
+        com.omni.sync.utils.AlarmTrace.record("ALARM_DISMISSED", "alarm=" + currentAlarmId + " rep=" + currentRepetition)
         currentReminderId?.let { id ->
             timeoutJob?.cancel()
             stopSound()

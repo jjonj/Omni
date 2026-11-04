@@ -17,6 +17,15 @@ class AlarmReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         Log.d("AlarmReceiver", "Alarm Received! ${intent.action}")
         if (intent.action == "com.omni.sync.ALARM_TRIGGER") {
+            com.omni.sync.utils.AlarmTrace.init(context, "alarm-delivery")
+            com.omni.sync.utils.AlarmTrace.record("ALARM_RECEIVED", "id=" +
+                intent.getIntExtra("ALARM_ID", -1) + " repeat=" +
+                intent.getIntExtra("CURRENT_REPETITION", -1) + " scheduledClock=" +
+                intent.getIntExtra("HOUR", -1) + ":" + intent.getIntExtra("MINUTE", -1))
+            val snapshot = AlarmStore.load(context.getSharedPreferences("alarm_prefs", Context.MODE_PRIVATE), Gson())
+                .firstOrNull { it.id == intent.getIntExtra("ALARM_ID", -1) }
+            com.omni.sync.utils.AlarmTrace.record("STORED_AT_DELIVERY",
+                snapshot?.let { com.omni.sync.utils.AlarmTrace.describe(it) } ?: "missing")
             
             // 1. Reschedule for tomorrow if it's the Main Alarm (not snooze) and Repeat is ON
             val isSnooze = intent.getIntExtra("CURRENT_REPETITION", 0) > 0
