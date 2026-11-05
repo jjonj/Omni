@@ -74,7 +74,8 @@ data class AlarmData(
     var applyChangesToNextTriggerOnly: Boolean = false,
     var nextTriggerOverride: AlarmData? = null,
     // Null means a pre-migration override; treat it as manual to protect existing wake choices.
-    var nextTriggerSource: String? = null
+    var nextTriggerSource: String? = null,
+    var bedtimeAlarmEnabled: Boolean = false
 ) {
     /** Returns the one-off settings when a daily alarm has a pending next-trigger change. */
     fun resolvedForNextTrigger(): AlarmData {
@@ -85,6 +86,7 @@ data class AlarmData(
             isWakeAlarm = isWakeAlarm,
             autoStillAwake = autoStillAwake,
             latestWakeMinutes = latestWakeMinutes,
+            bedtimeAlarmEnabled = bedtimeAlarmEnabled,
             repeatDaily = repeatDaily,
             applyChangesToNextTriggerOnly = applyChangesToNextTriggerOnly,
             nextTriggerOverride = nextTriggerOverride
@@ -97,6 +99,7 @@ data class AlarmData(
         isWakeAlarm = changed.isWakeAlarm,
         autoStillAwake = changed.autoStillAwake,
         latestWakeMinutes = changed.latestWakeMinutes,
+        bedtimeAlarmEnabled = changed.bedtimeAlarmEnabled,
         applyChangesToNextTriggerOnly = true,
         nextTriggerOverride = changed.copy(
             id = id,
@@ -255,7 +258,8 @@ private fun AlarmScreenContent(
                     manualNextWakeEdit -> "manual"
                     else -> existing.nextTriggerSource
                 },
-                nextTriggerOverride = selected
+                nextTriggerOverride = selected,
+                bedtimeAlarmEnabled = data.bedtimeAlarmEnabled
             )
         } else if (
             existing?.repeatDaily == true &&
@@ -410,7 +414,8 @@ private fun AlarmScreenContent(
         ) {
             // Dismiss Button when ringing or snoozing - PINNED AT TOP
             if (isRinging || isSnoozing) {
-                val dismissText = activeAlarm?.dismissText
+                val dismissText = if (com.omni.sync.utils.AlarmScheduler.isBedtimeAlarmId(activeAlarmId))
+                    "Time for bed" else activeAlarm?.dismissText
                 
                 Column(
                     modifier = Modifier.padding(vertical = 16.dp),
@@ -447,7 +452,10 @@ private fun AlarmScreenContent(
             }
 
             val wakeAlarms = alarms.filter { it.enabled && it.isWakeAlarm }
-            if (wakeAlarms.isNotEmpty() && !isRinging) {
+            val imminentWakeAlarms = wakeAlarms.map { alarm ->
+                alarm to com.omni.sync.utils.WakeAlarmActions.nextTrigger(alarm, currentTime)
+            }.filter { (_, at) -> at > currentTime && at - currentTime <= 12L * 60 * 60 * 1000 }
+            if (imminentWakeAlarms.isNotEmpty() && !isRinging && !isSnoozing) {
                 Button(
                     onClick = { com.omni.sync.utils.WakeAlarmActions.stillAwake(context) },
                     modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp).height(64.dp),
@@ -457,17 +465,15 @@ private fun AlarmScreenContent(
                     )
                 ) { Text("STILL AWAKE", style = MaterialTheme.typography.headlineSmall) }
 
-                val todayWakeAlarm = wakeAlarms.firstOrNull { alarm ->
-                    val trigger = Calendar.getInstance().apply {
-                        timeInMillis = com.omni.sync.utils.WakeAlarmActions.nextTrigger(alarm, currentTime)
-                    }
+                val todayWakeAlarm = imminentWakeAlarms.firstOrNull { (_, triggerTime) ->
+                    val trigger = Calendar.getInstance().apply { timeInMillis = triggerTime }
                     val today = Calendar.getInstance().apply { timeInMillis = currentTime }
                     trigger.get(Calendar.YEAR) == today.get(Calendar.YEAR) &&
                         trigger.get(Calendar.DAY_OF_YEAR) == today.get(Calendar.DAY_OF_YEAR)
                 }
                 if (todayWakeAlarm != null) {
                     Button(
-                        onClick = { dismissUpcomingAlarm(todayWakeAlarm) },
+                        onClick = { dismissUpcomingAlarm(todayWakeAlarm.first) },
                         modifier = Modifier.fillMaxWidth().height(56.dp),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = MaterialTheme.colorScheme.errorContainer,
@@ -955,6 +961,18 @@ fun AlarmCard(
                         OutlinedButton(onClick = onShowTargetPicker, modifier = Modifier.fillMaxWidth()) {
                             val targetHour = targetAlarm.hour % 12 + if (targetAlarm.isAM) 0 else 12
                             Text("Target wake time: %02d:%02d · daily".format(targetHour, targetAlarm.minute))
+                        }
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text("Bedtime alarm")
+                                val bedtime = com.omni.sync.utils.AlarmScheduler.nextBedtimeTrigger(targetAlarm, now)
+                                Text("Gradual alarm 10h before the daily target: " +
+                                    SimpleDateFormat("EEE HH:mm", Locale.getDefault()).format(Date(bedtime)),
+                                    style = MaterialTheme.typography.bodySmall)
+                            }
+                            Switch(checked = targetAlarm.bedtimeAlarmEnabled,
+                                onCheckedChange = { onAlarmChange(alarm.copy(bedtimeAlarmEnabled = it)) })
                         }
                         OutlinedButton(onClick = { latestPicker = true }, modifier = Modifier.fillMaxWidth()) {
                             val latest = alarm.latestWakeMinutes ?: 720

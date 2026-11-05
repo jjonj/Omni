@@ -12,6 +12,52 @@ import com.omni.sync.ui.screen.GradualConfig
 import java.util.Calendar
 
 object AlarmScheduler {
+    // Companion alarms have their own PendingIntent and never appear as editable alarm rows.
+    private const val BEDTIME_ID_BASE = 1_000_000
+    fun bedtimeAlarmId(wakeAlarmId: Int): Int = BEDTIME_ID_BASE + wakeAlarmId
+    fun isBedtimeAlarmId(id: Int): Boolean = id in BEDTIME_ID_BASE until 2 * BEDTIME_ID_BASE
+    fun wakeIdForBedtime(id: Int): Int = id - BEDTIME_ID_BASE
+
+    /** Always calculate from the recurring *target*, never from a one-off wake choice or its cap. */
+    fun nextBedtimeTrigger(wake: AlarmData, now: Long = System.currentTimeMillis()): Long {
+        val targetDay = Calendar.getInstance().apply {
+            timeInMillis = now
+            set(Calendar.HOUR_OF_DAY, wake.hour % 12 + if (wake.isAM) 0 else 12)
+            set(Calendar.MINUTE, wake.minute)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }
+        while (true) {
+            val bedtime = (targetDay.clone() as Calendar).apply { add(Calendar.HOUR_OF_DAY, -10) }
+            if (bedtime.timeInMillis > now) return bedtime.timeInMillis
+            targetDay.add(Calendar.DAY_OF_YEAR, 1)
+        }
+    }
+
+    fun scheduleBedtimeAlarm(context: Context, wake: AlarmData, config: GradualConfig) {
+        if (!wake.enabled || !wake.isWakeAlarm || !wake.bedtimeAlarmEnabled) {
+            cancelBedtimeAlarm(context, wake.id)
+            return
+        }
+        val at = nextBedtimeTrigger(wake)
+        val local = Calendar.getInstance().apply { timeInMillis = at }
+        val hour24 = local.get(Calendar.HOUR_OF_DAY)
+        val reminder = AlarmData(
+            id = bedtimeAlarmId(wake.id), enabled = true,
+            hour = if (hour24 % 12 == 0) 12 else hour24 % 12,
+            minute = local.get(Calendar.MINUTE), isAM = hour24 < 12,
+            repeatDaily = true, useGradual = true, soundId = "gentle",
+            scheduledDate = at, dismissText = "Time for bed"
+        )
+        AlarmTrace.record("BEDTIME_SCHEDULE", "wake=" + wake.id + " at=" + AlarmTrace.time(at))
+        scheduleAlarm(context, reminder.id, reminder, config)
+    }
+
+    fun cancelBedtimeAlarm(context: Context, wakeAlarmId: Int) {
+        // Also cancel any pending gradual snooze when the companion is disabled.
+        cancelAlarm(context, bedtimeAlarmId(wakeAlarmId))
+    }
+
     fun restoreEnabledAlarms(context: Context) {
         AlarmTrace.init(context, "restoreEnabledAlarms")
         val prefs = context.getSharedPreferences("alarm_prefs", Context.MODE_PRIVATE)
@@ -25,6 +71,7 @@ object AlarmScheduler {
                 scheduleAlarm(context, alarm.id, alarm, config)
             } else {
                 AlarmTrace.record("RESTORE_SKIPPED", AlarmTrace.describe(alarm))
+                if (alarm.isWakeAlarm) scheduleBedtimeAlarm(context, alarm, config)
             }
         }
     }
@@ -151,6 +198,7 @@ object AlarmScheduler {
             val alarmClockInfo = AlarmManager.AlarmClockInfo(calendar.timeInMillis, pendingIntent)
             alarmManager.setAlarmClock(alarmClockInfo, pendingIntent)
             AlarmTrace.record("SCHEDULE_SUCCESS", "alarm=" + alarmId + " at=" + AlarmTrace.time(calendar.timeInMillis))
+            if (data.isWakeAlarm) scheduleBedtimeAlarm(context, data, config)
             (context.applicationContext as? com.omni.sync.OmniSyncApplication)?.mainViewModel?.addLog(
                 "[Wake alarm $alarmId] Scheduled ${calendar.time}; daily=${data.repeatDaily}, wake=${data.isWakeAlarm}, nextOverride=${data.nextTriggerOverride != null}", com.omni.sync.ui.screen.LogType.INFO)
         } catch (e: SecurityException) {
@@ -240,8 +288,9 @@ object AlarmScheduler {
         alarmManager.cancel(pendingIntent)
         AlarmTrace.record("CANCEL_MAIN", "id=" + alarmId)
         
-        // Also cancel potential snooze
+        // Also cancel potential snooze and this wake alarm's optional companion.
         cancelSnooze(context, alarmId)
+        if (!isBedtimeAlarmId(alarmId)) cancelBedtimeAlarm(context, alarmId)
         
         Log.i("AlarmScheduler", "Cancelled Alarm $alarmId")
     }

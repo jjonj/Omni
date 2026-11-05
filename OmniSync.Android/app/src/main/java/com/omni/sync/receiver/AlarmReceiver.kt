@@ -32,7 +32,27 @@ class AlarmReceiver : BroadcastReceiver() {
             val repeatDaily = intent.getBooleanExtra("REPEAT_DAILY", false)
             val alarmId = intent.getIntExtra("ALARM_ID", 0)
 
-            if (repeatDaily && !isSnooze) {
+            if (AlarmScheduler.isBedtimeAlarmId(alarmId)) {
+                // Companion alarm belongs to a wake alarm, but is never stored as a separate row.
+                // Recheck the opt-in at delivery in case an old PendingIntent survived a change.
+                val prefs = context.getSharedPreferences("alarm_prefs", Context.MODE_PRIVATE)
+                val gson = Gson()
+                val parent = AlarmStore.load(prefs, gson).firstOrNull {
+                    it.id == AlarmScheduler.wakeIdForBedtime(alarmId) &&
+                        it.enabled && it.isWakeAlarm && it.bedtimeAlarmEnabled
+                }
+                if (parent == null) {
+                    com.omni.sync.utils.AlarmTrace.record("BEDTIME_STALE_DELIVERY", "id=" + alarmId)
+                    AlarmScheduler.cancelAlarm(context, alarmId)
+                    return
+                }
+                if (!isSnooze) {
+                    val config = prefs.getString("config", null)?.let {
+                        gson.fromJson(it, GradualConfig::class.java)
+                    } ?: GradualConfig()
+                    AlarmScheduler.scheduleBedtimeAlarm(context, parent, config)
+                }
+            } else if (repeatDaily && !isSnooze) {
                 val prefs = context.getSharedPreferences("alarm_prefs", Context.MODE_PRIVATE)
                 val gson = Gson()
                 val savedAlarm = AlarmStore.load(prefs, gson).firstOrNull { it.id == alarmId }
@@ -66,7 +86,7 @@ class AlarmReceiver : BroadcastReceiver() {
                 Log.d("AlarmReceiver", "Rescheduled alarm $alarmId for tomorrow.")
             }
 
-            if (!repeatDaily && !isSnooze) {
+            if (!AlarmScheduler.isBedtimeAlarmId(alarmId) && !repeatDaily && !isSnooze) {
                 val prefs = context.getSharedPreferences("alarm_prefs", Context.MODE_PRIVATE)
                 val gson = Gson()
                 val alarms = AlarmStore.load(prefs, gson)
