@@ -270,50 +270,14 @@ fun OmniAiModesScreen(
         }
     }
     fun openSession(s: AgentSessionUi) {
-        viewPrefs.edit().putLong("visited:\${s.key}", System.currentTimeMillis()).apply()
+        viewPrefs.edit().putLong("visited:${s.key}", System.currentTimeMillis()).apply()
         viewRevision++
         listMode = false
-        scope.launch {
-            // Keep the cached conversation visible immediately. Cold T3 browser
-            // sessions need an explicit user wake on the desktop before history
-            // can be read; retrying history without waking can never succeed.
-            if (isT3Browser(s) && online && s.capabilities.contains("ManageVisibility")) {
-                val cold = s.reachability != "Reachable" || s.conversation.isNullOrBlank()
-                val patch = mutableMapOf<String, Any?>()
-                if (isHidden(s) || cold) patch["hidden"] = false
-                if (isSnoozed(s)) patch["snoozedUntil"] = null
-                if (patch.isNotEmpty()) {
-                    note = if (cold) "Opening ChatGPT on the PC…" else null
-                    try {
-                        client.sessionAction(s, "Visibility", patch)
-                    } catch (e: Exception) {
-                        note = "PC could not wake this session: \${e.message}"
-                    }
-                    // Catalog publishing and browser load are asynchronous. Refresh
-                    // just the selected conversation, never repeat the wake mutation.
-                    if (cold) {
-                        repeat(6) { attempt ->
-                            if (client.selected.value != s.key) return@launch
-                            delay(1_500L + attempt * 500L)
-                            client.refresh()
-                            val updated = client.sessions.value.firstOrNull { it.key == s.key }
-                            if (updated?.reachability == "Reachable" &&
-                                !updated.conversation.isNullOrBlank()) {
-                                client.select(s.key, reload = true)
-                                if (note?.startsWith("Opening ChatGPT") == true) note = null
-                                return@launch
-                            }
-                        }
-                        if (note?.startsWith("Opening ChatGPT") == true)
-                            note = "PC session has not finished loading. Use Retry or refresh; cached messages remain available."
-                    } else {
-                        client.refresh()
-                    }
-                }
-            } else {
-                if (isSnoozed(s)) setSnooze(s, 0L)
-                if (isHidden(s)) setHidden(s, false)
-            }
+        // Browser wake, unhide, and conversation readiness now share one path.
+        // Never require a second Load-on-PC tap after selecting a row.
+        if (!isT3Browser(s)) {
+            if (isSnoozed(s)) setSnooze(s, 0L)
+            if (isHidden(s)) setHidden(s, false)
         }
         scope.launch { client.select(s.key) }
     }
@@ -641,7 +605,7 @@ fun OmniAiModesScreen(
                                     style = MaterialTheme.typography.bodyLarge)
                                 Text((if (session.kind == "t3/thread") "T3 native agent" else if (session.kind == "t3/chatgpt") "ChatGPT" else session.kind) +
                                     (if (sortMode != "project" && session.workspace?.isNotBlank() == true)
-                                        " � " + session.projectName() else ""),
+                                        " � " + session.projectName() else ""),
                                     color = p.muted, style = MaterialTheme.typography.labelSmall)
                                 Row(verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.spacedBy(7.dp)) {
@@ -706,6 +670,7 @@ fun OmniAiModesScreen(
                     Spacer(Modifier.width(8.dp))
                     Text(if (selected == null) "Select a session"
                         else if (!online) "Last known: " + selected.activity + " · cached"
+                        else if (historyLoading) "Opening / reading on PC…"
                         else if (selected.needsAttention()) selected.attention
                         else selected.activity + " · " + selected.confidence,
                         modifier = Modifier.weight(1f), color = p.muted, maxLines = 1,
@@ -736,11 +701,11 @@ fun OmniAiModesScreen(
                     selected.reachability != "Reachable" && online) {
                     Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 7.dp),
                         verticalAlignment = Alignment.CenterVertically) {
-                        Text("Unloaded on PC", color = p.muted,
+                        Text(if (historyLoading) "Opening browser on PC automatically…" else "Browser not ready on PC", color = p.muted,
                             style = MaterialTheme.typography.bodySmall,
                             modifier = Modifier.weight(1f))
-                        TextButton(onClick = { selected.let { openSession(it) } }) {
-                            Text("Load on PC")
+                        if (!historyLoading) TextButton(onClick = { selected.let { openSession(it) } }) {
+                            Text("Retry PC load")
                         }
                     }
                 }
@@ -794,7 +759,8 @@ fun OmniAiModesScreen(
                                 modifier = Modifier.size(35.dp))
                             Text("Conversation history", color = p.text,
                                 style = MaterialTheme.typography.titleMedium)
-                            Text(if (online) "No messages yet, or no history exposed by provider"
+                            Text(if (historyLoading) "Retrieving the conversation from your PC…"
+                                else if (online) "No messages yet, or no history exposed by provider"
                                 else "Cached history is available offline",
                                 color = p.muted, style = MaterialTheme.typography.bodySmall)
                         }

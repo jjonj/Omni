@@ -501,6 +501,23 @@ class GenericAgentClient(
             false
         }
     }
+    /** Update just the selected session while a remote browser is loading.
+     * Polling the complete 500+ session catalog would delay conversation reads. */
+    private suspend fun refreshExactSession(key: String): AgentSessionUi? {
+        val known = _sessions.value.firstOrNull { it.key == key } ?: return null
+        return try {
+            val result = signalR.agentCall("sessions.get", mapOf(
+                "session" to mapOf("provider" to known.provider, "id" to known.id)
+            )).asJsonObject
+            val updated = parseSession(result) ?: return known
+            _sessions.value = _sessions.value.map { if (it.key == key) updated else it }
+            updated
+        } catch (e: Exception) {
+            Log.d("GenericAgents", "Selected browser metadata not ready: $key", e)
+            known
+        }
+    }
+
     suspend fun select(key: String?, reload: Boolean = false) {
         val switched = _selected.value != key
         if (switched || !reload) {
@@ -513,23 +530,51 @@ class GenericAgentClient(
             _olderHistoryCursor.value = key?.let { historyOlderCursors[it] }
             _historyNotice.value = if (key != null) "Offline cache may be partial." else null
         }
-        if (key == null || !signalR.hubAuthenticated.value) return
-        val chosen = _sessions.value.firstOrNull { it.key == key } ?: return
-        if (chosen.kind == "t3/chatgpt" &&
-            (chosen.reachability != "Reachable" || chosen.conversation.isNullOrBlank())) {
-            // A cold guest cannot expose verified DOM history. Do not repeatedly
-            // issue a guaranteed-failing history RPC every eight seconds.
+        if (key == null || !signalR.hubAuthenticated.value) {
             _historyLoading.value = false
-            if (_selected.value == key) _historyNotice.value =
-                if (chosen.reachability != "Reachable")
-                    "ChatGPT is unloaded on the PC. Opening it on your phone requests a wake."
-                else "New ChatGPT tab. Conversation history appears after the first message."
             return
         }
         if (reload && switched) return
-        if (_selected.value == key && !reload) _historyLoading.value = true
+        if (!reload && _selected.value == key) _historyLoading.value = true
+        var chosen = _sessions.value.firstOrNull { it.key == key } ?: return
+        val isBrowser = chosen.provider == "t3" && chosen.kind == "t3/chatgpt"
+        if (isBrowser && !reload) {
+            _historyNotice.value = "Opening this ChatGPT session on the PC…"
+            val patch = mutableMapOf<String, Any?>()
+            if (chosen.visibilityHidden == true) patch["hidden"] = false
+            if ((chosen.visibilitySnoozedUntil ?: 0L) > System.currentTimeMillis())
+                patch["snoozedUntil"] = null
+            if (patch.isNotEmpty()) {
+                // An explicit user open may unhide/unsnooze. Ordinary read-only
+                // selection never changes session visibility or sends a message.
+                runCatching { sessionAction(chosen, "Visibility", patch) }
+                    .onFailure { Log.w("GenericAgents", "Visibility update unavailable", it) }
+            }
+            try {
+                signalR.agentCall("sessions.load", mapOf(
+                    "session" to mapOf("provider" to chosen.provider, "id" to chosen.id)
+                ))
+            } catch (e: Exception) {
+                if (_selected.value == key) _historyNotice.value =
+                    "PC load request failed; retry from this screen: ${e.message}"
+            }
+        }
+        if (isBrowser) chosen = refreshExactSession(key) ?: chosen
+        if (isBrowser && (chosen.reachability != "Reachable" || chosen.conversation.isNullOrBlank())) {
+            // The PC owner wakes and loads the browser asynchronously. Keep the
+            // cached transcript visible while Android polls the exact binding.
+            if (_selected.value == key) {
+                _historyLoading.value = true
+                if (_historyNotice.value?.contains("failed", ignoreCase = true) != true)
+                    _historyNotice.value = if (chosen.reachability == "Reachable")
+                        "Browser open on PC. Waiting for its conversation to become readable…"
+                    else "Loading ChatGPT on PC… Browser startup may take a minute."
+            }
+            return
+        }
+        var keepLoading = false
         try {
-            val session = _sessions.value.firstOrNull { it.key == key } ?: return
+            val session = chosen
             val page = signalR.agentCall("sessions.history", mapOf(
                 "session" to mapOf("provider" to session.provider, "id" to session.id),
                 "limit" to 100
@@ -584,10 +629,14 @@ class GenericAgentClient(
                 _historyNotice.value = page.str("warning") ?: if (!page.flag("complete")) "History is partial." else null
             }
         } catch (e: Exception) {
-            if (_selected.value == key) _historyNotice.value =
-                "History read failed; displaying cached entries: ${e.message}"
+            keepLoading = isBrowser
+            if (_selected.value == key) {
+                _historyNotice.value = if (isBrowser)
+                    "Browser history is still loading on PC. Retrying automatically… (${e.message})"
+                else "History read failed; displaying cached entries: ${e.message}"
+            }
         } finally {
-            if (_selected.value == key) _historyLoading.value = false
+            if (_selected.value == key) _historyLoading.value = keepLoading
         }
     }
     /** One true provider-owned history page at a time. The cursor is opaque;
