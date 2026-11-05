@@ -170,6 +170,7 @@ class GenericAgentClient(
     val status: StateFlow<String> = _status
     private val _historyLoading = MutableStateFlow(false)
     val historyLoading: StateFlow<Boolean> = _historyLoading
+    private val lastBrowserLoadAttempt = Collections.synchronizedMap(mutableMapOf<String, Long>())
     private val _createdSessionKey = MutableStateFlow(providerPrefs.getString("lastCreatedSession", null))
     val createdSessionKey: StateFlow<String?> = _createdSessionKey
 
@@ -538,25 +539,37 @@ class GenericAgentClient(
         if (!reload && _selected.value == key) _historyLoading.value = true
         var chosen = _sessions.value.firstOrNull { it.key == key } ?: return
         val isBrowser = chosen.provider == "t3" && chosen.kind == "t3/chatgpt"
-        if (isBrowser && !reload) {
-            _historyNotice.value = "Opening this ChatGPT session on the PC…"
-            val patch = mutableMapOf<String, Any?>()
-            if (chosen.visibilityHidden == true) patch["hidden"] = false
-            if ((chosen.visibilitySnoozedUntil ?: 0L) > System.currentTimeMillis())
-                patch["snoozedUntil"] = null
-            if (patch.isNotEmpty()) {
-                // An explicit user open may unhide/unsnooze. Ordinary read-only
-                // selection never changes session visibility or sends a message.
-                runCatching { sessionAction(chosen, "Visibility", patch) }
-                    .onFailure { Log.w("GenericAgents", "Visibility update unavailable", it) }
+        val now = System.currentTimeMillis()
+        val cold = chosen.reachability != "Reachable" || chosen.conversation.isNullOrBlank()
+        // The desktop may be restarting when the first wake request arrives.
+        // Reissue a read-only, idempotent load after 30s while the user remains
+        // in the cold session; never force a manual Load-on-PC action.
+        val shouldLoad = isBrowser && (!reload || (cold &&
+            now - (lastBrowserLoadAttempt[key] ?: 0L) >= 30_000L))
+        if (shouldLoad) {
+            lastBrowserLoadAttempt[key] = now
+            if (!reload) {
+                _historyNotice.value = "Opening this ChatGPT session on the PC…"
+                val patch = mutableMapOf<String, Any?>()
+                if (chosen.visibilityHidden == true) patch["hidden"] = false
+                if ((chosen.visibilitySnoozedUntil ?: 0L) > now)
+                    patch["snoozedUntil"] = null
+                if (patch.isNotEmpty()) {
+                    // An explicit user open may unhide/unsnooze. Ordinary
+                    // background refresh never changes the session visibility.
+                    runCatching { sessionAction(chosen, "Visibility", patch) }
+                        .onFailure { Log.w("GenericAgents", "Visibility update unavailable", it) }
+                }
             }
             try {
                 signalR.agentCall("sessions.load", mapOf(
                     "session" to mapOf("provider" to chosen.provider, "id" to chosen.id)
                 ))
+                if (_selected.value == key)
+                    _historyNotice.value = "PC accepted the load request. Waiting for ChatGPT to open…"
             } catch (e: Exception) {
                 if (_selected.value == key) _historyNotice.value =
-                    "PC load request failed; retry from this screen: ${e.message}"
+                    "PC load request failed; retrying automatically: ${e.message}"
             }
         }
         if (isBrowser) chosen = refreshExactSession(key) ?: chosen
