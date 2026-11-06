@@ -211,14 +211,16 @@ private fun splitPhoneDumpLine(source: String): Pair<String, String> {
 }
 
 @Composable
-fun TaskBoardScreen(signalR: SignalRClient, parentPadding: PaddingValues = PaddingValues(0.dp)) {
+fun TaskBoardScreen(signalR: SignalRClient, parentPadding: PaddingValues = PaddingValues(0.dp),
+                    onOpenAgentSession: (String) -> Unit = {}) {
     TaskBoardTheme {
-        TaskBoardContents(parentPadding, signalR)
+        TaskBoardContents(parentPadding, signalR, onOpenAgentSession)
     }
 }
 
 @Composable
-private fun TaskBoardContents(parentPadding: PaddingValues, signalR: SignalRClient) {
+private fun TaskBoardContents(parentPadding: PaddingValues, signalR: SignalRClient,
+                              onOpenAgentSession: (String) -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val boardPreferences = remember { context.getSharedPreferences("taskboard_mobile", android.content.Context.MODE_PRIVATE) }
@@ -247,6 +249,12 @@ private fun TaskBoardContents(parentPadding: PaddingValues, signalR: SignalRClie
     var filterMode by remember { mutableStateOf(boardPreferences.getString("mobile_filter", "all") ?: "all") }
     var sortMode by remember { mutableStateOf(boardPreferences.getString("mobile_sort", "priority") ?: "priority") }
     var queueModes by remember(selectedRoot) { mutableStateOf<Map<String, String>>(emptyMap()) }
+    var queueOverviewOpen by remember(selectedRoot) { mutableStateOf(false) }
+    var queueOverview by remember(selectedRoot) {
+        mutableStateOf<Map<String, TaskBoardPhoneClient.QueueIntent>?>(null)
+    }
+    var queueOverviewError by remember(selectedRoot) { mutableStateOf<String?>(null) }
+    var queueOverviewRefresh by remember { mutableStateOf(0) }
     var hideWaiting by remember { mutableStateOf(boardPreferences.getBoolean("mobile_hide_waiting", false)) }
     var advancedOpen by remember { mutableStateOf(boardPreferences.getBoolean("mobile_tools_open", false)) }
     var focusedColumn by remember(selectedRoot) { mutableStateOf<String?>(null) }
@@ -476,31 +484,53 @@ private fun TaskBoardContents(parentPadding: PaddingValues, signalR: SignalRClie
         }
     }
 
-    // The synced vault can change while Android TaskBoard remains open.
+    // Metadata-only probes avoid parsing every card on every timer tick.
+    // Periodically force a full scan for sync tools preserving size and mtime.
     LaunchedEffect(selectedRoot, reviewMode) {
-        while (!reviewMode) {
-            delay(7000)
-            if (loading || editingTask != null || createTaskRequest != null) continue
-            runCatching { withContext(Dispatchers.IO) { store.load() } }.onSuccess { fresh ->
-                val previous = snapshot
-                if (previous != null && (fresh.boardRevision != previous.boardRevision ||
-                    fresh.tasks.size != previous.tasks.size ||
-                    fresh.tasks.zip(previous.tasks).any { (a, b) ->
-                        a.id != b.id || a.revision != b.revision })) {
-                    snapshot = fresh
+        if (!reviewMode) {
+            delay(12000) // The initial refresh is already in flight.
+            var signature = runCatching { withContext(Dispatchers.IO) { store.changeSignature() } }.getOrNull()
+            var lastFullScan = android.os.SystemClock.elapsedRealtime()
+            while (!reviewMode) {
+                delay(15000)
+                if (loading || editingTask != null || createTaskRequest != null || snapshot == null) continue
+                val current = runCatching { withContext(Dispatchers.IO) { store.changeSignature() } }.getOrNull()
+                    ?: continue
+                val now = android.os.SystemClock.elapsedRealtime()
+                if (signature == current && now - lastFullScan < 180_000L) continue
+                runCatching { withContext(Dispatchers.IO) { store.load() } }.onSuccess { fresh ->
+                    val previous = snapshot
+                    if (previous == null || fresh.boardRevision != previous.boardRevision ||
+                        fresh.tasks.size != previous.tasks.size ||
+                        fresh.archivedIds != previous.archivedIds ||
+                        fresh.tasks.zip(previous.tasks).any { (a, b) ->
+                            a.id != b.id || a.revision != b.revision }) {
+                        snapshot = fresh
+                    }
+                    signature = current
+                    lastFullScan = now
                 }
             }
         }
     }
 
-    // Queue state is server-owned, not guessed from stale synced task files.
+    // Queue state is PC-owned; avoid expensive full PC board scans every 9s.
     LaunchedEffect(selectedRoot, reviewMode) {
         while (!reviewMode) {
             if (signalR.hubAuthenticated.value) {
                 runCatching { withContext(Dispatchers.IO) { phoneWriter.queueModes(store.root) } }
                     .onSuccess { queueModes = it }
             }
-            delay(9000)
+            delay(45000)
+        }
+    }
+
+    LaunchedEffect(selectedRoot, queueOverviewOpen, queueOverviewRefresh) {
+        if (queueOverviewOpen) {
+            queueOverviewError = null
+            runCatching { withContext(Dispatchers.IO) { phoneWriter.queueIntents(store.root) } }
+                .onSuccess { queueOverview = it }
+                .onFailure { queueOverviewError = it.message ?: "PC queue unavailable" }
         }
     }
 
@@ -602,6 +632,10 @@ private fun TaskBoardContents(parentPadding: PaddingValues, signalR: SignalRClie
                                 taskDumpText = ""
                                 taskDumpPriorities = emptySet()
                                 showTaskDump = true
+                            })
+                            DropdownMenuItem(text = { Text("AI queue overview") }, onClick = {
+                                actionsExpanded = false
+                                queueOverviewOpen = true
                             })
                             DropdownMenuItem(text = { Text("User attention queue") }, onClick = {
                                 actionsExpanded = false
@@ -1060,7 +1094,79 @@ private fun TaskBoardContents(parentPadding: PaddingValues, signalR: SignalRClie
                 onArchive = if (task.kind != "epic" || board.epicChildren(task).isEmpty()) {{
                     editingTask = null
                     archiveConfirmation = task
-                }} else null
+                }} else null,
+                onOpenT3 = { intent ->
+                    scope.launch {
+                        loading = true
+                        error = null
+                        try {
+                            val response = withContext(Dispatchers.IO) {
+                                phoneWriter.openTaskSession(store.root, task, intent)
+                            }
+                            if (response.sessionId != null && response.status in
+                                    setOf("opened", "created", "prompt_unknown")) {
+                                // Reuse the existing phone AI conversation route.
+                                onOpenAgentSession(response.sessionId)
+                            } else {
+                                syncNotice = "T3: ${response.details}. Check the PC session before retrying."
+                            }
+                        } catch (cancelled: CancellationException) {
+                            throw cancelled
+                        } catch (failure: Exception) {
+                            // An uncertain T3 receipt must not trigger another spawn automatically.
+                            error = "T3 request: ${failure.message}. Check the PC session before retrying."
+                        } finally {
+                            loading = false
+                        }
+                    }
+                }
+            )
+        }
+
+        if (queueOverviewOpen) {
+            val queued = queueOverview.orEmpty().filterValues { it.mode == "queue" }
+                .entries.sortedWith(compareBy({ when (it.value.state) {
+                    "working" -> 0; "starting" -> 1; "reserved" -> 2; else -> 3
+                } }, { it.key }))
+            AlertDialog(
+                onDismissRequest = { queueOverviewOpen = false },
+                title = { Text("AI queue · ${snapshot?.name ?: "TaskBoard"}") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("${queued.size} queued · ${queued.count { it.value.state == "working" }} working · " +
+                            "${queued.count { it.value.state == "starting" || it.value.state == "reserved" }} starting",
+                            style = MaterialTheme.typography.bodyMedium)
+                        queueOverviewError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                        if (queueOverview == null && queueOverviewError == null) {
+                            CircularProgressIndicator(Modifier.size(22.dp))
+                        }
+                        Column(Modifier.heightIn(max = 380.dp).verticalScroll(rememberScrollState())) {
+                            queued.take(60).forEach { (id, intent) ->
+                                TextButton(onClick = {
+                                    snapshot?.taskById(id)?.let { editingTask = it }
+                                    queueOverviewOpen = false
+                                }, modifier = Modifier.fillMaxWidth()) {
+                                    Column(Modifier.fillMaxWidth()) {
+                                        Text("$id · ${intent.state ?: "queued"}",
+                                            color = TaskBoardColors.text)
+                                        intent.error?.let { Text(it, color = TaskBoardColors.amber,
+                                            style = MaterialTheme.typography.labelSmall) }
+                                    }
+                                }
+                            }
+                            if (queued.size > 60) Text("Showing first 60. Use filters to find others.",
+                                style = MaterialTheme.typography.labelSmall)
+                        }
+                        Text("T3 manages dispatch and capacity; this is PC-owned queue state.",
+                            style = MaterialTheme.typography.labelSmall)
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = { queueOverviewOpen = false }) { Text("Close") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { queueOverviewRefresh++ }) { Text("Refresh") }
+                }
             )
         }
 
@@ -1086,10 +1192,32 @@ private fun TaskBoardContents(parentPadding: PaddingValues, signalR: SignalRClie
                     mutate(action = { saveColumnsViaPc(changed, board.boardRevision) })
                 },
                 onToggleQueue = { column ->
+                    val enable = !column.autoQueue
                     val changed = board.columns.map {
-                        if (it.id == column.id) it.copy(autoQueue = !it.autoQueue) else it
+                        if (it.id == column.id) it.copy(autoQueue = enable) else it
                     }
-                    mutate(action = { saveColumnsViaPc(changed, board.boardRevision) })
+                    mutate(action = {
+                        // Match desktop: persist the future-task policy, then align
+                        // existing ready cards through the PC's exact queue CAS.
+                        saveColumnsViaPc(changed, board.boardRevision)
+                        val remoteIntents = phoneWriter.queueIntents(store.root)
+                        for (task in board.tasks.filter { it.column == column.id &&
+                            it.kind in setOf("task", "recurring") && it.completed == null && it.claimedBy == null &&
+                            board.waitingFor(it).isEmpty() &&
+                            it.attention.none { flag -> flag in setOf("blocked", "needs-user", "question") }
+                        }) {
+                            val remote = remoteIntents[task.id] ?: continue
+                            if ((remote.mode == "queue") != enable) {
+                                requirePcApplied(phoneWriter.submitQueue(store.root, task, enable,
+                                    authoritativeRevision = remote.revision))
+                            }
+                        }
+                    }, onSuccess = {
+                        scope.launch {
+                            runCatching { withContext(Dispatchers.IO) { phoneWriter.queueModes(store.root) } }
+                                .onSuccess { queueModes = it }
+                        }
+                    })
                 },
                 onToggleAiReady = { column ->
                     val changed = board.columns.map {
@@ -1503,7 +1631,7 @@ private fun TaskBoardColumns(
                     }
                     if (column.id !in foldedColumns)
                     itemsIndexed(columnTasks, key = { _, task -> "${column.id}-${task.id}" }) { index, task ->
-                        val epic = task.parent?.let { id -> snapshot.tasks.firstOrNull { it.id == id && it.kind == "epic" } }
+                        val epic = task.parent?.let { id -> snapshot.taskById(id)?.takeIf { it.kind == "epic" } }
                         if (epic != null && snapshot.displayColumn(epic) != column.id &&
                             columnTasks.getOrNull(index - 1)?.parent != epic.id) {
                             EpicProxy(epic, onTaskClick)
@@ -1607,7 +1735,7 @@ private fun TaskColumn(
             verticalArrangement = Arrangement.spacedBy(7.dp)
         ) {
             itemsIndexed(sortedTasks, key = { _, task -> task.id }) { index, task ->
-                val epic = task.parent?.let { id -> snapshot.tasks.firstOrNull { it.id == id && it.kind == "epic" } }
+                val epic = task.parent?.let { id -> snapshot.taskById(id)?.takeIf { it.kind == "epic" } }
                 if (epic != null && snapshot.displayColumn(epic) != column.id &&
                     sortedTasks.getOrNull(index - 1)?.parent != epic.id) {
                     EpicProxy(epic, onTaskClick)
@@ -1652,13 +1780,17 @@ private fun TaskCard(
     val clipboard = LocalClipboardManager.current
     val visual = taskBoardCardVisual(task, snapshot, queueMode)
     val isEpicChild = task.parent?.let { parentId ->
-        snapshot.tasks.any { it.id == parentId && it.kind == "epic" }
+        snapshot.taskById(parentId)?.kind == "epic"
     } == true
     val waiting = snapshot.waitingFor(task)
     val related = task.relatedTo
     val childTasks = if (task.kind == "epic") snapshot.epicChildren(task) else emptyList()
-    val canToggleQueue = task.column == "ai-ready" && task.kind == "task" &&
-        task.claimedBy == null && task.completed == null && waiting.isEmpty() && queueMode != null
+    val canToggleQueue = snapshot.columns.any { it.id == task.column && it.aiReady &&
+        !it.advisory && !it.terminal && it.id != "draft" } &&
+        task.kind in setOf("task", "recurring") && task.claimedBy == null && task.completed == null &&
+        waiting.isEmpty() && queueMode != null &&
+        task.attention.none { it in setOf("blocked", "needs-user", "question") } &&
+        task.question?.answer?.isBlank() != true
     val hasDetails = childTasks.isNotEmpty() || task.dependsOn.isNotEmpty() ||
         related.isNotEmpty() || task.claimedBy != null || task.question != null ||
         task.description.isNotBlank() || task.parent != null
@@ -1758,7 +1890,7 @@ private fun TaskCard(
                 }
                 if (detailsExpanded) {
                     if (task.parent != null) {
-                        snapshot.tasks.firstOrNull { it.id == task.parent }?.let { parent ->
+                        task.parent?.let(snapshot::taskById)?.let { parent ->
                             TextButton(onClick = { onTaskClick(parent) },
                                 contentPadding = PaddingValues(0.dp)) {
                                 Text("Parent: ${parent.id} · ${parent.title}",
@@ -1776,7 +1908,7 @@ private fun TaskCard(
                             horizontalArrangement = Arrangement.spacedBy(4.dp),
                             verticalAlignment = Alignment.CenterVertically) {
                             (task.dependsOn + related).distinct().forEach { id ->
-                                val linked = snapshot.tasks.firstOrNull { it.id == id }
+                                val linked = snapshot.taskById(id)
                                 if (linked != null) TextButton(onClick = { onTaskClick(linked) },
                                     contentPadding = PaddingValues(horizontal = 4.dp)) {
                                     Text(id, color = if (id in waiting) TaskBoardColors.amber
@@ -1816,9 +1948,7 @@ private fun TaskCard(
             menuExpanded = false
             clipboard.setText(AnnotatedString(task.id))
         })
-        if (queueMode != null && task.column == "ai-ready" && task.kind == "task" &&
-            task.claimedBy == null && task.completed == null &&
-            snapshot.waitingFor(task).isEmpty()) {
+        if (canToggleQueue) {
             DropdownMenuItem(
                 text = { Text(if (queueMode == "queue") "Remove from AI queue" else "Queue for AI") },
                 onClick = {
@@ -1925,7 +2055,8 @@ private fun TaskEditorDialog(
     onSkip: (() -> Unit)? = null,
     onSnooze: (() -> Unit)? = null,
     onCreateSubtask: (() -> Unit)? = null,
-    onArchive: (() -> Unit)? = null
+    onArchive: (() -> Unit)? = null,
+    onOpenT3: ((String) -> Unit)? = null
 ) {
     val initial = original?.toDraft() ?: TaskBoardTaskDraft(
         title = "",
@@ -2307,9 +2438,23 @@ private fun TaskEditorDialog(
                     }
                 }
 
-                if (original != null && (onCreateSubtask != null || onArchive != null)) {
+                if (original != null && (onCreateSubtask != null || onArchive != null || onOpenT3 != null)) {
                     Spacer(Modifier.height(12.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        onOpenT3?.let { action ->
+                            val linkedToT3 = original.claimedBy?.startsWith("t3:", ignoreCase = true) == true ||
+                                original.claimedBy?.startsWith("t3-browser:", ignoreCase = true) == true
+                            if (linkedToT3) {
+                                OutlinedButton(onClick = { action("conversation") }, enabled = !busy) {
+                                    Text("Open T3")
+                                }
+                            } else if (original.kind in setOf("task", "recurring") && original.claimedBy == null &&
+                                original.completed == null && snapshot.waitingFor(original).isEmpty()) {
+                                OutlinedButton(onClick = { action("implement") }, enabled = !busy) {
+                                    Text("Spawn T3")
+                                }
+                            }
+                        }
                         onCreateSubtask?.let {
                             OutlinedButton(onClick = it, enabled = !busy) {
                                 Text("+ Subtask")
@@ -2538,7 +2683,7 @@ private fun ColumnManagerDialog(
                                 }
                             }
                             Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                                if (column.id == "ai-ready") TextButton(
+                                if (column.aiReady && !column.advisory && !column.terminal && column.id != "draft") TextButton(
                                     onClick = { onToggleQueue(column) }, enabled = !busy
                                 ) { Text(if (column.autoQueue) "✓ Queue all: ON" else "Queue all: OFF") }
                                 TextButton(

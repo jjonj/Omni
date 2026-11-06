@@ -92,19 +92,51 @@ class TaskBoardPhoneClient(
     }
 
     /** Real desktop execution intents, not a phone-only simulated queue. */
-    suspend fun queueModes(root: File): Map<String, String> {
+    data class QueueIntent(val mode: String, val revision: String,
+                           val state: String? = null, val sessionId: String? = null,
+                           val error: String? = null)
+
+    suspend fun queueIntents(root: File): Map<String, QueueIntent> {
         val response = signalR.agentCall("taskboard.phone.queue.list",
             mapOf("board" to boardIdentity(root)))
         val modes = response.asJsonObject.getAsJsonObject("modes") ?: return emptyMap()
         return modes.entrySet().associate { (id, intent) ->
-            id to intent.asJsonObject.get("mode").asString
+            val current = intent.asJsonObject
+            fun optionalString(key: String): String? = current.get(key)
+                ?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isString }?.asString
+            id to QueueIntent(current.get("mode").asString, current.get("revision").asString,
+                optionalString("queue_state"), optionalString("queue_session_id"),
+                optionalString("queue_error"))
         }
     }
 
-    suspend fun submitQueue(root: File, task: TaskBoardTask, queue: Boolean): Submission {
+    suspend fun queueModes(root: File): Map<String, String> = queueIntents(root)
+        .mapValues { (_, intent) -> intent.mode }
+
+    /** The PC's T3 open_task implementation owns task/session deduplication.
+     * Never emulate a spawn with generic sessions.create from the phone. */
+    data class T3SessionReceipt(val status: String, val sessionId: String?, val details: String)
+
+    suspend fun openTaskSession(root: File, task: TaskBoardTask, intent: String): T3SessionReceipt {
+        require(intent == "conversation" || intent == "implement")
+        val response = signalR.agentCall("taskboard.phone.session.open", mapOf(
+            "board" to boardIdentity(root), "taskId" to task.id, "intent" to intent
+        ))
+        val receipt = response.asJsonObject
+        val status = receipt.get("status")?.asString ?: "unknown"
+        val sessionId = receipt.get("sessionId")?.takeIf { it.isJsonPrimitive }?.asString
+            ?.takeIf { Regex("^[a-fA-F0-9]{8}(-[a-fA-F0-9]{4}){3}-[a-fA-F0-9]{12}$").matches(it) }
+        val message = receipt.get("message")?.takeIf { it.isJsonPrimitive }?.asString
+            ?: "Task-bound T3 request: $status"
+        return T3SessionReceipt(status, sessionId, message)
+    }
+
+    suspend fun submitQueue(root: File, task: TaskBoardTask, queue: Boolean,
+                            authoritativeRevision: String? = null): Submission {
         val operationId = UUID.randomUUID().toString()
         drafts.saveOffline(boardId = boardIdentity(root), taskId = task.id,
-            baseRevision = task.revision, baseSource = task.file.readText(Charsets.UTF_8),
+            baseRevision = authoritativeRevision ?: task.revision,
+            baseSource = task.file.readText(Charsets.UTF_8),
             edited = JSONObject().put("_operation", "queue")
                 .put("mode", if (queue) "queue" else "backlog").toString(),
             operationId = operationId)

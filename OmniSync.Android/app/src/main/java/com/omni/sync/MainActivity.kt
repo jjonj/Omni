@@ -650,7 +650,8 @@ class MainActivity : ComponentActivity() {
             AppScreen.TESTS -> com.omni.sync.ui.screen.TestsScreen()
             AppScreen.TASKBOARD -> com.omni.sync.ui.screen.TaskBoardScreen(
                 signalR = signalRClient,
-                parentPadding = paddingValues
+                parentPadding = paddingValues,
+                onOpenAgentSession = { mainViewModel.openAgentSession(it) }
             )
             AppScreen.BOOKS -> BooksScreen(
                 mainViewModel = mainViewModel,

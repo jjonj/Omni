@@ -109,16 +109,22 @@ data class TaskBoardSnapshot(
     val boardRevision: String,
     val archivedIds: Set<String>
 ) {
+    // Large boards are rendered repeatedly by Compose; dependency/epic lookups
+    // must not scan hundreds of tasks for every displayed card.
+    private val taskIndex by lazy { tasks.associateBy { it.id } }
+    private val childrenIndex by lazy { tasks.filter { it.parent != null }.groupBy { it.parent } }
+    private val terminalColumns by lazy { columns.filter { it.terminal }.map { it.id }.toSet() }
+
+    fun taskById(id: String): TaskBoardTask? = taskIndex[id]
+
     fun waitingFor(task: TaskBoardTask): List<String> = task.dependsOn.filter { id ->
         if (id in archivedIds) return@filter false
-        val prerequisite = tasks.firstOrNull { it.id == id }
-        prerequisite == null || (
-            prerequisite.completed.isNullOrBlank() &&
-            columns.none { it.id == prerequisite.column && it.terminal }
-        )
+        val prerequisite = taskIndex[id]
+        prerequisite == null || (prerequisite.completed.isNullOrBlank() &&
+            prerequisite.column !in terminalColumns)
     }
 
-    fun epicChildren(epic: TaskBoardTask): List<TaskBoardTask> = tasks.filter { it.parent == epic.id }
+    fun epicChildren(epic: TaskBoardTask): List<TaskBoardTask> = childrenIndex[epic.id].orEmpty()
 
     fun displayColumn(task: TaskBoardTask): String {
         if (task.kind != "epic") return task.column
@@ -256,6 +262,28 @@ class TaskBoardStore(
                 throw error
             }
         }
+    }
+
+    /** Cheap metadata-only probe for the synced vault. Full content is parsed
+     * only when membership/size/mtime changes, plus a periodic safety reload.
+     * The latter catches same-size writes that preserve timestamps. No disk cache. */
+    fun changeSignature(): String {
+        requireStorageAccess()
+        val signature = buildString {
+            val board = File(root, "_board.md")
+            append("board:").append(board.length()).append(':').append(board.lastModified()).append('\n')
+            for (folder in listOf("Active", "Archive")) {
+                val directory = File(root, folder)
+                val entries = directory.takeIf { it.isDirectory }?.walkTopDown()
+                    ?.filter { it.isFile && taskFileName.matches(it.name) }
+                    ?.map { file ->
+                        "${file.relativeTo(directory).invariantSeparatorsPath}:${file.length()}:${file.lastModified()}"
+                    }?.sorted()?.toList().orEmpty()
+                append(folder).append(':').append(entries.size).append('\n')
+                entries.forEach { append(it).append('\n') }
+            }
+        }
+        return revision(signature)
     }
 
     fun load(): TaskBoardSnapshot {
