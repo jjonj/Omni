@@ -542,9 +542,8 @@ fun TrackpadArea(
     offset: Offset = Offset.Zero,
     onTransform: (Float, Offset, Offset, IntSize) -> Unit = { _, _, _, _ -> }
 ) {
-    val coroutineScope = rememberCoroutineScope()
     var lastTapTime by remember { mutableLongStateOf(0L) }
-    var isDraggingLeftClick by remember { mutableStateOf(false) }
+    var lastTapPosition by remember { mutableStateOf<Offset?>(null) }
     val activeBaseUrl by mainViewModel.activeBaseUrl.collectAsState()
     val baseUrl = activeBaseUrl.ifBlank { mainViewModel.getBaseUrl() }.trimEnd('/')
     val context = LocalContext.current
@@ -619,90 +618,113 @@ fun TrackpadArea(
             .clipToBounds()
             .pointerInput(signalRClient, isMonitorVisible, isLeftHeld, imageSize) {
                 awaitEachGesture {
-                    // Do not turn taps on overlaid controls (Find cursor) into PC clicks.
+                    // A click is sent only on finger release, never on touch-down.
+                    // Ignore touches already consumed by overlays such as Find cursor.
                     val down = awaitFirstDown(requireUnconsumed = true)
+                    val startTime = SystemClock.uptimeMillis()
                     val downPoint = down.position
                     val onSharedImage = if (isMonitorVisible) pointAtTouch(downPoint) else false
-                    var isDrag = false
-                    var isRightClickTriggered = false
-                    var usedMultipleFingers = false
-                    val movementThreshold = 5.dp.toPx()
-                    
-                    val currentTime = System.currentTimeMillis()
-                    val isDoubleTapCandidate = currentTime - lastTapTime < 300
-                    
-                    val longPressJob = coroutineScope.launch {
-                        delay(1750)
-                        if (!isDrag && !isDoubleTapCandidate && !isLeftHeld) {
-                            isRightClickTriggered = true
-                            signalRClient.sendRightClick()
-                        }
-                    }
+                    val canClick = !isMonitorVisible || onSharedImage
+                    val movementThreshold = 7.dp.toPx()
+                    val scrollStep = 30.dp.toPx()
+                    val isSecondTap = lastTapTime > 0L && startTime - lastTapTime in 0L..320L &&
+                        (lastTapPosition?.let { (it - downPoint).getDistance() <= 42.dp.toPx() } == true)
 
+                    var moved = false
+                    var fingersUsed = 1
+                    var multiMoved = false
+                    var totalMultiPan = 0f
+                    var endedOnRelease = false
+                    var leftDragStarted = false
+                    var zoomGesture = false
+                    var cumulativeZoom = 1f
+                    var scrollRemainder = 0f
                     try {
                         while (true) {
                             val event = awaitPointerEvent()
-                            val changes = event.changes
-                            val pressedCount = changes.count { it.pressed }
-                            
-                            if (pressedCount >= 2) {
-                                usedMultipleFingers = true
-                                if (isMonitorVisible) {
-                                    currentTransform(event.calculateZoom(), event.calculatePan(), event.calculateCentroid(), imageSize)
+                            val pressed = event.changes.filter { it.pressed }
+                            if (pressed.isEmpty()) {
+                                endedOnRelease = true
+                                break
+                            }
+
+                            if (pressed.size >= 2) {
+                                fingersUsed = maxOf(fingersUsed, pressed.size)
+                                val pan = event.calculatePan()
+                                val zoom = event.calculateZoom()
+                                totalMultiPan += pan.getDistance()
+                                if (totalMultiPan > movementThreshold || kotlin.math.abs(zoom - 1f) > 0.02f) {
+                                    multiMoved = true
+                                }
+                                if (isMonitorVisible && pressed.size >= 3) {
+                                    // Three fingers pan a zoomed desktop without moving the PC cursor.
+                                    currentTransform(1f, pan, event.calculateCentroid(), imageSize)
+                                    multiMoved = true
                                 } else {
-                                    val scrollDelta = changes.first().positionChange()
-                                    if (scrollDelta != Offset.Zero) {
-                                        signalRClient.sendPayload("MOUSE_SCROLL", mapOf("Delta" to scrollDelta.y.toInt()))
-                                    }
-                                }
-                                isDrag = true
-                                longPressJob.cancel()
-                            } else {
-                                val change = changes.firstOrNull { it.id == down.id }
-                                if (change == null || !change.pressed) {
-                                    change?.consume()
-                                    break
-                                }
-
-                                val positionChange = change.position - downPoint
-                                val distance = positionChange.getDistance()
-
-                                if (!isDrag && !usedMultipleFingers && distance > movementThreshold) {
-                                    isDrag = true
-                                    longPressJob.cancel()
-                                    
-                                    if (isDoubleTapCandidate && !isLeftHeld) {
-                                        isDraggingLeftClick = true
-                                        signalRClient.sendPayload("MOUSE_CLICK_DOWN", mapOf("Button" to "Left"))
-                                    }
-                                }
-
-                                if (isDrag && !usedMultipleFingers) {
-                                    val delta = change.positionChange()
-                                    if (delta != Offset.Zero) {
-                                        if (onSharedImage) {
-                                            pointAtTouch(change.position)
-                                        } else {
-                                            val sensitivity = 0.72f
-                                            signalRClient.sendMouseMove(delta.x * sensitivity, delta.y * sensitivity)
+                                    cumulativeZoom *= zoom
+                                    if (isMonitorVisible && kotlin.math.abs(cumulativeZoom - 1f) > 0.055f) zoomGesture = true
+                                    if (zoomGesture) {
+                                        currentTransform(zoom, pan, event.calculateCentroid(), imageSize)
+                                        multiMoved = true
+                                    } else {
+                                        // Two-finger swipes scroll; accumulate fractional motion into
+                                        // real 120-unit Windows wheel detents for reliable scrolling.
+                                        scrollRemainder += pan.y
+                                        if (kotlin.math.abs(scrollRemainder) >= scrollStep) {
+                                            val ticks = (scrollRemainder / scrollStep).toInt()
+                                            signalRClient.sendPayload("MOUSE_SCROLL", mapOf("Delta" to ticks * 120))
+                                            scrollRemainder -= ticks * scrollStep
+                                            multiMoved = true
                                         }
-                                        change.consume()
                                     }
                                 }
+                                event.changes.filter { it.positionChanged() }.forEach { it.consume() }
+                                continue
+                            }
+                            if (fingersUsed > 1) continue // wait until every finger is released
+                            val change = pressed.firstOrNull { it.id == down.id } ?: continue
+                            if (!moved && (change.position - downPoint).getDistance() > movementThreshold) {
+                                moved = true
+                                if (isSecondTap && !isLeftHeld && canClick) {
+                                    // Double-tap then drag picks up an item. A single-finger drag
+                                    // always moves the pointer without holding any mouse button.
+                                    signalRClient.sendPayload("MOUSE_CLICK_DOWN", mapOf("Button" to "Left"))
+                                    leftDragStarted = true
+                                }
+                            }
+                            if (moved && change.positionChanged()) {
+                                if (onSharedImage) {
+                                    pointAtTouch(change.position)
+                                } else {
+                                    val delta = change.positionChange()
+                                    signalRClient.sendMouseMove(delta.x * 0.72f, delta.y * 0.72f)
+                                }
+                                change.consume()
                             }
                         }
                     } finally {
-                        longPressJob.cancel()
-                        if (isDraggingLeftClick) {
+                        // Release even on gesture cancellation, navigation, or recomposition.
+                        if (leftDragStarted) {
                             signalRClient.sendPayload("MOUSE_CLICK_UP", mapOf("Button" to "Left"))
-                            isDraggingLeftClick = false
-                            lastTapTime = 0
-                        } else if (!isDrag && !isRightClickTriggered && !isLeftHeld &&
-                            (!isMonitorVisible || onSharedImage)) {
-                            signalRClient.sendLeftClick()
-                            lastTapTime = System.currentTimeMillis()
-                        } else {
-                            lastTapTime = 0
+                        } else if (endedOnRelease && !isLeftHeld && canClick && fingersUsed == 2 && !multiMoved &&
+                            SystemClock.uptimeMillis() - startTime < 800L) {
+                            signalRClient.sendRightClick() // two-finger tap, on release
+                        } else if (endedOnRelease && !isLeftHeld && canClick && fingersUsed == 1 && !moved) {
+                            val heldMs = SystemClock.uptimeMillis() - startTime
+                            if (heldMs >= 600L) {
+                                signalRClient.sendRightClick() // long tap, on release
+                            } else {
+                                signalRClient.sendLeftClick() // consecutive quick taps = double click
+                                if (!isSecondTap) {
+                                    lastTapTime = SystemClock.uptimeMillis()
+                                    lastTapPosition = downPoint
+                                }
+                            }
+                        }
+                        if (!endedOnRelease || leftDragStarted || fingersUsed > 1 || moved ||
+                            (SystemClock.uptimeMillis() - startTime >= 600L) || isSecondTap) {
+                            lastTapTime = 0L
+                            lastTapPosition = null
                         }
                     }
                 }
@@ -738,7 +760,7 @@ fun TrackpadArea(
 
         Text(
             text = when {
-                !isMonitorVisible -> "Trackpad Active\n(Tap = Left Click | Hold 2s = Right Click)"
+                !isMonitorVisible -> "Trackpad Active\nTap: Click  •  Hold: Right Click\nDouble tap + drag: Left Drag  •  Two fingers: Scroll"
                 streamError -> "Screen stream unavailable. Retrying..."
                 currentFrame == null -> "Connecting to screen stream..."
                 else -> ""
