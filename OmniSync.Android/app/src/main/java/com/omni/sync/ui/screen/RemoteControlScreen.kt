@@ -174,6 +174,24 @@ fun RemoteControlScreen(
         onDispose { request?.dispose() }
     }
 
+    // Confine the real Windows cursor only while the streamed monitor is in use.
+    // Reaffirm the Hub's short lease; pausing, leaving Remote or losing network
+    // releases it immediately (or automatically when the lease expires).
+    LaunchedEffect(isMonitorVisible, isRemoteControlActive, showMacroGrid, monitorIndex, connectionState, lifecycleOwner) {
+        if (!isMonitorVisible || !isRemoteControlActive || showMacroGrid || monitorIndex < 0 ||
+            !connectionState.contains("Connected")) return@LaunchedEffect
+        lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            try {
+                while (isActive) {
+                    signalRClient.sendPayload("MOUSE_MONITOR_LOCK", mapOf("Monitor" to monitorIndex, "Enabled" to true))
+                    delay(2000)
+                }
+            } finally {
+                signalRClient.sendPayload("MOUSE_MONITOR_LOCK", mapOf("Monitor" to monitorIndex, "Enabled" to false))
+            }
+        }
+    }
+
     DisposableEffect(lifecycleOwner, signalRClient) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_STOP && currentLeftHeld) {
@@ -535,6 +553,26 @@ fun TrackpadArea(
     var streamError by remember(isMonitorVisible, monitorIndex, baseUrl) { mutableStateOf(false) }
     var imageSize by remember { mutableStateOf(IntSize.Zero) }
     val currentTransform by rememberUpdatedState(onTransform)
+    // A touch on the image targets the displayed desktop pixel, accounting for
+    // ContentScale.Fit letterboxing and user pinch-zoom/pan.
+    val pointAtTouch by rememberUpdatedState(newValue = { position: Offset ->
+        val painterSize = currentFrame?.intrinsicSize
+        if (!isMonitorVisible || monitorIndex < 0 || painterSize == null ||
+            painterSize.width <= 0f || painterSize.height <= 0f ||
+            imageSize.width <= 0 || imageSize.height <= 0) {
+            false
+        } else {
+            val fit = minOf(imageSize.width / painterSize.width, imageSize.height / painterSize.height)
+            val shownWidth = painterSize.width * fit * scale
+            val shownHeight = painterSize.height * fit * scale
+            val u = (position.x - imageSize.width / 2f - offset.x) / shownWidth + 0.5f
+            val v = (position.y - imageSize.height / 2f - offset.y) / shownHeight + 0.5f
+            if (u in 0f..1f && v in 0f..1f) {
+                signalRClient.sendPayload("MOUSE_MONITOR_POINT", mapOf("Monitor" to monitorIndex, "X" to u.toDouble(), "Y" to v.toDouble()))
+                true
+            } else false
+        }
+    })
 
     LaunchedEffect(isMonitorVisible, isRemoteControlActive, monitorIndex, baseUrl, appConfig.streamFps, appConfig.streamResolution, lifecycleOwner) {
         if (!isMonitorVisible || !isRemoteControlActive) {
@@ -581,8 +619,10 @@ fun TrackpadArea(
             .clipToBounds()
             .pointerInput(signalRClient, isMonitorVisible, isLeftHeld, imageSize) {
                 awaitEachGesture {
-                    val down = awaitFirstDown(requireUnconsumed = false)
+                    // Do not turn taps on overlaid controls (Find cursor) into PC clicks.
+                    val down = awaitFirstDown(requireUnconsumed = true)
                     val downPoint = down.position
+                    val onSharedImage = if (isMonitorVisible) pointAtTouch(downPoint) else false
                     var isDrag = false
                     var isRightClickTriggered = false
                     var usedMultipleFingers = false
@@ -640,8 +680,12 @@ fun TrackpadArea(
                                 if (isDrag && !usedMultipleFingers) {
                                     val delta = change.positionChange()
                                     if (delta != Offset.Zero) {
-                                        val sensitivity = 0.72f
-                                        signalRClient.sendMouseMove(delta.x * sensitivity, delta.y * sensitivity)
+                                        if (onSharedImage) {
+                                            pointAtTouch(change.position)
+                                        } else {
+                                            val sensitivity = 0.72f
+                                            signalRClient.sendMouseMove(delta.x * sensitivity, delta.y * sensitivity)
+                                        }
                                         change.consume()
                                     }
                                 }
@@ -653,7 +697,8 @@ fun TrackpadArea(
                             signalRClient.sendPayload("MOUSE_CLICK_UP", mapOf("Button" to "Left"))
                             isDraggingLeftClick = false
                             lastTapTime = 0
-                        } else if (!isDrag && !isRightClickTriggered && !isLeftHeld) {
+                        } else if (!isDrag && !isRightClickTriggered && !isLeftHeld &&
+                            (!isMonitorVisible || onSharedImage)) {
                             signalRClient.sendLeftClick()
                             lastTapTime = System.currentTimeMillis()
                         } else {
@@ -678,6 +723,17 @@ fun TrackpadArea(
                     ),
                 contentScale = ContentScale.Fit
             )
+            FilledTonalButton(
+                onClick = {
+                    signalRClient.sendPayload("MOUSE_MONITOR_POINT", mapOf("Monitor" to monitorIndex, "X" to 0.5, "Y" to 0.5))
+                },
+                modifier = Modifier.align(Alignment.TopEnd).padding(10.dp),
+                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+            ) {
+                Icon(Icons.Default.MyLocation, contentDescription = null, modifier = Modifier.size(16.dp))
+                Spacer(Modifier.width(5.dp))
+                Text("Find cursor", style = MaterialTheme.typography.labelSmall)
+            }
         }
 
         Text(
