@@ -148,6 +148,21 @@ fun OmniAiModesScreen(
     val historyLoading by client.historyLoading.collectAsState()
     val createdKey by client.createdSessionKey.collectAsState()
     val online by signalRClient.hubAuthenticated.collectAsState()
+    var keepT3Busy by remember { mutableStateOf<Boolean?>(null) }
+    var keepT3BusyUpdating by remember { mutableStateOf(false) }
+    LaunchedEffect(online) {
+        if (!online) {
+            keepT3Busy = null
+        } else {
+            while (true) {
+                if (!keepT3BusyUpdating) {
+                    try { keepT3Busy = signalRClient.t3BusyPolicy() }
+                    catch (error: Exception) { keepT3Busy = null }
+                }
+                delay(15_000)
+            }
+        }
+    }
 
     var listMode by rememberSaveable { mutableStateOf(initialSessionId == null) }
     var initialApplied by remember(initialSessionId) { mutableStateOf(false) }
@@ -518,6 +533,38 @@ fun OmniAiModesScreen(
                             onClick = { menu = false; humanInbox = true })
                     }
                 }
+            }
+            Row(Modifier.fillMaxWidth().background(p.surface)
+                .heightIn(min = 42.dp).padding(horizontal = 16.dp, vertical = 2.dp),
+                verticalAlignment = Alignment.CenterVertically) {
+                Text("Keep T3 Busy", Modifier.weight(1f),
+                    color = p.text, style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Medium)
+                Text(when {
+                        !online || keepT3Busy == null -> "Unavailable"
+                        keepT3Busy == true -> "On"
+                        else -> "Off"
+                    }, color = when {
+                        !online || keepT3Busy == null -> p.muted
+                        keepT3Busy == true -> p.green
+                        else -> p.muted
+                    }, style = MaterialTheme.typography.labelSmall)
+                Spacer(Modifier.width(8.dp))
+                Switch(
+                    checked = keepT3Busy == true,
+                    enabled = online && keepT3Busy != null && !keepT3BusyUpdating,
+                    onCheckedChange = { enabled ->
+                        keepT3BusyUpdating = true
+                        scope.launch {
+                            try { keepT3Busy = signalRClient.t3BusyPolicy(enabled) }
+                            catch (error: Exception) {
+                                keepT3Busy = null
+                                note = "Keep T3 Busy failed: " + error.message
+                            } finally { keepT3BusyUpdating = false }
+                        }
+                    },
+                    modifier = Modifier.height(36.dp)
+                )
             }
             if (note != null) Row(Modifier.fillMaxWidth().background(p.accentBg)
                 .padding(start = 14.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
