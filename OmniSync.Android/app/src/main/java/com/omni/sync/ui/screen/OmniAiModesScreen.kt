@@ -32,6 +32,10 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
@@ -449,6 +453,34 @@ fun OmniAiModesScreen(
                         color = if (t3Connected) p.green else p.amber,
                         style = MaterialTheme.typography.labelSmall)
                 }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Busy", color = if (keepT3Busy == true) p.green else p.muted,
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.SemiBold)
+                    Switch(
+                        checked = keepT3Busy == true,
+                        enabled = online && keepT3Busy != null && !keepT3BusyUpdating,
+                        onCheckedChange = { enabled ->
+                            keepT3BusyUpdating = true
+                            scope.launch {
+                                try { keepT3Busy = signalRClient.t3BusyPolicy(enabled) }
+                                catch (error: Exception) {
+                                    keepT3Busy = null
+                                    note = "Keep T3 Busy failed: " + error.message
+                                } finally { keepT3BusyUpdating = false }
+                            }
+                        },
+                        modifier = Modifier.size(width = 48.dp, height = 40.dp)
+                            .scale(0.75f).semantics {
+                                contentDescription = "Keep T3 Busy"
+                                stateDescription = when (keepT3Busy) {
+                                    true -> "On"
+                                    false -> "Off"
+                                    null -> "Unavailable"
+                                }
+                            }
+                    )
+                }
                 ActionIcon(Icons.Default.Refresh, if (online) "Refresh" else "Reconnect", p) {
                     if (!online) {
                         signalRClient.startConnection()
@@ -533,38 +565,6 @@ fun OmniAiModesScreen(
                             onClick = { menu = false; humanInbox = true })
                     }
                 }
-            }
-            Row(Modifier.fillMaxWidth().background(p.surface)
-                .heightIn(min = 42.dp).padding(horizontal = 16.dp, vertical = 2.dp),
-                verticalAlignment = Alignment.CenterVertically) {
-                Text("Keep T3 Busy", Modifier.weight(1f),
-                    color = p.text, style = MaterialTheme.typography.labelLarge,
-                    fontWeight = FontWeight.Medium)
-                Text(when {
-                        !online || keepT3Busy == null -> "Unavailable"
-                        keepT3Busy == true -> "On"
-                        else -> "Off"
-                    }, color = when {
-                        !online || keepT3Busy == null -> p.muted
-                        keepT3Busy == true -> p.green
-                        else -> p.muted
-                    }, style = MaterialTheme.typography.labelSmall)
-                Spacer(Modifier.width(8.dp))
-                Switch(
-                    checked = keepT3Busy == true,
-                    enabled = online && keepT3Busy != null && !keepT3BusyUpdating,
-                    onCheckedChange = { enabled ->
-                        keepT3BusyUpdating = true
-                        scope.launch {
-                            try { keepT3Busy = signalRClient.t3BusyPolicy(enabled) }
-                            catch (error: Exception) {
-                                keepT3Busy = null
-                                note = "Keep T3 Busy failed: " + error.message
-                            } finally { keepT3BusyUpdating = false }
-                        }
-                    },
-                    modifier = Modifier.height(36.dp)
-                )
             }
             if (note != null) Row(Modifier.fillMaxWidth().background(p.accentBg)
                 .padding(start = 14.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
