@@ -18,6 +18,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.omni.sync.viewmodel.MainViewModel
 import com.omni.sync.viewmodel.AppScreen
+import com.omni.sync.ui.components.NavigationOrderEditor
 import android.content.Context
 import android.content.Intent
 import com.omni.sync.service.ForegroundService
@@ -320,6 +321,17 @@ fun SettingsScreen(
             }
             Text("Off by default so Remote Control gestures stay inside that screen.",
                 style = MaterialTheme.typography.bodySmall)
+            Spacer(modifier = Modifier.height(16.dp))
+            NavigationOrderEditor(
+                savedOrder = appConfig.navigationOrder,
+                savedVisibleCount = appConfig.navigationVisibleCount,
+                onOrderChange = { order ->
+                    mainViewModel.updateConfig { it.copy(navigationOrder = order) }
+                },
+                onVisibleCountChange = { count ->
+                    mainViewModel.updateConfig { it.copy(navigationVisibleCount = count) }
+                }
+            )
             Spacer(modifier = Modifier.height(24.dp))
             HorizontalDivider()
             Spacer(modifier = Modifier.height(24.dp))

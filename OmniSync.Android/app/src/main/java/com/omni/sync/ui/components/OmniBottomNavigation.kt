@@ -46,17 +46,13 @@ data class NavItem(
     val icon: ImageVector
 )
 
-// Define the main navigation tabs (without Process)
-val navigationItems = listOf(
+// Canonical list: the original first five remain visible for existing installations.
+val defaultNavigationItems = listOf(
     NavItem(AppScreen.DASHBOARD, "Dash", Icons.Default.Dashboard),
     NavItem(AppScreen.REMOTECONTROL, "Remote", Icons.Default.Gamepad),
     NavItem(AppScreen.BROWSER, "Browser", Icons.Default.Public),
     NavItem(AppScreen.FILES, "Files", Icons.Default.Folder),
-    NavItem(AppScreen.AGENTS, "AI", Icons.Default.SmartToy)
-)
-
-// Define the burger menu items
-val burgerMenuItems = listOf(
+    NavItem(AppScreen.AGENTS, "AI", Icons.Default.SmartToy),
     NavItem(AppScreen.PROCESS, "Process", Icons.Default.Memory),
     NavItem(AppScreen.ALARM, "Alarm", Icons.Default.Alarm),
     NavItem(AppScreen.WEB_SERVER, "OmniWeb", Icons.Default.Public),
@@ -65,13 +61,25 @@ val burgerMenuItems = listOf(
     NavItem(AppScreen.BOOKS, "Books", Icons.Default.MenuBook)
 )
 
+// Ignore retired/duplicate names and append newly added screens in their default order.
+fun configuredNavigationItems(savedOrder: List<String>?): List<NavItem> {
+    val byId = defaultNavigationItems.associateBy { it.screen.name }
+    val ordered = savedOrder.orEmpty().distinct().mapNotNull(byId::get)
+    return ordered + defaultNavigationItems.filterNot { it in ordered }
+}
+
+fun configuredVisibleCount(savedCount: Int): Int =
+    (if (savedCount <= 0) 5 else savedCount).coerceIn(1, defaultNavigationItems.size)
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun OmniBottomNavigation(
     currentScreen: AppScreen,
     onNavigate: (AppScreen) -> Unit,
     swipeNavigationEnabled: Boolean = false,
-    onSwipe: (Int) -> Unit = {}
+    onSwipe: (Int) -> Unit = {},
+    navigationOrder: List<String>? = null,
+    navigationVisibleCount: Int = 5
 ) {
     var showBurgerMenu by remember { mutableStateOf(false) }
     var totalDrag by remember { mutableStateOf(0f) }
@@ -79,10 +87,15 @@ fun OmniBottomNavigation(
     val configuration = androidx.compose.ui.platform.LocalConfiguration.current
     val isLandscape = configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
 
-    // We only want to show the Bottom Bar if we are on one of the main screens.    
-    // Also hide in landscape mode.
-    val allVisibleScreens = navigationItems.map { it.screen } + burgerMenuItems.map { it.screen }
-    val showBottomBar = (allVisibleScreens.any { it == currentScreen } || currentScreen == AppScreen.EDITOR || currentScreen == AppScreen.AGENT_DETAIL || currentScreen == AppScreen.AGENT_TERMINAL) && !isLandscape
+    val orderedItems = configuredNavigationItems(navigationOrder)
+    val visibleItems = orderedItems.take(configuredVisibleCount(navigationVisibleCount))
+    val hiddenItems = orderedItems.drop(visibleItems.size)
+    val activeNavigationScreen = when (currentScreen) {
+        AppScreen.EDITOR -> AppScreen.FILES
+        AppScreen.AGENT_DETAIL, AppScreen.AGENT_TERMINAL -> AppScreen.AGENTS
+        else -> currentScreen
+    }
+    val showBottomBar = orderedItems.any { it.screen == activeNavigationScreen } && !isLandscape
 
     // Match the AI workspace's neutral T3-like surfaces even when disconnected;
     // the global offline palette otherwise renders a burgundy navigation bar.
@@ -120,9 +133,8 @@ fun OmniBottomNavigation(
             } else Modifier
         ) {
             // Main navigation items
-            navigationItems.forEach { item ->
-                val isSelected = currentScreen == item.screen || (item.screen == AppScreen.FILES && currentScreen == AppScreen.EDITOR) ||
-                    (item.screen == AppScreen.AGENTS && (currentScreen == AppScreen.AGENT_DETAIL || currentScreen == AppScreen.AGENT_TERMINAL))
+            visibleItems.forEach { item ->
+                val isSelected = activeNavigationScreen == item.screen
                 
                 NavigationBarItem(
                     colors = if (aiWorkspace) aiBarColors else NavigationBarItemDefaults.colors(),
@@ -139,10 +151,10 @@ fun OmniBottomNavigation(
                 )
             }
             
-            // Burger menu button
-            NavigationBarItem(
+            // Only show More while there are screens outside the visible set.
+            if (hiddenItems.isNotEmpty()) NavigationBarItem(
                 colors = if (aiWorkspace) aiBarColors else NavigationBarItemDefaults.colors(),
-                selected = burgerMenuItems.any { it.screen == currentScreen },
+                selected = hiddenItems.any { it.screen == activeNavigationScreen },
                 onClick = { showBurgerMenu = true },
                 icon = { 
                     Icon(
@@ -155,7 +167,7 @@ fun OmniBottomNavigation(
                         expanded = showBurgerMenu,
                         onDismissRequest = { showBurgerMenu = false }
                     ) {
-                        burgerMenuItems.forEach { item ->
+                        hiddenItems.forEach { item ->
                             DropdownMenuItem(
                                 text = { 
                                     Text(text = item.title) 

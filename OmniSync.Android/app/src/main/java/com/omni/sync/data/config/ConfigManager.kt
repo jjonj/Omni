@@ -33,7 +33,10 @@ data class AppConfig(
     var overlayEnabled: Boolean = false,
     var swipeNavigationEnabled: Boolean = false, // Opt-in: touch gestures must not interfere with screen sharing
     var stillAwakeMediaPauseMinutes: Int = 30, // 0 disables the media pause timer
-    var terminalLauncher: String = "agy"
+    var terminalLauncher: String = "agy",
+    // Screen enum names; null/empty follows the built-in navigation order.
+    var navigationOrder: List<String>? = null,
+    var navigationVisibleCount: Int = 5
 )
 
 class ConfigManager(private val context: Context) {
@@ -57,6 +60,9 @@ class ConfigManager(private val context: Context) {
             c
         }
         
+        // Gson does not apply Kotlin constructor defaults to fields absent in older JSON files.
+        if (config.navigationVisibleCount <= 0) config.navigationVisibleCount = 5
+
         if (config.macros.isEmpty()) {
             config.macros = getDefaultMacros()
         }

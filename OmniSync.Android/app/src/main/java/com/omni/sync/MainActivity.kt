@@ -357,6 +357,8 @@ class MainActivity : ComponentActivity() {
                                 OmniBottomNavigation(
                                     currentScreen = currentScreen,
                                     swipeNavigationEnabled = appConfig.swipeNavigationEnabled,
+                                    navigationOrder = appConfig.navigationOrder,
+                                    navigationVisibleCount = appConfig.navigationVisibleCount,
                                     onNavigate = { screen -> 
                                         if (screen == AppScreen.FILES) {
                                             if (currentScreen == AppScreen.FILES || currentScreen == AppScreen.EDITOR) {
