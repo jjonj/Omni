@@ -393,7 +393,7 @@ fun SettingsScreen(
                 valueRange = 0f..120f,
                 steps = 23
             )
-            Text("Only manual Still Awake starts the timer. Setting Off cancels a pending pause.",
+            Text("Manual Still Awake restarts this timer. Enabled wake alarms also pause media 7h30, 7h and 6h30 before waking (3 times maximum). Setting Off cancels only the manual timer.",
                 style = MaterialTheme.typography.bodySmall)
             Spacer(modifier = Modifier.height(12.dp))
 

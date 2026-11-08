@@ -7,6 +7,7 @@ import android.content.Intent
 import android.os.Build
 import android.util.Log
 import com.omni.sync.receiver.AlarmReceiver
+import com.omni.sync.receiver.MediaPauseScheduler
 import com.omni.sync.ui.screen.AlarmData
 import com.omni.sync.ui.screen.GradualConfig
 import java.util.Calendar
@@ -198,7 +199,12 @@ object AlarmScheduler {
             val alarmClockInfo = AlarmManager.AlarmClockInfo(calendar.timeInMillis, pendingIntent)
             alarmManager.setAlarmClock(alarmClockInfo, pendingIntent)
             AlarmTrace.record("SCHEDULE_SUCCESS", "alarm=" + alarmId + " at=" + AlarmTrace.time(calendar.timeInMillis))
-            if (data.isWakeAlarm) scheduleBedtimeAlarm(context, data, config)
+            if (data.isWakeAlarm) {
+                scheduleBedtimeAlarm(context, data, config)
+                MediaPauseScheduler.scheduleWakePauses(context, alarmId, calendar.timeInMillis)
+            } else if (!isBedtimeAlarmId(alarmId)) {
+                MediaPauseScheduler.cancelWakePauses(context, alarmId)
+            }
             (context.applicationContext as? com.omni.sync.OmniSyncApplication)?.mainViewModel?.addLog(
                 "[Wake alarm $alarmId] Scheduled ${calendar.time}; daily=${data.repeatDaily}, wake=${data.isWakeAlarm}, nextOverride=${data.nextTriggerOverride != null}", com.omni.sync.ui.screen.LogType.INFO)
         } catch (e: SecurityException) {
@@ -288,9 +294,12 @@ object AlarmScheduler {
         alarmManager.cancel(pendingIntent)
         AlarmTrace.record("CANCEL_MAIN", "id=" + alarmId)
         
-        // Also cancel potential snooze and this wake alarm's optional companion.
+        // Also cancel potential snooze, companion and pre-wake media pauses.
         cancelSnooze(context, alarmId)
-        if (!isBedtimeAlarmId(alarmId)) cancelBedtimeAlarm(context, alarmId)
+        if (!isBedtimeAlarmId(alarmId)) {
+            MediaPauseScheduler.cancelWakePauses(context, alarmId)
+            cancelBedtimeAlarm(context, alarmId)
+        }
         
         Log.i("AlarmScheduler", "Cancelled Alarm $alarmId")
     }
