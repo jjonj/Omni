@@ -152,16 +152,17 @@ fun OmniAiModesScreen(
     val historyLoading by client.historyLoading.collectAsState()
     val createdKey by client.createdSessionKey.collectAsState()
     val online by signalRClient.hubAuthenticated.collectAsState()
-    var keepT3Busy by remember { mutableStateOf<Boolean?>(null) }
+    var busyPolicy by remember { mutableStateOf<T3BusyPolicyState?>(null) }
     var keepT3BusyUpdating by remember { mutableStateOf(false) }
+    var pendingBusyMinutes by remember { mutableStateOf<Int?>(null) }
     LaunchedEffect(online) {
         if (!online) {
-            keepT3Busy = null
+            busyPolicy = null
         } else {
             while (true) {
                 if (!keepT3BusyUpdating) {
-                    try { keepT3Busy = signalRClient.t3BusyPolicy() }
-                    catch (error: Exception) { keepT3Busy = null }
+                    try { busyPolicy = signalRClient.t3BusyPolicy() }
+                    catch (error: Exception) { busyPolicy = null }
                 }
                 delay(15_000)
             }
@@ -428,6 +429,26 @@ fun OmniAiModesScreen(
         surfaceVariant = p.raised, onSurfaceVariant = p.muted,
         outline = p.border, surfaceTint = p.accent
     )) {
+    if (pendingBusyMinutes != null) {
+        AlertDialog(
+            onDismissRequest = { pendingBusyMinutes = null },
+            title = { Text("Timed T3 work") },
+            text = { Text("Keep assigning work for ${pendingBusyMinutes!! / 60} hour(s), then let running sessions finish. Once all T3 sessions are idle, Windows will force shutdown, closing other apps without saving.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    val minutes = pendingBusyMinutes ?: return@TextButton
+                    pendingBusyMinutes = null
+                    keepT3BusyUpdating = true
+                    scope.launch {
+                        try { busyPolicy = signalRClient.t3BusyPolicy(scheduleMinutes = minutes) }
+                        catch (error: Exception) { note = "Timed run failed: " + error.message }
+                        finally { keepT3BusyUpdating = false }
+                    }
+                }) { Text("Start") }
+            },
+            dismissButton = { TextButton(onClick = { pendingBusyMinutes = null }) { Text("Cancel") } }
+        )
+    }
     if (humanInbox) {
         Box(Modifier.fillMaxSize().padding(parentPadding)) {
             HumanInboxScreen(signalRClient, onBack = { humanInbox = false })
@@ -454,18 +475,20 @@ fun OmniAiModesScreen(
                         style = MaterialTheme.typography.labelSmall)
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("Busy", color = if (keepT3Busy == true) p.green else p.muted,
+                    Text(busyPolicy?.busyUntil?.let {
+                        "Busy · " + java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()).format(java.util.Date(it))
+                    } ?: "Busy", color = if (busyPolicy?.keepT3Busy == true) p.green else p.muted,
                         style = MaterialTheme.typography.labelSmall,
                         fontWeight = FontWeight.SemiBold)
                     Switch(
-                        checked = keepT3Busy == true,
-                        enabled = online && keepT3Busy != null && !keepT3BusyUpdating,
+                        checked = busyPolicy?.keepT3Busy == true,
+                        enabled = online && busyPolicy != null && !keepT3BusyUpdating,
                         onCheckedChange = { enabled ->
                             keepT3BusyUpdating = true
                             scope.launch {
-                                try { keepT3Busy = signalRClient.t3BusyPolicy(enabled) }
+                                try { busyPolicy = signalRClient.t3BusyPolicy(enabled) }
                                 catch (error: Exception) {
-                                    keepT3Busy = null
+                                    busyPolicy = null
                                     note = "Keep T3 Busy failed: " + error.message
                                 } finally { keepT3BusyUpdating = false }
                             }
@@ -473,13 +496,39 @@ fun OmniAiModesScreen(
                         modifier = Modifier.size(width = 48.dp, height = 40.dp)
                             .scale(0.75f).semantics {
                                 contentDescription = "Keep T3 Busy"
-                                stateDescription = when (keepT3Busy) {
+                                stateDescription = when (busyPolicy?.keepT3Busy) {
                                     true -> "On"
                                     false -> "Off"
                                     null -> "Unavailable"
                                 }
                             }
                     )
+                    Box {
+                        var timingMenu by remember { mutableStateOf(false) }
+                        IconButton(onClick = { timingMenu = true },
+                            enabled = online && busyPolicy != null && !keepT3BusyUpdating,
+                            modifier = Modifier.size(32.dp)) {
+                            Icon(Icons.Default.Timer, "Schedule Busy and shutdown", tint = p.accent,
+                                modifier = Modifier.size(20.dp))
+                        }
+                        DropdownMenu(expanded = timingMenu, onDismissRequest = { timingMenu = false }) {
+                            listOf(60, 120, 240, 360).forEach { minutes ->
+                                DropdownMenuItem(text = { Text("Work ${minutes / 60}h, then shut down when idle") },
+                                    onClick = { timingMenu = false; pendingBusyMinutes = minutes })
+                            }
+                            if (busyPolicy?.busyUntil != null) DropdownMenuItem(
+                                text = { Text("Cancel timed work and shutdown") },
+                                onClick = {
+                                    timingMenu = false
+                                    keepT3BusyUpdating = true
+                                    scope.launch {
+                                        try { busyPolicy = signalRClient.t3BusyPolicy(false) }
+                                        catch (error: Exception) { note = "Cancel failed: " + error.message }
+                                        finally { keepT3BusyUpdating = false }
+                                    }
+                                })
+                        }
+                    }
                 }
                 ActionIcon(Icons.Default.Refresh, if (online) "Refresh" else "Reconnect", p) {
                     if (!online) {

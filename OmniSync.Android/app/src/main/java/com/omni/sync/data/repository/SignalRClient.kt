@@ -61,6 +61,12 @@ data class ProcessInfo(
     @SerializedName("memoryUsage") val memoryUsage: Long = 0
 )
 
+data class T3BusyPolicyState(
+    val keepT3Busy: Boolean,
+    val shutdownWhenIdle: Boolean,
+    val busyUntil: Long?
+)
+
 data class AndroidAlarmActionData(
     val id: Int = 0,
     val token: String = "",
@@ -1692,24 +1698,29 @@ class SignalRClient(
         }
     }
 
-    /** Read or update the PC-owned Caffy switch; never persist a separate Android setting. */
-    suspend fun t3BusyPolicy(enabled: Boolean? = null): Boolean =
+    /** All T3 Busy scheduling is authoritative on the PC, including its deadline. */
+    suspend fun t3BusyPolicy(enabled: Boolean? = null, scheduleMinutes: Int? = null): T3BusyPolicyState =
         kotlinx.coroutines.withContext(Dispatchers.IO) {
             val conn = hubConnection ?: throw IllegalStateException("OmniHub connection unavailable")
             check(isHubAuthenticated &&
                 conn.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
                 "OmniHub is not authenticated"
             }
-            val result = if (enabled == null)
-                conn.invoke(Any::class.java, "T3CaffyStatus")
-            else
-                conn.invoke(Any::class.java, "T3CaffySetBusy", enabled)
+            val result = when {
+                scheduleMinutes != null -> conn.invoke(Any::class.java, "T3CaffySchedule", scheduleMinutes)
+                enabled != null -> conn.invoke(Any::class.java, "T3CaffySetBusy", enabled)
+                else -> conn.invoke(Any::class.java, "T3CaffyStatus")
+            }
             val response = gson.toJsonTree(result.timeout(18, TimeUnit.SECONDS).blockingGet()).asJsonObject
             val state = response.get("keepT3Busy")
             require(state != null && state.isJsonPrimitive && state.asJsonPrimitive.isBoolean) {
                 "T3 returned no verified Keep T3 Busy state"
             }
-            state.asBoolean
+            T3BusyPolicyState(
+                keepT3Busy = state.asBoolean,
+                shutdownWhenIdle = response.get("shutdownWhenIdle")?.takeUnless { it.isJsonNull }?.asBoolean ?: false,
+                busyUntil = response.get("busyUntil")?.takeUnless { it.isJsonNull }?.asLong
+            )
         }
 
     /**
