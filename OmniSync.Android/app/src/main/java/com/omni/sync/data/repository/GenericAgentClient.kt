@@ -999,6 +999,18 @@ class GenericAgentClient(
             if (_selected.value==session.key) _remoteQueue.value=list
         } catch (e: Exception) {_status.value="Queue read failed: ${e.message}"}
     }
+    /** Fresh T3-owned context details: URLs, role, Caffy and parent/project
+     * state are never guessed from Android's cached session listing. */
+    suspend fun sessionControls(session: AgentSessionUi): JsonObject {
+        require(session.provider == "t3" && session.kind == "t3/chatgpt") {
+            "T3 browser session required"
+        }
+        check(signalR.hubAuthenticated.value) { "Hub offline" }
+        return signalR.agentCall("sessions.controls", mapOf(
+            "session" to mapOf("provider" to session.provider, "id" to session.id)
+        )).asJsonObject
+    }
+
     suspend fun sessionAction(session: AgentSessionUi, action:String,
         extra: Map<String, Any?> = emptyMap()): String {
         if (!signalR.hubAuthenticated.value) throw IllegalStateException("Hub offline")
@@ -1006,6 +1018,7 @@ class GenericAgentClient(
             "Interrupt"->"sessions.interrupt"
             "Rename"->"sessions.update"
             "Visibility"->"sessions.visibility"
+            "Control"->"sessions.control"
             "Delete"->"sessions.delete"
             "QueueEdit"->"sessions.queue.edit"
             else->throw IllegalArgumentException("Unknown agent operation")
@@ -1018,7 +1031,12 @@ class GenericAgentClient(
         val receipt=signalR.agentCall(method,params).asJsonObject
         val state = receipt.str("state") ?: "Unknown"
         if (state == "Failed") throw IllegalStateException(receipt.str("error") ?: "Provider rejected $action")
-        refresh()
+        // The remote mutation may have succeeded even when the follow-up
+        // listing is unavailable (or the target was just closed). Never turn a
+        // confirmed Control receipt into a failure that invites a duplicate.
+        if (action == "Control") {
+            try { refresh() } catch (_: Exception) { /* refresh on next poll */ }
+        } else refresh()
         if (action=="QueueEdit") fetchQueue(session)
         _status.value="Provider operation: $state"
         return state

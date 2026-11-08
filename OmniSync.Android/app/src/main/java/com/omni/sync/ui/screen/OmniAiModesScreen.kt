@@ -44,6 +44,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.omni.sync.data.repository.*
+import com.google.gson.JsonObject
+import android.content.Intent
+import android.net.Uri
 import com.omni.sync.viewmodel.MainViewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -174,6 +177,11 @@ fun OmniAiModesScreen(
     var sessionSearch by rememberSaveable { mutableStateOf("") }
     var sessionFilter by rememberSaveable { mutableStateOf("All") }
     var rowOptions by remember { mutableStateOf<AgentSessionUi?>(null) }
+    var rowControls by remember { mutableStateOf<JsonObject?>(null) }
+    var rowControlError by remember { mutableStateOf<String?>(null) }
+    var rowControlBusy by remember { mutableStateOf(false) }
+    var rowActionPage by remember { mutableStateOf("Session") }
+    var closeConfirmation by remember { mutableStateOf<AgentSessionUi?>(null) }
     var message by rememberSaveable { mutableStateOf("") }
     var deliveryMode by rememberSaveable { mutableStateOf("WhenIdle") }
     var maxActiveWorkers by rememberSaveable { mutableIntStateOf(4) }
@@ -249,6 +257,44 @@ fun OmniAiModesScreen(
         else -> "Delivers when idle"
     }
     fun isT3Browser(s: AgentSessionUi) = s.provider == "t3" && s.kind == "t3/chatgpt"
+    LaunchedEffect(rowOptions?.key, online) {
+        rowControls = null
+        rowControlError = null
+        rowActionPage = "Session"
+        val target = rowOptions
+        if (target != null && online && isT3Browser(target) &&
+            target.capabilities.contains("RemoteControl")) {
+            try { rowControls = client.sessionControls(target) }
+            catch (e: Exception) { rowControlError = "T3 control status unavailable: " + e.message }
+        }
+    }
+    fun performRowControl(target: AgentSessionUi, command: String,
+                          options: Map<String, Any?> = emptyMap()) {
+        if (!online || !target.capabilities.contains("RemoteControl")) {
+            rowControlError = "T3 session controls require the connected desktop provider."
+            return
+        }
+        if (rowControlBusy) return
+        rowControlBusy = true
+        scope.launch {
+            try {
+                val receipt = client.sessionAction(target, "Control",
+                    mapOf("command" to command, "options" to options))
+                note = "${command.replace('_', ' ')}: $receipt"
+                rowControlError = null
+                if (command == "close") rowOptions = null
+                else if (rowOptions?.key == target.key) {
+                    try { rowControls = client.sessionControls(target) }
+                    catch (e: Exception) {
+                        rowControlError = "Action delivered, but status refresh failed: " + e.message
+                    }
+                }
+            } catch (e: Exception) {
+                rowControlError = "${command.replace('_', ' ')} failed: " + e.message +
+                    ". If the operation timed out, inspect its state before retrying."
+            } finally { rowControlBusy = false }
+        }
+    }
     fun isHidden(s: AgentSessionUi) = if (isT3Browser(s)) s.visibilityHidden == true
         else viewPrefs.getBoolean("hidden:${s.key}", false)
     fun snoozedUntil(s: AgentSessionUi) = if (isT3Browser(s)) s.visibilitySnoozedUntil ?: 0L
@@ -721,7 +767,7 @@ fun OmniAiModesScreen(
                             }
                             if (session.unread == true) Dot(p.accent)
                             IconButton(onClick = { rowOptions = session }, modifier = Modifier.size(36.dp)) {
-                                Icon(Icons.Default.MoreVert, "Snooze or hide session", tint = p.muted,
+                                Icon(Icons.Default.MoreVert, "Session actions", tint = p.muted,
                                     modifier = Modifier.size(19.dp))
                             }
                         }
@@ -984,37 +1030,391 @@ fun OmniAiModesScreen(
     }
 
     rowOptions?.let { target ->
+        val remote = isT3Browser(target) && target.capabilities.contains("RemoteControl")
+        val details = rowControls
+        fun field(name: String): String? =
+            details?.get(name)?.takeUnless { it.isJsonNull }?.let {
+                runCatching { it.asString }.getOrNull()
+            }
+        fun copyValue(label: String, value: String?) {
+            if (value.isNullOrBlank()) { rowControlError = "$label is unavailable"; return }
+            clipboard.setText(AnnotatedString(value))
+            note = "$label copied"
+        }
+        val caffy = details?.get("caffy")?.takeIf { it.isJsonObject }?.asJsonObject
+        fun caffyField(name: String): String? =
+            caffy?.get(name)?.takeUnless { it.isJsonNull }?.let {
+                runCatching { it.asString }.getOrNull()
+            }
+        var customDuration by remember(target.key) { mutableStateOf("60") }
+        var customInterval by remember(target.key) { mutableStateOf("20") }
+        var editText by remember(target.key) { mutableStateOf("") }
+        var editKind by remember(target.key) { mutableStateOf("") }
+        var editBoard by remember(target.key) { mutableStateOf("") }
+        var editTask by remember(target.key) { mutableStateOf("") }
+        var editSeat by remember(target.key) { mutableStateOf("") }
+        var editRole by remember(target.key) { mutableStateOf("personal") }
+        var parentSearch by remember(target.key) { mutableStateOf("") }
+        var showParentChoices by remember(target.key) { mutableStateOf(false) }
+        var customSnoozeMinutes by remember(target.key) { mutableStateOf("90") }
         ModalBottomSheet(onDismissRequest = { rowOptions = null },
             containerColor = p.surface, contentColor = p.text,
             sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
-            Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 20.dp)
-                .padding(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                SheetTitle("Session visibility", target.title, p)
-                if (isHidden(target)) SheetAction("Unhide session", p) {
-                    setHidden(target, false); rowOptions = null
-                } else SheetAction("Hide session", p) {
-                    viewPrefs.edit().putLong("hiddenAt:${target.key}", now).apply()
-                    setHidden(target, true); rowOptions = null
-                }
-                if (isSnoozed(target)) SheetAction("Unsnooze", p) {
-                    setSnooze(target, 0L); rowOptions = null
-                } else {
-                    Text("Snooze for", color = p.muted, style = MaterialTheme.typography.labelMedium)
+            Column(Modifier.fillMaxWidth().fillMaxHeight(0.88f)
+                .navigationBarsPadding().verticalScroll(rememberScrollState())
+                .padding(horizontal = 20.dp).padding(bottom = 24.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                SheetTitle(if (remote) "T3 session actions" else "Session visibility", field("title") ?: target.title, p)
+                if (rowControlBusy) LinearProgressIndicator(Modifier.fillMaxWidth())
+                if (rowControlError != null)
+                    Text(rowControlError!!, color = p.amber, style = MaterialTheme.typography.bodySmall)
+                if (remote) {
                     Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        listOf(1, 2, 4, 8, 24).forEach { hours ->
-                            FilterChip(selected = false, onClick = {
-                                viewPrefs.edit().putLong("snoozedAt:${target.key}", now).apply()
-                                setSnooze(target, now + hours * HOUR_MS); rowOptions = null
-                            }, label = { Text("${hours}h") })
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        listOf("Session", "Caffy", "Organize").forEach { page ->
+                            FilterChip(selected = rowActionPage == page,
+                                onClick = { rowActionPage = page },
+                                label = { Text(page) })
                         }
                     }
                 }
-                Text(if (isT3Browser(target)) "Synced with the T3 desktop sidebar."
+                if (!remote || rowActionPage == "Session") {
+                    if (remote) {
+                        Text("Copy", color = p.muted, style = MaterialTheme.typography.labelMedium)
+                        SheetAction("T3 Session ID", p) {
+                            copyValue("T3 Session ID", field("id"))
+                        }
+                        SheetAction("ChatGPT Conversation ID", p) {
+                            copyValue("Conversation ID", field("conversationId"))
+                        }
+                        SheetAction("ChatGPT URL", p) {
+                            copyValue("ChatGPT URL", field("url"))
+                        }
+                        SheetAction("Session title", p) { copyValue("Title", field("title") ?: target.title) }
+                        SheetAction("Parent Session ID", p) {
+                            copyValue("Parent ID", field("parentId"))
+                        }
+                        HorizontalDivider(color = p.border)
+                        Text("Session", color = p.muted, style = MaterialTheme.typography.labelMedium)
+                        SheetAction("Stop generation", p) { performRowControl(target, "stop") }
+                        SheetAction("Reload session", p) { performRowControl(target, "reload") }
+                        SheetAction(if (field("keepLoaded") == "true") "Disable Keep loaded" else "Keep loaded", p) {
+                            performRowControl(target, "keep_loaded",
+                                mapOf("value" to (field("keepLoaded") != "true")))
+                        }
+                        SheetAction("Reboot agent (same T3 slot)", p) { performRowControl(target, "reboot") }
+                        SheetAction("Restore ChatGPT URL", p) { performRowControl(target, "restore_url") }
+                        SheetAction(if (field("verificationPending") == "true") "Clear verification"
+                            else "Mark for verification", p) {
+                            performRowControl(target, "verification",
+                                mapOf("value" to (field("verificationPending") != "true")))
+                        }
+                        SheetAction("Unload session", p) { performRowControl(target, "unload") }
+                    }
+                    HorizontalDivider(color = p.border)
+                    if (isHidden(target)) SheetAction("Unhide session", p) {
+                        setHidden(target, false); rowOptions = null
+                    } else SheetAction("Hide session", p) {
+                        viewPrefs.edit().putLong("hiddenAt:${target.key}", now).apply()
+                        setHidden(target, true); rowOptions = null
+                    }
+                    if (isSnoozed(target)) SheetAction("Unsnooze", p) {
+                        setSnooze(target, 0L); rowOptions = null
+                    } else {
+                        Text("Snooze for", color = p.muted, style = MaterialTheme.typography.labelMedium)
+                        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            listOf(1, 2, 4, 8, 24, 72, 168).forEach { hours ->
+                                FilterChip(selected = false, onClick = {
+                                    viewPrefs.edit().putLong("snoozedAt:${target.key}", now).apply()
+                                    setSnooze(target, now + hours * HOUR_MS); rowOptions = null
+                                }, label = { Text(if (hours >= 72) "${hours / 24}d" else "${hours}h") })
+                            }
+                        }
+                    }
+                    if (remote) {
+                        OutlinedTextField(customSnoozeMinutes,
+                            { customSnoozeMinutes = it.filter(Char::isDigit).take(5) },
+                            Modifier.fillMaxWidth(), singleLine = true,
+                            label = { Text("Custom snooze (minutes)") })
+                        SheetAction("Apply custom snooze", p) {
+                            val minutes = customSnoozeMinutes.toLongOrNull()
+                            if (minutes == null || minutes !in 1..10080)
+                                rowControlError = "Snooze duration must be 1–10080 minutes."
+                            else {
+                                setSnooze(target, now + minutes * MINUTE_MS)
+                                rowOptions = null
+                            }
+                        }
+                        HorizontalDivider(color = p.border)
+                        SheetAction("Close T3 session permanently…", p, Color(0xFFE58B8B)) {
+                            closeConfirmation = target
+                        }
+                    }
+                }
+                if (remote && rowActionPage == "Caffy") {
+                    val activeMode = caffyField("mode")
+                    val paused = caffyField("paused") == "true"
+                    SheetTitle("Caffy · ${activeMode ?: "Off"}" +
+                        (if (paused) " (paused)" else ""), "T3-owned wake control", p)
+                    Text("Wake on idle · duration", color = p.muted,
+                        style = MaterialTheme.typography.labelMedium)
+                    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        listOf(1, 2, 4, 8).forEach { hours ->
+                            FilterChip(false, onClick = {
+                                performRowControl(target, "caffy_set",
+                                    mapOf("mode" to "idle", "durationMinutes" to hours * 60))
+                            }, label = { Text("${hours}h") })
+                        }
+                        FilterChip(false, onClick = {
+                            performRowControl(target, "caffy_set", mapOf("mode" to "idle"))
+                        }, label = { Text("Infinite") })
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FilterChip(false, onClick = {
+                            performRowControl(target, "caffy_set",
+                                mapOf("mode" to "idle", "onceOnly" to true))
+                        }, label = { Text("Once only") })
+                        FilterChip(false, onClick = {
+                            performRowControl(target, "caffy_set", mapOf("mode" to "queued"))
+                        }, label = { Text("Queued idle · Infinite") })
+                    }
+                    Text("Periodic wake · every", color = p.muted,
+                        style = MaterialTheme.typography.labelMedium)
+                    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        listOf(5, 10, 20, 30, 60).forEach { minutes ->
+                            FilterChip(false, onClick = {
+                                performRowControl(target, "caffy_set",
+                                    mapOf("mode" to "periodic", "intervalMinutes" to minutes))
+                            }, label = { Text("${minutes}m") })
+                        }
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedTextField(customInterval, { customInterval = it.filter(Char::isDigit).take(4) },
+                            Modifier.weight(1f), singleLine = true, label = { Text("Interval min") })
+                        OutlinedTextField(customDuration, { customDuration = it.filter(Char::isDigit).take(5) },
+                            Modifier.weight(1f), singleLine = true, label = { Text("Duration min") })
+                    }
+                    SheetAction("Set custom periodic schedule", p) {
+                        val interval = customInterval.toIntOrNull()
+                        val duration = customDuration.toIntOrNull()
+                        if (interval == null || interval !in 1..1440 ||
+                            (customDuration.isNotEmpty() && (duration == null || duration !in 1..10080)))
+                            rowControlError = "Use a 1–1440 minute interval and 1–10080 minute duration, or blank for infinite."
+                        else performRowControl(target, "caffy_set",
+                            mapOf("mode" to "periodic", "intervalMinutes" to interval,
+                                "durationMinutes" to duration))
+                    }
+                    HorizontalDivider(color = p.border)
+                    Text("Begin / resume work", color = p.muted,
+                        style = MaterialTheme.typography.labelMedium)
+                    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        listOf(30, 60, 120, 240).forEach { minutes ->
+                            FilterChip(false, onClick = {
+                                performRowControl(target, "caffy_begin",
+                                    mapOf("beginAt" to System.currentTimeMillis() + minutes * MINUTE_MS))
+                            }, label = { Text("${minutes}m") })
+                        }
+                    }
+                    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        listOf(9, 13, 18).forEach { hour ->
+                            FilterChip(false, onClick = {
+                                val calendar = java.util.Calendar.getInstance().apply {
+                                    add(java.util.Calendar.DAY_OF_YEAR, 1)
+                                    set(java.util.Calendar.HOUR_OF_DAY, hour)
+                                    set(java.util.Calendar.MINUTE, 0)
+                                    set(java.util.Calendar.SECOND, 0)
+                                    set(java.util.Calendar.MILLISECOND, 0)
+                                }
+                                performRowControl(target, "caffy_begin", mapOf("beginAt" to calendar.timeInMillis))
+                            }, label = { Text("Tomorrow ${hour}:00") })
+                        }
+                    }
+                    SheetAction("Cancel delayed start", p) {
+                        performRowControl(target, "caffy_begin", mapOf("beginAt" to null))
+                    }
+                    HorizontalDivider(color = p.border)
+                    if (activeMode == "idle" || activeMode == "queued") {
+                    Text("Auto-reboot (idle / queued only)", color = p.muted,
+                        style = MaterialTheme.typography.labelMedium)
+                    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        listOf(30, 60, 120).forEach { minutes ->
+                            FilterChip(false, onClick = {
+                                performRowControl(target, "caffy_reboot", mapOf("value" to minutes))
+                            }, label = { Text("${minutes}m") })
+                        }
+                        FilterChip(false, onClick = {
+                            performRowControl(target, "caffy_reboot", mapOf("value" to null))
+                        }, label = { Text("Off") })
+                    }
+                    }
+                    if (activeMode != null) SheetAction(if (paused) "Resume Caffy" else "Pause Caffy", p) {
+                        performRowControl(target, if (paused) "caffy_resume" else "caffy_pause")
+                    }
+                    SheetAction(if (caffyField("startup") == "true") "Disable resume on startup"
+                        else "Resume on T3 startup", p) {
+                        if (activeMode == null)
+                            performRowControl(target, "caffy_set",
+                                mapOf("mode" to "startup", "startup" to true))
+                        else performRowControl(target, "caffy_startup",
+                            mapOf("value" to (caffyField("startup") != "true")))
+                    }
+                    SheetAction("Wake this agent now", p) {
+                        performRowControl(target, "caffy_wake")
+                    }
+                    if (activeMode != null) SheetAction("Stop Caffy", p, Color(0xFFE58B8B)) {
+                        performRowControl(target, "caffy_stop")
+                    }
+                }
+                if (remote && rowActionPage == "Organize") {
+                    SheetTitle("Organization", "T3 desktop sidebar state", p)
+                    if (field("role") != "manager") SheetAction(if (field("role") == "worker") "Mark as personal"
+                        else "Mark as worker", p) {
+                        performRowControl(target, "worker", mapOf("value" to (field("role") != "worker")))
+                    }
+                    SheetAction("Edit Omniwork binding…", p) {
+                        val binding = details?.get("binding")?.takeIf { it.isJsonObject }?.asJsonObject
+                        val taskRef = binding?.get("taskRef")?.takeIf { it.isJsonObject }?.asJsonObject
+                        editKind = "binding"
+                        editRole = field("role")?.takeUnless { it == "manager" } ?: "personal"
+                        editSeat = binding?.get("seatId")?.takeUnless { it.isJsonNull }?.asString.orEmpty()
+                        editBoard = taskRef?.get("board")?.asString.orEmpty()
+                        editTask = taskRef?.get("id")?.asString.orEmpty()
+                    }
+                    if (details?.get("binding")?.isJsonObject == true) {
+                        SheetAction("Clear Omniwork binding", p) {
+                            performRowControl(target, "binding_clear")
+                        }
+                    }
+                    Text("Move to project", color = p.muted, style = MaterialTheme.typography.labelMedium)
+                    val projects = details?.get("projects")?.takeIf { it.isJsonArray }?.asJsonArray
+                    projects?.forEach { item ->
+                        val name = item.asString
+                        SheetAction((if (field("project") == name) "✓ " else "") + name, p) {
+                            performRowControl(target, "project", mapOf("value" to name))
+                        }
+                    }
+                    SheetAction("No project", p) {
+                        performRowControl(target, "project", mapOf("value" to null))
+                    }
+                    SheetAction("Add / move to project…", p) {
+                        editKind = "project"; editText = field("project") ?: ""
+                    }
+                    Text("Parent session", color = p.muted, style = MaterialTheme.typography.labelMedium)
+                    SheetAction("Detach from parent", p) {
+                        performRowControl(target, "parent", mapOf("value" to null))
+                    }
+                    val others = details?.get("otherSessions")?.takeIf { it.isJsonArray }?.asJsonArray
+                    SheetAction(if (showParentChoices) "Hide parent choices" else "Choose parent…", p) {
+                        showParentChoices = !showParentChoices
+                    }
+                    if (showParentChoices) OutlinedTextField(parentSearch, { parentSearch = it },
+                        Modifier.fillMaxWidth(), singleLine = true,
+                        label = { Text("Search parent by title or T3 ID") })
+                    (if (showParentChoices) others?.filter { item ->
+                        item.isJsonObject && (parentSearch.isBlank() ||
+                            item.asJsonObject.get("title")?.asString.orEmpty().contains(parentSearch, true) ||
+                            item.asJsonObject.get("id")?.asString.orEmpty().contains(parentSearch, true))
+                    }?.take(18) else null)?.forEach { item ->
+                        if (item.isJsonObject) {
+                            val id = item.asJsonObject.get("id")?.asString.orEmpty()
+                            val name = item.asJsonObject.get("title")?.asString.orEmpty()
+                            SheetAction("Parent: $name", p) {
+                                performRowControl(target, "parent", mapOf("value" to id))
+                            }
+                        }
+                    }
+                    Text("Highlight", color = p.muted, style = MaterialTheme.typography.labelMedium)
+                    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        listOf("red", "orange", "yellow", "green", "blue", "purple", "pink", "none").forEach { color ->
+                            FilterChip(selected = field("borderColor") == color, onClick = {
+                                performRowControl(target, "highlight",
+                                    mapOf("value" to color.takeUnless { it == "none" }))
+                            }, label = { Text(color.replaceFirstChar { it.uppercase() }) })
+                        }
+                    }
+                    SheetAction("Rename session…", p) {
+                        editKind = "rename"; editText = target.title
+                    }
+                    val task = details?.get("binding")?.takeIf { it.isJsonObject }?.asJsonObject
+                        ?.get("taskRef")?.takeIf { it.isJsonObject }?.asJsonObject
+                    if (task != null) SheetAction("Open TaskBoard task", p) {
+                        val board = task.get("board")?.asString.orEmpty()
+                        val id = task.get("id")?.asString.orEmpty()
+                        try {
+                            val file = "$board/Tasks/Active/$id"
+                            val uri = Uri.parse("obsidian://open?vault=jjj&file=" + Uri.encode(file))
+                            context.startActivity(Intent(Intent.ACTION_VIEW, uri))
+                        } catch (e: Exception) { rowControlError = "Cannot open Obsidian: " + e.message }
+                    }
+                    if (editKind == "binding") {
+                        Text("Omniwork role", color = p.muted,
+                            style = MaterialTheme.typography.labelMedium)
+                        if (field("role") == "manager") Text("Manager role is preserved.",
+                            color = p.muted, style = MaterialTheme.typography.labelSmall)
+                        else Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            listOf("personal", "worker").forEach { role ->
+                                FilterChip(selected = editRole == role,
+                                    onClick = { editRole = role },
+                                    label = { Text(role.replaceFirstChar { it.uppercase() }) })
+                            }
+                        }
+                        OutlinedTextField(editSeat, { editSeat = it.take(160) },
+                            Modifier.fillMaxWidth(), singleLine = true,
+                            label = { Text("Seat ID (optional)") })
+                        OutlinedTextField(editBoard, { editBoard = it.take(200) },
+                            Modifier.fillMaxWidth(), singleLine = true,
+                            label = { Text("TaskBoard board (optional)") })
+                        OutlinedTextField(editTask, { editTask = it.take(120) },
+                            Modifier.fillMaxWidth(), singleLine = true,
+                            label = { Text("TaskBoard task ID (optional)") })
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            TextButton(onClick = { editKind = "" }) { Text("Cancel") }
+                            TextButton(onClick = {
+                                performRowControl(target, "binding_update",
+                                    mapOf("role" to editRole, "seatId" to editSeat,
+                                        "taskBoard" to editBoard, "taskId" to editTask))
+                                editKind = ""
+                            }, enabled = (editBoard.isBlank() == editTask.isBlank())) { Text("Save binding") }
+                        }
+                    }
+                    if (editKind == "project" || editKind == "rename") {
+                        OutlinedTextField(editText, { editText = it.take(180) },
+                            Modifier.fillMaxWidth(), singleLine = true,
+                            label = { Text(if (editKind == "project") "Project name" else "Session title") })
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            TextButton(onClick = { editKind = "" }) { Text("Cancel") }
+                            TextButton(onClick = {
+                                performRowControl(target, editKind, mapOf("value" to editText.trim()))
+                                editKind = ""
+                            }, enabled = editText.isNotBlank()) { Text("Save") }
+                        }
+                    }
+                }
+                Text(if (remote) "Actions are executed by the T3 desktop. No control is sent while offline."
                     else "Visibility applies only on this phone for this provider.",
                     color = p.muted, style = MaterialTheme.typography.labelSmall)
             }
         }
+    }
+    closeConfirmation?.let { target ->
+        AlertDialog(onDismissRequest = { closeConfirmation = null },
+            title = { Text("Close T3 session?") },
+            text = { Text("Permanently removes this local T3 browser session. This does not delete the ChatGPT conversation in the cloud. Any unfinished draft must be cleared first.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    closeConfirmation = null
+                    performRowControl(target, "close")
+                }) { Text("Close session") }
+            },
+            dismissButton = { TextButton(onClick = { closeConfirmation = null }) { Text("Cancel") } })
     }
     if (sheet != null) ModalBottomSheet(onDismissRequest = { sheet = null },
         containerColor = p.surface, contentColor = p.text,
