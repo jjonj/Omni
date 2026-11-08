@@ -184,6 +184,16 @@ private fun mobileTaskSort(mode: String): Comparator<TaskBoardTask> = when (mode
     else -> compareBy<TaskBoardTask>({ attentionRank(it) }, { it.kind != "epic" }, { it.id })
 }
 
+private fun TaskBoardColumn.canAutoQueue(): Boolean =
+    aiReady && !advisory && !terminal && id != "draft"
+
+private fun TaskBoardSnapshot.canQueue(task: TaskBoardTask): Boolean =
+    columns.any { it.id == task.column && it.canAutoQueue() } &&
+        task.kind in setOf("task", "recurring") && task.completed == null &&
+        task.claimedBy == null && waitingFor(task).isEmpty() &&
+        task.attention.none { it in setOf("blocked", "needs-user", "question") } &&
+        task.question?.answer?.isBlank() != true
+
 private fun TaskBoardColumn.snoozedNow(): Boolean =
     snoozedUntil?.let { runCatching {
         java.time.Instant.parse(it).isAfter(java.time.Instant.now())
@@ -249,6 +259,10 @@ private fun TaskBoardContents(parentPadding: PaddingValues, signalR: SignalRClie
     var filterMode by remember { mutableStateOf(boardPreferences.getString("mobile_filter", "all") ?: "all") }
     var sortMode by remember { mutableStateOf(boardPreferences.getString("mobile_sort", "priority") ?: "priority") }
     var queueModes by remember(selectedRoot) { mutableStateOf<Map<String, String>>(emptyMap()) }
+    var queueModesLoaded by remember(selectedRoot) { mutableStateOf(false) }
+    // PC ACK can precede Syncthing's updated _board.md; show the acknowledged
+    // policy and prevent a second tap accidentally reverting it until phone sync.
+    var awaitingColumnSync by remember(selectedRoot) { mutableStateOf<Map<String, Boolean>>(emptyMap()) }
     var queueOverviewOpen by remember(selectedRoot) { mutableStateOf(false) }
     var queueOverview by remember(selectedRoot) {
         mutableStateOf<Map<String, TaskBoardPhoneClient.QueueIntent>?>(null)
@@ -383,7 +397,7 @@ private fun TaskBoardContents(parentPadding: PaddingValues, signalR: SignalRClie
                 if (queued > 0) syncNotice = "$queued edits saved on phone; syncing automatically"
                 if (mode == "queue" || mode == "backlog") {
                     runCatching { withContext(Dispatchers.IO) { phoneWriter.queueModes(store.root) } }
-                        .onSuccess { queueModes = it }
+                        .onSuccess { queueModes = it; queueModesLoaded = true }
                 }
                 selection = emptySet()
                 selecting = false
@@ -403,6 +417,56 @@ private fun TaskBoardContents(parentPadding: PaddingValues, signalR: SignalRClie
     suspend fun saveColumnsViaPc(columns: List<TaskBoardColumn>, expectedRevision: String) {
         val result = phoneWriter.submitColumns(store.root, expectedRevision, columns)
         requirePcApplied(result)
+    }
+
+    fun reloadQueueIntents() {
+        queueOverviewRefresh++
+        scope.launch {
+            runCatching { withContext(Dispatchers.IO) { phoneWriter.queueModes(store.root) } }
+                .onSuccess { queueModes = it; queueModesLoaded = true }
+        }
+    }
+
+    fun toggleTaskQueue(task: TaskBoardTask) {
+        if (loading || queueModes[task.id] == null) return
+        val enable = queueModes[task.id] != "queue"
+        mutate(action = {
+            // Use the authoritative queue revision, not an eventually synced phone file.
+            val intent = phoneWriter.queueIntents(store.root)[task.id]
+                ?: error("PC queue no longer contains ${task.id}; refresh the board")
+            if ((intent.mode == "queue") != enable)
+                requirePcApplied(phoneWriter.submitQueue(store.root, task, enable, intent.revision))
+        }, onSuccess = { reloadQueueIntents() })
+    }
+
+    fun toggleColumnQueue(column: TaskBoardColumn, board: TaskBoardSnapshot) {
+        if (loading || !column.canAutoQueue() || column.id in awaitingColumnSync) return
+        val enable = !column.autoQueue
+        val changed = board.columns.map { if (it.id == column.id) it.copy(autoQueue = enable) else it }
+        val failed = mutableListOf<String>()
+        mutate(action = {
+            // First save future-task policy, then align today's eligible tasks (desktop semantics).
+            saveColumnsViaPc(changed, board.boardRevision)
+            val remote = phoneWriter.queueIntents(store.root)
+            for (task in board.tasks.filter { it.column == column.id && board.canQueue(it) }) {
+                val intent = remote[task.id] ?: continue
+                if ((intent.mode == "queue") == enable) continue
+                try {
+                    requirePcApplied(phoneWriter.submitQueue(store.root, task, enable, intent.revision))
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (failure: Exception) {
+                    // The policy is already saved; preserve that success and report partial alignment.
+                    failed += "${task.id}: ${failure.message ?: "conflict"}"
+                }
+            }
+        }, onSuccess = {
+            awaitingColumnSync = awaitingColumnSync + (column.id to enable)
+            reloadQueueIntents()
+            if (failed.isNotEmpty()) error = "${column.name} auto-queue saved on PC, but " +
+                "${failed.size} task(s) need reconciliation: ${failed.take(3).joinToString("; ")}"
+            else syncNotice = "${column.name} auto-queue ${if (enable) "on" else "off"} on PC; awaiting phone sync"
+        })
     }
 
     fun generateDump() {
@@ -462,6 +526,14 @@ private fun TaskBoardContents(parentPadding: PaddingValues, signalR: SignalRClie
         refresh()
     }
 
+    LaunchedEffect(snapshot?.boardRevision, selectedRoot) {
+        snapshot?.let { board ->
+            awaitingColumnSync = awaitingColumnSync.filter { (id, expected) ->
+                board.columns.firstOrNull { it.id == id }?.autoQueue != expected
+            }
+        }
+    }
+
     // No manual retry dialog for ordinary connectivity changes. Pending drafts
     // survive app restarts and replay with the original idempotent operation ID.
     LaunchedEffect(phoneWriter) {
@@ -519,7 +591,7 @@ private fun TaskBoardContents(parentPadding: PaddingValues, signalR: SignalRClie
         while (!reviewMode) {
             if (signalR.hubAuthenticated.value) {
                 runCatching { withContext(Dispatchers.IO) { phoneWriter.queueModes(store.root) } }
-                    .onSuccess { queueModes = it }
+                    .onSuccess { queueModes = it; queueModesLoaded = true }
             }
             delay(45000)
         }
@@ -529,7 +601,11 @@ private fun TaskBoardContents(parentPadding: PaddingValues, signalR: SignalRClie
         if (queueOverviewOpen) {
             queueOverviewError = null
             runCatching { withContext(Dispatchers.IO) { phoneWriter.queueIntents(store.root) } }
-                .onSuccess { queueOverview = it }
+                .onSuccess {
+                    queueOverview = it
+                    queueModes = it.mapValues { (_, intent) -> intent.mode }
+                    queueModesLoaded = true
+                }
                 .onFailure { queueOverviewError = it.message ?: "PC queue unavailable" }
         }
     }
@@ -777,6 +853,26 @@ private fun TaskBoardContents(parentPadding: PaddingValues, signalR: SignalRClie
                                 modifier = Modifier.height(32.dp)
                             )
                         }
+                        // Queue is a primary TaskBoard control, not a hidden Tools dialog.
+                        Row(
+                            modifier = Modifier.fillMaxWidth().background(TaskBoardColors.card)
+                                .clickable { queueOverviewOpen = true; queueOverviewRefresh++ }
+                                .padding(horizontal = 12.dp, vertical = 7.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(7.dp)
+                        ) {
+                            Text("AI queue", color = TaskBoardColors.teal,
+                                fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelMedium)
+                            Text(if (!queueModesLoaded) "Loading PC queue…" else
+                                "${queueModes.count { it.value == "queue" }} queued · " +
+                                "${it.columns.count { column -> column.canAutoQueue() && (awaitingColumnSync[column.id] ?: column.autoQueue) }} " +
+                                "of ${it.columns.count { column -> column.canAutoQueue() }} columns auto",
+                                color = TaskBoardColors.text, style = MaterialTheme.typography.labelSmall,
+                                modifier = Modifier.weight(1f), maxLines = 1,
+                                overflow = TextOverflow.Ellipsis)
+                            Text("Manage ›", color = TaskBoardColors.blue,
+                                style = MaterialTheme.typography.labelSmall)
+                        }
                         if (searchOpen || taskQuery.isNotBlank()) {
                             OutlinedTextField(
                                 value = taskQuery, onValueChange = { taskQuery = it },
@@ -891,18 +987,10 @@ private fun TaskBoardContents(parentPadding: PaddingValues, signalR: SignalRClie
                                 compactView = compactView,
                                 sortMode = sortMode,
                                 queueModes = queueModes,
-                                onQueueToggle = { task ->
-                                    val current = queueModes[task.id] ?: "backlog"
-                                    val desired = current != "queue"
-                                    mutate(action = {
-                                        requirePcApplied(phoneWriter.submitQueue(store.root, task, desired))
-                                    }, onSuccess = {
-                                        scope.launch {
-                                            runCatching { withContext(Dispatchers.IO) { phoneWriter.queueModes(store.root) } }
-                                                .onSuccess { queueModes = it }
-                                        }
-                                    })
-                                },
+                                onQueueToggle = { task -> toggleTaskQueue(task) },
+                                onColumnQueueToggle = { column -> toggleColumnQueue(column, it) },
+                                queueBusy = loading,
+                                awaitingColumnSync = awaitingColumnSync,
                                 hideWaiting = hideWaiting,
                                 focusedColumn = focusedColumn,
                                 showHiddenColumns = showHiddenColumns,
@@ -1124,48 +1212,116 @@ private fun TaskBoardContents(parentPadding: PaddingValues, signalR: SignalRClie
         }
 
         if (queueOverviewOpen) {
-            val queued = queueOverview.orEmpty().filterValues { it.mode == "queue" }
+            val intents = queueOverview.orEmpty()
+            val queued = intents.filterValues { it.mode == "queue" }
                 .entries.sortedWith(compareBy({ when (it.value.state) {
                     "working" -> 0; "starting" -> 1; "reserved" -> 2; else -> 3
                 } }, { it.key }))
+            val backlog = board.tasks.filter { board.canQueue(it) &&
+                intents[it.id]?.mode == "backlog" }.sortedWith(mobileTaskSort("priority"))
             AlertDialog(
-                onDismissRequest = { queueOverviewOpen = false },
-                title = { Text("AI queue · ${snapshot?.name ?: "TaskBoard"}") },
+                onDismissRequest = { if (!loading) queueOverviewOpen = false },
+                title = { Text("AI queue · ${board.name}") },
                 text = {
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Column(Modifier.heightIn(max = 540.dp).verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(7.dp)) {
                         Text("${queued.size} queued · ${queued.count { it.value.state == "working" }} working · " +
                             "${queued.count { it.value.state == "starting" || it.value.state == "reserved" }} starting",
                             style = MaterialTheme.typography.bodyMedium)
                         queueOverviewError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-                        if (queueOverview == null && queueOverviewError == null) {
+                        if (queueOverview == null && queueOverviewError == null)
                             CircularProgressIndicator(Modifier.size(22.dp))
+
+                        Text("COLUMN AUTO-QUEUE", color = TaskBoardColors.muted,
+                            fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall)
+                        Text("Controls new and currently eligible tasks in each AI-ready column.",
+                            style = MaterialTheme.typography.labelSmall)
+                        board.columns.filter { it.canAutoQueue() }.sortedBy { it.order }.forEach { column ->
+                            val eligible = board.tasks.filter { it.column == column.id && board.canQueue(it) }
+                            val count = eligible.count { intents[it.id]?.mode == "queue" }
+                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Column(Modifier.weight(1f)) {
+                                    Text(column.name, color = TaskBoardColors.text,
+                                        style = MaterialTheme.typography.bodyMedium)
+                                    Text("$count/${eligible.size} eligible queued" +
+                                        (if (column.id in awaitingColumnSync) " · syncing to phone" else "") +
+                                        (if (column.snoozedNow()) " · snoozed" else ""),
+                                        color = TaskBoardColors.muted,
+                                        style = MaterialTheme.typography.labelSmall)
+                                }
+                                OutlinedButton(onClick = { toggleColumnQueue(column, board) },
+                                    enabled = !loading && column.id !in awaitingColumnSync) {
+                                    val shown = awaitingColumnSync[column.id] ?: column.autoQueue
+                                    Text(if (shown) "Auto ON" else "Auto OFF",
+                                        color = if (shown) TaskBoardColors.teal else TaskBoardColors.muted)
+                                }
+                            }
                         }
-                        Column(Modifier.heightIn(max = 380.dp).verticalScroll(rememberScrollState())) {
-                            queued.take(60).forEach { (id, intent) ->
+                        HorizontalDivider()
+                        Text("QUEUED TASKS", color = TaskBoardColors.muted,
+                            fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall)
+                        queued.take(40).forEach { (id, intent) ->
+                            val task = board.taskById(id)
+                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                                 TextButton(onClick = {
-                                    snapshot?.taskById(id)?.let { editingTask = it }
+                                    task?.let { editingTask = it }
                                     queueOverviewOpen = false
-                                }, modifier = Modifier.fillMaxWidth()) {
+                                }, modifier = Modifier.weight(1f), contentPadding = PaddingValues(0.dp)) {
                                     Column(Modifier.fillMaxWidth()) {
-                                        Text("$id · ${intent.state ?: "queued"}",
-                                            color = TaskBoardColors.text)
+                                        Text("$id · ${task?.title ?: intent.state ?: "queued"}",
+                                            maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                        Text(intent.state ?: "queued", color = TaskBoardColors.teal,
+                                            style = MaterialTheme.typography.labelSmall)
                                         intent.error?.let { Text(it, color = TaskBoardColors.amber,
                                             style = MaterialTheme.typography.labelSmall) }
                                     }
                                 }
+                                if (task != null && board.canQueue(task)) TextButton(
+                                    onClick = { toggleTaskQueue(task) }, enabled = !loading) {
+                                    Text("Unqueue")
+                                }
                             }
-                            if (queued.size > 60) Text("Showing first 60. Use filters to find others.",
-                                style = MaterialTheme.typography.labelSmall)
                         }
-                        Text("T3 manages dispatch and capacity; this is PC-owned queue state.",
+                        if (queued.size > 40) Text("Showing first 40 queued tasks.",
+                            style = MaterialTheme.typography.labelSmall)
+                        if (queued.isEmpty() && queueOverview != null)
+                            Text("No tasks queued.", style = MaterialTheme.typography.bodySmall)
+                        if (backlog.isNotEmpty()) {
+                            HorizontalDivider()
+                            Text("AVAILABLE TO QUEUE", color = TaskBoardColors.muted,
+                                fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall)
+                            backlog.take(30).forEach { task ->
+                                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                    Text("${task.id} · ${task.title}", modifier = Modifier.weight(1f),
+                                        maxLines = 2, overflow = TextOverflow.Ellipsis,
+                                        style = MaterialTheme.typography.bodySmall)
+                                    TextButton(onClick = { toggleTaskQueue(task) }, enabled = !loading) {
+                                        Text("Queue")
+                                    }
+                                }
+                            }
+                            if (backlog.size > 30)
+                                Text("Showing 30. Filter AI ready on the board for more.",
+                                    style = MaterialTheme.typography.labelSmall)
+                        }
+                        Text("Queue states come from the PC. Dispatch and capacity are managed by T3.",
                             style = MaterialTheme.typography.labelSmall)
                     }
                 },
                 confirmButton = {
-                    TextButton(onClick = { queueOverviewOpen = false }) { Text("Close") }
+                    TextButton(onClick = { queueOverviewOpen = false }, enabled = !loading) { Text("Close") }
                 },
                 dismissButton = {
-                    TextButton(onClick = { queueOverviewRefresh++ }) { Text("Refresh") }
+                    Row {
+                        TextButton(onClick = {
+                            queueOverviewOpen = false
+                            showColumns = true
+                        }, enabled = !loading) { Text("Columns") }
+                        TextButton(onClick = { queueOverviewRefresh++ }, enabled = !loading) {
+                            Text("Refresh")
+                        }
+                    }
                 }
             )
         }
@@ -1191,34 +1347,8 @@ private fun TaskBoardContents(parentPadding: PaddingValues, signalR: SignalRClie
                     }
                     mutate(action = { saveColumnsViaPc(changed, board.boardRevision) })
                 },
-                onToggleQueue = { column ->
-                    val enable = !column.autoQueue
-                    val changed = board.columns.map {
-                        if (it.id == column.id) it.copy(autoQueue = enable) else it
-                    }
-                    mutate(action = {
-                        // Match desktop: persist the future-task policy, then align
-                        // existing ready cards through the PC's exact queue CAS.
-                        saveColumnsViaPc(changed, board.boardRevision)
-                        val remoteIntents = phoneWriter.queueIntents(store.root)
-                        for (task in board.tasks.filter { it.column == column.id &&
-                            it.kind in setOf("task", "recurring") && it.completed == null && it.claimedBy == null &&
-                            board.waitingFor(it).isEmpty() &&
-                            it.attention.none { flag -> flag in setOf("blocked", "needs-user", "question") }
-                        }) {
-                            val remote = remoteIntents[task.id] ?: continue
-                            if ((remote.mode == "queue") != enable) {
-                                requirePcApplied(phoneWriter.submitQueue(store.root, task, enable,
-                                    authoritativeRevision = remote.revision))
-                            }
-                        }
-                    }, onSuccess = {
-                        scope.launch {
-                            runCatching { withContext(Dispatchers.IO) { phoneWriter.queueModes(store.root) } }
-                                .onSuccess { queueModes = it }
-                        }
-                    })
-                },
+                onToggleQueue = { column -> toggleColumnQueue(column, board) },
+                awaitingColumnSync = awaitingColumnSync,
                 onToggleAiReady = { column ->
                     val changed = board.columns.map {
                         if (it.id == column.id) it.copy(
@@ -1535,6 +1665,9 @@ private fun TaskBoardColumns(
     sortMode: String,
     queueModes: Map<String, String>,
     onQueueToggle: (TaskBoardTask) -> Unit,
+    onColumnQueueToggle: (TaskBoardColumn) -> Unit,
+    queueBusy: Boolean,
+    awaitingColumnSync: Map<String, Boolean>,
     hideWaiting: Boolean,
     focusedColumn: String?,
     showHiddenColumns: Boolean,
@@ -1624,6 +1757,16 @@ private fun TaskBoardColumns(
                                 style = MaterialTheme.typography.labelSmall)
                             TaskBoardBadge("${columnTasks.size}", parseColumnColor(column.color),
                                 TaskBoardColors.card)
+                            if (column.canAutoQueue()) TextButton(
+                                onClick = { onColumnQueueToggle(column) },
+                                enabled = !queueBusy && column.id !in awaitingColumnSync,
+                                contentPadding = PaddingValues(horizontal = 3.dp, vertical = 0.dp)
+                            ) {
+                                val shown = awaitingColumnSync[column.id] ?: column.autoQueue
+                                Text(if (shown) "Auto ON" else "Auto OFF",
+                                    color = if (shown) TaskBoardColors.teal else TaskBoardColors.muted,
+                                    style = MaterialTheme.typography.labelSmall)
+                            }
                             TextButton(onClick = { onAddTask(column.id) }) {
                                 Text("+", style = MaterialTheme.typography.titleLarge)
                             }
@@ -1662,6 +1805,9 @@ private fun TaskBoardColumns(
                         sortMode = sortMode,
                         queueModes = queueModes,
                         onQueueToggle = onQueueToggle,
+                        onColumnQueueToggle = onColumnQueueToggle,
+                        queueBusy = queueBusy,
+                        awaitingColumnSync = awaitingColumnSync,
                         collapsedEpics = collapsedEpics,
                         selection = selection,
                         selecting = selecting,
@@ -1688,6 +1834,9 @@ private fun TaskColumn(
     sortMode: String,
     queueModes: Map<String, String>,
     onQueueToggle: (TaskBoardTask) -> Unit,
+    onColumnQueueToggle: (TaskBoardColumn) -> Unit,
+    queueBusy: Boolean,
+    awaitingColumnSync: Map<String, Boolean>,
     collapsedEpics: Set<String>,
     selection: Set<String>,
     selecting: Boolean,
@@ -1722,7 +1871,16 @@ private fun TaskColumn(
                 Text("${tasks.size} cards", style = MaterialTheme.typography.labelSmall,
                     color = TaskBoardColors.muted)
             }
-            if (column.aiReady) TaskBoardBadge("AI ready", TaskBoardColors.green, TaskBoardColors.greenDark)
+            if (column.canAutoQueue()) TextButton(
+                onClick = { onColumnQueueToggle(column) },
+                enabled = !queueBusy && column.id !in awaitingColumnSync,
+                contentPadding = PaddingValues(horizontal = 3.dp, vertical = 0.dp)
+            ) {
+                val shown = awaitingColumnSync[column.id] ?: column.autoQueue
+                Text(if (shown) "Auto ON" else "Auto OFF",
+                    color = if (shown) TaskBoardColors.teal else TaskBoardColors.muted,
+                    style = MaterialTheme.typography.labelSmall)
+            }
             if (column.advisory) TaskBoardBadge("Notice", TaskBoardColors.amber, TaskBoardColors.amberDark)
             TextButton(onClick = onAddTask) { Text("+", style = MaterialTheme.typography.titleLarge) }
         }
@@ -1785,12 +1943,7 @@ private fun TaskCard(
     val waiting = snapshot.waitingFor(task)
     val related = task.relatedTo
     val childTasks = if (task.kind == "epic") snapshot.epicChildren(task) else emptyList()
-    val canToggleQueue = snapshot.columns.any { it.id == task.column && it.aiReady &&
-        !it.advisory && !it.terminal && it.id != "draft" } &&
-        task.kind in setOf("task", "recurring") && task.claimedBy == null && task.completed == null &&
-        waiting.isEmpty() && queueMode != null &&
-        task.attention.none { it in setOf("blocked", "needs-user", "question") } &&
-        task.question?.answer?.isBlank() != true
+    val canToggleQueue = snapshot.canQueue(task) && queueMode != null
     val hasDetails = childTasks.isNotEmpty() || task.dependsOn.isNotEmpty() ||
         related.isNotEmpty() || task.claimedBy != null || task.question != null ||
         task.description.isNotBlank() || task.parent != null
@@ -2604,6 +2757,7 @@ private fun ColumnManagerDialog(
     onToggleHidden: (TaskBoardColumn) -> Unit,
     onToggleAiReady: (TaskBoardColumn) -> Unit,
     onToggleQueue: (TaskBoardColumn) -> Unit,
+    awaitingColumnSync: Map<String, Boolean>,
     onToggleSnooze: (TaskBoardColumn, Int) -> Unit,
     onMove: (TaskBoardColumn, Int) -> Unit,
     onDelete: (TaskBoardColumn) -> Unit
@@ -2683,9 +2837,11 @@ private fun ColumnManagerDialog(
                                 }
                             }
                             Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                                if (column.aiReady && !column.advisory && !column.terminal && column.id != "draft") TextButton(
-                                    onClick = { onToggleQueue(column) }, enabled = !busy
-                                ) { Text(if (column.autoQueue) "✓ Queue all: ON" else "Queue all: OFF") }
+                                if (column.canAutoQueue()) TextButton(
+                                    onClick = { onToggleQueue(column) },
+                                    enabled = !busy && column.id !in awaitingColumnSync
+                                ) { Text(if (awaitingColumnSync[column.id] ?: column.autoQueue)
+                                    "✓ Queue all: ON" else "Queue all: OFF") }
                                 TextButton(
                                     onClick = { onToggleAiReady(column) },
                                     enabled = !busy &&
