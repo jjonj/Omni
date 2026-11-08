@@ -51,19 +51,26 @@ public sealed class ZoneLayout
     public int Gap { get; set; }
     /// <summary>The zones of the main monitor.</summary>
     public List<Zone> Zones { get; set; } = new();
-    /// <summary>Zones of the other monitors, keyed by device name (e.g. DISPLAY2). A monitor without an entry gets the Halves zones.</summary>
+    /// <summary>Per-physical-display overrides use "id:" + monitor hardware identity. Legacy DISPLAYn keys remain readable.</summary>
     public Dictionary<string, List<Zone>> Monitors { get; set; } = new();
     public List<SceneRule> Scenes { get; set; } = new();
 
-    /// <summary>The profile as seen on one monitor: the main monitor uses <see cref="Zones"/>, the others their own set or the Halves default.</summary>
-    public ZoneLayout ForMonitor(string device, bool primary) =>
-        primary || device.Length == 0
-            ? this
-            : new ZoneLayout
-            {
-                Id = Id, Name = Name, Key = Key, Gap = Gap, Monitors = Monitors, Scenes = Scenes,
-                Zones = Monitors.TryGetValue(device, out var own) && own.Count > 0 ? own : DefaultLayouts.SecondaryZones,
-            };
+    /// <summary>A physical-display override follows its screen even when DisplayFusion changes its DISPLAYn number or primary status.</summary>
+    public ZoneLayout ForMonitor(string device, bool primary, string identity = "")
+    {
+        List<Zone>? Find(string key) => Monitors.FirstOrDefault(
+            pair => pair.Key.Equals(key, StringComparison.OrdinalIgnoreCase)).Value;
+        var specific = identity.Length > 0 ? Find("id:" + identity) : null;
+        var legacy = !primary && device.Length > 0 ? Find(device) : null;
+        var chosen = specific is { Count: > 0 } ? specific :
+            legacy is { Count: > 0 } ? legacy :
+            primary ? Zones : DefaultLayouts.SecondaryZones;
+        if (ReferenceEquals(chosen, Zones)) return this;
+        return new ZoneLayout
+        {
+            Id = Id, Name = Name, Key = Key, Gap = Gap, Monitors = Monitors, Scenes = Scenes, Zones = chosen
+        };
+    }
 }
 
 public sealed class ZoneSettings

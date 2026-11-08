@@ -88,7 +88,7 @@ public sealed class ZoneManager
     public bool RestoreAssignment(IntPtr hwnd, string layoutId, string zoneId, MonitorInfo monitor)
     {
         if (S.ActiveLayoutId != layoutId || !WindowTools.Exists(hwnd)) return false;
-        var layout = S.ActiveLayout.ForMonitor(monitor.Device, monitor.Primary);
+        var layout = S.ActiveLayout.ForMonitor(monitor.Device, monitor.Primary, monitor.Identity);
         var zone = layout.Zones.FirstOrDefault(z => z.Id == zoneId);
         if (zone == null || zone.Kind == ZoneKind.Peek) return false;
         _placed[hwnd] = new Placement { Hwnd = hwnd, LayoutId = layoutId, ZoneId = zoneId, Area = monitor.Work,
@@ -109,7 +109,7 @@ public sealed class ZoneManager
 
     /// <summary>The active layout as it applies on one monitor (that monitor's own zones, or the shared ones).</summary>
     private ZoneLayout LayoutAt(RectD area) =>
-        Mons().FirstOrDefault(m => m.Work == area) is { } m ? S.ActiveLayout.ForMonitor(m.Device, m.Primary) : S.ActiveLayout;
+        Mons().FirstOrDefault(m => m.Work == area) is { } m ? S.ActiveLayout.ForMonitor(m.Device, m.Primary, m.Identity) : S.ActiveLayout;
     private bool Simple => S.SimpleMode;
     private void Log(string text) => Activity?.Invoke(text);
 
@@ -330,7 +330,7 @@ public sealed class ZoneManager
             {
                 var area = mon.Work;
                 var onArea = windows.Where(h => WindowTools.Frame(h) is { } f && AreaOf(f) == area).ToList();
-                var plan = ZoneEngine.Plan(layout.ForMonitor(mon.Device, mon.Primary), onArea.Select(h => new PlanWindow(Key(h),
+                var plan = ZoneEngine.Plan(layout.ForMonitor(mon.Device, mon.Primary, mon.Identity), onArea.Select(h => new PlanWindow(Key(h),
                     WindowTools.ProcessName(h), _homes.TryGetValue(h, out var d) && d.TryGetValue(layout.Id, out var z) ? z : null)));
                 var cascade = 0;
                 foreach (var h in onArea)

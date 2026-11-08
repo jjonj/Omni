@@ -5,6 +5,8 @@ public sealed class ZoneSettingsStore
 {
     private readonly object _gate = new();
     private ZoneSettings _current;
+    private DateTime _lastWriteUtc;
+    private long _lastLength;
 
     public string Path { get; }
     public ZoneSettings Current { get { lock (_gate) return _current; } }
@@ -21,6 +23,33 @@ public sealed class ZoneSettingsStore
     {
         Path = path ?? DefaultPath;
         _current = Load();
+        var info = new FileInfo(Path);
+        if (info.Exists) { _lastWriteUtc = info.LastWriteTimeUtc; _lastLength = info.Length; }
+    }
+
+    /// <summary>Observe another editor's atomic writes without restarting the standalone runtime.</summary>
+    public bool ReloadIfChanged()
+    {
+        ZoneSettings? updated;
+        try
+        {
+            var info = new FileInfo(Path);
+            if (!info.Exists) return false;
+            lock (_gate)
+            {
+                if (info.LastWriteTimeUtc == _lastWriteUtc && info.Length == _lastLength) return false;
+                updated = ZoneJson.Deserialize<ZoneSettings>(File.ReadAllText(Path));
+                if (updated?.Layouts == null || updated.Layouts.Count == 0) return false;
+                if (updated.Layouts.All(l => l.Id != updated.ActiveLayoutId))
+                    updated.ActiveLayoutId = updated.Layouts[0].Id;
+                _current = updated;
+                _lastWriteUtc = info.LastWriteTimeUtc;
+                _lastLength = info.Length;
+            }
+        }
+        catch { return false; } // An incomplete/invalid external write is never adopted.
+        Changed?.Invoke();
+        return true;
     }
 
     private ZoneSettings Load()
@@ -61,6 +90,9 @@ public sealed class ZoneSettingsStore
                 var tmp = Path + ".tmp";
                 File.WriteAllText(tmp, ZoneJson.Serialize(settings));
                 File.Move(tmp, Path, true);
+                var info = new FileInfo(Path);
+                _lastWriteUtc = info.LastWriteTimeUtc;
+                _lastLength = info.Length;
             }
             catch { /* settings stay in memory; next save retries */ }
         }
@@ -70,6 +102,7 @@ public sealed class ZoneSettingsStore
     /// <summary>Edit a copy and save it.</summary>
     public void Update(Action<ZoneSettings> edit)
     {
+        ReloadIfChanged();
         var copy = Current.Clone();
         edit(copy);
         Save(copy);

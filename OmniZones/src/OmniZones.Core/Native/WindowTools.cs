@@ -4,7 +4,7 @@ using OmniZones.Engine;
 
 namespace OmniZones.Native;
 
-public sealed record MonitorInfo(RectD Work, RectD Full, bool Primary, string Device = "");
+public sealed record MonitorInfo(RectD Work, RectD Full, bool Primary, string Device = "", string Identity = "");
 
 /// <summary>Thin, defensive wrappers over the Win32 window APIs OmniZones needs.</summary>
 public static class WindowTools
@@ -27,7 +27,13 @@ public static class WindowTools
         Win32.EnumDisplayMonitors(IntPtr.Zero, IntPtr.Zero, (IntPtr h, IntPtr _, ref Win32.RECT _, IntPtr _) =>
         {
             var mi = new Win32.MONITORINFOEX { cbSize = System.Runtime.InteropServices.Marshal.SizeOf<Win32.MONITORINFOEX>(), szDevice = "" };
-            if (Win32.GetMonitorInfoEx(h, ref mi)) list.Add(new MonitorInfo(ToRect(mi.rcWork), ToRect(mi.rcMonitor), (mi.dwFlags & 1) != 0, mi.szDevice ?? ""));
+            if (Win32.GetMonitorInfoEx(h, ref mi))
+            {
+                var display = new Win32.DISPLAY_DEVICE { cb = System.Runtime.InteropServices.Marshal.SizeOf<Win32.DISPLAY_DEVICE>() };
+                var identity = Win32.EnumDisplayDevices(mi.szDevice, 0, ref display, 1) ? display.DeviceID ?? "" : "";
+                list.Add(new MonitorInfo(ToRect(mi.rcWork), ToRect(mi.rcMonitor),
+                    (mi.dwFlags & 1) != 0, mi.szDevice ?? "", identity));
+            }
             return true;
         }, IntPtr.Zero);
         return list.OrderByDescending(m => m.Primary).ThenBy(m => m.Full.X).ToList();

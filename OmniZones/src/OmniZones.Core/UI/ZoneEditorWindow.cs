@@ -47,14 +47,19 @@ internal sealed class ZoneEditorWindow : Window
     public string LayoutId => _layoutId;
     private MonitorInfo? CurMon => _mons.FirstOrDefault(m => m.Device == _monitor);
     private bool IsMain => CurMon?.Primary ?? true;
+    private string ProfileKey => CurMon?.Identity is { Length: > 0 } identity ? "id:" + identity : _monitor;
+    private string? ExistingKey => L.Monitors.Keys.FirstOrDefault(key =>
+        key.Equals(ProfileKey, StringComparison.OrdinalIgnoreCase));
 
-    /// <summary>The zones of the monitor being edited. A secondary monitor starts from the Halves zones the first time it is touched.</summary>
+    /// <summary>Use a stable physical monitor profile when present; keep main-monitor defaults and legacy keys readable.</summary>
     private List<Zone> Zs
     {
         get
         {
+            if (ExistingKey is { } key && L.Monitors[key].Count > 0) return L.Monitors[key];
             if (IsMain) return L.Zones;
-            if (!L.Monitors.TryGetValue(_monitor, out var own) || own.Count == 0) L.Monitors[_monitor] = own = DefaultLayouts.NewSecondaryZones();
+            if (!L.Monitors.TryGetValue(ProfileKey, out var own) || own.Count == 0)
+                L.Monitors[ProfileKey] = own = DefaultLayouts.NewSecondaryZones();
             return own;
         }
     }
@@ -431,8 +436,14 @@ internal sealed class ZoneEditorWindow : Window
         }
         else _side.Children.Add(Ui.Text(MonitorName(CurMon), 13));
         _side.Children.Add(Ui.Hint(IsMain
-            ? "The main monitor. New profiles start with the Writing arrangement here."
-            : "A secondary monitor. It starts with the Halves arrangement until you change it."));
+            ? "Main monitor defaults apply unless this physical screen has its own override."
+            : "Secondary monitors use Halves until you customize them. Hardware-specific overrides follow a screen across DisplayFusion arrangements."));
+        if (IsMain && ExistingKey == null && ProfileKey.Length > 0)
+            _side.Children.Add(Ui.Button("Customize this physical display", () =>
+            {
+                L.Monitors[ProfileKey] = L.Zones.Select(z => ZoneJson.Deserialize<Zone>(ZoneJson.Serialize(z))!).ToList();
+                Touch();
+            }));
     }
 
     private void BuildZoneSection(Zone z, bool simple)

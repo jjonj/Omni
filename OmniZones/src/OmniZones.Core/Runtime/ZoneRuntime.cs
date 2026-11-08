@@ -21,6 +21,7 @@ public sealed class ZoneRuntime : IDisposable
     private ZoneSettingsWindow? _settingsWindow;
     private ZoneEditorWindow? _editorWindow;
     private bool _disposed;
+    private DateTime _lastSharedSettingsCheck = DateTime.MinValue;
 
     public ZoneSettingsStore Store { get; }
     public ZoneManager Manager { get; }
@@ -43,7 +44,15 @@ public sealed class ZoneRuntime : IDisposable
         Manager.Activity += m => Activity?.Invoke(m);
         _hook = new ZoneKeyboardHook(OnKey);
         _timer = new DispatcherTimer(DispatcherPriority.Normal) { Interval = TimeSpan.FromMilliseconds(PollMs) };
-        _timer.Tick += (_, _) => Safe(Manager.Tick);
+        _timer.Tick += (_, _) => Safe(() =>
+        {
+            if ((DateTime.UtcNow - _lastSharedSettingsCheck).TotalSeconds >= 1)
+            {
+                _lastSharedSettingsCheck = DateTime.UtcNow;
+                Store.ReloadIfChanged();
+            }
+            Manager.Tick();
+        });
         _timer.Start();
         Dispatcher.BeginInvoke(new Action(() => Safe(Manager.Prewarm)), DispatcherPriority.ApplicationIdle);
     }
