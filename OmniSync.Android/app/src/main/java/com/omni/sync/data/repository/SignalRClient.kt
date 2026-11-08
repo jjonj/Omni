@@ -272,6 +272,8 @@ data class ReminderData(
     @SerializedName(value = "Revision", alternate = ["revision"]) val revision: Long = 0,
     @SerializedName(value = "Source", alternate = ["source"]) val source: Int = 0,
     @SerializedName(value = "SourceOriginalTitle", alternate = ["sourceOriginalTitle"]) val sourceOriginalTitle: String? = null,
+    @SerializedName(value = "SourceCalendarId", alternate = ["sourceCalendarId"]) val sourceCalendarId: String? = null,
+    @SerializedName(value = "RecurrenceSeriesId", alternate = ["recurrenceSeriesId"]) val recurrenceSeriesId: String? = null,
     @SerializedName(value = "IsAllDay", alternate = ["isAllDay"]) val isAllDay: Boolean = false
 ) {
     val isTerminal: Boolean get() = state == 3 || state == 4 || state == 5

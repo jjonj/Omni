@@ -4,8 +4,11 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.app.DatePickerDialog
+import android.app.TimePickerDialog
 import android.media.MediaPlayer
 import android.net.Uri
+import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -24,6 +27,7 @@ import androidx.compose.material.icons.filled.AlarmOff
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Repeat
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material3.*
@@ -38,6 +42,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import com.omni.sync.service.AlarmService
 import com.omni.sync.utils.AlarmScheduler
 import com.omni.sync.utils.AlarmStore
+import com.omni.sync.utils.ReminderDelivery
 import com.omni.sync.viewmodel.MainViewModel
 import com.omni.sync.data.repository.SignalRClient
 import com.omni.sync.data.repository.ReminderData
@@ -161,14 +166,14 @@ private fun AlarmScreenContent(
 
     var alarms by remember { mutableStateOf(AlarmStore.load(prefs, gson)) }
     val omniReminders by signalRClient.reminders.collectAsState()
-    val activeOmniReminders = remember(omniReminders) {
-        omniReminders.filterNot { it.isTerminal }
+    val activeOmniReminders = remember(omniReminders, currentTime) {
+        visibleOmniReminders(omniReminders, currentTime)
     }
     val omniTimeSensitive = remember(activeOmniReminders) {
-        activeOmniReminders.filter { it.kind != 0 }.sortedBy { it.dueAt }
+        activeOmniReminders.filter { it.kind != 0 }
     }
     val omniTasks = remember(activeOmniReminders) {
-        activeOmniReminders.filter { it.kind == 0 }.sortedBy { it.dueAt }
+        activeOmniReminders.filter { it.kind == 0 }
     }
 
     LaunchedEffect(signalRClient) {
@@ -535,9 +540,11 @@ private fun AlarmScreenContent(
                         key("omni-reminder-${reminder.id}") {
                             OmniReminderCard(
                                 reminder = reminder,
+                                nowMillis = currentTime,
                                 onDone = { signalRClient.completeReminder(reminder.id) },
                                 onDismiss = { signalRClient.dismissReminder(reminder.id) },
                                 onSnooze = { signalRClient.snoozeReminder(reminder.id, 10) },
+                                onReschedule = { signalRClient.postponeReminder(reminder.id, it) },
                                 onPostpone = {
                                     val tomorrow = OffsetDateTime.now()
                                         .plusDays(1)
@@ -597,9 +604,11 @@ private fun AlarmScreenContent(
                         key("omni-task-${reminder.id}") {
                             OmniReminderCard(
                                 reminder = reminder,
+                                nowMillis = currentTime,
                                 onDone = { signalRClient.completeReminder(reminder.id) },
                                 onDismiss = { signalRClient.dismissReminder(reminder.id) },
                                 onSnooze = { signalRClient.snoozeReminder(reminder.id, 10) },
+                                onReschedule = { signalRClient.postponeReminder(reminder.id, it) },
                                 onPostpone = {
                                     val tomorrow = OffsetDateTime.now()
                                         .plusDays(1)
@@ -1303,33 +1312,66 @@ private fun AutomationActionPicker(
     )
 }
 
+/**
+ * Upcoming Calendar occurrences are distinct reminders, but only the next pending
+ * occurrence of a series needs a row. Due/claimed occurrences remain visible so
+ * an outstanding alert is never hidden by the next occurrence in its series.
+ */
+private fun visibleOmniReminders(reminders: List<ReminderData>, nowMillis: Long): List<ReminderData> {
+    val nextBySeries = mutableMapOf<Pair<String?, String>, ReminderData>()
+    val visible = mutableListOf<ReminderData>()
+    reminders.filterNot { it.isTerminal }.forEach { reminder ->
+        val series = reminder.recurrenceSeriesId?.takeIf { it.isNotBlank() }
+        val fireAt = ReminderDelivery.fireTime(reminder)
+        if (reminder.source != 1 || reminder.ownership != 0 || series == null ||
+            fireAt == null || fireAt <= nowMillis
+        ) {
+            visible += reminder
+        } else {
+            val key = reminder.sourceCalendarId to series
+            val previous = nextBySeries[key]
+            if (previous == null || fireAt < (ReminderDelivery.fireTime(previous) ?: Long.MAX_VALUE)) {
+                nextBySeries[key] = reminder
+            }
+        }
+    }
+    return (visible + nextBySeries.values).sortedWith(
+        compareBy<ReminderData>({ ReminderDelivery.fireTime(it) ?: Long.MAX_VALUE }, { it.id })
+    )
+}
+
 @Composable
 private fun OmniReminderCard(
     reminder: ReminderData,
+    nowMillis: Long,
     onDone: () -> Unit,
     onDismiss: () -> Unit,
     onSnooze: () -> Unit,
+    onReschedule: (String) -> Unit,
     onPostpone: () -> Unit
 ) {
+    val context = LocalContext.current
+    var menuExpanded by remember(reminder.id) { mutableStateOf(false) }
+    val isDue = reminder.state == 1 ||
+        (ReminderDelivery.fireTime(reminder)?.let { it <= nowMillis } == true)
     val kindLabel = when (reminder.kind) {
         2 -> "Alarm"
         1 -> "Reminder"
         else -> "Task"
     }
-    val stateLabel = when (reminder.state) {
-        1 -> "Due"
-        2 -> "Postponed"
+    val stateLabel = when {
+        isDue -> "Due"
+        reminder.state == 2 -> "Postponed"
         else -> null
     }
 
     Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
         Column(
             modifier = Modifier.fillMaxWidth().padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+            verticalArrangement = Arrangement.spacedBy(if (isDue) 8.dp else 0.dp)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column(modifier = Modifier.weight(1f)) {
@@ -1355,33 +1397,85 @@ private fun OmniReminderCard(
                         color = MaterialTheme.colorScheme.primary
                     )
                 }
+
+                if (!isDue) {
+                    Box {
+                        IconButton(
+                            onClick = { menuExpanded = true },
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Icon(Icons.Default.MoreVert, contentDescription = "Reminder options")
+                        }
+                        DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
+                            DropdownMenuItem(
+                                text = { Text("Reschedule…") },
+                                onClick = {
+                                    menuExpanded = false
+                                    showReminderReschedulePicker(context, reminder, onReschedule)
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Ignore this occurrence") },
+                                onClick = {
+                                    menuExpanded = false
+                                    onDismiss()
+                                }
+                            )
+                        }
+                    }
+                }
             }
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                if (reminder.kind == 0) {
-                    Button(onClick = onDone, modifier = Modifier.weight(1f)) {
-                        Text("Done")
-                    }
-                    OutlinedButton(onClick = onPostpone, modifier = Modifier.weight(1f)) {
-                        Text("Tomorrow")
-                    }
-                    TextButton(onClick = onDismiss) {
-                        Text("Remove")
-                    }
-                } else {
-                    Button(onClick = onDismiss, modifier = Modifier.weight(1f)) {
-                        Text("Dismiss")
-                    }
-                    OutlinedButton(onClick = onSnooze, modifier = Modifier.weight(1f)) {
-                        Text("Snooze 10m")
+            if (isDue) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    if (reminder.kind == 0) {
+                        Button(onClick = onDone, modifier = Modifier.weight(1f)) {
+                            Text("Done")
+                        }
+                        OutlinedButton(onClick = onPostpone, modifier = Modifier.weight(1f)) {
+                            Text("Tomorrow")
+                        }
+                        TextButton(onClick = onDismiss) {
+                            Text("Remove")
+                        }
+                    } else {
+                        Button(onClick = onDismiss, modifier = Modifier.weight(1f)) {
+                            Text("Dismiss")
+                        }
+                        OutlinedButton(onClick = onSnooze, modifier = Modifier.weight(1f)) {
+                            Text("Snooze 10m")
+                        }
                     }
                 }
             }
         }
     }
+}
+
+/** Select a local wall-clock date/time and send the resulting offset-aware instant to OmniHub. */
+private fun showReminderReschedulePicker(
+    context: Context,
+    reminder: ReminderData,
+    onReschedule: (String) -> Unit
+) {
+    val initial = runCatching {
+        OffsetDateTime.parse(reminder.nextFireAt ?: reminder.dueAt)
+            .atZoneSameInstant(ZoneId.systemDefault())
+    }.getOrElse { java.time.ZonedDateTime.now() }
+    DatePickerDialog(context, { _, year, month, day ->
+        TimePickerDialog(context, { _, hour, minute ->
+            val selected = java.time.LocalDateTime.of(year, month + 1, day, hour, minute)
+                .atZone(ZoneId.systemDefault())
+            if (selected.toInstant().isAfter(java.time.Instant.now())) {
+                onReschedule(selected.format(DateTimeFormatter.ISO_OFFSET_DATE_TIME))
+            } else {
+                Toast.makeText(context, "Choose a future time", Toast.LENGTH_SHORT).show()
+            }
+        }, initial.hour, initial.minute, true).show()
+    }, initial.year, initial.monthValue - 1, initial.dayOfMonth).show()
 }
 
 private fun formatReminderDue(value: String): String {
