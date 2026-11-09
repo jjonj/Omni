@@ -176,6 +176,9 @@ fun OmniAiModesScreen(
     var initialApplied by remember(initialSessionId) { mutableStateOf(false) }
     var sessionSearch by rememberSaveable { mutableStateOf("") }
     var sessionFilter by rememberSaveable { mutableStateOf("All") }
+    var threadKind by rememberSaveable {
+        mutableStateOf(viewPrefs.getString("threadKind", "t3/chatgpt") ?: "t3/chatgpt")
+    }
     var rowOptions by remember { mutableStateOf<AgentSessionUi?>(null) }
     var rowControls by remember { mutableStateOf<JsonObject?>(null) }
     var rowControlError by remember { mutableStateOf<String?>(null) }
@@ -201,6 +204,7 @@ fun OmniAiModesScreen(
     var create by remember { mutableStateOf(false) }
     var kind by remember { mutableStateOf("") }
     var workspace by remember { mutableStateOf("") }
+    var newSessionTitle by remember { mutableStateOf("") }
     var firstMessage by remember { mutableStateOf("") }
     var archiveQuery by rememberSaveable { mutableStateOf("") }
     var verify by remember { mutableStateOf<AddressIdentityPreview?>(null) }
@@ -235,7 +239,6 @@ fun OmniAiModesScreen(
     val t3Connected = online && providers.any {
         it.id == "t3" && it.active && it.capabilities.contains("Submit")
     }
-    val canCreate = online && active?.capabilities?.contains("CreateSession") == true
     val sessionDeliveryReady = selected != null &&
         (!online || (selected.provider == active?.id &&
             selected.capabilities.contains("Submit") &&
@@ -251,6 +254,7 @@ fun OmniAiModesScreen(
         selected == null -> "Select a conversation"
         selected.provider != active?.id -> "Activate ${selected.provider} to send"
         !sessionDeliveryReady -> "This session cannot receive messages here"
+        selected.kind == "t3/thread" -> "Native T3 queue · does not interrupt the current run"
         deliveryMode == "WaitForSlot" -> "Waits for capacity; T3 queues the message"
         deliveryMode == "Steer" -> "Immediate; may interrupt current reply"
         selected.modes.contains("Queue") -> "Native queue"
@@ -337,6 +341,10 @@ fun OmniAiModesScreen(
     }
     fun openSession(s: AgentSessionUi) {
         viewPrefs.edit().putLong("visited:${s.key}", System.currentTimeMillis()).apply()
+        if (s.provider == "t3" && s.kind in listOf("t3/chatgpt", "t3/thread")) {
+            threadKind = s.kind
+            viewPrefs.edit().putString("threadKind", threadKind).apply()
+        }
         viewRevision++
         listMode = false
         // Browser wake, unhide, and conversation readiness now share one path.
@@ -352,8 +360,11 @@ fun OmniAiModesScreen(
         sessions.count { !isHidden(it) && isSnoozed(it) }
     }
     val visibleSessions = remember(sessions, sessionSearch, sessionFilter, sortMode,
-        hideUnloaded, showWorkers, viewRevision, now / MINUTE_MS) {
+        hideUnloaded, showWorkers, viewRevision, now / MINUTE_MS, threadKind, active?.id) {
         sessions.asSequence().filter { s ->
+            if (active?.id == "t3") s.provider == "t3" && s.kind == threadKind
+            else s.provider == active?.id
+        }.filter { s ->
             sessionSearch.isBlank() || s.title.contains(sessionSearch, true) ||
                 s.id.contains(sessionSearch, true) || s.kind.contains(sessionSearch, true) ||
                 s.workspace?.contains(sessionSearch, true) == true
@@ -421,11 +432,20 @@ fun OmniAiModesScreen(
         if (humanInbox) humanInbox = false else listMode = true
     }
     fun openCreate() {
-        val provider = active ?: return
-        kind = provider.kinds.filter {
-            it == "t3/chatgpt" || (provider.id != "t3" && it != "local/opencode")
-        }.firstOrNull().orEmpty()
-        workspace = ""; firstMessage = ""; createDeliveryMode = "WhenIdle"; create = true
+        val provider = active ?: run {
+            note = "Connect and activate the T3 provider before creating a session."
+            return
+        }
+        kind = if (provider.id == "t3") threadKind else provider.kinds.firstOrNull().orEmpty()
+        if (kind !in provider.kinds) {
+            note = "Selected thread type is unavailable from ${provider.name}."
+            return
+        }
+        if (!online || !provider.capabilities.contains("CreateSession")) {
+            note = "New ${if (kind == "t3/thread") "native T3 threads" else "ChatGPT sessions"} require a connected T3 creator."
+            return
+        }
+        workspace = ""; newSessionTitle = ""; firstMessage = ""; createDeliveryMode = "WhenIdle"; create = true
     }
     fun submit() {
         if (!canSend) return
@@ -585,7 +605,10 @@ fun OmniAiModesScreen(
                         if (!listMode && selectedKey != null) client.select(selectedKey)
                     }
                 }
-                if (listMode) ActionIcon(Icons.Default.MailOutline, "Human inbox", p) { humanInbox = true }
+                if (listMode) {
+                    ActionIcon(Icons.Default.Add, "New ${if (threadKind == "t3/thread") "native T3 thread" else "ChatGPT session"}", p) { openCreate() }
+                    ActionIcon(Icons.Default.MailOutline, "Human inbox", p) { humanInbox = true }
+                }
                 Box {
                     var menu by remember { mutableStateOf(false) }
                     ActionIcon(Icons.Default.MoreVert, "More options", p) { menu = true }
@@ -668,6 +691,17 @@ fun OmniAiModesScreen(
             }
 
             if (listMode) {
+                if (active?.id == "t3") Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf("t3/chatgpt" to "ChatGPT", "t3/thread" to "Native T3").forEach { (value, label) ->
+                        FilterChip(selected = threadKind == value, onClick = {
+                            threadKind = value
+                            viewPrefs.edit().putString("threadKind", value).apply()
+                            sessionFilter = "All"
+                        }, label = { Text(label + " (" + sessions.count { it.provider == "t3" && it.kind == value } + ")") },
+                            modifier = Modifier.weight(1f))
+                    }
+                }
                 OutlinedTextField(sessionSearch, { sessionSearch = it }, Modifier.fillMaxWidth()
                     .padding(start = 16.dp, end = 16.dp, top = 16.dp), singleLine = true,
                     placeholder = { Text("Search conversations") },
@@ -795,14 +829,14 @@ fun OmniAiModesScreen(
                         }
                     }
                 }
-                if (canCreate) Row(Modifier.fillMaxWidth().padding(15.dp),
+                Row(Modifier.fillMaxWidth().padding(15.dp),
                     horizontalArrangement = Arrangement.End) {
                     Button(onClick = { openCreate() }, shape = RoundedCornerShape(18.dp),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = p.accentBg, contentColor = p.accent)) {
                         Icon(Icons.Default.Add, null, modifier = Modifier.size(19.dp))
                         Spacer(Modifier.width(6.dp))
-                        Text("New session")
+                        Text(if (active?.id == "t3" && threadKind == "t3/thread") "New native thread" else "New session")
                     }
                 }
             } else {
@@ -957,7 +991,10 @@ fun OmniAiModesScreen(
                 Column(Modifier.fillMaxWidth().background(p.surface)
                     .padding(horizontal = 12.dp, vertical = 8.dp)) {
                     if (!addressMode && selected != null) {
-                        Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                        if (selected.kind == "t3/thread") {
+                            FilterChip(selected = true, onClick = {}, enabled = false,
+                                label = { Text("Native queue", style = MaterialTheme.typography.labelSmall) })
+                        } else Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
                             listOf("Steer" to "Steer now", "WhenIdle" to "Queue",
                                 "WaitForSlot" to "Wait for slot").forEach { (value,label) ->
                                 FilterChip(selected = deliveryMode==value,
@@ -966,7 +1003,7 @@ fun OmniAiModesScreen(
                                     enabled = !online || selected.modes.contains(value))
                             }
                         }
-                        if (deliveryMode == "WaitForSlot") Row(verticalAlignment=Alignment.CenterVertically) {
+                        if (selected.kind != "t3/thread" && deliveryMode == "WaitForSlot") Row(verticalAlignment=Alignment.CenterVertically) {
                             Text("Max working agents",color=p.muted,style=MaterialTheme.typography.labelSmall)
                             Spacer(Modifier.width(8.dp))
                             OutlinedTextField(value=maxActiveWorkers.toString(),
@@ -1616,26 +1653,29 @@ fun OmniAiModesScreen(
         text = { Column(Modifier.heightIn(max = 410.dp).verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("Execution kind", style = MaterialTheme.typography.labelMedium)
-            active.kinds.filter { it == "t3/chatgpt" ||
-                (active.id != "t3" && it != "local/opencode") }.forEach { option ->
+            active.kinds.filter { active.id != "t3" || it == kind }.forEach { option ->
                 Row(Modifier.fillMaxWidth().clickable { kind = option },
                     verticalAlignment = Alignment.CenterVertically) {
                     RadioButton(selected = kind == option, onClick = { kind = option })
                     Text(option, style = MaterialTheme.typography.bodySmall)
                 }
             }
+            OutlinedTextField(newSessionTitle, { newSessionTitle = it.take(180) },
+                label = { Text("Title (optional)") }, singleLine = true)
             OutlinedTextField(workspace, { workspace = it.take(4096) },
                 label = { Text(if (active.id == "t3") "Project / folder (optional)" else "Working folder") }, singleLine = true)
             OutlinedTextField(firstMessage, { firstMessage = it.take(30_000) },
                 label = { Text(if (active.id == "t3") "First message (optional)" else "First instruction") }, maxLines = 4)
-            Text("When to start",style=MaterialTheme.typography.labelMedium)
-            Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+            if (kind == "t3/thread") Text("Native T3 uses its own durable message queue.",
+                style = MaterialTheme.typography.bodySmall, color = p.muted)
+            if (kind != "t3/thread") Text("When to start",style=MaterialTheme.typography.labelMedium)
+            if (kind != "t3/thread") Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
                 FilterChip(selected=createDeliveryMode=="WhenIdle",onClick={createDeliveryMode="WhenIdle"},
                     label={Text("Start now")})
                 FilterChip(selected=createDeliveryMode=="WaitForSlot",onClick={createDeliveryMode="WaitForSlot"},
                     label={Text("Wait for slot")},enabled=active.id=="t3")
             }
-            if(createDeliveryMode=="WaitForSlot") Row(verticalAlignment=Alignment.CenterVertically) {
+            if(kind != "t3/thread" && createDeliveryMode=="WaitForSlot") Row(verticalAlignment=Alignment.CenterVertically) {
                 Text("Max working agents",style=MaterialTheme.typography.labelSmall)
                 Spacer(Modifier.width(8.dp))
                 OutlinedTextField(value=maxActiveWorkers.toString(),
@@ -1651,7 +1691,7 @@ fun OmniAiModesScreen(
             scope.launch {
                 try {
                     note = client.createSession(active, kind, workspace, firstMessage,
-                        createDeliveryMode,maxActiveWorkers)
+                        createDeliveryMode, maxActiveWorkers, newSessionTitle)
                     val newKey = client.createdSessionKey.value
                     if (newKey != null) {
                         // New T3 browser tabs may appear in the provider snapshot shortly

@@ -1067,18 +1067,19 @@ class GenericAgentClient(
         val kind=intent.str("kind") ?: "t3/chatgpt"
         val session=AgentSessionUi("t3",target,"Queued first instruction",kind,
             "Unknown","Unknown",null,listOf("WaitForSlot"))
-        enqueueSession(session,first,"WaitForSlot",workers,messageId)
+        enqueueSession(session, first, if (kind == "t3/thread") "WhenIdle" else "WaitForSlot",
+            if (kind == "t3/thread") null else workers, messageId)
         // The mobile outbox now owns delivery/restart recovery. Do not keep a
         // second pending creator that could queue it twice.
         persistCapacityCreate(null)
         _createdSessionKey.value="t3:$target"
-        "Blank T3 session $target created. Initial instruction waits for a worker slot."
+        "T3 session $target created. Initial instruction queued${if (kind == "t3/thread") " natively" else " for a worker slot"}."
     }
 
     private suspend fun createCapacitySession(
-        kind:String,workspace:String,firstMessage:String,maxWorkers:Int
+        kind:String,workspace:String,firstMessage:String,maxWorkers:Int,title:String
     ): String = capacityCreateMutex.withLock {
-        require(kind=="t3/chatgpt" && maxWorkers in 1..100)
+        require(kind in listOf("t3/chatgpt", "t3/thread") && maxWorkers in 1..100)
         val pending=pendingCapacityCreate()
         val intent = pending ?: JsonObject().apply {
             addProperty("requestId",UUID.randomUUID().toString())
@@ -1087,24 +1088,26 @@ class GenericAgentClient(
             addProperty("workspace",workspace)
             addProperty("message",firstMessage)
             addProperty("maxWorkers",maxWorkers)
+            addProperty("title",title)
         }.also {persistCapacityCreate(it)}
         require(intent.str("workspace")==workspace && intent.str("message")==firstMessage &&
-            intent.str("kind")==kind) {
+            intent.str("kind")==kind && (intent.str("title") ?: "Android AI work")==title) {
             "A previous blank T3 create is unresolved. Recover it before starting another."
         }
         val existing=intent.str("sessionId")
         if(existing!=null){
             val session=AgentSessionUi("t3",existing,"Queued first instruction",kind,
                 "Unknown","Unknown",null,listOf("WaitForSlot"))
-            enqueueSession(session,firstMessage,"WaitForSlot",maxWorkers,intent.str("queueId"))
+            enqueueSession(session, firstMessage, if (kind == "t3/thread") "WhenIdle" else "WaitForSlot",
+                if (kind == "t3/thread") null else maxWorkers, intent.str("queueId"))
             persistCapacityCreate(null)
             _createdSessionKey.value="t3:$existing"
-            return@withLock "T3 session $existing created; first instruction waits for capacity."
+            return@withLock "T3 session $existing created; first instruction queued."
         }
         val result=try {
             signalR.agentCall("sessions.create",mapOf(
                 "provider" to "t3","kind" to kind,"workspace" to workspace,
-                "project" to workspace,"title" to "Android AI work",
+                "project" to workspace,"title" to title,
                 "clientRequestId" to intent.str("requestId")
                 // Omit initialMessage: blank guest must not begin working yet.
             )).asJsonObject
@@ -1113,31 +1116,47 @@ class GenericAgentClient(
         }
         val ref=result.obj("result")?.obj("session") ?: result.obj("session")
         val id=ref?.str("id")
-        if(id==null) return@withLock "Blank T3 creation not confirmed; original request preserved."
+        if (result.str("state") == "Failed") {
+            persistCapacityCreate(null) // Hub confirmed that no session was created.
+            return@withLock "T3 creation rejected: " +
+                (result.obj("result")?.obj("details")?.str("reason") ?: result.str("error") ?: "unknown reason")
+        }
+        if(id==null) return@withLock "T3 creation not confirmed; original request preserved."
         intent.addProperty("sessionId",id)
         persistCapacityCreate(intent) // crash after this cannot lose first message
         val session=AgentSessionUi("t3",id,"Queued first instruction",kind,
             "Unknown","Unknown",null,listOf("WaitForSlot"))
-        enqueueSession(session,firstMessage,"WaitForSlot",maxWorkers,intent.str("queueId"))
+        enqueueSession(session, firstMessage, if (kind == "t3/thread") "WhenIdle" else "WaitForSlot",
+            if (kind == "t3/thread") null else maxWorkers, intent.str("queueId"))
         persistCapacityCreate(null)
         _createdSessionKey.value="t3:$id"
-        "T3 session $id created blank; first instruction waits for a worker slot."
+        "T3 session $id created blank; first instruction queued."
     }
 
     suspend fun createSession(provider: AgentProviderUi,kind:String,workspace:String,
                               firstMessage:String,deliveryMode:String="WhenIdle",
-                              maxActiveWorkers:Int=4): String {
+                              maxActiveWorkers:Int=4, title:String=""): String {
         require(provider.active&&provider.capabilities.contains("CreateSession")) {
             "Selected provider cannot create a session"
         }
         require(kind in provider.kinds) {"Session kind not supported by this provider"}
+        // Do not return the last successful session key for a failed new request.
+        _createdSessionKey.value = null
+        val effectiveTitle = title.trim().take(180).ifBlank {
+            if (kind == "t3/thread") firstMessage.lineSequence().firstOrNull()?.trim()?.take(120)
+                ?.ifBlank { "New native T3 thread" } ?: "New native T3 thread"
+            else "Android AI work"
+        }
 
         if (provider.id != "t3") require(workspace.isNotBlank() && firstMessage.isNotBlank()) {
             "Workspace and first message are required for this provider"
         }
-        val resultText = if (provider.id == "t3" && (firstMessage.isBlank() ||
-            (workspace.isBlank() && deliveryMode != "WaitForSlot"))) {
-            require(kind == "t3/chatgpt") { "Blank sessions are supported for ChatGPT only" }
+        val resultText = if (provider.id == "t3" && kind == "t3/thread" && firstMessage.isNotBlank()) {
+            // The native thread is created without a prompt; the write-ahead mobile outbox
+            // owns the first Queue delivery, including recovery after an app restart.
+            createCapacitySession(kind, workspace.trim(), firstMessage.trim(), 4, effectiveTitle)
+        } else if (provider.id == "t3" && (firstMessage.isBlank() ||
+            (kind == "t3/chatgpt" && workspace.isBlank() && deliveryMode != "WaitForSlot"))) {
             // Persist before contacting T3. A lost ACK is not proof of failure;
             // subsequent Create retries use the same idempotent request ID.
             val project = workspace.trim()
@@ -1146,19 +1165,21 @@ class GenericAgentClient(
             if (pendingId != null) {
                 check(blankCreatePrefs.getString("kind", null) == kind &&
                     blankCreatePrefs.getString("project", null) == project &&
-                    blankCreatePrefs.getString("instruction", "") == instruction) {
+                    blankCreatePrefs.getString("instruction", "") == instruction &&
+                    (blankCreatePrefs.getString("title", null) ?: "Android AI work") == effectiveTitle) {
                     "A different blank creation is unresolved. Retry with its original settings."
                 }
             }
             val requestId = pendingId ?: UUID.randomUUID().toString().also { id ->
                 check(blankCreatePrefs.edit().putString("requestId", id)
                     .putString("kind", kind).putString("project", project)
-                    .putString("instruction", instruction).commit()) {
+                    .putString("instruction", instruction).putString("title", effectiveTitle).commit()) {
                     "Could not persist create identity; no new session started"
                 }
             }
             val params = mutableMapOf<String, Any>(
-                "provider" to provider.id, "kind" to kind, "clientRequestId" to requestId
+                "provider" to provider.id, "kind" to kind, "title" to effectiveTitle,
+                "clientRequestId" to requestId
             )
             if (project.isNotEmpty()) params["project"] = project
             if (instruction.isNotEmpty()) params["initialMessage"] = instruction
@@ -1173,14 +1194,15 @@ class GenericAgentClient(
                 _createdSessionKey.value = "t3:$id"
                 providerPrefs.edit().putString("lastCreatedSession", "t3:$id").commit()
                 blankCreatePrefs.edit().clear().commit()
-                if (instruction.isEmpty()) "Created empty ChatGPT session $id."
+                if (instruction.isEmpty()) "Created empty ${if (kind == "t3/thread") "native T3 thread" else "ChatGPT session"} $id."
                 else "Created ChatGPT session $id. Initial instruction requested."
             } else if (receipt?.str("state") == "Failed") {
                 blankCreatePrefs.edit().clear().commit()
-                "ChatGPT creation rejected: " + (receipt.str("error") ?: "unknown reason")
+                "Session creation rejected: " +
+                    (receipt.obj("result")?.obj("details")?.str("reason") ?: receipt.str("error") ?: "unknown reason")
             } else "Creation unconfirmed. Original request saved; retry Create to reconcile without duplicates."
         } else if (provider.id == "t3" && deliveryMode=="WaitForSlot") {
-            createCapacitySession(kind,workspace,firstMessage,maxActiveWorkers)
+            createCapacitySession(kind,workspace,firstMessage,maxActiveWorkers,effectiveTitle)
         } else if (provider.id == "t3") {
             require(kind == "t3/chatgpt") { "Native T3 MAIN does not support session creation" }
             // A repeated tap with the same work request must recover its
@@ -1191,12 +1213,12 @@ class GenericAgentClient(
             // silently swallow an explicit second Create tap.
             val same = previous?.state == "Unknown" && previous.kind == kind &&
                 previous.project == workspace && previous.instructions == firstMessage &&
-                previous.title == "Android AI work"
+                previous.title == effectiveTitle
             val incidentId = if (same) previous!!.incidentId else "manual-" + UUID.randomUUID()
             val receipt = workCreate.create(
                 source = "OmniHub.Android", incidentId = incidentId,
                 project = workspace, instructions = firstMessage,
-                title = "Android AI work", kind = kind,
+                title = effectiveTitle, kind = kind,
                 send = { method, params -> signalR.agentCall(method, params).asJsonObject },
             )
             if (receipt.state == "Started" && receipt.sessionId != null)
