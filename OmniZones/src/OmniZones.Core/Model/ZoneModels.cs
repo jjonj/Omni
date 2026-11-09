@@ -64,7 +64,7 @@ public sealed class ZoneLayout
         var legacy = !primary && device.Length > 0 ? Find(device) : null;
         var chosen = specific is { Count: > 0 } ? specific :
             legacy is { Count: > 0 } ? legacy :
-            primary ? Zones : DefaultLayouts.SecondaryZones;
+            primary || Id.Equals("full", StringComparison.OrdinalIgnoreCase) ? Zones : DefaultLayouts.SecondaryZones;
         if (ReferenceEquals(chosen, Zones)) return this;
         return new ZoneLayout
         {

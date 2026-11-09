@@ -32,6 +32,11 @@ internal sealed class ZoneEditorWindow : Window
     private readonly string _layoutId;
     private string? _selId;
     private bool _dirty;
+    private readonly Button _undoButton;
+    private readonly Stack<(string layouts, string? selection, string monitor)> _undo = new();
+    private string _lastLayoutState = "", _savedLayoutState = "", _lastMonitor = "";
+    private string? _lastSelection;
+    private bool _dragHistoryRecorded;
 
     // pointer drag
     private string? _dragHandle;
@@ -59,7 +64,9 @@ internal sealed class ZoneEditorWindow : Window
             if (ExistingKey is { } key && L.Monitors[key].Count > 0) return L.Monitors[key];
             if (IsMain) return L.Zones;
             if (!L.Monitors.TryGetValue(ProfileKey, out var own) || own.Count == 0)
-                L.Monitors[ProfileKey] = own = DefaultLayouts.NewSecondaryZones();
+                L.Monitors[ProfileKey] = own = L.Id.Equals("full", StringComparison.OrdinalIgnoreCase)
+                    ? L.Zones.Select(z => ZoneJson.Deserialize<Zone>(ZoneJson.Serialize(z))!).ToList()
+                    : DefaultLayouts.NewSecondaryZones();
             return own;
         }
     }
@@ -88,11 +95,11 @@ internal sealed class ZoneEditorWindow : Window
         _canvas.MouseLeftButtonDown += OnDown;
         _canvas.MouseMove += OnMove;
         _canvas.MouseLeftButtonUp += OnUp;
-        _canvas.LostMouseCapture += (_, _) => _dragZone = null;
+        _canvas.LostMouseCapture += (_, _) => { _dragZone = null; _dragHistoryRecorded = false; };
         _view = new Viewbox { Stretch = Stretch.Uniform, Child = _canvas };
 
         var stage = new StackPanel { Margin = new Thickness(16) };
-        stage.Children.Add(Ui.Text("Drag a zone to move it, drag its handles to resize. Edges snap to the screen, to other zones and to a 20 px grid.", 12, muted: true));
+        stage.Children.Add(Ui.Text("Select and drag zones to move or resize them. Split, add, or remove zones in the panel. Ctrl+Z undoes edits.", 12, muted: true));
         stage.Children.Add(new Border { Height = 8 });
         var frame = new Border { Background = Ui.Brush("#1E2129"), Padding = new Thickness(8), CornerRadius = new CornerRadius(10), Child = _view };
         stage.Children.Add(frame);
@@ -100,6 +107,8 @@ internal sealed class ZoneEditorWindow : Window
 
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(16, 8, 16, 12) };
         buttons.Children.Add(Ui.Button("Save and apply", () => { Save(); Close(); }, primary: true));
+        _undoButton = Ui.Button("Undo (Ctrl+Z)", Undo);
+        buttons.Children.Add(_undoButton);
         buttons.Children.Add(Ui.Button("Revert", Revert));
         buttons.Children.Add(_status);
         _status.VerticalAlignment = VerticalAlignment.Center;
@@ -117,10 +126,21 @@ internal sealed class ZoneEditorWindow : Window
         Content = root;
 
         Closing += OnClosing;
+        KeyDown += (_, e) =>
+        {
+            if (e.Key != Key.Z || (Keyboard.Modifiers & ModifierKeys.Control) == 0 ||
+                Keyboard.FocusedElement is TextBox) return;
+            Undo();
+            e.Handled = true;
+        };
         SizeChanged += (_, _) => DrawCanvas();
         BuildSide();
         DrawCanvas();
         UpdateCaption();
+        _lastLayoutState = _savedLayoutState = ZoneJson.Serialize(_layouts);
+        _lastSelection = _selId;
+        _lastMonitor = _monitor;
+        _undoButton.IsEnabled = false;
     }
 
     private void UpdateCaption() => _caption.Text = $"{L.Name} · {MonitorName(CurMon)} · preview of a {(int)RW} × {(int)RH} work area. Zones are saved as fractions.";
@@ -263,7 +283,8 @@ internal sealed class ZoneEditorWindow : Window
         if (z == null) return;
         if (_selId != z.Id) { _selId = z.Id; BuildSide(); }
         if (z.Kind == ZoneKind.Peek && handle == null) { DrawCanvas(); return; }  // peek docks only resize
-        _dragZone = z; _dragHandle = handle ?? "move"; _dragStart = p; _dragOrig = Px(z);
+        _dragZone = z; _dragHistoryRecorded = false;
+        _dragHandle = handle ?? "move"; _dragStart = p; _dragOrig = Px(z);
         _canvas.CaptureMouse();
         DrawCanvas();
     }
@@ -327,19 +348,59 @@ internal sealed class ZoneEditorWindow : Window
     {
         if (_dragZone == null) return;
         _dragZone = null;
+        _dragHistoryRecorded = false;
         _canvas.ReleaseMouseCapture();
         BuildSide();
     }
 
     // ------------------------------------------------------------------ editing state
 
+    // Capture the previous complete draft after each edit. A mouse drag counts
+    // as a single undo step even though it produces many continuous updates.
     private void Touch(bool redrawSide = true)
     {
-        _dirty = true;
-        Title = $"OmniZones editor · {L.Name} *";
-        _status.Text = "Unsaved changes";
+        var current = ZoneJson.Serialize(_layouts);
+        if (current != _lastLayoutState)
+        {
+            if (_dragZone == null || !_dragHistoryRecorded)
+            {
+                _undo.Push((_lastLayoutState, _lastSelection, _lastMonitor));
+                if (_undo.Count > 80)
+                {
+                    var newest = _undo.ToArray().Take(80).Reverse().ToArray();
+                    _undo.Clear();
+                    foreach (var entry in newest) _undo.Push(entry);
+                }
+            }
+            if (_dragZone != null) _dragHistoryRecorded = true;
+            _lastLayoutState = current;
+            _lastSelection = _selId;
+            _lastMonitor = _monitor;
+        }
+        _dirty = current != _savedLayoutState;
+        Title = $"OmniZones editor · {L.Name}" + (_dirty ? " *" : "");
+        _status.Text = _dirty ? "Unsaved changes" : "No unsaved changes";
+        _undoButton.IsEnabled = _undo.Count > 0;
         DrawCanvas();
         if (redrawSide) BuildSide();
+    }
+
+    private void Undo()
+    {
+        if (!_undo.TryPop(out var state)) return;
+        _layouts = ZoneJson.Deserialize<List<ZoneLayout>>(state.layouts)!;
+        _monitor = state.monitor;
+        if (CurMon is { } m) _ref = m.Work;
+        _canvas.Width = RW; _canvas.Height = RH;
+        _selId = state.selection;
+        _lastLayoutState = ZoneJson.Serialize(_layouts);
+        _lastSelection = _selId;
+        _lastMonitor = _monitor;
+        _dirty = _lastLayoutState != _savedLayoutState;
+        _undoButton.IsEnabled = _undo.Count > 0;
+        Title = $"OmniZones editor · {L.Name}" + (_dirty ? " *" : "");
+        _status.Text = _dirty ? "Unsaved changes" : "Undone";
+        UpdateCaption(); BuildSide(); DrawCanvas();
     }
 
     private void Save()
@@ -351,6 +412,11 @@ internal sealed class ZoneEditorWindow : Window
             if (i >= 0) s.Layouts[i] = copy;
         });
         _dirty = false;
+        _undo.Clear();
+        _lastLayoutState = _savedLayoutState = ZoneJson.Serialize(_layouts);
+        _lastSelection = _selId;
+        _lastMonitor = _monitor;
+        _undoButton.IsEnabled = false;
         Title = $"OmniZones editor · {L.Name}";
         _status.Text = "Saved";
     }
@@ -359,6 +425,11 @@ internal sealed class ZoneEditorWindow : Window
     {
         _layouts = _rt.Store.Current.Layouts.Select(Clone).ToList();
         _selId = Zs.FirstOrDefault()?.Id;
+        _undo.Clear();
+        _lastLayoutState = _savedLayoutState = ZoneJson.Serialize(_layouts);
+        _lastSelection = _selId;
+        _lastMonitor = _monitor;
+        _undoButton.IsEnabled = false;
         _dirty = false;
         Title = $"OmniZones editor · {L.Name}";
         _status.Text = "Reverted";
@@ -402,7 +473,7 @@ internal sealed class ZoneEditorWindow : Window
         _side.Children.Add(nameRow);
         var gap = new Slider { Minimum = 0, Maximum = 40, TickFrequency = 2, IsSnapToTickEnabled = true, Value = L.Gap, Width = 200 };
         var gapLabel = Ui.Text($"{L.Gap} px", 13);
-        gap.ValueChanged += (_, _) => { L.Gap = (int)gap.Value; gapLabel.Text = $"{L.Gap} px"; _dirty = true; Title = $"OmniZones editor · {L.Name} *"; _status.Text = "Unsaved changes"; };
+        gap.ValueChanged += (_, _) => { L.Gap = (int)gap.Value; gapLabel.Text = $"{L.Gap} px"; Touch(redrawSide: false); };
         _side.Children.Add(Ui.Row(Ui.Text("Gap ", 13), gap, gapLabel));
         if (!simple) _side.Children.Add(Ui.Hint("Win+Alt+<key> applies this profile and sends windows to their zones."));
 
@@ -416,9 +487,9 @@ internal sealed class ZoneEditorWindow : Window
             b.HorizontalContentAlignment = HorizontalAlignment.Left;
             b.Margin = new Thickness(0, 2, 0, 2);
             if (z.Id == _selId) { b.Background = Ui.Selected; b.BorderBrush = Ui.Accent; }
-            _side.Children.Add(b);
+            _side.Children.Add(Ui.Row(b, Ui.Button("Remove", () => DeleteZone(zone))));
         }
-        _side.Children.Add(Ui.Row(Ui.Button("Add zone", AddZone)));
+        _side.Children.Add(Ui.Row(Ui.Button("+ Add zone", AddZone)));
 
         var s = Sel;
         if (s != null && IsShown(s)) BuildZoneSection(s, simple);
@@ -437,7 +508,9 @@ internal sealed class ZoneEditorWindow : Window
         else _side.Children.Add(Ui.Text(MonitorName(CurMon), 13));
         _side.Children.Add(Ui.Hint(IsMain
             ? "Main monitor defaults apply unless this physical screen has its own override."
-            : "Secondary monitors use Halves until you customize them. Hardware-specific overrides follow a screen across DisplayFusion arrangements."));
+            : L.Id.Equals("full", StringComparison.OrdinalIgnoreCase)
+                ? "This Full profile covers the entire display with one zone. You can customize this monitor independently."
+                : "Secondary monitors use Halves until you customize them. Hardware-specific overrides follow a screen across DisplayFusion arrangements."));
         if (IsMain && ExistingKey == null && ProfileKey.Length > 0)
             _side.Children.Add(Ui.Button("Customize this physical display", () =>
             {

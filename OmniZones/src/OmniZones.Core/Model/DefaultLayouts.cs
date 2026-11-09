@@ -69,5 +69,7 @@ public static class DefaultLayouts
                 Z("left", "Left", 0, 0, 1720, 1392),
                 Z("right", "Right", 1720, 0, 1720, 1392),
             } },
+        new ZoneLayout { Id = "full", Name = "Full", Key = "0", Gap = 0,
+            Zones = new() { new Zone { Id = "full", Name = "Full screen", X = 0, Y = 0, W = 1, H = 1 } } },
     };
 }

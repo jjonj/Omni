@@ -72,13 +72,20 @@ public sealed class ZoneSettingsStore
             foreach (var l in s.Layouts.Where(l => l.Gap is 12 or 8)) l.Gap = 0;
             s.Version = 2;
         }
+        if (s.Version < 3)
+        {
+            // Add the one-zone Full preset to existing installations without changing their active profile.
+            if (s.Layouts.Count < 64 && !s.Layouts.Any(l => l.Id.Equals("full", StringComparison.OrdinalIgnoreCase)))
+                s.Layouts.Add(DefaultLayouts.Create().First(l => l.Id == "full"));
+            s.Version = 3;
+        }
         return s;
     }
 
     /// <summary>Persist <paramref name="settings"/> and make it the current snapshot.</summary>
     public void Save(ZoneSettings settings)
     {
-        settings.Version = Math.Max(settings.Version, 2);
+        settings.Version = Math.Max(settings.Version, 3);
         if (settings.Layouts.Count == 0) settings.Layouts = DefaultLayouts.Create();
         if (settings.Layouts.All(l => l.Id != settings.ActiveLayoutId)) settings.ActiveLayoutId = settings.Layouts[0].Id;
         lock (_gate)
