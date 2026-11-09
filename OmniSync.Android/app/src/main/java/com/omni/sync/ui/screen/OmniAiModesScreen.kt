@@ -139,6 +139,7 @@ fun OmniAiModesScreen(
     var sortMode by rememberSaveable { mutableStateOf(viewPrefs.getString("sort", "activity") ?: "activity") }
     var hideUnloaded by rememberSaveable { mutableStateOf(viewPrefs.getBoolean("hideUnloaded", false)) }
     var showWorkers by rememberSaveable { mutableStateOf(viewPrefs.getBoolean("showWorkers", true)) }
+    var compactMode by rememberSaveable { mutableStateOf(viewPrefs.getBoolean("compactMode", false)) }
     val now = rememberNow()
     val providers by client.providers.collectAsState()
     val sessions by client.sessions.collectAsState()
@@ -747,6 +748,10 @@ fun OmniAiModesScreen(
                     FilterChip(selected = sortMode == "project", onClick = {
                         sortMode = "project"; viewPrefs.edit().putString("sort", sortMode).apply()
                     }, label = { Text("By project") })
+                    FilterChip(selected = compactMode, onClick = {
+                        compactMode = !compactMode
+                        viewPrefs.edit().putBoolean("compactMode", compactMode).apply()
+                    }, label = { Text("Compact") })
                     FilterChip(selected = hideUnloaded, onClick = {
                         hideUnloaded = !hideUnloaded
                         viewPrefs.edit().putBoolean("hideUnloaded", hideUnloaded).apply()
@@ -757,14 +762,29 @@ fun OmniAiModesScreen(
                     verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     itemsIndexed(visibleSessions, key = { _, session -> session.key }) { index, session ->
                         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            if (sessionSearch.isBlank() && sessionFilter == "All" &&
+                            if (!compactMode && sessionSearch.isBlank() && sessionFilter == "All" &&
                                 (index == 0 || visibleSessions[index - 1].listGroup(sortMode) != session.listGroup(sortMode))) {
                                 Text(session.listGroup(sortMode),
                                     Modifier.fillMaxWidth().padding(start = 10.dp, top = 14.dp, bottom = 5.dp),
                                     color = p.muted, fontSize = 11.sp, letterSpacing = 1.1.sp,
                                     fontWeight = FontWeight.SemiBold)
                             }
-                        Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp))
+                        if (compactMode) {
+                            Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp))
+                                .background(if (session.key == selectedKey) p.selected else p.surface)
+                                .clickable { openSession(session) }
+                                .padding(start = 12.dp, end = 4.dp, top = 3.dp, bottom = 3.dp),
+                                verticalAlignment = Alignment.CenterVertically) {
+                                Text(session.title, modifier = Modifier.weight(1f),
+                                    color = p.text, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                    fontWeight = if (session.unread == true) FontWeight.Bold else FontWeight.Medium,
+                                    style = MaterialTheme.typography.bodyMedium)
+                                IconButton(onClick = { rowOptions = session }, modifier = Modifier.size(36.dp)) {
+                                    Icon(Icons.Default.MoreVert, "Actions for ${session.title}", tint = p.muted,
+                                        modifier = Modifier.size(19.dp))
+                                }
+                            }
+                        } else Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp))
                             .background(if (session.key == selectedKey) p.selected else p.surface)
                             .clickable { openSession(session) }
                             .padding(horizontal = 14.dp, vertical = 13.dp),
