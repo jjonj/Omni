@@ -693,7 +693,7 @@ fun OmniAiModesScreen(
             }
 
             if (listMode) {
-                if (active?.id == "t3") Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                if (listProvider == "t3") Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     listOf("t3/chatgpt" to "ChatGPT", "t3/thread" to "Native T3").forEach { (value, label) ->
                         FilterChip(selected = threadKind == value, onClick = {
