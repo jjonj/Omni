@@ -212,6 +212,8 @@ fun OmniAiModesScreen(
     var followingLatest by remember(selectedKey) { mutableStateOf(true) }
 
     val active = providers.firstOrNull { it.active }
+    // Keep the locally cached conversation list available while Hub reconnects.
+    val listProvider = active?.id ?: lastProvider ?: "t3"
     val selected = sessions.firstOrNull { it.key == selectedKey }
     val pending = outbox.count { it.state in listOf("Pending", "Blocked", "InFlight", "Accepted", "Queued") }
     val uncertain = outbox.count { it.state == "Unknown" }
@@ -360,10 +362,10 @@ fun OmniAiModesScreen(
         sessions.count { !isHidden(it) && isSnoozed(it) }
     }
     val visibleSessions = remember(sessions, sessionSearch, sessionFilter, sortMode,
-        hideUnloaded, showWorkers, viewRevision, now / MINUTE_MS, threadKind, active?.id) {
+        hideUnloaded, showWorkers, viewRevision, now / MINUTE_MS, threadKind, listProvider) {
         sessions.asSequence().filter { s ->
-            if (active?.id == "t3") s.provider == "t3" && s.kind == threadKind
-            else s.provider == active?.id
+            if (listProvider == "t3") s.provider == "t3" && s.kind == threadKind
+            else s.provider == listProvider
         }.filter { s ->
             sessionSearch.isBlank() || s.title.contains(sessionSearch, true) ||
                 s.id.contains(sessionSearch, true) || s.kind.contains(sessionSearch, true) ||
@@ -442,7 +444,7 @@ fun OmniAiModesScreen(
             return
         }
         if (!online || !provider.capabilities.contains("CreateSession")) {
-            note = "New ${if (kind == "t3/thread") "native T3 threads" else "ChatGPT sessions"} require a connected T3 creator."
+            note = "New sessions require a connected ${provider.name} creator."
             return
         }
         workspace = ""; newSessionTitle = ""; firstMessage = ""; createDeliveryMode = "WhenIdle"; create = true
@@ -1649,11 +1651,15 @@ fun OmniAiModesScreen(
         }) { Text("Delete") } },
         dismissButton = { TextButton(onClick = { deleteConfirm = false }) { Text("Cancel") } })
     if (create && active != null) AlertDialog(onDismissRequest = { create = false },
-        title = { Text("New AI session") },
+        title = { Text(when (kind) {
+            "t3/thread" -> "New native T3 thread"
+            "t3/chatgpt" -> "New ChatGPT thread"
+            else -> "New AI session"
+        }) },
         text = { Column(Modifier.heightIn(max = 410.dp).verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Execution kind", style = MaterialTheme.typography.labelMedium)
-            active.kinds.filter { active.id != "t3" || it == kind }.forEach { option ->
+            if (active.id != "t3") Text("Execution kind", style = MaterialTheme.typography.labelMedium)
+            active.kinds.filter { active.id != "t3" }.forEach { option ->
                 Row(Modifier.fillMaxWidth().clickable { kind = option },
                     verticalAlignment = Alignment.CenterVertically) {
                     RadioButton(selected = kind == option, onClick = { kind = option })
@@ -1663,7 +1669,12 @@ fun OmniAiModesScreen(
             OutlinedTextField(newSessionTitle, { newSessionTitle = it.take(180) },
                 label = { Text("Title (optional)") }, singleLine = true)
             OutlinedTextField(workspace, { workspace = it.take(4096) },
-                label = { Text(if (active.id == "t3") "Project / folder (optional)" else "Working folder") }, singleLine = true)
+                label = { Text(if (kind == "t3/thread") "Existing native project / folder (optional)"
+                    else if (active.id == "t3") "Project / folder (optional)" else "Working folder") }, singleLine = true)
+            if (kind == "t3/thread") Text(
+                "Leave project empty to reuse the most recently active native project's settings. " +
+                    "New native projects must first be opened in T3 on the PC.",
+                style = MaterialTheme.typography.bodySmall, color = p.muted)
             OutlinedTextField(firstMessage, { firstMessage = it.take(30_000) },
                 label = { Text(if (active.id == "t3") "First message (optional)" else "First instruction") }, maxLines = 4)
             if (kind == "t3/thread") Text("Native T3 uses its own durable message queue.",
