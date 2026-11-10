@@ -49,6 +49,25 @@ object AssistantScheduleStore {
         return run
     }
 
+    /** Pending phone-local schedules, including those received from the PC Hub. */
+    @Synchronized
+    fun pending(context: Context): List<ScheduledAssistantRun> = load(context)
+        .filter { it.commandId == "wake.pc" }
+        .sortedBy { it.runAtMillis }
+
+    /** Edit a pending schedule without changing its identity or losing the original alarm. */
+    @Synchronized
+    fun reschedule(context: Context, runId: String, newAtMillis: Long): ScheduledAssistantRun? {
+        val runs = load(context)
+        val index = runs.indexOfFirst { it.runId == runId }
+        if (index < 0) return null
+        val updated = runs[index].copy(runAtMillis = newAtMillis)
+        runs[index] = updated
+        persist(context, runs)
+        setAlarm(context, updated)
+        return updated
+    }
+
     @Synchronized
     fun take(context: Context, runId: String): ScheduledAssistantRun? {
         val runs = load(context)
