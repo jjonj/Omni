@@ -66,6 +66,25 @@ class OmniSyncApplication : Application(), ImageLoaderFactory {
         com.omni.sync.utils.AlarmScheduler.restoreEnabledAlarms(this)
         com.omni.sync.utils.ReminderDelivery.restore(this)
         com.omni.sync.logic.assistant.AssistantScheduleStore.restore(this)
+        // One-time requested remote PC wake: 10 Nov 2026, 12:37 Copenhagen time.
+        // Schedule locally on first launch after installing this build, even with Hub offline.
+        val requestedWakeAt = java.time.ZonedDateTime.of(
+            2026, 11, 10, 12, 37, 0, 0, java.time.ZoneId.of("Europe/Copenhagen")
+        ).toInstant().toEpochMilli()
+        val now = System.currentTimeMillis()
+        val wakePrefs = getSharedPreferences("one_time_wake_20261110", MODE_PRIVATE)
+        if (now in (requestedWakeAt - 8 * 60 * 60 * 1000L) until requestedWakeAt &&
+            !wakePrefs.getBoolean("scheduled", false)) {
+            com.omni.sync.logic.assistant.AssistantScheduleStore.add(
+                this, "wake.pc", requestedWakeAt, "one-time-request",
+                "pc-wake-20261110-1237-copenhagen"
+            )
+            wakePrefs.edit().putBoolean("scheduled", true).commit()
+            com.omni.sync.logic.assistant.AssistantFeedback.notify(
+                this, "PC wake armed", "Wake-on-LAN scheduled for today at 12:37 Copenhagen time.",
+                "pc-wake-20261110-1237-copenhagen"
+            )
+        }
         mainViewModel.addLog("[Android startup] Alarm, reminder, and assistant schedules restored", com.omni.sync.ui.screen.LogType.INFO)
     }
 }

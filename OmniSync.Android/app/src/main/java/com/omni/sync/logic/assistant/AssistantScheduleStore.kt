@@ -135,6 +135,13 @@ object AssistantScheduleStore {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
+        if (run.commandId == "wake.pc") {
+            // Alarm-clock alarms are exact even when SCHEDULE_EXACT_ALARM is denied.
+            alarmManager.setAlarmClock(
+                AlarmManager.AlarmClockInfo(run.runAtMillis, pendingIntent), pendingIntent
+            )
+            return
+        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S ||
                 alarmManager.canScheduleExactAlarms()
