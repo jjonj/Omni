@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.ClipboardManager
 import android.util.Log
 import androidx.compose.foundation.background
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -156,6 +157,7 @@ fun RemoteControlScreen(
     val currentLeftHeld by rememberUpdatedState(isLeftHeld)
     var showMacroGrid by remember { mutableStateOf(false) }
     var showMoreButtons by remember { mutableStateOf(false) }
+    var showWakeSchedule by remember { mutableStateOf(false) }
 
     val selectedPid by signalRClient.selectedPid.collectAsState()
     val currentScreen by mainViewModel.currentScreen.collectAsState()
@@ -177,8 +179,8 @@ fun RemoteControlScreen(
     // Confine the real Windows cursor only while the streamed monitor is in use.
     // Reaffirm the Hub's short lease; pausing, leaving Remote or losing network
     // releases it immediately (or automatically when the lease expires).
-    LaunchedEffect(isMonitorVisible, isRemoteControlActive, showMacroGrid, monitorIndex, connectionState, lifecycleOwner) {
-        if (!isMonitorVisible || !isRemoteControlActive || showMacroGrid || monitorIndex < 0 ||
+    LaunchedEffect(isMonitorVisible, isRemoteControlActive, showMacroGrid, showWakeSchedule, monitorIndex, connectionState, lifecycleOwner) {
+        if (!isMonitorVisible || !isRemoteControlActive || showMacroGrid || showWakeSchedule || monitorIndex < 0 ||
             !connectionState.contains("Connected")) return@LaunchedEffect
         lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
             try {
@@ -213,8 +215,10 @@ fun RemoteControlScreen(
     }
 
     // Handle back press
-    androidx.activity.compose.BackHandler(enabled = (showMacroGrid || showMoreButtons) && !isLandscape) {
-        if (showMoreButtons) {
+    androidx.activity.compose.BackHandler(enabled = (showWakeSchedule || showMacroGrid || showMoreButtons) && !isLandscape) {
+        if (showWakeSchedule) {
+            showWakeSchedule = false
+        } else if (showMoreButtons) {
             showMoreButtons = false
         } else if (showMacroGrid) {
             showMacroGrid = false
@@ -227,6 +231,21 @@ fun RemoteControlScreen(
             appConfig = appConfig,
             modifier = Modifier.fillMaxSize()
         )
+    } else if (showWakeSchedule) {
+        Column(modifier = modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(onClick = { showWakeSchedule = false }) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back to remote control")
+                }
+                Text("Wake PC", style = MaterialTheme.typography.titleLarge)
+            }
+            Column(modifier = Modifier.fillMaxSize().verticalScroll(androidx.compose.foundation.rememberScrollState()).padding(16.dp)) {
+                WakeScheduleCard(mainViewModel, signalRClient)
+            }
+        }
     } else {
         Box(modifier = modifier.fillMaxSize()) {
             if (!showMacroGrid) {
@@ -293,6 +312,7 @@ fun RemoteControlScreen(
                     },
                     showMoreButtons = showMoreButtons,
                     onToggleMore = { showMoreButtons = it },
+                    onOpenWakeSchedule = { showWakeSchedule = true; showMoreButtons = false },
                     onToggleMonitor = {
                         monitorIndex = if (monitorIndex + 1 < monitorCount) monitorIndex + 1 else -1
                         isMonitorVisible = monitorIndex >= 0
@@ -880,6 +900,7 @@ fun ButtonPanel(
     onToggleLeftHeld: () -> Unit,
     showMoreButtons: Boolean,
     onToggleMore: (Boolean) -> Unit,
+    onOpenWakeSchedule: () -> Unit,
     onToggleMonitor: () -> Unit,
     onToggleMacros: () -> Unit,
     onStartVoice: () -> Unit = {}
@@ -1073,6 +1094,7 @@ fun ButtonPanel(
                                 delay(100); signalRClient.sendKeyEvent("INPUT_KEY_UP", VK_CONTROL); signalRClient.sendKeyEvent("INPUT_KEY_PRESS", VK_BACK)
                             }
                         }
+                        ActionKeyButton(text = "Wake PC", modifier = Modifier.weight(1f)) { onOpenWakeSchedule() }
                         ActionKeyButton(text = "Back", modifier = Modifier.weight(1f)) { onToggleMore(false) }
                     }
                 }

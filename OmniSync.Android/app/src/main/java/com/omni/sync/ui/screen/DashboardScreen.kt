@@ -159,10 +159,6 @@ fun DashboardScreen(modifier: Modifier = Modifier, signalRClient: SignalRClient,
                 )
             }
 
-            item(key = "wake-schedule") {
-                WakeScheduleCard(mainViewModel, signalRClient)
-            }
-
             item {
                 AndroidUpdateCard(
                     state = updateState,
