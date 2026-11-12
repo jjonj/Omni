@@ -93,6 +93,7 @@ import com.omni.sync.data.taskboard.TaskBoardTask
 import com.omni.sync.data.taskboard.TaskBoardTaskDraft
 import com.omni.sync.data.taskboard.TaskBoardTimeline
 import com.omni.sync.data.taskboard.TaskBoardOfflineDrafts
+import com.omni.sync.data.taskboard.TaskBoardAttachmentStore
 import com.omni.sync.data.taskboard.TaskBoardPhoneClient
 import com.omni.sync.data.taskboard.TaskBoardConflictException
 import kotlinx.coroutines.CancellationException
@@ -1117,10 +1118,13 @@ private fun TaskBoardContents(parentPadding: PaddingValues, signalR: SignalRClie
                 snapshot = board,
                 busy = loading,
                 onDismiss = { createTaskRequest = null },
-                onSave = { draft ->
+                onSave = { draft, attachments ->
                     mutate(
                         action = {
-                            val result = phoneWriter.submitCreate(store.root, board.boardRevision, draft)
+                            val references = TaskBoardAttachmentStore.copyPickedFiles(
+                                context.contentResolver, store.root, attachments)
+                            val result = phoneWriter.submitCreate(store.root, board.boardRevision,
+                                TaskBoardAttachmentStore.withReferences(draft, references))
                             requirePcApplied(result)
                         },
                         onSuccess = { createTaskRequest = null }
@@ -1155,10 +1159,13 @@ private fun TaskBoardContents(parentPadding: PaddingValues, signalR: SignalRClie
                         .firstOrNull { it.id !in skippedQueueIds }
                     if (editingTask == null) queueMode = false
                 },
-                onSave = { draft ->
+                onSave = { draft, attachments ->
                     mutate(
                         action = {
-                            val result = phoneWriter.submitUpdate(store.root, task, draft)
+                            val references = TaskBoardAttachmentStore.copyPickedFiles(
+                                context.contentResolver, store.root, attachments)
+                            val result = phoneWriter.submitUpdate(store.root, task,
+                                TaskBoardAttachmentStore.withReferences(draft, references))
                             requirePcApplied(result)
                         },
                         onSuccess = {
@@ -2203,7 +2210,7 @@ private fun TaskEditorDialog(
     snapshot: TaskBoardSnapshot,
     busy: Boolean,
     onDismiss: () -> Unit,
-    onSave: (TaskBoardTaskDraft) -> Unit,
+    onSave: (TaskBoardTaskDraft, List<Uri>) -> Unit,
     inQueue: Boolean = false,
     onSkip: (() -> Unit)? = null,
     onSnooze: (() -> Unit)? = null,
@@ -2263,6 +2270,13 @@ private fun TaskEditorDialog(
     }
 
     var showHistory by remember(original?.id) { mutableStateOf(false) }
+    val context = LocalContext.current
+    var selectedFiles by remember(original?.revision, initialColumn, initialParent) {
+        mutableStateOf<List<Uri>>(emptyList())
+    }
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        selectedFiles = (selectedFiles + uris).distinct().take(10)
+    }
     val columns = snapshot.columns.sortedBy { it.order }
     val selectedColumnName = columns.firstOrNull { it.id == column }?.name ?: column
     val isAdvisory = columns.any { it.id == column && it.advisory }
@@ -2306,6 +2320,9 @@ private fun TaskEditorDialog(
                             color = TaskBoardColors.muted, maxLines = 1,
                             overflow = TextOverflow.Ellipsis)
                     }
+                    TextButton(onClick = { picker.launch(arrayOf("*/*")) }, enabled = !busy) {
+                        Text(if (selectedFiles.isEmpty()) "+ Attach" else "+ Attach (${selectedFiles.size})")
+                    }
                     IconButton(onClick = onDismiss, enabled = !busy) {
                         Icon(Icons.Filled.Close, contentDescription = "Close",
                             tint = TaskBoardColors.muted)
@@ -2328,6 +2345,21 @@ private fun TaskEditorDialog(
                                 color = if (current) sectionAccent else TaskBoardColors.muted)
                         }
                     }
+                }
+                if (selectedFiles.isNotEmpty()) {
+                    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())
+                        .padding(horizontal = 14.dp, vertical = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        selectedFiles.forEach { uri ->
+                            TextButton(onClick = { selectedFiles = selectedFiles - uri }, enabled = !busy) {
+                                Text("× " + TaskBoardAttachmentStore.displayName(context.contentResolver, uri),
+                                    maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
+                        }
+                    }
+                    Text("Attached when you save; synced through your TaskBoard files.",
+                        Modifier.padding(horizontal = 18.dp),
+                        style = MaterialTheme.typography.labelSmall, color = TaskBoardColors.muted)
                 }
                 Column(Modifier.weight(1f).fillMaxWidth()
                     .verticalScroll(remember(editorSection) { androidx.compose.foundation.ScrollState(0) })
@@ -2666,7 +2698,7 @@ private fun TaskEditorDialog(
                         userNotes = userNotes,
                         notes = notes
                     )
-                    onSave(draft)
+                    onSave(draft, selectedFiles)
                     }, enabled = !busy && title.isNotBlank() &&
                             (!isQuestion || questionPrompt.isNotBlank()),
                         modifier = Modifier.weight(1.4f).heightIn(min = 48.dp)) {
