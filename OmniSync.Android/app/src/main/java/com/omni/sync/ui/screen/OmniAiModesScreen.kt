@@ -45,6 +45,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.omni.sync.data.repository.*
 import com.google.gson.JsonObject
+import java.util.UUID
 import android.content.Intent
 import android.net.Uri
 import com.omni.sync.viewmodel.MainViewModel
@@ -207,6 +208,15 @@ fun OmniAiModesScreen(
     var workspace by remember { mutableStateOf("") }
     var newSessionTitle by remember { mutableStateOf("") }
     var firstMessage by remember { mutableStateOf("") }
+    var scheduleOpen by remember { mutableStateOf(false) }
+    var scheduleRevision by remember { mutableIntStateOf(0) }
+    var scheduleTarget by remember { mutableStateOf<AgentSessionUi?>(null) }
+    var scheduleBeginAt by remember { mutableLongStateOf(System.currentTimeMillis() + 60 * MINUTE_MS) }
+    var scheduleInitialIdle by remember { mutableStateOf(false) }
+    var scheduleRequestId by remember { mutableStateOf(UUID.randomUUID().toString()) }
+    var scheduleBusy by remember { mutableStateOf(false) }
+    var scheduleError by remember { mutableStateOf<String?>(null) }
+    var scheduledJobs by remember { mutableStateOf<List<OmniScheduledTask>>(emptyList()) }
     var archiveQuery by rememberSaveable { mutableStateOf("") }
     var verify by remember { mutableStateOf<AddressIdentityPreview?>(null) }
     var receiptToRemove by remember { mutableStateOf<PendingAgentUi?>(null) }
@@ -434,6 +444,91 @@ fun OmniAiModesScreen(
     BackHandler(enabled = humanInbox || !listMode) {
         if (humanInbox) humanInbox = false else listMode = true
     }
+    fun schedulerCarrier(target: AgentSessionUi? = null): AgentSessionUi? =
+        target ?: sessions.firstOrNull { isT3Browser(it) &&
+            it.capabilities.contains("RemoteControl") }
+    fun refreshScheduledJobs() {
+        val carrier = schedulerCarrier() ?: return
+        scope.launch {
+            try {
+                val details = client.sessionControls(carrier)
+                val entries = details.get("scheduledSpawns")
+                    ?.takeIf { it.isJsonArray }?.asJsonArray
+                scheduledJobs = entries?.mapNotNull { raw ->
+                    val job = raw.takeIf { it.isJsonObject }?.asJsonObject ?: return@mapNotNull null
+                    val id = job.get("id")?.takeUnless { it.isJsonNull }?.asString
+                        ?: return@mapNotNull null
+                    val name = job.get("title")?.takeUnless { it.isJsonNull }?.asString
+                        ?: return@mapNotNull null
+                    val whenMs = job.get("beginAt")?.takeUnless { it.isJsonNull }?.asLong
+                    val idle = job.get("onIdle")?.takeUnless { it.isJsonNull }?.asBoolean == true
+                    val state = job.get("status")?.takeUnless { it.isJsonNull }?.asString ?: "unknown"
+                    OmniScheduledTask(id, name, whenMs, idle, state)
+                } ?: emptyList()
+            } catch (error: Exception) {
+                scheduleError = "Could not refresh scheduled work: ${error.message}"
+            }
+        }
+    }
+    fun openSchedule(target: AgentSessionUi?, at: Long = System.currentTimeMillis() + 60 * MINUTE_MS, idle: Boolean = false) {
+        if (!online || !t3Connected) {
+            note = "Connect to T3 on your desktop before scheduling ChatGPT work."
+            return
+        }
+        if (schedulerCarrier(target) == null) {
+            note = "No controllable T3 ChatGPT session is available to schedule work."
+            return
+        }
+        scheduleTarget = target
+        scheduleBeginAt = at
+        scheduleInitialIdle = idle
+        scheduleRequestId = UUID.randomUUID().toString()
+        scheduleRevision++
+        scheduleError = null
+        rowOptions = null
+        scheduleOpen = true
+        if (target == null) refreshScheduledJobs()
+    }
+    fun submitSchedule(title: String, prompt: String, at: Long?, onIdle: Boolean) {
+        val carrier = schedulerCarrier(scheduleTarget) ?: return
+        if (scheduleBusy) return
+        scheduleBusy = true
+        scheduleError = null
+        val command = if (scheduleTarget == null) "caffy_schedule_spawn" else "caffy_begin"
+        val options: Map<String, Any?> = if (scheduleTarget == null) mapOf(
+            "jobId" to scheduleRequestId, "title" to title, "prompt" to prompt,
+            "beginAt" to at, "onIdle" to onIdle
+        ) else mapOf("prompt" to prompt, "beginAt" to at, "onIdle" to onIdle)
+        scope.launch {
+            try {
+                val receipt = client.sessionAction(carrier, "Control",
+                    mapOf("command" to command, "options" to options))
+                note = if (onIdle) "ChatGPT work queued ahead of TaskBoard: $receipt"
+                    else "ChatGPT work scheduled: $receipt"
+                scheduleOpen = false
+                refreshScheduledJobs()
+            } catch (error: Exception) {
+                scheduleError = "Schedule unconfirmed: ${error.message}. Inspect status before retrying."
+            } finally { scheduleBusy = false }
+        }
+    }
+    fun cancelScheduledJob(jobId: String) {
+        val carrier = schedulerCarrier() ?: return
+        if (scheduleBusy) return
+        scheduleBusy = true
+        scope.launch {
+            try {
+                client.sessionAction(carrier, "Control", mapOf(
+                    "command" to "caffy_cancel_spawn",
+                    "options" to mapOf("jobId" to jobId)
+                ))
+                scheduledJobs = scheduledJobs.filterNot { it.id == jobId }
+                note = "Scheduled new ChatGPT task cancelled."
+            } catch (error: Exception) {
+                scheduleError = "Cancel unconfirmed: ${error.message}"
+            } finally { scheduleBusy = false }
+        }
+    }
     fun openCreate() {
         val provider = active ?: run {
             note = "Connect and activate the T3 provider before creating a session."
@@ -498,6 +593,21 @@ fun OmniAiModesScreen(
         surfaceVariant = p.raised, onSurfaceVariant = p.muted,
         outline = p.border, surfaceTint = p.accent
     )) {
+    if (scheduleOpen) {
+        key(scheduleRevision) {
+            OmniAiScheduleDialog(
+                targetTitle = scheduleTarget?.title,
+                initialBeginAt = scheduleBeginAt,
+                initialOnIdle = scheduleInitialIdle,
+                jobs = scheduledJobs,
+                busy = scheduleBusy,
+                error = scheduleError,
+                onDismiss = { scheduleOpen = false },
+                onSubmit = ::submitSchedule,
+                onCancelJob = ::cancelScheduledJob
+            )
+        }
+    }
     if (pendingBusyMinutes != null) {
         AlertDialog(
             onDismissRequest = { pendingBusyMinutes = null },
@@ -609,6 +719,8 @@ fun OmniAiModesScreen(
                     }
                 }
                 if (listMode) {
+                    ActionIcon(Icons.Default.Schedule, "Schedule ChatGPT work", p,
+                        enabled = t3Connected) { openSchedule(null) }
                     ActionIcon(Icons.Default.Add, "New ${if (threadKind == "t3/thread") "native T3 thread" else "ChatGPT session"}", p) { openCreate() }
                     ActionIcon(Icons.Default.MailOutline, "Human inbox", p) { humanInbox = true }
                 }
@@ -1274,8 +1386,7 @@ fun OmniAiModesScreen(
                         horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         listOf(30, 60, 120, 240).forEach { minutes ->
                             FilterChip(false, onClick = {
-                                performRowControl(target, "caffy_begin",
-                                    mapOf("beginAt" to System.currentTimeMillis() + minutes * MINUTE_MS))
+                                openSchedule(target, System.currentTimeMillis() + minutes * MINUTE_MS)
                             }, label = { Text("${minutes}m") })
                         }
                     }
@@ -1290,12 +1401,18 @@ fun OmniAiModesScreen(
                                     set(java.util.Calendar.SECOND, 0)
                                     set(java.util.Calendar.MILLISECOND, 0)
                                 }
-                                performRowControl(target, "caffy_begin", mapOf("beginAt" to calendar.timeInMillis))
+                                openSchedule(target, calendar.timeInMillis)
                             }, label = { Text("Tomorrow ${hour}:00") })
                         }
                     }
+                    SheetAction("Begin on idle · custom prompt", p) {
+                        openSchedule(target, idle = true)
+                    }
+                    SheetAction("Schedule custom prompt and time…", p) {
+                        openSchedule(target)
+                    }
                     SheetAction("Cancel delayed start", p) {
-                        performRowControl(target, "caffy_begin", mapOf("beginAt" to null))
+                        performRowControl(target, "caffy_cancel_begin")
                     }
                     HorizontalDivider(color = p.border)
                     if (activeMode == "idle" || activeMode == "queued") {
