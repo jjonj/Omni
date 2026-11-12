@@ -12,7 +12,7 @@
  <p id="status" role="status" aria-live="polite">Checking tool…</p>
  <p id="elapsed" class="elapsed"></p>
  <div id="details" hidden><pre id="log" class="log"></pre></div>
- <div class="actions"><a class="btn" href="/gateway/">← Gateway</a><button class="btn primary" id="retry" type="button" hidden>Retry</button></div>
+ <div class="actions"><a class="btn" href="/gateway/">← Gateway</a><button class="btn primary" id="retry" type="button" hidden>Retry</button><button class="btn" id="spawn-agent" type="button" hidden>Spawn Agent</button></div>
  </section>
 </main>
 <script>
@@ -23,18 +23,82 @@ const name = document.querySelector('#name');
 const spinner = document.querySelector('#spinner');
 const details = document.querySelector('#details');
 const retry = document.querySelector('#retry');
+const spawnButton = document.querySelector('#spawn-agent');
+let currentTool = null;
+const agentKey = 'omnihub.gateway.agent.' + id;
+const readAgent = () => { try { return JSON.parse(localStorage.getItem(agentKey)); } catch { return null; } };
+const agentApi = async (method, params = {}) => {
+ const response = await fetch('/gateway/api/agent/' + method, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(params)});
+ const result = await response.json();
+ if (!response.ok) throw new Error(result.error || 'AgentHub unavailable');
+ return result;
+};
+function showAgent(record) {
+ spawnButton.hidden = false;
+ spawnButton.disabled = false;
+ const operation = record?.operation;
+ spawnButton.textContent = record?.conversationId ? 'Open AI chat' : operation ? 'Check Agent' : 'Spawn Agent';
+ spawnButton.title = operation ? 'Check the original request without spawning a duplicate' : 'Create a T3 ChatGPT worker to investigate the launch failure';
+}
+async function checkAgent(record) {
+ const op = await agentApi('status', record.operation ? {operation:record.operation,includeReadback:true} : {provider:'t3',clientRequestId:record.requestId,includeReadback:true});
+ const conversationId = op.result?.details?.conversationId;
+ const next = {...record,operation:op.id || record.operation,conversationId:/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(conversationId || '') ? conversationId : record.conversationId};
+ localStorage.setItem(agentKey,JSON.stringify(next));
+ showAgent(next);
+ return next;
+}
+spawnButton.addEventListener('click', async () => {
+ spawnButton.disabled = true;
+ try {
+   let record = readAgent();
+   if (record?.conversationId) { window.open('https://chatgpt.com/c/' + record.conversationId,'_blank','noopener'); return; }
+   if (record) { await checkAgent(record); return; }
+   const providers = await agentApi('providers');
+   const t3 = providers.find(p => p.id === 't3' && p.active && p.enabled && p.capabilities.includes('CreateSession') && p.kinds.includes('t3/chatgpt'));
+   if (!t3) throw new Error('T3 ChatGPT session creation unavailable');
+   const requestId = crypto.randomUUID();
+   const errorText = status.textContent;
+   const logs = document.querySelector('#log').textContent.slice(-10000);
+   const instructions = ['Investigate and fix the OmniHub Gateway launch failure for ' + (currentTool?.name || id) + '.',
+     'Tool ID: ' + id, 'Project: ' + (currentTool?.project || 'unknown'), 'Launch error: ' + errorText,
+     'Gateway launch URL: ' + location.href, 'Recent Gateway log:', logs,
+     'Read relevant TaskBoard/project instructions. Diagnose the underlying error, implement a fix, commit your changes, and restart only what is necessary.'].join('\n\n');
+   const params = {mode:'direct',provider:'t3',kind:'t3/chatgpt',source:'OmniHub/gateway',incidentId:requestId,
+     clientRequestId:requestId,title:'Fix ' + (currentTool?.name || id) + ' launch',
+     workspace:currentTool?.workingDirectory || currentTool?.cwd || 'D:/SSDProjects/Tools/Omnish/main',instructions};
+   // Persist before dispatch. Any lost receipt is reconciled, never replayed.
+   record = {requestId}; localStorage.setItem(agentKey,JSON.stringify(record));
+   const op = await agentApi('create',params);
+   record.operation = op.id; localStorage.setItem(agentKey,JSON.stringify(record));
+   await checkAgent(record);
+ } catch (error) {
+   spawnButton.title = String(error);
+   spawnButton.textContent = 'Check Agent';
+ } finally { spawnButton.disabled = false; }
+});
 let activeAttempt = 0;
-// Registered URLs use loopback for reliable local health checks. On a phone,
-// loopback means the PHONE, so navigate to the Hub PC's LAN hostname instead.
-function browserTarget(url) {
- const target = new URL(url);
- const loopback = host => ['127.0.0.1','localhost','[::1]','::1'].includes(host.toLowerCase());
+// Public sessions use only authenticated same-origin tool routes. Never
+// turn a localhost URL into a broken public-host:tool-port HTTP redirect.
+const publicHub = location.protocol === 'https:' && location.hostname === 'hub.rancorous.online';
+const loopback = host => ['127.0.0.1','localhost','[::1]','::1'].includes(host.toLowerCase());
+async function browserTarget(tool) {
+ if (publicHub) {
+   const response = await fetch('/gateway/api/remote-tools', {cache:'no-store'});
+   if (!response.ok) throw new Error('Authenticated remote tool gateway is unavailable (HTTP ' + response.status + ').');
+   const remote = (await response.json())[tool.id];
+   if (!remote?.supported) throw new Error('Not available remotely: ' + (remote?.reason || 'no HTTPS route is configured for this tool.'));
+   if (!remote.url?.startsWith('/') || remote.url.startsWith('//')) throw new Error('Remote tool route is invalid.');
+   return new URL(remote.url, location.origin).href;
+ }
+ if (location.protocol === 'https:') throw new Error('Remote tool launching requires https://hub.rancorous.online/gateway/.');
+ const target = new URL(tool.url);
  if (!loopback(location.hostname) && loopback(target.hostname)) target.hostname = location.hostname;
  return target.href;
 }
 async function launch() {
  const attempt = ++activeAttempt;
- retry.hidden = true; retry.disabled = false;
+ retry.hidden = true; retry.disabled = false; spawnButton.hidden = true;
  spinner.hidden = false; details.hidden = true; status.classList.remove('fail');
  status.textContent = 'Checking server health…';
  document.querySelector('#elapsed').textContent = '';
@@ -48,6 +112,7 @@ async function launch() {
    if (!response.ok) throw new Error('Could not read the Gateway registry (HTTP ' + response.status + ').');
    const tools = await response.json();
    const tool = tools.find(t => t.id === id);
+   currentTool = tool;
    if (!tool) throw new Error('This tool is no longer registered.');
    name.textContent = tool.name;
    const mono = document.querySelector('#mono');
@@ -55,7 +120,8 @@ async function launch() {
    let h = 0; for (const c of tool.id) h = (h * 31 + c.charCodeAt(0)) >>> 0;
    mono.style.setProperty('--h', h % 360);
    document.querySelector('#description').textContent = tool.description;
-   if (tool.status === 'running') { status.textContent = 'Already running. Opening…'; location.replace(browserTarget(tool.url)); return; }
+   const target = await browserTarget(tool); // Fail explicitly before attempting startup if unsupported remotely.
+   if (tool.status === 'running') { status.textContent = 'Already running. Opening…'; location.replace(target); return; }
    started = Date.now();
    timer = setInterval(() => {
      if (activeAttempt !== attempt) return;
@@ -67,13 +133,14 @@ async function launch() {
    const body = await result.json();
    if (!result.ok) throw new Error(body.error || ('Launch failed (HTTP ' + result.status + ')'));
    status.textContent = 'Ready. Opening application…';
-   location.replace(browserTarget(body.url));
+   location.replace(target);
  } catch (error) {
    if (activeAttempt !== attempt) return;
    status.textContent = error.message || 'Unable to start tool.';
    status.classList.add('fail');
    spinner.hidden = true;
    retry.hidden = false;
+   showAgent(readAgent());
    try {
      const response = await fetch('/gateway/api/log/' + encodeURIComponent(id), {cache:'no-store'});
      if (response.ok) {

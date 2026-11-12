@@ -17,14 +17,22 @@ const appLabel = step => {
 const readPreferences = () => {
   try {
     const parsed = JSON.parse(localStorage.getItem(storeKey) || '{}');
-    return {pins: Array.isArray(parsed.pins) ? parsed.pins : [], recent: Array.isArray(parsed.recent) ? parsed.recent : []};
-  } catch { return {pins:[],recent:[]}; }
+    return {pins: Array.isArray(parsed.pins) ? parsed.pins : [], recent: Array.isArray(parsed.recent) ? parsed.recent : [],
+      more: Array.isArray(parsed.more) ? parsed.more.filter(id => typeof id === 'string') : []};
+  } catch { return {pins:[],recent:[],more:[]}; }
 };
 const prefs = readPreferences();
 const save = () => { try { localStorage.setItem(storeKey, JSON.stringify(prefs)); } catch {} };
 const isPinned = id => prefs.pins.includes(id);
+const isInMore = id => prefs.more.includes(id);
+let moreExpanded = false;
 const lastOpened = id => prefs.recent.find(r => r.id === id)?.time || 0;
+const recentWindow = 7 * 24 * 60 * 60 * 1000;
+const isRecent = id => !isPinned(id) && lastOpened(id) > Date.now() - recentWindow;
+const priorityClass = id => isPinned(id) ? 'priority-pinned' : isRecent(id) ? 'priority-recent' : '';
+const priorityRank = id => isPinned(id) ? 0 : isRecent(id) ? 1 : 2;
 const portOf = url => { try { return new URL(url).port; } catch { return ''; } };
+const isPublicHub = location.protocol === 'https:' && location.hostname === 'hub.rancorous.online';
 const displayStatus = status => ({running:'Running',starting:'Starting…',error:'Needs attention',stopped:'Offline'}[status] || status);
 const matches = (query, ...fields) => !query || fields.join(' ').toLocaleLowerCase().includes(query);
 const timeFmt = {month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'};
@@ -32,7 +40,7 @@ const shortcut = id => location.origin + '/' + encodeURIComponent(id);
 
 const state = {tools:[],snapshot:{revision:0,setups:[],macros:[],calendar:{}},network:null,
   initialized:false,request:0,hot:0,items:[],detailsId:null,fileItems:[],queryId:0,
-  editing:null,editingRevision:0,editingChanged:false,busy:false};
+  editing:null,editingRevision:0,editingChanged:false,busy:false,syncFailures:0,typeFilter:'all'};
 let refreshTimer, networkTimer, fileTimer, toastTimer;
 const editor = $('setup-editor');
 const query = () => $('search').value.trim().toLocaleLowerCase();
@@ -46,22 +54,77 @@ function toast(message) {
 function markOpened(id) {
   prefs.recent = [{id,time:Date.now()},...prefs.recent.filter(r => r.id !== id)].slice(0,20);
   save();
+  // Defer DOM replacement so a clicked tool link can finish navigation.
+  setTimeout(() => { renderTools(); renderSetups(); renderItems(); }, 0);
 }
 function pin(id) {
-  prefs.pins = isPinned(id) ? prefs.pins.filter(x => x !== id) : [...prefs.pins,id];
+  const willPin = !isPinned(id);
+  prefs.pins = willPin ? [...prefs.pins,id] : prefs.pins.filter(x => x !== id);
+  // Pinning a tucked-away tool promotes it to the main grid.
+  if (willPin) prefs.more = prefs.more.filter(x => x !== id);
   save();
   renderTools();
-  toast(isPinned(id) ? 'Pinned to the top' : 'Unpinned');
+  renderSetups();
+  renderItems();
+  toast(willPin ? 'Pinned' : 'Unpinned');
+}
+function moveTool(id) {
+  if (!state.tools.some(t => t.id === id)) return;
+  const toMore = !isInMore(id);
+  prefs.more = toMore ? [...prefs.more,id] : prefs.more.filter(x => x !== id);
+  if (toMore) prefs.pins = prefs.pins.filter(x => x !== id);
+  save();
+  renderTools();
+  renderItems();
+  toast(toMore ? 'Moved to More' : 'Moved to main tools');
 }
 function setConnection(online) {
   $('service-dot').className = 'dot ' + (online ? 'ok' : 'bad');
-  $('conn').title = online ? 'Connected to the local Hub' : 'Hub unavailable';
+  $('conn').title = online ? 'Gateway reachable' : 'Gateway data unavailable';
+}
+const serviceLastOk = {};
+let probingServices = false;
+async function pollServiceHealth() {
+  if (probingServices || document.hidden) return;
+  probingServices = true;
+  try {
+    const response = await fetchBounded('/gateway/api/connections');
+    if (!response.ok) throw new Error('Service diagnostics unavailable');
+    const data = await response.json();
+    if (!Array.isArray(data.services)) throw new Error('Unexpected service status response');
+    const now = Date.now();
+    const services = data.services.map(service => {
+      const status = service.id === 'proxy'
+        ? (location.hostname === 'hub.rancorous.online' ? 'online' : 'unknown')
+        : service.status;
+      if (status === 'online') serviceLastOk[service.id] = now;
+      const last = serviceLastOk[service.id];
+      const freshness = last ? 'Last OK ' + new Date(last).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit',second:'2-digit'}) : 'No successful check yet';
+      return `<div class="service-row" title="${esc(service.reason || freshness)}"><span class="dot ${status === 'online' ? 'ok' : status === 'offline' ? 'bad' : 'unknown'}"></span><span>${esc(service.name)}</span><small>${esc(status)} · ${esc(freshness)}</small></div>`;
+    });
+    $('service-menu').innerHTML = services.join('');
+  } catch {
+    $('service-menu').textContent = 'Diagnostics unavailable; service states unverified.';
+  } finally {
+    probingServices = false;
+  }
 }
 async function fetchBounded(url, options = {}) {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), options.method === 'POST' || options.method === 'PUT' ? 18000 : 9000);
-  try { return await fetch(url, {cache:'no-store', signal:controller.signal, ...options}); }
-  finally { clearTimeout(timeout); }
+  const duration = options.method === 'POST' || options.method === 'PUT' ? 18000 : 9000;
+  let timedOut = false;
+  const timeout = setTimeout(() => { timedOut = true; controller.abort(); }, duration);
+  try {
+    const response = await fetch(url, {cache:'no-store', ...options, signal:controller.signal});
+    if (response.redirected && /\/__rancorous_login(?:[?#]|$)/.test(response.url)) {
+      throw new Error('Login session expired. Sign in again at hub.rancorous.online.');
+    }
+    return response;
+  } catch (error) {
+    if (timedOut) throw new Error('OmniHub did not respond within ' + (duration/1000) + ' seconds; retrying automatically.');
+    if (error instanceof TypeError) throw new Error('Network connection failed. Check OmniHub or your internet connection; retrying automatically.');
+    throw error;
+  } finally { clearTimeout(timeout); }
 }
 async function request(path, method = 'GET', data) {
   const options = {method, headers:{}};
@@ -72,7 +135,7 @@ async function request(path, method = 'GET', data) {
   const response = await fetchBounded('/gateway/api/sweep' + path, options);
   const text = await response.text();
   let result;
-  try { result = text ? JSON.parse(text) : null; } catch { result = {error:text.slice(0,250)}; }
+  try { result = text ? JSON.parse(text) : null; } catch { result = {error:'OmniHub returned invalid JSON (HTTP '+response.status+')'}; }
   if (!response.ok) {
     const e = new Error(result?.error || 'Request failed: HTTP ' + response.status);
     e.status = response.status;
@@ -82,13 +145,15 @@ async function request(path, method = 'GET', data) {
 }
 
 // ---------- Tools ----------
-function toolTile(t) {
+function toolTile(t, tucked = false) {
   const port = portOf(t.url);
-  const sub = t.status === 'error' && t.error
+  const sub = isPublicHub && t.remote?.supported === false
+    ? `<span class="err" title="${esc(t.remote.reason)}">Local only · ${esc(t.remote.reason)}</span>`
+    : t.status === 'error' && t.error
     ? `<span class="err">${esc(t.error)}</span>`
-    : `<i class="dot ${esc(t.status)}"></i>${esc(t.status === 'stopped' ? 'Offline · starts on open' : displayStatus(t.status))}${port ? ' · :' + esc(port) : ''}`;
+    : `<i class="dot ${esc(t.status)}"></i>${esc(t.status === 'stopped' ? 'Offline · starts on open' : displayStatus(t.status))}${!isPublicHub && port ? ' · :' + esc(port) : ''}`;
   const pinLabel = (isPinned(t.id) ? 'Unpin ' : 'Pin ') + t.name;
-  return `<article class="tile ${esc(t.status)}">
+  return `<article class="tile ${esc(t.status)} ${tucked ? 'in-more' : priorityClass(t.id)}" data-tool-id="${esc(t.id)}">
     <a class="tile-main" href="/${encodeURIComponent(t.id)}" target="_blank" rel="noopener" data-open="${esc(t.id)}" data-item title="${esc(t.description)}">
       <span class="mono" style="--h:${hue(t.id)}">${esc(initials(t.name))}</span>
       <span class="tile-text"><span class="tile-name">${isPinned(t.id) ? '<span class="pin-star" aria-label="Pinned">★</span> ' : ''}${esc(t.name)}</span><span class="tile-sub">${sub}</span></span>
@@ -96,21 +161,126 @@ function toolTile(t) {
     </a>
     <div class="tile-tools">
       <button class="icon-btn pin ${isPinned(t.id)?'pinned':''}" data-pin="${esc(t.id)}" type="button" title="${esc(pinLabel)}" aria-label="${esc(pinLabel)}" aria-pressed="${isPinned(t.id)}">★</button>
-      <button class="icon-btn" type="button" data-details="${esc(t.id)}" title="Details and logs" aria-label="Details and logs for ${esc(t.name)}">⋯</button>
+      <button class="icon-btn" type="button" data-tool-menu="${esc(t.id)}" title="Tool options (or right-click tile)" aria-label="Options for ${esc(t.name)}">⋯</button>
     </div>
   </article>`;
 }
 function renderTools() {
   const q = query();
-  const tools = state.tools
-    .filter(t => matches(q, t.name, t.description, t.id, portOf(t.url)))
-    .sort((a,b) => Number(isPinned(b.id))-Number(isPinned(a.id)) || lastOpened(b.id)-lastOpened(a.id) || a.name.localeCompare(b.name));
-  $('tools').innerHTML = tools.length ? tools.map(toolTile).join('') :
-    `<div class="empty">${state.tools.length ? 'No matching tools.' : state.initialized ? 'No tools registered yet — register them with OmniMCP-Lite.' : 'Checking registered tools…'}</div>`;
-  $('tools-count').textContent = q ? `${tools.length}/${state.tools.length}` : String(state.tools.length || '');
-  return tools.length;
+  const matched = state.tools.filter(t => matches(q,t.name,t.description,t.id,portOf(t.url)));
+  const main = matched.filter(t => !isInMore(t.id))
+    .sort((a,b) => priorityRank(a.id)-priorityRank(b.id) ||
+      (isRecent(a.id) ? lastOpened(b.id)-lastOpened(a.id) : a.name.localeCompare(b.name)));
+  const tucked = matched.filter(t => isInMore(t.id)).sort((a,b) => a.name.localeCompare(b.name));
+  // Search can find everything, including collapsed More items.
+  const visibleTucked = q || moreExpanded ? tucked : [];
+  const moreCount = state.tools.filter(t => isInMore(t.id)).length;
+  const moreTile = `<button type="button" class="tile tile-more" data-toggle-more
+    aria-expanded="${moreExpanded}" aria-label="${moreExpanded ? 'Collapse' : 'Expand'} More tools">
+    <span class="mono more-mono" aria-hidden="true">···</span>
+    <span class="tile-text"><span class="tile-name">More</span>
+      <span class="tile-sub">${moreCount ? moreCount + ' tucked-away tool' + (moreCount===1?'':'s') : 'Move tools here via right-click'}</span></span>
+    <span class="more-chevron" aria-hidden="true">${moreExpanded ? '▴' : '▾'}</span>
+  </button>`;
+  $('tools').innerHTML = (main.length + visibleTucked.length
+    ? main.map(t => toolTile(t)).join('') + visibleTucked.map(t => toolTile(t,true)).join('')
+    : q ? '<div class="empty">No matching tools.</div>'
+    : !state.initialized ? '<div class="empty">Checking registered tools…</div>' : '') + moreTile;
+  $('tools-count').textContent = q ? `${matched.length}/${state.tools.length}` :
+    (state.tools.length ? `${state.tools.length - moreCount} visible${moreCount ? ' · '+moreCount+' in More' : ''}` : '');
+  return main.length + visibleTucked.length;
 }
 
+async function prepareToolDeletion(id) {
+  const tool = state.tools.find(t => t.id === id);
+  if (!tool) return;
+  if (!confirm('Stop the verified ' + tool.name + ' server and open its folder in Fomni?\nNo files will be deleted.')) return;
+  try {
+    const response = await fetchBounded('/gateway/api/tools/' + encodeURIComponent(id) + '/prepare-deletion', {method:'POST'});
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || 'Could not prepare tool for deletion');
+    toast(result.stopped ? 'Server stopped. Folder opened in Fomni.' : 'Server was offline. Folder opened in Fomni.');
+    void poll();
+  } catch (error) { toast('Prepare deletion failed: ' + error.message); }
+}
+function hideToolMenu() {
+  $('tool-context-menu').hidden = true;
+}
+function showToolMenu(id,x,y) {
+  const tool = state.tools.find(t => t.id === id);
+  if (!tool) return;
+  const menu = $('tool-context-menu');
+  menu.dataset.toolId = id;
+  menu.innerHTML = `
+    <button type="button" role="menuitem" data-tool-action="move">${isInMore(id) ? 'Move to Main' : 'Move to More'}</button>
+    <button type="button" role="menuitem" data-tool-action="pin">${isPinned(id) ? 'Unpin' : 'Pin to top'}</button>
+    <button type="button" role="menuitem" data-tool-action="details">Details and logs</button>
+    <button type="button" role="menuitem" data-tool-action="prepare-deletion">Prepare deletion...</button>`;
+  menu.hidden = false;
+  menu.style.left = Math.max(8,Math.min(x,window.innerWidth-menu.offsetWidth-8))+'px';
+  menu.style.top = Math.max(8,Math.min(y,window.innerHeight-menu.offsetHeight-8))+'px';
+  menu.querySelector('button')?.focus({preventScroll:true});
+}
+document.addEventListener('contextmenu',event => {
+  const tile = event.target.closest('.tile[data-tool-id]');
+  if (!tile) { hideToolMenu(); return; }
+  event.preventDefault();
+  showToolMenu(tile.dataset.toolId,event.clientX,event.clientY);
+});
+document.addEventListener('keydown',event => {
+  if (event.key === 'Escape' && !$('tool-context-menu').hidden) {
+    hideToolMenu();
+    event.stopPropagation();
+  }
+});
+window.addEventListener('scroll',hideToolMenu,true);
+window.addEventListener('resize',hideToolMenu);
+
+let tooltipAnchor = null;
+function hideSetupTooltip() {
+  $('setup-tooltip').hidden = true;
+  tooltipAnchor = null;
+}
+function showSetupTooltip(anchor) {
+  const setup=state.snapshot.setups.find(s=>s.id===anchor.dataset.previewSetup);
+  if (!setup) return;
+  const steps=setup.actions || [];
+  const descriptions = steps.map((action,index)=>
+    `<li><strong>${index+1}. ${esc(TYPES[action.type]||'Action')}</strong><span>${esc(stepTitle(action))}</span></li>`).join('');
+  const tooltip=$('setup-tooltip');
+  tooltip.innerHTML = `<strong class="tooltip-title">${esc(setup.name)}</strong>
+    <div class="tooltip-meta">${steps.length} ${steps.length===1?'action':'actions'} · ${setup.shortcut?esc(setup.shortcut):'No shortcut'}</div>
+    <ol>${descriptions||'<li>No actions configured</li>'}</ol>
+    <div class="tooltip-meta">Dependencies: not specified · Live run state: not tracked</div>`;
+  tooltip.hidden = false;
+  tooltipAnchor=anchor;
+  const rect=anchor.getBoundingClientRect();
+  const width=tooltip.getBoundingClientRect().width;
+  const height=tooltip.getBoundingClientRect().height;
+  tooltip.style.left=Math.max(8,Math.min(window.innerWidth-width-8,rect.left))+'px';
+  tooltip.style.top=(rect.bottom+height+8<window.innerHeight?rect.bottom+8:Math.max(8,rect.top-height-8))+'px';
+}
+document.addEventListener('pointerover',event => {
+  if (event.pointerType==='touch') return;
+  const anchor=event.target.closest('[data-preview-setup]');
+  if (anchor && tooltipAnchor!==anchor) showSetupTooltip(anchor);
+});
+document.addEventListener('pointerout',event => {
+  const anchor=event.target.closest('[data-preview-setup]');
+  if (anchor && !anchor.contains(event.relatedTarget)) hideSetupTooltip();
+});
+document.addEventListener('focusin',event => {
+  const anchor=event.target.closest('[data-preview-setup]');
+  if (anchor) showSetupTooltip(anchor);
+});
+document.addEventListener('focusout',event => {
+  if (event.target.closest('[data-preview-setup]')) hideSetupTooltip();
+});
+document.addEventListener('pointerdown',event => {
+  if (!event.target.closest('[data-preview-setup]') && !event.target.closest('#setup-tooltip')) hideSetupTooltip();
+});
+window.addEventListener('scroll',hideSetupTooltip,true);
+window.addEventListener('resize',hideSetupTooltip);
 // ---------- Setups ----------
 function setupRow(s) {
   const index = state.snapshot.setups.findIndex(t => t.id === s.id);
@@ -120,11 +290,12 @@ function setupRow(s) {
   const apps = shown.map(a => `<span class="app t${Number(a.type)}" title="${esc(TYPES[a.type] + ': ' + stepTitle(a))}">${esc(appLabel(a))}</span>`).join('') +
     (steps.length > shown.length ? `<span class="app more">+${steps.length - shown.length}</span>` : '') +
     (steps.length ? '' : '<span class="app more">No steps — edit to add some</span>');
-  return `<article class="setup-row" data-setup="${esc(s.id)}" draggable="true">
+  return `<article class="setup-row ${priorityClass(s.id)}" data-setup="${esc(s.id)}" draggable="true">
     <span class="grip" title="Drag to reorder" aria-hidden="true">⋮⋮</span>
     <span class="key ${s.shortcut ? '' : 'none'}" title="OmniSweep shortcut">${s.shortcut ? esc(s.shortcut) : '—'}</span>
-    <div class="setup-info"><span class="setup-name">${esc(s.name)}</span><div class="apps">${apps}</div></div>
+    <div class="setup-info"><div class="setup-heading"><span class="setup-name">${esc(s.name)}</span><button class="setup-preview" type="button" data-preview-setup="${esc(s.id)}" aria-describedby="setup-tooltip" title="Show setup actions" aria-label="Details for ${esc(s.name)}">ⓘ</button></div><div class="apps">${apps}</div></div>
     <div class="setup-actions">
+      <button type="button" class="icon-btn pin ${isPinned(s.id)?'pinned':''}" data-pin="${esc(s.id)}" aria-pressed="${isPinned(s.id)}" title="${isPinned(s.id)?'Unpin':'Pin'} ${esc(s.name)}" aria-label="${isPinned(s.id)?'Unpin':'Pin'} ${esc(s.name)}">★</button>
       <button type="button" class="icon-btn" data-move="${esc(s.id)}" data-direction="-1" title="Move up" aria-label="Move up" ${index === 0 ? 'disabled' : ''}>↑</button>
       <button type="button" class="icon-btn" data-move="${esc(s.id)}" data-direction="1" title="Move down" aria-label="Move down" ${index === count - 1 ? 'disabled' : ''}>↓</button>
       <button type="button" class="icon-btn" data-snapshot="${esc(s.id)}" title="Re-capture window layout" aria-label="Re-capture windows">▣</button>
@@ -173,7 +344,7 @@ function renderCalendar() {
 async function lookupFiles() {
   const text = $('search').value.trim();
   const id = ++state.queryId;
-  $('files').hidden = text.length < 2;
+  $('files').hidden = text.length < 2 || !['all','files'].includes(state.typeFilter);
   if (text.length < 2) { state.fileItems = []; $('file-results').innerHTML = ''; return; }
   $('file-results').innerHTML = '<div class="file-pending">Searching project roots…</div>';
   try {
@@ -257,11 +428,40 @@ async function loadNetwork() {
   renderNetwork();
 }
 
+const searchablePages = [
+  {name:'Gateway',url:'/gateway/',description:'Tools and setups'},
+  {name:'Presentations',url:'/presentations/',description:'Review and share presentations'},
+  {name:'Scheduler',url:'/Scheduler.html',description:'Archived scheduler'},
+  {name:'Settings',url:'/Settings.html',description:'OmniHub settings'},
+  {name:'TFT',url:'/TFT.html',description:'TFT utility'}
+];
+function renderPages() {
+  const q = query();
+  const allowed = state.typeFilter === 'all' || state.typeFilter === 'pages';
+  const pages = allowed && q ? searchablePages.filter(p => matches(q,p.name,p.description)) : [];
+  $('pages').hidden = !pages.length;
+  $('page-results').innerHTML = pages.map(p => `<a class="chip" data-item href="${esc(p.url)}" title="${esc(p.description)}">${esc(p.name)}</a>`).join('');
+}
 // ---------- Rendering & keyboard hot item ----------
 function render() {
   renderTools();
   renderSetups();
   renderMacros();
+  renderPages();
+  const filter = state.typeFilter, q = query();
+  $('search-filters').hidden = !q;
+  $('search-filters').querySelectorAll('[data-filter]').forEach(button => {
+    button.classList.toggle('selected', button.dataset.filter === filter);
+    button.setAttribute('aria-pressed',button.dataset.filter === filter);
+  });
+  $('tools-section').hidden = filter !== 'all' && filter !== 'tools';
+  $('setups').hidden = filter !== 'all' && filter !== 'setups';
+  $('scenes').hidden = !['all','scenes','macros'].includes(filter) || (!state.snapshot.macros.some(m => matches(q,m.name,m.category)) && !!q);
+  $('scenes-title').hidden = filter === 'macros';
+  $('scenes-grid').hidden = filter === 'macros';
+  $('macros-title').hidden = filter === 'scenes';
+  $('macros-grid').hidden = filter === 'scenes';
+  if (filter !== 'all' && filter !== 'files') $('files').hidden = true;
   renderCalendar();
   renderNetwork();
   if (editor.open && state.editing && state.snapshot.revision !== state.editingRevision) {
@@ -290,35 +490,59 @@ function paintHot() {
 async function loadAll() {
   const seq = ++state.request;
   $('refresh').disabled = true;
-  const [toolsResult, sweepResult] = await Promise.allSettled([
+  const [toolsResult, sweepResult, remoteResult] = await Promise.allSettled([
     fetchBounded('/gateway/api/tools').then(async r => {
-      if (!r.ok) throw new Error('Hub returned HTTP ' + r.status);
+      if (!r.ok) throw new Error(r.status === 401 || r.status === 403 ? 'Sign-in required (HTTP ' + r.status + ')' : 'OmniHub returned HTTP ' + r.status);
       const data = await r.json();
-      if (!Array.isArray(data)) throw new Error('Unexpected tool status response');
+      if (!Array.isArray(data)) throw new Error('OmniHub returned an invalid tools list');
       return data;
     }),
     request(''),
+    isPublicHub ? fetchBounded('/gateway/api/remote-tools').then(async r => {
+      if (!r.ok) throw new Error('Remote proxy unavailable');
+      return r.json();
+    }) : Promise.resolve({}),
   ]);
   if (seq !== state.request) return;
   const problems = [];
-  if (toolsResult.status === 'fulfilled') { state.tools = toolsResult.value; state.initialized = true; }
+  if (toolsResult.status === 'fulfilled') {
+    const remote = remoteResult.status === 'fulfilled' ? remoteResult.value : {};
+    state.tools = toolsResult.value.map(t => ({...t, remote: isPublicHub
+      ? remote[t.id] || {supported:false,reason:'Authenticated HTTPS route unavailable.'} : null}));
+    state.initialized = true;
+  }
   else problems.push('tools (' + toolsResult.reason.message + ')');
   if (sweepResult.status === 'fulfilled' && sweepResult.value && Array.isArray(sweepResult.value.setups) && Array.isArray(sweepResult.value.macros)) {
     state.snapshot = sweepResult.value;
   } else if (sweepResult.status === 'rejected') problems.push('setups (' + sweepResult.reason.message + ')');
   const ok = toolsResult.status === 'fulfilled' || sweepResult.status === 'fulfilled';
+  state.syncFailures = problems.length ? Math.min(16,state.syncFailures+1) : 0;
   setConnection(ok);
   $('error').hidden = !problems.length;
-  if (problems.length) $('error-text').textContent = 'Cannot load ' + problems.join(' and ') + '. Showing last known data.';
+  if (problems.length) $('error-text').textContent = 'Cannot load ' + problems.join(' and ') + '. Last known data remains visible; retrying automatically.';
   if (ok) $('last-updated').textContent = new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',second:'2-digit'});
   if (!state.initialized) $('tools').innerHTML = '<div class="empty">Cannot reach the local Hub. Check that OmniHub is running.</div>';
   render();
   $('refresh').disabled = false;
 }
+let polling = false;
 async function poll() {
   clearTimeout(refreshTimer);
-  if (!document.hidden) await loadAll();
-  refreshTimer = setTimeout(poll, 5000);
+  if (polling) return;
+  polling = true;
+  try {
+    if (!document.hidden) await loadAll();
+  } catch (error) {
+    state.syncFailures = Math.min(16,state.syncFailures+1);
+    setConnection(false);
+    $('error').hidden = false;
+    $('error-text').textContent = 'Connection interrupted. Retrying automatically; previously loaded data is retained.';
+  } finally {
+    polling = false;
+    // Retry quickly after a failure, then back off to avoid a reconnect storm.
+    const delay = state.syncFailures ? Math.min(30000,2500*Math.pow(1.5,state.syncFailures-1)) : 5000;
+    refreshTimer = setTimeout(poll,delay);
+  }
 }
 async function pollNetwork() {
   clearTimeout(networkTimer);
@@ -346,6 +570,7 @@ async function run(kind, id, button) {
   if (button) button.disabled = true;
   try {
     await request('/' + kind + '/' + encodeURIComponent(id) + '/run', 'POST');
+    markOpened(id);
     toast((kind === 'setups' ? 'Starting ' : 'Ran ') + name);
     const row = button?.closest('.setup-row, .chip') || button;
     row?.classList.add('ran');
@@ -497,8 +722,10 @@ async function showDetails(id) {
   state.detailsId = id;
   $('details-name').textContent = t.name;
   $('details-description').textContent = t.description;
-  $('details-status').textContent = displayStatus(t.status) + (t.error ? ' — ' + t.error : '');
-  $('details-url').textContent = t.url;
+  $('details-status').textContent = isPublicHub && t.remote?.supported === false
+    ? 'Local only — ' + t.remote.reason
+    : displayStatus(t.status) + (t.error ? ' — ' + t.error : '');
+  $('details-url').textContent = isPublicHub ? (t.remote?.url || 'Not reachable remotely') : t.url;
   $('details-launch').href = '/' + encodeURIComponent(id);
   $('details-launch').dataset.open = id;
   $('details-launch').target = '_blank';
@@ -523,6 +750,104 @@ async function copyText(value, label) {
   catch { toast('Copy unavailable: ' + value); }
 }
 
+// ---------- Command palette ----------
+let paletteMatches = [], paletteSelected = 0;
+const paletteSources = () => [
+  ...state.tools.map(t => ({kind:'tool',id:t.id,name:t.name,detail:'Tool · '+displayStatus(t.status),description:t.description})),
+  ...state.snapshot.setups.map(s => ({kind:'setup',id:s.id,name:s.name,detail:'Setup · '+(s.actions?.length||0)+' steps'})),
+  ...state.snapshot.macros.map(m => ({kind:'macro',id:m.id,name:m.name,detail:m.isScene?'Scene':'Macro'})),
+  ...[{id:'gateway',name:'Gateway',url:'/gateway/'},{id:'presentations',name:'Presentations',url:'/presentations/'},{id:'scheduler',name:'Scheduler',url:'/Scheduler.html'},{id:'settings',name:'Settings',url:'/Settings.html'}]
+    .map(p => ({kind:'page',...p,detail:'Page'}))
+];
+function updatePalette() {
+  const q = $('palette-input').value.trim().toLocaleLowerCase();
+  paletteMatches = paletteSources()
+    .filter(item => matches(q,item.name,item.detail,item.description||''))
+    .sort((a,b) => {
+      const score = x => (isPinned(x.id)?200:0)+(lastOpened(x.id)?Math.min(80,80/(1+(Date.now()-lastOpened(x.id))/86400000)):0)
+        +(q && x.name.toLocaleLowerCase().startsWith(q)?100:0);
+      return score(b)-score(a);
+    }).slice(0,25);
+  paletteSelected = Math.min(paletteSelected,Math.max(0,paletteMatches.length-1));
+  $('palette-results').innerHTML = paletteMatches.length ? paletteMatches.map((item,i) =>
+    `<button type="button" class="palette-item ${i===paletteSelected?'active':''}" data-palette-index="${i}" role="option" aria-selected="${i===paletteSelected}"><span class="palette-kind">${esc(item.kind)}</span><span class="palette-name">${esc(item.name)}</span><small>${esc(item.detail)}</small></button>`).join('')
+    : '<p class="empty">No matching commands</p>';
+}
+function openPalette() {
+  if (editor.open || $('new-dialog').open || $('details-dialog').open) return;
+  if (!$('command-palette').open) $('command-palette').showModal();
+  $('palette-input').value = '';
+  paletteSelected = 0;
+  updatePalette();
+  $('palette-input').focus();
+}
+function activatePalette(index) {
+  const item = paletteMatches[index];
+  if (!item) return;
+  $('command-palette').close();
+  if (item.kind === 'tool') {
+    markOpened(item.id);
+    window.open('/'+encodeURIComponent(item.id),'_blank','noopener');
+  } else if (item.kind === 'setup') {
+    run('setups',item.id,null);
+  } else if (item.kind === 'macro') {
+    run('macros',item.id,null);
+  } else if (item.kind === 'page') {
+    location.assign(item.url);
+  }
+}
+$('palette-open').addEventListener('click',openPalette);
+$('palette-input').addEventListener('input',() => {paletteSelected=0;updatePalette();});
+$('palette-input').addEventListener('keydown',event => {
+  if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+    event.preventDefault();
+    if (paletteMatches.length) paletteSelected=(paletteSelected+(event.key==='ArrowDown'?1:-1)+paletteMatches.length)%paletteMatches.length;
+    updatePalette();
+    $('palette-results').querySelector('.active')?.scrollIntoView({block:'nearest'});
+  } else if (event.key === 'Enter') {event.preventDefault();activatePalette(paletteSelected);}
+});
+$('palette-results').addEventListener('click',event => {
+  const button = event.target.closest('[data-palette-index]');
+  if (button) activatePalette(Number(button.dataset.paletteIndex));
+});
+
+// ---------- Activity and incident history ----------
+let activityEvents = [], activityFilter = 'all', loadingActivity = false;
+function renderActivity() {
+  const items=activityEvents.filter(event => activityFilter==='all'
+    || (activityFilter==='incident' ? event.kind==='incident' : event.kind!=='incident')).slice(0,35);
+  $('activity-count').textContent = String(items.length);
+  $('activity-rows').innerHTML = items.length ? items.map(event => {
+    const date=new Date(event.time);
+    const time=Number.isNaN(date.getTime()) ? 'Unknown time' : date.toLocaleString();
+    const status=['success','failed','recovering','recovered'].includes(event.status) ? event.status : 'unknown';
+    return `<details class="activity-row">
+      <summary><span class="activity-state ${esc(status)}"></span><span class="activity-text">${esc(event.title)}</span><span class="activity-status">${esc(status)}</span><time>${esc(time)}</time></summary>
+      <div class="activity-detail">Type: ${esc(event.kind)} · Source: ${esc(event.source||'Gateway')}${Number.isFinite(event.durationMs)?' · Duration: '+esc(event.durationMs)+' ms':''}</div>
+    </details>`;
+  }).join('') : '<div class="empty">No matching activity yet.</div>';
+  document.querySelectorAll('[data-activity-filter]').forEach(button =>
+    button.classList.toggle('selected',button.dataset.activityFilter===activityFilter));
+}
+async function loadActivity() {
+  if (loadingActivity || document.hidden) return;
+  loadingActivity=true;
+  try {
+    const response=await fetchBounded('/gateway/api/activity');
+    if (!response.ok) throw new Error('HTTP '+response.status);
+    const data=await response.json();
+    if (!Array.isArray(data.events)) throw new Error('Invalid activity data');
+    activityEvents=data.events;
+    renderActivity();
+  } catch {
+    if (!activityEvents.length) $('activity-rows').innerHTML='<div class="empty">History temporarily unavailable. Retrying automatically.</div>';
+  } finally {loadingActivity=false;}
+}
+document.querySelector('.activity-filters').addEventListener('click',event => {
+  const button=event.target.closest('[data-activity-filter]');
+  if (button) {activityFilter=button.dataset.activityFilter;renderActivity();}
+});
+$('activity-refresh').addEventListener('click',loadActivity);
 // ---------- Events ----------
 function clearSearch() {
   $('search').value = '';
@@ -530,15 +855,43 @@ function clearSearch() {
   $('file-results').innerHTML = '';
   $('files').hidden = true;
   state.hot = 0;
+  state.typeFilter = 'all';
   render();
 }
+$('search-filters').addEventListener('click', event => {
+  const button=event.target.closest('[data-filter]');
+  if (!button) return;
+  state.typeFilter=button.dataset.filter;
+  state.hot=0;
+  render();
+  if (query().length >= 2 && ['all','files'].includes(state.typeFilter)) lookupFiles();
+});
 document.addEventListener('click', event => {
   const copy = event.target.closest('[data-copy]');
   if (copy) { copyText(copy.dataset.copy, copy.dataset.copy); return; }
+  const preview = event.target.closest('[data-preview-setup]');
+  if (preview) { if (tooltipAnchor===preview && !$('setup-tooltip').hidden) hideSetupTooltip(); else showSetupTooltip(preview); return; }
+  const action = event.target.closest('[data-tool-action]');
+  if (action) {
+    const id = $('tool-context-menu').dataset.toolId;
+    hideToolMenu();
+    if (action.dataset.toolAction === 'move') moveTool(id);
+    else if (action.dataset.toolAction === 'pin') pin(id);
+    else if (action.dataset.toolAction === 'details') showDetails(id);
+    else if (action.dataset.toolAction === 'prepare-deletion') void prepareToolDeletion(id);
+    return;
+  }
+  const menuButton = event.target.closest('[data-tool-menu]');
+  if (menuButton) {
+    const rect = menuButton.getBoundingClientRect();
+    showToolMenu(menuButton.dataset.toolMenu,rect.right-180,rect.bottom+4);
+    return;
+  }
+  hideToolMenu();
+  const moreToggle = event.target.closest('[data-toggle-more]');
+  if (moreToggle) { moreExpanded = !moreExpanded; renderTools(); renderItems(); return; }
   const pinned = event.target.closest('[data-pin]');
   if (pinned) { pin(pinned.dataset.pin); return; }
-  const details = event.target.closest('[data-details]');
-  if (details) { showDetails(details.dataset.details); return; }
   const open = event.target.closest('[data-open]');
   if (open) { markOpened(open.dataset.open); return; }
   const snapshotBtn = event.target.closest('[data-snapshot]');
@@ -555,6 +908,7 @@ document.addEventListener('click', event => {
   if (file) { openFile(Number(file.dataset.file), file); }
 });
 $('search').addEventListener('input', () => {
+  if (!query()) state.typeFilter = 'all';
   state.hot = 0;
   render();
   clearTimeout(fileTimer);
@@ -642,7 +996,7 @@ $('setups-grid').addEventListener('dragend', () => { dragged = null; clearDrop()
 document.addEventListener('keydown', event => {
   const editable = ['INPUT','TEXTAREA','SELECT'].includes(document.activeElement?.tagName);
   const dialogOpen = editor.open || $('new-dialog').open || $('details-dialog').open;
-  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') { event.preventDefault(); $('search').focus(); $('search').select(); return; }
+  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') { event.preventDefault(); openPalette(); return; }
   if (editable || dialogOpen || event.ctrlKey || event.metaKey || event.altKey) return;
   if (event.key === '/') { event.preventDefault(); $('search').focus(); }
   else if (event.key.toLowerCase() === 'r') poll();
@@ -651,6 +1005,11 @@ $('details-close').addEventListener('click', () => $('details-dialog').close());
 $('details-copy').addEventListener('click', () => state.detailsId && copyText(shortcut(state.detailsId), 'shortcut'));
 $('details-refresh').addEventListener('click', () => state.detailsId && loadLog(state.detailsId));
 $('details-dialog').addEventListener('close', () => { state.detailsId = null; });
-document.addEventListener('visibilitychange', () => { if (!document.hidden) { poll(); pollNetwork(); } });
+document.addEventListener('visibilitychange', () => { if (!document.hidden) { poll(); pollNetwork(); pollServiceHealth(); loadActivity(); } });
+setInterval(pollServiceHealth, 20000);
+setInterval(loadActivity, 30000);
+window.addEventListener('online', () => { state.syncFailures=0; poll(); });
 poll();
 pollNetwork();
+pollServiceHealth();
+loadActivity();

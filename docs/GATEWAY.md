@@ -1,6 +1,14 @@
 # Rust OmniHub Gateway
 
 Production Gateway: `http://127.0.0.1:3333/gateway/`.
+Private HTTPS Gateway: `https://hub.rancorous.online/gateway/`.
+
+Remote web tools use an authenticated, registered-ID-only same-origin proxy
+at `/gateway/tools/<id>/` with HTTP, API, and WebSocket support. It is owned by
+the separate Rust OmniHub repository and the existing private Node login gate,
+not the historical C# Hub. See
+`D:\SSDProjects\Tools\Omnish\main\docs\GATEWAY_REMOTE.md` for its installation,
+safety boundaries, supported/unsupported tools, and cellular verification.
 Production API/SignalR: `http://127.0.0.1:5000/` and `/signalrhub`.
 Google Home listener: 5055.
 
