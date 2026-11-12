@@ -13,6 +13,8 @@ class TaskBoardDiscoveryTest {
             TaskBoardProject("Omni", "Omni", File(root, "Omni/Tasks")),
             TaskBoardProject("Other board", "Other", File(root, "Other/Tasks")),
             TaskBoardProject("Other board", "OtherLegacy", File(root, "OtherLegacy/Tasks")),
+            TaskBoardProject("TaskBoard", "Omnish", File(root, "Omnish/Tasks")),
+            TaskBoardProject("TaskBoard", "TaskBoard", File(root, "TaskBoard/Tasks")),
             TaskBoardProject("Wartribes", "Wartribes", File(root, "Wartribes/Tasks"))
         )
         assertEquals(listOf("Omni", "Other", "OtherLegacy", "Wartribes"),

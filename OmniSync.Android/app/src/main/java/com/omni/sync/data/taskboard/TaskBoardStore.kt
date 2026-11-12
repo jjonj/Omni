@@ -189,15 +189,15 @@ class TaskBoardStore(
                 .sortedWith(compareBy<TaskBoardProject> { it.folderName != "Wartribes" }.thenBy { it.name.lowercase(Locale.ROOT) })
         }
 
-        /** Desktop hides the legacy OmniHub/Tasks tab while keeping its files.
-         * Mirror that ONE known alias when Omni/Tasks exists. Never silently
-         * suppress other same-named boards; their contents might differ.
+        /** Default-named CLI placeholders are not projects. Hide the legacy
+         * OmniHub alias too, without collapsing unrelated same-named boards.
          */
         internal fun preferCanonicalNamedBoards(boards: List<TaskBoardProject>): List<TaskBoardProject> {
-            val hasCanonicalOmni = boards.any {
+            val projects = boards.filterNot { it.name.equals("TaskBoard", ignoreCase = true) }
+            val hasCanonicalOmni = projects.any {
                 it.name.equals("Omni", ignoreCase = true) && it.folderName.equals("Omni", ignoreCase = true)
             }
-            return boards.filterNot {
+            return projects.filterNot {
                 hasCanonicalOmni && it.name.equals("Omni", ignoreCase = true) &&
                     it.folderName.equals("OmniHub", ignoreCase = true)
             }
