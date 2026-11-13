@@ -76,13 +76,42 @@ private fun AgentSessionUi.projectName(): String =
     workspace?.trimEnd('/', '\\')?.substringAfterLast('/')?.substringAfterLast('\\')
         ?.takeIf { it.isNotBlank() } ?: "No project"
 
+/** Single source of truth for "a turn is running": drives the working pill, Stop and grouping. */
+private fun AgentSessionUi.isRunning(): Boolean =
+    activity.equals("Working", true) || activity.equals("Running", true) ||
+        activity.equals("Active", true)
+private fun AgentSessionUi.kindLabel(): String = when (kind) {
+    "t3/thread" -> "Native T3"
+    "t3/chatgpt" -> "ChatGPT"
+    else -> kind
+}
+/** Compact relative age: 12s, 4m, 3h, 2d. Empty when unknown. */
+private fun shortAge(fromMs: Long, now: Long): String {
+    if (fromMs <= 0L) return ""
+    val s = ((now - fromMs) / 1000).coerceAtLeast(0)
+    return when {
+        s < 60 -> "${s}s"
+        s < 3600 -> "${s / 60}m"
+        s < 86_400 -> "${s / 3600}h"
+        else -> "${s / 86_400}d"
+    }
+}
+/** Elapsed clock for the working pill: 45s, 3m 12s, 1h 04m. */
+private fun elapsedLabel(fromMs: Long, now: Long): String {
+    val s = ((now - fromMs) / 1000).coerceAtLeast(0)
+    return when {
+        s < 60 -> "${s}s"
+        s < 3600 -> "${s / 60}m ${"%02d".format(s % 60)}s"
+        else -> "${s / 3600}h ${"%02d".format((s % 3600) / 60)}m"
+    }
+}
+
 private fun AgentSessionUi.listGroup(sortMode: String): String =
     if (sortMode == "project") projectName() else groupName()
 
 private fun AgentSessionUi.groupName(): String = when {
     needsAttention() || unread == true -> "NEEDS YOU"
-    activity.equals("Working", true) || activity.equals("Running", true) ||
-        activity.equals("Active", true) -> "WORKING"
+    isRunning() -> "WORKING"
     else -> "CONVERSATIONS"
 }
 private fun AgentSessionUi.groupRank(): Int = when (groupName()) {
@@ -99,8 +128,7 @@ private fun AgentSessionUi.dotColor(p: AiPalette): Color {
     // unloaded-recent subdued blue, interruptions orange, errors rose.
     val millis = activityMillis(lastActivityAt)
     val recent = millis > 0L && System.currentTimeMillis() - millis in 0 until 7_200_000L
-    val working = activity.equals("Working", true) || activity.equals("Running", true) ||
-        activity.equals("Active", true)
+    val working = isRunning()
     val failed = activity.equals("Error", true) || activity.equals("Errored", true) ||
         activity.equals("Failed", true)
     val interrupted = activity.equals("Interrupted", true) ||
@@ -131,6 +159,19 @@ private fun AgentSessionUi.dotColor(p: AiPalette): Color {
     Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
         Text(title, color = p.text, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
         if (detail != null) Text(detail, color = p.muted, style = MaterialTheme.typography.bodySmall)
+    }
+}
+/** Small rounded option chip with a trailing caret; opens a dropdown anchored by its parent Box. */
+@Composable private fun PickerChip(icon: ImageVector, label: String, p: AiPalette,
+    enabled: Boolean = true, onClick: () -> Unit) {
+    Row(Modifier.clip(RoundedCornerShape(10.dp)).background(p.raised)
+        .clickable(enabled = enabled, onClick = onClick).padding(horizontal = 10.dp, vertical = 7.dp),
+        verticalAlignment = Alignment.CenterVertically) {
+        Icon(icon, null, tint = p.muted, modifier = Modifier.size(15.dp))
+        Spacer(Modifier.width(5.dp))
+        Text(label, color = if (enabled) p.text else p.muted, fontSize = 13.sp, maxLines = 1,
+            overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 170.dp))
+        Icon(Icons.Default.ArrowDropDown, null, tint = p.muted, modifier = Modifier.size(16.dp))
     }
 }
 @Composable private fun SheetAction(label: String, p: AiPalette, tint: Color = p.text, onClick: () -> Unit) {
@@ -220,6 +261,7 @@ fun OmniAiModesScreen(
     var loadedDraftFor by remember { mutableStateOf<String?>(null) }
     var actionBusy by remember { mutableStateOf(false) }
     var creationBusy by remember { mutableStateOf(false) }
+    var createError by remember { mutableStateOf<String?>(null) }
     var addressMode by rememberSaveable { mutableStateOf(false) }
     var address by rememberSaveable { mutableStateOf("") }
     var sheet by remember { mutableStateOf<String?>(null) }
@@ -505,8 +547,7 @@ fun OmniAiModesScreen(
         }.filter { s ->
             sessionFilter != "Attention" || s.needsAttention() || s.unread == true
         }.filter { s ->
-            sessionFilter != "Active" || s.activity.equals("Working", true) ||
-                s.activity.equals("Running", true) || s.activity.equals("Active", true)
+            sessionFilter != "Active" || s.isRunning()
         }.filter { s ->
             sessionFilter == "Hidden" || sessionFilter == "Snoozed" ||
                 (showWorkers || s.parentId == null) &&
@@ -553,9 +594,8 @@ fun OmniAiModesScreen(
             while (true) {
                 // T3 publishes growing assistant/tool entries before a turn finishes.
                 // Poll more frequently only while the selected session is working.
-                delay(if (selected?.activity?.equals("Working", true) == true ||
-                    selected?.activity?.equals("Running", true) == true ||
-                    selected?.activity?.equals("Active", true) == true) 3_000 else 8_000)
+                // Pushed session.changed events refresh sooner; this is the fallback.
+                delay(if (selected?.isRunning() == true) 2_000 else 8_000)
                 client.select(selectedKey, reload = true)
             }
         }
@@ -662,7 +702,7 @@ fun OmniAiModesScreen(
             note = "New sessions require a connected ${provider.name} creator."
             return
         }
-        workspace = ""; newSessionTitle = ""; firstMessage = ""; createDeliveryMode = "WhenIdle"
+        workspace = ""; newSessionTitle = ""; firstMessage = ""; createDeliveryMode = "WhenIdle"; createError = null
         nativeCatalog = null; nativeProjectId = ""; nativeModelKey = ""; nativeEffort = ""; create = true
     }
     fun submit() {
@@ -674,14 +714,12 @@ fun OmniAiModesScreen(
             if (!addressMode) client.enqueueSession(selected ?: error("Select a session"), message.trim(),
                 deliveryMode, if (deliveryMode=="WaitForSlot") maxActiveWorkers else null)
             message = ""
+            followingLatest = true
             client.saveDraft(draftKey, "")
-            note = when {
-                addressMode && online -> "Message saved. Confirm the contact before it can be delivered."
-                online -> if (deliveryMode == "WaitForSlot")
-                    "Message queued for an available worker slot. See Outbox for receipts."
-                    else "Message queued. See its delivery receipt in Outbox."
-                else -> "Message saved on this phone for reconnect."
-            }
+            // Session sends show up in the thread right away with their delivery state,
+            // so only contact messages need a separate notice.
+            if (addressMode) note = if (online) "Message saved. Confirm the contact before it can be delivered."
+                else "Message saved on this phone for reconnect."
             if (contactReceipt != null && online) scope.launch {
                 try { verify = client.previewAddressRecipient(contactReceipt) }
                 catch (e: Exception) {
@@ -798,11 +836,40 @@ fun OmniAiModesScreen(
                     Icon(Icons.Default.AutoAwesome, null, tint = p.accent, modifier = Modifier.size(18.dp))
                 }
                 Spacer(Modifier.width(8.dp))
-                Text(if (listMode) "AI" else selected?.title ?: "Conversation",
-                    modifier = Modifier.weight(1f), color = p.text,
+                if (listMode) Text("AI", modifier = Modifier.weight(1f), color = p.text,
                     fontWeight = FontWeight.SemiBold, maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
                     style = MaterialTheme.typography.titleSmall)
+                else {
+                    // Thread header = title + one status line. Everything that used to
+                    // live in stacked bars below (status, unloaded/retry) folds in here.
+                    val unloaded = online && selected?.kind == "t3/chatgpt" &&
+                        selected.reachability != "Reachable"
+                    Column(Modifier.weight(1f).clickable(enabled = unloaded && !historyLoading) {
+                        selected?.let { openSession(it) }
+                    }) {
+                        Text(selected?.title ?: "Conversation", color = p.text,
+                            fontWeight = FontWeight.SemiBold, maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            style = MaterialTheme.typography.titleSmall)
+                        if (selected != null) Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(Modifier.size(6.dp).background(selected.dotColor(p), CircleShape))
+                            Spacer(Modifier.width(5.dp))
+                            Text(listOfNotNull(
+                                selected.kindLabel(),
+                                selected.workspace?.takeIf { it.isNotBlank() }?.let { selected.projectName() },
+                                when {
+                                    !online -> "offline · cached"
+                                    historyLoading && unloaded -> "opening on PC…"
+                                    unloaded -> "not loaded · tap to load"
+                                    selected.needsAttention() -> selected.attention
+                                    selected.isRunning() -> null // the working pill says it
+                                    else -> selected.activity.lowercase()
+                                }).joinToString(" · "),
+                                color = if (unloaded) p.amber else p.muted, maxLines = 1,
+                                overflow = TextOverflow.Ellipsis, fontSize = 11.sp)
+                        }
+                    }
+                }
                 if (listMode) {
                     Dot(if (t3Connected) p.green else p.amber)
                     Spacer(Modifier.width(7.dp))
@@ -954,25 +1021,57 @@ fun OmniAiModesScreen(
             }
 
             if (listMode) {
-                Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 2.dp),
+                // One header row: thread kind toggle, filter menu, search.
+                Row(Modifier.fillMaxWidth().padding(start = 12.dp, end = 4.dp, top = 2.dp, bottom = 2.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    if (listProvider == "t3") {
-                        listOf("t3/chatgpt" to "ChatGPT", "t3/thread" to "Native T3").forEach { (value, label) ->
-                            FilterChip(selected = threadKind == value, onClick = {
-                                threadKind = value
-                                viewPrefs.edit().putString("threadKind", value).apply()
-                                sessionFilter = "All"
-                            }, label = { Text(label + " (" +
-                                sessions.count { it.provider == "t3" && it.kind == value } + ")",
-                                maxLines = 1) }, modifier = Modifier.weight(1f))
+                    if (listProvider == "t3") Row(Modifier.clip(RoundedCornerShape(10.dp)).background(p.raised)
+                        .padding(2.dp)) {
+                        listOf("t3/chatgpt" to "ChatGPT", "t3/thread" to "Native").forEach { (value, label) ->
+                            val on = threadKind == value
+                            Text(label + " " + sessions.count { it.provider == "t3" && it.kind == value },
+                                Modifier.clip(RoundedCornerShape(8.dp))
+                                    .background(if (on) p.accentBg else Color.Transparent)
+                                    .clickable {
+                                        threadKind = value
+                                        viewPrefs.edit().putString("threadKind", value).apply()
+                                        sessionFilter = "All"
+                                    }.padding(horizontal = 10.dp, vertical = 6.dp),
+                                color = if (on) p.accent else p.muted, fontSize = 13.sp,
+                                fontWeight = if (on) FontWeight.SemiBold else FontWeight.Normal, maxLines = 1)
                         }
-                    } else Spacer(Modifier.weight(1f))
+                    }
+                    Spacer(Modifier.weight(1f))
+                    Box {
+                        var filterMenu by remember { mutableStateOf(false) }
+                        Row(Modifier.clip(RoundedCornerShape(10.dp))
+                            .background(if (sessionFilter != "All") p.accentBg else Color.Transparent)
+                            .clickable { filterMenu = true }.padding(horizontal = 8.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.FilterList, null, tint = if (sessionFilter != "All") p.accent else p.muted,
+                                modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text(if (sessionFilter == "All" && attention > 0) "$attention need you" else sessionFilter,
+                                color = if (sessionFilter != "All" || attention > 0) p.accent else p.muted,
+                                fontSize = 13.sp, maxLines = 1)
+                        }
+                        DropdownMenu(expanded = filterMenu, onDismissRequest = { filterMenu = false }) {
+                            listOf("All", "Active", "Attention", "Snoozed", "Hidden").forEach { value ->
+                                DropdownMenuItem(text = { Text((if (sessionFilter == value) "✓ " else "") + when (value) {
+                                    "Attention" -> "Needs you" + if (attention > 0) " ($attention)" else ""
+                                    "Snoozed" -> "Snoozed" + if (snoozedCount > 0) " ($snoozedCount)" else ""
+                                    "Hidden" -> "Hidden" + if (hiddenCount > 0) " ($hiddenCount)" else ""
+                                    "Active" -> "Working"
+                                    else -> value
+                                }) }, onClick = { sessionFilter = value; filterMenu = false })
+                            }
+                        }
+                    }
                     IconButton(onClick = { searchExpanded = !searchExpanded },
-                        modifier = Modifier.size(38.dp)) {
+                        modifier = Modifier.size(36.dp)) {
                         Icon(if (searchExpanded) Icons.Default.Close else Icons.Default.Search,
                             if (searchExpanded) "Close search" else "Search conversations",
-                            tint = p.text, modifier = Modifier.size(21.dp))
+                            tint = p.text, modifier = Modifier.size(20.dp))
                     }
                 }
                 if (searchExpanded || sessionSearch.isNotEmpty()) {
@@ -990,96 +1089,89 @@ fun OmniAiModesScreen(
                             focusedContainerColor = p.surface, unfocusedContainerColor = p.surface,
                             focusedBorderColor = p.accent, unfocusedBorderColor = p.border))
                 }
-                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())
-                    .padding(horizontal = 12.dp, vertical = 1.dp),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    listOf("All", "Active", "Attention", "Snoozed", "Hidden").forEach { value ->
-                        FilterChip(selected = sessionFilter == value,
-                            onClick = { sessionFilter = value },
-                            label = { Text(when (value) {
-                                "Attention" -> if (attention > 0) "Attention $attention" else value
-                                "Snoozed" -> if (snoozedCount > 0) "Snoozed $snoozedCount" else value
-                                "Hidden" -> if (hiddenCount > 0) "Hidden $hiddenCount" else value
-                                else -> value
-                            }, maxLines = 1) },
-                            shape = RoundedCornerShape(10.dp),
-                            colors = FilterChipDefaults.filterChipColors(
-                                containerColor = p.raised, selectedContainerColor = p.accentBg,
-                                selectedLabelColor = p.accent, labelColor = p.muted))
-                    }
-                }
                 LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(
-                    start = 10.dp, end = 10.dp, top = 6.dp, bottom = 20.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    start = 10.dp, end = 10.dp, top = 4.dp, bottom = 20.dp),
+                    verticalArrangement = Arrangement.spacedBy(if (compactMode) 3.dp else 4.dp)) {
                     itemsIndexed(visibleSessions, key = { _, session -> session.key }) { index, session ->
                         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             if (!compactMode && sessionSearch.isBlank() && sessionFilter == "All" &&
                                 (index == 0 || visibleSessions[index - 1].listGroup(sortMode) != session.listGroup(sortMode))) {
                                 Text(session.listGroup(sortMode),
-                                    Modifier.fillMaxWidth().padding(start = 10.dp, top = 14.dp, bottom = 5.dp),
+                                    Modifier.fillMaxWidth().padding(start = 10.dp, top = 10.dp, bottom = 2.dp),
                                     color = p.muted, fontSize = 11.sp, letterSpacing = 1.1.sp,
                                     fontWeight = FontWeight.SemiBold)
                             }
+                        val age = shortAge(maxOf(activityMillis(session.lastActivityAt),
+                            viewPrefs.getLong("visited:${session.key}", 0L)), now)
                         if (compactMode) {
-                            Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp))
+                            // ~34dp rows: long-press for actions instead of a 36dp menu button.
+                            Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(9.dp))
                                 .background(if (session.key == selectedKey) p.selected else p.surface)
-                                .border(2.dp, session.dotColor(p), RoundedCornerShape(10.dp))
-                                .clickable { openSession(session) }
-                                .padding(start = 12.dp, end = 4.dp, top = 3.dp, bottom = 3.dp),
+                                .border(1.5.dp, session.dotColor(p), RoundedCornerShape(9.dp))
+                                .combinedClickable(onClick = { openSession(session) },
+                                    onLongClick = { rowOptions = session })
+                                .padding(start = 11.dp, end = 10.dp, top = 7.dp, bottom = 7.dp),
                                 verticalAlignment = Alignment.CenterVertically) {
                                 Text(session.title, modifier = Modifier.weight(1f),
                                     color = if (session.kind == "t3/chatgpt") session.dotColor(p) else p.text,
                                     maxLines = 1, overflow = TextOverflow.Ellipsis,
                                     fontWeight = if (session.unread == true) FontWeight.Bold else FontWeight.Medium,
-                                    style = MaterialTheme.typography.bodyMedium)
-                                IconButton(onClick = { rowOptions = session }, modifier = Modifier.size(36.dp)) {
-                                    Icon(Icons.Default.MoreVert, "Actions for ${session.title}", tint = p.muted,
-                                        modifier = Modifier.size(19.dp))
-                                }
+                                    fontSize = 14.sp)
+                                if (session.isRunning()) CircularProgressIndicator(Modifier.size(11.dp),
+                                    strokeWidth = 1.5.dp, color = session.dotColor(p))
+                                else if (session.needsAttention()) Icon(Icons.Default.PriorityHigh, null,
+                                    tint = p.amber, modifier = Modifier.size(14.dp))
+                                else Text(age, color = p.muted, fontSize = 11.sp)
                             }
-                        } else Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp))
+                        } else Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp))
                             .background(if (session.key == selectedKey) p.selected else p.surface)
-                            .clickable { openSession(session) }
-                            .padding(horizontal = 14.dp, vertical = 13.dp),
+                            .combinedClickable(onClick = { openSession(session) },
+                                onLongClick = { rowOptions = session })
+                            .padding(start = 12.dp, end = 2.dp, top = 9.dp, bottom = 9.dp),
                             verticalAlignment = Alignment.CenterVertically) {
-                            Box(Modifier.size(42.dp).background(p.raised, RoundedCornerShape(14.dp)),
+                            Box(Modifier.size(36.dp).background(p.raised, RoundedCornerShape(12.dp)),
                                 contentAlignment = Alignment.Center) {
-                                Text(session.title.trim().take(1).uppercase().ifBlank { "A" },
+                                if (session.isRunning()) CircularProgressIndicator(Modifier.size(16.dp),
+                                    strokeWidth = 2.dp, color = session.dotColor(p))
+                                else Text(session.title.trim().take(1).uppercase().ifBlank { "A" },
                                     color = session.dotColor(p), fontWeight = FontWeight.SemiBold,
                                     style = MaterialTheme.typography.titleMedium)
                             }
-                            Spacer(Modifier.width(12.dp))
-                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                Text(session.title,
-                                    color = if (session.kind == "t3/chatgpt") session.dotColor(p) else p.text,
-                                    maxLines = 2,
-                                    overflow = TextOverflow.Ellipsis,
-                                    fontWeight = if (session.unread == true) FontWeight.Bold else FontWeight.Medium,
-                                    style = MaterialTheme.typography.bodyLarge)
-                                Text((if (session.kind == "t3/thread") "T3 native agent" else if (session.kind == "t3/chatgpt") "ChatGPT" else session.kind) +
-                                    (if (sortMode != "project" && session.workspace?.isNotBlank() == true)
-                                        " � " + session.projectName() else ""),
-                                    color = p.muted, style = MaterialTheme.typography.labelSmall)
-                                Row(verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                                    Dot(session.dotColor(p))
-                                    Text(when {
-                                        sessionFilter == "Hidden" -> "Hidden on this phone"
-                                        sessionFilter == "Snoozed" -> "Snoozed · " +
-                                            ((snoozedUntil(session) - now + MINUTE_MS - 1) / MINUTE_MS).coerceAtLeast(1) + "m left"
-                                        session.needsAttention() -> session.attention
-                                        session.kind == "t3/chatgpt" && session.reachability != "Reachable" -> "Unloaded"
-                                        else -> session.activity
-                                    },
-                                        color = session.dotColor(p),
+                            Spacer(Modifier.width(11.dp))
+                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(session.title, Modifier.weight(1f),
+                                        color = if (session.kind == "t3/chatgpt") session.dotColor(p) else p.text,
                                         maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                        fontWeight = if (session.unread == true) FontWeight.Bold else FontWeight.Medium,
+                                        style = MaterialTheme.typography.bodyLarge)
+                                    Text(age, color = p.muted, fontSize = 11.sp,
+                                        modifier = Modifier.padding(start = 6.dp))
+                                }
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Dot(session.dotColor(p))
+                                    Spacer(Modifier.width(6.dp))
+                                    Text(listOfNotNull(
+                                        when {
+                                            sessionFilter == "Hidden" -> "Hidden"
+                                            sessionFilter == "Snoozed" -> "Snoozed · " +
+                                                ((snoozedUntil(session) - now + MINUTE_MS - 1) / MINUTE_MS).coerceAtLeast(1) + "m left"
+                                            session.needsAttention() -> session.attention
+                                            session.isRunning() -> session.activityText?.takeIf { it.isNotBlank() } ?: "Working"
+                                            session.kind == "t3/chatgpt" && session.reachability != "Reachable" -> "Unloaded"
+                                            else -> session.activity
+                                        },
+                                        if (sortMode != "project" && session.workspace?.isNotBlank() == true)
+                                            session.projectName() else null
+                                    ).joinToString(" · "),
+                                        color = p.muted, maxLines = 1, overflow = TextOverflow.Ellipsis,
                                         style = MaterialTheme.typography.labelSmall)
                                 }
                             }
                             if (session.unread == true) Dot(p.accent)
-                            IconButton(onClick = { rowOptions = session }, modifier = Modifier.size(36.dp)) {
+                            IconButton(onClick = { rowOptions = session }, modifier = Modifier.size(34.dp)) {
                                 Icon(Icons.Default.MoreVert, "Session actions", tint = p.muted,
-                                    modifier = Modifier.size(19.dp))
+                                    modifier = Modifier.size(18.dp))
                             }
                         }
                         }
@@ -1108,66 +1200,51 @@ fun OmniAiModesScreen(
                 }
                 // Creation is available from the toolbar; no bottom action bar.
             } else {
-                Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 7.dp),
-                    verticalAlignment = Alignment.CenterVertically) {
-                    Dot(selected?.dotColor(p) ?: p.muted)
-                    Spacer(Modifier.width(8.dp))
-                    Text(if (selected == null) "Select a session"
-                        else if (!online) "Last known: " + selected.activity + " · cached"
-                        else if (historyLoading) "Opening / reading on PC…"
-                        else if (selected.needsAttention()) selected.attention
-                        else selected.activity + " · " + selected.confidence,
-                        modifier = Modifier.weight(1f), color = p.muted, maxLines = 1,
-                        style = MaterialTheme.typography.labelSmall)
-                    if (online && !actionBusy && selected != null &&
-                        (selected.capabilities.contains("Interrupt") ||
-                            (isT3Browser(selected) && selected.capabilities.contains("RemoteControl"))))
-                        TextButton(onClick = {
-                            if (isT3Browser(selected) && selected.capabilities.contains("RemoteControl"))
-                                performRowControl(selected, "stop")
-                            else operation("Interrupt")
-                        }) {
-                            Icon(Icons.Default.StopCircle, null, modifier = Modifier.size(17.dp))
-                            Spacer(Modifier.width(3.dp)); Text("Stop")
-                        }
+                // Thread view, T3-mobile style: header (above) -> timeline -> floating
+                // status pill -> composer. No stacked status/attention/pending bars.
+                val running = selected?.isRunning() == true
+                val nativeThread = selected?.kind == "t3/thread"
+                var clock by remember { mutableLongStateOf(System.currentTimeMillis()) }
+                LaunchedEffect(running, selected?.needsAttention()) {
+                    // 1s ticker only while something on screen is counting.
+                    while (running) { clock = System.currentTimeMillis(); delay(1_000) }
+                    clock = System.currentTimeMillis()
                 }
-                if (selected?.needsAttention() == true) {
-                    Row(Modifier.fillMaxWidth().background(p.accentBg)
-                        .padding(horizontal = 15.dp, vertical = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.PriorityHigh, null, tint = p.amber,
-                            modifier = Modifier.size(20.dp))
-                        Spacer(Modifier.width(9.dp))
-                        Column(Modifier.weight(1f)) {
-                            Text("Needs your attention", color = p.text,
-                                style = MaterialTheme.typography.labelLarge)
-                            Text("${selected.attention} · Check the conversation or human inbox for a required response.",
-                                color = p.muted, style = MaterialTheme.typography.bodySmall)
-                        }
-                        TextButton(onClick = { humanInbox = true }) { Text("Inbox") }
-                    }
+                // When the phone itself last saw new content; complements provider lastActivityAt.
+                var lastContentAt by remember(selectedKey) { mutableLongStateOf(0L) }
+                LaunchedEffect(history.lastOrNull()?.id, history.lastOrNull()?.revision,
+                    history.lastOrNull()?.text?.length) {
+                    if (history.isNotEmpty()) lastContentAt = System.currentTimeMillis()
                 }
-                if (selected?.kind == "t3/chatgpt" &&
-                    selected.reachability != "Reachable" && online) {
-                    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 7.dp),
-                        verticalAlignment = Alignment.CenterVertically) {
-                        Text(if (historyLoading) "Opening browser on PC automatically…" else "Browser not ready on PC", color = p.muted,
-                            style = MaterialTheme.typography.bodySmall,
-                            modifier = Modifier.weight(1f))
-                        if (!historyLoading) TextButton(onClick = { selected.let { openSession(it) } }) {
-                            Text("Retry PC load")
-                        }
-                    }
+                val firstSeenRunning = remember(selectedKey, running) {
+                    if (running) System.currentTimeMillis() else 0L
                 }
-                HorizontalDivider(color = p.border)
+                val turnStart = activityMillis(selected?.turnStartedAt).takeIf { it > 0 } ?: firstSeenRunning
+                val lastUpdate = maxOf(activityMillis(selected?.lastActivityAt), lastContentAt)
+                var stoppingKey by remember { mutableStateOf<String?>(null) }
+                LaunchedEffect(running) { if (!running) stoppingKey = null }
+                val canStop = online && selected != null && (selected.capabilities.contains("Interrupt") ||
+                    (isT3Browser(selected) && selected.capabilities.contains("RemoteControl")))
+                fun stop() {
+                    val s = selected ?: return
+                    stoppingKey = s.key
+                    if (isT3Browser(s) && s.capabilities.contains("RemoteControl")) performRowControl(s, "stop")
+                    else operation("Interrupt")
+                }
+                // Messages this phone sent to this thread that history hasn't absorbed yet.
+                // Failed ones stay visible here so a send can never vanish silently.
+                val threadOutbox = outbox.filter { it.provider == selected?.provider &&
+                    it.targetType == "session" && it.target == selected?.id && it.state != "Delivered" }
+                    .sortedBy { it.createdAt }
+
                 if (historyLoading) LinearProgressIndicator(
                     modifier = Modifier.fillMaxWidth().height(2.dp), color = p.accent,
                     trackColor = p.bg)
                 val scroll = rememberLazyListState()
-                LaunchedEffect(selectedKey, history.lastOrNull()?.id, history.lastOrNull()?.revision) {
-                    if (history.isNotEmpty() && followingLatest) scroll.scrollToItem(
-                        (if (older != null) 1 else 0) +
-                        (if (!historyNotice.isNullOrBlank()) 1 else 0) + history.size - 1)
+                LaunchedEffect(selectedKey, history.lastOrNull()?.id, history.lastOrNull()?.revision,
+                    threadOutbox.size) {
+                    if ((history.isNotEmpty() || threadOutbox.isNotEmpty()) && followingLatest)
+                        scroll.scrollToItem((scroll.layoutInfo.totalItemsCount - 1).coerceAtLeast(0))
                 }
                 LaunchedEffect(scroll, selectedKey) {
                     snapshotFlow {
@@ -1178,122 +1255,154 @@ fun OmniAiModesScreen(
                         if (scrolling) followingLatest = atBottom
                     }
                 }
-                LazyColumn(Modifier.fillMaxWidth().weight(1f), state = scroll,
-                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 18.dp),
-                    verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                    if (older != null) item {
-                        TextButton(onClick = {
-                            followingLatest = false
-                            scope.launch { client.loadOlderHistory() }
-                        }, enabled = online, modifier = Modifier.fillMaxWidth()) {
-                            Icon(Icons.Default.History, null, modifier = Modifier.size(16.dp))
-                            Spacer(Modifier.width(6.dp)); Text("Load earlier messages")
-                        }
-                    }
-                    if (!historyNotice.isNullOrBlank()) item {
-                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Text(historyNotice!!, color = p.muted,
-                                style = MaterialTheme.typography.labelSmall)
-                            if (online && historyNotice!!.contains("failed", ignoreCase = true)) {
-                                TextButton(onClick = {
-                                    selectedKey?.let { key -> scope.launch { client.select(key, reload = true) } }
-                                }) { Text("Retry loading conversation") }
+                Box(Modifier.fillMaxWidth().weight(1f)) {
+                    LazyColumn(Modifier.fillMaxSize(), state = scroll,
+                        contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 12.dp, bottom = 64.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        if (older != null) item {
+                            TextButton(onClick = {
+                                followingLatest = false
+                                scope.launch { client.loadOlderHistory() }
+                            }, enabled = online, modifier = Modifier.fillMaxWidth()) {
+                                Icon(Icons.Default.History, null, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(6.dp)); Text("Load earlier messages")
                             }
                         }
-                    }
-                    if (history.isEmpty()) item {
-                        Column(Modifier.fillMaxWidth().padding(top = 65.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Icon(Icons.Default.ChatBubbleOutline, null, tint = p.muted,
-                                modifier = Modifier.size(35.dp))
-                            Text("Conversation history", color = p.text,
-                                style = MaterialTheme.typography.titleMedium)
-                            Text(if (historyLoading) "Retrieving the conversation from your PC…"
-                                else if (online) "No messages yet, or no history exposed by provider"
-                                else "Cached history is available offline",
-                                color = p.muted, style = MaterialTheme.typography.bodySmall)
-                        }
-                    }
-                    items(history, key = { it.id }) { item -> MessageRow(item, p) }
-                    item { if (online && selected != null)
-                        Text("LATEST", Modifier.fillMaxWidth().padding(8.dp), textAlign = TextAlign.Center,
-                            color = p.muted, style = MaterialTheme.typography.labelSmall)
-                    }
-                }
-                if (!followingLatest && history.isNotEmpty()) {
-                    Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
-                        horizontalArrangement = Arrangement.End) {
-                        TextButton(onClick = {
-                            followingLatest = true
-                            scope.launch {
-                                client.select(selectedKey, reload = true)
-                                scroll.scrollToItem((scroll.layoutInfo.totalItemsCount - 1).coerceAtLeast(0))
-                            }
-                        }) {
-                            Icon(Icons.Default.ArrowDownward, null, modifier = Modifier.size(16.dp))
-                            Spacer(Modifier.width(5.dp)); Text("Latest messages")
-                        }
-                    }
-                }
-                if (localSessionMessages.isNotEmpty()) Row(
-                    Modifier.fillMaxWidth().background(p.accentBg)
-                        .clickable { sheet = "outbox" }.padding(horizontal = 16.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Schedule, null, tint = p.accent, modifier = Modifier.size(16.dp))
-                    Spacer(Modifier.width(8.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text(localSessionMessages.size.toString() + " messages awaiting delivery",
-                            color = p.text, style = MaterialTheme.typography.labelMedium)
-                        Text(localSessionMessages.first().text, color = p.muted,
-                            maxLines = 1, overflow = TextOverflow.Ellipsis,
-                            style = MaterialTheme.typography.labelSmall)
-                    }
-                    Icon(Icons.Default.ChevronRight, null, tint = p.muted)
-                }
-                if ((pending > 0 || remoteQueue.isNotEmpty()) && localSessionMessages.isEmpty()) Row(
-                    Modifier.fillMaxWidth().background(p.raised)
-                        .clickable { sheet = if (pending == 0) "queue" else "outbox" }.padding(horizontal = 16.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Schedule, null, tint = p.amber, modifier = Modifier.size(16.dp))
-                    Spacer(Modifier.width(8.dp))
-                    Text((if (pending > 0) pending.toString() + " pending on device" else "Provider queue") +
-                        (if (remoteQueue.isNotEmpty()) " · " + remoteQueue.size + " provider queued" else ""),
-                        Modifier.weight(1f), color = p.text, style = MaterialTheme.typography.bodySmall)
-                    Icon(Icons.Default.ChevronRight, null, tint = p.muted, modifier = Modifier.size(18.dp))
-                }
-                Column(Modifier.fillMaxWidth().background(p.surface)
-                    .padding(horizontal = 12.dp, vertical = 8.dp)) {
-                    if (!addressMode && selected != null) {
-                        if (selected.kind == "t3/thread") {
-                            FilterChip(selected = true, onClick = {}, enabled = false,
-                                label = { Text("Native queue", style = MaterialTheme.typography.labelSmall) })
-                        } else Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                            listOf("Steer" to "Steer now", "WhenIdle" to "Queue",
-                                "WaitForSlot" to "Wait for slot").forEach { (value,label) ->
-                                FilterChip(selected = deliveryMode==value,
-                                    onClick = { deliveryMode=value },
-                                    label = {Text(label, style=MaterialTheme.typography.labelSmall)},
-                                    enabled = !online || selected.modes.contains(value))
+                        if (!historyNotice.isNullOrBlank()) item {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(historyNotice!!, Modifier.weight(1f), color = p.muted,
+                                    style = MaterialTheme.typography.labelSmall)
+                                if (online && historyNotice!!.contains("failed", ignoreCase = true))
+                                    TextButton(onClick = {
+                                        selectedKey?.let { key -> scope.launch { client.select(key, reload = true) } }
+                                    }) { Text("Retry") }
                             }
                         }
-                        if (selected.kind != "t3/thread" && deliveryMode == "WaitForSlot") Row(verticalAlignment=Alignment.CenterVertically) {
-                            Text("Max working agents",color=p.muted,style=MaterialTheme.typography.labelSmall)
+                        if (history.isEmpty() && threadOutbox.isEmpty()) item {
+                            Column(Modifier.fillMaxWidth().padding(top = 65.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Icon(Icons.Default.ChatBubbleOutline, null, tint = p.muted,
+                                    modifier = Modifier.size(32.dp))
+                                Text(if (historyLoading) "Loading conversation…"
+                                    else if (online) "No messages yet"
+                                    else "Nothing cached for this conversation",
+                                    color = p.muted, style = MaterialTheme.typography.bodySmall)
+                            }
+                        }
+                        items(history, key = { it.id }) { item -> MessageRow(item, p) }
+                        items(threadOutbox, key = { "local:" + it.id }) { item ->
+                            LocalOutgoingRow(item, p) { sheet = "outbox" }
+                        }
+                    }
+                    // Floating status pill: what it's doing, how long, and Stop — only while relevant.
+                    val attentionNow = selected?.needsAttention() == true && !running
+                    val queued = remoteQueue.size
+                    if (running || attentionNow || queued > 0) Row(
+                        Modifier.align(Alignment.BottomCenter).padding(bottom = 10.dp, start = 12.dp, end = 64.dp)
+                            .clip(RoundedCornerShape(22.dp)).background(p.raised)
+                            .border(1.dp, p.border, RoundedCornerShape(22.dp))
+                            .height(40.dp).padding(start = 14.dp, end = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically) {
+                        if (running) {
+                            val stale = lastUpdate > 0 && clock - lastUpdate > 120_000
+                            CircularProgressIndicator(Modifier.size(13.dp), strokeWidth = 2.dp,
+                                color = if (stale) p.amber else p.accent)
                             Spacer(Modifier.width(8.dp))
-                            OutlinedTextField(value=maxActiveWorkers.toString(),
-                                onValueChange={it.toIntOrNull()?.takeIf{n->n in 1..100}?.let{n->maxActiveWorkers=n}},
-                                modifier=Modifier.width(74.dp),singleLine=true)
+                            Text(if (stoppingKey == selected?.key) "Stopping…"
+                                else "Working" + (if (turnStart > 0) " · " + elapsedLabel(turnStart, clock) else ""),
+                                color = p.text, fontSize = 12.sp, fontWeight = FontWeight.Medium, maxLines = 1)
+                            val detail = selected?.activityText?.takeIf { it.isNotBlank() }
+                                ?: if (lastUpdate > 0) "updated " + shortAge(lastUpdate, clock) + " ago" else null
+                            if (detail != null) Text(" · $detail", Modifier.weight(1f, fill = false),
+                                color = if (stale) p.amber else p.muted, fontSize = 12.sp,
+                                maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            if (canStop && stoppingKey != selected?.key) {
+                                Spacer(Modifier.width(6.dp))
+                                Box(Modifier.width(1.dp).height(16.dp).background(p.border))
+                                TextButton(onClick = { stop() }, enabled = !actionBusy && !rowControlBusy,
+                                    contentPadding = PaddingValues(horizontal = 10.dp)) {
+                                    Text("Stop", fontSize = 12.sp)
+                                }
+                            } else Spacer(Modifier.width(10.dp))
+                        } else if (attentionNow) {
+                            Icon(Icons.Default.PriorityHigh, null, tint = p.amber, modifier = Modifier.size(15.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text(selected?.attention ?: "Needs you", Modifier.weight(1f, fill = false),
+                                color = p.text, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            TextButton(onClick = { humanInbox = true },
+                                contentPadding = PaddingValues(horizontal = 10.dp)) { Text("Inbox", fontSize = 12.sp) }
+                        }
+                        if (queued > 0) {
+                            if (running || attentionNow) Box(Modifier.width(1.dp).height(16.dp).background(p.border))
+                            TextButton(onClick = { sheet = "queue" },
+                                contentPadding = PaddingValues(horizontal = 10.dp)) {
+                                Text("$queued queued", fontSize = 12.sp)
+                            }
                         }
                     }
+                    if (!followingLatest && history.isNotEmpty()) IconButton(onClick = {
+                        followingLatest = true
+                        scope.launch { scroll.animateScrollToItem((scroll.layoutInfo.totalItemsCount - 1).coerceAtLeast(0)) }
+                    }, modifier = Modifier.align(Alignment.BottomEnd).padding(end = 12.dp, bottom = 10.dp)
+                        .size(40.dp).background(p.raised, CircleShape).border(1.dp, p.border, CircleShape)) {
+                        Icon(Icons.Default.ArrowDownward, "Jump to latest", tint = p.text, modifier = Modifier.size(18.dp))
+                    }
+                }
+                // Composer: one row. Delivery mode lives behind the leading icon instead of chips + hint text.
+                Column(Modifier.fillMaxWidth().background(p.surface)
+                    .padding(horizontal = 8.dp, vertical = 6.dp)) {
                     if (addressMode) OutlinedTextField(address, { address = it.take(320) },
-                        Modifier.fillMaxWidth().padding(bottom = 8.dp), singleLine = true,
-                        label = { Text("Contact address") }, shape = RoundedCornerShape(16.dp),
+                        Modifier.fillMaxWidth().padding(bottom = 6.dp), singleLine = true,
+                        placeholder = { Text("Contact address (name@host)") }, shape = RoundedCornerShape(16.dp),
+                        trailingIcon = { IconButton(onClick = { addressMode = false }) {
+                            Icon(Icons.Default.Close, "Back to session") } },
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedTextColor = p.text, unfocusedTextColor = p.text,
-                            focusedLabelColor = p.muted, unfocusedLabelColor = p.muted,
                             focusedBorderColor = p.accent, unfocusedBorderColor = p.border))
+                    if (!addressMode && !nativeThread && deliveryMode == "WaitForSlot") Row(
+                        Modifier.padding(start = 8.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text("Wait for slot · max working", color = p.muted, fontSize = 12.sp)
+                        IconButton(onClick = { maxActiveWorkers = (maxActiveWorkers - 1).coerceAtLeast(1) },
+                            modifier = Modifier.size(32.dp)) { Icon(Icons.Default.Remove, "Fewer", tint = p.text) }
+                        Text("$maxActiveWorkers", color = p.text, fontSize = 13.sp)
+                        IconButton(onClick = { maxActiveWorkers = (maxActiveWorkers + 1).coerceAtMost(100) },
+                            modifier = Modifier.size(32.dp)) { Icon(Icons.Default.Add, "More", tint = p.text) }
+                    }
                     Row(verticalAlignment = Alignment.Bottom,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        val contactAllowed = active?.capabilities?.contains("SubmitToAgent") == true ||
+                            (!online && lastProvider != null)
+                        if (!nativeThread || contactAllowed) Box {
+                            var modeMenu by remember { mutableStateOf(false) }
+                            IconButton(onClick = { modeMenu = true }, modifier = Modifier.size(44.dp)) {
+                                Icon(when {
+                                    addressMode -> Icons.Default.AlternateEmail
+                                    nativeThread -> Icons.Default.Schedule
+                                    deliveryMode == "Steer" -> Icons.Default.Bolt
+                                    deliveryMode == "WaitForSlot" -> Icons.Default.HourglassEmpty
+                                    else -> Icons.Default.Schedule
+                                }, "Delivery mode", tint = p.muted)
+                            }
+                            DropdownMenu(expanded = modeMenu, onDismissRequest = { modeMenu = false }) {
+                                if (!nativeThread && selected != null) listOf(
+                                    Triple("WhenIdle", "Queue", "Sends when the agent is idle"),
+                                    Triple("Steer", "Steer now", "Immediate; may interrupt the reply"),
+                                    Triple("WaitForSlot", "Wait for slot", "Waits for a free worker slot")
+                                ).forEach { (value, label, help) ->
+                                    DropdownMenuItem(
+                                        text = { Column {
+                                            Text((if (!addressMode && deliveryMode == value) "✓ " else "") + label)
+                                            Text(help, color = p.muted, fontSize = 11.sp)
+                                        } },
+                                        enabled = !online || selected.modes.contains(value),
+                                        onClick = { deliveryMode = value; addressMode = false; modeMenu = false })
+                                }
+                                if (contactAllowed) DropdownMenuItem(
+                                    text = { Text(if (addressMode) "✓ Message a contact" else "Message a contact…") },
+                                    onClick = { addressMode = !addressMode; modeMenu = false })
+                            }
+                        } else Spacer(Modifier.width(6.dp))
                         OutlinedTextField(
                             value = if (loadedDraftFor == draftKey) message else "",
                             onValueChange = { text ->
@@ -1302,36 +1411,28 @@ fun OmniAiModesScreen(
                                     client.saveDraft(draftKey, message)
                                 }
                             },
-                            modifier = Modifier.weight(1f), minLines = 1, maxLines = 5,
-                            placeholder = { Text(if (addressMode) "Message contact…" else "Message agent…") },
-                            shape = RoundedCornerShape(20.dp),
+                            modifier = Modifier.weight(1f), minLines = 1, maxLines = 6,
+                            placeholder = { Text(when {
+                                !online -> "Offline · sends on reconnect"
+                                addressMode -> "Message contact…"
+                                selected != null && !sessionDeliveryReady -> deliveryHint
+                                nativeThread -> "Message"
+                                deliveryMode == "Steer" -> "Steer now…"
+                                deliveryMode == "WaitForSlot" -> "Message · waits for a slot"
+                                else -> "Message"
+                            }, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                            shape = RoundedCornerShape(22.dp),
                             colors = OutlinedTextFieldDefaults.colors(
                                 focusedContainerColor = p.raised, unfocusedContainerColor = p.raised,
-                                focusedBorderColor = p.accent, unfocusedBorderColor = p.border,
+                                focusedBorderColor = p.border, unfocusedBorderColor = Color.Transparent,
                                 focusedTextColor = p.text, unfocusedTextColor = p.text,
                                 focusedPlaceholderColor = p.muted, unfocusedPlaceholderColor = p.muted))
                         IconButton(onClick = { submit() }, enabled = canSend,
-                            modifier = Modifier.size(50.dp).background(
+                            modifier = Modifier.padding(bottom = 4.dp).size(46.dp).background(
                                 if (canSend) p.accent else p.raised, CircleShape)) {
                             Icon(Icons.Default.ArrowUpward, contentDescription = "Send message",
                                 tint = if (canSend) p.bg else p.muted)
                         }
-                    }
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        TextButton(onClick = { addressMode = !addressMode },
-                            enabled = active?.capabilities?.contains("SubmitToAgent") == true ||
-                                (!online && lastProvider != null),
-                            contentPadding = PaddingValues(horizontal = 4.dp)) {
-                            Icon(if (addressMode) Icons.Default.AlternateEmail
-                                else Icons.Default.ChatBubbleOutline,
-                                null, modifier = Modifier.size(15.dp))
-                            Spacer(Modifier.width(5.dp))
-                            Text(if (addressMode) "To contact" else "To session",
-                                style = MaterialTheme.typography.labelSmall)
-                        }
-                        Spacer(Modifier.weight(1f))
-                        Text(deliveryHint, maxLines = 2,
-                            style = MaterialTheme.typography.labelSmall, color = p.muted)
                     }
                 }
             }
@@ -1933,53 +2034,99 @@ fun OmniAiModesScreen(
             }
         }) { Text("Delete") } },
         dismissButton = { TextButton(onClick = { deleteConfirm = false }) { Text("Cancel") } })
-    if (create && active != null) AlertDialog(onDismissRequest = { create = false },
-        title = { Text(when (kind) {
-            "t3/thread" -> "New native T3 thread"
-            "t3/chatgpt" -> "New ChatGPT thread"
-            else -> "New AI session"
-        }) },
-        text = { Column(Modifier.heightIn(max = 510.dp).verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            if (active.id != "t3") Text("Execution kind", style = MaterialTheme.typography.labelMedium)
-            active.kinds.filter { active.id != "t3" }.forEach { option ->
-                Row(Modifier.fillMaxWidth().clickable { kind = option },
-                    verticalAlignment = Alignment.CenterVertically) {
-                    RadioButton(selected = kind == option, onClick = { kind = option })
-                    Text(option, style = MaterialTheme.typography.bodySmall)
+    // New thread, T3-mobile style: prompt first, compact option chips under it, one Start button.
+    // The sheet stays open until the provider confirms a session, so failures show here instead of vanishing.
+    if (create && active != null) ModalBottomSheet(
+        onDismissRequest = { if (!creationBusy) create = false },
+        containerColor = p.surface, contentColor = p.text,
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
+        val native = kind == "t3/thread"
+        val canCreate = !creationBusy && kind.isNotBlank() &&
+            (active.id == "t3" || (workspace.isNotBlank() && firstMessage.isNotBlank())) &&
+            (!native || (!nativeCatalogLoading && nativeCatalogError == null &&
+                nativeCatalog?.nativeModelSelectionReady == true &&
+                chosenNativeProject != null && chosenNativeModel != null &&
+                (chosenNativeModel.efforts.isEmpty() ||
+                 chosenNativeModel.efforts.any { it.first == nativeEffort })))
+        fun start() {
+            if (!canCreate) return
+            creationBusy = true
+            createError = null
+            scope.launch {
+                try {
+                    val project = if (native) nativeProjectId else workspace
+                    val config: Map<String, Any?>? = if (native) chosenNativeModel?.let { model ->
+                        val options = if (model.effortId != null && nativeEffort.isNotEmpty())
+                            listOf(mapOf("id" to model.effortId, "value" to nativeEffort))
+                        else emptyList()
+                        mapOf("instanceId" to model.instanceId, "model" to model.slug, "options" to options)
+                    } else null
+                    val result = client.createSession(active, kind, project, firstMessage,
+                        createDeliveryMode, maxActiveWorkers, "", config)
+                    val newKey = client.createdSessionKey.value
+                    if (newKey == null) { createError = result; return@launch }
+                    // New sessions can lag the catalog briefly. Retry reads, never the create.
+                    repeat(4) { attempt ->
+                        if (client.sessions.value.any { it.key == newKey } || client.ensureSession(newKey)) return@repeat
+                        delay(400L * (attempt + 1))
+                    }
+                    create = false
+                    if (client.sessions.value.any { it.key == newKey }) {
+                        threadKind = kind
+                        viewPrefs.edit().putString("threadKind", kind).apply()
+                        listMode = false
+                        client.select(newKey)
+                    } else note = "Thread created; it will appear after the next refresh."
+                } catch (e: Exception) { createError = "Create failed: " + e.message }
+                finally { creationBusy = false }
+            }
+        }
+        Column(Modifier.fillMaxWidth().navigationBarsPadding().imePadding()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 18.dp).padding(bottom = 18.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("New thread", Modifier.weight(1f), color = p.text,
+                    style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+                if (active.id == "t3") Row(Modifier.clip(RoundedCornerShape(10.dp)).background(p.raised).padding(2.dp)) {
+                    listOf("t3/chatgpt" to "ChatGPT", "t3/thread" to "Native").filter { it.first in active.kinds }
+                        .forEach { (value, label) ->
+                            val on = kind == value
+                            Text(label, Modifier.clip(RoundedCornerShape(8.dp))
+                                .background(if (on) p.accentBg else Color.Transparent)
+                                .clickable(enabled = !creationBusy) { kind = value; createError = null }
+                                .padding(horizontal = 12.dp, vertical = 6.dp),
+                                color = if (on) p.accent else p.muted, fontSize = 13.sp,
+                                fontWeight = if (on) FontWeight.SemiBold else FontWeight.Normal)
+                        }
                 }
             }
-            if (kind == "t3/thread") {
-                if (nativeCatalogLoading) LinearProgressIndicator(Modifier.fillMaxWidth())
-                if (nativeCatalogError != null) {
-                    Text(nativeCatalogError!!, color = p.amber,
-                        style = MaterialTheme.typography.bodySmall)
-                    TextButton(onClick = {
-                        scope.launch {
-                            nativeCatalogLoading = true
-                            try { nativeCatalog = client.nativeCatalog(); nativeCatalogError = null }
-                            catch (e: Exception) { nativeCatalogError = e.message }
-                            finally { nativeCatalogLoading = false }
-                        }
-                    }) { Text("Retry fetching T3 options") }
+            if (active.id != "t3") Row(Modifier.horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                active.kinds.forEach { option ->
+                    FilterChip(selected = kind == option, onClick = { kind = option }, label = { Text(option) })
                 }
-                Text("T3 project", style = MaterialTheme.typography.labelMedium)
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.weight(1f)) {
-                        OutlinedButton(onClick = { projectMenu = true },
-                            modifier = Modifier.fillMaxWidth(), enabled = !nativeCatalogLoading) {
-                            Text(chosenNativeProject?.title ?: "Choose project",
-                                maxLines = 1, overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.weight(1f))
-                            Icon(Icons.Default.ArrowDropDown, null)
-                        }
+            }
+            OutlinedTextField(firstMessage, { firstMessage = it.take(30_000) },
+                Modifier.fillMaxWidth(), minLines = 4, maxLines = 10, enabled = !creationBusy,
+                placeholder = { Text(if (active.id == "t3") "What should it work on? (optional)" else "First instruction") },
+                shape = RoundedCornerShape(16.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedContainerColor = p.raised, unfocusedContainerColor = p.raised,
+                    focusedBorderColor = p.border, unfocusedBorderColor = Color.Transparent))
+            if (native) {
+                if (nativeCatalogLoading) LinearProgressIndicator(Modifier.fillMaxWidth().height(2.dp))
+                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Box {
+                        PickerChip(Icons.Default.Folder, chosenNativeProject?.title ?: "Project", p,
+                            enabled = !nativeCatalogLoading) { projectMenu = true }
                         DropdownMenu(expanded = projectMenu, onDismissRequest = { projectMenu = false }) {
                             nativeCatalog?.projects?.forEach { project ->
                                 DropdownMenuItem(text = { Text(project.title) }, onClick = {
                                     nativeProjectId = project.id; projectMenu = false
                                     val preferred = nativeCatalog?.models?.firstOrNull {
-                                        it.instanceId == project.defaultInstanceId &&
-                                        it.slug == project.defaultModel
+                                        it.instanceId == project.defaultInstanceId && it.slug == project.defaultModel
                                     }
                                     if (preferred != null) nativeModelKey = preferred.key
                                     val model = nativeCatalog?.models?.firstOrNull { it.key == nativeModelKey }
@@ -1988,44 +2135,29 @@ fun OmniAiModesScreen(
                                     } ?: model?.efforts?.firstOrNull()?.first.orEmpty()
                                 })
                             }
+                            HorizontalDivider(color = p.border)
+                            DropdownMenuItem(text = { Text("New project…") }, onClick = {
+                                projectMenu = false; addProjectName = ""; addProjectOpen = true
+                            })
                         }
                     }
-                    IconButton(onClick = {
-                        addProjectName = ""; addProjectOpen = true
-                    }, enabled = !nativeCatalogLoading) {
-                        Icon(Icons.Default.Add, "Create T3 project")
-                    }
-                }
-                Text("Model", style = MaterialTheme.typography.labelMedium)
-                Box {
-                    OutlinedButton(onClick = { modelMenu = true }, modifier = Modifier.fillMaxWidth(),
-                        enabled = !nativeCatalogLoading && nativeCatalog?.models?.isNotEmpty() == true) {
-                        Text(chosenNativeModel?.let { it.provider + " · " + it.label } ?: "Choose model",
-                            maxLines = 1, overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f))
-                        Icon(Icons.Default.ArrowDropDown, null)
-                    }
-                    DropdownMenu(expanded = modelMenu, onDismissRequest = { modelMenu = false }) {
-                        nativeCatalog?.models?.forEach { model ->
-                            DropdownMenuItem(text = { Text(model.provider + " · " + model.label) },
-                                onClick = {
+                    Box {
+                        PickerChip(Icons.Default.AutoAwesome, chosenNativeModel?.label ?: "Model", p,
+                            enabled = !nativeCatalogLoading && nativeCatalog?.models?.isNotEmpty() == true) { modelMenu = true }
+                        DropdownMenu(expanded = modelMenu, onDismissRequest = { modelMenu = false }) {
+                            nativeCatalog?.models?.forEach { model ->
+                                DropdownMenuItem(text = { Text(model.provider + " · " + model.label) }, onClick = {
                                     nativeModelKey = model.key
-                                    nativeEffort = model.efforts.firstOrNull { it.first == "medium" }
-                                        ?.first ?: model.efforts.firstOrNull()?.first.orEmpty()
+                                    nativeEffort = model.efforts.firstOrNull { it.first == "medium" }?.first
+                                        ?: model.efforts.firstOrNull()?.first.orEmpty()
                                     modelMenu = false
                                 })
+                            }
                         }
                     }
-                }
-                if (chosenNativeModel?.efforts?.isNotEmpty() == true) {
-                    Text("Thinking effort", style = MaterialTheme.typography.labelMedium)
-                    Box {
-                        OutlinedButton(onClick = { effortMenu = true },
-                            modifier = Modifier.fillMaxWidth()) {
-                            Text(chosenNativeModel.efforts.firstOrNull { it.first == nativeEffort }
-                                ?.second ?: "Choose effort", modifier = Modifier.weight(1f))
-                            Icon(Icons.Default.ArrowDropDown, null)
-                        }
+                    if (chosenNativeModel?.efforts?.isNotEmpty() == true) Box {
+                        PickerChip(Icons.Default.Psychology, chosenNativeModel.efforts
+                            .firstOrNull { it.first == nativeEffort }?.second ?: "Effort", p) { effortMenu = true }
                         DropdownMenu(expanded = effortMenu, onDismissRequest = { effortMenu = false }) {
                             chosenNativeModel.efforts.forEach { effort ->
                                 DropdownMenuItem(text = { Text(effort.second) }, onClick = {
@@ -2035,78 +2167,50 @@ fun OmniAiModesScreen(
                         }
                     }
                 }
+                if (nativeCatalogError != null) Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(nativeCatalogError!!, Modifier.weight(1f), color = p.amber, fontSize = 12.sp)
+                    TextButton(onClick = {
+                        scope.launch {
+                            nativeCatalogLoading = true
+                            try { nativeCatalog = client.nativeCatalog(); nativeCatalogError = null }
+                            catch (e: Exception) { nativeCatalogError = e.message }
+                            finally { nativeCatalogLoading = false }
+                        }
+                    }) { Text("Retry") }
+                }
                 if (nativeCatalog != null && nativeCatalog?.nativeModelSelectionReady != true)
-                    Text("T3 server must be updated before custom model/effort creation is available. Existing sessions are unaffected.",
-                        color = p.amber, style = MaterialTheme.typography.bodySmall)
-                else Text("Options come from T3's current project and provider catalogs.",
-                    style = MaterialTheme.typography.bodySmall, color = p.muted)
+                    Text("T3 needs an update before it can create native threads from the phone.",
+                        color = p.amber, fontSize = 12.sp)
             } else {
-                OutlinedTextField(workspace, { workspace = it.take(4096) },
-                    label = { Text(if (active.id == "t3") "Project / folder (optional)"
-                        else "Working folder") }, singleLine = true)
-            }
-            OutlinedTextField(firstMessage, { firstMessage = it.take(30_000) },
-                label = { Text(if (active.id == "t3") "First message (optional)" else "First instruction") }, maxLines = 4)
-            if (kind == "t3/thread") Text("Native T3 uses its own durable message queue.",
-                style = MaterialTheme.typography.bodySmall, color = p.muted)
-            if (kind != "t3/thread") Text("When to start",style=MaterialTheme.typography.labelMedium)
-            if (kind != "t3/thread") Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-                FilterChip(selected=createDeliveryMode=="WhenIdle",onClick={createDeliveryMode="WhenIdle"},
-                    label={Text("Start now")})
-                FilterChip(selected=createDeliveryMode=="WaitForSlot",onClick={createDeliveryMode="WaitForSlot"},
-                    label={Text("Wait for slot")},enabled=active.id=="t3")
-            }
-            if(kind != "t3/thread" && createDeliveryMode=="WaitForSlot") Row(verticalAlignment=Alignment.CenterVertically) {
-                Text("Max working agents",style=MaterialTheme.typography.labelSmall)
-                Spacer(Modifier.width(8.dp))
-                OutlinedTextField(value=maxActiveWorkers.toString(),
-                    onValueChange={it.toIntOrNull()?.takeIf{n->n in 1..100}?.let{n->maxActiveWorkers=n}},
-                    modifier=Modifier.width(74.dp),singleLine=true)
-            }
-        }},
-        confirmButton = { TextButton(enabled = !creationBusy && kind.isNotBlank() &&
-            (active.id == "t3" || (workspace.isNotBlank() && firstMessage.isNotBlank())) &&
-            (kind != "t3/thread" || (!nativeCatalogLoading && nativeCatalogError == null &&
-                nativeCatalog?.nativeModelSelectionReady == true &&
-                chosenNativeProject != null && chosenNativeModel != null &&
-                (chosenNativeModel.efforts.isEmpty() ||
-                 chosenNativeModel.efforts.any { it.first == nativeEffort }))), onClick = {
-            if (creationBusy) return@TextButton
-            creationBusy = true
-            create = false
-            scope.launch {
-                try {
-                    val project = if (kind == "t3/thread") nativeProjectId else workspace
-                    val config: Map<String, Any?>? = if (kind == "t3/thread") {
-                        chosenNativeModel?.let { model ->
-                            val options = if (model.effortId != null && nativeEffort.isNotEmpty())
-                                listOf(mapOf("id" to model.effortId, "value" to nativeEffort))
-                            else emptyList()
-                            mapOf("instanceId" to model.instanceId, "model" to model.slug,
-                                "options" to options)
-                        }
-                    } else null
-                    note = client.createSession(active, kind, project, firstMessage,
-                        createDeliveryMode, maxActiveWorkers, "", config)
-                    val newKey = client.createdSessionKey.value
-                    if (newKey != null) {
-                        // New T3 browser tabs may appear in the provider snapshot shortly
-                        // after creation. Retry reads, never the create mutation itself.
-                        repeat(3) { attempt ->
-                            if (client.sessions.value.any { it.key == newKey }) return@repeat
-                            delay(350L * (attempt + 1))
-                            client.refresh()
-                        }
-                        if (client.sessions.value.any { it.key == newKey }) {
-                            listMode = false
-                            client.select(newKey)
-                        } else note = "Session created but not listed yet. Refresh to open it."
+                OutlinedTextField(workspace, { workspace = it.take(4096) }, Modifier.fillMaxWidth(),
+                    singleLine = true, enabled = !creationBusy, shape = RoundedCornerShape(12.dp),
+                    leadingIcon = { Icon(Icons.Default.Folder, null, modifier = Modifier.size(18.dp)) },
+                    placeholder = { Text(if (active.id == "t3") "Project (optional)" else "Working folder") })
+                if (active.id == "t3") Row(verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    FilterChip(selected = createDeliveryMode == "WhenIdle",
+                        onClick = { createDeliveryMode = "WhenIdle" }, label = { Text("Start now") })
+                    FilterChip(selected = createDeliveryMode == "WaitForSlot",
+                        onClick = { createDeliveryMode = "WaitForSlot" }, label = { Text("Wait for slot") })
+                    if (createDeliveryMode == "WaitForSlot") {
+                        IconButton(onClick = { maxActiveWorkers = (maxActiveWorkers - 1).coerceAtLeast(1) },
+                            modifier = Modifier.size(32.dp)) { Icon(Icons.Default.Remove, "Fewer slots") }
+                        Text("max $maxActiveWorkers", fontSize = 13.sp)
+                        IconButton(onClick = { maxActiveWorkers = (maxActiveWorkers + 1).coerceAtMost(100) },
+                            modifier = Modifier.size(32.dp)) { Icon(Icons.Default.Add, "More slots") }
                     }
-                } catch (e: Exception) { note = "Create failed: " + e.message }
-                finally { creationBusy = false }
+                }
             }
-        }) { Text("Create") } },
-        dismissButton = { TextButton(onClick = { create = false }) { Text("Cancel") } })
+            if (createError != null) Text(createError!!, color = p.amber, style = MaterialTheme.typography.bodySmall)
+            Button(onClick = { start() }, enabled = canCreate, modifier = Modifier.fillMaxWidth().height(48.dp),
+                shape = RoundedCornerShape(14.dp)) {
+                if (creationBusy) {
+                    CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp, color = p.bg)
+                    Spacer(Modifier.width(8.dp)); Text("Starting…")
+                } else Text(if (firstMessage.isBlank()) "Create empty thread" else "Start")
+            }
+        }
+    }
     if (addProjectOpen) AlertDialog(
         onDismissRequest = { if (!addProjectBusy) addProjectOpen = false },
         title = { Text("New T3 project") },
@@ -2157,6 +2261,11 @@ fun OmniAiModesScreen(
     }
 }
 
+/**
+ * One timeline entry, T3-mobile style: your messages are right-aligned bubbles,
+ * agent replies are plain full-width text, tool/progress chatter is a one-line
+ * collapsible work-log row.
+ */
 @Composable private fun MessageRow(item: AgentHistoryUi, p: AiPalette) {
     val kind = item.kind.lowercase()
     val outgoing = kind.contains("user") || kind.contains("human") || kind.contains("request")
@@ -2164,58 +2273,81 @@ fun OmniAiModesScreen(
         kind.contains("event") || kind.contains("notice")
     var expanded by remember(item.id) { mutableStateOf(false) }
     if (technical) {
-        Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp))
-            .background(p.raised).clickable { expanded = !expanded }
-            .padding(horizontal = 12.dp, vertical = 10.dp)) {
+        Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp))
+            .clickable { expanded = !expanded }
+            .padding(horizontal = 4.dp, vertical = 2.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.Terminal, null, tint = p.muted, modifier = Modifier.size(16.dp))
+                if (item.streaming) CircularProgressIndicator(Modifier.size(12.dp), strokeWidth = 1.5.dp, color = p.accent)
+                else Icon(Icons.Default.Terminal, null, tint = p.muted, modifier = Modifier.size(14.dp))
                 Spacer(Modifier.width(8.dp))
-                Text(item.kind + (if (item.streaming) " · live" else if (item.partial) " · partial" else ""),
-                    Modifier.weight(1f), color = p.muted,
-                    style = MaterialTheme.typography.labelMedium)
+                Text(item.text.lineSequence().firstOrNull { it.isNotBlank() }?.trim()?.take(120)
+                    ?: item.kind, Modifier.weight(1f), color = p.muted, fontSize = 12.sp,
+                    fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Icon(if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                    "Expand", tint = p.muted, modifier = Modifier.size(18.dp))
+                    "Expand", tint = p.muted, modifier = Modifier.size(16.dp))
             }
-            SelectionContainer {
-                Text(if (expanded || item.text.length <= 90) item.text
-                    else item.text.lineSequence().firstOrNull().orEmpty().take(90),
-                    color = if (expanded) p.text else p.muted,
-                    style = MaterialTheme.typography.bodySmall,
-                    fontFamily = FontFamily.Monospace,
-                    maxLines = if (expanded) Int.MAX_VALUE else 2,
-                    modifier = Modifier.padding(top = 6.dp))
+            if (expanded) SelectionContainer {
+                Text(item.text, color = p.text, fontSize = 12.sp, fontFamily = FontFamily.Monospace,
+                    modifier = Modifier.fillMaxWidth().padding(top = 6.dp)
+                        .background(p.raised, RoundedCornerShape(8.dp)).padding(10.dp))
+            }
+        }
+    } else if (outgoing) {
+        Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterEnd) {
+            Box(Modifier.widthIn(max = 320.dp).clip(RoundedCornerShape(18.dp, 18.dp, 4.dp, 18.dp))
+                .background(p.accentBg).padding(horizontal = 14.dp, vertical = 10.dp)) {
+                SelectionContainer {
+                    Text(item.text.ifBlank { "(empty)" }, color = p.text,
+                        style = MaterialTheme.typography.bodyMedium, lineHeight = 21.sp)
+                }
             }
         }
     } else {
-        Column(Modifier.fillMaxWidth(), horizontalAlignment =
-            if (outgoing) Alignment.End else Alignment.Start) {
-            Text(if (outgoing) "YOU" else item.kind.uppercase(),
-                color = p.muted, fontSize = 10.sp, fontWeight = FontWeight.SemiBold,
-                letterSpacing = 0.8.sp,
-                modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp))
-            Box(Modifier.widthIn(max = if (outgoing) 310.dp else 500.dp)
-                .clip(RoundedCornerShape(18.dp))
-                .background(if (outgoing) p.accentBg else p.surface)
-                .padding(horizontal = 15.dp, vertical = 12.dp)) {
-                SelectionContainer {
-                    Text(remember(item.text, item.streaming, item.partial, p) { aiMarkdown(
-                        item.text.ifBlank { when {
-                            item.streaming -> "Generating response…"
-                            item.partial -> "Content not available in this partial transcript."
-                            else -> "(empty)"
-                        } }, p
-                    ) }, color = p.text, style = MaterialTheme.typography.bodyMedium,
-                        lineHeight = 21.sp)
-                }
+        Column(Modifier.fillMaxWidth().padding(horizontal = 2.dp)) {
+            // Only label unusual speakers; plain assistant replies need no header.
+            if (!kind.contains("assistant") && !kind.contains("agent") && kind.isNotBlank())
+                Text(item.kind, color = p.muted, fontSize = 11.sp, modifier = Modifier.padding(bottom = 3.dp))
+            SelectionContainer {
+                Text(remember(item.text, item.streaming, item.partial, p) { aiMarkdown(
+                    item.text.ifBlank { when {
+                        item.streaming -> "…"
+                        item.partial -> "Content not available in this partial transcript."
+                        else -> "(empty)"
+                    } }, p
+                ) }, color = p.text, style = MaterialTheme.typography.bodyMedium, lineHeight = 21.sp)
             }
-            if (item.streaming) {
-                LinearProgressIndicator(Modifier.widthIn(max = 135.dp).height(2.dp)
-                    .padding(horizontal = 7.dp), color = p.accent)
-                Text("Live · updating as T3 streams", color = p.accent,
-                    style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(7.dp))
-            } else if (item.partial) Text("Partial transcript", color = p.muted,
-                style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(7.dp))
+            if (item.streaming) Row(Modifier.padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                CircularProgressIndicator(Modifier.size(10.dp), strokeWidth = 1.5.dp, color = p.accent)
+                Spacer(Modifier.width(6.dp))
+                Text("writing…", color = p.accent, fontSize = 11.sp)
+            } else if (item.partial) Text("partial transcript", color = p.muted, fontSize = 11.sp,
+                modifier = Modifier.padding(top = 3.dp))
         }
+    }
+}
+
+/** A message sent from this phone that the provider hasn't shown in history yet. */
+@Composable private fun LocalOutgoingRow(item: PendingAgentUi, p: AiPalette, onOpenOutbox: () -> Unit) {
+    val failed = item.state == "Failed" || item.state == "Unknown"
+    Column(Modifier.fillMaxWidth().clickable(onClick = onOpenOutbox), horizontalAlignment = Alignment.End) {
+        Box(Modifier.widthIn(max = 320.dp).clip(RoundedCornerShape(18.dp, 18.dp, 4.dp, 18.dp))
+            .background(p.accentBg.copy(alpha = 0.55f))
+            .border(1.dp, if (failed) Color(0xFFE38D8D) else Color.Transparent,
+                RoundedCornerShape(18.dp, 18.dp, 4.dp, 18.dp))
+            .padding(horizontal = 14.dp, vertical = 10.dp)) {
+            Text(item.text, color = p.text, style = MaterialTheme.typography.bodyMedium, lineHeight = 21.sp)
+        }
+        Text(when (item.state) {
+            "Pending" -> "Waiting to send"
+            "InFlight" -> "Sending…"
+            "Accepted", "Queued" -> "Queued"
+            "Blocked" -> "Blocked · tap for details"
+            "Unknown" -> "Unconfirmed · check before resending"
+            "Failed" -> "Failed" + (item.error?.let { " · $it" } ?: "")
+            else -> item.state
+        }, color = if (failed) Color(0xFFE38D8D) else p.muted, fontSize = 11.sp,
+            maxLines = 2, overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(top = 3.dp, end = 4.dp))
     }
 }
 

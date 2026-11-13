@@ -44,7 +44,11 @@ data class AgentSessionUi(
     val visibilitySnoozedAt: Long? = null,
     val visibilityCreatedAt: Long? = null,
     val createdAt: Long? = null,
-    val workspace: String? = null
+    val workspace: String? = null,
+    // Live turn status (provider-neutral, optional): when the current turn began
+    // and a short "what it's doing" line. Null when the provider doesn't report them.
+    val turnStartedAt: String? = null,
+    val activityText: String? = null
 ) {
     val key get() = "$provider:$id"
 }
@@ -254,6 +258,10 @@ class GenericAgentClient(
                                 reachability = if (summary.obj("state")?.has("reachability") == true)
                                     updated.reachability else previous?.reachability ?: updated.reachability,
                                 lastActivityAt = if (summary.has("lastActivityAt")) updated.lastActivityAt else previous?.lastActivityAt,
+                                turnStartedAt = if (summary.obj("state")?.has("turnStartedAt") == true ||
+                                    summary.has("turnStartedAt")) updated.turnStartedAt else previous?.turnStartedAt,
+                                activityText = if (summary.obj("state")?.has("activityText") == true ||
+                                    summary.has("activityText")) updated.activityText else previous?.activityText,
                                 activity = if (summary.obj("state")?.has("activity") == true)
                                     updated.activity else previous?.activity ?: updated.activity,
                                 confidence = if (summary.obj("state")?.has("confidence") == true)
@@ -263,7 +271,7 @@ class GenericAgentClient(
                                 else _sessions.value.map { if (it.key == updated.key) preserved else it }
                             val current = _selected.value
                             val now = System.currentTimeMillis()
-                            if (current == updated.key && now - lastSessionEventReadAt > 1800) {
+                            if (current == updated.key && now - lastSessionEventReadAt > 900) {
                                 lastSessionEventReadAt = now
                                 scope.launch { select(current, reload = true) }
                             }
@@ -493,7 +501,9 @@ class GenericAgentClient(
             obj.obj("visibility")?.get("snoozedAt")?.let { runCatching { it.asLong }.getOrNull() },
             obj.obj("visibility")?.get("createdAt")?.let { runCatching { it.asLong }.getOrNull() },
             obj.get("createdAt")?.let { runCatching { it.asLong }.getOrNull() },
-            obj.str("workspace"))
+            obj.str("workspace"),
+            obj.obj("state")?.str("turnStartedAt") ?: obj.str("turnStartedAt"),
+            obj.obj("state")?.str("activityText") ?: obj.str("activityText"))
     }
 
     suspend fun refresh() = refreshMutex.withLock {
