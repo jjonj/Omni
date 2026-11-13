@@ -983,6 +983,15 @@ class SignalRClient(
     private fun registerHubHandlers() {
         if (handlersRegistered) return
         handlersRegistered = true
+        hubConnection?.on("AgentAttentionRequested", { payload: String ->
+            runCatching {
+                val attention = com.google.gson.JsonParser.parseString(payload).asJsonObject
+                val id = attention.get("requestId")?.asString ?: return@runCatching
+                val session = attention.get("sessionId")?.asString ?: return@runCatching
+                val message = attention.get("message")?.asString ?: return@runCatching
+                com.omni.sync.utils.DirectAgentAttention.show(context, id, session, message)
+            }.onFailure { Log.w("SignalRClient", "Invalid agent attention", it) }
+        }, String::class.java)
         hubConnection?.on("RemindersChanged", { refreshReminders() })
         hubConnection?.on("AndroidAlarmAction", { request: AndroidAlarmActionData ->
             com.omni.sync.service.AlarmService.logBridge(context, "desktop_action_received action=${request.action} id=${request.id} token=${request.token.take(8)}")
