@@ -2317,7 +2317,7 @@ fun OmniAiModesScreen(
             SelectionContainer {
                 Text(remember(item.text, item.streaming, item.partial, p) { aiMarkdown(
                     item.text.ifBlank { when {
-                        item.streaming -> "…"
+                        item.streaming -> ""
                         item.partial -> "Content not available in this partial transcript."
                         else -> "(empty)"
                     } }, p
@@ -2326,7 +2326,7 @@ fun OmniAiModesScreen(
             if (item.streaming) Row(Modifier.padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 CircularProgressIndicator(Modifier.size(10.dp), strokeWidth = 1.5.dp, color = p.accent)
                 Spacer(Modifier.width(6.dp))
-                Text("writing…", color = p.accent, fontSize = 11.sp)
+                Text(if (item.text.isBlank()) "thinking…" else "writing…", color = p.accent, fontSize = 11.sp)
             } else if (item.partial) Text("partial transcript", color = p.muted, fontSize = 11.sp,
                 modifier = Modifier.padding(top = 3.dp))
         }
