@@ -94,13 +94,29 @@ private fun AgentSessionUi.groupRank(): Int = when (groupName()) {
 private fun activityMillis(iso: String?): Long =
     runCatching { java.time.Instant.parse(iso ?: "").toEpochMilli() }.getOrDefault(0L)
 
-private fun AgentSessionUi.dotColor(p: AiPalette): Color = when {
-    activity.equals("Working", true) || activity.equals("Running", true) ||
-        activity.equals("Active", true) -> p.green
-    activity.equals("Error", true) || activity.equals("Errored", true) ||
-        activity.equals("Failed", true) -> Color(0xFFE38D8D)
-    needsAttention() -> p.amber
-    else -> p.muted
+private fun AgentSessionUi.dotColor(p: AiPalette): Color {
+    // T3 desktop parity: working lime, recent blue, unloaded dark grey,
+    // unloaded-recent subdued blue, interruptions orange, errors rose.
+    val millis = activityMillis(lastActivityAt)
+    val recent = millis > 0L && System.currentTimeMillis() - millis in 0 until 7_200_000L
+    val working = activity.equals("Working", true) || activity.equals("Running", true) ||
+        activity.equals("Active", true)
+    val failed = activity.equals("Error", true) || activity.equals("Errored", true) ||
+        activity.equals("Failed", true)
+    val interrupted = activity.equals("Interrupted", true) ||
+        attention.contains("interrupted", true) || attention.contains("timeout", true)
+    val unloaded = kind == "t3/chatgpt" && reachability != "Reachable"
+    return when {
+        interrupted -> Color(0xFFF6A34A)
+        failed -> Color(0xFFE38D8D)
+        unloaded && working && recent -> Color(0xFF587A5D)
+        unloaded && recent -> Color(0xFF546C85)
+        unloaded -> Color(0xFF52525B)
+        working -> Color(0xFFA3E635)
+        needsAttention() -> p.amber
+        recent -> Color(0xFF88A9C8)
+        else -> p.muted
+    }
 }
 @Composable private fun Dot(color: Color) {
     Box(Modifier.size(8.dp).background(color, CircleShape))
@@ -186,6 +202,7 @@ fun OmniAiModesScreen(
     var listMode by rememberSaveable { mutableStateOf(initialSessionId == null) }
     var initialApplied by remember(initialSessionId) { mutableStateOf(false) }
     var sessionSearch by rememberSaveable { mutableStateOf("") }
+    var searchExpanded by rememberSaveable { mutableStateOf(false) }
     var sessionFilter by rememberSaveable { mutableStateOf("All") }
     var threadKind by rememberSaveable {
         mutableStateOf(viewPrefs.getString("threadKind", "t3/chatgpt") ?: "t3/chatgpt")
@@ -217,6 +234,44 @@ fun OmniAiModesScreen(
     var workspace by remember { mutableStateOf("") }
     var newSessionTitle by remember { mutableStateOf("") }
     var firstMessage by remember { mutableStateOf("") }
+    var nativeCatalog by remember { mutableStateOf<NativeCatalogUi?>(null) }
+    var nativeCatalogLoading by remember { mutableStateOf(false) }
+    var nativeCatalogError by remember { mutableStateOf<String?>(null) }
+    var nativeProjectId by remember { mutableStateOf("") }
+    var nativeModelKey by remember { mutableStateOf("") }
+    var nativeEffort by remember { mutableStateOf("") }
+    var projectMenu by remember { mutableStateOf(false) }
+    var modelMenu by remember { mutableStateOf(false) }
+    var effortMenu by remember { mutableStateOf(false) }
+    var addProjectOpen by remember { mutableStateOf(false) }
+    var addProjectName by remember { mutableStateOf("") }
+    var addProjectBusy by remember { mutableStateOf(false) }
+    val chosenNativeModel = nativeCatalog?.models?.firstOrNull { it.key == nativeModelKey }
+    val chosenNativeProject = nativeCatalog?.projects?.firstOrNull { it.id == nativeProjectId }
+    LaunchedEffect(create, kind, online) {
+        if (create && kind == "t3/thread" && online) {
+            nativeCatalogLoading = true
+            nativeCatalogError = null
+            try {
+                nativeCatalog = client.nativeCatalog()
+                val firstProject = nativeCatalog?.projects?.firstOrNull()
+                if (nativeCatalog?.projects?.none { it.id == nativeProjectId } != false)
+                    nativeProjectId = firstProject?.id.orEmpty()
+                val chosen = nativeCatalog?.projects?.firstOrNull { it.id == nativeProjectId }
+                val preferred = nativeCatalog?.models?.firstOrNull {
+                    it.instanceId == chosen?.defaultInstanceId && it.slug == chosen.defaultModel
+                }
+                if (nativeCatalog?.models?.none { it.key == nativeModelKey } != false)
+                    nativeModelKey = (preferred ?: nativeCatalog?.models?.firstOrNull())?.key.orEmpty()
+                val model = nativeCatalog?.models?.firstOrNull { it.key == nativeModelKey }
+                nativeEffort = chosen?.defaultEffort?.takeIf { effort ->
+                    model?.efforts?.any { it.first == effort } == true
+                } ?: model?.efforts?.firstOrNull()?.first.orEmpty()
+            } catch (e: Exception) {
+                nativeCatalogError = "Could not retrieve T3 options: " + e.message
+            } finally { nativeCatalogLoading = false }
+        }
+    }
     var scheduleOpen by remember { mutableStateOf(false) }
     var scheduleRevision by remember { mutableIntStateOf(0) }
     var scheduleTarget by remember { mutableStateOf<AgentSessionUi?>(null) }
@@ -284,13 +339,8 @@ fun OmniAiModesScreen(
     }
     fun isT3Browser(s: AgentSessionUi) = s.provider == "t3" && s.kind == "t3/chatgpt"
     fun openChatGpt(target: AgentSessionUi) {
-        scope.launch {
+        fun launch(url: String) {
             try {
-                // Use the desktop's actual conversation URL, not the T3 session ID.
-                val url = client.sessionControls(target).get("url")
-                    ?.takeUnless { it.isJsonNull }?.asString
-                    ?.takeIf { it.startsWith("https://chatgpt.com/c/") }
-                    ?: throw IllegalStateException("No ChatGPT conversation URL is available yet")
                 val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
                     .addCategory(Intent.CATEGORY_BROWSABLE)
                     .setPackage("com.openai.chatgpt")
@@ -298,7 +348,30 @@ fun OmniAiModesScreen(
                 catch (_: android.content.ActivityNotFoundException) {
                     context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
                 }
-            } catch (e: Exception) { note = "Open in ChatGPT failed: " + e.message }
+            } catch (error: Exception) { note = "Open in ChatGPT failed: " + error.message }
+        }
+        // Browser catalog contains the exact conversation ID; no network lookup
+        // needed on the normal path. This eliminates the 25s control RPC delay.
+        val cachedUrl = rowControls?.takeIf { rowOptions?.key == target.key }
+            ?.get("url")?.takeUnless { it.isJsonNull }?.asString
+            ?.takeIf { it.startsWith("https://chatgpt.com/") }
+        val conversation = target.conversation?.trim().orEmpty()
+        val url = when {
+            cachedUrl != null -> cachedUrl
+            Regex("^[a-fA-F0-9]{8}(-[a-fA-F0-9]{4}){3}-[a-fA-F0-9]{12}$")
+                .matches(conversation) -> "https://chatgpt.com/c/" + conversation
+            conversation.startsWith("https://chatgpt.com/c/") -> conversation
+            else -> null
+        }
+        if (url != null) { launch(url); return }
+        scope.launch {
+            try {
+                val fetched = client.sessionControls(target).get("url")
+                    ?.takeUnless { it.isJsonNull }?.asString
+                    ?.takeIf { it.startsWith("https://chatgpt.com/") }
+                    ?: error("No ChatGPT URL is available for this session")
+                launch(fetched)
+            } catch (error: Exception) { note = "Open in ChatGPT failed: " + error.message }
         }
     }
     LaunchedEffect(rowOptions?.key, online) {
@@ -589,7 +662,8 @@ fun OmniAiModesScreen(
             note = "New sessions require a connected ${provider.name} creator."
             return
         }
-        workspace = ""; newSessionTitle = ""; firstMessage = ""; createDeliveryMode = "WhenIdle"; create = true
+        workspace = ""; newSessionTitle = ""; firstMessage = ""; createDeliveryMode = "WhenIdle"
+        nativeCatalog = null; nativeProjectId = ""; nativeModelKey = ""; nativeEffort = ""; create = true
     }
     fun submit() {
         if (!canSend) return
@@ -713,34 +787,26 @@ fun OmniAiModesScreen(
         }
     } else {
         Column(Modifier.fillMaxSize().padding(parentPadding).background(p.bg).imePadding()) {
-            // Dense, predictable toolbar; everything else lives in an overflow menu.
-            Row(Modifier.fillMaxWidth().background(p.surface).heightIn(min = 60.dp)
-                .padding(horizontal = 8.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
-                if (!listMode) ActionIcon(Icons.AutoMirrored.Filled.ArrowBack, "All sessions", p) { listMode = true }
-                else Box(Modifier.padding(horizontal = 10.dp).size(34.dp)
-                    .background(p.accentBg, RoundedCornerShape(12.dp)), contentAlignment = Alignment.Center) {
-                    Icon(Icons.Default.AutoAwesome, null, tint = p.accent, modifier = Modifier.size(20.dp))
+            // Single compact toolbar; no stacked control bars or vertically wrapped title.
+            Row(Modifier.fillMaxWidth().background(p.surface).height(52.dp)
+                .padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                if (!listMode) IconButton(onClick = { listMode = true },
+                    modifier = Modifier.size(36.dp)) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, "All conversations", tint = p.text)
+                } else Box(Modifier.size(30.dp).background(p.accentBg, RoundedCornerShape(10.dp)),
+                    contentAlignment = Alignment.Center) {
+                    Icon(Icons.Default.AutoAwesome, null, tint = p.accent, modifier = Modifier.size(18.dp))
                 }
-                Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
-                    Text(if (listMode) "AI" else selected?.title ?: "Conversation",
-                        color = p.text, style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold, maxLines = 1,
-                        overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
-                    Spacer(Modifier.width(9.dp))
+                Spacer(Modifier.width(8.dp))
+                Text(if (listMode) "AI" else selected?.title ?: "Conversation",
+                    modifier = Modifier.weight(1f), color = p.text,
+                    fontWeight = FontWeight.SemiBold, maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    style = MaterialTheme.typography.titleSmall)
+                if (listMode) {
                     Dot(if (t3Connected) p.green else p.amber)
-                    if (listMode) Text(if (t3Connected) "  T3" else "  T3 offline",
-                        color = if (t3Connected) p.green else p.amber,
-                        style = MaterialTheme.typography.labelSmall)
-                }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(busyPolicy?.busyUntil?.let {
-                        "Busy · " + java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()).format(java.util.Date(it))
-                    } ?: "Busy", color = if (busyPolicy?.keepT3Busy == true) p.green else p.muted,
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.SemiBold)
-                    // The outer gesture target permits long-press settings while preserving
-                    // a normal tap as the immediate Keep Busy toggle.
-                    Box(Modifier.combinedClickable(
+                    Spacer(Modifier.width(7.dp))
+                    Row(Modifier.clip(RoundedCornerShape(10.dp)).combinedClickable(
                         enabled = online && busyPolicy != null && !keepT3BusyUpdating,
                         onLongClick = { busySlotsOpen = true },
                         onClick = {
@@ -751,67 +817,35 @@ fun OmniAiModesScreen(
                                 finally { keepT3BusyUpdating = false }
                             }
                         }
-                    )) {
-                    Switch(
-                        checked = busyPolicy?.keepT3Busy == true,
-                        enabled = online && busyPolicy != null && !keepT3BusyUpdating,
-                        onCheckedChange = null,
-                        modifier = Modifier.size(width = 48.dp, height = 40.dp)
-                            .scale(0.75f).semantics {
-                                contentDescription = "Keep T3 Busy"
-                                stateDescription = when (busyPolicy?.keepT3Busy) {
-                                    true -> "On"
-                                    false -> "Off"
-                                    null -> "Unavailable"
-                                }
-                            }
-                    )
-                    }
-                    Box {
-                        var timingMenu by remember { mutableStateOf(false) }
-                        IconButton(onClick = { timingMenu = true },
+                    ), verticalAlignment = Alignment.CenterVertically) {
+                        Text("Busy", color = if (busyPolicy?.keepT3Busy == true) p.green else p.muted,
+                            fontSize = 11.sp, maxLines = 1)
+                        Switch(checked = busyPolicy?.keepT3Busy == true,
                             enabled = online && busyPolicy != null && !keepT3BusyUpdating,
-                            modifier = Modifier.size(32.dp)) {
-                            Icon(Icons.Default.Timer, "Schedule Busy and shutdown", tint = p.accent,
-                                modifier = Modifier.size(20.dp))
-                        }
-                        DropdownMenu(expanded = timingMenu, onDismissRequest = { timingMenu = false }) {
-                            listOf(60, 120, 240, 360).forEach { minutes ->
-                                DropdownMenuItem(text = { Text("Work ${minutes / 60}h, then shut down when idle") },
-                                    onClick = { timingMenu = false; pendingBusyMinutes = minutes })
-                            }
-                            if (busyPolicy?.busyUntil != null) DropdownMenuItem(
-                                text = { Text("Cancel timed work and shutdown") },
-                                onClick = {
-                                    timingMenu = false
-                                    keepT3BusyUpdating = true
-                                    scope.launch {
-                                        try { busyPolicy = signalRClient.t3BusyPolicy(false) }
-                                        catch (error: Exception) { note = "Cancel failed: " + error.message }
-                                        finally { keepT3BusyUpdating = false }
-                                    }
+                            onCheckedChange = null,
+                            modifier = Modifier.size(width = 43.dp, height = 36.dp)
+                                .scale(0.7f).semantics {
+                                    contentDescription = "Keep T3 Busy; long press to configure slots"
+                                    stateDescription = if (busyPolicy?.keepT3Busy == true) "On" else "Off"
                                 })
-                        }
                     }
-                }
-                ActionIcon(Icons.Default.Refresh, if (online) "Refresh" else "Reconnect", p) {
-                    if (!online) {
-                        signalRClient.startConnection()
-                        note = "Connecting to OmniHub…"
-                    } else scope.launch {
-                        client.refresh()
-                        if (!listMode && selectedKey != null) client.select(selectedKey)
+                    IconButton(onClick = {
+                        if (!online) signalRClient.startConnection() else scope.launch { client.refresh() }
+                    }, modifier = Modifier.size(34.dp)) {
+                        Icon(Icons.Default.Refresh, "Refresh", tint = p.text, modifier = Modifier.size(22.dp))
                     }
-                }
-                if (listMode) {
-                    ActionIcon(Icons.Default.Schedule, "Schedule ChatGPT work", p,
-                        enabled = t3Connected) { openSchedule(null) }
-                    ActionIcon(Icons.Default.Add, "New ${if (threadKind == "t3/thread") "native T3 thread" else "ChatGPT session"}", p) { openCreate() }
-                    ActionIcon(Icons.Default.MailOutline, "Human inbox", p) { humanInbox = true }
+                    IconButton(onClick = { openCreate() }, modifier = Modifier.size(34.dp)) {
+                        Icon(Icons.Default.Add, "New session", tint = p.text, modifier = Modifier.size(23.dp))
+                    }
                 }
                 Box {
                     var menu by remember { mutableStateOf(false) }
-                    ActionIcon(Icons.Default.MoreVert, "More options", p) { menu = true }
+                    IconButton(onClick = {
+                        if (!listMode && selected != null) rowOptions = selected
+                        else menu = true
+                    }, modifier = Modifier.size(36.dp)) {
+                        Icon(Icons.Default.MoreVert, "Full session actions", tint = p.text)
+                    }
                     DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                         if (listMode) {
                             listOf("activity" to "Recent activity", "project" to "Project",
@@ -834,6 +868,31 @@ fun OmniAiModesScreen(
                                     hideUnloaded = !hideUnloaded
                                     viewPrefs.edit().putBoolean("hideUnloaded", hideUnloaded).apply()
                                     menu = false
+                                })
+                            DropdownMenuItem(text = { Text((if (compactMode) "✓ " else "") + "Compact rows") },
+                                onClick = {
+                                    compactMode = !compactMode
+                                    viewPrefs.edit().putBoolean("compactMode", compactMode).apply()
+                                    menu = false
+                                })
+                            DropdownMenuItem(text = { Text("Schedule ChatGPT work") },
+                                enabled = t3Connected,
+                                onClick = { menu = false; openSchedule(null) })
+                            DropdownMenuItem(text = { Text("Human inbox") },
+                                onClick = { menu = false; humanInbox = true })
+                            (listOf(60, 120, 240, 360)).forEach { minutes ->
+                                DropdownMenuItem(text = { Text("Keep Busy ${minutes / 60}h then shut down") },
+                                    onClick = { menu = false; pendingBusyMinutes = minutes })
+                            }
+                            if (busyPolicy?.busyUntil != null) DropdownMenuItem(
+                                text = { Text("Cancel timed Busy") },
+                                onClick = {
+                                    menu = false; keepT3BusyUpdating = true
+                                    scope.launch {
+                                        try { busyPolicy = signalRClient.t3BusyPolicy(false) }
+                                        catch (error: Exception) { note = "Cancel failed: ${error.message}" }
+                                        finally { keepT3BusyUpdating = false }
+                                    }
                                 })
                             DropdownMenuItem(text = { Text("Snoozed sessions ($snoozedCount)") },
                                 onClick = { sessionFilter = "Snoozed"; menu = false })
@@ -895,68 +954,59 @@ fun OmniAiModesScreen(
             }
 
             if (listMode) {
-                if (listProvider == "t3") Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf("t3/chatgpt" to "ChatGPT", "t3/thread" to "Native T3").forEach { (value, label) ->
-                        FilterChip(selected = threadKind == value, onClick = {
-                            threadKind = value
-                            viewPrefs.edit().putString("threadKind", value).apply()
-                            sessionFilter = "All"
-                        }, label = { Text(label + " (" + sessions.count { it.provider == "t3" && it.kind == value } + ")") },
-                            modifier = Modifier.weight(1f))
+                Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    if (listProvider == "t3") {
+                        listOf("t3/chatgpt" to "ChatGPT", "t3/thread" to "Native T3").forEach { (value, label) ->
+                            FilterChip(selected = threadKind == value, onClick = {
+                                threadKind = value
+                                viewPrefs.edit().putString("threadKind", value).apply()
+                                sessionFilter = "All"
+                            }, label = { Text(label + " (" +
+                                sessions.count { it.provider == "t3" && it.kind == value } + ")",
+                                maxLines = 1) }, modifier = Modifier.weight(1f))
+                        }
+                    } else Spacer(Modifier.weight(1f))
+                    IconButton(onClick = { searchExpanded = !searchExpanded },
+                        modifier = Modifier.size(38.dp)) {
+                        Icon(if (searchExpanded) Icons.Default.Close else Icons.Default.Search,
+                            if (searchExpanded) "Close search" else "Search conversations",
+                            tint = p.text, modifier = Modifier.size(21.dp))
                     }
                 }
-                OutlinedTextField(sessionSearch, { sessionSearch = it }, Modifier.fillMaxWidth()
-                    .padding(start = 16.dp, end = 16.dp, top = 16.dp), singleLine = true,
-                    placeholder = { Text("Search conversations") },
-                    leadingIcon = { Icon(Icons.Default.Search, null) },
-                    trailingIcon = if (sessionSearch.isNotEmpty()) {{
-                        IconButton(onClick = { sessionSearch = "" }) { Icon(Icons.Default.Close, "Clear search") }
-                    }} else null,
-                    shape = RoundedCornerShape(18.dp),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedContainerColor = p.surface, unfocusedContainerColor = p.surface,
-                        focusedBorderColor = p.accent, unfocusedBorderColor = p.border,
-                        focusedTextColor = p.text, unfocusedTextColor = p.text,
-                        focusedPlaceholderColor = p.muted, unfocusedPlaceholderColor = p.muted,
-                        focusedLeadingIconColor = p.muted, unfocusedLeadingIconColor = p.muted,
-                        focusedTrailingIconColor = p.muted, unfocusedTrailingIconColor = p.muted))
+                if (searchExpanded || sessionSearch.isNotEmpty()) {
+                    OutlinedTextField(sessionSearch, { sessionSearch = it },
+                        Modifier.fillMaxWidth().padding(horizontal = 12.dp),
+                        singleLine = true, placeholder = { Text("Search conversations") },
+                        leadingIcon = { Icon(Icons.Default.Search, null) },
+                        trailingIcon = if (sessionSearch.isNotEmpty()) {{
+                            IconButton(onClick = { sessionSearch = "" }) {
+                                Icon(Icons.Default.Close, "Clear search")
+                            }
+                        }} else null,
+                        shape = RoundedCornerShape(12.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedContainerColor = p.surface, unfocusedContainerColor = p.surface,
+                            focusedBorderColor = p.accent, unfocusedBorderColor = p.border))
+                }
                 Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())
-                    .padding(horizontal = 16.dp, vertical = 10.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    .padding(horizontal = 12.dp, vertical = 1.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     listOf("All", "Active", "Attention", "Snoozed", "Hidden").forEach { value ->
-                        FilterChip(selected = sessionFilter == value, onClick = { sessionFilter = value },
+                        FilterChip(selected = sessionFilter == value,
+                            onClick = { sessionFilter = value },
                             label = { Text(when (value) {
                                 "Attention" -> if (attention > 0) "Attention $attention" else value
                                 "Snoozed" -> if (snoozedCount > 0) "Snoozed $snoozedCount" else value
                                 "Hidden" -> if (hiddenCount > 0) "Hidden $hiddenCount" else value
                                 else -> value
-                            }) },
-                            shape = RoundedCornerShape(13.dp),
-                            border = null,
+                            }, maxLines = 1) },
+                            shape = RoundedCornerShape(10.dp),
                             colors = FilterChipDefaults.filterChipColors(
-                                containerColor = p.raised,
-                                selectedContainerColor = p.accentBg, selectedLabelColor = p.accent,
-                                labelColor = p.muted))
+                                containerColor = p.raised, selectedContainerColor = p.accentBg,
+                                selectedLabelColor = p.accent, labelColor = p.muted))
                     }
-                }
-                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())
-                    .padding(horizontal = 16.dp, vertical = 2.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FilterChip(selected = sortMode == "activity", onClick = {
-                        sortMode = "activity"; viewPrefs.edit().putString("sort", sortMode).apply()
-                    }, label = { Text("Recent") })
-                    FilterChip(selected = sortMode == "project", onClick = {
-                        sortMode = "project"; viewPrefs.edit().putString("sort", sortMode).apply()
-                    }, label = { Text("By project") })
-                    FilterChip(selected = compactMode, onClick = {
-                        compactMode = !compactMode
-                        viewPrefs.edit().putBoolean("compactMode", compactMode).apply()
-                    }, label = { Text("Compact") })
-                    FilterChip(selected = hideUnloaded, onClick = {
-                        hideUnloaded = !hideUnloaded
-                        viewPrefs.edit().putBoolean("hideUnloaded", hideUnloaded).apply()
-                    }, label = { Text("Hide unloaded") })
                 }
                 LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(
                     start = 10.dp, end = 10.dp, top = 6.dp, bottom = 20.dp),
@@ -978,7 +1028,8 @@ fun OmniAiModesScreen(
                                 .padding(start = 12.dp, end = 4.dp, top = 3.dp, bottom = 3.dp),
                                 verticalAlignment = Alignment.CenterVertically) {
                                 Text(session.title, modifier = Modifier.weight(1f),
-                                    color = p.text, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                    color = if (session.kind == "t3/chatgpt") session.dotColor(p) else p.text,
+                                    maxLines = 1, overflow = TextOverflow.Ellipsis,
                                     fontWeight = if (session.unread == true) FontWeight.Bold else FontWeight.Medium,
                                     style = MaterialTheme.typography.bodyMedium)
                                 IconButton(onClick = { rowOptions = session }, modifier = Modifier.size(36.dp)) {
@@ -994,12 +1045,14 @@ fun OmniAiModesScreen(
                             Box(Modifier.size(42.dp).background(p.raised, RoundedCornerShape(14.dp)),
                                 contentAlignment = Alignment.Center) {
                                 Text(session.title.trim().take(1).uppercase().ifBlank { "A" },
-                                    color = p.accent, fontWeight = FontWeight.SemiBold,
+                                    color = session.dotColor(p), fontWeight = FontWeight.SemiBold,
                                     style = MaterialTheme.typography.titleMedium)
                             }
                             Spacer(Modifier.width(12.dp))
                             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                Text(session.title, color = p.text, maxLines = 2,
+                                Text(session.title,
+                                    color = if (session.kind == "t3/chatgpt") session.dotColor(p) else p.text,
+                                    maxLines = 2,
                                     overflow = TextOverflow.Ellipsis,
                                     fontWeight = if (session.unread == true) FontWeight.Bold else FontWeight.Medium,
                                     style = MaterialTheme.typography.bodyLarge)
@@ -1053,16 +1106,7 @@ fun OmniAiModesScreen(
                         }
                     }
                 }
-                Row(Modifier.fillMaxWidth().padding(15.dp),
-                    horizontalArrangement = Arrangement.End) {
-                    Button(onClick = { openCreate() }, shape = RoundedCornerShape(18.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = p.accentBg, contentColor = p.accent)) {
-                        Icon(Icons.Default.Add, null, modifier = Modifier.size(19.dp))
-                        Spacer(Modifier.width(6.dp))
-                        Text(if (active?.id == "t3" && threadKind == "t3/thread") "New native thread" else "New session")
-                    }
-                }
+                // Creation is available from the toolbar; no bottom action bar.
             } else {
                 Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 7.dp),
                     verticalAlignment = Alignment.CenterVertically) {
@@ -1895,8 +1939,8 @@ fun OmniAiModesScreen(
             "t3/chatgpt" -> "New ChatGPT thread"
             else -> "New AI session"
         }) },
-        text = { Column(Modifier.heightIn(max = 410.dp).verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        text = { Column(Modifier.heightIn(max = 510.dp).verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(6.dp)) {
             if (active.id != "t3") Text("Execution kind", style = MaterialTheme.typography.labelMedium)
             active.kinds.filter { active.id != "t3" }.forEach { option ->
                 Row(Modifier.fillMaxWidth().clickable { kind = option },
@@ -1905,15 +1949,102 @@ fun OmniAiModesScreen(
                     Text(option, style = MaterialTheme.typography.bodySmall)
                 }
             }
-            OutlinedTextField(newSessionTitle, { newSessionTitle = it.take(180) },
-                label = { Text("Title (optional)") }, singleLine = true)
-            OutlinedTextField(workspace, { workspace = it.take(4096) },
-                label = { Text(if (kind == "t3/thread") "Existing native project / folder (optional)"
-                    else if (active.id == "t3") "Project / folder (optional)" else "Working folder") }, singleLine = true)
-            if (kind == "t3/thread") Text(
-                "Leave project empty to reuse the most recently active native project's settings. " +
-                    "New native projects must first be opened in T3 on the PC.",
-                style = MaterialTheme.typography.bodySmall, color = p.muted)
+            if (kind == "t3/thread") {
+                if (nativeCatalogLoading) LinearProgressIndicator(Modifier.fillMaxWidth())
+                if (nativeCatalogError != null) {
+                    Text(nativeCatalogError!!, color = p.amber,
+                        style = MaterialTheme.typography.bodySmall)
+                    TextButton(onClick = {
+                        scope.launch {
+                            nativeCatalogLoading = true
+                            try { nativeCatalog = client.nativeCatalog(); nativeCatalogError = null }
+                            catch (e: Exception) { nativeCatalogError = e.message }
+                            finally { nativeCatalogLoading = false }
+                        }
+                    }) { Text("Retry fetching T3 options") }
+                }
+                Text("T3 project", style = MaterialTheme.typography.labelMedium)
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.weight(1f)) {
+                        OutlinedButton(onClick = { projectMenu = true },
+                            modifier = Modifier.fillMaxWidth(), enabled = !nativeCatalogLoading) {
+                            Text(chosenNativeProject?.title ?: "Choose project",
+                                maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f))
+                            Icon(Icons.Default.ArrowDropDown, null)
+                        }
+                        DropdownMenu(expanded = projectMenu, onDismissRequest = { projectMenu = false }) {
+                            nativeCatalog?.projects?.forEach { project ->
+                                DropdownMenuItem(text = { Text(project.title) }, onClick = {
+                                    nativeProjectId = project.id; projectMenu = false
+                                    val preferred = nativeCatalog?.models?.firstOrNull {
+                                        it.instanceId == project.defaultInstanceId &&
+                                        it.slug == project.defaultModel
+                                    }
+                                    if (preferred != null) nativeModelKey = preferred.key
+                                    val model = nativeCatalog?.models?.firstOrNull { it.key == nativeModelKey }
+                                    nativeEffort = project.defaultEffort?.takeIf { choice ->
+                                        model?.efforts?.any { it.first == choice } == true
+                                    } ?: model?.efforts?.firstOrNull()?.first.orEmpty()
+                                })
+                            }
+                        }
+                    }
+                    IconButton(onClick = {
+                        addProjectName = ""; addProjectOpen = true
+                    }, enabled = !nativeCatalogLoading) {
+                        Icon(Icons.Default.Add, "Create T3 project")
+                    }
+                }
+                Text("Model", style = MaterialTheme.typography.labelMedium)
+                Box {
+                    OutlinedButton(onClick = { modelMenu = true }, modifier = Modifier.fillMaxWidth(),
+                        enabled = !nativeCatalogLoading && nativeCatalog?.models?.isNotEmpty() == true) {
+                        Text(chosenNativeModel?.let { it.provider + " · " + it.label } ?: "Choose model",
+                            maxLines = 1, overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f))
+                        Icon(Icons.Default.ArrowDropDown, null)
+                    }
+                    DropdownMenu(expanded = modelMenu, onDismissRequest = { modelMenu = false }) {
+                        nativeCatalog?.models?.forEach { model ->
+                            DropdownMenuItem(text = { Text(model.provider + " · " + model.label) },
+                                onClick = {
+                                    nativeModelKey = model.key
+                                    nativeEffort = model.efforts.firstOrNull { it.first == "medium" }
+                                        ?.first ?: model.efforts.firstOrNull()?.first.orEmpty()
+                                    modelMenu = false
+                                })
+                        }
+                    }
+                }
+                if (chosenNativeModel?.efforts?.isNotEmpty() == true) {
+                    Text("Thinking effort", style = MaterialTheme.typography.labelMedium)
+                    Box {
+                        OutlinedButton(onClick = { effortMenu = true },
+                            modifier = Modifier.fillMaxWidth()) {
+                            Text(chosenNativeModel.efforts.firstOrNull { it.first == nativeEffort }
+                                ?.second ?: "Choose effort", modifier = Modifier.weight(1f))
+                            Icon(Icons.Default.ArrowDropDown, null)
+                        }
+                        DropdownMenu(expanded = effortMenu, onDismissRequest = { effortMenu = false }) {
+                            chosenNativeModel.efforts.forEach { effort ->
+                                DropdownMenuItem(text = { Text(effort.second) }, onClick = {
+                                    nativeEffort = effort.first; effortMenu = false
+                                })
+                            }
+                        }
+                    }
+                }
+                if (nativeCatalog != null && nativeCatalog?.nativeModelSelectionReady != true)
+                    Text("T3 server must be updated before custom model/effort creation is available. Existing sessions are unaffected.",
+                        color = p.amber, style = MaterialTheme.typography.bodySmall)
+                else Text("Options come from T3's current project and provider catalogs.",
+                    style = MaterialTheme.typography.bodySmall, color = p.muted)
+            } else {
+                OutlinedTextField(workspace, { workspace = it.take(4096) },
+                    label = { Text(if (active.id == "t3") "Project / folder (optional)"
+                        else "Working folder") }, singleLine = true)
+            }
             OutlinedTextField(firstMessage, { firstMessage = it.take(30_000) },
                 label = { Text(if (active.id == "t3") "First message (optional)" else "First instruction") }, maxLines = 4)
             if (kind == "t3/thread") Text("Native T3 uses its own durable message queue.",
@@ -1934,14 +2065,29 @@ fun OmniAiModesScreen(
             }
         }},
         confirmButton = { TextButton(enabled = !creationBusy && kind.isNotBlank() &&
-            (active.id == "t3" || (workspace.isNotBlank() && firstMessage.isNotBlank())), onClick = {
+            (active.id == "t3" || (workspace.isNotBlank() && firstMessage.isNotBlank())) &&
+            (kind != "t3/thread" || (!nativeCatalogLoading && nativeCatalogError == null &&
+                nativeCatalog?.nativeModelSelectionReady == true &&
+                chosenNativeProject != null && chosenNativeModel != null &&
+                (chosenNativeModel.efforts.isEmpty() ||
+                 chosenNativeModel.efforts.any { it.first == nativeEffort }))), onClick = {
             if (creationBusy) return@TextButton
             creationBusy = true
             create = false
             scope.launch {
                 try {
-                    note = client.createSession(active, kind, workspace, firstMessage,
-                        createDeliveryMode, maxActiveWorkers, newSessionTitle)
+                    val project = if (kind == "t3/thread") nativeProjectId else workspace
+                    val config: Map<String, Any?>? = if (kind == "t3/thread") {
+                        chosenNativeModel?.let { model ->
+                            val options = if (model.effortId != null && nativeEffort.isNotEmpty())
+                                listOf(mapOf("id" to model.effortId, "value" to nativeEffort))
+                            else emptyList()
+                            mapOf("instanceId" to model.instanceId, "model" to model.slug,
+                                "options" to options)
+                        }
+                    } else null
+                    note = client.createSession(active, kind, project, firstMessage,
+                        createDeliveryMode, maxActiveWorkers, "", config)
                     val newKey = client.createdSessionKey.value
                     if (newKey != null) {
                         // New T3 browser tabs may appear in the provider snapshot shortly
@@ -1961,6 +2107,39 @@ fun OmniAiModesScreen(
             }
         }) { Text("Create") } },
         dismissButton = { TextButton(onClick = { create = false }) { Text("Cancel") } })
+    if (addProjectOpen) AlertDialog(
+        onDismissRequest = { if (!addProjectBusy) addProjectOpen = false },
+        title = { Text("New T3 project") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(addProjectName, { addProjectName = it.take(80) },
+                    label = { Text("Project name") }, singleLine = true)
+                Text("Creates a real named project in T3, not a phone-only folder.",
+                    style = MaterialTheme.typography.bodySmall, color = p.muted)
+            }
+        },
+        confirmButton = {
+            TextButton(enabled = !addProjectBusy && addProjectName.isNotBlank(),
+                onClick = {
+                    addProjectBusy = true
+                    scope.launch {
+                        try {
+                            val project = client.createNativeProject(addProjectName)
+                            // Refresh the authoritative project list, including its new ID.
+                            nativeCatalog = client.nativeCatalog()
+                            nativeProjectId = project.id
+                            addProjectOpen = false
+                            note = "T3 project created"
+                        } catch (e: Exception) {
+                            nativeCatalogError = "Project creation unconfirmed: " + e.message +
+                                ". Verify the project list before trying again."
+                        } finally { addProjectBusy = false }
+                    }
+                }) { Text("Create project") }
+        },
+        dismissButton = { TextButton(enabled = !addProjectBusy,
+            onClick = { addProjectOpen = false }) { Text("Cancel") } }
+    )
     switchProvider?.let { provider ->
         AlertDialog(onDismissRequest = { switchProvider = null },
             title = { Text("Activate " + provider.name + "?") },

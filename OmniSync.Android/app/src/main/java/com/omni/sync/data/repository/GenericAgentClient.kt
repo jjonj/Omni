@@ -52,6 +52,19 @@ data class AgentHistoryUi(
     val id: String, val kind: String, val text: String, val partial: Boolean,
     val revision: Long = 1, val streaming: Boolean = false
 )
+data class NativeProjectUi(
+    val id: String, val title: String, val workspaceRoot: String,
+    val defaultInstanceId: String? = null, val defaultModel: String? = null,
+    val defaultEffort: String? = null
+)
+data class NativeModelUi(
+    val instanceId: String, val slug: String, val provider: String,
+    val label: String, val effortId: String?, val efforts: List<Pair<String, String>>
+) {
+    val key get() = "$instanceId|$slug"
+}
+data class NativeCatalogUi(val projects: List<NativeProjectUi>, val models: List<NativeModelUi>,
+    val nativeModelSelectionReady: Boolean)
 data class AgentQueuedUi(val id: String, val text: String)
 data class PendingAgentUi(
     val id: String, val target: String, val text: String, val state: String,
@@ -298,6 +311,41 @@ class GenericAgentClient(
     private fun JsonObject.strings(key: String): List<String> =
         array(key)?.mapNotNull { runCatching { it.asString }.getOrNull() } ?: emptyList()
     private fun JsonElement.asObjectOrNull(): JsonObject? = if (isJsonObject) asJsonObject else null
+
+    /** Live source-owned T3 project/model/effort options, never Android guesswork. */
+    suspend fun nativeCatalog(): NativeCatalogUi {
+        val response = signalR.agentCall("t3.catalog").asJsonObject
+        val projects = response.array("projects")?.mapNotNull { el ->
+            val p = el.asObjectOrNull() ?: return@mapNotNull null
+            val id = p.str("id") ?: return@mapNotNull null
+            val selection = p.obj("defaultModelSelection")
+            NativeProjectUi(id, p.str("title") ?: id, p.str("workspaceRoot").orEmpty(),
+                selection?.str("instanceId"), selection?.str("model"),
+                selection?.array("options")?.firstOrNull()?.asObjectOrNull()?.str("value"))
+        }.orEmpty()
+        val models = response.array("models")?.mapNotNull { el ->
+            val m = el.asObjectOrNull() ?: return@mapNotNull null
+            val id = m.str("instanceId") ?: return@mapNotNull null
+            val slug = m.str("slug") ?: return@mapNotNull null
+            NativeModelUi(id, slug, m.str("provider").orEmpty(), m.str("label") ?: slug,
+                m.str("effortId"),
+                m.array("efforts")?.mapNotNull { option ->
+                    val o = option.asObjectOrNull() ?: return@mapNotNull null
+                    val value = o.str("id") ?: return@mapNotNull null
+                    value to (o.str("label") ?: value)
+                }.orEmpty())
+        }.orEmpty()
+        return NativeCatalogUi(projects, models, response.flag("nativeModelSelectionReady"))
+    }
+
+    suspend fun createNativeProject(name: String): NativeProjectUi {
+        val trimmed = name.trim()
+        require(trimmed.isNotEmpty() && trimmed.length <= 80 &&
+            !trimmed.contains('/') && !trimmed.contains('\\')) { "Invalid project name" }
+        val result = signalR.agentCall("t3.project.create", mapOf("name" to trimmed)).asJsonObject
+        val id = result.str("id") ?: error("T3 project creation returned no ID; verify before retrying")
+        return NativeProjectUi(id, result.str("title") ?: trimmed, result.str("workspaceRoot").orEmpty())
+    }
 
     /** T3 native history includes a structured turn item even when text isn't yet available.
      * Prefer readable text, but show bounded tool/progress details rather than an empty bubble. */
@@ -1096,7 +1144,8 @@ class GenericAgentClient(
     }
 
     private suspend fun createCapacitySession(
-        kind:String,workspace:String,firstMessage:String,maxWorkers:Int,title:String
+        kind:String,workspace:String,firstMessage:String,maxWorkers:Int,title:String,
+        modelSelection:Map<String,Any?>? = null
     ): String = capacityCreateMutex.withLock {
         require(kind in listOf("t3/chatgpt", "t3/thread") && maxWorkers in 1..100)
         val pending=pendingCapacityCreate()
@@ -1108,9 +1157,11 @@ class GenericAgentClient(
             addProperty("message",firstMessage)
             addProperty("maxWorkers",maxWorkers)
             addProperty("title",title)
+            add("modelSelection",gson.toJsonTree(modelSelection))
         }.also {persistCapacityCreate(it)}
         require(intent.str("workspace")==workspace && intent.str("message")==firstMessage &&
-            intent.str("kind")==kind && (intent.str("title") ?: "Android AI work")==title) {
+            intent.str("kind")==kind && (intent.str("title") ?: "Android AI work")==title &&
+            intent.get("modelSelection")?.toString() == gson.toJsonTree(modelSelection).toString()) {
             "A previous blank T3 create is unresolved. Recover it before starting another."
         }
         val existing=intent.str("sessionId")
@@ -1124,12 +1175,15 @@ class GenericAgentClient(
             return@withLock "T3 session $existing created; first instruction queued."
         }
         val result=try {
-            signalR.agentCall("sessions.create",mapOf(
+            val payload = mutableMapOf<String,Any?>(
                 "provider" to "t3","kind" to kind,"workspace" to workspace,
                 "project" to workspace,"title" to title,
                 "clientRequestId" to intent.str("requestId")
                 // Omit initialMessage: blank guest must not begin working yet.
-            )).asJsonObject
+            )
+            intent.obj("modelSelection")?.let { payload["modelSelection"] =
+                gson.fromJson(it, Map::class.java) }
+            signalR.agentCall("sessions.create",payload).asJsonObject
         } catch(e:Exception) {
             return@withLock "Blank T3 creation outcome uncertain: ${e.message}. Original request ID preserved."
         }
@@ -1154,7 +1208,8 @@ class GenericAgentClient(
 
     suspend fun createSession(provider: AgentProviderUi,kind:String,workspace:String,
                               firstMessage:String,deliveryMode:String="WhenIdle",
-                              maxActiveWorkers:Int=4, title:String=""): String {
+                              maxActiveWorkers:Int=4, title:String="",
+                              modelSelection:Map<String,Any?>? = null): String {
         require(provider.active&&provider.capabilities.contains("CreateSession")) {
             "Selected provider cannot create a session"
         }
@@ -1173,7 +1228,8 @@ class GenericAgentClient(
         val resultText = if (provider.id == "t3" && kind == "t3/thread" && firstMessage.isNotBlank()) {
             // The native thread is created without a prompt; the write-ahead mobile outbox
             // owns the first Queue delivery, including recovery after an app restart.
-            createCapacitySession(kind, workspace.trim(), firstMessage.trim(), 4, effectiveTitle)
+            createCapacitySession(kind, workspace.trim(), firstMessage.trim(), 4, effectiveTitle,
+                modelSelection)
         } else if (provider.id == "t3" && (firstMessage.isBlank() ||
             (kind == "t3/chatgpt" && workspace.isBlank() && deliveryMode != "WaitForSlot"))) {
             // Persist before contacting T3. A lost ACK is not proof of failure;
@@ -1185,14 +1241,16 @@ class GenericAgentClient(
                 check(blankCreatePrefs.getString("kind", null) == kind &&
                     blankCreatePrefs.getString("project", null) == project &&
                     blankCreatePrefs.getString("instruction", "") == instruction &&
-                    (blankCreatePrefs.getString("title", null) ?: "Android AI work") == effectiveTitle) {
+                    (blankCreatePrefs.getString("title", null) ?: "Android AI work") == effectiveTitle &&
+                    blankCreatePrefs.getString("modelSelection", "null") == gson.toJson(modelSelection)) {
                     "A different blank creation is unresolved. Retry with its original settings."
                 }
             }
             val requestId = pendingId ?: UUID.randomUUID().toString().also { id ->
                 check(blankCreatePrefs.edit().putString("requestId", id)
                     .putString("kind", kind).putString("project", project)
-                    .putString("instruction", instruction).putString("title", effectiveTitle).commit()) {
+                    .putString("instruction", instruction).putString("title", effectiveTitle)
+                    .putString("modelSelection", gson.toJson(modelSelection)).commit()) {
                     "Could not persist create identity; no new session started"
                 }
             }
@@ -1202,6 +1260,7 @@ class GenericAgentClient(
             )
             if (project.isNotEmpty()) params["project"] = project
             if (instruction.isNotEmpty()) params["initialMessage"] = instruction
+            modelSelection?.let { params["modelSelection"] = it }
             val receipt = try {
                 signalR.agentCall("sessions.create", params).asJsonObject
             } catch (_: Exception) {
@@ -1221,7 +1280,8 @@ class GenericAgentClient(
                     (receipt.obj("result")?.obj("details")?.str("reason") ?: receipt.str("error") ?: "unknown reason")
             } else "Creation unconfirmed. Original request saved; retry Create to reconcile without duplicates."
         } else if (provider.id == "t3" && deliveryMode=="WaitForSlot") {
-            createCapacitySession(kind,workspace,firstMessage,maxActiveWorkers,effectiveTitle)
+            createCapacitySession(kind,workspace,firstMessage,maxActiveWorkers,effectiveTitle,
+                modelSelection)
         } else if (provider.id == "t3") {
             require(kind == "t3/chatgpt") { "Native T3 MAIN does not support session creation" }
             // A repeated tap with the same work request must recover its
