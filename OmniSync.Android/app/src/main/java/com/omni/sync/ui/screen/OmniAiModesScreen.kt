@@ -111,6 +111,13 @@ private fun elapsedLabel(fromMs: Long, now: Long): String {
     }
 }
 
+/** Project name; when another project has the same name, add its parent folder ("t3code · Tools"). */
+private fun projectLabel(project: NativeProjectUi, all: List<NativeProjectUi>): String {
+    if (all.none { it.id != project.id && it.title.equals(project.title, true) }) return project.title
+    val parent = project.workspaceRoot.trimEnd('\\', '/').split('\\', '/').dropLast(1).lastOrNull()
+    return if (parent.isNullOrBlank()) project.title else project.title + " · " + parent
+}
+
 private fun AgentSessionUi.listGroup(sortMode: String): String =
     if (sortMode == "project") projectName() else groupName()
 
@@ -295,28 +302,35 @@ fun OmniAiModesScreen(
     var addProjectBusy by remember { mutableStateOf(false) }
     val chosenNativeModel = nativeCatalog?.models?.firstOrNull { it.key == nativeModelKey }
     val chosenNativeProject = nativeCatalog?.projects?.firstOrNull { it.id == nativeProjectId }
+    // Show a catalog and keep the current picks when still valid; otherwise fall back to the
+    // last used project/model, then the project's default, then the first (favorites sort first).
+    fun applyCatalog(c: NativeCatalogUi) {
+        nativeCatalog = c
+        if (c.projects.none { it.id == nativeProjectId })
+            nativeProjectId = (c.projects.firstOrNull { it.id == viewPrefs.getString("lastNativeProject", null) }
+                ?: c.projects.firstOrNull())?.id.orEmpty()
+        val project = c.projects.firstOrNull { it.id == nativeProjectId }
+        if (c.models.none { it.key == nativeModelKey }) {
+            nativeModelKey = (c.models.firstOrNull { it.key == viewPrefs.getString("lastNativeModel", null) }
+                ?: c.models.firstOrNull { it.instanceId == project?.defaultInstanceId && it.slug == project.defaultModel }
+                ?: c.models.firstOrNull())?.key.orEmpty()
+        }
+        val model = c.models.firstOrNull { it.key == nativeModelKey }
+        if (model?.efforts?.none { it.first == nativeEffort } != false)
+            nativeEffort = listOfNotNull(viewPrefs.getString("lastNativeEffort", null), project?.defaultEffort, "medium")
+                .firstOrNull { choice -> model?.efforts?.any { it.first == choice } == true }
+                ?: model?.efforts?.firstOrNull()?.first.orEmpty()
+    }
+    // Cached catalog opens the sheet instantly; the live one replaces it in the background.
     LaunchedEffect(create, kind, online) {
-        if (create && kind == "t3/thread" && online) {
+        if (create && kind == "t3/thread") {
+            (nativeCatalog ?: client.cachedNativeCatalog())?.let { applyCatalog(it) }
+            if (!online) return@LaunchedEffect
             nativeCatalogLoading = true
             nativeCatalogError = null
-            try {
-                nativeCatalog = client.nativeCatalog()
-                val firstProject = nativeCatalog?.projects?.firstOrNull()
-                if (nativeCatalog?.projects?.none { it.id == nativeProjectId } != false)
-                    nativeProjectId = firstProject?.id.orEmpty()
-                val chosen = nativeCatalog?.projects?.firstOrNull { it.id == nativeProjectId }
-                val preferred = nativeCatalog?.models?.firstOrNull {
-                    it.instanceId == chosen?.defaultInstanceId && it.slug == chosen.defaultModel
-                }
-                if (nativeCatalog?.models?.none { it.key == nativeModelKey } != false)
-                    nativeModelKey = (preferred ?: nativeCatalog?.models?.firstOrNull())?.key.orEmpty()
-                val model = nativeCatalog?.models?.firstOrNull { it.key == nativeModelKey }
-                nativeEffort = chosen?.defaultEffort?.takeIf { effort ->
-                    model?.efforts?.any { it.first == effort } == true
-                } ?: model?.efforts?.firstOrNull()?.first.orEmpty()
-            } catch (e: Exception) {
-                nativeCatalogError = "Could not retrieve T3 options: " + e.message
-            } finally { nativeCatalogLoading = false }
+            try { applyCatalog(client.nativeCatalog()) }
+            catch (e: Exception) { nativeCatalogError = "Could not refresh T3 options: " + e.message }
+            finally { nativeCatalogLoading = false }
         }
     }
     var scheduleOpen by remember { mutableStateOf(false) }
@@ -477,7 +491,7 @@ fun OmniAiModesScreen(
     fun isHidden(s: AgentSessionUi) = if (isT3Browser(s)) s.visibilityHidden == true
         else viewPrefs.getBoolean("hidden:${s.key}", false)
     fun snoozedUntil(s: AgentSessionUi) = if (isT3Browser(s)) s.visibilitySnoozedUntil ?: 0L
-        else viewPrefs.getLong("snooze:${s.key}", 0L)
+        else maxOf(s.visibilitySnoozedUntil ?: 0L, viewPrefs.getLong("snooze:${s.key}", 0L))
     fun isSnoozed(s: AgentSessionUi) = snoozedUntil(s) > now
     fun setHidden(s: AgentSessionUi, hidden: Boolean) {
         if (isT3Browser(s)) {
@@ -534,6 +548,15 @@ fun OmniAiModesScreen(
     val snoozedCount = remember(sessions, viewRevision, now / MINUTE_MS) {
         sessions.count { !isHidden(it) && isSnoozed(it) }
     }
+    // Settled/snoozed native threads are only fetched while one of those filters is open.
+    LaunchedEffect(sessionFilter, threadKind, listProvider, online) {
+        val want = listProvider == "t3" && threadKind == "t3/thread" &&
+            (sessionFilter == "Settled" || sessionFilter == "Snoozed")
+        if (client.includeSettled != want) {
+            client.includeSettled = want
+            if (online) client.refresh()
+        }
+    }
     val visibleSessions = remember(sessions, sessionSearch, sessionFilter, sortMode,
         hideUnloaded, showWorkers, viewRevision, now / MINUTE_MS, threadKind, listProvider) {
         sessions.asSequence().filter { s ->
@@ -547,14 +570,15 @@ fun OmniAiModesScreen(
             when (sessionFilter) {
                 "Hidden" -> isHidden(s)
                 "Snoozed" -> !isHidden(s) && isSnoozed(s)
-                else -> !isHidden(s) && !isSnoozed(s)
+                "Settled" -> !isHidden(s) && s.settled
+                else -> !isHidden(s) && !isSnoozed(s) && !s.settled
             }
         }.filter { s ->
             sessionFilter != "Attention" || s.needsAttention() || s.unread == true
         }.filter { s ->
             sessionFilter != "Active" || s.isRunning()
         }.filter { s ->
-            sessionFilter == "Hidden" || sessionFilter == "Snoozed" ||
+            sessionFilter == "Hidden" || sessionFilter == "Snoozed" || sessionFilter == "Settled" ||
                 (showWorkers || s.parentId == null) &&
                 (!hideUnloaded || s.kind != "t3/chatgpt" ||
                     s.reachability == "Reachable" ||
@@ -567,7 +591,14 @@ fun OmniAiModesScreen(
                     else viewPrefs.getLong("hiddenAt:${it.key}", 0L) }
                 "Snoozed" -> list.sortedByDescending { if (isT3Browser(it)) it.visibilitySnoozedAt ?: 0L
                     else viewPrefs.getLong("snoozedAt:${it.key}", 0L) }
-                else -> list.sortedWith(compareBy<AgentSessionUi> { if (sortMode == "project") 0 else it.groupRank() }
+                // Native threads: desktop order (pinned, then latest message), no status buckets.
+                "Settled" -> list.sortedByDescending { it.sortAt ?: it.createdAt ?: 0L }
+                else -> if (listProvider == "t3" && threadKind == "t3/thread" && sortMode != "project")
+                    list.sortedWith(compareByDescending<AgentSessionUi> { it.pinned }
+                        .thenByDescending { if (sortMode == "started") it.createdAt ?: 0L
+                            else it.sortAt ?: it.createdAt ?: 0L }
+                        .thenBy { it.key })
+                else list.sortedWith(compareBy<AgentSessionUi> { if (sortMode == "project") 0 else it.groupRank() }
                     .thenBy { if (sortMode == "project") it.projectName().lowercase() else "" }
                     .thenByDescending { it.needsAttention() }
                     .thenByDescending { it.unread == true }
@@ -708,7 +739,7 @@ fun OmniAiModesScreen(
             return
         }
         workspace = ""; newSessionTitle = ""; firstMessage = ""; createDeliveryMode = "WhenIdle"; createError = null
-        nativeCatalog = null; nativeProjectId = ""; nativeModelKey = ""; nativeEffort = ""; create = true
+        nativeProjectId = ""; nativeModelKey = ""; nativeEffort = ""; create = true
     }
     fun submit() {
         if (!canSend) return
@@ -1061,7 +1092,9 @@ fun OmniAiModesScreen(
                                 fontSize = 13.sp, maxLines = 1)
                         }
                         DropdownMenu(expanded = filterMenu, onDismissRequest = { filterMenu = false }) {
-                            listOf("All", "Active", "Attention", "Snoozed", "Hidden").forEach { value ->
+                            (listOf("All", "Active", "Attention", "Snoozed") +
+                                (if (listProvider == "t3" && threadKind == "t3/thread") listOf("Settled") else emptyList()) +
+                                "Hidden").forEach { value ->
                                 DropdownMenuItem(text = { Text((if (sessionFilter == value) "✓ " else "") + when (value) {
                                     "Attention" -> "Needs you" + if (attention > 0) " ($attention)" else ""
                                     "Snoozed" -> "Snoozed" + if (snoozedCount > 0) " ($snoozedCount)" else ""
@@ -1100,6 +1133,7 @@ fun OmniAiModesScreen(
                     itemsIndexed(visibleSessions, key = { _, session -> session.key }) { index, session ->
                         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             if (!compactMode && sessionSearch.isBlank() && sessionFilter == "All" &&
+                                (sortMode == "project" || threadKind != "t3/thread" || listProvider != "t3") &&
                                 (index == 0 || visibleSessions[index - 1].listGroup(sortMode) != session.listGroup(sortMode))) {
                                 Text(session.listGroup(sortMode),
                                     Modifier.fillMaxWidth().padding(start = 10.dp, top = 10.dp, bottom = 2.dp),
@@ -2050,8 +2084,7 @@ fun OmniAiModesScreen(
         val native = kind == "t3/thread"
         val canCreate = !creationBusy && kind.isNotBlank() &&
             (active.id == "t3" || (workspace.isNotBlank() && firstMessage.isNotBlank())) &&
-            (!native || (!nativeCatalogLoading && nativeCatalogError == null &&
-                nativeCatalog?.nativeModelSelectionReady == true &&
+            (!native || (nativeCatalog?.nativeModelSelectionReady == true &&
                 chosenNativeProject != null && chosenNativeModel != null &&
                 (chosenNativeModel.efforts.isEmpty() ||
                  chosenNativeModel.efforts.any { it.first == nativeEffort })))
@@ -2068,6 +2101,8 @@ fun OmniAiModesScreen(
                         else emptyList()
                         mapOf("instanceId" to model.instanceId, "model" to model.slug, "options" to options)
                     } else null
+                    if (native) viewPrefs.edit().putString("lastNativeProject", nativeProjectId)
+                        .putString("lastNativeModel", nativeModelKey).putString("lastNativeEffort", nativeEffort).apply()
                     val result = client.createSession(active, kind, project, firstMessage,
                         createDeliveryMode, maxActiveWorkers, "", config)
                     val newKey = client.createdSessionKey.value
@@ -2122,15 +2157,21 @@ fun OmniAiModesScreen(
                     focusedContainerColor = p.raised, unfocusedContainerColor = p.raised,
                     focusedBorderColor = p.border, unfocusedBorderColor = Color.Transparent))
             if (native) {
-                if (nativeCatalogLoading) LinearProgressIndicator(Modifier.fillMaxWidth().height(2.dp))
+                if (nativeCatalogLoading && nativeCatalog == null)
+                    LinearProgressIndicator(Modifier.fillMaxWidth().height(2.dp))
                 Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                     horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
                     Box {
-                        PickerChip(Icons.Default.Folder, chosenNativeProject?.title ?: "Project", p,
-                            enabled = !nativeCatalogLoading) { projectMenu = true }
+                        PickerChip(Icons.Default.Folder, chosenNativeProject?.let { projectLabel(it, nativeCatalog!!.projects) }
+                            ?: "Project", p, enabled = nativeCatalog != null) { projectMenu = true }
                         DropdownMenu(expanded = projectMenu, onDismissRequest = { projectMenu = false }) {
                             nativeCatalog?.projects?.forEach { project ->
-                                DropdownMenuItem(text = { Text(project.title) }, onClick = {
+                                // Path under the name, as the desktop lists projects; tells same-named ones apart.
+                                DropdownMenuItem(text = { Column {
+                                    Text(project.title)
+                                    if (project.workspaceRoot.isNotBlank()) Text(project.workspaceRoot,
+                                        color = p.muted, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                } }, onClick = {
                                     nativeProjectId = project.id; projectMenu = false
                                     val preferred = nativeCatalog?.models?.firstOrNull {
                                         it.instanceId == project.defaultInstanceId && it.slug == project.defaultModel
@@ -2150,10 +2191,30 @@ fun OmniAiModesScreen(
                     }
                     Box {
                         PickerChip(Icons.Default.AutoAwesome, chosenNativeModel?.label ?: "Model", p,
-                            enabled = !nativeCatalogLoading && nativeCatalog?.models?.isNotEmpty() == true) { modelMenu = true }
+                            enabled = nativeCatalog?.models?.isNotEmpty() == true) { modelMenu = true }
                         DropdownMenu(expanded = modelMenu, onDismissRequest = { modelMenu = false }) {
+                            // Favorites first (T3 desktop's shared list); the star toggles it on the desktop too.
                             nativeCatalog?.models?.forEach { model ->
-                                DropdownMenuItem(text = { Text(model.provider + " · " + model.label) }, onClick = {
+                                DropdownMenuItem(text = { Text(model.provider + " · " + model.label) },
+                                    trailingIcon = {
+                                        IconButton(onClick = {
+                                            val catalog = nativeCatalog ?: return@IconButton
+                                            val on = !model.favorite
+                                            nativeCatalog = catalog.copy(models = catalog.models.map {
+                                                if (it.key == model.key) it.copy(favorite = on) else it })
+                                            scope.launch {
+                                                try { client.setModelFavorite(model, on); applyCatalog(client.nativeCatalog()) }
+                                                catch (e: Exception) {
+                                                    nativeCatalog = catalog
+                                                    nativeCatalogError = "Favorite not saved: " + e.message
+                                                }
+                                            }
+                                        }, modifier = Modifier.size(32.dp)) {
+                                            Icon(if (model.favorite) Icons.Default.Star else Icons.Default.StarBorder,
+                                                if (model.favorite) "Unfavorite" else "Favorite",
+                                                tint = if (model.favorite) p.amber else p.muted, modifier = Modifier.size(18.dp))
+                                        }
+                                    }, onClick = {
                                     nativeModelKey = model.key
                                     nativeEffort = model.efforts.firstOrNull { it.first == "medium" }?.first
                                         ?: model.efforts.firstOrNull()?.first.orEmpty()

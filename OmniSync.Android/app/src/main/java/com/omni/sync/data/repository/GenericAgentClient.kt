@@ -48,7 +48,11 @@ data class AgentSessionUi(
     // Live turn status (provider-neutral, optional): when the current turn began
     // and a short "what it's doing" line. Null when the provider doesn't report them.
     val turnStartedAt: String? = null,
-    val activityText: String? = null
+    val activityText: String? = null,
+    // Native T3 sidebar placement: settled shelf, pinned, and the desktop sort time (ms).
+    val settled: Boolean = false,
+    val pinned: Boolean = false,
+    val sortAt: Long? = null
 ) {
     val key get() = "$provider:$id"
 }
@@ -63,7 +67,8 @@ data class NativeProjectUi(
 )
 data class NativeModelUi(
     val instanceId: String, val slug: String, val provider: String,
-    val label: String, val effortId: String?, val efforts: List<Pair<String, String>>
+    val label: String, val effortId: String?, val efforts: List<Pair<String, String>>,
+    val favorite: Boolean = false
 ) {
     val key get() = "$instanceId|$slug"
 }
@@ -254,6 +259,9 @@ class GenericAgentClient(
                                 visibilitySnoozedUntil = if (summary.has("visibility")) updated.visibilitySnoozedUntil else previous?.visibilitySnoozedUntil,
                                 visibilitySnoozedAt = if (summary.has("visibility")) updated.visibilitySnoozedAt else previous?.visibilitySnoozedAt,
                                 visibilityCreatedAt = if (summary.has("visibility")) updated.visibilityCreatedAt else previous?.visibilityCreatedAt,
+                                settled = if (summary.has("visibility")) updated.settled else previous?.settled ?: false,
+                                pinned = if (summary.has("visibility")) updated.pinned else previous?.pinned ?: false,
+                                sortAt = if (summary.has("visibility")) updated.sortAt else previous?.sortAt,
                                 workspace = if (summary.has("workspace")) updated.workspace else previous?.workspace,
                                 reachability = if (summary.obj("state")?.has("reachability") == true)
                                     updated.reachability else previous?.reachability ?: updated.reachability,
@@ -328,9 +336,26 @@ class GenericAgentClient(
         array(key)?.mapNotNull { runCatching { it.asString }.getOrNull() } ?: emptyList()
     private fun JsonElement.asObjectOrNull(): JsonObject? = if (isJsonObject) asJsonObject else null
 
+    /** Last T3 catalog seen, so the New thread sheet opens instantly; refresh with [nativeCatalog]. */
+    fun cachedNativeCatalog(): NativeCatalogUi? =
+        providerPrefs.getString("nativeCatalog", null)?.let { raw ->
+            runCatching { parseNativeCatalog(JsonParser.parseString(raw).asJsonObject) }.getOrNull()
+        }
+
     /** Live source-owned T3 project/model/effort options, never Android guesswork. */
     suspend fun nativeCatalog(): NativeCatalogUi {
         val response = signalR.agentCall("t3.catalog").asJsonObject
+        providerPrefs.edit().putString("nativeCatalog", response.toString()).apply()
+        return parseNativeCatalog(response)
+    }
+
+    /** Star/unstar a model in T3's shared favorites (same list the desktop picker uses). */
+    suspend fun setModelFavorite(model: NativeModelUi, favorite: Boolean) {
+        signalR.agentCall("t3.model.favorite", mapOf("instanceId" to model.instanceId,
+            "model" to model.slug, "favorite" to favorite))
+    }
+
+    private fun parseNativeCatalog(response: JsonObject): NativeCatalogUi {
         val projects = response.array("projects")?.mapNotNull { el ->
             val p = el.asObjectOrNull() ?: return@mapNotNull null
             val id = p.str("id") ?: return@mapNotNull null
@@ -349,7 +374,7 @@ class GenericAgentClient(
                     val o = option.asObjectOrNull() ?: return@mapNotNull null
                     val value = o.str("id") ?: return@mapNotNull null
                     value to (o.str("label") ?: value)
-                }.orEmpty())
+                }.orEmpty(), m.flag("favorite"))
         }.orEmpty()
         return NativeCatalogUi(projects, models, response.flag("nativeModelSelectionReady"))
     }
@@ -547,8 +572,14 @@ class GenericAgentClient(
             obj.get("createdAt")?.let { runCatching { it.asLong }.getOrNull() },
             obj.str("workspace"),
             obj.obj("state")?.str("turnStartedAt") ?: obj.str("turnStartedAt"),
-            obj.obj("state")?.str("activityText") ?: obj.str("activityText"))
+            obj.obj("state")?.str("activityText") ?: obj.str("activityText"),
+            obj.obj("visibility")?.flag("settled") ?: false,
+            obj.obj("visibility")?.flag("pinned") ?: false,
+            obj.obj("visibility")?.get("sortAt")?.let { runCatching { it.asLong }.getOrNull() })
     }
+
+    /** When true, the catalog also loads settled/snoozed native threads (off by default: there are hundreds). */
+    @Volatile var includeSettled = false
 
     suspend fun refresh() = refreshMutex.withLock {
         if (!signalR.hubAuthenticated.value) return@withLock
@@ -575,6 +606,7 @@ class GenericAgentClient(
             var complete = false
             for (pageIndex in 0 until 20) {
                 val params = mutableMapOf<String, Any>("clientId" to clientId, "limit" to 100)
+                if (includeSettled) params["includeSettled"] = true
                 cursor?.let { params["page"] = it }
                 val page = try {
                     signalR.agentCall("sessions.list", params).asJsonObject
