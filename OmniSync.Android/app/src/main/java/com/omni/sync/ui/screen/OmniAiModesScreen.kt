@@ -1,6 +1,9 @@
 package com.omni.sync.ui.screen
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -121,6 +124,7 @@ private fun AgentSessionUi.dotColor(p: AiPalette): Color = when {
 }
 
 /** Session list -> conversation, with a fixed composer and secondary tools in focused sheets. */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun OmniAiModesScreen(
     signalRClient: SignalRClient,
@@ -160,6 +164,11 @@ fun OmniAiModesScreen(
     var busyPolicy by remember { mutableStateOf<T3BusyPolicyState?>(null) }
     var keepT3BusyUpdating by remember { mutableStateOf(false) }
     var pendingBusyMinutes by remember { mutableStateOf<Int?>(null) }
+    var busySlotsOpen by remember { mutableStateOf(false) }
+    var busySlotValue by remember { mutableIntStateOf(3) }
+    LaunchedEffect(busySlotsOpen) {
+        if (busySlotsOpen) busySlotValue = busyPolicy?.maxWorking ?: 3
+    }
     LaunchedEffect(online) {
         if (!online) {
             busyPolicy = null
@@ -274,6 +283,24 @@ fun OmniAiModesScreen(
         else -> "Delivers when idle"
     }
     fun isT3Browser(s: AgentSessionUi) = s.provider == "t3" && s.kind == "t3/chatgpt"
+    fun openChatGpt(target: AgentSessionUi) {
+        scope.launch {
+            try {
+                // Use the desktop's actual conversation URL, not the T3 session ID.
+                val url = client.sessionControls(target).get("url")
+                    ?.takeUnless { it.isJsonNull }?.asString
+                    ?.takeIf { it.startsWith("https://chatgpt.com/c/") }
+                    ?: throw IllegalStateException("No ChatGPT conversation URL is available yet")
+                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                    .addCategory(Intent.CATEGORY_BROWSABLE)
+                    .setPackage("com.openai.chatgpt")
+                try { context.startActivity(intent) }
+                catch (_: android.content.ActivityNotFoundException) {
+                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                }
+            } catch (e: Exception) { note = "Open in ChatGPT failed: " + e.message }
+        }
+    }
     LaunchedEffect(rowOptions?.key, online) {
         rowControls = null
         rowControlError = null
@@ -298,6 +325,20 @@ fun OmniAiModesScreen(
                 val receipt = client.sessionAction(target, "Control",
                     mapOf("command" to command, "options" to options))
                 note = "${command.replace('_', ' ')}: $receipt"
+                if (command == "stop" && receipt != "Failed" && receipt != "Unknown") {
+                    var idleConfirmed = false
+                    for (waitMs in listOf(400L, 800L, 1200L, 2000L, 2400L)) {
+                        delay(waitMs)
+                        runCatching { client.refresh() }
+                        val current = client.sessions.value.firstOrNull { it.key == target.key }
+                        if (current?.activity?.equals("Idle", true) == true) {
+                            idleConfirmed = true
+                            break
+                        }
+                    }
+                    note = if (idleConfirmed) "Stopped · session confirmed idle"
+                        else "Stop accepted, but session has not reported Idle yet. Check again shortly."
+                }
                 rowControlError = null
                 if (command == "close") rowOptions = null
                 else if (rowOptions?.key == target.key) {
@@ -309,6 +350,7 @@ fun OmniAiModesScreen(
             } catch (e: Exception) {
                 rowControlError = "${command.replace('_', ' ')} failed: " + e.message +
                     ". If the operation timed out, inspect its state before retrying."
+                note = rowControlError
             } finally { rowControlBusy = false }
         }
     }
@@ -436,7 +478,11 @@ fun OmniAiModesScreen(
     LaunchedEffect(online, listMode, selectedKey) {
         if (online && !listMode && selectedKey != null) {
             while (true) {
-                delay(8_000)
+                // T3 publishes growing assistant/tool entries before a turn finishes.
+                // Poll more frequently only while the selected session is working.
+                delay(if (selected?.activity?.equals("Working", true) == true ||
+                    selected?.activity?.equals("Running", true) == true ||
+                    selected?.activity?.equals("Active", true) == true) 3_000 else 8_000)
                 client.select(selectedKey, reload = true)
             }
         }
@@ -608,6 +654,39 @@ fun OmniAiModesScreen(
             )
         }
     }
+    if (busySlotsOpen) {
+        AlertDialog(
+            onDismissRequest = { busySlotsOpen = false },
+            title = { Text("Keep T3 Busy · slots") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Maximum automatically working sessions: $busySlotValue", color = p.text)
+                    Slider(
+                        value = busySlotValue.toFloat(),
+                        onValueChange = { busySlotValue = it.toInt().coerceIn(1, 100) },
+                        valueRange = 1f..100f, steps = 98,
+                        enabled = online && busyPolicy != null && !keepT3BusyUpdating,
+                        onValueChangeFinished = {
+                            val requested = busySlotValue
+                            keepT3BusyUpdating = true
+                            scope.launch {
+                                try {
+                                    busyPolicy = signalRClient.t3BusyPolicy(maxWorking = requested)
+                                    note = "Keep T3 Busy capacity set to ${busyPolicy?.maxWorking ?: requested} slots"
+                                } catch (error: Exception) {
+                                    busySlotValue = busyPolicy?.maxWorking ?: requested
+                                    note = "Capacity update failed: " + error.message
+                                } finally { keepT3BusyUpdating = false }
+                            }
+                        }
+                    )
+                    Text("Changes apply to T3 immediately. Already-running sessions are not stopped.",
+                        color = p.muted, style = MaterialTheme.typography.bodySmall)
+                }
+            },
+            confirmButton = { TextButton(onClick = { busySlotsOpen = false }) { Text("Done") } }
+        )
+    }
     if (pendingBusyMinutes != null) {
         AlertDialog(
             onDismissRequest = { pendingBusyMinutes = null },
@@ -659,19 +738,24 @@ fun OmniAiModesScreen(
                     } ?: "Busy", color = if (busyPolicy?.keepT3Busy == true) p.green else p.muted,
                         style = MaterialTheme.typography.labelSmall,
                         fontWeight = FontWeight.SemiBold)
+                    // The outer gesture target permits long-press settings while preserving
+                    // a normal tap as the immediate Keep Busy toggle.
+                    Box(Modifier.combinedClickable(
+                        enabled = online && busyPolicy != null && !keepT3BusyUpdating,
+                        onLongClick = { busySlotsOpen = true },
+                        onClick = {
+                            keepT3BusyUpdating = true
+                            scope.launch {
+                                try { busyPolicy = signalRClient.t3BusyPolicy(!(busyPolicy?.keepT3Busy ?: false)) }
+                                catch (error: Exception) { note = "Keep T3 Busy failed: " + error.message }
+                                finally { keepT3BusyUpdating = false }
+                            }
+                        }
+                    )) {
                     Switch(
                         checked = busyPolicy?.keepT3Busy == true,
                         enabled = online && busyPolicy != null && !keepT3BusyUpdating,
-                        onCheckedChange = { enabled ->
-                            keepT3BusyUpdating = true
-                            scope.launch {
-                                try { busyPolicy = signalRClient.t3BusyPolicy(enabled) }
-                                catch (error: Exception) {
-                                    busyPolicy = null
-                                    note = "Keep T3 Busy failed: " + error.message
-                                } finally { keepT3BusyUpdating = false }
-                            }
-                        },
+                        onCheckedChange = null,
                         modifier = Modifier.size(width = 48.dp, height = 40.dp)
                             .scale(0.75f).semantics {
                                 contentDescription = "Keep T3 Busy"
@@ -682,6 +766,7 @@ fun OmniAiModesScreen(
                                 }
                             }
                     )
+                    }
                     Box {
                         var timingMenu by remember { mutableStateOf(false) }
                         IconButton(onClick = { timingMenu = true },
@@ -758,8 +843,12 @@ fun OmniAiModesScreen(
                         }
                         if (!listMode) {
                             DropdownMenuItem(text = { Text("Session actions") }, onClick = {
-                                menu = false; sheet = "actions"
+                                menu = false; rowOptions = selected
                             })
+                            if (selected?.let { isT3Browser(it) } == true)
+                                DropdownMenuItem(text = { Text("Open in ChatGPT app") }, onClick = {
+                                    menu = false; selected?.let { openChatGpt(it) }
+                                })
                             DropdownMenuItem(text = { Text("Native queue") }, onClick = {
                                 menu = false; sheet = "queue"
                                 selected?.let { scope.launch { client.fetchQueue(it) } }
@@ -884,6 +973,7 @@ fun OmniAiModesScreen(
                         if (compactMode) {
                             Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp))
                                 .background(if (session.key == selectedKey) p.selected else p.surface)
+                                .border(2.dp, session.dotColor(p), RoundedCornerShape(10.dp))
                                 .clickable { openSession(session) }
                                 .padding(start = 12.dp, end = 4.dp, top = 3.dp, bottom = 3.dp),
                                 verticalAlignment = Alignment.CenterVertically) {
@@ -985,8 +1075,14 @@ fun OmniAiModesScreen(
                         else selected.activity + " · " + selected.confidence,
                         modifier = Modifier.weight(1f), color = p.muted, maxLines = 1,
                         style = MaterialTheme.typography.labelSmall)
-                    if (online && !actionBusy && selected?.capabilities?.contains("Interrupt") == true)
-                        TextButton(onClick = { operation("Interrupt") }) {
+                    if (online && !actionBusy && selected != null &&
+                        (selected.capabilities.contains("Interrupt") ||
+                            (isT3Browser(selected) && selected.capabilities.contains("RemoteControl"))))
+                        TextButton(onClick = {
+                            if (isT3Browser(selected) && selected.capabilities.contains("RemoteControl"))
+                                performRowControl(selected, "stop")
+                            else operation("Interrupt")
+                        }) {
                             Icon(Icons.Default.StopCircle, null, modifier = Modifier.size(17.dp))
                             Spacer(Modifier.width(3.dp)); Text("Stop")
                         }
@@ -1250,6 +1346,8 @@ fun OmniAiModesScreen(
                     }
                 }
                 if (!remote || rowActionPage == "Session") {
+                    if (!remote && target.capabilities.contains("Interrupt"))
+                        SheetAction("Stop turn", p) { operation("Interrupt"); rowOptions = null }
                     if (remote) {
                         Text("Copy", color = p.muted, style = MaterialTheme.typography.labelMedium)
                         SheetAction("T3 Session ID", p) {
@@ -1260,6 +1358,10 @@ fun OmniAiModesScreen(
                         }
                         SheetAction("ChatGPT URL", p) {
                             copyValue("ChatGPT URL", field("url"))
+                        }
+                        SheetAction("Open in ChatGPT app", p) {
+                            rowOptions = null
+                            openChatGpt(target)
                         }
                         SheetAction("Session title", p) { copyValue("Title", field("title") ?: target.title) }
                         SheetAction("Parent Session ID", p) {
@@ -1889,7 +1991,7 @@ fun OmniAiModesScreen(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Default.Terminal, null, tint = p.muted, modifier = Modifier.size(16.dp))
                 Spacer(Modifier.width(8.dp))
-                Text(item.kind + (if (item.partial) " · partial" else ""),
+                Text(item.kind + (if (item.streaming) " · live" else if (item.partial) " · partial" else ""),
                     Modifier.weight(1f), color = p.muted,
                     style = MaterialTheme.typography.labelMedium)
                 Icon(if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
@@ -1917,13 +2019,22 @@ fun OmniAiModesScreen(
                 .background(if (outgoing) p.accentBg else p.surface)
                 .padding(horizontal = 15.dp, vertical = 12.dp)) {
                 SelectionContainer {
-                    Text(remember(item.text, p) { aiMarkdown(
-                        item.text.ifBlank { if (item.partial) "Waiting for content…" else "(empty)" }, p
+                    Text(remember(item.text, item.streaming, item.partial, p) { aiMarkdown(
+                        item.text.ifBlank { when {
+                            item.streaming -> "Generating response…"
+                            item.partial -> "Content not available in this partial transcript."
+                            else -> "(empty)"
+                        } }, p
                     ) }, color = p.text, style = MaterialTheme.typography.bodyMedium,
                         lineHeight = 21.sp)
                 }
             }
-            if (item.partial) Text("Partial history", color = p.muted,
+            if (item.streaming) {
+                LinearProgressIndicator(Modifier.widthIn(max = 135.dp).height(2.dp)
+                    .padding(horizontal = 7.dp), color = p.accent)
+                Text("Live · updating as T3 streams", color = p.accent,
+                    style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(7.dp))
+            } else if (item.partial) Text("Partial transcript", color = p.muted,
                 style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(7.dp))
         }
     }

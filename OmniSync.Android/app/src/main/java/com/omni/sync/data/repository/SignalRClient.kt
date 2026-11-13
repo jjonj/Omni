@@ -64,7 +64,8 @@ data class ProcessInfo(
 data class T3BusyPolicyState(
     val keepT3Busy: Boolean,
     val shutdownWhenIdle: Boolean,
-    val busyUntil: Long?
+    val busyUntil: Long?,
+    val maxWorking: Int?
 )
 
 data class AndroidAlarmActionData(
@@ -1701,7 +1702,8 @@ class SignalRClient(
     }
 
     /** All T3 Busy scheduling is authoritative on the PC, including its deadline. */
-    suspend fun t3BusyPolicy(enabled: Boolean? = null, scheduleMinutes: Int? = null): T3BusyPolicyState =
+    suspend fun t3BusyPolicy(enabled: Boolean? = null, scheduleMinutes: Int? = null,
+                             maxWorking: Int? = null): T3BusyPolicyState =
         kotlinx.coroutines.withContext(Dispatchers.IO) {
             val conn = hubConnection ?: throw IllegalStateException("OmniHub connection unavailable")
             check(isHubAuthenticated &&
@@ -1709,6 +1711,10 @@ class SignalRClient(
                 "OmniHub is not authenticated"
             }
             val result = when {
+                maxWorking != null -> {
+                    require(maxWorking in 1..100) { "Keep T3 Busy slots must be 1–100" }
+                    conn.invoke(Any::class.java, "T3CaffySetSlots", maxWorking)
+                }
                 scheduleMinutes != null -> conn.invoke(Any::class.java, "T3CaffySchedule", scheduleMinutes)
                 enabled != null -> conn.invoke(Any::class.java, "T3CaffySetBusy", enabled)
                 else -> conn.invoke(Any::class.java, "T3CaffyStatus")
@@ -1718,10 +1724,15 @@ class SignalRClient(
             require(state != null && state.isJsonPrimitive && state.asJsonPrimitive.isBoolean) {
                 "T3 returned no verified Keep T3 Busy state"
             }
+            val confirmedSlots = response.get("maxWorking")?.takeUnless { it.isJsonNull }?.asInt
+            if (maxWorking != null && confirmedSlots != maxWorking) {
+                throw IllegalStateException("T3 did not confirm the requested capacity limit")
+            }
             T3BusyPolicyState(
                 keepT3Busy = state.asBoolean,
                 shutdownWhenIdle = response.get("shutdownWhenIdle")?.takeUnless { it.isJsonNull }?.asBoolean ?: false,
-                busyUntil = response.get("busyUntil")?.takeUnless { it.isJsonNull }?.asLong
+                busyUntil = response.get("busyUntil")?.takeUnless { it.isJsonNull }?.asLong,
+                maxWorking = confirmedSlots
             )
         }
 

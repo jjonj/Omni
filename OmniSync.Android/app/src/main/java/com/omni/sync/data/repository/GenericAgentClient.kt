@@ -50,7 +50,7 @@ data class AgentSessionUi(
 }
 data class AgentHistoryUi(
     val id: String, val kind: String, val text: String, val partial: Boolean,
-    val revision: Long = 1
+    val revision: Long = 1, val streaming: Boolean = false
 )
 data class AgentQueuedUi(val id: String, val text: String)
 data class PendingAgentUi(
@@ -298,6 +298,29 @@ class GenericAgentClient(
     private fun JsonObject.strings(key: String): List<String> =
         array(key)?.mapNotNull { runCatching { it.asString }.getOrNull() } ?: emptyList()
     private fun JsonElement.asObjectOrNull(): JsonObject? = if (isJsonObject) asJsonObject else null
+
+    /** T3 native history includes a structured turn item even when text isn't yet available.
+     * Prefer readable text, but show bounded tool/progress details rather than an empty bubble. */
+    private fun historyContent(row: JsonObject): String {
+        val parts = row.array("parts")?.mapNotNull { it.asObjectOrNull() }.orEmpty()
+        val text = parts.mapNotNull {
+            it.str("markdown") ?: it.str("text") ?: it.str("summary")
+                ?: it.str("label") ?: it.str("status")
+        }.filter { it.isNotBlank() }
+        if (text.isNotEmpty()) return text.joinToString("\n")
+        return parts.mapNotNull { part ->
+            if (part.str("type") != "native.turn_item") return@mapNotNull null
+            val item = part.obj("item") ?: return@mapNotNull null
+            val kind = item.str("type") ?: "Progress"
+            val description = listOf("title", "label", "summary", "message", "command", "status")
+                .firstNotNullOfOrNull { item.str(it)?.takeIf(String::isNotBlank) }
+            val headline = if (description == null) kind else "$kind · $description"
+            // Expansion in the conversation reveals the structured event if T3 has
+            // not yet supplied a short human-readable summary.
+            val details = item.toString().take(1800)
+            "$headline\n$details"
+        }.joinToString("\n")
+    }
 
     private fun publishOutbox() {
         _outbox.value = entries.values.sortedByDescending { it.createdAt }.map {
@@ -595,12 +618,10 @@ class GenericAgentClient(
             val rows = page.array("items")?.mapNotNull { item ->
                 val obj = item.asObjectOrNull() ?: return@mapNotNull null
                 val id = obj.str("id") ?: return@mapNotNull null
-                val parts = obj.array("parts")?.mapNotNull { part ->
-                    part.asObjectOrNull()?.let { it.str("markdown") ?: it.str("text") }
-                } ?: emptyList()
                 AgentHistoryUi(id, obj.str("kind") ?: "Notice",
-                    parts.joinToString("\n"), obj.str("completeness") != "Full",
-                    obj.get("revision")?.let { runCatching { it.asLong }.getOrNull() } ?: 1L)
+                    historyContent(obj), obj.str("completeness") != "Full",
+                    obj.get("revision")?.let { runCatching { it.asLong }.getOrNull() } ?: 1L,
+                    obj.flag("streaming"))
             } ?: emptyList()
             // A full read is only the *latest page*, not a replacement for pages
             // fetched with Load earlier. Even a manual refresh/reconnect preserves them.
@@ -667,12 +688,10 @@ class GenericAgentClient(
             val olderRows = page.array("items")?.mapNotNull { element ->
                 val row = element.asObjectOrNull() ?: return@mapNotNull null
                 val id = row.str("id") ?: return@mapNotNull null
-                val parts = row.array("parts")?.mapNotNull { part ->
-                    part.asObjectOrNull()?.let { it.str("markdown") ?: it.str("text") }
-                }.orEmpty()
-                AgentHistoryUi(id, row.str("kind") ?: "Notice", parts.joinToString("\n"),
+                AgentHistoryUi(id, row.str("kind") ?: "Notice", historyContent(row),
                     row.str("completeness") != "Full",
-                    row.get("revision")?.let { runCatching { it.asLong }.getOrNull() } ?: 1L)
+                    row.get("revision")?.let { runCatching { it.asLong }.getOrNull() } ?: 1L,
+                    row.flag("streaming"))
             }.orEmpty()
             // Preserve provider ordering while deduplicating by stable source ID.
             val merged = synchronized(historyCache) {
