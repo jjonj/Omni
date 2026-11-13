@@ -473,6 +473,9 @@ class MainActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        // Keep the latest notification destination across onStart/recreation.
+        // Otherwise the morning auto-alarm may override the requested AI session.
+        setIntent(intent)
         handleIntent(intent)
     }
 
