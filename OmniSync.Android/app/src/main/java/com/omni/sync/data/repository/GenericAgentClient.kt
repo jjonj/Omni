@@ -257,7 +257,8 @@ class GenericAgentClient(
                                 workspace = if (summary.has("workspace")) updated.workspace else previous?.workspace,
                                 reachability = if (summary.obj("state")?.has("reachability") == true)
                                     updated.reachability else previous?.reachability ?: updated.reachability,
-                                lastActivityAt = if (summary.has("lastActivityAt")) updated.lastActivityAt else previous?.lastActivityAt,
+                                lastActivityAt = if (summary.has("lastActivityAt") ||
+                                    summary.obj("state")?.has("activityAt") == true) updated.lastActivityAt else previous?.lastActivityAt,
                                 turnStartedAt = if (summary.obj("state")?.has("turnStartedAt") == true ||
                                     summary.has("turnStartedAt")) updated.turnStartedAt else previous?.turnStartedAt,
                                 activityText = if (summary.obj("state")?.has("activityText") == true ||
@@ -277,6 +278,7 @@ class GenericAgentClient(
                             }
                         }
                     }
+                    "session.item" -> applyLiveItem(event.obj("payload"))
                     "operation.changed" -> {
                         val payload = event.get("payload")?.takeIf { it.isJsonObject }?.asJsonObject
                         val id = payload?.str("clientRequestId")
@@ -294,6 +296,12 @@ class GenericAgentClient(
                     }
                     "resync.required" -> refresh()
                 }
+            }
+        }
+        scope.launch {
+            while (true) {
+                delay(120_000)
+                if (signalR.hubAuthenticated.value && _selected.value != null) watchSelection()
             }
         }
         scope.launch {
@@ -481,6 +489,42 @@ class GenericAgentClient(
                     "provider" to session.provider,"id" to session.id)))))
         }.onFailure {Log.d("GenericAgents","Watch unavailable: ${it.message}")}
     }
+    /** Live streams and history reads use different revision counters: a finished
+     * (non-streaming) item always wins; between two streaming copies the longer text wins. */
+    private fun newer(prev: AgentHistoryUi, item: AgentHistoryUi): Boolean = when {
+        prev.streaming && !item.streaming -> true
+        !prev.streaming && item.streaming -> false
+        prev.streaming -> item.text.length >= prev.text.length
+        else -> prev.revision <= item.revision
+    }
+
+    /** Hub `session.item` push: the in-progress assistant reply (full text so far) for a
+     * watched session. Upserted into the open timeline; a final push triggers a canonical read. */
+    private fun applyLiveItem(payload: JsonObject?) {
+        val ref = payload?.obj("session") ?: return
+        val key = "${ref.str("provider") ?: return}:${ref.str("id") ?: return}"
+        val raw = payload.obj("item") ?: return
+        val id = raw.str("id") ?: return
+        val streaming = raw.flag("streaming")
+        val item = AgentHistoryUi(id, raw.str("kind") ?: "Assistant", historyContent(raw),
+            raw.str("completeness") != "Full",
+            raw.get("revision")?.let { runCatching { it.asLong }.getOrNull() } ?: 1L, streaming)
+        val merged = synchronized(historyCache) {
+            val list = historyCache[key].orEmpty()
+            val prev = list.firstOrNull { it.id == id }
+            if (prev != null && !newer(prev, item)) return@synchronized null
+            (if (prev == null) list + item else list.map { if (it.id == id) item else it })
+                .also { historyCache[key] = it }
+        } ?: return
+        payload.str("activityAt")?.let { at ->
+            _sessions.value = _sessions.value.map { if (it.key == key) it.copy(lastActivityAt = at) else it }
+        }
+        if (_selected.value == key) {
+            _history.value = merged
+            if (!streaming) scope.launch { select(key, reload = true) }
+        }
+    }
+
     private fun parseSession(obj: JsonObject): AgentSessionUi? {
         val ref = obj.obj("ref") ?: return null
         val provider = ref.str("provider") ?: return null
@@ -494,7 +538,7 @@ class GenericAgentClient(
                 runCatching { it.asBoolean }.getOrNull()
             }, obj.obj("parent")?.str("id"),
             obj.obj("state")?.str("reachability") ?: "Unknown",
-            obj.str("lastActivityAt"),
+            obj.obj("state")?.str("activityAt") ?: obj.str("lastActivityAt"),
             obj.obj("visibility")?.get("hidden")?.let { runCatching { it.asBoolean }.getOrNull() },
             obj.obj("visibility")?.get("hiddenAt")?.let { runCatching { it.asLong }.getOrNull() },
             obj.obj("visibility")?.get("snoozedUntil")?.let { runCatching { it.asLong }.getOrNull() },
@@ -689,7 +733,7 @@ class GenericAgentClient(
                 val byId = linkedMapOf<String, AgentHistoryUi>()
                 (historyCache[key].orEmpty() + rows).forEach { item ->
                     val prev = byId[item.id]
-                    if (prev == null || prev.revision <= item.revision) byId[item.id] = item
+                    if (prev == null || newer(prev, item)) byId[item.id] = item
                 }
                 byId.values.toList().takeLast(500).also { historyCache[key] = it }
             }
@@ -998,12 +1042,12 @@ class GenericAgentClient(
             } catch (e: Exception) {
                 synchronized(diskGuard) {
                     entries[id]?.let {
-                        // Unsupported is a pre-dispatch capability refusal, so
-                        // it is safe to wait for a future provider upgrade.
+                        // Unsupported is a pre-dispatch refusal (nothing was sent), so
+                        // show it as Failed with the reason instead of looking pending.
                         val knownUnsupported=e.message?.startsWith("Unsupported:")==true
-                        it.state = if (knownUnsupported) "Blocked" else "Unknown"
+                        it.state = if (knownUnsupported) "Failed" else "Unknown"
                         it.error = if (knownUnsupported)
-                            "Waiting for provider support: ${e.message}"
+                            "Not sent: ${e.message}"
                         else "Unconfirmed delivery; check the recipient before retrying: ${e.message}"
                     }
                     persistOutbox()

@@ -71,7 +71,12 @@ private data class AiPalette(
     Color(0xFFDDEAFF), Color(0xFF267751), Color(0xFF98651A)
 )
 private fun AgentSessionUi.needsAttention() =
-    attention.isNotBlank() && !attention.equals("None", true)
+    (attention.isNotBlank() && !attention.equals("None", true)) ||
+        activity.equals("WaitingOnUser", true)
+/** Human-readable reason this session needs the user. */
+private fun AgentSessionUi.attentionLabel(): String =
+    attention.takeUnless { it.isBlank() || it.equals("None", true) }
+        ?: activityText?.takeIf { it.isNotBlank() } ?: "Waiting for you"
 private fun AgentSessionUi.projectName(): String =
     workspace?.trimEnd('/', '\\')?.substringAfterLast('/')?.substringAfterLast('\\')
         ?.takeIf { it.isNotBlank() } ?: "No project"
@@ -861,7 +866,7 @@ fun OmniAiModesScreen(
                                     !online -> "offline · cached"
                                     historyLoading && unloaded -> "opening on PC…"
                                     unloaded -> "not loaded · tap to load"
-                                    selected.needsAttention() -> selected.attention
+                                    selected.needsAttention() -> selected.attentionLabel()
                                     selected.isRunning() -> null // the working pill says it
                                     else -> selected.activity.lowercase()
                                 }).joinToString(" · "),
@@ -1156,7 +1161,7 @@ fun OmniAiModesScreen(
                                             sessionFilter == "Hidden" -> "Hidden"
                                             sessionFilter == "Snoozed" -> "Snoozed · " +
                                                 ((snoozedUntil(session) - now + MINUTE_MS - 1) / MINUTE_MS).coerceAtLeast(1) + "m left"
-                                            session.needsAttention() -> session.attention
+                                            session.needsAttention() -> session.attentionLabel()
                                             session.isRunning() -> session.activityText?.takeIf { it.isNotBlank() } ?: "Working"
                                             session.kind == "t3/chatgpt" && session.reachability != "Reachable" -> "Unloaded"
                                             else -> session.activity
@@ -1228,8 +1233,10 @@ fun OmniAiModesScreen(
                 fun stop() {
                     val s = selected ?: return
                     stoppingKey = s.key
-                    if (isT3Browser(s) && s.capabilities.contains("RemoteControl")) performRowControl(s, "stop")
-                    else operation("Interrupt")
+                    // sessions.interrupt works for native and loaded ChatGPT sessions; the
+                    // desktop "stop" control is only a fallback for older providers.
+                    if (s.capabilities.contains("Interrupt")) operation("Interrupt")
+                    else performRowControl(s, "stop")
                 }
                 // Messages this phone sent to this thread that history hasn't absorbed yet.
                 // Failed ones stay visible here so a send can never vanish silently.
@@ -1328,7 +1335,7 @@ fun OmniAiModesScreen(
                         } else if (attentionNow) {
                             Icon(Icons.Default.PriorityHigh, null, tint = p.amber, modifier = Modifier.size(15.dp))
                             Spacer(Modifier.width(6.dp))
-                            Text(selected?.attention ?: "Needs you", Modifier.weight(1f, fill = false),
+                            Text(selected?.attentionLabel() ?: "Needs you", Modifier.weight(1f, fill = false),
                                 color = p.text, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             TextButton(onClick = { humanInbox = true },
                                 contentPadding = PaddingValues(horizontal = 10.dp)) { Text("Inbox", fontSize = 12.sp) }
