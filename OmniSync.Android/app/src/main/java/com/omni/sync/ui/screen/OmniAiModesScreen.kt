@@ -257,6 +257,7 @@ fun OmniAiModesScreen(
     var sessionSearch by rememberSaveable { mutableStateOf("") }
     var searchExpanded by rememberSaveable { mutableStateOf(false) }
     var sessionFilter by rememberSaveable { mutableStateOf("All") }
+    var projectFilter by rememberSaveable { mutableStateOf("") }
     var threadKind by rememberSaveable {
         mutableStateOf(viewPrefs.getString("threadKind", "t3/chatgpt") ?: "t3/chatgpt")
     }
@@ -557,11 +558,20 @@ fun OmniAiModesScreen(
             if (online) client.refresh()
         }
     }
-    val visibleSessions = remember(sessions, sessionSearch, sessionFilter, sortMode,
+    val availableProjects = remember(sessions, listProvider, threadKind) {
+        sessions.asSequence().filter { s ->
+            if (listProvider == "t3") s.provider == "t3" && s.kind == threadKind
+            else s.provider == listProvider
+        }.map { it.projectName() }
+            .distinct().sortedWith(String.CASE_INSENSITIVE_ORDER).toList()
+    }
+    val visibleSessions = remember(sessions, sessionSearch, sessionFilter, projectFilter, sortMode,
         hideUnloaded, showWorkers, viewRevision, now / MINUTE_MS, threadKind, listProvider) {
         sessions.asSequence().filter { s ->
             if (listProvider == "t3") s.provider == "t3" && s.kind == threadKind
             else s.provider == listProvider
+        }.filter { s ->
+            projectFilter.isBlank() || s.projectName().equals(projectFilter, ignoreCase = true)
         }.filter { s ->
             sessionSearch.isBlank() || s.title.contains(sessionSearch, true) ||
                 s.id.contains(sessionSearch, true) || s.kind.contains(sessionSearch, true) ||
@@ -1072,6 +1082,7 @@ fun OmniAiModesScreen(
                                         threadKind = value
                                         viewPrefs.edit().putString("threadKind", value).apply()
                                         sessionFilter = "All"
+                                        projectFilter = ""
                                     }.padding(horizontal = 10.dp, vertical = 6.dp),
                                 color = if (on) p.accent else p.muted, fontSize = 13.sp,
                                 fontWeight = if (on) FontWeight.SemiBold else FontWeight.Normal, maxLines = 1)
@@ -1081,14 +1092,14 @@ fun OmniAiModesScreen(
                     Box {
                         var filterMenu by remember { mutableStateOf(false) }
                         Row(Modifier.clip(RoundedCornerShape(10.dp))
-                            .background(if (sessionFilter != "All") p.accentBg else Color.Transparent)
+                            .background(if (sessionFilter != "All" || projectFilter.isNotBlank()) p.accentBg else Color.Transparent)
                             .clickable { filterMenu = true }.padding(horizontal = 8.dp, vertical = 6.dp),
                             verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.FilterList, null, tint = if (sessionFilter != "All") p.accent else p.muted,
+                            Icon(Icons.Default.FilterList, null, tint = if (sessionFilter != "All" || projectFilter.isNotBlank()) p.accent else p.muted,
                                 modifier = Modifier.size(16.dp))
                             Spacer(Modifier.width(4.dp))
-                            Text(if (sessionFilter == "All" && attention > 0) "$attention need you" else sessionFilter,
-                                color = if (sessionFilter != "All" || attention > 0) p.accent else p.muted,
+                            Text(if (projectFilter.isNotBlank()) projectFilter else if (sessionFilter == "All" && attention > 0) "$attention need you" else sessionFilter,
+                                color = if (sessionFilter != "All" || projectFilter.isNotBlank() || attention > 0) p.accent else p.muted,
                                 fontSize = 13.sp, maxLines = 1)
                         }
                         DropdownMenu(expanded = filterMenu, onDismissRequest = { filterMenu = false }) {
@@ -1102,6 +1113,15 @@ fun OmniAiModesScreen(
                                     "Active" -> "Working"
                                     else -> value
                                 }) }, onClick = { sessionFilter = value; filterMenu = false })
+                            }
+                            if (availableProjects.isNotEmpty()) {
+                                HorizontalDivider()
+                                DropdownMenuItem(text = { Text((if (projectFilter.isBlank()) "✓ " else "") + "All projects") },
+                                    onClick = { projectFilter = ""; filterMenu = false })
+                                availableProjects.forEach { project ->
+                                    DropdownMenuItem(text = { Text((if (projectFilter == project) "✓ " else "") + project) },
+                                        onClick = { projectFilter = project; filterMenu = false })
+                                }
                             }
                         }
                     }
@@ -1220,10 +1240,10 @@ fun OmniAiModesScreen(
                             horizontalAlignment = Alignment.CenterHorizontally,
                             verticalArrangement = Arrangement.spacedBy(9.dp)) {
                             Icon(Icons.Default.Forum, null, tint = p.muted, modifier = Modifier.size(35.dp))
-                            Text(if (sessionSearch.isNotBlank() || sessionFilter != "All") "No matches"
+                            Text(if (sessionSearch.isNotBlank() || sessionFilter != "All" || projectFilter.isNotBlank()) "No matches"
                                 else if (online) "No sessions available" else "Connect to load sessions",
                                 style = MaterialTheme.typography.titleMedium, color = p.text)
-                            Text(if (sessionSearch.isNotBlank() || sessionFilter != "All")
+                            Text(if (sessionSearch.isNotBlank() || sessionFilter != "All" || projectFilter.isNotBlank())
                                 "Try another search or filter"
                                 else if (online && status.startsWith("Provider refresh failed"))
                                 "Couldn't load conversations. Check the connection and retry."
