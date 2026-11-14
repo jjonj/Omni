@@ -157,7 +157,8 @@ private fun visibleTaskQueue(
 /** Phone workbench uses the same task/column concepts as desktop but keeps
  * filters and selection local. No transient UI state is written to Markdown. */
 private fun mobileTaskMatches(task: TaskBoardTask, board: TaskBoardSnapshot, mode: String,
-    queueModes: Map<String, String> = emptyMap()): Boolean {
+    queueModes: Map<String, String> = emptyMap(), todayIds: Set<String>? = null): Boolean {
+    if (mode == "today") return task.id in (todayIds ?: mobileTodaysWorkIds(board))
     val terminal = task.completed != null || board.columns.any { it.id == task.column && it.terminal }
     val waiting = board.waitingFor(task).isNotEmpty()
     return when (mode) {
@@ -200,8 +201,43 @@ private fun TaskBoardColumn.snoozedNow(): Boolean =
         java.time.Instant.parse(it).isAfter(java.time.Instant.now())
     }.getOrDefault(false) } ?: false
 
+/** Today's activity plus the ten highest-priority unclaimed pickups, matching desktop intent. */
+private fun mobileTodaysWorkIds(board: TaskBoardSnapshot): Set<String> {
+    val now = java.time.ZonedDateTime.now()
+    val day = now.toLocalDate().toString()
+    fun date(value: String?): java.time.LocalDate? = runCatching {
+        if (value.isNullOrBlank()) null else if (value.length == 10) java.time.LocalDate.parse(value)
+        else java.time.Instant.parse(value).atZone(java.time.ZoneId.systemDefault()).toLocalDate()
+    }.getOrNull()
+    val active = board.tasks.filter { it.kind != "epic" }
+    val touched = active.filter { task ->
+        listOf(task.created, task.completed, task.completedAt).any { date(it)?.toString() == day } ||
+            java.time.Instant.ofEpochMilli(task.file.lastModified())
+                .atZone(java.time.ZoneId.systemDefault()).toLocalDate().toString() == day
+    }.map { it.id }.toMutableSet()
+    val candidates = active.mapNotNull { task ->
+        val column = board.columns.firstOrNull { it.id == task.column }
+        if (column == null || column.terminal || task.completed != null || task.claimedBy != null ||
+            task.kind !in setOf("task", "recurring") || task.column == "draft" ||
+            board.waitingFor(task).isNotEmpty() || task.attention.any { it in setOf("needs-user", "question", "prepare") }) return@mapNotNull null
+        val ageHours = (System.currentTimeMillis() - task.file.lastModified()) / 3600000
+        val tier = when {
+            "priority" in task.attention -> 1
+            task.column == "in-progress" && ageHours >= 24 -> 2
+            task.column == "blocked" && ageHours >= 6 -> 3
+            column.aiReady && task.column !in setOf("in-progress", "blocked") && "blocked" !in task.attention ->
+                if (date(task.created)?.isAfter(now.toLocalDate().minusDays(7)) == true) 4 else 5
+            else -> return@mapNotNull null
+        }
+        task to tier
+    }.sortedWith(compareBy<Pair<TaskBoardTask, Int>> { it.second }
+        .thenByDescending { it.first.created.orEmpty() }.thenBy { it.first.id })
+    touched.addAll(candidates.take(10).map { it.first.id })
+    return touched
+}
+
 private val mobileFilters = listOf(
-    "all" to "All", "focus" to "Focus", "doing" to "In progress",
+    "all" to "All", "today" to "Today's work", "focus" to "Focus", "doing" to "In progress",
     "ready" to "AI ready", "queued" to "Queued", "priority" to "Priority", "user" to "For me",
     "blocked" to "Blocked", "waiting" to "Waiting", "done" to "Done",
     "epics" to "Epics"
@@ -800,8 +836,9 @@ private fun TaskBoardContents(parentPadding: PaddingValues, signalR: SignalRClie
                 else -> snapshot?.let {
                     Column(Modifier.fillMaxSize().background(TaskBoardColors.background)) {
                         val filterCounts = remember(it, queueModes) {
+                            val todayIds = mobileTodaysWorkIds(it)
                             mobileFilters.associate { (id, _) ->
-                                id to it.tasks.count { task -> mobileTaskMatches(task, it, id, queueModes) }
+                                id to it.tasks.count { task -> mobileTaskMatches(task, it, id, queueModes, todayIds) }
                             }
                         }
                         Row(
@@ -819,7 +856,7 @@ private fun TaskBoardContents(parentPadding: PaddingValues, signalR: SignalRClie
                             }
                             mobileFilters.forEach { (id, label) ->
                                 val tint = when (id) {
-                                    "focus", "user" -> TaskBoardColors.orange
+                                    "focus", "user", "today" -> TaskBoardColors.orange
                                     "priority", "waiting" -> TaskBoardColors.amber
                                     "blocked" -> TaskBoardColors.red
                                     "doing" -> TaskBoardColors.green
@@ -1691,8 +1728,11 @@ private fun TaskBoardColumns(
     onAddTask: (String) -> Unit
 ) {
     val filterText = query.trim()
+    val todayIds = remember(snapshot, filterMode) {
+        if (filterMode == "today") mobileTodaysWorkIds(snapshot) else emptySet()
+    }
     val filteredTasks = snapshot.tasks.filter { task ->
-        val matchMode = mobileTaskMatches(task, snapshot, filterMode, queueModes)
+        val matchMode = mobileTaskMatches(task, snapshot, filterMode, queueModes, todayIds)
         val folded = filterText.isBlank() && task.parent in collapsedEpics && filterMode == "all"
         matchMode && !folded &&
             (!hideWaiting || filterMode == "waiting" || filterMode == "blocked" ||
