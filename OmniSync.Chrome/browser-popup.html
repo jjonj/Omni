@@ -47,12 +47,17 @@ dialog::backdrop{background:#000a}
 <div class="controls"><button id="enable">Enable</button><button id="disable" class="danger">Pause</button></div>
 <p id="state"></p><p id="msg" role="status"></p>
 <small>Local browser traffic stays on 127.0.0.1. Public OmniMCP still requires server-side authentication. Password and payment fields are excluded.</small>
+<section aria-labelledby="cleanup-heading">
+<div class="section-head"><h2 id="cleanup-heading">Clean Tabs</h2></div>
+<p>Normal cleanup archives inactive, unpinned tabs tracked for at least 72 hours. Restarted browser sessions can reset the clock.</p>
+<div class="controls"><button id="clean-tabs">Clean old tabs</button><button id="clean-matches" class="secondary">Clean matching now…</button></div>
+</section>
 <section aria-labelledby="archive-heading">
 <div class="section-head">
 <div><h2 id="archive-heading">Archived tabs <span id="archive-count"></span></h2></div>
 <button id="clear-archive" class="danger" disabled>Close all</button>
 </div>
-<small>Clean Tabs archives eligible tabs over three days old and tabs matching cleanup patterns. Click an entry to reopen it.</small>
+<small>Only the explicitly confirmed matching action overrides the 72-hour age requirement. Click an archived entry to reopen it.</small>
 <ul id="archive-list"></ul>
 <p id="archive-empty" hidden>No archived tabs.</p>
 </section>
@@ -63,6 +68,11 @@ dialog::backdrop{background:#000a}
 <button id="cancel-clear" class="secondary">Cancel</button>
 <button id="confirm-clear-button" class="danger">Close all</button>
 </div>
+</dialog>
+<dialog id="confirm-matching" aria-labelledby="confirm-matching-title">
+<h2 id="confirm-matching-title">Clean matching tabs now?</h2>
+<p>Archives and closes <strong>inactive, unpinned</strong> tabs matching your cleanup patterns, even those opened recently. Other tabs remain open.</p>
+<div class="dialog-actions"><button id="cancel-matching" class="secondary">Cancel</button><button id="confirm-matching-button" class="danger">Clean matching tabs</button></div>
 </dialog>
 <script src="browser-popup.js"></script>
 </body></html>

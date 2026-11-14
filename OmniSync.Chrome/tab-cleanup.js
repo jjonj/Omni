@@ -9,7 +9,7 @@
   const MAX_AGE_MS = 3 * 24 * 60 * 60 * 1000;
   let ageQueue = Promise.resolve();
   let archiveQueue = Promise.resolve();
-  let cleanupInProgress = null;
+  let cleanupQueue = Promise.resolve();
 
   const restorable = url => typeof url === 'string' && /^(https?:|file:)\/\//i.test(url);
 
@@ -78,23 +78,40 @@
     return /^(start pages?|new tab|speed dial)$/i.test((tab.title || '').trim());
   }
 
-  async function doCleanup(matchesPattern) {
+  async function doCleanup(matchesPattern, { includeRecentMatching = false } = {}) {
     const tabs = await chrome.tabs.query({});
     const ages = await reconcileAges(tabs);
     const now = Date.now();
+    let skippedRecent = 0;
+    let matchedRecent = 0;
+    let nextEligibleAt = null;
     const selected = tabs.filter(tab => {
       // Never touch actively viewed, pinned, or still-navigating tabs.
       if (tab.active || tab.pinned || tab.pendingUrl || tab.status === 'loading') return false;
+      // The immediate action is explicit and pattern-only; it does not sweep
+      // every recently opened web tab or URL-less Start Page.
+      if (includeRecentMatching) {
+        return (restorable(tab.url) || /^(chrome|vivaldi):/i.test(tab.url || '')) &&
+          matchesPattern(tab.url, tab.title);
+      }
       if (isEmptyStartPage(tab)) return true; // Has no URL worth archiving.
+      const matches = matchesPattern(tab.url, tab.title);
+      const isSupported = restorable(tab.url) ||
+        (/^(chrome|vivaldi):/i.test(tab.url || '') && matches);
+      if (!isSupported) return false;
       const age = ages[String(tab.id)];
-      // A matching cleanup pattern must NOT bypass the requested 3-day age
-      // threshold. Old behavior (pattern OR age) archived fresh YouTube tabs.
-      if (!Number.isFinite(age) || now - age < MAX_AGE_MS) return false;
-      if (restorable(tab.url)) return true;
-      // Browser-internal pages need an explicit cleanup pattern (normally the
-      // seeded chrome:* or vivaldi:*); still never skip the 3-day age gate.
-      return /^(chrome|vivaldi):/i.test(tab.url || '') &&
-        matchesPattern(tab.url, tab.title);
+      // The default Clean Tabs action always respects 72 hours, including for
+      // matching patterns. Newly restored browser sessions start a new clock.
+      if (!Number.isFinite(age) || now - age < MAX_AGE_MS) {
+        skippedRecent++;
+        if (matches) matchedRecent++;
+        if (Number.isFinite(age)) {
+          const eligibleAt = age + MAX_AGE_MS;
+          nextEligibleAt = nextEligibleAt === null ? eligibleAt : Math.min(nextEligibleAt, eligibleAt);
+        }
+        return false;
+      }
+      return true;
     });
     let closed = 0;
     let archived = 0;
@@ -108,6 +125,7 @@
       if (current.active || current.pinned || current.pendingUrl ||
           current.status === 'loading' ||
           (current.url || '') !== (tab.url || '')) continue;
+      if (includeRecentMatching && !matchesPattern(current.url, current.title)) continue;
       const blank = isEmptyStartPage(tab);
       if (blank && !isEmptyStartPage(current)) continue;
       let item = null;
@@ -134,14 +152,14 @@
         console.error('Unable to close tab during cleanup:', tab.id, error);
       }
     }
-    return { closed, archived, failed };
+    return { closed, archived, failed, skippedRecent, matchedRecent, nextEligibleAt };
   }
 
-  function run(matchesPattern) {
-    if (!cleanupInProgress) {
-      cleanupInProgress = doCleanup(matchesPattern).finally(() => { cleanupInProgress = null; });
-    }
-    return cleanupInProgress;
+  function run(matchesPattern, options = {}) {
+    // A second click must not silently inherit a different cleanup mode.
+    const task = cleanupQueue.then(() => doCleanup(matchesPattern, options));
+    cleanupQueue = task.catch(() => {});
+    return task;
   }
 
   async function command(message) {

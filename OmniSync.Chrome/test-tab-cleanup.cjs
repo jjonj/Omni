@@ -77,6 +77,9 @@ async function message(command, id) {
   const result = await sandbox.TabCleanup.run(() => true);
   assert.equal(result.closed, 4);
   assert.equal(result.archived, 3);
+  assert.equal(result.skippedRecent, 2, 'Recent web tabs are the reason ordinary cleanup does nothing');
+  assert.equal(result.matchedRecent, 2);
+  assert(result.nextEligibleAt > now, 'The UI can say when a tab first becomes eligible');
   assert.deepEqual(tabs.map(t => t.id), [2, 4, 6, 9, 10, 11, 12]);
   assert.equal(state.cleanupArchivedTabs.length, 3,
     'Empty Start pages close without producing useless URL-less archive entries');
@@ -90,14 +93,21 @@ async function message(command, id) {
   const recentResult = await sandbox.TabCleanup.run(() => true);
   assert.equal(recentResult.closed, 0, 'Newly created tabs are protected even if pattern matches');
 
+  const immediate = await sandbox.TabCleanup.run(url => url === 'https://pattern.example/',
+    { includeRecentMatching: true });
+  assert.equal(immediate.closed, 1, 'Explicit pattern cleanup can close a fresh matching tab');
+  assert.equal(immediate.archived, 1);
+  assert(tabs.some(t => t.id === 2), 'Immediate pattern cleanup does not sweep unrelated fresh tabs');
+  assert(tabs.some(t => t.id === 4), 'Immediate pattern cleanup does not sweep unrelated older tabs');
+
   const vivaldi = state.cleanupArchivedTabs.find(t => t.url === 'vivaldi:extensions');
   await message('archive:restore', vivaldi.id);
   assert(tabs.some(t => t.url === vivaldi.url), 'Internal URL can reopen from archive');
-  assert.equal(state.cleanupArchivedTabs.length, 2);
+  assert.equal(state.cleanupArchivedTabs.length, 3);
 
   await message('archive:clear');
   assert.equal(state.cleanupArchivedTabs.length, 0);
   assert(tabs.some(t => t.id === 9), 'Pinned tab stays open');
   assert(tabs.some(t => t.id === 10), 'Active tab stays open');
-  console.log('Tab cleanup: strict age gate, fresh pattern protection, internal pages, blank Start pages, active/pinned, restore, clear PASS');
+  console.log('Tab cleanup: strict default age gate, explicit matching override, diagnostics, internal pages, active/pinned, restore, clear PASS');
 })().catch(error => { console.error(error); process.exitCode = 1; });

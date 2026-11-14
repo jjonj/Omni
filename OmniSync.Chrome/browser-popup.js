@@ -93,6 +93,31 @@ async function refreshArchive() {
     list.append(li);
   }
 }
+function cleanupMessage(result, immediate) {
+  const summary = `${result.closed} tab${result.closed === 1 ? '' : 's'} closed, ${result.archived} archived` +
+    (result.failed ? `, ${result.failed} failed` : '') + '.';
+  if (immediate || result.closed || !result.skippedRecent) return summary;
+  const next = result.nextEligibleAt ? ` Next eligible: ${new Date(result.nextEligibleAt).toLocaleString()}.` : '';
+  return `${summary} ${result.skippedRecent} tabs are younger than 72 hours since first tracked` +
+    ` (${result.matchedRecent} matching patterns).${next} Clean matching now can explicitly override this limit.`;
+}
+async function cleanTabs(immediate = false) {
+  $('clean-tabs').disabled = true;
+  $('clean-matches').disabled = true;
+  try {
+    const result = await send(immediate ? 'cleanup:matching-now' : 'cleanup:run');
+    await refreshArchive();
+    show(cleanupMessage(result, immediate), result.failed > 0);
+  } catch (error) { show(error.message, true); }
+  finally { $('clean-tabs').disabled = false; $('clean-matches').disabled = false; }
+}
+$('clean-tabs').addEventListener('click', () => void cleanTabs());
+$('clean-matches').addEventListener('click', () => $('confirm-matching').showModal());
+$('cancel-matching').addEventListener('click', () => $('confirm-matching').close());
+$('confirm-matching-button').addEventListener('click', () => {
+  $('confirm-matching').close();
+  void cleanTabs(true);
+});
 $('enable').addEventListener('click', async () => {
   try { await send('enable'); await refresh(); show('Enabled.'); }
   catch (error) { show(error.message, true); }

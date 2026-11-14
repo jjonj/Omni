@@ -181,6 +181,43 @@ function shouldCleanTab(tabUrl, tabTitle) {
     return false;
 }
 
+function cleanupResultMessage(result, immediate = false) {
+    const summary = `${result.closed} tab${result.closed === 1 ? '' : 's'} closed, ${result.archived} archived` +
+        (result.failed ? `, ${result.failed} failed` : '') + '.';
+    if (immediate) return `${summary} Only tabs matching your cleanup patterns were considered.`;
+    if (result.closed || !result.skippedRecent) return summary;
+    const next = result.nextEligibleAt
+        ? ` Next tracked tab qualifies ${new Date(result.nextEligibleAt).toLocaleString()}.` : '';
+    return `${summary} ${result.skippedRecent} eligible-type tabs are under 72 hours since first tracked` +
+        ` (${result.matchedRecent} match cleanup patterns).${next} Use “Clean matching now” to override the age limit explicitly.`;
+}
+
+async function runCleanup(includeRecentMatching = false) {
+    if (!globalThis.TabCleanup) throw Error('Tab cleanup failed to initialize; reload the extension.');
+    if (includeRecentMatching) {
+        await patternEditQueue; // Include a quick-add that was just submitted.
+        await readHubCleanupPatterns(); // Do not use stale patterns for an age override.
+    }
+    return globalThis.TabCleanup.run(shouldCleanTab, { includeRecentMatching });
+}
+
+async function showCleanupNotification(message, isError = false) {
+    await chrome.notifications.create('omni-clean-tabs-result', {
+        type: 'basic',
+        iconUrl: chrome.runtime.getURL('icons/omni.png'),
+        title: isError ? 'Clean Tabs failed' : 'Clean Tabs',
+        message
+    });
+}
+
+chrome.runtime.onMessage.addListener((message, sender, reply) => {
+    if (sender.id !== chrome.runtime.id || !['cleanup:run', 'cleanup:matching-now'].includes(message?.command)) return false;
+    const immediate = message.command === 'cleanup:matching-now';
+    runCleanup(immediate).then(data => reply({ ok: true, data }))
+        .catch(error => reply({ ok: false, error: String(error.message || error) }));
+    return true;
+});
+
 // OmniHub is the authoritative owner of cleanup patterns. The extension's
 // local storage is only a cache, not a replacement source of truth.
 const INTERNAL_CLEANUP_DEFAULTS = ['vivaldi:*', 'chrome:*'];
@@ -338,8 +375,7 @@ connection.on("ReceiveBrowserCommand", async (command, url, newTab) => {
             });
         }
     } else if (command === "CleanTabs") {
-        if (!globalThis.TabCleanup) throw Error('Tab cleanup failed to initialize; reload the extension and inspect its service worker errors.');
-        const result = await globalThis.TabCleanup.run(shouldCleanTab);
+        const result = await runCleanup();
         console.log(`Cleanup closed ${result.closed} tabs (${result.archived} archived); ${result.failed} could not be closed.`);
     } else if (command === "AddCleanupPattern") {
         // url parameter contains the pattern to add
@@ -559,13 +595,12 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
             }
         });
     } else if (info.menuItemId === "cleanTabs") {
-        if (!globalThis.TabCleanup) {
-            console.error("Clean Tabs unavailable: tab-cleanup.js failed to initialize.");
-            return;
-        }
-        void globalThis.TabCleanup.run(shouldCleanTab)
-            .then(result => console.log(`Cleanup closed ${result.closed} tabs (${result.archived} archived); ${result.failed} failed.`))
-            .catch(error => console.error("Clean Tabs failed:", error));
+        void runCleanup()
+            .then(result => showCleanupNotification(cleanupResultMessage(result)))
+            .catch(error => {
+                console.error('Clean Tabs failed:', error);
+                void showCleanupNotification(String(error.message || error), true);
+            });
     } else if (info.menuItemId === "editCleanupPatterns") {
         void chrome.windows.create({
             url: chrome.runtime.getURL("cleanup-patterns.html"),
