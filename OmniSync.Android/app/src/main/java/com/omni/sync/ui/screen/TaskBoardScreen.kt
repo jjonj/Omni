@@ -1707,10 +1707,11 @@ private fun TaskBoardColumns(
     val visibleColumns = snapshot.columns.filter { showHiddenColumns ||
         (!it.hidden && !it.snoozedNow()) }
         .filter { focusedColumn == null || it.id == focusedColumn }
-        .filter { (filterText.isBlank() && filterMode == "all" && !attentionOnly) ||
-            tasksByColumn[it.id].orEmpty().isNotEmpty() }
+        // Keep configured columns visible even when filtering leaves them empty.
 
-    var foldedColumns by remember(snapshot.root.absolutePath) { mutableStateOf<Set<String>>(emptySet()) }
+    var foldedColumns by remember(snapshot.root.absolutePath) {
+        mutableStateOf(setOf("draft", "blocked", "done"))
+    }
     Column(modifier = Modifier.fillMaxSize()) {
         if (snapshot.warnings.isNotEmpty()) {
             Text(
