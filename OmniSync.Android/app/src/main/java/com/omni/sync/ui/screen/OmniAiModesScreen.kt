@@ -824,9 +824,16 @@ fun OmniAiModesScreen(
         }
     }
     fun controlAttention(request: PhoneAgentAttention, command: String, minutes: Int? = null) {
-        val carrier = schedulerCarrier()
-        if (carrier == null) {
-            attentionError = "T3 desktop must be connected to manage GMA."
+        // T3 validates that a GMA action belongs to the EXACT target browser.
+        // The first available browser may list all requests, but cannot acknowledge
+        // another browser's notification.
+        val carrier = sessions.firstOrNull { session ->
+            isT3Browser(session) && session.capabilities.contains("RemoteControl") &&
+                (session.id == request.sessionId ||
+                    session.key.endsWith(":" + request.sessionId))
+        }
+        if (carrier == null || !online) {
+            attentionError = "Exact requesting T3 session ${request.sessionId} is not controllable. Refresh the desktop session list before acknowledging."
             return
         }
         if (attentionBusy != null) return
