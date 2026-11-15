@@ -17,7 +17,7 @@ The existing prepfile handoff monitor owns file-readiness checks and exact gener
 
 ## Verification and deployment
 
-- Android Kotlin compile: successful (debug). Full APK build and installation recorded in the TaskBoard update.
+- Android Kotlin compile and `:app:assembleDebug`: **successful**, output `OmniSync.Android/app/build/outputs/apk/debug/app-debug.apk` (56.2 MB, built 2026-11-15 12:09 local). Concurrent TaskBoardScreen edits temporarily broke the first assembly attempt but were resolved by their owner; the subsequent full debug APK build passed.
 - T3 web focused TypeScript check on touched files: no diagnostics. Full project typecheck still has unrelated pre-existing test/render/typings failures in the shared dirty checkout; see build logs.
-- No new T3 desktop process/restart: **running T3 agents must not be interrupted without approval**. New PC remote commands become live only after the regular approved T3 rebuild/restart.
+- **Deployment pending:** no ADB-connected Android device; no APK installed or Hub deployment initiated, to avoid launching a phone UI requiring new T3 commands before the desktop backend is ready. **Running T3 was NOT restarted**; PC remote commands become live only after a coordinated, approved T3 rebuild/restart.
 - Runtime PC↔Android production smoke (image chunks, Caffy pause persistence, GMA dismiss delivery) is pending coordinated deployment. Source completion is not a claim that these behaviors are already live.
