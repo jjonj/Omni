@@ -207,7 +207,13 @@ private fun AgentSessionUi.groupRank(): Int = when (groupName()) {
 private fun activityMillis(iso: String?): Long =
     runCatching { java.time.Instant.parse(iso ?: "").toEpochMilli() }.getOrDefault(0L)
 
-private fun AgentSessionUi.dotColor(p: AiPalette): Color {
+/** T3 GMA requests become yellow only after T3 reports the idle transition. */
+private fun AgentSessionUi.readyAttention(requests: List<PhoneAgentAttention>): Boolean =
+    !isRunning() && requests.any {
+        it.status == "pending" && (it.sessionId == id || key.endsWith(":" + it.sessionId))
+    }
+
+private fun AgentSessionUi.dotColor(p: AiPalette, readyAttention: Boolean = false): Color {
     // T3 desktop parity: working lime, recent blue, unloaded dark grey,
     // unloaded-recent subdued blue, interruptions orange, errors rose.
     val millis = activityMillis(lastActivityAt)
@@ -225,6 +231,7 @@ private fun AgentSessionUi.dotColor(p: AiPalette): Color {
         unloaded && recent -> Color(0xFF546C85)
         unloaded -> Color(0xFF52525B)
         working -> Color(0xFFA3E635)
+        readyAttention -> p.amber
         needsAttention() -> p.amber
         recent -> Color(0xFF88A9C8)
         else -> p.muted
@@ -594,6 +601,12 @@ fun OmniAiModesScreen(
                 val receipt = client.sessionAction(target, "Control",
                     mapOf("command" to command, "options" to options))
                 note = "${command.replace('_', ' ')}: $receipt"
+                if (receipt == "Unknown" || receipt == "Pending") {
+                    rowControlError = "T3 has not confirmed ${command.replace('_', ' ')}. Refresh PC state before retrying."
+                    runCatching { client.sessionControls(target) }
+                        .onSuccess { if (rowOptions?.key == target.key) rowControls = it }
+                    return@launch
+                }
                 if (command == "stop" && receipt != "Failed" && receipt != "Unknown") {
                     var idleConfirmed = false
                     for (waitMs in listOf(400L, 800L, 1200L, 2000L, 2400L)) {
@@ -837,6 +850,48 @@ fun OmniAiModesScreen(
                 attentionError = "GMA change unconfirmed: ${error.message}. Check PC status before retry."
             } finally { attentionBusy = null }
         }
+    }
+    fun openPrepfile() {
+        prepfileOpen = true
+        prepfileError = null
+        (nativeCatalog ?: client.cachedNativeCatalog())?.let { catalog ->
+            nativeCatalog = catalog
+            if (catalog.models.none { it.key == prepfileModelKey }) {
+                val fallback = catalog.models.firstOrNull {
+                    !it.label.contains("luna", true) && !it.label.contains("haiku", true)
+                } ?: catalog.models.firstOrNull()
+                prepfileModelKey = fallback?.key.orEmpty()
+                prepfileEffort = fallback?.efforts?.firstOrNull()?.first.orEmpty()
+            }
+        }
+        if (online) scope.launch {
+            runCatching { client.nativeCatalog() }.onSuccess { catalog ->
+                nativeCatalog = catalog
+                if (catalog.models.none { it.key == prepfileModelKey }) {
+                    prepfileModelKey = catalog.models.firstOrNull()?.key.orEmpty()
+                }
+            }.onFailure { prepfileError = "Model catalog unavailable: ${it.message}" }
+            refreshAttentionRequests()
+        }
+    }
+    fun openLastAttention() {
+        val request = attentionRequests.filter {
+            it.status in listOf("pending", "waiting", "snoozed")
+        }.maxByOrNull { it.createdAt }
+        if (request == null) {
+            note = "No outstanding T3 attention requests."
+            return
+        }
+        val session = sessions.firstOrNull {
+            it.provider == "t3" && (it.id == request.sessionId ||
+                it.key.endsWith(":" + request.sessionId))
+        }
+        if (session == null) {
+            note = "Request from ${request.sessionId}: the exact T3 session is not available. Refresh sessions."
+            return
+        }
+        openSession(session)
+        controlAttention(request, "attention_open")
     }
     fun submitPrepfile() {
         if (prepfileBusy || prepfileRequestSent) return
@@ -1286,11 +1341,20 @@ fun OmniAiModesScreen(
                 visible.sortedBy { it.createdAt }.forEach { request ->
                     Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(p.raised)
                         .padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        val owner = sessions.firstOrNull {
+                            it.provider == "t3" && (it.id == request.sessionId ||
+                                it.key.endsWith(":" + request.sessionId))
+                        }
+                        Text("From: " + (owner?.title ?: request.sessionId), color = p.accent,
+                            fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                         Text(request.message, color = p.text)
                         Text(if (request.status == "snoozed" && request.nextAt > System.currentTimeMillis())
                             "Snoozed until " + java.text.DateFormat.getDateTimeInstance().format(
                                 java.util.Date(request.nextAt)) else request.status,
                             color = p.muted, fontSize = 12.sp)
+                        if (request.status == "waiting")
+                            Text("Waiting for this session's next completed reply; not ready yet.",
+                                color = p.muted, fontSize = 12.sp)
                         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                             horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             TextButton(onClick = {
@@ -1431,7 +1495,7 @@ fun OmniAiModesScreen(
                             overflow = TextOverflow.Ellipsis,
                             style = MaterialTheme.typography.titleSmall)
                         if (selected != null) Row(verticalAlignment = Alignment.CenterVertically) {
-                            Box(Modifier.size(6.dp).background(selected.dotColor(p), CircleShape))
+                            Box(Modifier.size(6.dp).background(selected.dotColor(p, online && selected.readyAttention(attentionRequests)), CircleShape))
                             Spacer(Modifier.width(5.dp))
                             Text(listOfNotNull(
                                 selected.kindLabel(),
@@ -1480,6 +1544,14 @@ fun OmniAiModesScreen(
                     }, modifier = Modifier.size(34.dp)) {
                         Icon(Icons.Default.Refresh, "Refresh", tint = p.text, modifier = Modifier.size(22.dp))
                     }
+                    TextButton(onClick = { openPrepfile() },
+                        modifier = Modifier.height(36.dp),
+                        contentPadding = PaddingValues(horizontal = 4.dp)) {
+                        Icon(Icons.Default.Create, "New prepfile", tint = p.accent,
+                            modifier = Modifier.size(17.dp))
+                        Spacer(Modifier.width(3.dp))
+                        Text("Prepfile", color = p.accent, fontSize = 11.sp)
+                    }
                     IconButton(onClick = { openCreate() }, modifier = Modifier.size(34.dp)) {
                         Icon(Icons.Default.Add, "New session", tint = p.text, modifier = Modifier.size(23.dp))
                     }
@@ -1522,33 +1594,15 @@ fun OmniAiModesScreen(
                                     menu = false
                                 })
                             DropdownMenuItem(text = { Text("New prepfile") },
-                    onClick = {
-                        menu = false; prepfileOpen = true; prepfileError = null
-                        (nativeCatalog ?: client.cachedNativeCatalog())?.let { catalog ->
-                            nativeCatalog = catalog
-                            if (catalog.models.none { it.key == prepfileModelKey }) {
-                                val fallback = catalog.models.firstOrNull {
-                                    !it.label.contains("luna", true) && !it.label.contains("haiku", true)
-                                } ?: catalog.models.firstOrNull()
-                                prepfileModelKey = fallback?.key.orEmpty()
-                                prepfileEffort = fallback?.efforts?.firstOrNull()?.first.orEmpty()
-                            }
-                        }
-                        if (online) scope.launch {
-                            runCatching { client.nativeCatalog() }.onSuccess { catalog ->
-                                nativeCatalog = catalog
-                                if (catalog.models.none { it.key == prepfileModelKey }) {
-                                    prepfileModelKey = catalog.models.firstOrNull()?.key.orEmpty()
-                                }
-                            }.onFailure { prepfileError = "Model catalog unavailable: ${it.message}" }
-                            refreshAttentionRequests()
-                        }
-                    })
+                                onClick = { menu = false; openPrepfile() })
                 DropdownMenuItem(text = { Text("Schedule ChatGPT work") },
                                 enabled = t3Connected,
                                 onClick = { menu = false; openSchedule(null) })
                             DropdownMenuItem(text = { Text("GMA requests (" + attentionRequests.count { it.status in listOf("waiting", "pending", "snoozed") } + ")") },
-                    onClick = { menu = false; attentionSheet = true; refreshAttentionRequests() })
+                                onClick = { menu = false; attentionSheet = true; refreshAttentionRequests() })
+                            DropdownMenuItem(text = { Text("Open last requesting session · Ctrl+S") },
+                                enabled = attentionRequests.any { it.status in listOf("pending", "waiting", "snoozed") },
+                                onClick = { menu = false; openLastAttention() })
                 DropdownMenuItem(text = { Text("Human inbox") },
                                 onClick = { menu = false; humanInbox = true })
                             (listOf(60, 120, 240, 360)).forEach { minutes ->
@@ -1625,6 +1679,32 @@ fun OmniAiModesScreen(
             }
 
             if (listMode) {
+                val readyRequests = attentionRequests.filter { request ->
+                    request.status == "pending" && sessions.any { session ->
+                        session.provider == "t3" && !session.isRunning() &&
+                            (session.id == request.sessionId ||
+                                session.key.endsWith(":" + request.sessionId))
+                    }
+                }
+                if (readyRequests.isNotEmpty()) Row(
+                    Modifier.fillMaxWidth().background(p.accentBg)
+                        .clickable { attentionSheet = true; refreshAttentionRequests() }
+                        .padding(horizontal = 14.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Default.NotificationImportant, null,
+                        tint = p.amber, modifier = Modifier.size(17.dp))
+                    Spacer(Modifier.width(8.dp))
+                    val latest = readyRequests.maxByOrNull { it.createdAt }
+                    val owner = sessions.firstOrNull { it.id == latest?.sessionId ||
+                        it.key.endsWith(":" + latest?.sessionId) }
+                    Text("GMA · " + (owner?.title ?: "Session") + " needs you" +
+                        if (readyRequests.size > 1) " (+${readyRequests.size - 1})" else "",
+                        color = p.text, fontSize = 12.sp,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f))
+                    Icon(Icons.Default.ChevronRight, null, tint = p.accent)
+                }
                 // One header row: thread kind toggle, filter menu, search.
                 Row(Modifier.fillMaxWidth().padding(start = 12.dp, end = 4.dp, top = 2.dp, bottom = 2.dp),
                     verticalAlignment = Alignment.CenterVertically,
@@ -1724,18 +1804,18 @@ fun OmniAiModesScreen(
                             // ~34dp rows: long-press for actions instead of a 36dp menu button.
                             Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(9.dp))
                                 .background(if (session.key == selectedKey) p.selected else p.surface)
-                                .border(1.5.dp, session.dotColor(p), RoundedCornerShape(9.dp))
+                                .border(1.5.dp, session.dotColor(p, online && session.readyAttention(attentionRequests)), RoundedCornerShape(9.dp))
                                 .combinedClickable(onClick = { openSession(session) },
                                     onLongClick = { rowOptions = session })
                                 .padding(start = 11.dp, end = 10.dp, top = 7.dp, bottom = 7.dp),
                                 verticalAlignment = Alignment.CenterVertically) {
                                 Text(session.title, modifier = Modifier.weight(1f),
-                                    color = if (session.kind == "t3/chatgpt") session.dotColor(p) else p.text,
+                                    color = if (session.kind == "t3/chatgpt") session.dotColor(p, online && session.readyAttention(attentionRequests)) else p.text,
                                     maxLines = 1, overflow = TextOverflow.Ellipsis,
                                     fontWeight = if (session.unread == true) FontWeight.Bold else FontWeight.Medium,
                                     fontSize = 14.sp)
                                 if (session.isRunning()) CircularProgressIndicator(Modifier.size(11.dp),
-                                    strokeWidth = 1.5.dp, color = session.dotColor(p))
+                                    strokeWidth = 1.5.dp, color = session.dotColor(p, online && session.readyAttention(attentionRequests)))
                                 else if (session.needsAttention()) Icon(Icons.Default.PriorityHigh, null,
                                     tint = p.amber, modifier = Modifier.size(14.dp))
                                 else Text(age, color = p.muted, fontSize = 11.sp)
@@ -1749,16 +1829,16 @@ fun OmniAiModesScreen(
                             Box(Modifier.size(36.dp).background(p.raised, RoundedCornerShape(12.dp)),
                                 contentAlignment = Alignment.Center) {
                                 if (session.isRunning()) CircularProgressIndicator(Modifier.size(16.dp),
-                                    strokeWidth = 2.dp, color = session.dotColor(p))
+                                    strokeWidth = 2.dp, color = session.dotColor(p, online && session.readyAttention(attentionRequests)))
                                 else Text(session.title.trim().take(1).uppercase().ifBlank { "A" },
-                                    color = session.dotColor(p), fontWeight = FontWeight.SemiBold,
+                                    color = session.dotColor(p, online && session.readyAttention(attentionRequests)), fontWeight = FontWeight.SemiBold,
                                     style = MaterialTheme.typography.titleMedium)
                             }
                             Spacer(Modifier.width(11.dp))
                             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Text(session.title, Modifier.weight(1f),
-                                        color = if (session.kind == "t3/chatgpt") session.dotColor(p) else p.text,
+                                        color = if (session.kind == "t3/chatgpt") session.dotColor(p, online && session.readyAttention(attentionRequests)) else p.text,
                                         maxLines = 1, overflow = TextOverflow.Ellipsis,
                                         fontWeight = if (session.unread == true) FontWeight.Bold else FontWeight.Medium,
                                         style = MaterialTheme.typography.bodyLarge)
@@ -1766,7 +1846,7 @@ fun OmniAiModesScreen(
                                         modifier = Modifier.padding(start = 6.dp))
                                 }
                                 Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Dot(session.dotColor(p))
+                                    Dot(session.dotColor(p, online && session.readyAttention(attentionRequests)))
                                     Spacer(Modifier.width(6.dp))
                                     Text(listOfNotNull(
                                         when {
@@ -2083,6 +2163,7 @@ fun OmniAiModesScreen(
             mutableStateOf(caffyField("repeatPrompt").orEmpty())
         }
         var caffyRebootRuns by remember(target.key) { mutableStateOf("5") }
+        var caffyRebootMinutes by remember(target.key) { mutableStateOf("60") }
         var caffyRespectSlots by remember(target.key, caffyField("respectSlots")) {
             mutableStateOf(caffyField("respectSlots") == "true")
         }
@@ -2148,6 +2229,18 @@ fun OmniAiModesScreen(
                         }
                         SheetAction("Reboot agent (same T3 slot)", p) { performRowControl(target, "reboot") }
                         SheetAction("Restore ChatGPT URL", p) { performRowControl(target, "restore_url") }
+                        val returnMarker = field("returnMarker")
+                        SheetAction(
+                            if (returnMarker == null) "Return after next reply (Ctrl+D)"
+                            else if (returnMarker == "ready") "Clear ready return marker"
+                            else "Remove pending return marker", p
+                        ) { performRowControl(target, "return_marker") }
+                        if (returnMarker != null) Text(
+                            if (returnMarker == "ready" && !target.isRunning())
+                                "Reply finished · return marker ready"
+                            else "Armed · yellow only after the next reply finishes",
+                            color = p.muted, fontSize = 12.sp
+                        )
                         SheetAction(if (field("verificationPending") == "true") "Clear verification"
                             else "Mark for verification", p) {
                             performRowControl(target, "verification",
@@ -2214,19 +2307,23 @@ fun OmniAiModesScreen(
                                 "Delayed start · " + at("beginAt")
                             activeMode == "periodic" -> at("nextDueAt")
                             activeMode == "startup" -> "Next T3 startup"
-                            activeMode == "idle" || activeMode == "queued" -> "Next verified idle transition"
+                            activeMode == "idle" -> "Next verified idle transition"
                             else -> "Not scheduled"
                         }
                         Text("Next wake: $next", color = p.text, fontSize = 12.sp)
                         Text("Last wake: " + at("lastWakeAt") +
                             "   ·   Last check: " + at("lastCheckedAt"), color = p.muted, fontSize = 12.sp)
                         Text("Next scheduler check: " + at("nextCheckAt"), color = p.muted, fontSize = 12.sp)
+                        Text("Expires: " + at("expiresAt") +
+                            " · Every: " + (caffyField("intervalMinutes") ?: "—") + " min",
+                            color = p.muted, fontSize = 12.sp)
                         listOf("lastCheckResult" to "Check", "wakePhase" to "Phase",
                             "availability" to "Guest", "admissionReason" to "Admission",
                             "deliveryStatus" to "Delivery", "lastDeliveryResult" to "Receipt",
                             "pendingMessageId" to "Pending message ID",
                             "rebootOperationId" to "Reboot receipt",
-                            "lastError" to "Error", "autoRebootEveryRuns" to "Reboot every runs",
+                            "lastError" to "Error", "autoRebootMinutes" to "Reboot every minutes",
+                            "autoRebootEveryRuns" to "Reboot every runs",
                             "wakesSinceReboot" to "Runs since reboot",
                             "repeatPrompt" to "Repeated prompt",
                             "delayedPrompt" to "Delayed prompt").forEach { (fieldName, label) ->
@@ -2269,8 +2366,9 @@ fun OmniAiModesScreen(
                                 mapOf("mode" to "idle", "onceOnly" to true))
                         }, label = { Text("Once only") })
                         FilterChip(false, onClick = {
-                            performRowControl(target, "caffy_set", mapOf("mode" to "queued"))
-                        }, label = { Text("Queued idle · Infinite") })
+                            performRowControl(target, "caffy_set",
+                                mapOf("mode" to "idle", "respectSlots" to true))
+                        }, label = { Text("When idle · wait for slot") })
                     }
                     Text("Periodic wake · every", color = p.muted,
                         style = MaterialTheme.typography.labelMedium)
@@ -2331,6 +2429,9 @@ fun OmniAiModesScreen(
                             rowControlError = "Run count must be 1–10000."
                         else performRowControl(target, "caffy_reboot", mapOf("runs" to runs))
                     }
+                    SheetAction("Disable auto-reboot", p) {
+                        performRowControl(target, "caffy_reboot", mapOf("value" to null))
+                    }
                     HorizontalDivider(color = p.border)
                     Text("Begin / resume work", color = p.muted,
                         style = MaterialTheme.typography.labelMedium)
@@ -2367,9 +2468,19 @@ fun OmniAiModesScreen(
                         performRowControl(target, "caffy_cancel_begin")
                     }
                     HorizontalDivider(color = p.border)
-                    if (activeMode == "idle" || activeMode == "queued") {
-                    Text("Auto-reboot (idle / queued only)", color = p.muted,
+                    if (activeMode != null) {
+                    Text("Auto-reboot after time", color = p.muted,
                         style = MaterialTheme.typography.labelMedium)
+                    OutlinedTextField(caffyRebootMinutes, {
+                        caffyRebootMinutes = it.filter(Char::isDigit).take(6)
+                    }, Modifier.fillMaxWidth(), singleLine = true,
+                        label = { Text("Custom reboot interval (minutes)") })
+                    SheetAction("Set custom time-based auto-reboot", p) {
+                        val minutes = caffyRebootMinutes.toIntOrNull()
+                        if (minutes == null || minutes !in 1..525600)
+                            rowControlError = "Reboot interval must be 1–525600 minutes."
+                        else performRowControl(target, "caffy_reboot", mapOf("value" to minutes))
+                    }
                     Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                         horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         listOf(30, 60, 120).forEach { minutes ->

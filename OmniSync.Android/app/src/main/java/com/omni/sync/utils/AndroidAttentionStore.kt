@@ -51,7 +51,9 @@ object AndroidAttentionStore {
         init(context)
         val current = _entries.value.find { it.id == id }
         if (current != null) return false // delayed SignalR push must not resurrect a resolved request
-        persist(context, _entries.value + PhoneAgentAttention(id, sessionId, message))
+        // A push is not proof of a verified working -> idle transition.
+        // Only the T3 status reconciliation can mark this request pending/ready.
+        persist(context, _entries.value + PhoneAgentAttention(id, sessionId, message, status = "waiting"))
         return true
     }
 
