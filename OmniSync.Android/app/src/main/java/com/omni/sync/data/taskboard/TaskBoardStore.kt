@@ -30,7 +30,9 @@ data class TaskBoardColumn(
 data class TaskBoardQuestion(
     val prompt: String,
     val options: List<String> = emptyList(),
-    val answer: String? = null
+    val answer: String? = null,
+    // Keep the PC's decision/verification distinction intact across phone edits.
+    val requestType: String? = null
 )
 
 data class TaskBoardTask(
@@ -55,7 +57,9 @@ data class TaskBoardTask(
     val userNotes: String,
     val notes: String,
     val file: File,
-    val revision: String
+    val revision: String,
+    val positionAfter: String? = null,
+    val positionedAt: String? = null
 ) {
     val questionPrompt: String?
         get() = question?.prompt
@@ -75,7 +79,9 @@ data class TaskBoardTask(
         acceptanceCriteria = acceptanceCriteria,
         aiNotes = aiNotes,
         userNotes = userNotes,
-        notes = notes
+        notes = notes,
+        positionAfter = positionAfter,
+        positionedAt = positionedAt
     )
 }
 
@@ -94,7 +100,9 @@ data class TaskBoardTaskDraft(
     val acceptanceCriteria: List<String> = emptyList(),
     val aiNotes: String = "",
     val userNotes: String = "",
-    val notes: String = ""
+    val notes: String = "",
+    val positionAfter: String? = null,
+    val positionedAt: String? = null
 )
 
 data class TaskBoardSnapshot(
@@ -142,12 +150,20 @@ data class TaskBoardSnapshot(
             columns.any { it.id == child.column && !it.terminal && it.id != "draft" }
         }?.column ?: children.first().column
     }
-    fun userQueue(): List<TaskBoardTask> = tasks.filter {
-        it.completed == null &&
-            columns.none { column -> column.id == it.column && column.terminal } &&
-            (it.kind == "for_user" || (it.kind == "task" && "needs-user" in it.attention)) &&
-            waitingFor(it).isEmpty()
-    }.sortedWith(compareByDescending<TaskBoardTask> { it.created.orEmpty() }.thenByDescending { it.id })
+    /** Native Inbox: a finished implementation can still await verification.
+     * Waiting decisions/actions live in Blocked even without needs-user attention. */
+    fun isInUserInbox(task: TaskBoardTask): Boolean {
+        val pendingQuestion = task.question?.answer.isNullOrBlank() && task.question != null
+        if (pendingQuestion && task.question?.requestType == "verification") return true
+        return task.completed == null &&
+            columns.none { column -> column.id == task.column && column.terminal } &&
+            (pendingQuestion || task.kind == "for_user" ||
+                (task.kind == "task" && "needs-user" in task.attention)) &&
+            waitingFor(task).isEmpty()
+    }
+
+    fun userQueue(): List<TaskBoardTask> = tasks.filter(::isInUserInbox)
+        .sortedWith(compareByDescending<TaskBoardTask> { it.created.orEmpty() }.thenByDescending { it.id })
 }
 
 class TaskBoardConflictException(message: String) : Exception(message)
@@ -878,7 +894,8 @@ class TaskBoardStore(
                 TaskBoardQuestion(
                     prompt = it,
                     options = parseNestedStringList(frontmatter, "question", "options"),
-                    answer = parseNestedScalar(frontmatter, "question", "answer")
+                    answer = parseNestedScalar(frontmatter, "question", "answer"),
+                    requestType = parseNestedScalar(frontmatter, "question", "request_type")
                 )
             },
             created = fields["created"],
@@ -890,7 +907,9 @@ class TaskBoardStore(
             userNotes = sections["User Notes"].orEmpty(),
             notes = sections["Notes"].orEmpty(),
             file = file,
-            revision = revision(text)
+            revision = revision(text),
+            positionAfter = fields["position_after"],
+            positionedAt = fields["positioned_at"]
         )
     }
 
@@ -960,10 +979,11 @@ class TaskBoardStore(
         else listOf("$key:") + values.map { "- ${yamlQuote(it)}" }
 
     private fun renderQuestionField(question: TaskBoardQuestion): List<String> {
-        val lines = mutableListOf(
-            "question:",
-            "  prompt: ${yamlQuote(question.prompt.trim())}"
-        )
+        val lines = mutableListOf("question:")
+        question.requestType?.takeIf { it.isNotBlank() }?.let {
+            lines += "  request_type: ${yamlQuote(it)}"
+        }
+        lines += "  prompt: ${yamlQuote(question.prompt.trim())}"
         if (question.options.isNotEmpty()) {
             lines += "  options:"
             question.options

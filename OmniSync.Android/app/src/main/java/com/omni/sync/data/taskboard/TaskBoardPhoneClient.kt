@@ -21,6 +21,15 @@ class TaskBoardPhoneClient(
 
     private val sendMutex = Mutex()
 
+    /** Keep JSON integer fields (e.g. review viewport_width) integral over
+     * SignalR; Gson's raw Map deserialization coerces every number to Double. */
+    private fun rpcJson(value: Any?): Any? = when (value) {
+        is JSONObject -> value.keys().asSequence().associateWith { rpcJson(value.get(it)) }
+        is org.json.JSONArray -> (0 until value.length()).map { rpcJson(value.get(it)) }
+        JSONObject.NULL -> null
+        else -> value
+    }
+
     /** Replay only original, persisted IDs. Called on screen entry and after reconnect. */
     suspend fun syncPending(): Int {
         var applied = 0
@@ -58,6 +67,7 @@ class TaskBoardPhoneClient(
         put("question", draft.question?.let { question ->
             JSONObject().apply {
                 put("prompt", question.prompt)
+                question.requestType?.let { put("request_type", it) }
                 put("options", org.json.JSONArray(question.options))
                 put("answer", question.answer)
             }
@@ -66,6 +76,8 @@ class TaskBoardPhoneClient(
         put("acceptance_criteria", org.json.JSONArray(draft.acceptanceCriteria))
         put("user_notes", draft.userNotes)
         put("notes", draft.notes)
+        put("position_after", draft.positionAfter)
+        put("positioned_at", draft.positionedAt)
     }.toString()
 
     /** Persist first. A timeout is UNKNOWN until the exact operation receipt
@@ -151,6 +163,46 @@ class TaskBoardPhoneClient(
         return sendSaved(operationId)
     }
 
+    /** Human review decisions go through TaskBoard-core's manifest+task CAS.
+     * Attachments are content-addressed in the synced tree; only this journaled
+     * PC operation may resolve the review, even while the phone is offline. */
+    suspend fun submitReview(review: MobileReview, decision: MobileReviewDecision): Submission {
+        val operationId = UUID.randomUUID().toString()
+        val attachments = TaskBoardReviewStore.stageAttachments(review, decision.attachments)
+        val combinedNote = (listOf(decision.note) + attachments)
+            .filter { it.isNotBlank() }.joinToString("\n\n")
+        val payload = JSONObject().put("_operation", "review")
+            .put("manifestRevision", review.manifestRevision)
+            .put("decision", JSONObject().apply {
+                put("task_id", review.taskId)
+                put("verdict", decision.verdict)
+                put("choices", org.json.JSONArray(decision.choices))
+                put("ranking", org.json.JSONArray(decision.ranking))
+                put("pins", org.json.JSONArray().apply {
+                    decision.pins.forEach { put(it.json()) }
+                })
+                put("note", combinedNote)
+                put("expected_task_revision", review.taskRevision)
+                put("expected_manifest_revision", review.manifestRevision)
+            })
+        drafts.saveOffline(boardId = boardIdentity(review.project.root),
+            taskId = review.taskId, baseRevision = review.taskRevision,
+            baseSource = review.taskFile.readText(Charsets.UTF_8),
+            edited = payload.toString(), operationId = operationId)
+        return sendSaved(operationId)
+    }
+
+    /** Undo a PC-confirmed archive, using the exact archived content revision. */
+    suspend fun submitRestore(root: File, taskId: String, archivedRevision: String): Submission {
+        val operationId = UUID.randomUUID().toString()
+        drafts.saveOffline(boardId = boardIdentity(root), taskId = taskId,
+            baseRevision = archivedRevision,
+            baseSource = "Undo archived $taskId at $archivedRevision",
+            edited = JSONObject().put("_operation", "restore").toString(),
+            operationId = operationId)
+        return sendSaved(operationId)
+    }
+
     suspend fun submitColumns(root: File, expectedBoardRevision: String,
                               columns: List<TaskBoardColumn>): Submission {
         val operationId = UUID.randomUUID().toString()
@@ -206,6 +258,8 @@ class TaskBoardPhoneClient(
         val isNewBoard = pending.taskId == "NEWBOARD"
         val isColumns = pending.taskId == "COLUMNS"
         val isArchive = JSONObject(pending.edited).optString("_operation") == "archive"
+        val isRestore = JSONObject(pending.edited).optString("_operation") == "restore"
+        val isReview = JSONObject(pending.edited).optString("_operation") == "review"
         val isQueue = JSONObject(pending.edited).optString("_operation") == "queue"
         val wire = if (isNewBoard) mapOf(
             "operationId" to pending.operationId,
@@ -238,7 +292,16 @@ class TaskBoardPhoneClient(
             "operationId" to pending.operationId, "board" to pending.boardId,
             "taskId" to pending.taskId, "baseRevision" to pending.baseRevision,
             "mode" to JSONObject(pending.edited).getString("mode")
-        ) else mapOf(
+        ) else if (isRestore || isArchive) mapOf(
+            "operationId" to pending.operationId, "board" to pending.boardId,
+            "taskId" to pending.taskId, "baseRevision" to pending.baseRevision
+        ) else if (isReview) {
+            val saved = JSONObject(pending.edited)
+            mapOf("operationId" to pending.operationId, "board" to pending.boardId,
+                "taskId" to pending.taskId, "baseRevision" to pending.baseRevision,
+                "manifestRevision" to saved.getString("manifestRevision"),
+                "decision" to rpcJson(saved.getJSONObject("decision")))
+        } else mapOf(
             "operationId" to pending.operationId,
             "board" to pending.boardId,
             "taskId" to pending.taskId,
@@ -248,7 +311,9 @@ class TaskBoardPhoneClient(
         val method = if (isNewBoard) "taskboard.phone.board.create" else if (isColumns)
             "taskboard.phone.columns" else if (isCreate)
             "taskboard.phone.create" else if (isArchive)
-            "taskboard.phone.archive" else if (isQueue) "taskboard.phone.queue.set"
+            "taskboard.phone.archive" else if (isRestore)
+            "taskboard.phone.restore" else if (isReview)
+            "taskboard.phone.review.resolve" else if (isQueue) "taskboard.phone.queue.set"
             else "taskboard.phone.update"
         val response = try {
             signalR.agentCall(method, wire)

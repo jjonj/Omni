@@ -89,6 +89,7 @@ import com.omni.sync.data.taskboard.MobileReviewDecision
 import com.omni.sync.data.taskboard.MobileReviewPin
 import com.omni.sync.data.taskboard.MobileReviewAttachment
 import com.omni.sync.data.taskboard.TaskBoardReviewStore
+import com.omni.sync.data.taskboard.TaskBoardPhoneClient
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -99,16 +100,22 @@ import java.util.Base64
 
 /**
  * Human-owned review surface; never used for automatic agent approvals.
- * All operations use the synced file store, no remote privileged RPCs.
+ * Read previews from synced files; resolve decisions through the authenticated
+ * PC TaskBoard core so the manifest and task are updated under one board lock.
  */
 @Composable
-fun TaskBoardReviewScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
+fun TaskBoardReviewScreen(onClose: () -> Unit, phoneWriter: TaskBoardPhoneClient,
+                          modifier: Modifier = Modifier) {
     val scope = rememberCoroutineScope()
     var queue by remember { mutableStateOf<List<MobileReview>>(emptyList()) }
     var selected by remember { mutableStateOf<String?>(null) }
     var showResolved by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var saving by remember { mutableStateOf(false) }
+    var reviewNotice by remember { mutableStateOf<String?>(null) }
+    // Keep the old synced round hidden after a PC ACK / queued offline write.
+    // A genuinely new manifest revision reappears for the next review round.
+    var submittedRounds by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
     var choice by remember { mutableStateOf<String?>(null) }
     val ranking = remember { mutableStateListOf<String>() }
     val pins = remember { mutableStateListOf<MobileReviewPin>() }
@@ -149,9 +156,11 @@ fun TaskBoardReviewScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
         scope.launch {
             runCatching { withContext(Dispatchers.IO) { TaskBoardReviewStore.queue(showResolved) } }
                 .onSuccess { fresh ->
-                    queue = fresh
-                    if (selected == null || fresh.none { it.project.root.path + "/" + it.taskId == selected })
-                        selected = fresh.firstOrNull()?.let { it.project.root.path + "/" + it.taskId }
+                    queue = fresh.filterNot { item ->
+                        submittedRounds[item.project.root.path + "/" + item.taskId] == item.manifestRevision
+                    }
+                    if (selected == null || queue.none { it.project.root.path + "/" + it.taskId == selected })
+                        selected = queue.firstOrNull()?.let { it.project.root.path + "/" + it.taskId }
                     error = null
                 }.onFailure { error = "Unable to read synced review files: ${it.message}" }
         }
@@ -202,7 +211,7 @@ fun TaskBoardReviewScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
         scope.launch {
             runCatching {
                 withContext(Dispatchers.IO) {
-                    TaskBoardReviewStore.resolve(current, MobileReviewDecision(
+                    val receipt = phoneWriter.submitReview(current, MobileReviewDecision(
                         verdict = verdict,
                         choices = when (verdict) {
                             "picked" -> listOfNotNull(choice)
@@ -214,13 +223,23 @@ fun TaskBoardReviewScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
                         note = note,
                         attachments = reviewImages.toList(),
                     ))
-                    TaskBoardReviewStore.queue(showResolved)
+                    receipt
                 }
-            }.onSuccess { fresh ->
-                queue = fresh
-                selected = fresh.firstOrNull()?.let { it.project.root.path + "/" + it.taskId }
-                reviewImages.clear()
-                error = null
+            }.onSuccess { receipt ->
+                when (receipt.status) {
+                    "applied", "queued" -> {
+                        val key = current.project.root.path + "/" + current.taskId
+                        submittedRounds = submittedRounds + (key to current.manifestRevision)
+                        queue = queue.filterNot { it.project.root.path + "/" + it.taskId == key }
+                        selected = queue.firstOrNull()?.let { it.project.root.path + "/" + it.taskId }
+                        reviewImages.clear()
+                        reviewNotice = if (receipt.status == "queued")
+                            "Review saved on phone. Pending edits will retry on reconnection."
+                        else "Verdict accepted by PC. Waiting for the synced review to update."
+                        error = null
+                    }
+                    else -> error = receipt.details ?: "Review ${receipt.status}; open Pending PC edits to resolve."
+                }
             }.onFailure { error = "Review conflict or save error: ${it.message}. Refresh to retry." }
             saving = false
         }
@@ -264,6 +283,11 @@ fun TaskBoardReviewScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
             FilterChip(selected = queueOpen || review == null, onClick = { queueOpen = !queueOpen },
                 label = { Text("Queue · ${queue.size}", maxLines = 1) })
             TextButton(onClick = { refresh() }) { Text("↻", style = MaterialTheme.typography.titleMedium) }
+        }
+        reviewNotice?.let { message ->
+            Text(message, Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.primary)
         }
         error?.let {
             Card(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 4.dp),
