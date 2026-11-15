@@ -1,0 +1,274 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Apni — Radial interaction study • OMN-0070</title>
+<style>
+:root{color-scheme:dark;--ink:#071219;--surface:#102029;--surface2:#152a33;--edge:#30505a;--muted:#a4b6be;--text:#ecf6f5;--mint:#8de1cf;--aqua:#62b6ba;--amber:#f2bd82;--pink:#df9eb6}
+*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:var(--ink);color:var(--text);font-family:"Segoe UI Variable","Segoe UI",Inter,system-ui,sans-serif;letter-spacing:-.013em}button,input,select{font:inherit}button{color:inherit;cursor:pointer}button:focus-visible,a:focus-visible,input:focus-visible{outline:2px solid var(--amber);outline-offset:3px}
+a{color:var(--mint)}.shell{max-width:1530px;margin:auto;padding:26px clamp(18px,3vw,46px) 70px}.heading{display:flex;align-items:center;justify-content:space-between;gap:24px;flex-wrap:wrap;margin-bottom:21px}
+.mark{display:flex;align-items:center;gap:13px}.logo{width:42px;height:42px;display:grid;place-items:center;border-radius:50%;background:radial-gradient(circle at 40% 35%,#315962 0 27%,#0b1b25 30% 52%,#6bbeb5 53% 55%,#0c2228 58%);box-shadow:0 0 0 1px #557b7d66;font-weight:600;letter-spacing:-.08em;color:white}.product{font-size:22px;font-weight:700;letter-spacing:-.05em}.subtle{font-size:12px;color:var(--muted);letter-spacing:.02em}.chip{border:1px solid #55737c;background:#17313b;border-radius:99px;padding:8px 13px;color:#bededc;font-size:12px}.chip i{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--amber);margin-right:7px}
+h1{font-size:clamp(29px,4vw,50px);font-weight:600;letter-spacing:-.055em;line-height:1.06;margin:0;max-width:900px}.intro{display:flex;align-items:flex-end;justify-content:space-between;gap:22px;margin:4px 0 26px}.intro p{margin:0;color:#aac2c8;max-width:400px;line-height:1.55;font-size:14px}
+.toolbar{display:flex;flex-wrap:wrap;gap:7px;align-items:center;border:1px solid #27434c;background:#0c1c23;border-radius:14px;padding:8px;margin-bottom:16px}.toolbar .sectionlabel{padding:5px 10px;color:#8eb0b7;font-size:12px}.pill{border:1px solid transparent;background:transparent;border-radius:9px;padding:9px 12px;font-size:12px;font-weight:600;transition:background .16s,border-color .16s}.pill:hover{background:#24434b}.pill[aria-pressed=true]{background:#29535a;border-color:#5a9d9b;color:#eafff8}.pill.special{border-color:#56716e;color:#dcf4f0;margin-left:auto}.pill.muted{color:#9caeb5}.pill.warn[aria-pressed=true]{background:#4e382e;border-color:#d79b68}.cols{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.panel{border:1px solid #2c5059;background:#0d2029;border-radius:20px;overflow:hidden;min-width:0;box-shadow:0 18px 55px #0004}.panelhead{min-height:70px;padding:16px 22px 13px;display:flex;align-items:center;justify-content:space-between;gap:12px;background:#0c1c24;border-bottom:1px solid #21404b}.panelhead strong{font-size:17px;letter-spacing:-.025em}.panelhead p{font-size:12px;color:#9bb6bc;margin:3px 0 0}.minitabs{display:flex;gap:4px;background:#07161e;border:1px solid #2d4a50;border-radius:8px;padding:3px}.minitabs button{border:0;border-radius:6px;background:transparent;color:#90acb2;padding:6px 8px;font-size:11px}.minitabs button[aria-selected=true]{background:#315b61;color:white}
+.arena{height:540px;position:relative;overflow:hidden;touch-action:none;isolation:isolate;cursor:crosshair;background:radial-gradient(ellipse at 40% 56%,#40616b55 0%,transparent 46%),linear-gradient(130deg,#192c35 0%,#0b1d29 50%,#17313c 100%)}
+.arena:before{content:"";position:absolute;inset:-60px -80px;background:linear-gradient(124deg,transparent 46%,#75b1ac12 46.3% 47.1%,transparent 47.4%),linear-gradient(48deg,transparent 53%,#8fd6c111 53.2% 53.7%,transparent 54%);transform:skewX(-6deg);pointer-events:none}
+.arena:after{content:"";position:absolute;inset:0;background-image:radial-gradient(#b4e9df19 .7px,transparent .7px);background-size:29px 29px;mask-image:linear-gradient(180deg,transparent,#000a);pointer-events:none}
+.fake-window{position:absolute;border:1px solid #6e929034;border-radius:11px;background:#d0dedb0c;box-shadow:0 20px 60px #02101650;backdrop-filter:blur(9px);color:#9ab5bb;font-size:12px;pointer-events:none}.fake-window.one{width:190px;height:155px;left:-48px;top:61px;transform:rotate(-6deg)}.fake-window.two{width:185px;height:200px;right:-48px;bottom:17px;transform:rotate(5deg)}
+.fake-window:before{content:"";display:block;border-bottom:1px solid #78989835;height:25px;background:linear-gradient(90deg,#b4d4d23d 0 11px,transparent 11px 20px,#b4d4d223 20px 28px,transparent 28px 35px);background-size:40px 7px;background-repeat:no-repeat;background-position:12px 10px}
+.fake-window span{display:block;margin:16px;width:64%;height:7px;border-radius:4px;background:#b1ccc626;box-shadow:0 19px #b1ccc61b,0 38px #b1ccc619}
+.anchor{width:520px;height:520px;position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:2;pointer-events:none;transition:left .25s cubic-bezier(.19,1,.22,1),top .25s cubic-bezier(.19,1,.22,1)}
+svg.ring{width:100%;height:100%;overflow:visible;pointer-events:auto;filter:drop-shadow(0 12px 22px #0009);transition:transform .22s cubic-bezier(.22,1,.3,1)}
+.ring .seg{cursor:pointer;outline:none}.ring .slice{fill:#172e38ed;stroke:#46636b;stroke-width:1.4;transition:fill .19s,stroke .19s,filter .19s,opacity .19s}.ring .seg.active .slice{fill:#35616a;stroke:#a0ebe0;filter:drop-shadow(0 0 12px #58dbc655)}.ring .seg.secondary .slice{fill:#0e3039d9}.ring .seg.secondary.active .slice{fill:#487978}.ring .seg.soft .slice{opacity:.54}.ring .slice-icon{fill:#d7e8e7;font-size:21px;font-weight:600;text-anchor:middle;pointer-events:none}.ring .slice-title{fill:#c1d6d7;font-size:11.4px;font-weight:600;text-anchor:middle;pointer-events:none;letter-spacing:.05px}.ring .secondary .slice-title{font-size:11px}.ring .secondary .slice-icon{font-size:16px}.ring .seg.active .slice-icon,.ring .seg.active .slice-title{fill:#effff9}.ring .ghost path{fill:#b3dcd313;stroke:#dfbb83;stroke-width:1.2;stroke-dasharray:4 5}.ring .ghost:hover path,.ring .ghost.armed path{fill:#f1c48e46;stroke:#ffdca8}.ring .ghost text{fill:#fbd7a5;font-size:19px;text-anchor:middle;pointer-events:none}.ring .ghost{cursor:pointer}.ring .ghost.empty path{fill:#92c5b216;stroke-dasharray:3 7}.ring .ghost.empty text{font-size:17px}.ring .centerDisc{fill:#0a2029ee;stroke:#729997;stroke-width:1.5}.ring .centerHalo{fill:none;stroke:#7cbdb5;stroke-width:1;stroke-dasharray:2 6;opacity:.55}.ring .centerWord{fill:#e9f3f0;font-size:23px;font-weight:650;text-anchor:middle;letter-spacing:-1.8px}.ring .centerTiny{fill:#9bbec3;font-size:11px;text-anchor:middle;letter-spacing:.5px}.ring .centerDot{fill:#8ee4d0}.ring .centerHelp{fill:#aac2c4;font-size:10.4px;text-anchor:middle}
+.ring .subtransition{animation:subgrow .26s cubic-bezier(.14,1.08,.23,1) both}.ring .traced{stroke:#9adcd066;stroke-width:1.4;stroke-dasharray:2 4;fill:none;pointer-events:none}.stagehint{position:absolute;z-index:5;top:14px;left:16px;border:1px solid #69939744;border-radius:99px;padding:7px 10px;color:#c0d7d7;font-size:10.5px;background:#0c1a20c9;backdrop-filter:blur(7px);pointer-events:none}
+.stagehint span{color:var(--amber)}.shortcuts{position:absolute;z-index:5;bottom:14px;left:16px;right:16px;display:flex;align-items:center;justify-content:space-between;font-size:10.5px;color:#a9c0c2;pointer-events:none}.shortcuts kbd{font-family:inherit;background:#152f3b;border:1px solid #42616d;border-radius:4px;padding:2px 5px;color:#e9f5f1}
+.selection{padding:14px 19px;min-height:82px;display:flex;justify-content:space-between;align-items:center;gap:10px;border-top:1px solid #21404b}.selection b{font-size:14px;color:#f0f7f5}.selection p{margin:5px 0 0;font-size:11.5px;color:#9db2b8;line-height:1.35}.selection .status{border:1px solid #426268;color:#a9cbd0;border-radius:99px;padding:7px 10px;font-size:11px;flex-shrink:0}
+.controls{display:flex;gap:8px;flex-wrap:wrap;margin:18px 0 20px;align-items:center}.action{border:1px solid #466770;background:#193440;color:#d5e9e7;padding:10px 14px;border-radius:9px;font-size:12px;font-weight:600}.action:hover{background:#315960}.action[aria-pressed=true]{border-color:var(--amber);background:#4b3a2b;color:#ffe3b4}.action.primary{background:#4f9e94;color:#081b23;border-color:#8edfcf}.action.primary:hover{background:#81d5c4}.controlinfo{margin-left:auto;font-size:12px;color:#9bb0b7}
+.fan{position:absolute;z-index:4;right:8px;top:92px;width:162px;pointer-events:auto;filter:drop-shadow(0 18px 28px #0009)}.fan .cap{border:1px solid #5a8990;background:#123440e8;color:#d9f4ef;padding:6px 9px;border-radius:8px 8px 0 0;font-size:10px;text-align:center;backdrop-filter:blur(8px)}.fan-cards{height:235px;position:relative}.window-card{width:150px;height:110px;position:absolute;left:0;top:0;border:1px solid #719396;border-radius:9px;background:#0e2029;overflow:hidden;box-shadow:0 10px 35px #000a;cursor:pointer;transform:translate(var(--x),var(--y)) rotate(var(--r));transition:transform .23s,outline .18s}.window-card:hover{transform:translate(var(--x),var(--y)) rotate(0deg) scale(1.08);z-index:10;outline:2px solid var(--mint)}.window-card .winbar{height:20px;background:#27414c;font-size:8.5px;padding:5px;color:#d2e9e4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.window-card .winbody{padding:8px}.window-card .winbody i{display:block;height:6px;background:#9ad9d126;margin:5px 0;border-radius:2px}.window-card .winbody i:first-child{width:85%;background:#80cec445}.window-card .winbody i:nth-child(2){width:55%}.window-card .winbody i:nth-child(3){width:72%}.window-card .winbody b{font-weight:500;font-size:10px;color:#97b6c0}.fan-note{color:#b6cac9;font-size:10px;background:#0c252dd9;border-radius:8px;padding:7px 9px;border:1px solid #45636b;line-height:1.3}
+.editor{position:absolute;z-index:8;left:12px;bottom:49px;width:238px;background:#0c232deF;border:1px solid #8bb9b0;border-radius:13px;padding:14px;box-shadow:0 25px 50px #0009;backdrop-filter:blur(18px)}.editor h3{font-size:14px;margin:0 0 9px}.editor label{display:block;color:#b8d2d5;font-size:11px;margin-bottom:8px}.editor input,.editor select{width:100%;margin-top:4px;background:#102c36;border:1px solid #506c76;border-radius:7px;color:#fff;padding:8px}.editorbar{display:flex;gap:5px;align-items:center;margin-top:10px}.editorbar button{border:1px solid #52737b;background:#20414b;padding:7px 8px;border-radius:7px;font-size:11px}.editorbar .save{background:#69b6a8;color:#10212a}.editor small{display:block;color:#afc3c7;margin-top:7px}
+.toast{position:fixed;bottom:22px;left:50%;transform:translate(-50%,18px);z-index:99;opacity:0;pointer-events:none;background:#d5f5e9;color:#11282d;padding:11px 18px;border-radius:10px;font-size:13px;font-weight:600;box-shadow:0 18px 45px #000b;transition:opacity .2s,transform .2s}.toast.show{opacity:1;transform:translate(-50%,0)}
+.about{margin:22px 0;display:grid;grid-template-columns:1.2fr 1fr;gap:16px}.copy{border:1px solid #28464e;border-radius:16px;background:#0c2028;padding:22px 24px}.copy h2,.references h2{font-size:21px;letter-spacing:-.036em;margin:0 0 10px}.copy p{color:#b4c8ce;line-height:1.55;font-size:13px;max-width:690px}.key{display:inline-block;background:#193742;border:1px solid #527079;border-radius:6px;padding:3px 6px;color:#e8f1f1;font-size:11px}.copy ul{padding-left:19px;color:#b4c8ce;font-size:13px;line-height:1.8}.caution{color:#e7c697!important}.references{border:1px solid #38555b;border-radius:16px;padding:22px 24px;background:#10252b}.references p{font-size:12px;color:#afc4c7;line-height:1.5}.refs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:14px}.refs a{text-decoration:none;border:1px solid #516d72;border-radius:9px;overflow:hidden;background:#071b21}.refs img{display:block;width:100%;height:105px;object-fit:cover;background:#273e46}.refs strong{display:block;font-size:11px;padding:8px 6px;color:#d7ebeb;text-align:center}.origin{border:1px solid #4e6669;border-radius:8px;padding:12px;margin-top:14px;font-size:11px;color:#aec2c9;line-height:1.5}.origin a{color:#bde5dc}
+@keyframes subgrow{from{opacity:0;transform:scale(.97);transform-origin:50% 50%}to{opacity:1;transform:scale(1)}}@media(prefers-reduced-motion:reduce){*,*:before,*:after{animation-duration:.01ms!important;transition-duration:.01ms!important;scroll-behavior:auto!important}}
+@media(max-width:1110px){.cols,.about{grid-template-columns:1fr}.arena{height:540px}.fan{right:9%}.intro{display:block}.intro p{margin:15px 0 0}.controlinfo{margin-left:0}}
+@media(max-width:650px){.shell{padding:17px 12px 50px}.heading{gap:10px}.panelhead{padding:12px}.arena{height:430px}.anchor{width:420px;height:420px}.fan{right:0;top:50px;transform:scale(.8);transform-origin:top right}.toolbar .sectionlabel{display:none}.pill{padding:8px}.refs img{height:65px}.copy,.references{padding:16px}.controlinfo{width:100%}.intro h1{font-size:32px}}
+</style>
+</head>
+<body>
+<main class="shell">
+<header class="heading"><div class="mark"><span class="logo" aria-hidden="true">a</span><div><div class="product">Apni <span class="subtle"> / interaction study</span></div><div class="subtle">OMN-0070 · OmniHub desktop</div></div></div><div class="chip"><i></i> Design proposal — approval pending</div></header>
+<section class="intro"><h1>A launcher that appears<br>exactly where you're working.</h1><p>Two interaction directions, one shared vocabulary. Explore the actual rings, open-window groups, insertion gaps, and editing before deciding what we build.</p></section>
+<nav class="toolbar" aria-label="Demo scenarios"><span class="sectionlabel">Show</span><button class="pill" data-demo="compare" aria-pressed="true">Side-by-side</button><button class="pill" data-demo="hover" aria-pressed="false">Hover second ring</button><button class="pill" data-demo="windows" aria-pressed="false">Window fan</button><button class="pill warn" data-demo="add" aria-pressed="false">Add Mode + gaps</button><button class="pill" data-demo="emptyCat" aria-pressed="false">Empty category</button><button class="pill" data-demo="emptyWheel" aria-pressed="false">Empty wheel</button><button class="pill" data-demo="edit" aria-pressed="false">In-wheel edit</button></nav>
+<section class="cols">
+<article class="panel"><div class="panelhead"><div><strong>Unified wheel</strong><p>One hold gesture · Categories → actions → windows</p></div><div class="chip">Proposal A</div></div><div class="arena" id="arena-u" data-stage="u" aria-label="Interactive unified wheel area">
+<div class="fake-window one"><span></span></div><div class="fake-window two"><span></span></div><div class="stagehint">Hold <span>Space</span> or press + drag anywhere in the desktop</div>
+<div class="anchor" id="anchor-u"><svg class="ring" id="ring-u" viewBox="0 0 520 520" role="group" aria-label="Unified launcher wheel"></svg></div><div class="fan" id="fan-u" hidden></div><div class="editor" id="editor-u" hidden></div><div class="shortcuts"><span><kbd>Space</kbd> hold · aim · release</span><span><kbd>Esc</kbd> cancel</span></div></div>
+<div class="selection"><div><b id="name-u">Apps</b><p id="description-u">Hover a first-ring category to see its actions.</p></div><span class="status" id="status-u">Ready</span></div></article>
+<article class="panel"><div class="panelhead"><div><strong>Separate wheels</strong><p>Launcher shortcut + dedicated window-switch shortcut</p></div><div class="minitabs" role="tablist" aria-label="Separate wheel choice"><button id="switch-launcher" role="tab" aria-selected="false">Launch</button><button id="switch-windows" role="tab" aria-selected="true">Windows</button></div></div><div class="arena" id="arena-s" data-stage="s" aria-label="Interactive separate wheel area">
+<div class="fake-window one"><span></span></div><div class="fake-window two"><span></span></div><div class="stagehint">Separate shortcuts: <span>Alt+Space</span> · <span>Alt+Tab</span> (illustrative)</div>
+<div class="anchor" id="anchor-s"><svg class="ring" id="ring-s" viewBox="0 0 520 520" role="group" aria-label="Dedicated wheel"></svg></div><div class="fan" id="fan-s" hidden></div><div class="editor" id="editor-s" hidden></div><div class="shortcuts"><span><kbd>Space</kbd> hold · aim · release</span><span><kbd>Esc</kbd> cancel</span></div></div>
+<div class="selection"><div><b id="name-s">T3 Code windows</b><p id="description-s">Hover a running app to reveal its window instances.</p></div><span class="status" id="status-s">Window wheel</span></div></article>
+</section>
+<div class="controls"><button class="action primary" id="gesture">▶ Show hold / aim / release</button><button class="action" id="recenter">Recenter wheels</button><button class="action" id="modeAdd" aria-pressed="false">＋ Toggle Add Mode</button><button class="action" id="modeEdit" aria-pressed="false">✎ Edit selected item</button><span class="controlinfo">All actions are simulated; this never launches programs.</span></div>
+<section class="about">
+<div class="copy"><h2>The interaction contract</h2><p><span class="key">Hold</span> opens at pointer position. <span class="key">Aim</span> through a category to expose its outer actions or grouped windows. <span class="key">Release</span> confirms the highlighted target. Release at the center or outside the wheel, or press Escape, to dismiss safely. Click the sample desktop to place the menu at a new cursor position. In the preview, button taps also demonstrate selections.</p>
+<ul><li><strong>Unified:</strong> Apps, Scripts, OmniSweep, Workspaces, Tools and System are first-ring categories. Hover category to open second-ring actions.</li><li><strong>Separate:</strong> Launch wheel retains the same categories; Windows is a fast dedicated wheel, grouped by application with simulated live-window previews.</li><li><strong>Add Mode:</strong> copper dashed <strong>+</strong> gaps are insertion targets between categories and between nested tiles. Empty category/wheel presets show the first-item experience; click a ghost to add.</li><li><strong>Edit in-wheel:</strong> select a tile, rename it, change its kind or reorder it without leaving the overlay. Changes stay inside this prototype only.</li></ul><p class="caution">Design gate: no Windows hooks, real window captures, app launches, OmniSweep mutations, services, or production wheel are implemented here.</p></div>
+<div class="references"><h2>Reference / proposal boundary</h2><p>The images below are <strong>original Gola</strong> website assets, shown as external visual references—not Apni screenshots. The interactive wheels above are <strong>new Apni proposals</strong>, rendered locally in this design study.</p>
+<div class="refs"><a href="https://gsl0001.github.io/gola/assets/v109/hero.jpg" target="_blank" rel="noopener"><img src="https://gsl0001.github.io/gola/assets/v109/hero.jpg" alt="Original Gola hero radial wheel" loading="lazy"><strong>Gola · Hero wheel</strong></a>
+<a href="https://gsl0001.github.io/gola/assets/v107/fan.webp" target="_blank" rel="noopener"><img src="https://gsl0001.github.io/gola/assets/v107/fan.webp" alt="Original Gola window fan" loading="lazy"><strong>Gola · Window fan</strong></a>
+<a href="https://gsl0001.github.io/gola/assets/v107/themes/liquid.webp" target="_blank" rel="noopener"><img src="https://gsl0001.github.io/gola/assets/v107/themes/liquid.webp" alt="Original Gola liquid theme" loading="lazy"><strong>Gola · Liquid theme</strong></a></div>
+<div class="origin">Sources: <a href="https://gsl0001.github.io/gola/" target="_blank" rel="noopener">Gola website</a> · <a href="https://chatgpt.com/c/6af7c639-9f54-83eb-872e-137d18e675b1" target="_blank" rel="noopener">Original Apni discussion</a>. No Gola code or artwork is reused in the Apni wheel design; references are linked to their original host.</div></div>
+</section></main><div class="toast" role="status" aria-live="polite" id="toast"></div>
+<script>
+(() => {
+"use strict";
+const icon={Apps:"▦",Scripts:"⌘",OmniSweep:"◈",Workspaces:"▥",Tools:"✦",System:"⚙", "T3 Code":"◌",Fomni:"▤",Unreal:"⬡",Obsidian:"◆",Browser:"◎","VS Code":"⌘", "PowerShell":">_", "Backup":"↥","Project sync":"⟳","Resize":"⇱","Center":"⊞","Snap":"▥","Move":"✥", "Wartribes":"♜","Order of the Fallen":"♜","OmniHub":"◈","Timer":"◷","Screenshot":"▣","Color picker":"◐","Caffy":"☕","Lock PC":"⊠","Audio":"♪","Monitor":"▣"};
+const initial=[
+{name:"Apps",children:["T3 Code","Fomni","Unreal","Obsidian","Browser","VS Code"]},
+{name:"Scripts",children:["PowerShell","Backup","Project sync"]},
+{name:"OmniSweep",children:["Resize","Center","Snap","Move"]},
+{name:"Workspaces",children:["Wartribes","Order of the Fallen","OmniHub"]},
+{name:"Tools",children:["Timer","Screenshot","Color picker","Caffy"]},
+{name:"System",children:["Lock PC","Audio","Monitor"]}];
+const windowGroups=[
+{name:"T3 Code",children:["Wartribes agent","Omni worker","TaskBoard review"]},
+{name:"Browser",children:["Gola reference","OmniHub gateway","Unreal docs"]},
+{name:"Unreal",children:["Wartribes Editor","Arena Lab"]},
+{name:"Obsidian",children:["Omni Tasks","Wartribes design"]},
+{name:"Fomni",children:["Shared projects","Screenshots"]}];
+const clone=v=>JSON.parse(JSON.stringify(v));
+const S={u:{kind:"unified",category:0,child:-1,add:false,edit:false,emptyWheel:false,emptyCat:false,data:clone(initial),cursor:null,pressed:false,selected:null,editing:false,types:{}},s:{kind:"windows",category:0,child:-1,add:false,edit:false,emptyWheel:false,emptyCat:false,data:clone(initial),cursor:null,pressed:false,selected:null,editing:false,types:{}}};
+const $=id=>document.getElementById(id);
+const clamp=(n,a,b)=>Math.max(a,Math.min(b,n));
+const polar=(r,a)=>[260+Math.cos(a*Math.PI/180)*r,260+Math.sin(a*Math.PI/180)*r];
+const arc=(inner,outer,a,b)=>{
+ const [x1,y1]=polar(outer,a),[x2,y2]=polar(outer,b),[x3,y3]=polar(inner,b),[x4,y4]=polar(inner,a);
+ return "M"+x1.toFixed(2)+" "+y1.toFixed(2)+" A"+outer+" "+outer+" 0 "+(b-a>180?1:0)+" 1 "+x2.toFixed(2)+" "+y2.toFixed(2)+" L"+x3.toFixed(2)+" "+y3.toFixed(2)+" A"+inner+" "+inner+" 0 "+(b-a>180?1:0)+" 0 "+x4.toFixed(2)+" "+y4.toFixed(2)+" Z";
+};
+const safe=t=>String(t).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const groupData=s=>s.kind==="windows"?windowGroups:s.data;
+const catItems=(s,index)=>{const data=groupData(s);return data[index] ? (s.emptyCat&&s.kind!=="windows"&&index===s.category?[]:data[index].children):[];};
+const glyph=t=>icon[t]||(t||"?").slice(0,1);
+function seg(title,index,total,inner,outer,active=false,secondary=false,soft=false){
+ const step=360/total, angle=-90+index*step, a=angle-step/2+1.4,b=angle+step/2-1.4;
+ const [ix,iy]=polar(secondary?inner+(outer-inner)*.3:inner+(outer-inner)*.33,angle),[tx,ty]=polar(secondary?inner+(outer-inner)*.7:inner+(outer-inner)*.72,angle);
+ return '<g class="seg '+(active?'active ':'')+(secondary?'secondary subtransition ':'')+(soft?'soft':'')+'" data-ring="'+(secondary?'child':'category')+'" data-index="'+index+'" tabindex="0" role="button" aria-label="'+safe(title)+'"><path class="slice" d="'+arc(inner,outer,a,b)+'"/><text x="'+ix.toFixed(2)+'" y="'+(iy+6).toFixed(2)+'" class="slice-icon">'+safe(glyph(title))+'</text><text x="'+tx.toFixed(2)+'" y="'+(ty+4).toFixed(2)+'" class="slice-title">'+safe(title.length>15?title.slice(0,13)+"…":title)+'</text></g>';
+}
+function ghost(index,total,inner,outer,kind,empty=false){
+ const angle=-90+(index+.5)*360/total,[x,y]=polar((inner+outer)/2,angle);
+ return '<g class="ghost '+(empty?'empty':'')+'" tabindex="0" role="button" aria-label="Insert '+(kind==="category"?'category':'item')+' here" data-ghost="'+kind+'" data-at="'+(index+1)+'"><path d="'+arc(inner,outer,angle-(empty?14:8),angle+(empty?14:8))+'"/><text x="'+x.toFixed(2)+'" y="'+(y+6).toFixed(2)+'">+</text></g>';
+}
+function render(k){
+ const s=S[k],data=groupData(s),svg=$("ring-"+k),anchor=$("anchor-"+k);
+ if(s.cursor){anchor.style.left=s.cursor[0]+"%";anchor.style.top=s.cursor[1]+"%";}else{anchor.style.left="50%";anchor.style.top="50%";}
+ let out='<circle cx="260" cy="260" r="68" class="centerHalo"/><circle cx="260" cy="260" r="56" class="centerDisc"/>';
+ out+='<text x="260" y="252" class="centerWord">apni</text><circle cx="289" cy="243" r="3" class="centerDot"/><text x="260" y="272" class="centerTiny">'+(s.add?'ADD MODE':s.edit?'EDIT MODE':s.kind==="windows"?'WINDOWS':'LAUNCHER')+'</text><text x="260" y="292" class="centerHelp">'+(s.pressed?'Release to select':'release here to cancel')+'</text>';
+ if(data.length && !s.emptyWheel){
+  data.forEach((d,i)=>out+=seg(d.name,i,data.length,79,145,s.category===i,false,s.category!==i&&s.child>=0));
+  const children=catItems(s,clamp(s.category,0,data.length-1));
+  if(children.length){children.forEach((c,i)=>out+=seg(c,i,children.length,164,226,s.child===i,true,false));}
+  if(s.add){
+    for(let i=0;i<data.length;i++)out+=ghost(i,data.length,77,147,"category");
+    for(let i=0;i<Math.max(1,children.length);i++)out+=ghost(i,Math.max(1,children.length),161,232,"item",children.length===0);
+  }
+  if(s.emptyCat && !children.length && !s.add)out+='<text x="260" y="62" class="centerHelp" style="font-size:15px">No items yet · enable Add Mode</text>';
+ }else{
+  out+='<circle cx="260" cy="260" r="144" fill="none" stroke="#bed8d456" stroke-dasharray="4 10"/>';
+  for(let i=0;i<8;i++)out+=ghost(i,8,81,145,"category",true);
+  out+='<text x="260" y="85" class="centerHelp" style="font-size:15px">Empty wheel · select a + gap to start</text>';
+ }
+ svg.innerHTML=out;
+ svg.setAttribute("aria-label",(k==="u"?"Unified":"Separate")+" "+(s.kind==="windows"?"window":"launch")+" wheel");
+ const cat=data[s.category],child=catItems(s,s.category)[s.child],desc=$("description-"+k),name=$("name-"+k),status=$("status-"+k);
+ name.textContent=s.emptyWheel?"No categories":child?child:cat?cat.name:"Empty wheel";
+ desc.textContent=s.add?"Copper + gaps insert between existing tiles; select a gap to try.":s.edit?"Select a slice to edit its label, type and order.":s.emptyWheel?"Click a dashed plus to add the first category.":s.emptyCat&&catItems(s,s.category).length===0?"Empty nested ring — turn on Add Mode to insert its first item.":child?"Release to "+(s.kind==="windows"?"focus this sample window":"run this sample action")+".":s.kind==="windows"?"Grouped by app. Hover an app for instance previews.":"Hover a category to expose its actions.";
+ status.textContent=s.add?"Add mode":s.edit?"Editing":s.kind==="windows"?"Window wheel":"Launcher";
+ renderFan(k);
+}
+function renderFan(k){
+ const s=S[k],fan=$("fan-"+k),data=groupData(s),cat=data[s.category],children=catItems(s,s.category);
+ const visible=!s.add&&!s.edit&&!s.emptyWheel&&!s.emptyCat&&(s.kind==="windows"||(cat?.name==="Apps"&&(s.child===0||s.child===4)));
+ if(!visible){fan.hidden=true;return;}
+ const base=s.kind==="windows"?(cat?.name||"App"):(children[s.child]||"T3 Code");
+ const windows=s.kind==="windows"?children:(base==="Browser"?["Gola reference","OmniHub gateway"]:["Wartribes agent","Omni worker","TaskBoard review"]);
+ if(!windows.length){fan.hidden=true;return;}fan.hidden=false;
+ fan.innerHTML='<div class="cap">'+safe(base)+' · '+windows.length+' windows (sample)</div><div class="fan-cards">'+windows.slice(0,3).map((name,i)=>'<button class="window-card" data-window="'+safe(name)+'" style="--x:'+(i*4)+'px;--y:'+(i*56)+'px;--r:'+(i-1)*2+'deg"><div class="winbar">'+safe(name)+'</div><div class="winbody"><i></i><i></i><i></i><b>'+safe(i===0?"Active preview":i===1?"Working session":"Window instance")+'</b></div></button>').join('')+'</div><div class="fan-note">Illustrative snapshots, not live captures. Click a card to simulate focus.</div>';
+}
+let toastTimer;
+function notify(text){const el=$("toast");el.textContent=text;el.classList.add("show");clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.classList.remove("show"),2800);}
+function setDemo(name){
+ document.querySelectorAll("[data-demo]").forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.demo===name)));
+ for(const k of ["u","s"]){const s=S[k];s.add=false;s.edit=false;s.emptyCat=false;s.emptyWheel=false;s.editing=false;s.pendingAdd=null;s.pressed=false;s.child=-1;s.category=0;s.cursor=null;}
+ if(name==="compare"){S.s.kind="windows";}
+ if(name==="hover"){S.u.category=1;S.s.kind="launcher";S.s.category=2;}
+ if(name==="windows"){S.u.category=0;S.u.child=0;S.s.kind="windows";S.s.category=0;}
+ if(name==="add"){S.u.add=true;S.s.kind="launcher";S.s.category=2;S.s.add=true;}
+ if(name==="emptyCat"){S.u.category=4;S.u.emptyCat=true;S.s.kind="launcher";S.s.category=1;S.s.emptyCat=true;}
+ if(name==="emptyWheel"){S.u.emptyWheel=true;S.s.kind="launcher";S.s.emptyWheel=true;}
+ if(name==="edit"){S.u.category=0;S.u.child=1;S.u.edit=true;S.s.kind="launcher";S.s.category=1;S.s.child=0;S.s.edit=true;S.u.editing=true;S.s.editing=true;}
+ syncTabs();["u","s"].forEach(k=>{render(k);renderEditor(k)});syncButtons();
+}
+function syncTabs(){$("switch-launcher").setAttribute("aria-selected",String(S.s.kind!=="windows"));$("switch-windows").setAttribute("aria-selected",String(S.s.kind==="windows"));}
+function syncButtons(){$("modeAdd").setAttribute("aria-pressed",String(S.u.add));$("modeEdit").setAttribute("aria-pressed",String(S.u.edit));}
+document.querySelectorAll("[data-demo]").forEach(b=>b.addEventListener("click",()=>setDemo(b.dataset.demo)));
+for(const [id,kind] of [["switch-launcher","launcher"],["switch-windows","windows"]])$(id).addEventListener("click",()=>{S.s.kind=kind;S.s.category=0;S.s.child=-1;S.s.edit=false;S.s.add=false;S.s.emptyWheel=false;S.s.emptyCat=false;render("s");renderEditor("s");syncTabs();});
+$("recenter").onclick=()=>{S.u.cursor=null;S.s.cursor=null;render("u");render("s");notify("Both wheels recentered");};
+$("modeAdd").onclick=()=>{const on=!S.u.add;for(const k of ["u","s"]){S[k].add=on;S[k].edit=false;S[k].editing=false;if(on&&S[k].kind==="windows")S[k].kind="launcher";render(k);renderEditor(k);}syncButtons();syncTabs();notify(on?"Select a copper + gap to insert":"Add Mode closed");};
+$("modeEdit").onclick=()=>{const on=!S.u.edit;for(const k of ["u","s"]){const s=S[k];if(s.kind==="windows")s.kind="launcher";s.edit=on;s.add=false;s.editing=on;if(s.child<0)s.child=0;render(k);renderEditor(k);}syncButtons();syncTabs();};
+function renderEditor(k){
+ const s=S[k],el=$("editor-"+k);
+ if(s.pendingAdd){
+   const p=s.pendingAdd,isCat=p.kind==="category"||s.emptyWheel;
+   el.hidden=false;
+   el.innerHTML='<h3>＋ Insert '+(isCat?'category':'action')+'</h3><label>Label<input id="add-label-'+k+'" maxlength="36" placeholder="'+(isCat?'e.g. Daily work':'e.g. Open project')+'"></label><label>Kind<select id="add-type-'+k+'"><option>'+(isCat?'Category':'App')+'</option><option>Script</option><option>OmniSweep</option><option>Command</option></select></label><div class="editorbar"><button data-add="cancel">Cancel</button><button class="save" data-add="save">Insert at gap</button></div><small>'+(isCat?'Between categories':'Inside '+safe(groupData(s)[s.category]?.name||"category"))+' · position '+(p.at+1)+' (sample only)</small>';
+   el.querySelectorAll("[data-add]").forEach(btn=>btn.onclick=()=>addAction(k,btn.dataset.add));
+   el.querySelector("input").addEventListener("keydown",e=>{if(e.key==="Enter")addAction(k,"save");e.stopPropagation();});
+   el.querySelector("input").focus();return;
+ }
+ if(!s.edit||!s.editing){el.hidden=true;return;}
+ const data=groupData(s),cat=data[s.category],items=catItems(s,s.category),name=s.child>=0?items[s.child]:cat?.name;
+ if(!name){el.hidden=true;return;}el.hidden=false;
+ el.innerHTML='<h3>✎ Edit in wheel</h3><label>Label<input id="edit-label-'+k+'" maxlength="36" value="'+safe(name)+'"></label><label>Type<select id="edit-type-'+k+'"><option>App</option><option>Script</option><option>OmniSweep</option><option>Command</option><option>Category</option></select></label><div class="editorbar"><button data-edit="previous" aria-label="Move left">←</button><button data-edit="next" aria-label="Move right">→</button><button data-edit="delete" aria-label="Delete item">Delete</button><button class="save" data-edit="save">Save</button></div><small>Local demo only · no changes to OmniHub.</small>';
+ el.querySelector("select").value=s.types[name]||(s.child<0?"Category":cat?.name==="Scripts"?"Script":cat?.name==="OmniSweep"?"OmniSweep":"App");
+ el.querySelectorAll("[data-edit]").forEach(btn=>btn.onclick=()=>editAction(k,btn.dataset.edit));
+ el.querySelector("input").addEventListener("keydown",e=>{if(e.key==="Enter")editAction(k,"save");e.stopPropagation();});
+}
+function editAction(k,action){
+ const s=S[k],data=s.data,cat=data[s.category];if(!cat)return;
+ const list=s.child>=0?cat.children:data,index=s.child>=0?s.child:s.category;
+ if(action==="save"){
+   const label=$("edit-label-"+k).value.trim();if(!label)return notify("A label is required");
+   const type=$("edit-type-"+k).value;
+   const oldName=typeof list[index]==="string"?list[index]:list[index].name;
+   if(typeof list[index]==="string")list[index]=label;else list[index].name=label;
+   if(oldName!==label)delete s.types[oldName];s.types[label]=type;
+   notify("Saved "+label+" · "+type+" (prototype)");s.editing=false;
+ }else if(action==="delete"){
+   if(s.child>=0){cat.children.splice(index,1);s.child=-1;}else{data.splice(index,1);s.category=Math.max(0,index-1);}
+   s.editing=false;notify("Removed from prototype");
+ }else{
+   const next=action==="previous"?Math.max(0,index-1):Math.min(list.length-1,index+1);
+   [list[index],list[next]]=[list[next],list[index]];
+   if(s.child>=0)s.child=next;else s.category=next;
+   notify("Reordered in prototype");
+ }
+ render(k);renderEditor(k);
+}
+function addAction(k,action){
+ const s=S[k],p=s.pendingAdd;if(!p)return;
+ if(action==="cancel"){s.pendingAdd=null;renderEditor(k);return;}
+ const label=$("add-label-"+k).value.trim();if(!label)return notify("Enter a label first");
+ s.types[label]=$("add-type-"+k).value;
+ const isCategory=p.kind==="category"||s.emptyWheel;
+ if(isCategory){s.data.splice(clamp(p.at,0,s.data.length),0,{name:label,children:[]});s.category=clamp(p.at,0,s.data.length-1);s.emptyWheel=false;s.emptyCat=true;s.child=-1;}
+ else {const group=s.data[s.category];if(!group)return;group.children.splice(clamp(p.at,0,group.children.length),0,label);s.child=clamp(p.at,0,group.children.length-1);s.emptyCat=false;}
+ s.pendingAdd=null;notify("Inserted "+label+" at selected gap · prototype only");render(k);renderEditor(k);
+}
+function createFromGhost(k,kind,at){
+ const s=S[k];if(!s.add&&!s.emptyWheel)return;
+ s.pendingAdd={kind,at};
+ renderEditor(k);
+}
+function choose(k,ring,index){const s=S[k],data=groupData(s);
+ if(ring==="category"){s.category=index;s.child=-1;s.editing=s.edit;}else{s.child=index;s.editing=s.edit;}
+ render(k);renderEditor(k);
+}
+function release(k){
+ const s=S[k];s.pressed=false;
+ if(s.add){notify("Add Mode: select a + insertion gap to confirm.");render(k);return;}
+ if(s.edit){s.editing=true;renderEditor(k);render(k);return;}
+ const cats=groupData(s),cat=cats[s.category],child=catItems(s,s.category)[s.child];
+ if(s.selected==="cancel"){notify("Released in center / outside — cancelled");s.selected=null;render(k);return;}
+ if(child)notify((s.kind==="windows"?"Would focus ":"Would run ")+child+" · preview only");
+ else if(cat)notify("Hover outer ring to select an action in "+cat.name);
+ else notify("No target — cancelled");
+ s.selected=null;render(k);
+}
+for(const k of ["u","s"]){
+ const arena=$("arena-"+k),svg=$("ring-"+k);
+ svg.addEventListener("pointermove",e=>{
+   const rect=svg.getBoundingClientRect(),x=(e.clientX-rect.left)/rect.width*520-260,y=(e.clientY-rect.top)/rect.height*520-260;
+   const r=Math.hypot(x,y),s=S[k],data=groupData(s),angle=(Math.atan2(y,x)*180/Math.PI+90+360)%360;
+   if(!data.length||s.emptyWheel)return;
+   if(r>=73&&r<=156){const idx=Math.round(angle/(360/data.length))%data.length;if(s.category!==idx||s.child!==-1)choose(k,"category",idx);s.selected="category";}
+   else if(r>=155&&r<=236){const children=catItems(s,s.category);if(children.length){const idx=Math.round(angle/(360/children.length))%children.length;if(s.child!==idx)choose(k,"child",idx);s.selected="child";}}
+   else if(r<62||r>245)s.selected="cancel";
+ });
+ svg.addEventListener("click",e=>{
+   const ghost=e.target.closest("[data-ghost]");if(ghost){createFromGhost(k,ghost.dataset.ghost,Number(ghost.dataset.at));return;}
+   const seg=e.target.closest("[data-ring]");if(seg){const role=seg.dataset.ring,idx=Number(seg.dataset.index);choose(k,role,idx);if(!S[k].edit&&!S[k].add&&role==="child")notify("Would run "+catItems(S[k],S[k].category)[idx]+" · preview only");}
+ });
+ svg.addEventListener("keydown",e=>{const el=e.target.closest("[data-ring],[data-ghost]");if(!el||!(e.key==="Enter"||e.key===" "))return;e.preventDefault();if(el.dataset.ghost)createFromGhost(k,el.dataset.ghost,Number(el.dataset.at));else choose(k,el.dataset.ring,Number(el.dataset.index));});
+ arena.addEventListener("pointerdown",e=>{
+   if(e.target.closest("button,input,select,.editor,.ring,.fan"))return;
+   const rect=arena.getBoundingClientRect(),s=S[k],x=(e.clientX-rect.left)/rect.width*100,y=(e.clientY-rect.top)/rect.height*100;
+   s.cursor=[clamp(x,24,76),clamp(y,28,72)];s.pressed=true;s.selected="cancel";render(k);
+   arena.setPointerCapture?.(e.pointerId);
+ });
+ arena.addEventListener("pointermove",e=>{
+   const s=S[k];if(!s.pressed||e.target.closest(".ring"))return;
+   const r=$("ring-"+k).getBoundingClientRect(),x=(e.clientX-r.left)/r.width*520-260,y=(e.clientY-r.top)/r.height*520-260,dist=Math.hypot(x,y),angle=(Math.atan2(y,x)*180/Math.PI+90+360)%360;
+   const data=groupData(s);
+   if(dist<65||dist>238){s.selected="cancel";return;}
+   if(dist<157&&data.length){const idx=Math.round(angle/(360/data.length))%data.length;if(s.category!==idx||s.child!==-1)choose(k,"category",idx);s.selected="category";}
+   else{const children=catItems(s,s.category);if(children.length){const idx=Math.round(angle/(360/children.length))%children.length;if(s.child!==idx)choose(k,"child",idx);s.selected="child";}}
+ });
+ arena.addEventListener("pointerup",e=>{if(!S[k].pressed)return;arena.releasePointerCapture?.(e.pointerId);release(k);});
+ arena.addEventListener("pointercancel",()=>{S[k].pressed=false;S[k].selected="cancel";render(k);});
+ $("fan-"+k).addEventListener("click",e=>{const card=e.target.closest("[data-window]");if(card)notify("Would focus "+card.dataset.window+" · simulated preview");});
+ }
+let keyboardHold=false;
+document.addEventListener("keydown",e=>{
+ if(e.key==="Escape"){for(const k of ["u","s"]){S[k].pressed=false;S[k].selected="cancel";render(k);}notify("Cancelled both wheels");return;}
+ if(e.code==="Space"&&!e.repeat&&!/INPUT|SELECT|TEXTAREA|BUTTON/.test(document.activeElement?.tagName)){e.preventDefault();keyboardHold=true;for(const k of ["u","s"]){S[k].pressed=true;S[k].selected="cancel";render(k);}notify("Holding trigger — aim at a slice");}
+});
+document.addEventListener("keyup",e=>{if(e.code==="Space"&&keyboardHold){keyboardHold=false;e.preventDefault();for(const k of ["u","s"])release(k);}});
+$("gesture").onclick=()=>{
+ setDemo("windows");notify("Hold → aim → release (simulated)");
+ const u=S.u,s=S.s;u.pressed=s.pressed=true;render("u");render("s");
+ setTimeout(()=>{if(u.pressed&&s.pressed){u.child=0;s.child=0;u.selected=s.selected="child";render("u");render("s");}},550);
+ setTimeout(()=>{if(u.pressed&&s.pressed){release("u");release("s");}},1500);
+};
+const scenario=new URLSearchParams(location.search).get("demo");if(["compare","hover","windows","add","emptyCat","emptyWheel","edit"].includes(scenario))setDemo(scenario);else{syncTabs();render("u");render("s");}
+})();
+</script>
+</body></html>
