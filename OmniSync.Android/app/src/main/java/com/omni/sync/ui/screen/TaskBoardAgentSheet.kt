@@ -40,6 +40,9 @@ internal fun TaskBoardAgentSheet(
         uuid?.let { AgentSessionUi("t3", it, task.title, "t3/chatgpt",
             "Unknown", "Unknown", null, emptyList()) }
     }
+    val boardPath = remember(root, phone) {
+        "B:\\GDrive\\SharedWithPhone\\Obsidian\\jjj\\" + phone.boardIdentity(root).replace("/", "\\")
+    }
     var details by remember(uuid) { mutableStateOf<JsonObject?>(null) }
     var liveActivity by remember(uuid) { mutableStateOf<String?>(null) }
     var error by remember(uuid) { mutableStateOf<String?>(null) }
@@ -61,7 +64,22 @@ internal fun TaskBoardAgentSheet(
         val target = agent ?: return
         scope.launch {
             try {
-                details = client.sessionControls(target)
+                val current = client.sessionControls(target)
+                val ids = listOf("id", "browserId").mapNotNull { key ->
+                    current.get(key)?.takeUnless { it.isJsonNull }?.asString
+                }
+                check(uuid in ids) { "T3 returned a different agent; no controls were enabled." }
+                val ref = current.get("binding")?.takeIf { it.isJsonObject }?.asJsonObject
+                    ?.get("taskRef")?.takeIf { it.isJsonObject }?.asJsonObject
+                if (ref != null) {
+                    val boundId = ref.get("id")?.takeUnless { it.isJsonNull }?.asString
+                    val boundBoard = ref.get("board")?.takeUnless { it.isJsonNull }?.asString
+                    check(boundId == task.id && boundBoard?.replace('/', '\\')
+                        ?.equals(boardPath, ignoreCase = true) == true) {
+                        "This T3 session belongs to another task; controls are disabled."
+                    }
+                }
+                details = current
                 client.refresh()
                 liveActivity = client.sessions.value.firstOrNull { it.provider == "t3" && it.id == target.id }
                     ?.let { it.activity + " · " + it.reachability +
@@ -72,6 +90,8 @@ internal fun TaskBoardAgentSheet(
                         ?.let(AndroidAttentionStore::fromStatus) }
                 if (rows != null) AndroidAttentionStore.reconcile(context, rows)
             } catch (failure: Exception) {
+                details = null
+                liveActivity = null
                 error = "T3 status unavailable: " + failure.message
             }
         }
@@ -84,6 +104,10 @@ internal fun TaskBoardAgentSheet(
     }
     fun control(command: String, options: Map<String, Any?> = emptyMap(), after: (() -> Unit)? = null) {
         val target = agent ?: return
+        if (details == null) {
+            error = "This task's exact T3 session must be verified before sending commands."
+            return
+        }
         if (busy) return
         busy = true; error = null; notice = null
         scope.launch {
@@ -139,9 +163,15 @@ internal fun TaskBoardAgentSheet(
                     ?.asString ?: "Agent") + " · " + (liveActivity ?: "Activity not verified"),
                     style = MaterialTheme.typography.bodyMedium)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = { onOpenAgent(uuid!!); onDismiss() }) { Text("Open exact agent") }
+                    Button(enabled = details != null, onClick = {
+                        val exactId = details?.get("id")?.takeUnless { it.isJsonNull }?.asString ?: uuid!!
+                        onOpenAgent(exactId); onDismiss()
+                    }) { Text("Open exact agent") }
                     OutlinedButton(onClick = { refresh() }) { Text("Refresh") }
                 }
+                if (details == null) {
+                    Text("Agent controls are unavailable until T3 verifies this task's linked session. No unrelated session will be started.")
+                } else {
                 HorizontalDivider()
                 Text("Caffy scheduler", style = MaterialTheme.typography.titleMedium)
                 Text(if (caffy == null) "No active scheduler / status unavailable"
@@ -245,22 +275,20 @@ internal fun TaskBoardAgentSheet(
                             label = { Text(value) })
                     }
                 }
-                if (pending == null) Button(enabled = !busy && prepFocus.isNotBlank(), onClick = {
+                if (pending == null) Button(enabled = !busy && details != null && prepFocus.isNotBlank(), onClick = {
                     val id = UUID.randomUUID().toString()
                     if (!prefs.edit().putString(prepKey,id).commit())
                         error = "Could not persist request ID; nothing sent."
                     else {
                         pending = id
-                        val pcBoard = "B:\\GDrive\\SharedWithPhone\\Obsidian\\jjj\\" +
-                            phone.boardIdentity(root).replace("/", "\\")
-                        val request = "Existing TaskBoard task: " + pcBoard +
+                        val request = "Existing TaskBoard task: " + boardPath +
                             " / " + task.id + "\nTitle: " + task.title +
                             "\nFocus: " + prepFocus.trim() +
                             "\nRead canonical criteria and write prepfile path to THIS task AI Notes." +
                             " Do not create another task."
                         control("prepfile_create", mapOf("id" to id, "request" to request,
                             "depth" to depth, "generator" to "chatgpt",
-                            "taskRef" to mapOf("board" to pcBoard, "id" to task.id),
+                            "taskRef" to mapOf("board" to boardPath, "id" to task.id),
                             "autoHandoff" to false, "createTaskboardTask" to false))
                     }
                 }) { Text("Request task Prepfile") }
@@ -275,6 +303,7 @@ internal fun TaskBoardAgentSheet(
                         prefs.edit().remove(prepKey).commit()
                         pending = null
                     }) { Text("New request (verify previous first)") }
+                }
                 }
             }
             if (notice != null) Text(notice!!, color = MaterialTheme.colorScheme.primary)
