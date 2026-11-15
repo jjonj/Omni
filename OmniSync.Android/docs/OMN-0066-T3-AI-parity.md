@@ -1,0 +1,23 @@
+# OMN-0066 — T3 desktop ↔ Omni Android AI parity audit (2026-11-15)
+
+| Feature | Before OMN-0066 | Implemented / authoritative path |
+| --- | --- | --- |
+| New prepfile action | Desktop-only React action; Android had no prepfile launcher. | Android AI menu → New prepfile; authenticated `sessions.control` → T3 desktop's existing preparation pipeline and Electron bridge; output path and job receipts persisted in PC renderer and exposed via `sessions.controls`. |
+| Prepfile options | Desktop request/depth, ChatGPT/Luna/Haiku, project/scratch, images, TaskBoard, handoff provider/model/effort. | Android has the same choices, native model/project catalog, Android document picker, resumable small SignalR image parts (up to 8 optimized JPEG references), and optional auto-handoff. PC validates model availability and uses **the same** generator, one-shot ChatGPT session creation, native thread creation, and output reconciler as desktop. |
+| Prepfile resilience | Desktop already tracked handoffs/cleanup locally. | Stable persisted phone request ID; immutable chunk retries; PC reserves request before non-repeatable work, retains 40 recent jobs, generator ID, implementation thread, errors/uncertainty and cleanup; Android can reconcile and retry an unacknowledged request using the **same ID**, never submit automatically with a new ID. Native preparer thread ID is reserved before creation. Source journal never blindly replays uncertain creation or deletes another agent's session. |
+| Basic Caffy | Android already had idle, once/timed, periodic, queued, startup, pause/resume/stop, wake-now, start-later prompts, 30/60/120 min auto-reboot and busy slots. | Retained all existing session/schedule controls; resolved queued→idle+respectSlots translation on PC, kept phone policy bound to PC status. |
+| Advanced Caffy | No complete PC detail/status, repeated-prompt editor, run-count reboot. | Android shows next/last/check schedule timestamps, phase/capacity/admission/delivery/receipts/error, delayed/repeated prompts, recent PC pause/resume receipts; changes to repeated prompt/slot policy use a **non-temporal in-place** Caffy configure backend operation, preserving a manually paused schedule and original expiry. Auto-reboot can now be set by completed run count. |
+| GMA | Android SignalR event and notification/deep-link Open only. No synchronized Snooze/Dismiss. | PC publishes full authoritative `waiting/pending/snoozed/opened/dismissed` journal to phone; Android persists cached requests before notification, shows actionable sheet with Open, Snooze 15min/1h, Dismiss, refresh, and synchronizes PC state. Snooze reminders use an Android alarm; deep-link Open resolves exactly its request ID. Dismiss requires the same guarded, durable `enqueueChatGPT` follow-up to the original conversation that desktop uses; failures leave request recoverable. |
+
+## Routing and safety
+
+The Android screen never invents Caffy or GMA state. It calls the existing authenticated T3 session provider; the running T3 desktop owns all real work. No new OmniHub services or public endpoints were added. Missing T3 session/PC model/provider is shown as unavailable rather than executing a fake phone-local workflow. New prepfile gallery images are resized/optimized locally and transferred through idempotent, bounded `prepfile_image_chunk` calls to avoid oversized SignalR messages.
+
+The existing prepfile handoff monitor owns file-readiness checks and exact generator-session cleanup. Unknown delivery does **not** trigger a second thread. GMA Dismiss is refused if the durable agent follow-up cannot be queued. Caffy options are changed in place rather than calling `set`, which would overwrite scheduled duration/pause state.
+
+## Verification and deployment
+
+- Android Kotlin compile: successful (debug). Full APK build and installation recorded in the TaskBoard update.
+- T3 web focused TypeScript check on touched files: no diagnostics. Full project typecheck still has unrelated pre-existing test/render/typings failures in the shared dirty checkout; see build logs.
+- No new T3 desktop process/restart: **running T3 agents must not be interrupted without approval**. New PC remote commands become live only after the regular approved T3 rebuild/restart.
+- Runtime PC↔Android production smoke (image chunks, Caffy pause persistence, GMA dismiss delivery) is pending coordinated deployment. Source completion is not a claim that these behaviors are already live.

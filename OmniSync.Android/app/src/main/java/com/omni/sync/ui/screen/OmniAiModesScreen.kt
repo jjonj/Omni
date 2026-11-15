@@ -51,12 +51,83 @@ import com.google.gson.JsonObject
 import java.util.UUID
 import android.content.Intent
 import android.net.Uri
+import android.util.Base64
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.Canvas
+import android.graphics.Color as AndroidColor
+import java.io.ByteArrayOutputStream
+import com.google.gson.Gson
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import com.omni.sync.viewmodel.MainViewModel
+import com.omni.sync.utils.AndroidAttentionStore
+import com.omni.sync.utils.PhoneAgentAttention
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
 /** Tonal surfaces, rounded session rows and unobtrusive actions follow T3 Android's hierarchy. */
+/** Downscale gallery imagery for the authenticated, chunked remote T3 transport. */
+private fun preparePrepfileImage(context: Context, uri: Uri): ByteArray {
+    val dimensions = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    context.contentResolver.openInputStream(uri)?.use {
+        BitmapFactory.decodeStream(it, null, dimensions)
+    } ?: throw IllegalArgumentException("Could not open selected image")
+    if (dimensions.outWidth <= 0 || dimensions.outHeight <= 0)
+        throw IllegalArgumentException("Unsupported gallery image")
+    val sample = generateSequence(1) { it * 2 }
+        .first { maxOf(dimensions.outWidth, dimensions.outHeight) / it <= 1400 }
+    val options = BitmapFactory.Options().apply { inSampleSize = sample }
+    val image = context.contentResolver.openInputStream(uri)?.use {
+        BitmapFactory.decodeStream(it, null, options)
+    } ?: throw IllegalArgumentException("Could not decode selected image")
+    val ratio = minOf(1.0, 960.0 / maxOf(image.width, image.height))
+    val width = maxOf(1, (image.width * ratio).toInt())
+    val height = maxOf(1, (image.height * ratio).toInt())
+    val flattened = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+    Canvas(flattened).apply {
+        drawColor(AndroidColor.WHITE)
+        drawBitmap(image, null, android.graphics.Rect(0, 0, width, height), null)
+    }
+    image.recycle()
+    var quality = 82
+    var content = ByteArray(0)
+    do {
+        val out = ByteArrayOutputStream()
+        flattened.compress(Bitmap.CompressFormat.JPEG, quality, out)
+        content = out.toByteArray()
+        quality -= 12
+    } while (content.size > 350_000 && quality >= 34)
+    if (content.size > 350_000) {
+        val compact = Bitmap.createScaledBitmap(flattened,
+            maxOf(1, width * 2 / 3), maxOf(1, height * 2 / 3), true)
+        val out = ByteArrayOutputStream()
+        compact.compress(Bitmap.CompressFormat.JPEG, 55, out)
+        content = out.toByteArray()
+        compact.recycle()
+    }
+    flattened.recycle()
+    require(content.isNotEmpty() && content.size <= 600_000) {
+        "Image is too complex for remote upload. Choose a smaller image."
+    }
+    return content
+}
+
+private data class PrepfileStatusUi(
+    val id: String, val request: String, val state: String,
+    val outputPath: String?, val generatorSessionId: String?,
+    val implementationThreadId: String?, val error: String?, val cleanup: String?
+)
+private fun prepfileStatus(value: JsonObject): PrepfileStatusUi? = runCatching {
+    fun text(name: String) = value.get(name)?.takeUnless { it.isJsonNull }?.asString
+    PrepfileStatusUi(text("id")!!, text("request").orEmpty(), text("state") ?: "unknown",
+        text("outputPath"), text("generatorSessionId"), text("implementationThreadId"),
+        text("error"), text("cleanup"))
+}.getOrNull()
+
 private data class AiPalette(
     val bg: Color, val surface: Color, val raised: Color, val selected: Color,
     val border: Color, val text: Color, val muted: Color, val accent: Color,
@@ -200,7 +271,8 @@ fun OmniAiModesScreen(
     signalRClient: SignalRClient,
     mainViewModel: MainViewModel,
     parentPadding: PaddingValues = PaddingValues(0.dp),
-    initialSessionId: String? = null
+    initialSessionId: String? = null,
+    initialAttentionRequestId: String? = null
 ) {
     val client = remember(signalRClient) { signalRClient.genericAgents }
     val scope = rememberCoroutineScope()
@@ -218,6 +290,8 @@ fun OmniAiModesScreen(
     val now = rememberNow()
     val providers by client.providers.collectAsState()
     val sessions by client.sessions.collectAsState()
+    val attentionRequests by AndroidAttentionStore.entries.collectAsState()
+    LaunchedEffect(context) { AndroidAttentionStore.init(context) }
     val selectedKey by client.selected.collectAsState()
     val history by client.history.collectAsState()
     val older by client.olderHistoryCursor.collectAsState()
@@ -291,6 +365,55 @@ fun OmniAiModesScreen(
     var sheet by remember { mutableStateOf<String?>(null) }
     var note by remember { mutableStateOf<String?>(null) }
     var humanInbox by remember { mutableStateOf(false) }
+    var attentionSheet by remember { mutableStateOf(false) }
+    var attentionBusy by remember { mutableStateOf<String?>(null) }
+    var attentionError by remember { mutableStateOf<String?>(null) }
+    var prepfileOpen by remember { mutableStateOf(false) }
+    var prepfileBusy by remember { mutableStateOf(false) }
+    var prepfileError by remember { mutableStateOf<String?>(null) }
+    var prepfileProgress by remember { mutableStateOf("") }
+    var prepfileRequest by rememberSaveable { mutableStateOf("") }
+    var prepfileDepth by rememberSaveable { mutableStateOf("medium") }
+    var prepfileGenerator by rememberSaveable { mutableStateOf("chatgpt") }
+    var prepfileProjectId by rememberSaveable { mutableStateOf("") }
+    var prepfileModelKey by rememberSaveable { mutableStateOf("") }
+    var prepfileEffort by rememberSaveable { mutableStateOf("") }
+    var prepfileHandoff by rememberSaveable { mutableStateOf(true) }
+    var prepfileTaskBoard by rememberSaveable { mutableStateOf(false) }
+    var prepfileImages by remember { mutableStateOf<List<Uri>>(emptyList()) }
+    var prepfileJobs by remember { mutableStateOf<List<PrepfileStatusUi>>(emptyList()) }
+    var prepfileId by rememberSaveable { mutableStateOf(UUID.randomUUID().toString()) }
+    var prepfileRequestSent by rememberSaveable { mutableStateOf(false) }
+    val prepfilePrefs = remember(context) {
+        context.getSharedPreferences("omni-prepfile-request-v1", Context.MODE_PRIVATE)
+    }
+    LaunchedEffect(Unit) {
+        val saved = prepfilePrefs.getString("pending", null)
+        if (saved != null) runCatching { Gson().fromJson(saved, JsonObject::class.java) }
+            .getOrNull()?.let { snapshot ->
+                fun value(name: String) = snapshot.get(name)?.takeUnless { it.isJsonNull }?.asString
+                prepfileId = value("id") ?: prepfileId
+                prepfileRequest = value("request").orEmpty()
+                prepfileDepth = value("depth") ?: "medium"
+                prepfileGenerator = value("generator") ?: "chatgpt"
+                prepfileProjectId = value("projectId").orEmpty()
+                prepfileModelKey = value("modelKey").orEmpty()
+                prepfileEffort = value("effort").orEmpty()
+                prepfileHandoff = value("handoff")?.toBoolean() ?: false
+                prepfileTaskBoard = value("taskBoard")?.toBoolean() ?: false
+                prepfileImages = snapshot.get("images")?.takeIf { it.isJsonArray }?.asJsonArray
+                    ?.map { Uri.parse(it.asString) }.orEmpty()
+                prepfileRequestSent = true
+            }
+    }
+    val prepfileImagePicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenMultipleDocuments()) { uris: List<Uri> ->
+        uris.forEach { uri ->
+            runCatching { context.contentResolver.takePersistableUriPermission(
+                uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+        }
+        prepfileImages = (prepfileImages + uris).distinct().take(8)
+    }
     var rename by remember { mutableStateOf(false) }
     var renameText by remember { mutableStateOf("") }
     var deleteConfirm by remember { mutableStateOf(false) }
@@ -663,6 +786,173 @@ fun OmniAiModesScreen(
     fun schedulerCarrier(target: AgentSessionUi? = null): AgentSessionUi? =
         target ?: sessions.firstOrNull { isT3Browser(it) &&
             it.capabilities.contains("RemoteControl") }
+    fun refreshAttentionRequests() {
+        val carrier = schedulerCarrier() ?: return
+        scope.launch {
+            try {
+                val details = client.sessionControls(carrier)
+                val rows = details.get("attentions")?.takeIf { it.isJsonArray }?.asJsonArray
+                    ?.mapNotNull { raw -> raw.takeIf { it.isJsonObject }?.asJsonObject
+                        ?.let(AndroidAttentionStore::fromStatus) }
+                if (rows != null) AndroidAttentionStore.reconcile(context, rows)
+                val jobs = details.get("prepfileJobs")?.takeIf { it.isJsonArray }?.asJsonArray
+                    ?.mapNotNull { item -> item.takeIf { it.isJsonObject }?.asJsonObject
+                        ?.let(::prepfileStatus) }
+                if (jobs != null) prepfileJobs = jobs
+            } catch (error: Exception) {
+                if (attentionSheet) attentionError = "Could not synchronize GMA: ${error.message}"
+            }
+        }
+    }
+    LaunchedEffect(online, t3Connected, sessions.size) {
+        while (online && t3Connected) {
+            refreshAttentionRequests()
+            delay(20_000)
+        }
+    }
+    fun controlAttention(request: PhoneAgentAttention, command: String, minutes: Int? = null) {
+        val carrier = schedulerCarrier()
+        if (carrier == null) {
+            attentionError = "T3 desktop must be connected to manage GMA."
+            return
+        }
+        if (attentionBusy != null) return
+        attentionBusy = request.id
+        attentionError = null
+        scope.launch {
+            try {
+                val receipt = client.sessionAction(carrier, "Control", mapOf(
+                    "command" to command, "options" to mapOf(
+                        "requestId" to request.id, "minutes" to minutes)))
+                // A receipt may be unknown even after the PC applied the action.
+                // Read the PC state rather than locally guessing dismissal or replaying.
+                if (receipt == "Unknown" || receipt == "Pending")
+                    attentionError = "Outcome uncertain. Refresh before trying again."
+                val status = client.sessionControls(carrier)
+                val rows = status.get("attentions")?.takeIf { it.isJsonArray }?.asJsonArray
+                    ?.mapNotNull { raw -> raw.takeIf { it.isJsonObject }?.asJsonObject
+                        ?.let(AndroidAttentionStore::fromStatus) }
+                if (rows != null) AndroidAttentionStore.reconcile(context, rows)
+            } catch (error: Exception) {
+                attentionError = "GMA change unconfirmed: ${error.message}. Check PC status before retry."
+            } finally { attentionBusy = null }
+        }
+    }
+    fun submitPrepfile() {
+        if (prepfileBusy || prepfileRequestSent) return
+        val carrier = schedulerCarrier()
+        if (carrier == null) {
+            prepfileError = "A connected, controllable T3 ChatGPT session is required to reach the PC prepfile worker."
+            return
+        }
+        if (prepfileRequest.isBlank()) { prepfileError = "Describe the request first."; return }
+        val catalog = nativeCatalog ?: client.cachedNativeCatalog()
+        val model = catalog?.models?.firstOrNull { it.key == prepfileModelKey }
+        val generatorModel = if (prepfileGenerator == "chatgpt") null else
+            catalog?.models?.firstOrNull { it.label.contains(prepfileGenerator, true) ||
+                it.slug.contains(prepfileGenerator, true) }
+        if (prepfileGenerator != "chatgpt" && generatorModel == null) {
+            prepfileError = "The selected inexpensive native preparation model is unavailable."
+            return
+        }
+        if (prepfileHandoff && model == null) {
+            prepfileError = "Choose an available T3 implementation model."
+            return
+        }
+        val snapshot = mapOf(
+            "id" to prepfileId, "request" to prepfileRequest, "depth" to prepfileDepth,
+            "generator" to prepfileGenerator, "projectId" to prepfileProjectId,
+            "modelKey" to prepfileModelKey, "effort" to prepfileEffort,
+            "handoff" to prepfileHandoff, "taskBoard" to prepfileTaskBoard,
+            "images" to prepfileImages.map(Uri::toString)
+        )
+        if (!prepfilePrefs.edit().putString("pending", Gson().toJson(snapshot)).commit()) {
+            prepfileError = "Could not durably save this prepfile request on the phone."
+            return
+        }
+        prepfileBusy = true
+        prepfileRequestSent = true // durable ID; uploads & creation are idempotent
+        prepfileError = null
+        prepfileProgress = "Preparing gallery images…" 
+        scope.launch {
+            try {
+                // Reconcile before replaying any part. The desktop owns the durable job receipt.
+                val pc = client.sessionControls(carrier)
+                val reported = pc.get("prepfileJobs")?.takeIf { it.isJsonArray }?.asJsonArray
+                    ?.mapNotNull { it.takeIf { value -> value.isJsonObject }?.asJsonObject
+                        ?.let(::prepfileStatus) }
+                if (reported != null) prepfileJobs = reported
+                val prior = reported?.firstOrNull { it.id == prepfileId }
+                if (prior != null) {
+                    if (prior.request != prepfileRequest.trim())
+                        throw IllegalStateException("The request ID belongs to a different PC job.")
+                    prepfileProgress = "This request already exists on the PC: " + prior.state
+                    return@launch
+                }
+                val imageRefs = prepfileImages.mapIndexed { index, uri ->
+                    val contents = withContext(Dispatchers.IO) {
+                        preparePrepfileImage(context, uri)
+                    }
+                    val pieces = Base64.encodeToString(contents, Base64.NO_WRAP).chunked(12_000)
+                    pieces.forEachIndexed { part, piece ->
+                        prepfileProgress = "Uploading image ${index + 1}/${prepfileImages.size} · ${part + 1}/${pieces.size} chunks"
+                        val options = mapOf(
+                            "id" to prepfileId, "index" to index, "part" to part,
+                            "total" to pieces.size, "mime" to "image/jpeg",
+                            "chunk" to piece
+                        )
+                        // Replaying the exact immutable part is safe, even after an uncertain receipt.
+                        var done = false
+                        var failure: Exception? = null
+                        repeat(3) {
+                            if (!done) {
+                                try {
+                                    val result = client.sessionAction(carrier, "Control",
+                                        mapOf("command" to "prepfile_image_chunk", "options" to options))
+                                    if (result !in listOf("Unknown", "Pending")) done = true
+                                    else failure = IllegalStateException("Chunk outcome unconfirmed")
+                                } catch (error: Exception) { failure = error }
+                            }
+                        }
+                        if (!done) throw failure ?: IllegalStateException("Image chunk not confirmed")
+                    }
+                    mapOf("index" to index, "mime" to "image/jpeg")
+                }
+                val option: Map<String, Any?> = mapOf(
+                    "id" to prepfileId,
+                    "request" to prepfileRequest.trim(), "depth" to prepfileDepth,
+                    "generator" to prepfileGenerator,
+                    "projectId" to prepfileProjectId.ifBlank { null },
+                    "autoHandoff" to prepfileHandoff, "createTaskboardTask" to prepfileTaskBoard,
+                    "generatorModel" to generatorModel?.let { mapOf(
+                        "instanceId" to it.instanceId, "model" to it.slug) },
+                    "implementationModel" to (if (prepfileHandoff) model?.let { mapOf(
+                        "instanceId" to it.instanceId, "model" to it.slug,
+                        "effort" to prepfileEffort.takeIf(String::isNotEmpty)) } else null),
+                    "imageRefs" to imageRefs
+                )
+                prepfileProgress = "Submitting the one-shot preparation job…"
+                val receipt = client.sessionAction(carrier, "Control",
+                    mapOf("command" to "prepfile_create", "options" to option))
+                prepfileError = if (receipt == "Unknown" || receipt == "Pending")
+                    "Creation outcome uncertain: refresh the PC journal before retrying this same request ID."
+                    else null
+                prepfileProgress = "PC job requested. Inspect its progress below."
+                refreshAttentionRequests()
+            } catch (error: Exception) {
+                prepfileError = "Prepfile outcome unconfirmed: ${error.message}. Inspect this request ID on the PC before restarting."
+            } finally { prepfileBusy = false; prepfileProgress = "" }
+        }
+    }
+    LaunchedEffect(initialAttentionRequestId, initialSessionId,
+        attentionRequests, online, t3Connected) {
+        val request = attentionRequests.firstOrNull {
+            it.id == initialAttentionRequestId && it.sessionId == initialSessionId &&
+                it.status in listOf("pending", "snoozed", "waiting")
+        }
+        if (request != null && online && t3Connected)
+            controlAttention(request, "attention_open")
+    }
     fun refreshScheduledJobs() {
         val carrier = schedulerCarrier() ?: return
         scope.launch {
@@ -808,6 +1098,227 @@ fun OmniAiModesScreen(
         surfaceVariant = p.raised, onSurfaceVariant = p.muted,
         outline = p.border, surfaceTint = p.accent
     )) {
+    if (prepfileOpen) {
+        ModalBottomSheet(onDismissRequest = { prepfileOpen = false },
+            containerColor = p.surface, contentColor = p.text,
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
+            Column(Modifier.fillMaxWidth().fillMaxHeight(0.9f)
+                .verticalScroll(rememberScrollState()).navigationBarsPadding()
+                .padding(horizontal = 20.dp, vertical = 10.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                SheetTitle("New prepfile", "Executed by the authorized T3 PC desktop worker", p)
+                if (!online || !t3Connected || schedulerCarrier() == null)
+                    Text("Unavailable: connect to the desktop T3 provider and load at least one controllable ChatGPT session.",
+                        color = p.amber)
+                if (prepfileError != null) Text(prepfileError!!, color = p.amber,
+                    style = MaterialTheme.typography.bodySmall)
+                if (prepfileBusy) LinearProgressIndicator(Modifier.fillMaxWidth())
+                if (prepfileProgress.isNotBlank()) Text(prepfileProgress, color = p.muted,
+                    fontSize = 12.sp)
+                OutlinedTextField(prepfileRequest, { prepfileRequest = it.take(30_000) },
+                    Modifier.fillMaxWidth(), minLines = 3, maxLines = 8,
+                    enabled = !prepfileRequestSent,
+                    label = { Text("Task / request") },
+                    placeholder = { Text("Describe the task, paste an issue, or specify what context to collect…") })
+                Text("Research depth", color = p.muted, style = MaterialTheme.typography.labelMedium)
+                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf("light", "medium", "heavy").forEach { option ->
+                        FilterChip(prepfileDepth == option,
+                            onClick = { prepfileDepth = option }, enabled = !prepfileRequestSent,
+                            label = { Text(option.replaceFirstChar(Char::uppercase)) })
+                    }
+                }
+                Text("Preparation agent", color = p.muted, style = MaterialTheme.typography.labelMedium)
+                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf("chatgpt", "luna", "haiku").forEach { option ->
+                        val available = option == "chatgpt" ||
+                            nativeCatalog?.models?.any { it.label.contains(option, true) ||
+                                it.slug.contains(option, true) } == true
+                        FilterChip(prepfileGenerator == option, enabled = available && !prepfileRequestSent,
+                            onClick = { prepfileGenerator = option },
+                            label = { Text(when (option) {
+                                "chatgpt" -> "ChatGPT"; "luna" -> "Luna (native)"; else -> "Haiku (native)"
+                            } + if (available) "" else " · unavailable") })
+                    }
+                }
+                var projectDropdown by remember { mutableStateOf(false) }
+                Box {
+                    TextButton(enabled = !prepfileRequestSent, onClick = { projectDropdown = true }) {
+                        Text("Project: " + (nativeCatalog?.projects?.find { it.id == prepfileProjectId }
+                            ?.title ?: "No project"))
+                    }
+                    DropdownMenu(expanded = projectDropdown, onDismissRequest = { projectDropdown = false }) {
+                        DropdownMenuItem(text = { Text("No project") }, onClick = {
+                            prepfileProjectId = ""; projectDropdown = false })
+                        nativeCatalog?.projects?.forEach { project ->
+                            DropdownMenuItem(text = { Text(project.title) }, onClick = {
+                                prepfileProjectId = project.id; projectDropdown = false })
+                        }
+                    }
+                }
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text("Create TaskBoard task", Modifier.weight(1f), color = p.text)
+                    Switch(prepfileTaskBoard, onCheckedChange = { prepfileTaskBoard = it },
+                        enabled = !prepfileRequestSent)
+                }
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text("Start implementation automatically", Modifier.weight(1f), color = p.text)
+                    Switch(prepfileHandoff, onCheckedChange = { prepfileHandoff = it },
+                        enabled = !prepfileRequestSent)
+                }
+                if (prepfileHandoff) {
+                    val models = nativeCatalog?.models.orEmpty()
+                    val selectedModel = models.firstOrNull { it.key == prepfileModelKey }
+                    var modelDropdown by remember { mutableStateOf(false) }
+                    Box {
+                        TextButton(enabled = !prepfileRequestSent, onClick = { modelDropdown = true }) {
+                            Text("Implementation model: " + (selectedModel?.label ?: "Choose model"))
+                        }
+                        DropdownMenu(expanded = modelDropdown, onDismissRequest = { modelDropdown = false }) {
+                            models.forEach { model ->
+                                DropdownMenuItem(text = { Text(model.label + " · " + model.provider) },
+                                    onClick = { prepfileModelKey = model.key
+                                        prepfileEffort = model.efforts.firstOrNull()?.first.orEmpty()
+                                        modelDropdown = false })
+                            }
+                        }
+                    }
+                    if (selectedModel?.efforts?.isNotEmpty() == true) {
+                        Text("Implementation effort", color = p.muted,
+                            style = MaterialTheme.typography.labelMedium)
+                        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            selectedModel.efforts.forEach { (effort, label) ->
+                                FilterChip(prepfileEffort == effort, enabled = !prepfileRequestSent,
+                                    onClick = { prepfileEffort = effort }, label = { Text(label) })
+                            }
+                        }
+                    }
+                }
+                TextButton(enabled = !prepfileRequestSent && prepfileImages.size < 8,
+                    onClick = { prepfileImagePicker.launch(arrayOf("image/*")) }) {
+                    Text("Attach gallery images (${prepfileImages.size}/8)")
+                }
+                prepfileImages.forEachIndexed { index, image ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(image.lastPathSegment.orEmpty().take(70), Modifier.weight(1f),
+                            color = p.muted, fontSize = 12.sp)
+                        TextButton(enabled = !prepfileRequestSent,
+                            onClick = { prepfileImages = prepfileImages.filterIndexed { i, _ -> i != index } }) {
+                            Text("Remove")
+                        }
+                    }
+                }
+                if (!prepfileRequestSent) {
+                    Button(onClick = { submitPrepfile() },
+                        enabled = !prepfileBusy && online && t3Connected &&
+                            schedulerCarrier() != null && prepfileRequest.isNotBlank() &&
+                            (!prepfileHandoff || nativeCatalog?.models?.any {
+                                it.key == prepfileModelKey } == true)) {
+                        Text("Start preparation")
+                    }
+                } else {
+                    Text("Request ID: $prepfileId · Do not resubmit after an uncertain receipt.",
+                        color = p.muted, fontSize = 12.sp)
+                    val job = prepfileJobs.firstOrNull { it.id == prepfileId }
+                    Text(job?.let { "PC state: " + it.state } ?:
+                        "Awaiting PC acknowledgement. Refresh status; no automatic retry.",
+                        color = if (job?.state == "needs_review") p.amber else p.accent)
+                    job?.outputPath?.let { Text("Output: $it", color = p.muted, fontSize = 12.sp) }
+                    job?.implementationThreadId?.let {
+                        Text("Implementation thread: $it", color = p.muted, fontSize = 12.sp)
+                    }
+                    job?.error?.let { Text("Needs review: $it", color = p.amber) }
+                    TextButton(onClick = {
+                        refreshAttentionRequests()
+                    }) { Text("Reconcile with PC") }
+                    if (job == null) {
+                        TextButton(enabled = !prepfileBusy, onClick = {
+                            prepfileRequestSent = false
+                            submitPrepfile()
+                        }) { Text("Retry safely with the same request ID") }
+                    }
+                    TextButton(onClick = {
+                        prepfilePrefs.edit().remove("pending").commit()
+                        prepfileId = UUID.randomUUID().toString()
+                        prepfileRequest = ""; prepfileImages = emptyList()
+                        prepfileRequestSent = false; prepfileError = null
+                    }) { Text("Start a different request") }
+                }
+                HorizontalDivider(color = p.border)
+                Text("PC prepfile jobs", style = MaterialTheme.typography.labelLarge, color = p.text)
+                TextButton(onClick = { refreshAttentionRequests() }) { Text("Refresh PC status") }
+                if (prepfileJobs.isEmpty()) Text("No PC jobs reported yet", color = p.muted)
+                prepfileJobs.asReversed().take(12).forEach { job ->
+                    Column(Modifier.fillMaxWidth().background(p.raised, RoundedCornerShape(10.dp))
+                        .padding(10.dp)) {
+                        Text(job.request.ifBlank { job.id }, maxLines = 2,
+                            overflow = TextOverflow.Ellipsis, color = p.text)
+                        Text(job.state + (job.cleanup?.let { " · cleanup: $it" } ?: ""),
+                            color = if (job.state == "needs_review") p.amber else p.accent,
+                            fontSize = 12.sp)
+                        job.outputPath?.let { Text(it, color = p.muted, fontSize = 12.sp) }
+                        job.implementationThreadId?.let { Text("Thread: $it",
+                            color = p.muted, fontSize = 12.sp) }
+                        job.error?.let { Text(it, color = p.amber, fontSize = 12.sp) }
+                    }
+                }
+                Spacer(Modifier.height(16.dp))
+            }
+        }
+    }
+    if (attentionSheet) {
+        ModalBottomSheet(onDismissRequest = { attentionSheet = false },
+            containerColor = p.surface, contentColor = p.text,
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
+            Column(Modifier.fillMaxWidth().fillMaxHeight(0.7f).verticalScroll(rememberScrollState())
+                .padding(20.dp).navigationBarsPadding(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                SheetTitle("Get My Attention", "Same pending requests as T3 desktop", p)
+                if (attentionError != null) Text(attentionError!!, color = p.amber)
+                TextButton(onClick = { refreshAttentionRequests() }) { Text("Refresh desktop status") }
+                val visible = attentionRequests.filter { it.status == "pending" || it.status == "snoozed" ||
+                    it.status == "waiting" }
+                if (visible.isEmpty())
+                    Text("No unresolved requests. When offline, the latest saved notifications remain available.",
+                        color = p.muted)
+                visible.sortedBy { it.createdAt }.forEach { request ->
+                    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(p.raised)
+                        .padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(request.message, color = p.text)
+                        Text(if (request.status == "snoozed" && request.nextAt > System.currentTimeMillis())
+                            "Snoozed until " + java.text.DateFormat.getDateTimeInstance().format(
+                                java.util.Date(request.nextAt)) else request.status,
+                            color = p.muted, fontSize = 12.sp)
+                        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            TextButton(onClick = {
+                                val session = sessions.firstOrNull {
+                                    it.id == request.sessionId || it.key.endsWith(":" + request.sessionId)
+                                }
+                                if (session == null)
+                                    attentionError = "That session is not currently available. Refresh T3 before opening; request stays active."
+                                else {
+                                    openSession(session); attentionSheet = false
+                                    controlAttention(request, "attention_open")
+                                }
+                            }) { Text("Open") }
+                            TextButton(enabled = attentionBusy == null, onClick = {
+                                controlAttention(request, "attention_snooze", 15)
+                            }) { Text("15 min") }
+                            TextButton(enabled = attentionBusy == null, onClick = {
+                                controlAttention(request, "attention_snooze", 60)
+                            }) { Text("1 hour") }
+                            TextButton(enabled = attentionBusy == null, onClick = {
+                                controlAttention(request, "attention_dismiss")
+                            }) { Text("Dismiss") }
+                        }
+                    }
+                }
+            }
+        }
+    }
     if (scheduleOpen) {
         key(scheduleRevision) {
             OmniAiScheduleDialog(
@@ -1010,10 +1521,35 @@ fun OmniAiModesScreen(
                                     viewPrefs.edit().putBoolean("compactMode", compactMode).apply()
                                     menu = false
                                 })
-                            DropdownMenuItem(text = { Text("Schedule ChatGPT work") },
+                            DropdownMenuItem(text = { Text("New prepfile") },
+                    onClick = {
+                        menu = false; prepfileOpen = true; prepfileError = null
+                        (nativeCatalog ?: client.cachedNativeCatalog())?.let { catalog ->
+                            nativeCatalog = catalog
+                            if (catalog.models.none { it.key == prepfileModelKey }) {
+                                val fallback = catalog.models.firstOrNull {
+                                    !it.label.contains("luna", true) && !it.label.contains("haiku", true)
+                                } ?: catalog.models.firstOrNull()
+                                prepfileModelKey = fallback?.key.orEmpty()
+                                prepfileEffort = fallback?.efforts?.firstOrNull()?.first.orEmpty()
+                            }
+                        }
+                        if (online) scope.launch {
+                            runCatching { client.nativeCatalog() }.onSuccess { catalog ->
+                                nativeCatalog = catalog
+                                if (catalog.models.none { it.key == prepfileModelKey }) {
+                                    prepfileModelKey = catalog.models.firstOrNull()?.key.orEmpty()
+                                }
+                            }.onFailure { prepfileError = "Model catalog unavailable: ${it.message}" }
+                            refreshAttentionRequests()
+                        }
+                    })
+                DropdownMenuItem(text = { Text("Schedule ChatGPT work") },
                                 enabled = t3Connected,
                                 onClick = { menu = false; openSchedule(null) })
-                            DropdownMenuItem(text = { Text("Human inbox") },
+                            DropdownMenuItem(text = { Text("GMA requests (" + attentionRequests.count { it.status in listOf("waiting", "pending", "snoozed") } + ")") },
+                    onClick = { menu = false; attentionSheet = true; refreshAttentionRequests() })
+                DropdownMenuItem(text = { Text("Human inbox") },
                                 onClick = { menu = false; humanInbox = true })
                             (listOf(60, 120, 240, 360)).forEach { minutes ->
                                 DropdownMenuItem(text = { Text("Keep Busy ${minutes / 60}h then shut down") },
@@ -1543,6 +2079,13 @@ fun OmniAiModesScreen(
             }
         var customDuration by remember(target.key) { mutableStateOf("60") }
         var customInterval by remember(target.key) { mutableStateOf("20") }
+        var caffyRepeat by remember(target.key, caffyField("repeatPrompt")) {
+            mutableStateOf(caffyField("repeatPrompt").orEmpty())
+        }
+        var caffyRebootRuns by remember(target.key) { mutableStateOf("5") }
+        var caffyRespectSlots by remember(target.key, caffyField("respectSlots")) {
+            mutableStateOf(caffyField("respectSlots") == "true")
+        }
         var editText by remember(target.key) { mutableStateOf("") }
         var editKind by remember(target.key) { mutableStateOf("") }
         var editBoard by remember(target.key) { mutableStateOf("") }
@@ -1658,6 +2201,54 @@ fun OmniAiModesScreen(
                     val paused = caffyField("paused") == "true"
                     SheetTitle("Caffy · ${activeMode ?: "Off"}" +
                         (if (paused) " (paused)" else ""), "T3-owned wake control", p)
+                    // PC-owned live scheduler state, never inferred from local timers.
+                    fun at(name: String): String = caffyField(name)?.toLongOrNull()?.let {
+                        java.text.DateFormat.getDateTimeInstance().format(java.util.Date(it))
+                    } ?: "—"
+                    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(p.raised)
+                        .padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        val next = when {
+                            paused -> "Paused by user"
+                            caffyField("pendingMessageId") != null -> "Delivery pending"
+                            caffyField("beginAt")?.toLongOrNull()?.let { it > System.currentTimeMillis() } == true ->
+                                "Delayed start · " + at("beginAt")
+                            activeMode == "periodic" -> at("nextDueAt")
+                            activeMode == "startup" -> "Next T3 startup"
+                            activeMode == "idle" || activeMode == "queued" -> "Next verified idle transition"
+                            else -> "Not scheduled"
+                        }
+                        Text("Next wake: $next", color = p.text, fontSize = 12.sp)
+                        Text("Last wake: " + at("lastWakeAt") +
+                            "   ·   Last check: " + at("lastCheckedAt"), color = p.muted, fontSize = 12.sp)
+                        Text("Next scheduler check: " + at("nextCheckAt"), color = p.muted, fontSize = 12.sp)
+                        listOf("lastCheckResult" to "Check", "wakePhase" to "Phase",
+                            "availability" to "Guest", "admissionReason" to "Admission",
+                            "deliveryStatus" to "Delivery", "lastDeliveryResult" to "Receipt",
+                            "pendingMessageId" to "Pending message ID",
+                            "rebootOperationId" to "Reboot receipt",
+                            "lastError" to "Error", "autoRebootEveryRuns" to "Reboot every runs",
+                            "wakesSinceReboot" to "Runs since reboot",
+                            "repeatPrompt" to "Repeated prompt",
+                            "delayedPrompt" to "Delayed prompt").forEach { (fieldName, label) ->
+                            caffyField(fieldName)?.takeIf { it.isNotBlank() }?.let { value ->
+                                Text("$label: $value", color = if (fieldName == "lastError") p.amber
+                                    else p.muted, fontSize = 12.sp)
+                            }
+                        }
+                        Text("Capacity policy: " + if (caffyRespectSlots) "Wait for a free T3 slot"
+                            else "Independent of busy slots", color = p.muted, fontSize = 12.sp)
+                        val caffyEvents = rowControls?.get("caffy")?.takeIf { it.isJsonObject }
+                            ?.asJsonObject?.get("recentEvents")?.takeIf { it.isJsonArray }?.asJsonArray
+                        caffyEvents?.toList()?.takeLast(5)?.forEach { event ->
+                            if (event.isJsonObject) {
+                                val e = event.asJsonObject
+                                Text((e.get("at")?.asString ?: "") + " · " +
+                                    (e.get("event")?.asString ?: "event") +
+                                    " · " + (e.get("cause")?.asString ?: ""),
+                                    color = p.muted, fontSize = 11.sp)
+                            }
+                        }
+                    }
                     Text("Wake on idle · duration", color = p.muted,
                         style = MaterialTheme.typography.labelMedium)
                     Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
@@ -1708,6 +2299,37 @@ fun OmniAiModesScreen(
                         else performRowControl(target, "caffy_set",
                             mapOf("mode" to "periodic", "intervalMinutes" to interval,
                                 "durationMinutes" to duration))
+                    }
+                    HorizontalDivider(color = p.border)
+                    Text("Advanced auto-continue", color = p.muted,
+                        style = MaterialTheme.typography.labelMedium)
+                    if (paused) Text("Resume the existing schedule before editing its settings. Paused Caffy will not be restarted automatically.",
+                        color = p.amber, fontSize = 12.sp)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("Respect Keep T3 Busy slots", Modifier.weight(1f), color = p.text)
+                        Switch(checked = caffyRespectSlots, enabled = activeMode != null,
+                            onCheckedChange = { desired ->
+                                caffyRespectSlots = desired
+                                performRowControl(target, "caffy_configure", mapOf("respectSlots" to desired))
+                            })
+                    }
+                    OutlinedTextField(caffyRepeat, { caffyRepeat = it.take(29_800) },
+                        Modifier.fillMaxWidth(), minLines = 2, maxLines = 4,
+                        label = { Text("Prompt repeated on every continuation") })
+                    SheetAction("Save repeated prompt", p) {
+                        if (activeMode == null)
+                            rowControlError = "Start Caffy before modifying the repeated prompt."
+                        else performRowControl(target, "caffy_configure", mapOf("repeatPrompt" to caffyRepeat))
+                    }
+                    OutlinedTextField(caffyRebootRuns, {
+                        caffyRebootRuns = it.filter(Char::isDigit).take(5)
+                    }, Modifier.fillMaxWidth(), singleLine = true,
+                        label = { Text("Auto-reboot after N completed runs") })
+                    SheetAction("Set run-based auto-reboot", p) {
+                        val runs = caffyRebootRuns.toIntOrNull()
+                        if (runs == null || runs !in 1..10000)
+                            rowControlError = "Run count must be 1–10000."
+                        else performRowControl(target, "caffy_reboot", mapOf("runs" to runs))
                     }
                     HorizontalDivider(color = p.border)
                     Text("Begin / resume work", color = p.muted,

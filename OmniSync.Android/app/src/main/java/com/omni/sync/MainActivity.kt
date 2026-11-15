@@ -95,6 +95,7 @@ class MainActivity : ComponentActivity() {
             private set
     }
 
+    private var pendingAttentionRequestId by mutableStateOf<String?>(null)
     private lateinit var mainViewModel: MainViewModel
     private lateinit var omniSyncApplication: OmniSyncApplication
     
@@ -524,6 +525,9 @@ class MainActivity : ComponentActivity() {
 
     private fun handleIntent(intent: Intent?) {
         val screenName = intent?.getStringExtra("OPEN_SCREEN")
+        pendingAttentionRequestId = intent?.data
+            ?.takeIf { it.scheme == "omni" && it.host == "agent-attention" }
+            ?.lastPathSegment
         mainViewModel.addLog("[Android startup] Launch intent screen=${screenName ?: "default"}", com.omni.sync.ui.screen.LogType.INFO)
         if (screenName != null) {
             try {
@@ -600,7 +604,8 @@ class MainActivity : ComponentActivity() {
                 signalRClient = signalRClient,
                 mainViewModel = mainViewModel,
                 parentPadding = paddingValues,
-                initialSessionId = mainViewModel.selectedAgentSessionId.collectAsState().value
+                initialSessionId = mainViewModel.selectedAgentSessionId.collectAsState().value,
+                initialAttentionRequestId = pendingAttentionRequestId
             )
             AppScreen.AGENT_TERMINAL -> com.omni.sync.ui.screen.AgentTerminalScreen(
                 signalRClient = signalRClient,

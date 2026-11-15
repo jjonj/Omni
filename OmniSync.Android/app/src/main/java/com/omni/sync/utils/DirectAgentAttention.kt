@@ -17,9 +17,14 @@ import java.util.UUID
 object DirectAgentAttention {
     private const val CHANNEL = "omni_agent_direct_attention"
 
-    fun show(context: Context, requestId: String, sessionId: String, message: String) {
+    fun show(context: Context, requestId: String, sessionId: String, message: String,
+        remindExisting: Boolean = false) {
         if (runCatching { UUID.fromString(requestId); UUID.fromString(sessionId) }.isFailure) return
         if (message.isBlank()) return
+        // Persist before notifying, so an app restart cannot lose the actionable request.
+        if (!remindExisting && !runCatching {
+                AndroidAttentionStore.receive(context, requestId, sessionId, message)
+            }.getOrDefault(false)) return
         val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         manager.createNotificationChannel(NotificationChannel(
             CHANNEL, "Agent requests your attention", NotificationManager.IMPORTANCE_HIGH

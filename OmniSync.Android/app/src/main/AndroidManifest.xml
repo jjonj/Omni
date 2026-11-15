@@ -663,6 +663,7 @@
             <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_TYPE" android:value="Overlay icon for quick access to Omni Sync from any screen" />
         </service>
 
+        <receiver android:name=".utils.AndroidAttentionSnoozeReceiver" android:exported="false" />
         <receiver android:name=".receiver.ReminderReceiver" android:exported="false">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
