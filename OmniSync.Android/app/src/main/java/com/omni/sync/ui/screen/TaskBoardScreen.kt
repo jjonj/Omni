@@ -331,6 +331,7 @@ private fun TaskBoardContents(parentPadding: PaddingValues, signalR: SignalRClie
     // policy and prevent a second tap accidentally reverting it until phone sync.
     var awaitingColumnSync by remember(selectedRoot) { mutableStateOf<Map<String, Boolean>>(emptyMap()) }
     var queueOverviewOpen by remember(selectedRoot) { mutableStateOf(false) }
+    var agentControlsTask by remember(selectedRoot) { mutableStateOf<TaskBoardTask?>(null) }
     var queueOverview by remember(selectedRoot) {
         mutableStateOf<Map<String, TaskBoardPhoneClient.QueueIntent>?>(null)
     }
@@ -1308,6 +1309,7 @@ private fun TaskBoardContents(parentPadding: PaddingValues, signalR: SignalRClie
                     editingTask = null
                     archiveConfirmation = task
                 }} else null,
+                onAgentControls = { agentControlsTask = task },
                 onOpenT3 = { intent ->
                     scope.launch {
                         loading = true
@@ -1334,6 +1336,12 @@ private fun TaskBoardContents(parentPadding: PaddingValues, signalR: SignalRClie
                     }
                 }
             )
+        }
+
+        agentControlsTask?.let { selected ->
+            TaskBoardAgentSheet(task = selected, root = store.root, phone = phoneWriter,
+                signalR = signalR, onOpenAgent = onOpenAgentSession,
+                onDismiss = { agentControlsTask = null })
         }
 
         if (queueOverviewOpen) {
@@ -2418,7 +2426,8 @@ private fun TaskEditorDialog(
     onSnooze: (() -> Unit)? = null,
     onCreateSubtask: (() -> Unit)? = null,
     onArchive: (() -> Unit)? = null,
-    onOpenT3: ((String) -> Unit)? = null
+    onOpenT3: ((String) -> Unit)? = null,
+    onAgentControls: (() -> Unit)? = null
 ) {
     val initial = original?.toDraft() ?: TaskBoardTaskDraft(
         title = "",
@@ -2890,6 +2899,9 @@ private fun TaskEditorDialog(
                 if (original != null && (onCreateSubtask != null || onArchive != null || onOpenT3 != null)) {
                     Spacer(Modifier.height(12.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        onAgentControls?.let { action ->
+                            OutlinedButton(onClick = action, enabled = !busy) { Text("Agent controls") }
+                        }
                         onOpenT3?.let { action ->
                             val linkedToT3 = original.claimedBy?.startsWith("t3:", ignoreCase = true) == true ||
                                 original.claimedBy?.startsWith("t3-browser:", ignoreCase = true) == true
