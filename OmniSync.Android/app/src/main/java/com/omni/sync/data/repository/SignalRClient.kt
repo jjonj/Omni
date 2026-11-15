@@ -1710,6 +1710,25 @@ class SignalRClient(
         }
     }
 
+    /** Match the desktop 0–5 capacity slider without duplicating T3 scheduler state.
+     * Zero disables auto-fill; a positive capacity also enables it. Reuse the
+     * existing Hub commands so the PC remains authoritative for both controls.
+     */
+    suspend fun setT3BusyCapacity(slots: Int): T3BusyPolicyState {
+        require(slots in 0..5) { "Keep T3 Busy capacity must be 0–5" }
+        val confirmed = if (slots == 0) {
+            t3BusyPolicy(enabled = false)
+        } else {
+            val withCapacity = t3BusyPolicy(maxWorking = slots)
+            if (withCapacity.keepT3Busy) withCapacity else t3BusyPolicy(enabled = true)
+        }
+        check(confirmed.keepT3Busy == (slots > 0) &&
+            (slots == 0 || confirmed.maxWorking == slots)) {
+            "T3 did not confirm the requested Busy capacity"
+        }
+        return confirmed
+    }
+
     /** All T3 Busy scheduling is authoritative on the PC, including its deadline. */
     suspend fun t3BusyPolicy(enabled: Boolean? = null, scheduleMinutes: Int? = null,
                              maxWorking: Int? = null): T3BusyPolicyState =

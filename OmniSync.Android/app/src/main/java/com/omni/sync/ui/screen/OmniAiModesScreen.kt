@@ -54,6 +54,7 @@ import android.net.Uri
 import com.omni.sync.viewmodel.MainViewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
 
 /** Tonal surfaces, rounded session rows and unobtrusive actions follow T3 Android's hierarchy. */
 private data class AiPalette(
@@ -234,9 +235,15 @@ fun OmniAiModesScreen(
     var keepT3BusyUpdating by remember { mutableStateOf(false) }
     var pendingBusyMinutes by remember { mutableStateOf<Int?>(null) }
     var busySlotsOpen by remember { mutableStateOf(false) }
-    var busySlotValue by remember { mutableIntStateOf(3) }
-    LaunchedEffect(busySlotsOpen) {
-        if (busySlotsOpen) busySlotValue = busyPolicy?.maxWorking ?: 3
+    var busySlotValue by remember { mutableIntStateOf(0) }
+    var busySlotsDragging by remember { mutableStateOf(false) }
+    // Always display the effective desktop slider value, not the retained
+    // maxWorking setting while Keep Busy is off. Leave an active drag alone.
+    LaunchedEffect(busySlotsOpen, busyPolicy, busySlotsDragging, keepT3BusyUpdating) {
+        if (busySlotsOpen && !busySlotsDragging && !keepT3BusyUpdating) {
+            busySlotValue = if (busyPolicy?.keepT3Busy == true)
+                (busyPolicy?.maxWorking ?: 3).coerceIn(1, 5) else 0
+        }
     }
     LaunchedEffect(online) {
         if (!online) {
@@ -244,8 +251,12 @@ fun OmniAiModesScreen(
         } else {
             while (true) {
                 if (!keepT3BusyUpdating) {
-                    try { busyPolicy = signalRClient.t3BusyPolicy() }
-                    catch (error: Exception) { busyPolicy = null }
+                    try {
+                        val refreshed = signalRClient.t3BusyPolicy()
+                        if (!keepT3BusyUpdating) busyPolicy = refreshed
+                    } catch (_: Exception) {
+                        // Keep the last confirmed value during transient failures.
+                    }
                 }
                 delay(15_000)
             }
@@ -818,27 +829,38 @@ fun OmniAiModesScreen(
             title = { Text("Keep T3 Busy · slots") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Maximum automatically working sessions: $busySlotValue", color = p.text)
+                    Text(if (busySlotValue == 0) "Automatic work: Off"
+                         else "Maximum automatically working sessions: $busySlotValue", color = p.text)
                     Slider(
                         value = busySlotValue.toFloat(),
-                        onValueChange = { busySlotValue = it.toInt().coerceIn(1, 100) },
-                        valueRange = 1f..100f, steps = 98,
+                        onValueChange = {
+                            busySlotsDragging = true
+                            busySlotValue = it.roundToInt().coerceIn(0, 5)
+                        },
+                        valueRange = 0f..5f, steps = 4,
                         enabled = online && busyPolicy != null && !keepT3BusyUpdating,
                         onValueChangeFinished = {
                             val requested = busySlotValue
-                            keepT3BusyUpdating = true
-                            scope.launch {
-                                try {
-                                    busyPolicy = signalRClient.t3BusyPolicy(maxWorking = requested)
-                                    note = "Keep T3 Busy capacity set to ${busyPolicy?.maxWorking ?: requested} slots"
-                                } catch (error: Exception) {
-                                    busySlotValue = busyPolicy?.maxWorking ?: requested
-                                    note = "Capacity update failed: " + error.message
-                                } finally { keepT3BusyUpdating = false }
+                            val effective = if (busyPolicy?.keepT3Busy == true)
+                                (busyPolicy?.maxWorking ?: 3).coerceIn(1, 5) else 0
+                            busySlotsDragging = false
+                            if (requested != effective) {
+                                keepT3BusyUpdating = true
+                                scope.launch {
+                                    try {
+                                        busyPolicy = signalRClient.setT3BusyCapacity(requested)
+                                        note = if (requested == 0) "Keep T3 Busy disabled"
+                                            else "Keep T3 Busy set to $requested slots"
+                                    } catch (error: Exception) {
+                                        note = "Capacity update failed: " + error.message
+                                        try { busyPolicy = signalRClient.t3BusyPolicy() }
+                                        catch (_: Exception) { /* Retain last confirmed policy. */ }
+                                    } finally { keepT3BusyUpdating = false }
+                                }
                             }
                         }
                     )
-                    Text("Changes apply to T3 immediately. Already-running sessions are not stopped.",
+                    Text("0 = off · 1–5 = active work slots. Running sessions are not stopped.",
                         color = p.muted, style = MaterialTheme.typography.bodySmall)
                 }
             },
