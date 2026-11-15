@@ -1,6 +1,8 @@
 package com.omni.sync.ui.screen
 
 import android.graphics.BitmapFactory
+import android.content.Intent
+import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import android.webkit.WebView
@@ -80,6 +82,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import com.omni.sync.data.taskboard.MobileReview
 import com.omni.sync.data.taskboard.MobileReviewDecision
 import com.omni.sync.data.taskboard.MobileReviewPin
@@ -138,6 +142,8 @@ fun TaskBoardReviewScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
     var webView by remember { mutableStateOf<WebView?>(null) }
     var focused by remember { mutableStateOf(0) }
     var queueOpen by remember { mutableStateOf(true) }
+    var fullscreenVideo by remember { mutableStateOf(false) }
+    var playbackError by remember { mutableStateOf<String?>(null) }
 
     fun refresh() {
         scope.launch {
@@ -167,6 +173,8 @@ fun TaskBoardReviewScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
         videoPosition = 0.0
         videoView = null
         webView = null
+        fullscreenVideo = false
+        playbackError = null
         focused = artifacts.indexOfFirst { it.optString("id") == choice }.coerceAtLeast(0)
     }
     val canAnswer = review != null && review.status == "open" &&
@@ -323,11 +331,37 @@ fun TaskBoardReviewScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
                     ReviewArtifactPreview(review, focusedArtifact, pinMode, videoPosition,
                         pins = pins.withIndex().filter { it.value.artifact == id }.map { it.index + 1 to it.value },
                         onVideoTime = { videoPosition = it }, onVideo = { videoView = it },
-                        onWeb = { webView = it }, onPin = { pos, size -> pin(focusedArtifact, pos, size) },
+                        onWeb = { webView = it }, onVideoError = { playbackError = it },
+                        onPin = { pos, size -> pin(focusedArtifact, pos, size) },
                         onApproveSwipe = { direction ->
                             if (review.mode == "approve" && canAnswer)
                                 resolve(if (direction > 0) "approved" else "rejected")
                         })
+                }
+                if (focusedArtifact.optString("kind") == "video") {
+                    val playableVideo = focusedArtifact.optString("storage") != "local" &&
+                        TaskBoardReviewStore.artifactFile(review, focusedArtifact)?.let {
+                            it.isFile && it.extension.lowercase() in setOf("mp4", "webm")
+                        } == true
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        if (playableVideo) OutlinedButton(onClick = {
+                            videoPosition = videoView?.currentPosition?.coerceAtLeast(0)?.div(1000.0) ?: videoPosition
+                            videoView?.pause()
+                            fullscreenVideo = true
+                            playbackError = null
+                        }) { Text("Full-screen video") }
+                        OutlinedButton(onClick = {
+                            val board = review.project.root.parentFile?.name.orEmpty()
+                            val remote = "https://hub.rancorous.online/gateway/tools/taskboard-review-media/review/" +
+                                Uri.encode(board) + "/" + Uri.encode(review.taskId)
+                            runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(remote))) }
+                                .onFailure { error = "Cannot open OmniHub review: " + it.message }
+                        }) { Text(if (playableVideo) "Watch through OmniHub" else "Stream from PC") }
+                    }
+                    playbackError?.let {
+                        Text(it, color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodySmall)
+                    }
                 }
                 Text(when {
                         !canAnswer -> "Read-only"
@@ -413,6 +447,42 @@ fun TaskBoardReviewScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
                         TextButton(onClick = { reviewImages.removeAt(index) }, enabled = !saving) { Text("Remove") }
                     }
                 }
+            }
+        }
+        if (fullscreenVideo && focusedArtifact?.optString("kind") == "video") {
+            val file = TaskBoardReviewStore.artifactFile(review, focusedArtifact)
+            if (file?.isFile == true && file.extension.lowercase() in setOf("mp4", "webm")) {
+                Dialog(onDismissRequest = { fullscreenVideo = false },
+                    properties = DialogProperties(usePlatformDefaultWidth = false)) {
+                    Column(Modifier.fillMaxSize().background(Color.Black)) {
+                        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically) {
+                            Text(focusedArtifact.optString("label", "Video"), color = Color.White,
+                                modifier = Modifier.weight(1f), maxLines = 1,
+                                overflow = TextOverflow.Ellipsis)
+                            TextButton(onClick = { fullscreenVideo = false }) {
+                                Text("Close", color = Color.White)
+                            }
+                        }
+                        AndroidView(factory = { ctx ->
+                            VideoView(ctx).apply {
+                                setVideoPath(file.path)
+                                setMediaController(MediaController(ctx).also { it.setAnchorView(this) })
+                                setOnPreparedListener {
+                                    seekTo((videoPosition * 1000).toInt())
+                                    start()
+                                }
+                                setOnErrorListener { _, what, extra ->
+                                    playbackError = "Cannot decode or play video ($what/$extra). Use the OmniHub stream or transcode to H.264 MP4."
+                                    fullscreenVideo = false
+                                    true
+                                }
+                            }
+                        }, modifier = Modifier.fillMaxSize())
+                    }
+                }
+            } else {
+                fullscreenVideo = false
             }
         }
         // Full-width sticky action bar: prominent primary, More, Reject.
@@ -573,6 +643,7 @@ private fun ReviewArtifactPreview(
     onVideoTime: (Double) -> Unit,
     onVideo: (VideoView?) -> Unit,
     onWeb: (WebView?) -> Unit,
+    onVideoError: (String) -> Unit,
     onPin: (Offset, IntSize) -> Unit,
     onApproveSwipe: (Int) -> Unit,
 ) {
@@ -627,7 +698,12 @@ private fun ReviewArtifactPreview(
                 VideoView(ctx).apply {
                     setVideoPath(file.path)
                     setMediaController(MediaController(ctx).also { it.setAnchorView(this) })
-                    setOnPreparedListener { onVideo(this); it.isLooping = true }
+                    setOnPreparedListener { onVideo(this); it.isLooping = false }
+                    setOnErrorListener { _, what, extra ->
+                        onVideo(null)
+                        onVideoError("Video cannot be decoded or loaded ($what/$extra). Try the OmniHub stream or an H.264 MP4.")
+                        true
+                    }
                     setOnCompletionListener { onVideoTime(0.0) }
                 }
             }, modifier = Modifier.fillMaxSize())
