@@ -18,7 +18,36 @@
     {name:"Obsidian",icon:"diamond",items:[["Omni Tasks","window","list"],["Wartribes design","window","pen"],["Personal notes","window","diamond"]]},
     {name:"VS Code",icon:"code",items:[["Omni workspace","window","code"],["Wartribes C++","window","code"]]}
   ];
-  const S = {mode:"launcher",state:"explore",data:clone(initial),active:0,child:-1,pending:null,editing:null,pressed:false,hover:null,gestureOrigin:null};
+  const S = {mode:"launcher",state:"explore",data:clone(initial),active:0,child:-1,pending:null,editing:null,pressed:false,hoverGap:null,navLocked:false};
+  const radial = ApniNavigation.create({active:S.active});
+  let settleTimer = null;
+  const pointerContext = () => ({categories:datum().length,actions:items().length,
+    windowsMode:S.mode==="windows",addMode:S.state==="add",
+    emptyWheel:S.state==="empty-wheel",emptyCategory:S.state==="empty-category"});
+  function cancelSettle() { clearTimeout(settleTimer); settleTimer=null; }
+  function resetNavigation() { cancelSettle(); radial.reset(S.active); S.hoverGap=null; S.navLocked=false; }
+  function applyNavigation(next) {
+    const gap = next.gap && next.gap.which+":"+next.gap.at;
+    const oldGap = S.hoverGap && S.hoverGap.which+":"+S.hoverGap.at;
+    const categoryChanged = S.active!==next.category;
+    const changed = categoryChanged || S.child!==next.action || oldGap!==gap || S.navLocked!==next.transitLocked;
+    if(categoryChanged && S.state==="edit"){S.editing={which:"cat",index:next.category};S.pending=null;}
+    S.active=next.category; S.child=next.action; S.hoverGap=next.gap; S.navLocked=next.transitLocked;
+    if (changed) render();
+    cancelSettle();
+    if (next.dueAt!==null) settleTimer=setTimeout(() => applyNavigation(radial.settle(performance.now())),Math.max(0,next.dueAt-performance.now()));
+  }
+  function pointerCoordinates(e) {
+    const svg=$("wheel");
+    const matrix=svg.getScreenCTM();
+    if(!matrix)return null;
+    const p=svg.createSVGPoint();p.x=e.clientX;p.y=e.clientY;
+    return p.matrixTransform(matrix.inverse());
+  }
+  function trackPointer(e) {
+    const p=pointerCoordinates(e);if(!p)return;
+    applyNavigation(radial.move(p.x,p.y,performance.now(),pointerContext()));
+  }
   const polar=(r,deg)=>[380+Math.cos(deg*Math.PI/180)*r,380+Math.sin(deg*Math.PI/180)*r];
   const safe=v=>String(v).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
   const fmt=n=>n.toFixed(2);
@@ -70,7 +99,8 @@
   }
   function addPlus(which,at,angle,r,label){
     const [x,y]=polar(r,angle);
-    return '<g class="insert" tabindex="0" role="button" aria-label="Insert '+label+'" data-add="'+which+'" data-at="'+at+'"><circle cx="'+fmt(x)+'" cy="'+fmt(y)+'" r="14"/><text x="'+fmt(x)+'" y="'+fmt(y+5)+'">+</text></g>';
+    const selected=S.hoverGap?.which===which && S.hoverGap?.at===at?" selected":"";
+    return '<g class="insert'+selected+'" tabindex="0" role="button" aria-label="Insert '+label+'" data-add="'+which+'" data-at="'+at+'"><circle cx="'+fmt(x)+'" cy="'+fmt(y)+'" r="14"/><text x="'+fmt(x)+'" y="'+fmt(y+5)+'">+</text></g>';
   }
   function render(){
     const data=datum(),isEmpty=S.state==="empty-wheel",group=cat(),outer=items(),count=data.length;
@@ -104,6 +134,7 @@
     svg+='<circle cx="380" cy="380" r="98" fill="#091728" stroke="#b3d4ff1f" stroke-width="8"/><circle cx="380" cy="380" r="87" class="center-metal"/><circle cx="380" cy="380" r="78" class="center-line"/><path d="'+arcLine(88,-85,5)+'" stroke="#d3eaff" stroke-width="3" fill="none" stroke-linecap="round"/>';
     svg+='<text class="core-word" x="380" y="364">apni</text><circle class="core-dot" cx="407" cy="350" r="3"/><text class="core-sub" x="380" y="387">'+(S.mode==="windows"?"OPEN WINDOWS":"LAUNCHER")+'</text><text class="core-mode" x="380" y="411">'+safe(isEmpty?"Ready to begin":group?.name||"")+'</text><text class="core-help" x="380" y="433">'+(S.pressed?"release to select":"center to cancel")+'</text>';
     $("wheel").innerHTML=svg;
+    $("wheel").classList.toggle("crossing",S.navLocked);
     updateCopy();
     renderFan();
     renderEditor();
@@ -117,7 +148,7 @@
     $("selection-type").textContent=isEmpty?"Empty launcher":item?item[1]==="window"?"Window instance":item[1].toUpperCase()+" action":windowsMode?"Open application":"Selected group";
     $("selection-name").textContent=isEmpty?"No groups yet":item?item[0]:group?.name||"";
     $("selection-desc").textContent=isEmpty?"Choose a plus to create your first group":item?"Ready to "+(windowsMode?"focus window":"run action")+" (preview)":windowsMode?String(group?.items.length||0)+" windows — choose an instance":"Choose an action in the outer orbit";
-    $("wheel-foot").textContent=S.state==="add"?"Choose a plus to insert exactly where you want":S.state==="edit"?"Select a group or action to edit it":S.state.startsWith("empty")?"Create a group or add an action":windowsMode?"Choose a window from the fan on the right":"Hover a category to reveal its actions";
+    $("wheel-foot").textContent=S.navLocked?"Cross through to keep "+(group?.name||"this category")+" · pause on a group to switch":S.hoverGap?"Insertion gap · "+(S.hoverGap.which==="cat"?"new group":"action")+" at position "+S.hoverGap.at:S.state==="add"?"Choose a plus to insert exactly where you want":S.state==="edit"?"Select a group or action to edit it":S.state.startsWith("empty")?"Create a group or add an action":windowsMode?"Choose a window from the fan on the right":"Hover a category to reveal its actions";
     $("hint").textContent=S.state==="explore"?(windowsMode?"Click any preview card to simulate window focus":"Hover icons and click an action to preview launch"):S.state==="edit"?"Click a group or action to edit its details":S.state==="add"?"Plus markers are insertion points, not replacement buttons":"Choose a plus to add your first item";
     $("tab-launcher").classList.toggle("active",!windowsMode);$("tab-launcher").setAttribute("aria-pressed",String(!windowsMode));
     $("tab-windows").classList.toggle("active",windowsMode);$("tab-windows").setAttribute("aria-pressed",String(windowsMode));
@@ -179,11 +210,12 @@
       if(isCat)S.active=next;else S.child=next;
       S.editing.index=next;notify("Moved in wheel");
     }
-    render();
+    resetNavigation();render();
   }
   function selectCat(i){
     if(!datum()[i])return;
-    S.active=i;S.child=-1;
+    cancelSettle();radial.chooseCategory(i);
+    S.active=i;S.child=-1;S.hoverGap=null;S.navLocked=false;
     if(S.state==="empty-wheel")S.state="explore";
     if(S.state==="edit"){S.editing={which:"cat",index:i};S.pending=null;}
     render();
@@ -201,32 +233,47 @@
     if(add){if(execute){S.pending={which:add.dataset.add,at:Number(add.dataset.at)};if(S.state.startsWith("empty"))S.state="add";render();}return;}
     if(group){const i=Number(group.dataset.cat);if(S.active!==i || (execute && S.state==="edit"))selectCat(i);return;}
     if(child){const i=Number(child.dataset.child);if(S.child!==i && !execute){S.child=i;render();}else if(execute)selectChild(i);return;}
-    if(execute && t.closest(".center-metal")){S.child=-1;S.pressed=false;notify("Cancelled");render();}
+    if(execute && t.closest(".center-metal")){S.child=-1;S.pressed=false;resetNavigation();notify("Cancelled");render();}
   }
   function setMode(mode){
-    S.mode=mode;S.state="explore";S.active=0;S.child=-1;S.pending=null;S.editing=null;render();
+    S.mode=mode;S.state="explore";S.active=0;S.child=-1;S.pending=null;S.editing=null;resetNavigation();render();
   }
   function setState(value){
     if(value!=="explore" && S.mode==="windows")S.mode="launcher";
     if(value==="empty-wheel")S.data=[];
     if(value==="empty-category" && S.data[4])S.data[4].items=[];
     if(value==="explore" && !S.data.length)S.data=clone(initial);
-    S.state=value;S.active=value==="empty-category"?4:0;S.child=value==="edit"?0:-1;S.pending=null;S.editing=value==="edit"?{which:"child",index:0}:null;render();
+    S.state=value;S.active=value==="empty-category"?4:0;S.child=value==="edit"?0:-1;S.pending=null;S.editing=value==="edit"?{which:"child",index:0}:null;resetNavigation();render();
   }
   $("tab-launcher").onclick=()=>setMode("launcher");$("tab-windows").onclick=()=>setMode("windows");
   document.querySelectorAll("[data-state]").forEach(b=>b.addEventListener("click",()=>setState(b.dataset.state)));
   $("reset").onclick=()=>{S.data=clone(initial);setMode("launcher");notify("Preview reset");};
-  $("wheel").addEventListener("pointerover",e=>{if(S.pressed)return;const group=e.target.closest("[data-cat]"),child=e.target.closest("[data-child]");if(group&&Number(group.dataset.cat)!==S.active)selectCat(Number(group.dataset.cat));else if(child&&S.state==="explore"&&Number(child.dataset.child)!==S.child){S.child=Number(child.dataset.child);render();}});
-  $("wheel").addEventListener("click",e=>handleWheelTarget(e.target,true));
+  // Coordinate-space navigation is stable across SVG rerenders and ignores incidental DOM hover crossings.
+  $("wheel-pool").addEventListener("pointermove",trackPointer);
+  $("wheel-pool").addEventListener("pointerleave",()=>applyNavigation(radial.leave()));
+  $("wheel").addEventListener("click",e=>{
+    trackPointer(e);
+    const direct=e.target.closest("[data-add]");
+    if(!direct && S.hoverGap && (S.state==="add" || S.state.startsWith("empty"))) {
+      S.pending={...S.hoverGap}; if(S.state.startsWith("empty"))S.state="add"; render();return;
+    }
+    handleWheelTarget(e.target,true);
+  });
   $("wheel").addEventListener("keydown",e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();handleWheelTarget(e.target,true);}});
   $("window-fan").addEventListener("click",e=>{const b=e.target.closest("[data-win]");if(b)notify("Focus "+cat().items[Number(b.dataset.win)][0]+" (preview only)");});
   $("floating-editor").addEventListener("click",e=>{const b=e.target.closest("[data-editor]");if(b)editorAction(b.dataset.editor);});
   $("floating-editor").addEventListener("keydown",e=>{if(e.key==="Enter"&&e.target.tagName==="INPUT"){e.preventDefault();editorAction("save");}});
   window.addEventListener("keydown",e=>{
-    if(e.key==="Escape"){S.pending=null;S.editing=null;S.pressed=false;S.state="explore";S.child=-1;render();notify("Cancelled");}
+    if(e.key==="Escape"){S.pending=null;S.editing=null;S.pressed=false;S.state="explore";S.child=-1;resetNavigation();render();notify("Cancelled");}
     if(e.code==="Space"&&!e.repeat&&!["INPUT","SELECT","TEXTAREA","BUTTON"].includes(document.activeElement.tagName)){e.preventDefault();S.pressed=true;render();}
   });
-  window.addEventListener("keyup",e=>{if(e.code==="Space"&&S.pressed){e.preventDefault();S.pressed=false;if(items()[S.child])selectChild(S.child);else render();}});
+  window.addEventListener("keyup",e=>{if(e.code==="Space"&&S.pressed){
+    e.preventDefault();S.pressed=false;
+    const target=radial.snapshot();
+    if(S.state==="add" && target.gap){S.pending={...target.gap};render();}
+    else if(S.state==="explore" && target.action>=0 && S.mode!=="windows")selectChild(target.action);
+    else render();
+  }});
   // Short damped spring. It responds to pointer travel and settles instead of endlessly animating.
   const pool=$("wheel-pool"),reduced=window.matchMedia("(prefers-reduced-motion: reduce)");
   let tx=0,ty=0,x=0,y=0,vx=0,vy=0,ticking=false;
