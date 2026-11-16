@@ -1,36 +1,26 @@
-# Apni radial launcher — design gate (OMN-0070)
+# Apni visual design study — OMN-0083
 
-Status: **Interactive prototype submitted for user visual approval; production implementation is not authorized by this mockup.**
+The current interactive visual study is [index.html](index.html), with [apni.css](apni.css) and [apni.js](apni.js). It is a **design reference**, not the live native OmniHub overlay. Work on native launcher implementation is independent of visual acceptance.
+
+## Interaction contract
+
+- **Launcher wheel:** one unified app, script and Setup launcher. Hover a category to expose its actions; hold/aim/release is illustrated and clicks remain preview-only.
+- **Open Windows wheel:** separate direct gesture, not a mode nested under the launcher. Apps form the primary ring; hovering an app reveals its individual window thumbnails/fan.
+- **Visual states:** Explore, Add, Edit, Empty group and Empty wheel are accessible through the study controls. Add/edit uses contextual in-wheel forms. Reset restores the example data.
+- A damped pointer-responsive spring moves and settles the wheel; reduced-motion preference disables this effect.
+- No real launches, native window thumbnails, shortcut registrations, persistent state or OS hooks are performed by this HTML study. Gesture labels are illustrative.
+
+## Evidence and references
+
+The original OMN-0070 prototype is commit `ddfabd92`. Before and after captures, including launcher, open windows, add, edit and both empty states, are stored at `E:/_AgentScratch/Tasks/Omni/OMN-0083/Evidence/` and attached to the native visual review on OMN-0083.
+
+Visual inspiration, not copied into application assets:
+- Gola hero wheel: https://gsl0001.github.io/gola/assets/v109/hero.jpg
+- Gola liquid theme: https://gsl0001.github.io/gola/assets/v107/themes/liquid.webp
+- Gola window fan: https://gsl0001.github.io/gola/assets/v107/fan.webp
+
+The design borrows layered circular material, illuminated rim, shallow depth, floating action satellites and compact window-instance previews. The actual markup, vectors, styling and interaction implementation are original to Apni.
 
 ## Review
 
-- Native review on original TaskBoard card **OMN-0070** (Omni/Tasks).
-- Stable local interactive presentation: http://127.0.0.1:3333/presentations/view/apni-radial-interaction
-- Self-contained source: [index.html](index.html).
-- Task evidence captures: E:/_AgentScratch/Tasks/Omni/OMN-0070/Evidence/apni-{compare,windows,add,emptyCat,emptyWheel,edit}.png.
-
-## Design intent
-
-1. Apni is a **desktop-only OmniHub feature**, sharing common Hub services and OmniSweep integration when eventually approved; no independent app or prototype service is started.
-2. The **unified** wheel uses one hold/aim/release gesture: first ring categories (Apps, Scripts, OmniSweep, Workspaces, Tools, System), second ring actions. Hover an app with multiple windows to fan out previews.
-3. The **separate** option keeps a launcher wheel and a fast dedicated window-switch wheel; the latter first groups by app, then exposes instance targets/previews. Example shortcuts are **illustrative**, not assigned system hotkeys.
-4. **Add Mode** exposes dashed insertion gaps **between category slices** and **between child tiles**. Empty category and empty wheel examples are included. Clicking a gap opens an **in-wheel insert form**, not an OS prompt.
-5. **Edit mode** opens a compact in-wheel editor to rename, assign type, reorder or remove a tile. Edits exist only in the page's in-memory state; no settings or system files are mutated.
-6. Releasing on a target would invoke/focus it; center/outside/Escape cancels. Mouse placement and Space hold support gesture exploration; the walkthrough button simulates a full sequence.
-7. Motion is restrained: short highlight transitions, nested ring entrance, and fanned preview cards. Respects prefers-reduced-motion.
-
-## Reference boundary
-
-The three **Gola original image assets** are linked externally in the reference gallery and labeled as such. None of those images are used as Apni UI assets. The radial vector art, ring layout, colors and editing states in this prototype are original Apni proposals.
-
-- Gola hero: https://gsl0001.github.io/gola/assets/v109/hero.jpg
-- Gola fan: https://gsl0001.github.io/gola/assets/v107/fan.webp
-- Gola liquid theme: https://gsl0001.github.io/gola/assets/v107/themes/liquid.webp
-- Gola website: https://gsl0001.github.io/gola/
-- Original user conversation: https://chatgpt.com/c/6af7c639-9f54-83eb-872e-137d18e675b1
-
-## Explicit non-goals / open approval
-
-This is not production wheel code: **no global keyboard/mouse hooks, real window previews, process launches, OmniSweep commands, startup registration, Rust Hub integration or deployment**. Those belong to dependent implementation tasks **after** the native visual review receives the human's actual verdict. The UI reference screenshots display simulated window contents, not captured application windows.
-
-Review the two modes, hover hierarchy, window fan, ghost insertion behavior, empty states, in-wheel editor and visual language. Approve or request changes in OMN-0070's native review. Do not infer approval from the prototype being viewable.
+Review the attached before/after screenshots and the interactive study. Judge overall visual quality, satellite spacing, category hierarchy, window thumbnails, and add/edit/empty states. Request aesthetic revisions directly on **OMN-0083**; do not block other Apni implementation tasks.
