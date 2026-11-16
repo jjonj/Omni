@@ -16,7 +16,8 @@ import kotlinx.coroutines.flow.StateFlow
 data class PhoneAgentAttention(
     val id: String, val sessionId: String, val message: String,
     val status: String = "pending", val nextAt: Long = 0,
-    val createdAt: Long = System.currentTimeMillis()
+    val createdAt: Long = System.currentTimeMillis(),
+    val activatedAt: Long = 0, val resolvedAt: Long = 0
 )
 
 object AndroidAttentionStore {
@@ -112,7 +113,9 @@ object AndroidAttentionStore {
             message = value.get("message").asString,
             status = value.get("status").asString,
             nextAt = value.get("nextAt")?.takeUnless { it.isJsonNull }?.asLong ?: 0,
-            createdAt = value.get("createdAt").asLong
+            createdAt = value.get("createdAt").asLong,
+            activatedAt = value.get("activatedAt")?.takeUnless { it.isJsonNull }?.asLong ?: 0,
+            resolvedAt = value.get("resolvedAt")?.takeUnless { it.isJsonNull }?.asLong ?: 0
         )
     }.getOrNull()
 }

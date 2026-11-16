@@ -375,6 +375,11 @@ fun OmniAiModesScreen(
     var attentionSheet by remember { mutableStateOf(false) }
     var attentionBusy by remember { mutableStateOf<String?>(null) }
     var attentionError by remember { mutableStateOf<String?>(null) }
+    // Resolved by T3 from the same desktop snooze preset configuration.
+    var attentionSnoozeChoices by remember { mutableStateOf<List<Pair<String, Long>>>(emptyList()) }
+    var attentionSnoozeMenuFor by remember { mutableStateOf<String?>(null) }
+    var attentionCustomFor by remember { mutableStateOf<String?>(null) }
+    var attentionCustomMinutes by remember { mutableStateOf("90") }
     var prepfileOpen by remember { mutableStateOf(false) }
     var prepfileBusy by remember { mutableStateOf(false) }
     var prepfileError by remember { mutableStateOf<String?>(null) }
@@ -808,6 +813,15 @@ fun OmniAiModesScreen(
                     ?.mapNotNull { raw -> raw.takeIf { it.isJsonObject }?.asJsonObject
                         ?.let(AndroidAttentionStore::fromStatus) }
                 if (rows != null) AndroidAttentionStore.reconcile(context, rows)
+                attentionSnoozeChoices = details.get("attentionSnoozePresets")
+                    ?.takeIf { it.isJsonArray }?.asJsonArray?.mapNotNull { preset ->
+                        runCatching {
+                            val item = preset.asJsonObject
+                            val until = java.time.Instant.parse(item.get("snoozedUntil").asString).toEpochMilli()
+                            if (until <= System.currentTimeMillis()) null else
+                                (item.get("label").asString + " · " + item.get("whenLabel").asString) to until
+                        }.getOrNull()
+                    }.orEmpty()
                 val jobs = details.get("prepfileJobs")?.takeIf { it.isJsonArray }?.asJsonArray
                     ?.mapNotNull { item -> item.takeIf { it.isJsonObject }?.asJsonObject
                         ?.let(::prepfileStatus) }
@@ -823,7 +837,8 @@ fun OmniAiModesScreen(
             delay(20_000)
         }
     }
-    fun controlAttention(request: PhoneAgentAttention, command: String, minutes: Int? = null) {
+    fun controlAttention(request: PhoneAgentAttention, command: String, minutes: Int? = null,
+                         until: Long? = null) {
         // T3 validates that a GMA action belongs to the EXACT target browser.
         // The first available browser may list all requests, but cannot acknowledge
         // another browser's notification.
@@ -843,7 +858,7 @@ fun OmniAiModesScreen(
             try {
                 val receipt = client.sessionAction(carrier, "Control", mapOf(
                     "command" to command, "options" to mapOf(
-                        "requestId" to request.id, "minutes" to minutes)))
+                        "requestId" to request.id, "minutes" to minutes, "until" to until)))
                 // A receipt may be unknown even after the PC applied the action.
                 // Read the PC state rather than locally guessing dismissal or replaying.
                 if (receipt == "Unknown" || receipt == "Pending")
@@ -882,11 +897,25 @@ fun OmniAiModesScreen(
         }
     }
     fun openLastAttention() {
-        val request = attentionRequests.filter {
-            it.status in listOf("pending", "waiting", "snoozed")
-        }.maxByOrNull { it.createdAt }
+        val current = System.currentTimeMillis()
+        // Match desktop Ctrl+S: actionable requests first, then cycle through recent
+        // resolved sessions without re-acknowledging them or bypassing a snooze.
+        val pending = attentionRequests.filter {
+            it.status in listOf("pending", "snoozed") && it.nextAt <= current
+        }.maxByOrNull { it.activatedAt.takeIf { at -> at > 0 } ?: it.createdAt }
+        val snoozedSessions = attentionRequests.filter {
+            it.status == "snoozed" && it.nextAt > current
+        }.map { it.sessionId }.toSet()
+        val recent = attentionRequests.filter {
+            it.status in listOf("opened", "dismissed") && it.activatedAt > 0 &&
+                it.sessionId !in snoozedSessions
+        }.sortedByDescending { it.activatedAt }.distinctBy { it.sessionId }
+        val currentId = sessions.firstOrNull { it.key == selectedKey }?.id
+        val history = recent.getOrNull(
+            (recent.indexOfFirst { it.sessionId == currentId } + 1) % recent.size.coerceAtLeast(1))
+        val request = pending ?: history
         if (request == null) {
-            note = "No outstanding T3 attention requests."
+            note = "No actionable or recent T3 attention requests."
             return
         }
         val session = sessions.firstOrNull {
@@ -894,11 +923,11 @@ fun OmniAiModesScreen(
                 it.key.endsWith(":" + request.sessionId))
         }
         if (session == null) {
-            note = "Request from ${request.sessionId}: the exact T3 session is not available. Refresh sessions."
+            note = "Request from ${request.sessionId}: the exact T3 session is unavailable. Refresh sessions."
             return
         }
         openSession(session)
-        controlAttention(request, "attention_open")
+        if (pending != null) controlAttention(request, "attention_open")
     }
     fun submitPrepfile() {
         if (prepfileBusy || prepfileRequestSent) return
@@ -1006,14 +1035,20 @@ fun OmniAiModesScreen(
             } finally { prepfileBusy = false; prepfileProgress = "" }
         }
     }
+    var initialAttentionAcknowledged by remember(initialAttentionRequestId) { mutableStateOf(false) }
     LaunchedEffect(initialAttentionRequestId, initialSessionId,
         attentionRequests, online, t3Connected) {
         val request = attentionRequests.firstOrNull {
             it.id == initialAttentionRequestId && it.sessionId == initialSessionId &&
-                it.status in listOf("pending", "snoozed", "waiting")
+                it.status in listOf("pending", "snoozed") &&
+                it.nextAt <= System.currentTimeMillis()
         }
-        if (request != null && online && t3Connected)
+        if (!initialAttentionAcknowledged && request != null && online && t3Connected) {
+            // One attempt per deep link. If its receipt is uncertain the sheet can
+            // reconcile it; re-composition must not enqueue another acknowledgement.
+            initialAttentionAcknowledged = true
             controlAttention(request, "attention_open")
+        }
     }
     fun refreshScheduledJobs() {
         val carrier = schedulerCarrier() ?: return
@@ -1345,7 +1380,7 @@ fun OmniAiModesScreen(
                 if (visible.isEmpty())
                     Text("No unresolved requests. When offline, the latest saved notifications remain available.",
                         color = p.muted)
-                visible.sortedBy { it.createdAt }.forEach { request ->
+                visible.sortedByDescending { it.activatedAt.takeIf { at -> at > 0 } ?: it.createdAt }.forEach { request ->
                     Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(p.raised)
                         .padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         val owner = sessions.firstOrNull {
@@ -1372,18 +1407,55 @@ fun OmniAiModesScreen(
                                     attentionError = "That session is not currently available. Refresh T3 before opening; request stays active."
                                 else {
                                     openSession(session); attentionSheet = false
-                                    controlAttention(request, "attention_open")
+                                    if (request.status != "waiting" && request.nextAt <= System.currentTimeMillis())
+                                        controlAttention(request, "attention_open")
                                 }
-                            }) { Text("Open") }
-                            TextButton(enabled = attentionBusy == null, onClick = {
-                                controlAttention(request, "attention_snooze", 15)
-                            }) { Text("15 min") }
-                            TextButton(enabled = attentionBusy == null, onClick = {
-                                controlAttention(request, "attention_snooze", 60)
-                            }) { Text("1 hour") }
+                            }) { Text(if (request.status == "waiting" || request.nextAt > System.currentTimeMillis())
+                                "View (keep reminder)" else "Open") }
+                            TextButton(enabled = attentionBusy == null && request.status != "waiting", onClick = {
+                                controlAttention(request, "attention_snooze", 10)
+                            }) { Text("10 min") }
+                            Box {
+                                TextButton(enabled = attentionBusy == null && request.status != "waiting",
+                                    onClick = { attentionSnoozeMenuFor = request.id }) { Text("Snooze ▴") }
+                                DropdownMenu(expanded = attentionSnoozeMenuFor == request.id,
+                                    onDismissRequest = { attentionSnoozeMenuFor = null }) {
+                                    if (attentionSnoozeChoices.isEmpty()) DropdownMenuItem(
+                                        text = { Text("Desktop presets unavailable; use custom") }, enabled = false,
+                                        onClick = {})
+                                    attentionSnoozeChoices.forEach { (label, until) ->
+                                        DropdownMenuItem(text = { Text(label) }, onClick = {
+                                            attentionSnoozeMenuFor = null
+                                            controlAttention(request, "attention_snooze", until = until)
+                                        })
+                                    }
+                                    DropdownMenuItem(text = { Text("Custom minutes…") }, onClick = {
+                                        attentionSnoozeMenuFor = null
+                                        attentionCustomFor = request.id
+                                    })
+                                }
+                            }
                             TextButton(enabled = attentionBusy == null, onClick = {
                                 controlAttention(request, "attention_dismiss")
                             }) { Text("Dismiss") }
+                        }
+                        if (attentionCustomFor == request.id) {
+                            OutlinedTextField(attentionCustomMinutes,
+                                { attentionCustomMinutes = it.filter(Char::isDigit).take(5) },
+                                modifier = Modifier.fillMaxWidth(), singleLine = true,
+                                label = { Text("Snooze duration (minutes, max 10080)") })
+                            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                TextButton(enabled = attentionBusy == null, onClick = {
+                                    val minutes = attentionCustomMinutes.toIntOrNull()
+                                    if (minutes == null || minutes !in 1..10080)
+                                        attentionError = "Choose 1–10080 minutes."
+                                    else {
+                                        attentionCustomFor = null
+                                        controlAttention(request, "attention_snooze", minutes)
+                                    }
+                                }) { Text("Apply snooze") }
+                                TextButton(onClick = { attentionCustomFor = null }) { Text("Cancel") }
+                            }
                         }
                     }
                 }
@@ -2183,6 +2255,17 @@ fun OmniAiModesScreen(
         var parentSearch by remember(target.key) { mutableStateOf("") }
         var showParentChoices by remember(target.key) { mutableStateOf(false) }
         var customSnoozeMinutes by remember(target.key) { mutableStateOf("90") }
+        var rebootPrompt by remember(target.key) { mutableStateOf("") }
+        val pendingReboot = details?.get("pendingReboot")?.takeIf { it.isJsonObject }?.asJsonObject
+        val desktopSnoozeChoices = details?.get("attentionSnoozePresets")
+            ?.takeIf { it.isJsonArray }?.asJsonArray?.mapNotNull { preset ->
+                runCatching {
+                    val item = preset.asJsonObject
+                    val until = java.time.Instant.parse(item.get("snoozedUntil").asString).toEpochMilli()
+                    if (until <= System.currentTimeMillis()) null else
+                        (item.get("label").asString + " · " + item.get("whenLabel").asString) to until
+                }.getOrNull()
+            }.orEmpty()
         ModalBottomSheet(onDismissRequest = { rowOptions = null },
             containerColor = p.surface, contentColor = p.text,
             sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
@@ -2234,7 +2317,35 @@ fun OmniAiModesScreen(
                             performRowControl(target, "keep_loaded",
                                 mapOf("value" to (field("keepLoaded") != "true")))
                         }
-                        SheetAction("Reboot agent (same T3 slot)", p) { performRowControl(target, "reboot") }
+                        Text("Agent reboot · same T3 slot", color = p.muted,
+                            style = MaterialTheme.typography.labelMedium)
+                        if (pendingReboot != null) {
+                            Text("Unresolved reboot: " +
+                                (pendingReboot.get("status")?.asString ?: "unknown") +
+                                " · " + (pendingReboot.get("operationId")?.asString ?: ""),
+                                color = p.amber, fontSize = 12.sp)
+                            SheetAction("Reconcile existing reboot (do not start another)", p) {
+                                performRowControl(target, "reboot_reconcile")
+                            }
+                        } else {
+                            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                FilterChip(false, onClick = {
+                                    performRowControl(target, "reboot", mapOf("contextMode" to "handoff"))
+                                }, label = { Text("Keep context") })
+                                FilterChip(false, onClick = {
+                                    performRowControl(target, "reboot", mapOf("contextMode" to "fresh"))
+                                }, label = { Text("Fresh start") })
+                            }
+                            OutlinedTextField(rebootPrompt, { rebootPrompt = it.take(8_000) },
+                                Modifier.fillMaxWidth(), minLines = 2, maxLines = 4,
+                                label = { Text("Custom handover instruction (optional, max 8000 chars)") })
+                            SheetAction("Reboot with custom handover", p) {
+                                if (rebootPrompt.isBlank()) rowControlError = "Enter the custom handover instruction first."
+                                else performRowControl(target, "reboot",
+                                    mapOf("contextMode" to "handoff", "prompt" to rebootPrompt))
+                            }
+                        }
                         SheetAction("Restore ChatGPT URL", p) { performRowControl(target, "restore_url") }
                         val returnMarker = field("returnMarker")
                         SheetAction(
@@ -2265,10 +2376,18 @@ fun OmniAiModesScreen(
                     if (isSnoozed(target)) SheetAction("Unsnooze", p) {
                         setSnooze(target, 0L); rowOptions = null
                     } else {
-                        Text("Snooze for", color = p.muted, style = MaterialTheme.typography.labelMedium)
+                        Text("Snooze · desktop presets", color = p.muted,
+                            style = MaterialTheme.typography.labelMedium)
+                        if (remote && desktopSnoozeChoices.isEmpty())
+                            Text("Desktop snooze presets unavailable. Use custom minutes or update T3.",
+                                color = p.muted, fontSize = 12.sp)
                         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                             horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            listOf(1, 2, 4, 8, 24, 72, 168).forEach { hours ->
+                            if (remote) desktopSnoozeChoices.forEach { (label, until) ->
+                                FilterChip(selected = false, onClick = {
+                                    setSnooze(target, until); rowOptions = null
+                                }, label = { Text(label) })
+                            } else listOf(1, 2, 4, 8, 24, 72, 168).forEach { hours ->
                                 FilterChip(selected = false, onClick = {
                                     viewPrefs.edit().putLong("snoozedAt:${target.key}", now).apply()
                                     setSnooze(target, now + hours * HOUR_MS); rowOptions = null
@@ -2325,11 +2444,15 @@ fun OmniAiModesScreen(
                             " · Every: " + (caffyField("intervalMinutes") ?: "—") + " min",
                             color = p.muted, fontSize = 12.sp)
                         listOf("lastCheckResult" to "Check", "wakePhase" to "Phase",
+                            "transitionVersion" to "State revision", "pendingWake" to "Wake requested",
+                            "deliveryAwaitingGuest" to "Awaiting verified guest",
                             "availability" to "Guest", "admissionReason" to "Admission",
                             "deliveryStatus" to "Delivery", "lastDeliveryResult" to "Receipt",
                             "pendingMessageId" to "Pending message ID",
                             "rebootOperationId" to "Reboot receipt",
-                            "lastError" to "Error", "autoRebootMinutes" to "Reboot every minutes",
+                            "lastError" to "Error", "pausedInitiator" to "Pause reason",
+                            "stopInitiator" to "Stop reason",
+                            "autoRebootMinutes" to "Reboot every minutes",
                             "autoRebootEveryRuns" to "Reboot every runs",
                             "wakesSinceReboot" to "Runs since reboot",
                             "repeatPrompt" to "Repeated prompt",
