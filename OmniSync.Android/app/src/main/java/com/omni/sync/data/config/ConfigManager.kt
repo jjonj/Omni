@@ -34,6 +34,8 @@ data class AppConfig(
     var swipeNavigationEnabled: Boolean = false, // Opt-in: touch gestures must not interfere with screen sharing
     var stillAwakeMediaPauseMinutes: Int = 30, // 0 disables the media pause timer
     var terminalLauncher: String = "agy",
+    // Opt-in: favor command receipts and longer reconnect windows on poor links.
+    var unstableInternetMode: Boolean = false,
     // Screen enum names; null/empty follows the built-in navigation order.
     var navigationOrder: List<String>? = null,
     var navigationVisibleCount: Int = 5

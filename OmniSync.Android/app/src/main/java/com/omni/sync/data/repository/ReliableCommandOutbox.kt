@@ -27,7 +27,9 @@ data class ReliableCommandRecord(
     val createdAtMillis: Long,
     val state: String = "pending",
     val attempts: Int = 0,
-    val error: String? = null
+    val error: String? = null,
+    // UI progress is separate from the authoritative Hub result in state.
+    val phase: String? = null
 )
 
 data class ReliableCommandReceipt(
@@ -45,6 +47,7 @@ class ReliableCommandOutbox(
     context: Context,
     private val connection: () -> HubConnection?,
     private val authenticated: () -> Boolean,
+    private val unstableMode: () -> Boolean,
     private val onState: (ReliableCommandRecord) -> Unit,
     private val onLinkFailure: () -> Unit
 ) {
@@ -61,9 +64,15 @@ class ReliableCommandOutbox(
         private const val MAX_QUEUED = 48
         private const val MAX_HISTORY = 12
         private const val MAX_AGE_MS = 5 * 60 * 1000L
+        private const val SLOW_LINK_MAX_AGE_MS = 20 * 60 * 1000L
         private const val URGENT_AGE_MS = 40 * 1000L
         private const val MAX_ATTEMPTS = 8
     }
+
+    private fun isTimeSensitive(method: String) = method in setOf(
+        "ExecuteCommand", "ExecuteMacro", "WinActivate", "WinClose", "ToggleShutdownMode",
+        "CycleFocusedWindowMonitor", "SendPayload", "SendBrowserCommand"
+    )
 
     init {
         synchronized(lock) {
@@ -79,6 +88,14 @@ class ReliableCommandOutbox(
                     error = "Local command record is unreadable; verify previous actions manually"
                 ))
             }
+            if (unstableMode()) {
+                // Restart is also a disconnect: do not silently resume an unsent
+                // macro, click or other time-sensitive command.
+                history = history.map { item ->
+                    if (item.state == "pending" && item.attempts == 0 && isTimeSensitive(item.method))
+                        item.copy(phase = "held") else item
+                }.toMutableList()
+            }
             expireLocked()
             publishLocked()
         }
@@ -88,7 +105,11 @@ class ReliableCommandOutbox(
         val id = UUID.randomUUID().toString()
         val serialized = gson.toJson(args.toList())
         val createdAt = System.currentTimeMillis()
-        var record = ReliableCommandRecord(id, method, serialized, createdAt)
+        // During flight-mode outages a queued macro or click needs a fresh tap
+        // after reconnect, rather than executing against a changed PC state.
+        val held = unstableMode() && !authenticated() && isTimeSensitive(method)
+        var record = ReliableCommandRecord(id, method, serialized, createdAt,
+            phase = if (held) "held" else "queued")
         synchronized(lock) {
             expireLocked()
             val queued = history.count { it.state == "pending" }
@@ -99,20 +120,25 @@ class ReliableCommandOutbox(
             persistLocked()
         }
         onState(record)
-        if (record.state == "pending") flushOnConnect()
+        if (record.state == "pending" && !held) flushOnConnect()
         return id
     }
 
     private fun expireLocked() {
         val now = System.currentTimeMillis()
         history = history.map { item ->
-            val urgent = item.method in listOf("WinActivate", "WinClose", "CycleFocusedWindowMonitor") ||
-                (item.method == "SendPayload" &&
-                    (item.argumentsJson.contains("LEFT_CLICK") || item.argumentsJson.contains("RIGHT_CLICK")))
-            val lifespan = if (urgent) URGENT_AGE_MS else MAX_AGE_MS
+            // Commands that depend on the *current* PC state must never wake up
+            // long after the tap. Durable file writes can wait on a slow link.
+            val urgent = if (unstableMode()) isTimeSensitive(item.method) else
+                (item.method in setOf("WinActivate", "WinClose", "CycleFocusedWindowMonitor") ||
+                    (item.method == "SendPayload" &&
+                        (item.argumentsJson.contains("LEFT_CLICK") || item.argumentsJson.contains("RIGHT_CLICK"))))
+            val lifespan = if (urgent) URGENT_AGE_MS
+                else if (unstableMode()) SLOW_LINK_MAX_AGE_MS else MAX_AGE_MS
             if (item.state == "pending" && now - item.createdAtMillis > lifespan) {
                 item.copy(
                     state = if (item.attempts == 0) "failed" else "unknown",
+                    phase = null,
                     error = if (item.attempts == 0) "Offline command expired without sending"
                         else "Command timed out; execution must be verified before retrying"
                 )
@@ -121,7 +147,10 @@ class ReliableCommandOutbox(
     }
 
     private fun publishLocked() {
-        _records.value = history.takeLast(MAX_HISTORY).reversed()
+        // Always surface every unresolved command even after many later actions.
+        val pending = history.filter { it.state == "pending" }.asReversed()
+        val recent = history.filter { it.state != "pending" }.takeLast(MAX_HISTORY).asReversed()
+        _records.value = pending + recent
     }
 
     private fun persistLocked() {
@@ -153,6 +182,75 @@ class ReliableCommandOutbox(
         result?.let(onState)
     }
 
+    /** A command can be cancelled only before the first transmission is claimed. */
+    fun cancelUnsent(id: String): Boolean {
+        var cancelled: ReliableCommandRecord? = null
+        synchronized(lock) {
+            val index = history.indexOfFirst { it.id == id && it.state == "pending" && it.attempts == 0 }
+            if (index < 0) return false
+            cancelled = history[index].copy(state = "cancelled", phase = null, error = "Cancelled before sending")
+            history[index] = cancelled!!
+            persistLocked()
+        }
+        cancelled?.let(onState)
+        return true
+    }
+
+    /** Prevent unsent time-sensitive work from replaying after a disconnect. */
+    fun holdUnsentSensitive() {
+        if (!unstableMode()) return
+        synchronized(lock) {
+            history = history.map { item ->
+                if (item.state == "pending" && item.attempts == 0 && isTimeSensitive(item.method))
+                    item.copy(phase = "held") else item
+            }.toMutableList()
+            persistLocked()
+        }
+    }
+
+    /** A manual tap releases a held command; repeated taps keep the same ID. */
+    fun retryPending(id: String): Boolean {
+        if (!authenticated()) return false
+        val pending = synchronized(lock) {
+            val index = history.indexOfFirst { it.id == id && it.state == "pending" }
+            if (index < 0) false else {
+                history[index] = history[index].copy(phase = "queued")
+                persistLocked()
+                true
+            }
+        }
+        if (pending) flushOnConnect()
+        return pending
+    }
+
+    /** Manual receipt lookup for an uncertain command; this NEVER resubmits it. */
+    fun checkStatus(id: String) {
+        val item = synchronized(lock) {
+            history.firstOrNull { it.id == id && it.attempts > 0 && it.state in setOf("unknown", "failed") }
+        } ?: return
+        scope.launch {
+            val conn = connection()?.takeIf { authenticated() && it.connectionState == HubConnectionState.CONNECTED }
+                ?: return@launch
+            try {
+                val receipt = conn.invoke(ReliableCommandReceipt::class.java, "GetReliableCommandStatus", item.id)
+                    .timeout(if (unstableMode()) 70L else 30L, TimeUnit.SECONDS).blockingGet()
+                when (receipt.state) {
+                    "succeeded", "failed", "unknown" -> update(item.id) {
+                        it.copy(state = receipt.state, phase = null, error = receipt.error)
+                    }
+                    "pending" -> update(item.id) {
+                        it.copy(state = "unknown", phase = null, error = "Hub accepted command; still processing. Check again later")
+                    }
+                    "not_found" -> update(item.id) {
+                        it.copy(state = "unknown", phase = null, error = "No Hub receipt; do not resend without verifying the effect")
+                    }
+                }
+            } catch (e: Exception) {
+                update(item.id) { it.copy(state = "unknown", phase = null, error = "Status unavailable: ${e.message}") }
+            }
+        }
+    }
+
     fun flushOnConnect() {
         if (!authenticated() || connection()?.connectionState != HubConnectionState.CONNECTED) return
         if (!flushing.compareAndSet(false, true)) return
@@ -163,15 +261,16 @@ class ReliableCommandOutbox(
                     val item = synchronized(lock) {
                         expireLocked()
                         persistLocked()
-                        history.firstOrNull { it.state == "pending" }
+                        history.firstOrNull { it.state == "pending" && it.phase != "held" }
                     } ?: break
 
                     // Resolve the previous attempt before deciding whether a replay
                     // of the *same* stable ID is appropriate.
                     if (item.attempts > 0) {
+                        update(item.id) { it.copy(phase = "retrying") }
                         val status = try {
                             conn.invoke(ReliableCommandReceipt::class.java, "GetReliableCommandStatus", item.id)
-                                .timeout(30, TimeUnit.SECONDS).blockingGet()
+                                .timeout(if (unstableMode()) 70L else 30L, TimeUnit.SECONDS).blockingGet()
                         } catch (error: Exception) {
                             Log.w("ReliableCommands", "Status query interrupted for ${item.id}: ${error.message}")
                             onLinkFailure()
@@ -179,21 +278,27 @@ class ReliableCommandOutbox(
                         }
                         when (status.state) {
                             "succeeded", "failed", "unknown" -> {
-                                update(item.id) { it.copy(state = status.state, error = status.error) }
+                                update(item.id) { it.copy(state = status.state, phase = null, error = status.error) }
                                 continue
                             }
                             "pending" -> {
-                                delay(1500)
+                                update(item.id) { it.copy(phase = "delivered", error = null) }
+                                delay(if (unstableMode()) 12_000L else 1_500L)
                                 continue
                             }
                             "not_found" -> {
-                                // Hub definitively never admitted this ID. Reuse it
-                                // with bounded exponential backoff and jitter.
+                                // A stale click, macro, shutdown or browser action
+                                // must NOT be automatically replayed after a lost reply.
+                                if (item.method !in setOf("AppendToFile", "CreateDirectory")) {
+                                    update(item.id) { it.copy(state = "failed", phase = null,
+                                        error = "Hub did not receive it. Tap the original action again if still needed") }
+                                    continue
+                                }
                                 val pause = (1000L shl item.attempts.coerceAtMost(5)).coerceAtMost(30_000L)
                                 delay(pause + Random.nextLong(0, 900))
                             }
                             else -> {
-                                update(item.id) { it.copy(state = "unknown", error = "Unexpected Hub status: ${status.state}") }
+                                update(item.id) { it.copy(state = "unknown", phase = null, error = "Unexpected Hub status: ${status.state}") }
                                 continue
                             }
                         }
@@ -201,7 +306,7 @@ class ReliableCommandOutbox(
 
                     if (item.attempts >= MAX_ATTEMPTS) {
                         // Every prior attempt was definitively not_found.
-                        update(item.id) { it.copy(state = "failed", error = "No Hub admission after bounded retries") }
+                        update(item.id) { it.copy(state = "failed", phase = null, error = "No Hub admission after bounded retries") }
                         continue
                     }
                     val expiredNow = synchronized(lock) {
@@ -210,20 +315,31 @@ class ReliableCommandOutbox(
                         history.firstOrNull { it.id == item.id }?.state != "pending"
                     }
                     if (expiredNow) continue
-                    update(item.id) { it.copy(attempts = it.attempts + 1) }
+                    // Atomically claim the first send, so cancellation cannot race it.
+                    val claimed = synchronized(lock) {
+                        val index = history.indexOfFirst { it.id == item.id && it.state == "pending" }
+                        if (index < 0) false else {
+                            history[index] = history[index].copy(attempts = history[index].attempts + 1, phase = "sending")
+                            persistLocked()
+                            true
+                        }
+                    }
+                    if (!claimed) continue
                     try {
                         val receipt = conn.invoke(
                             ReliableCommandReceipt::class.java,
                             "RunReliableCommand",
                             item.id, item.method, JsonParser.parseString(item.argumentsJson).asJsonArray,
                             item.createdAtMillis
-                        ).timeout(45, TimeUnit.SECONDS).blockingGet()
+                        ).timeout(if (unstableMode()) 90L else 45L, TimeUnit.SECONDS).blockingGet()
                         if (receipt.state in listOf("succeeded", "failed", "unknown")) {
-                            update(item.id) { it.copy(state = receipt.state, error = receipt.error) }
+                            update(item.id) { it.copy(state = receipt.state, phase = null, error = receipt.error) }
                         } else {
-                            delay(1500)
+                            update(item.id) { it.copy(phase = "delivered", error = null) }
+                            delay(if (unstableMode()) 12_000L else 1_500L)
                         }
                     } catch (error: Exception) {
+                        update(item.id) { it.copy(phase = "retrying", error = "Awaiting receipt after interrupted connection") }
                         Log.w("ReliableCommands", "Command ${item.id} response unknown: ${error.message}")
                         onLinkFailure()
                         break

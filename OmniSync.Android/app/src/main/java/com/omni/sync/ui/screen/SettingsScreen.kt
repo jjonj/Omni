@@ -234,6 +234,24 @@ fun SettingsScreen(
             Spacer(modifier = Modifier.height(24.dp))
 
             Text("Hub Connection", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Unstable internet", style = MaterialTheme.typography.bodyLarge)
+                    Text("For slow or interrupted Wi-Fi: longer waits, fewer background refreshes and visible command receipts.",
+                        style = MaterialTheme.typography.bodySmall)
+                }
+                Switch(
+                    checked = appConfig.unstableInternetMode,
+                    onCheckedChange = { enabled ->
+                        mainViewModel.updateConfig { it.copy(unstableInternetMode = enabled) }
+                        signalRClient.networkModeChanged()
+                    }
+                )
+            }
             Spacer(modifier = Modifier.height(8.dp))
             
             OutlinedTextField(

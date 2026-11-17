@@ -292,6 +292,7 @@ class SignalRClient(
     private val hubUrl: String get() = mainViewModel.appConfig.value.hubUrl
 
     private val apiKey: String get() = mainViewModel.appConfig.value.apiKey
+    private val unstableInternet: Boolean get() = mainViewModel.appConfig.value.unstableInternetMode
 
     private val clipboardManager = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
     private val gson = GsonBuilder()
@@ -318,6 +319,7 @@ class SignalRClient(
             context,
             connection = { hubConnection },
             authenticated = { isHubAuthenticated },
+            unstableMode = { unstableInternet },
             onState = { record ->
                 val level = when (record.state) {
                     "succeeded" -> com.omni.sync.ui.screen.LogType.SUCCESS
@@ -327,12 +329,24 @@ class SignalRClient(
                 mainViewModel.addLog("[Command ${record.id.take(8)}] ${record.method}: ${record.state}" +
                     (record.error?.let { " ($it)" } ?: ""), level)
             },
-            onLinkFailure = {
-                if (!manualStop.get()) requestConnect(force = true, reason = "command response timeout")
-            }
+            onLinkFailure = { onReliableCommandLinkFailure() }
         )
     }
+    private fun onReliableCommandLinkFailure() {
+        if (manualStop.get()) return
+        if (unstableInternet && hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
+            // A lost reply is not proof the link failed. Re-query the same ID later.
+            coroutineScope.launch { delay(10_000); reliableOutbox.flushOnConnect() }
+        } else requestConnect(force = true, reason = "command response timeout")
+    }
     val reliableCommandRecords: StateFlow<List<ReliableCommandRecord>> get() = reliableOutbox.records
+    fun cancelQueuedCommand(id: String): Boolean = reliableOutbox.cancelUnsent(id)
+    fun retryQueuedCommand(id: String): Boolean = reliableOutbox.retryPending(id)
+    fun checkCommandStatus(id: String) = reliableOutbox.checkStatus(id)
+    fun networkModeChanged() {
+        if (unstableInternet) reliableOutbox.holdUnsentSensitive()
+        if (!isHubAuthenticated) requestConnect(force = false, reason = "network mode changed")
+    }
     private fun submitReliable(method: String, vararg args: Any?) {
         reliableOutbox.submit(method, *args)
         if (!isHubAuthenticated) {
@@ -344,17 +358,25 @@ class SignalRClient(
     private val isConnecting = AtomicBoolean(false)
     private val manualStop = AtomicBoolean(false)
     private val connectivityManager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+    private val lostDefaultNetwork = AtomicBoolean(false)
     private val networkCallback = object : ConnectivityManager.NetworkCallback() {
         override fun onAvailable(network: Network) {
             if (manualStop.get()) return
-            if (hubConnection?.connectionState != com.microsoft.signalr.HubConnectionState.CONNECTED &&
-                !isConnecting.get()) {
+            val lost = lostDefaultNetwork.getAndSet(false)
+            if (lost || (hubConnection?.connectionState != com.microsoft.signalr.HubConnectionState.CONNECTED &&
+                !isConnecting.get())) {
                 // Onboard Wi-Fi/VPN/relay may come back without the app restarting.
                 requestConnect(force = true, reason = "network available")
             }
         }
         override fun onLost(network: Network) {
-            if (hubConnection?.connectionState != com.microsoft.signalr.HubConnectionState.CONNECTED) {
+            if (unstableInternet && connectivityManager.activeNetwork == null) {
+                lostDefaultNetwork.set(true)
+                isHubAuthenticated = false
+                mainViewModel.setConnected(false)
+                reliableOutbox.holdUnsentSensitive()
+                _connectionState.value = "No phone network — commands waiting"
+            } else if (hubConnection?.connectionState != com.microsoft.signalr.HubConnectionState.CONNECTED) {
                 _connectionState.value = "Waiting for network..."
             }
         }
@@ -490,8 +512,8 @@ class SignalRClient(
         // Keep agent attention state (and its notifications) current while the Agents screen is closed.
         coroutineScope.launch {
             while (true) {
-                delay(45_000)
-                if (_legacyAiEnabled.value) requestAgentSessions()
+                delay(if (unstableInternet) 180_000 else 45_000)
+                if (_legacyAiEnabled.value && isHubAuthenticated) requestAgentSessions()
             }
         }
     }
@@ -570,9 +592,11 @@ class SignalRClient(
         }
         coroutineScope.launch {
             while (true) {
-                delay(10_000)
-                flushReminderActions()
-                refreshReminders()
+                delay(if (unstableInternet) 90_000 else 10_000)
+                if (isHubAuthenticated) {
+                    flushReminderActions()
+                    refreshReminders()
+                }
             }
         }
         observeRemoteTerminalForAiUi()
@@ -873,7 +897,7 @@ class SignalRClient(
 
         return try {
             connection.start()
-                .timeout(25, TimeUnit.SECONDS)
+                .timeout(if (unstableInternet) 75L else 25L, TimeUnit.SECONDS)
                 .blockingAwait()
 
             if (token != connectionToken.get()) {
@@ -920,6 +944,7 @@ class SignalRClient(
         }
 
         isHubAuthenticated = false
+        if (unstableInternet) reliableOutbox.holdUnsentSensitive()
         val reason = error?.message ?: "Unknown reason"
         _connectionState.value = "Disconnected: $reason"
         mainViewModel.setConnected(false)
