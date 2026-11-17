@@ -389,26 +389,20 @@ class GenericAgentClient(
         return NativeProjectUi(id, result.str("title") ?: trimmed, result.str("workspaceRoot").orEmpty())
     }
 
-    /** T3 native history includes a structured turn item even when text isn't yet available.
-     * Prefer readable text, but show bounded tool/progress details rather than an empty bubble. */
+    /** Display human-readable history only. T3's native.turn_item is transport
+     * metadata, not chat content; never stringify it into the conversation. */
     private fun historyContent(row: JsonObject): String {
         val parts = row.array("parts")?.mapNotNull { it.asObjectOrNull() }.orEmpty()
-        val text = parts.mapNotNull {
-            it.str("markdown") ?: it.str("text") ?: it.str("summary")
-                ?: it.str("label") ?: it.str("status")
-        }.filter { it.isNotBlank() }
-        if (text.isNotEmpty()) return text.joinToString("\n")
+        val readable = parts.mapNotNull { part ->
+            part.str("markdown") ?: part.str("text") ?: part.str("summary")
+                ?: part.str("label")
+        }.filter(String::isNotBlank)
+        if (readable.isNotEmpty()) return readable.joinToString("\n")
+        // Some older T3 bridges provide text only inside the native item.
         return parts.mapNotNull { part ->
             if (part.str("type") != "native.turn_item") return@mapNotNull null
-            val item = part.obj("item") ?: return@mapNotNull null
-            val kind = item.str("type") ?: "Progress"
-            val description = listOf("title", "label", "summary", "message", "command", "status")
-                .firstNotNullOfOrNull { item.str(it)?.takeIf(String::isNotBlank) }
-            val headline = if (description == null) kind else "$kind · $description"
-            // Expansion in the conversation reveals the structured event if T3 has
-            // not yet supplied a short human-readable summary.
-            val details = item.toString().take(1800)
-            "$headline\n$details"
+            part.obj("item")?.let { it.str("text") ?: it.str("markdown") }
+                ?.takeIf(String::isNotBlank)
         }.joinToString("\n")
     }
 

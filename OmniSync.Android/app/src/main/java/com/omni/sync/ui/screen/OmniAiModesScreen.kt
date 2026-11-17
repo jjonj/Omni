@@ -2052,6 +2052,20 @@ fun OmniAiModesScreen(
                 // status pill -> composer. No stacked status/attention/pending bars.
                 val running = selected?.isRunning() == true
                 val nativeThread = selected?.kind == "t3/thread"
+                // Native T3 history carries tool events, reasoning and provider
+                // metadata as turn items. Keep those out of the chat transcript,
+                // including copies restored from the offline cache.
+                val conversationHistory = remember(history, nativeThread) {
+                    if (nativeThread) history.filter { item ->
+                        // Older offline caches may contain the previous JSON dump
+                        // fallback for an otherwise valid user/assistant message.
+                        val staleMetadata = item.text.startsWith(item.kind) &&
+                            item.text.contains("\n{") &&
+                            item.text.contains("\"type\":\"${item.kind}\"")
+                        item.kind in listOf("user_message", "assistant_message") &&
+                            !staleMetadata && (item.text.isNotBlank() || item.streaming)
+                    } else history
+                }
                 var clock by remember { mutableLongStateOf(System.currentTimeMillis()) }
                 LaunchedEffect(running, selected?.needsAttention()) {
                     // 1s ticker only while something on screen is counting.
@@ -2060,9 +2074,10 @@ fun OmniAiModesScreen(
                 }
                 // When the phone itself last saw new content; complements provider lastActivityAt.
                 var lastContentAt by remember(selectedKey) { mutableLongStateOf(0L) }
-                LaunchedEffect(history.lastOrNull()?.id, history.lastOrNull()?.revision,
-                    history.lastOrNull()?.text?.length) {
-                    if (history.isNotEmpty()) lastContentAt = System.currentTimeMillis()
+                LaunchedEffect(conversationHistory.lastOrNull()?.id,
+                    conversationHistory.lastOrNull()?.revision,
+                    conversationHistory.lastOrNull()?.text?.length) {
+                    if (conversationHistory.isNotEmpty()) lastContentAt = System.currentTimeMillis()
                 }
                 val firstSeenRunning = remember(selectedKey, running) {
                     if (running) System.currentTimeMillis() else 0L
@@ -2091,9 +2106,9 @@ fun OmniAiModesScreen(
                     modifier = Modifier.fillMaxWidth().height(2.dp), color = p.accent,
                     trackColor = p.bg)
                 val scroll = rememberLazyListState()
-                LaunchedEffect(selectedKey, history.lastOrNull()?.id, history.lastOrNull()?.revision,
-                    threadOutbox.size) {
-                    if ((history.isNotEmpty() || threadOutbox.isNotEmpty()) && followingLatest)
+                LaunchedEffect(selectedKey, conversationHistory.lastOrNull()?.id,
+                    conversationHistory.lastOrNull()?.revision, threadOutbox.size) {
+                    if ((conversationHistory.isNotEmpty() || threadOutbox.isNotEmpty()) && followingLatest)
                         scroll.scrollToItem((scroll.layoutInfo.totalItemsCount - 1).coerceAtLeast(0))
                 }
                 LaunchedEffect(scroll, selectedKey) {
@@ -2128,7 +2143,7 @@ fun OmniAiModesScreen(
                                     }) { Text("Retry") }
                             }
                         }
-                        if (history.isEmpty() && threadOutbox.isEmpty()) item {
+                        if (conversationHistory.isEmpty() && threadOutbox.isEmpty()) item {
                             Column(Modifier.fillMaxWidth().padding(top = 65.dp),
                                 horizontalAlignment = Alignment.CenterHorizontally,
                                 verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -2140,7 +2155,7 @@ fun OmniAiModesScreen(
                                     color = p.muted, style = MaterialTheme.typography.bodySmall)
                             }
                         }
-                        items(history, key = { it.id }) { item -> MessageRow(item, p) }
+                        items(conversationHistory, key = { it.id }) { item -> MessageRow(item, p) }
                         items(threadOutbox, key = { "local:" + it.id }) { item ->
                             LocalOutgoingRow(item, p) { sheet = "outbox" }
                         }
@@ -2191,7 +2206,7 @@ fun OmniAiModesScreen(
                             }
                         }
                     }
-                    if (!followingLatest && history.isNotEmpty()) IconButton(onClick = {
+                    if (!followingLatest && conversationHistory.isNotEmpty()) IconButton(onClick = {
                         followingLatest = true
                         scope.launch { scroll.animateScrollToItem((scroll.layoutInfo.totalItemsCount - 1).coerceAtLeast(0)) }
                     }, modifier = Modifier.align(Alignment.BottomEnd).padding(end = 12.dp, bottom = 10.dp)
