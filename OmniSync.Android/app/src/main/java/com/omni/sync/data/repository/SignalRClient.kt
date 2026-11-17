@@ -334,10 +334,11 @@ class SignalRClient(
     }
     private fun onReliableCommandLinkFailure() {
         if (manualStop.get()) return
-        if (unstableInternet && hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
-            // A lost reply is not proof the link failed. Re-query the same ID later.
-            coroutineScope.launch { delay(10_000); reliableOutbox.flushOnConnect() }
-        } else requestConnect(force = true, reason = "command response timeout")
+        if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
+            // A lost command receipt is NOT evidence of a disconnected socket.
+            // Never tear down a healthy connection just to check the same ID.
+            coroutineScope.launch { delay(if (unstableInternet) 10_000 else 2_000); reliableOutbox.flushOnConnect() }
+        } else requestConnect(force = false, reason = "command response timeout")
     }
     val reliableCommandRecords: StateFlow<List<ReliableCommandRecord>> get() = reliableOutbox.records
     fun cancelQueuedCommand(id: String): Boolean = reliableOutbox.cancelUnsent(id)
@@ -358,25 +359,29 @@ class SignalRClient(
     private val isConnecting = AtomicBoolean(false)
     private val manualStop = AtomicBoolean(false)
     private val connectivityManager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
-    private val lostDefaultNetwork = AtomicBoolean(false)
+    @Volatile private var networkRecoveryJob: Job? = null
     private val networkCallback = object : ConnectivityManager.NetworkCallback() {
         override fun onAvailable(network: Network) {
-            if (manualStop.get()) return
-            val lost = lostDefaultNetwork.getAndSet(false)
-            if (lost || (hubConnection?.connectionState != com.microsoft.signalr.HubConnectionState.CONNECTED &&
-                !isConnecting.get())) {
-                // Onboard Wi-Fi/VPN/relay may come back without the app restarting.
-                requestConnect(force = true, reason = "network available")
+            if (manualStop.get() ||
+                hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED ||
+                isConnecting.get() || connectJob?.isActive == true || reconnectJob?.isActive == true ||
+                networkRecoveryJob?.isActive == true) return
+            // Network/VPN callbacks can fire repeatedly. Coalesce them rather
+            // than forcing a new socket (or perpetually resetting the debounce).
+            networkRecoveryJob = coroutineScope.launch {
+                delay(2_500)
+                if (manualStop.get() ||
+                    hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED ||
+                    isConnecting.get() || connectJob?.isActive == true || reconnectJob?.isActive == true) return@launch
+                requestConnect(force = false, reason = "network available")
             }
         }
         override fun onLost(network: Network) {
-            if (unstableInternet && connectivityManager.activeNetwork == null) {
-                lostDefaultNetwork.set(true)
-                isHubAuthenticated = false
-                mainViewModel.setConnected(false)
-                reliableOutbox.holdUnsentSensitive()
-                _connectionState.value = "No phone network — commands waiting"
-            } else if (hubConnection?.connectionState != com.microsoft.signalr.HubConnectionState.CONNECTED) {
+            // Android may temporarily report no default network while changing
+            // between Wi-Fi and VPN. Only the actual Hub socket closing is a
+            // reason to flip connected -> disconnected and hold queued actions.
+            if (hubConnection?.connectionState != com.microsoft.signalr.HubConnectionState.CONNECTED &&
+                connectivityManager.activeNetwork == null) {
                 _connectionState.value = "Waiting for network..."
             }
         }
@@ -938,7 +943,7 @@ class SignalRClient(
     }
 
     private fun handleConnectionClosed(error: Throwable?, token: Long) {
-        if (token != activeConnectionToken.get()) {
+        if (token != activeConnectionToken.get() || token != connectionToken.get()) {
             Log.d("SignalRClient", "Ignoring onClosed for stale connection (token $token)")
             return
         }
