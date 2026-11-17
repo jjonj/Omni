@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -2593,7 +2594,9 @@ private fun TaskEditorDialog(
     }
     Dialog(onDismissRequest = { if (!busy) onDismiss() },
         properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        Surface(modifier = Modifier.fillMaxWidth().fillMaxHeight(.95f)
+        // Reserve keyboard space before sizing the dialog, keeping Cancel/Create/Save visible
+        // while the form scrolls independently above the pinned action row.
+        Surface(modifier = Modifier.fillMaxWidth().imePadding().fillMaxHeight(.95f)
             .padding(horizontal = 7.dp, vertical = 6.dp),
             color = TaskBoardColors.background, shape = RoundedCornerShape(14.dp)) {
             Column(Modifier.fillMaxSize()) {
