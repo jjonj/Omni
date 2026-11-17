@@ -116,6 +116,12 @@ private fun preparePrepfileImage(context: Context, uri: Uri): ByteArray {
     return content
 }
 
+/** Persistent optimistic entry, never a fabricated remote session or success receipt. */
+private data class SessionCreatePreview(
+    val requestId: String, val title: String, val providerId: String, val kind: String, val project: String,
+    val instruction: String, val status: String, val sessionKey: String? = null
+)
+
 private data class PrepfileStatusUi(
     val id: String, val request: String, val state: String,
     val outputPath: String?, val generatorSessionId: String?,
@@ -367,6 +373,30 @@ fun OmniAiModesScreen(
     var actionBusy by remember { mutableStateOf(false) }
     var creationBusy by remember { mutableStateOf(false) }
     var createError by remember { mutableStateOf<String?>(null) }
+    val createPreviewPrefs = remember(context) {
+        context.getSharedPreferences("ai-create-preview-v1", Context.MODE_PRIVATE)
+    }
+    var creationPreviews by remember(createPreviewPrefs) { mutableStateOf(
+        runCatching { Gson().fromJson(createPreviewPrefs.getString("items", "[]"),
+            Array<SessionCreatePreview>::class.java).orEmpty().map { entry ->
+                if (entry.status == "Starting on PC…") entry.copy(
+                    status = "Unconfirmed · app restarted before confirmation") else entry
+            } }.getOrDefault(emptyList())
+    ) }
+    fun saveCreatePreviews(rows: List<SessionCreatePreview>) {
+        // A committed preview survives process death while a provider request is in flight.
+        check(createPreviewPrefs.edit().putString("items", Gson().toJson(rows)).commit()) {
+            "Unable to preserve pending AI creation"
+        }
+        creationPreviews = rows
+    }
+    fun putCreatePreview(row: SessionCreatePreview) = saveCreatePreviews(
+        creationPreviews.filterNot { it.requestId == row.requestId } + row)
+    LaunchedEffect(sessions, creationPreviews) {
+        val synced = creationPreviews.filterNot { it.sessionKey != null &&
+            sessions.any { session -> session.key == it.sessionKey } }
+        if (synced.size != creationPreviews.size) saveCreatePreviews(synced)
+    }
     var addressMode by rememberSaveable { mutableStateOf(false) }
     var address by rememberSaveable { mutableStateOf("") }
     var sheet by remember { mutableStateOf<String?>(null) }
@@ -1864,6 +1894,48 @@ fun OmniAiModesScreen(
                             focusedContainerColor = p.surface, unfocusedContainerColor = p.surface,
                             focusedBorderColor = p.accent, unfocusedBorderColor = p.border))
                 }
+                // Local creation appears before the backend returns an ID. Once an ID
+                // is confirmed we keep this card until the actual catalog catches up.
+                creationPreviews.filter { preview ->
+                    preview.providerId == listProvider &&
+                        (listProvider != "t3" || preview.kind == threadKind) &&
+                        (sessionSearch.isBlank() || preview.title.contains(sessionSearch, true))
+                }.forEach { preview ->
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 3.dp)
+                        .clip(RoundedCornerShape(12.dp)).background(p.accentBg)
+                        .clickable {
+                            if (preview.sessionKey != null) scope.launch {
+                                if (client.ensureSession(preview.sessionKey)) {
+                                    client.select(preview.sessionKey); listMode = false
+                                } else note = "Created session is not published yet; still syncing."
+                            } else {
+                                kind = preview.kind
+                                workspace = preview.project
+                                nativeProjectId = preview.project
+                                firstMessage = preview.instruction
+                                createError = if (preview.status.startsWith("Unconfirmed"))
+                                    "Retry with the original settings to reconcile without duplication." else null
+                                create = true
+                            }
+                        }.padding(start = 12.dp, top = 9.dp, bottom = 9.dp),
+                        verticalAlignment = Alignment.CenterVertically) {
+                        if (preview.status == "Starting on PC…") CircularProgressIndicator(
+                            Modifier.size(15.dp), strokeWidth = 2.dp, color = p.accent)
+                        else Icon(Icons.Default.CloudSync, null, tint = p.accent, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(9.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(preview.title, color = p.text, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(preview.status, color = p.muted, fontSize = 11.sp,
+                                maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        }
+                        IconButton(onClick = {
+                            saveCreatePreviews(creationPreviews.filterNot { it.requestId == preview.requestId })
+                        }, modifier = Modifier.size(32.dp)) {
+                            Icon(Icons.Default.Close, "Dismiss local creation status", tint = p.muted,
+                                modifier = Modifier.size(17.dp))
+                        }
+                    }
+                }
                 LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(
                     start = 10.dp, end = 10.dp, top = 4.dp, bottom = 20.dp),
                     verticalArrangement = Arrangement.spacedBy(if (compactMode) 3.dp else 4.dp)) {
@@ -2995,11 +3067,30 @@ fun OmniAiModesScreen(
                  chosenNativeModel.efforts.any { it.first == nativeEffort })))
         fun start() {
             if (!canCreate) return
+            val project = if (native) nativeProjectId else workspace
+            val title = firstMessage.lineSequence().firstOrNull()?.trim()?.take(120)
+                ?.ifBlank { "New AI session" } ?: "New AI session"
+            // Reconcile an unresolved creation with the SAME underlying request;
+            // do not present an extra phantom card when the user retries it.
+            val existing = creationPreviews.firstOrNull {
+                it.sessionKey == null && it.providerId == active.id &&
+                    it.kind == kind && it.project == project &&
+                    it.instruction == firstMessage
+            }
+            val prediction = SessionCreatePreview(existing?.requestId ?: UUID.randomUUID().toString(),
+                title, active.id, kind, project, firstMessage, "Starting on PC…")
+            try { putCreatePreview(prediction) }
+            catch (failure: Exception) { createError = failure.message; return }
             creationBusy = true
             createError = null
+            create = false
+            listMode = true
+            threadKind = kind
+            sessionFilter = "All"
+            projectFilter = ""
+            sessionSearch = ""
             scope.launch {
                 try {
-                    val project = if (native) nativeProjectId else workspace
                     val config: Map<String, Any?>? = if (native) chosenNativeModel?.let { model ->
                         val options = if (model.effortId != null && nativeEffort.isNotEmpty())
                             listOf(mapOf("id" to model.effortId, "value" to nativeEffort))
@@ -3011,21 +3102,28 @@ fun OmniAiModesScreen(
                     val result = client.createSession(active, kind, project, firstMessage,
                         createDeliveryMode, maxActiveWorkers, "", config)
                     val newKey = client.createdSessionKey.value
-                    if (newKey == null) { createError = result; return@launch }
-                    // New sessions can lag the catalog briefly. Retry reads, never the create.
-                    repeat(4) { attempt ->
-                        if (client.sessions.value.any { it.key == newKey } || client.ensureSession(newKey)) return@repeat
+                    if (newKey == null) {
+                        val rejected = result.contains("rejected", true) || result.contains("failed", true)
+                        putCreatePreview(prediction.copy(status =
+                            (if (rejected) "Failed · " else "Unconfirmed · ") + result.take(160)))
+                        return@launch
+                    }
+                    putCreatePreview(prediction.copy(status = "Created on PC · loading session…",
+                        sessionKey = newKey))
+                    // The ID is confirmed. Only READ the catalog; never repeat create.
+                    for (attempt in 0 until 4) {
+                        if (client.sessions.value.any { it.key == newKey } || client.ensureSession(newKey)) break
                         delay(400L * (attempt + 1))
                     }
-                    create = false
                     if (client.sessions.value.any { it.key == newKey }) {
-                        threadKind = kind
                         viewPrefs.edit().putString("threadKind", kind).apply()
                         listMode = false
                         client.select(newKey)
-                    } else note = "Thread created; it will appear after the next refresh."
-                } catch (e: Exception) { createError = "Create failed: " + e.message }
-                finally { creationBusy = false }
+                    } else note = "Session created; the local card remains until the desktop publishes it."
+                } catch (e: Exception) {
+                    putCreatePreview(prediction.copy(status = "Unconfirmed · " +
+                        (e.message ?: "Check the original request before retrying").take(160)))
+                } finally { creationBusy = false }
             }
         }
         Column(Modifier.fillMaxWidth().navigationBarsPadding().imePadding()

@@ -108,6 +108,11 @@ import org.json.JSONObject
 /** Transient transport failure means a durable phone draft, not a failed user edit. */
 private class TaskBoardQueuedException : Exception()
 
+/** Phone-only presentation. The PC remains authoritative and assigns the real task ID. */
+private data class OptimisticTaskCreate(
+    val operationId: String, val draft: TaskBoardTaskDraft, val status: String
+)
+
 private fun requirePcApplied(receipt: TaskBoardPhoneClient.Submission) {
     when (receipt.status) {
         "applied" -> Unit
@@ -266,7 +271,8 @@ private data class CreateTaskRequest(
     val column: String,
     val parent: String? = null,
     val category: String? = null,
-    val kind: String = "task"
+    val kind: String = "task",
+    val seedDraft: TaskBoardTaskDraft? = null
 )
 
 private fun splitPhoneDumpLine(source: String): Pair<String, String> {
@@ -355,6 +361,32 @@ private fun TaskBoardContents(parentPadding: PaddingValues, signalR: SignalRClie
     var showColumns by remember { mutableStateOf(false) }
     var showPendingPhoneEdits by remember { mutableStateOf(false) }
     var pendingPhoneEditsRevision by remember { mutableStateOf(0) }
+    var creatingLocally by remember(selectedRoot) { mutableStateOf<List<OptimisticTaskCreate>>(emptyList()) }
+    val predictedCreates = remember(selectedRoot, pendingPhoneEditsRevision, snapshot, creatingLocally) {
+        val current = snapshot
+        val boardId = runCatching { phoneWriter.boardIdentity(store.root) }.getOrNull()
+        if (current != null && boardId != null) {
+            offlineDrafts.retireSyncedCreates(boardId, current.tasks.map { it.revision }.toSet())
+        }
+        val persisted = if (boardId == null) emptyList() else offlineDrafts.all()
+            .filter { it.boardId == boardId && it.taskId == "CREATE" }
+            .mapNotNull { saved ->
+                runCatching {
+                    val json = JSONObject(saved.edited)
+                    OptimisticTaskCreate(saved.operationId, TaskBoardTaskDraft(
+                        title = json.getString("title"), column = json.getString("column"),
+                        kind = json.optString("kind", "task"), description = json.optString("description")
+                    ), when (saved.state) {
+                        "applied" -> "Created on PC · awaiting phone sync"
+                        "draft" -> "Saved on phone · sending to PC"
+                        else -> "Unconfirmed · review Pending PC edits"
+                    })
+                }.getOrNull()
+            }
+        (persisted + creatingLocally.filterNot { local ->
+            persisted.any { it.operationId == local.operationId }
+        }).distinctBy { it.operationId }
+    }
     var showAddColumn by remember { mutableStateOf(false) }
     var renameColumn by remember { mutableStateOf<TaskBoardColumn?>(null) }
     var deleteColumn by remember { mutableStateOf<TaskBoardColumn?>(null) }
@@ -411,7 +443,8 @@ private fun TaskBoardContents(parentPadding: PaddingValues, signalR: SignalRClie
 
     fun mutate(
         action: suspend () -> Unit,
-        onSuccess: () -> Unit = {}
+        onSuccess: () -> Unit = {},
+        onFailure: () -> Unit = {}
     ) {
         scope.launch {
             loading = true
@@ -430,6 +463,7 @@ private fun TaskBoardContents(parentPadding: PaddingValues, signalR: SignalRClie
                     onSuccess() // Close the editor, but never claim the PC board has updated.
                 } else {
                     error = it.message ?: it.toString()
+                    onFailure()
                 }
             }
             pendingPhoneEditsRevision++
@@ -551,6 +585,15 @@ private fun TaskBoardContents(parentPadding: PaddingValues, signalR: SignalRClie
         val rows = taskDumpText.lines().withIndex().filter { it.value.isNotBlank() }
         if (rows.isEmpty() || loading) return
         val priorities = taskDumpPriorities
+        val prepared = rows.map { row ->
+            val (title, description) = splitPhoneDumpLine(row.value)
+            OptimisticTaskCreate(java.util.UUID.randomUUID().toString(),
+                TaskBoardTaskDraft(title = title, description = description,
+                    column = defaultCreateColumn(board),
+                    attention = if (row.index in priorities) listOf("priority") else emptyList()),
+                "Preparing on phone…")
+        }
+        creatingLocally = creatingLocally + prepared
         val currentStore = store
         scope.launch {
             loading = true
@@ -558,15 +601,9 @@ private fun TaskBoardContents(parentPadding: PaddingValues, signalR: SignalRClie
             var completed = 0
             try {
                 val nextSnapshot = withContext(Dispatchers.IO) {
-                    for (row in rows) {
-                        val (title, description) = splitPhoneDumpLine(row.value)
+                    for (preview in prepared) {
                         val result = phoneWriter.submitCreate(currentStore.root, board.boardRevision,
-                            TaskBoardTaskDraft(
-                                title = title,
-                                description = description,
-                                column = defaultCreateColumn(board),
-                                attention = if (row.index in priorities) listOf("priority") else emptyList()
-                            ))
+                            preview.draft, preview.operationId)
                         requirePcApplied(result)
                         completed++
                     }
@@ -587,6 +624,9 @@ private fun TaskBoardContents(parentPadding: PaddingValues, signalR: SignalRClie
                 if (!pending) error = "$completed of ${rows.size} tasks created; remaining lines preserved. ${failure.message}"
                 snapshot = runCatching { withContext(Dispatchers.IO) { currentStore.load() } }.getOrNull() ?: snapshot
             } finally {
+                val ids = prepared.map { it.operationId }.toSet()
+                creatingLocally = creatingLocally.filterNot { it.operationId in ids }
+                pendingPhoneEditsRevision++
                 loading = false
             }
         }
@@ -1114,6 +1154,7 @@ private fun TaskBoardContents(parentPadding: PaddingValues, signalR: SignalRClie
                                 selection = selection,
                                 selecting = selecting,
                                 changedTaskIds = changedTaskIds,
+                                predictedCreates = predictedCreates,
                                 onSelect = { task ->
                                     selection = if (task.id in selection) selection - task.id
                                         else selection + task.id
@@ -1236,17 +1277,33 @@ private fun TaskBoardContents(parentPadding: PaddingValues, signalR: SignalRClie
                 initialKind = request.kind,
                 snapshot = board,
                 busy = loading,
+                seedDraft = request.seedDraft,
                 onDismiss = { createTaskRequest = null },
                 onSave = { draft, attachments ->
+                    // The board renders the submitted card *before* upload, PC ACK or Syncthing.
+                    // Its operation ID will match the durable journal entry exactly.
+                    val operationId = java.util.UUID.randomUUID().toString()
+                    creatingLocally = creatingLocally + OptimisticTaskCreate(
+                        operationId, draft, "Preparing on phone…")
+                    createTaskRequest = null
                     mutate(
                         action = {
                             val references = TaskBoardAttachmentStore.copyPickedFiles(
                                 context.contentResolver, store.root, attachments)
                             val result = phoneWriter.submitCreate(store.root, board.boardRevision,
-                                TaskBoardAttachmentStore.withReferences(draft, references))
+                                TaskBoardAttachmentStore.withReferences(draft, references), operationId)
                             requirePcApplied(result)
                         },
-                        onSuccess = { createTaskRequest = null }
+                        onSuccess = {
+                            creatingLocally = creatingLocally.filterNot { it.operationId == operationId }
+                        },
+                        onFailure = {
+                            // A genuine local persistence failure must not lose the typed task.
+                            // If already journaled, its preview owns reconciliation instead.
+                            if (offlineDrafts.all().none { it.operationId == operationId })
+                                createTaskRequest = request.copy(seedDraft = draft)
+                            creatingLocally = creatingLocally.filterNot { it.operationId == operationId }
+                        }
                     )
                 }
             )
@@ -1841,6 +1898,7 @@ private fun TaskBoardColumns(
     selection: Set<String>,
     selecting: Boolean,
     changedTaskIds: Set<String>,
+    predictedCreates: List<OptimisticTaskCreate>,
     onSelect: (TaskBoardTask) -> Unit,
     onStartSelection: (TaskBoardTask) -> Unit,
     onToggleEpic: (TaskBoardTask) -> Unit,
@@ -1877,6 +1935,28 @@ private fun TaskBoardColumns(
         mutableStateOf(setOf("draft", "blocked", "done"))
     }
     Column(modifier = Modifier.fillMaxSize()) {
+        // Render local creates before the PC ACK and retain them until the exact
+        // confirmed revision arrives via file sync. No fabricated editable ID.
+        if (predictedCreates.isNotEmpty()) {
+            Column(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
+                verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                predictedCreates.takeLast(4).asReversed().forEach { pending ->
+                    Surface(color = TaskBoardColors.card, shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.fillMaxWidth().border(1.dp,
+                            TaskBoardColors.teal.copy(alpha = .55f), RoundedCornerShape(8.dp))) {
+                        Column(Modifier.padding(horizontal = 10.dp, vertical = 7.dp)) {
+                            Text(pending.draft.title, color = TaskBoardColors.text,
+                                fontWeight = FontWeight.SemiBold, maxLines = 1,
+                                overflow = TextOverflow.Ellipsis)
+                            Text("${pending.draft.column} · ${pending.status}",
+                                color = TaskBoardColors.muted, style = MaterialTheme.typography.labelSmall)
+                        }
+                    }
+                }
+                if (predictedCreates.size > 4) Text("+${predictedCreates.size - 4} more pending sync",
+                    color = TaskBoardColors.muted, style = MaterialTheme.typography.labelSmall)
+            }
+        }
         if (snapshot.warnings.isNotEmpty()) {
             Text(
                 text = snapshot.warnings.joinToString(" • "),
@@ -2421,6 +2501,7 @@ private fun TaskEditorDialog(
     busy: Boolean,
     onDismiss: () -> Unit,
     onSave: (TaskBoardTaskDraft, List<Uri>) -> Unit,
+    seedDraft: TaskBoardTaskDraft? = null,
     inQueue: Boolean = false,
     onSkip: (() -> Unit)? = null,
     onSnooze: (() -> Unit)? = null,
@@ -2429,7 +2510,7 @@ private fun TaskEditorDialog(
     onOpenT3: ((String) -> Unit)? = null,
     onAgentControls: (() -> Unit)? = null
 ) {
-    val initial = original?.toDraft() ?: TaskBoardTaskDraft(
+    val initial = original?.toDraft() ?: seedDraft ?: TaskBoardTaskDraft(
         title = "",
         column = initialColumn,
         kind = initialKind,

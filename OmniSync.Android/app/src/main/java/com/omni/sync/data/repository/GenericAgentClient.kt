@@ -125,6 +125,7 @@ class GenericAgentClient(
     private val archivePrefs=context.getSharedPreferences("agent-history-archive",Context.MODE_PRIVATE)
     private val providerPrefs=context.getSharedPreferences("agent-provider-binding",Context.MODE_PRIVATE)
     private val blankCreatePrefs=context.getSharedPreferences("agent-blank-create-v1",Context.MODE_PRIVATE)
+    private val genericCreatePrefs=context.getSharedPreferences("agent-generic-create-v1",Context.MODE_PRIVATE)
     private val archive:AgentHistoryArchive by lazy {AgentHistoryArchive(context)}
     private val workCreate by lazy { AgentWorkCreateStore(context) }
     @Volatile private var outboxWritable = true
@@ -1394,15 +1395,34 @@ class GenericAgentClient(
                 else -> "T3 creation uncertain; check last creation before trying again."
             }
         } else {
-            val receipt = signalR.agentCall("sessions.create",mapOf(
+            // Generic providers also need a durable request ID. A timeout is not
+            // permission to generate a second session on the next tap.
+            val params = gson.toJson(listOf(provider.id, kind, workspace, firstMessage))
+            val previousId = genericCreatePrefs.getString("requestId", null)
+            if (previousId != null) require(genericCreatePrefs.getString("payload", "") == params) {
+                "Another session creation is unconfirmed; reconcile it before creating different work."
+            }
+            val requestId = previousId ?: UUID.randomUUID().toString().also { id ->
+                check(genericCreatePrefs.edit().putString("requestId", id)
+                    .putString("payload", params).commit()) { "Unable to preserve creation identity" }
+            }
+            val receipt = try { signalR.agentCall("sessions.create", mapOf(
                 "provider" to provider.id, "kind" to kind,
                 "workspace" to workspace, "initialMessage" to firstMessage,
-                "clientRequestId" to UUID.randomUUID().toString()
-            )).asJsonObject
-            val ref = receipt.obj("result")?.obj("session") ?: receipt.obj("session")
-            if (ref != null && ref.str("provider") != null && ref.str("id") != null)
-                _createdSessionKey.value = "${ref.str("provider")}:${ref.str("id")}"
-            "Session creation: ${receipt.str("state") ?: "Unknown"}"
+                "clientRequestId" to requestId
+            )).asJsonObject } catch (e: Exception) {
+                null // Hub may have accepted it; keep ID for exact retry.
+            }
+            val ref = receipt?.obj("result")?.obj("session") ?: receipt?.obj("session")
+            val id = ref?.str("id")
+            if (id != null) {
+                _createdSessionKey.value = "${ref.str("provider") ?: provider.id}:$id"
+                genericCreatePrefs.edit().clear().commit()
+                "Session $id created; waiting for catalog."
+            } else if (receipt?.str("state") == "Failed") {
+                genericCreatePrefs.edit().clear().commit()
+                "Session creation rejected: ${receipt.str("error") ?: "provider rejected"}"
+            } else "Creation unconfirmed. Original request preserved; retry with the same details."
         }
         _createdSessionKey.value?.let { ensureSession(it) }
         scope.launch { refresh() }

@@ -94,9 +94,9 @@ class TaskBoardPhoneClient(
         return sendSaved(operationId)
     }
 
-    suspend fun submitCreate(root: File, baseBoardRevision: String, draft: TaskBoardTaskDraft): Submission {
+    suspend fun submitCreate(root: File, baseBoardRevision: String, draft: TaskBoardTaskDraft,
+                             operationId: String = UUID.randomUUID().toString()): Submission {
         val board = boardIdentity(root)
-        val operationId = UUID.randomUUID().toString()
         drafts.saveOffline(boardId = board, taskId = "CREATE", baseRevision = baseBoardRevision,
             baseSource = File(root, "_board.md").readText(Charsets.UTF_8),
             edited = draftJson(draft), operationId = operationId)
@@ -336,7 +336,8 @@ class TaskBoardPhoneClient(
             "applied" -> {
                 val revision = data.get("revision")?.asString
                     ?: error("PC success omitted revision; phone draft retained")
-                drafts.acknowledge(pending.operationId, pending.operationId)
+                if (isCreate) drafts.acknowledgeCreate(pending.operationId, revision)
+                else drafts.acknowledge(pending.operationId, pending.operationId)
                 Submission(pending.operationId, "applied", revision)
             }
             "conflict" -> {

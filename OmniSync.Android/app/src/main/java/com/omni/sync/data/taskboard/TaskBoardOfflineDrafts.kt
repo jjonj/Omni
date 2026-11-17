@@ -136,6 +136,34 @@ class TaskBoardOfflineDrafts(context: Context) {
         }
     }
 
+    /** Keep confirmed creates visible until the synced Markdown carries the exact
+     * PC revision. Retaining the original journal entry avoids matching by title
+     * (two legitimate tasks can have identical titles). */
+    @Synchronized
+    fun acknowledgeCreate(operationId: String, revision: String) {
+        val file = fileFor(operationId)
+        val previous = decode(file)
+        require(previous.taskId == "CREATE" && revision.matches(Regex("[a-fA-F0-9]{64}")))
+        val changed = previous.copy(state = "applied", currentSource = revision)
+        val temporary = File(root, "$operationId.tmp")
+        temporary.writeText(encode(changed).toString(), Charsets.UTF_8)
+        try {
+            Files.move(temporary.toPath(), file.toPath(),
+                StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
+        } catch (error: Exception) {
+            temporary.delete()
+            throw IllegalStateException("Failed to persist confirmed create receipt", error)
+        }
+    }
+
+    /** Retire predictions only when the authoritative synced task is present. */
+    @Synchronized
+    fun retireSyncedCreates(boardId: String, revisions: Set<String>) {
+        all().filter { it.boardId == boardId && it.taskId == "CREATE" &&
+            it.state == "applied" && it.currentSource in revisions }
+            .forEach { fileFor(it.operationId).delete() }
+    }
+
     /** Only call this after the PC returns a durable receipt for this exact ID. */
     @Synchronized
     fun acknowledge(operationId: String, receiptOperationId: String) {
