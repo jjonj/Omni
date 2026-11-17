@@ -9,6 +9,7 @@ const {spawn,execFileSync}=require('node:child_process');
 const argv=process.argv.slice(2);
 const arg=(name,fallback)=>{const i=argv.indexOf('--'+name);return i<0?fallback:argv[i+1];};
 const full=argv.includes('--full');
+const reliable=argv.includes('--reliable');
 // Each run has private ports so a 120-second outage cannot impact another run.
 const port=Number(arg('port',String(16000+(process.pid%30000))));
 const controlPort=Number(arg('control-port',String(port+1)));
@@ -99,6 +100,59 @@ function fingerprint(data) {
   const identity=Array.isArray(data)?data.map(d=>String(d.path||d.name||'')).sort():data;
   return crypto.createHash('sha256').update(JSON.stringify(identity)).digest('hex').slice(0,16);
 }
+
+// Optional OMN-0086 safe end-to-end receipt probe. ProcessMacro only rewrites
+// text; it does not launch any process or modify the PC. The production Hub
+// must already contain RunReliableCommand / GetReliableCommandStatus.
+async function reliableAttempt(scenario) {
+  const id=crypto.randomUUID(), issuedAt=Date.now();
+  const method='ProcessMacro', args=['echo flight-receipt-probe'];
+  const started=Date.now();
+  let first=null, received=false;
+  let conn=null;
+  try {
+    conn=await connect(scenario+'_reliable_initial',30000);
+    first=await conn.invoke(scenario+'_reliable_initial','RunReliableCommand',
+      [id,method,args,issuedAt],30000);
+    received=true;
+  } catch(error) {
+    record('reliable_initial_uncertain',{scenario,id,reason:error.message,
+      elapsedMs:Date.now()-started});
+  } finally {conn?.close();}
+  // Lost completion does NOT justify reissuing with a different request ID.
+  // Reconnect and query the durable Hub receipt first.
+  let queried=null, replays=0, lastError=null;
+  for(let i=0;i<5;i++){
+    let next;
+    try {
+      next=await connect(scenario+'_reliable_resume',30000);
+      queried=await next.invoke(scenario+'_reliable_status',
+        'GetReliableCommandStatus',[id],30000);
+      if(queried.state==='not_found'){
+        replays++;
+        queried=await next.invoke(scenario+'_reliable_replay',
+          'RunReliableCommand',[id,method,args,issuedAt],30000);
+      } else if(queried.state==='pending'){
+        lastError='hub_pending';
+        continue;
+      }
+      const duplicate=await next.invoke(scenario+'_reliable_duplicate',
+        'RunReliableCommand',[id,method,args,issuedAt],30000);
+      const passed=queried.state==='succeeded' &&
+        duplicate.state==='succeeded' && duplicate.id===id;
+      record('reliable_outcome',{scenario,id,initialReceipt:received?first?.state:'lost',
+        finalState:queried.state,duplicateState:duplicate.state,
+        replayWithSameId:replays,passed,elapsedMs:Date.now()-started});
+      return;
+    }catch(error){lastError=error.message;}
+    finally{next?.close();}
+    await sleep(1000*Math.min(i+1,5));
+  }
+  record('reliable_outcome',{scenario,id,initialReceipt:received?first?.state:'lost',
+    finalState:queried?.state||'unknown',replayWithSameId:replays,
+    passed:false,elapsedMs:Date.now()-started,reason:lastError});
+}
+
 async function attempt(scenario,profile){
   await control('/profile',{profile});
   let conn;
@@ -109,7 +163,10 @@ async function attempt(scenario,profile){
     record('state',{scenario,stateFingerprint:state,entries:Array.isArray(data)?data.length:null});
     return state;
   }catch(e){record('scenario',{scenario,status:'failed',reason:e.message});return null;}
-  finally{conn?.close();}
+  finally{
+    conn?.close();
+    if(reliable)await reliableAttempt(scenario);
+  }
 }
 async function recover(scenario,expected,from){
   let connected,attempts=0,reason;
@@ -212,7 +269,7 @@ async function run(){
       await sleep(100);
     }
     if(!ready)throw Error('Proxy startup timeout');
-    record('run_start',{dir,full,port,controlPort,profiles:['clean','slow300','slow800','slow2000','noUdp','route_change','outage10',...(full?['outage120']:[])]});
+    record('run_start',{dir,full,reliable,port,controlPort,profiles:['clean','slow300','slow800','slow2000','noUdp','route_change','outage10',...(full?['outage120']:[])]});
     await attempt('clean','clean');
     for(const profile of ['slow300','slow800','slow2000','noUdp'])await attempt(profile,profile);
     await switchPath();

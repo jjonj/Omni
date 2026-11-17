@@ -17,4 +17,13 @@ class HubConnectionTargetsTest {
     @Test fun emptyWanAddressKeepsTheLanFallback() {
         assertEquals(listOf(local), HubConnectionTargets.resolve(local, "", false))
     }
+    @Test fun flightWifiCannotRewriteConfiguredTailscaleOrHttpsEndpoint() {
+        val configured = "https://my-home.tailnet.ts.net:9443/signalrhub"
+        assertEquals(listOf(configured),
+            HubConnectionTargets.resolve(configured, "89.150.166.124", true))
+        assertEquals(listOf(configured),
+            HubConnectionTargets.resolve(configured, "89.150.166.124", false))
+        val proxy = "https://10.0.2.2:15000/signalrhub"
+        assertEquals(listOf(proxy), HubConnectionTargets.resolve(proxy, "89.150.166.124", true))
+    }
 }

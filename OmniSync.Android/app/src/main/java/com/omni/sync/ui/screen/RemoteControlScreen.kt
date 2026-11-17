@@ -167,6 +167,7 @@ fun RemoteControlScreen(
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
     val appConfig by mainViewModel.appConfig.collectAsState()
     val connectionState by signalRClient.connectionState.collectAsState()
+    val commandOutcomes by signalRClient.reliableCommandRecords.collectAsState()
     val lifecycleOwner = LocalLifecycleOwner.current
 
     DisposableEffect(connectionState) {
@@ -280,6 +281,23 @@ fun RemoteControlScreen(
                 )
             }
             
+            // The latest command remains visible even when the socket dies
+            // after a tap. "Pending" is not optimistically called success.
+            commandOutcomes.firstOrNull()?.let { outcome ->
+                Surface(
+                    modifier = Modifier.align(Alignment.TopCenter).fillMaxWidth().padding(8.dp),
+                    tonalElevation = 3.dp,
+                    color = MaterialTheme.colorScheme.surfaceVariant
+                ) {
+                    Text(
+                        text = "PC command ${outcome.method}: ${outcome.state}" +
+                            (outcome.error?.let { " — $it" } ?: ""),
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                        style = MaterialTheme.typography.labelMedium
+                    )
+                }
+            }
+
             val imeHeight = WindowInsets.ime.asPaddingValues().calculateBottomPadding()
             val bottomBarHeight = paddingValues.calculateBottomPadding()
             

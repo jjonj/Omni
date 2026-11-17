@@ -8,6 +8,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.net.ConnectivityManager
+import android.net.Network
 import android.net.NetworkCapabilities
 import android.util.Log
 import com.microsoft.signalr.HubConnection
@@ -312,10 +313,52 @@ class SignalRClient(
     private val connectionMutex = Mutex()
     private var connectJob: Job? = null
     private var reconnectJob: Job? = null
+    private val reliableOutbox by lazy {
+        ReliableCommandOutbox(
+            context,
+            connection = { hubConnection },
+            authenticated = { isHubAuthenticated },
+            onState = { record ->
+                val level = when (record.state) {
+                    "succeeded" -> com.omni.sync.ui.screen.LogType.SUCCESS
+                    "failed", "unknown" -> com.omni.sync.ui.screen.LogType.WARNING
+                    else -> com.omni.sync.ui.screen.LogType.INFO
+                }
+                mainViewModel.addLog("[Command ${record.id.take(8)}] ${record.method}: ${record.state}" +
+                    (record.error?.let { " ($it)" } ?: ""), level)
+            },
+            onLinkFailure = {
+                if (!manualStop.get()) requestConnect(force = true, reason = "command response timeout")
+            }
+        )
+    }
+    val reliableCommandRecords: StateFlow<List<ReliableCommandRecord>> get() = reliableOutbox.records
+    private fun submitReliable(method: String, vararg args: Any?) {
+        reliableOutbox.submit(method, *args)
+        if (!isHubAuthenticated) {
+            requestConnect(force = false, reason = "command queued")
+        }
+    }
     private val connectionToken = AtomicLong(0)
     private val activeConnectionToken = AtomicLong(0)
     private val isConnecting = AtomicBoolean(false)
     private val manualStop = AtomicBoolean(false)
+    private val connectivityManager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+    private val networkCallback = object : ConnectivityManager.NetworkCallback() {
+        override fun onAvailable(network: Network) {
+            if (manualStop.get()) return
+            if (hubConnection?.connectionState != com.microsoft.signalr.HubConnectionState.CONNECTED &&
+                !isConnecting.get()) {
+                // Onboard Wi-Fi/VPN/relay may come back without the app restarting.
+                requestConnect(force = true, reason = "network available")
+            }
+        }
+        override fun onLost(network: Network) {
+            if (hubConnection?.connectionState != com.microsoft.signalr.HubConnectionState.CONNECTED) {
+                _connectionState.value = "Waiting for network..."
+            }
+        }
+    }
     private val sharedPrefs: SharedPreferences = context.getSharedPreferences(SHARED_PREFS_NAME, Context.MODE_PRIVATE)
     @Volatile
     private var lastSuccessfulHubUrl: String? = sharedPrefs.getString(KEY_LAST_CONNECTED_HUB_URL, null)
@@ -519,6 +562,12 @@ class SignalRClient(
     }
 
     init {
+        // Default-network callbacks cover flight Wi-Fi reconnects and cellular
+        // switches; the underlying SignalR client still uses HTTPS/TCP normally.
+        if (android.os.Build.VERSION.SDK_INT >= 24) {
+            runCatching { connectivityManager.registerDefaultNetworkCallback(networkCallback) }
+                .onFailure { Log.w("SignalRClient", "Network callback registration failed", it) }
+        }
         coroutineScope.launch {
             while (true) {
                 delay(10_000)
@@ -751,7 +800,9 @@ class SignalRClient(
 
     private fun resolveCandidateUrls(): List<String> {
         val config = mainViewModel.appConfig.value
-        return HubConnectionTargets.resolve(config.hubUrl, config.wanIp, isWifiConnected())
+        val candidates = HubConnectionTargets.resolve(config.hubUrl, config.wanIp, isWifiConnected())
+        return lastSuccessfulHubUrl?.takeIf { it in candidates }?.let { listOf(it) + candidates.filterNot { c -> c == it } }
+            ?: candidates
     }
 
     /**
@@ -822,7 +873,7 @@ class SignalRClient(
 
         return try {
             connection.start()
-                .timeout(10, TimeUnit.SECONDS)
+                .timeout(25, TimeUnit.SECONDS)
                 .blockingAwait()
 
             if (token != connectionToken.get()) {
@@ -900,9 +951,6 @@ class SignalRClient(
         if (reconnectJob?.isActive == true) return
 
         reconnectJob = coroutineScope.launch {
-            // RE-EVALUATE IP ON FAILURE
-            updateHubUrlBasedOnLocalIp()
-            
             var attempt = 0
             while (!manualStop.get()) {
                 val delayMs = getRetryDelay(attempt)
@@ -2257,21 +2305,17 @@ class SignalRClient(
             return
         }
 
-        if (isHubAuthenticated &&
-            hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED
-        ) {
-            try {
-                // Use the same payload as the functioning remote keyboard.
-                sendText(transcript)
-                mainViewModel.addLog("[Voice] Type sent ${transcript.length} characters to PC.", com.omni.sync.ui.screen.LogType.INFO)
-                com.omni.sync.logic.assistant.AssistantFeedback.toast(context, "Text sent to PC")
-            } catch (error: Exception) {
-                mainViewModel.addLog("[Voice] Type delivery failed: ${error.message}", com.omni.sync.ui.screen.LogType.ERROR)
-                com.omni.sync.logic.assistant.AssistantFeedback.toast(context, "Could not send text to PC")
-            }
-        } else {
-            mainViewModel.addLog("[Voice] Type not sent: PC is disconnected or not authenticated.", com.omni.sync.ui.screen.LogType.WARNING)
-            com.omni.sync.logic.assistant.AssistantFeedback.toast(context, "PC offline; nothing typed")
+        try {
+            // Remote typing is a discrete, receipt-backed command. Queue it
+            // offline; never claim typed before the Hub acknowledges execution.
+            sendText(transcript)
+            mainViewModel.addLog("[Voice] Queued ${transcript.length} characters for PC.", com.omni.sync.ui.screen.LogType.INFO)
+            com.omni.sync.logic.assistant.AssistantFeedback.toast(
+                context, if (isHubAuthenticated) "Text queued for PC" else "Text queued until PC reconnects"
+            )
+        } catch (error: Exception) {
+            mainViewModel.addLog("[Voice] Could not queue text: ${error.message}", com.omni.sync.ui.screen.LogType.ERROR)
+            com.omni.sync.logic.assistant.AssistantFeedback.toast(context, "Could not queue text for PC")
         }
     }
 
@@ -2632,20 +2676,9 @@ class SignalRClient(
     fun reportPhoneCommandCompleted(id: String, exitCode: Int) =
         reportPhoneCommand("ReportPhoneCommandCompleted", id, exitCode)
 
-    fun executeCommand(command: String) {
-        if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
-            hubConnection?.send("ExecuteCommand", command)
-        }
-    }
+    fun executeCommand(command: String) = submitReliable("ExecuteCommand", command)
 
-    fun executeMacroScript(script: String) {
-        if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
-            Log.d("SignalR", "ExecuteMacro script: $script")
-            hubConnection?.send("ExecuteMacro", script)
-        } else {
-            Log.w("SignalR", "ExecuteMacro skipped: hub not connected")
-        }
-    }
+    fun executeMacroScript(script: String) = submitReliable("ExecuteMacro", script)
 
     fun getHubStatus(): Single<Map<String, Any>>? {
         if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
@@ -2692,17 +2725,9 @@ class SignalRClient(
         return null
     }
 
-    fun winActivate(target: String) {
-        if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
-            hubConnection?.send("WinActivate", target)
-        }
-    }
+    fun winActivate(target: String) = submitReliable("WinActivate", target)
 
-    fun winClose(target: String) {
-        if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
-            hubConnection?.send("WinClose", target)
-        }
-    }
+    fun winClose(target: String) = submitReliable("WinClose", target)
 
     fun listDirectory(path: String): Single<List<FileSystemEntry>>? {
         if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
@@ -2797,69 +2822,35 @@ class SignalRClient(
         }
     }
 
-    fun sendText(text: String) {
-        if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
-            val payload = mapOf("Text" to text)
-            hubConnection?.send("SendPayload", "INPUT_TEXT", payload)
-        }
-    }
+    fun sendText(text: String) = sendPayload("INPUT_TEXT", mapOf("Text" to text))
 
-    fun sendSetVolume(volumePercentage: Float) {
-        if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
-            val payload = mapOf("VolumePercentage" to volumePercentage)
-            hubConnection?.send("SendPayload", "SET_VOLUME", payload)
-        }
-    }
+    fun sendSetVolume(volumePercentage: Float) =
+        sendPayload("SET_VOLUME", mapOf("VolumePercentage" to volumePercentage))
 
-    fun sendToggleMute() {
-        if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
-            hubConnection?.send("SendPayload", "TOGGLE_MUTE", null)
-        }
-    }
+    fun sendToggleMute() = sendPayload("TOGGLE_MUTE", null)
 
-    fun sendScheduleShutdown(minutes: Int) {
-        if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
-            val payload = mapOf("Minutes" to minutes)
-            hubConnection?.send("SendPayload", "SCHEDULE_SHUTDOWN", payload)
-        }
-    }
+    fun sendScheduleShutdown(minutes: Int) =
+        sendPayload("SCHEDULE_SHUTDOWN", mapOf("Minutes" to minutes))
 
-    fun toggleShutdownMode() {
-        if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
-            hubConnection?.send("ToggleShutdownMode")
-        }
-    }
+    fun toggleShutdownMode() = submitReliable("ToggleShutdownMode")
 
-    fun sendLeftClick() {
-        if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
-            hubConnection?.send("SendPayload", "LEFT_CLICK", null)
-        }
-    }
+    fun sendLeftClick() = sendPayload("LEFT_CLICK", null)
 
-    fun sendRightClick() {
-        if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
-            hubConnection?.send("SendPayload", "RIGHT_CLICK", null)
-        }
-    }
+    fun sendRightClick() = sendPayload("RIGHT_CLICK", null)
 
     fun sendMouseClick(button: String) {
-        if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
-            val command = "${button.uppercase()}_CLICK"
+        val command = "${button.uppercase()}_CLICK"
+        if (command in setOf("LEFT_CLICK", "RIGHT_CLICK")) {
+            sendPayload(command, null)
+        } else if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
             hubConnection?.send(command)
         }
     }
 
-    fun cycleFocusedWindowMonitor() {
-        if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
-            hubConnection?.send("CycleFocusedWindowMonitor")
-        }
-    }
+    fun cycleFocusedWindowMonitor() = submitReliable("CycleFocusedWindowMonitor")
 
-    fun sendBrowserCommand(command: String, url: String, newTab: Boolean) {
-        if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
-            hubConnection?.send("SendBrowserCommand", command, url, newTab)
-        }
-    }
+    fun sendBrowserCommand(command: String, url: String, newTab: Boolean) =
+        submitReliable("SendBrowserCommand", command, url, newTab)
 
     fun sendCleanupPatterns(patterns: List<String>) {
         if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
@@ -2936,13 +2927,9 @@ class SignalRClient(
         return null
     }
 
-    fun appendToFile(path: String, content: String) {
-        hubConnection?.send("AppendToFile", path, content)
-    }
+    fun appendToFile(path: String, content: String) = submitReliable("AppendToFile", path, content)
 
-    fun createDirectory(path: String) {
-        hubConnection?.send("CreateDirectory", path)
-    }
+    fun createDirectory(path: String) = submitReliable("CreateDirectory", path)
 
     fun deleteFile(path: String): Single<Boolean>? {
         if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
@@ -2987,7 +2974,12 @@ class SignalRClient(
     }
 
     fun sendPayload(command: String, payload: Any?) {
-        if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
+        if (command in setOf("INPUT_TEXT", "TOGGLE_MUTE", "SCHEDULE_SHUTDOWN",
+                "SET_VOLUME", "LEFT_CLICK", "RIGHT_CLICK")) {
+            submitReliable("SendPayload", command, payload)
+        } else if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
+            // Continuous pointer, held keys, and transient drag state cannot be
+            // replayed safely after a network interruption.
             hubConnection?.send("SendPayload", command, payload)
         }
     }
@@ -3112,6 +3104,7 @@ class SignalRClient(
                 if (success) {
                     advertiseAssistantCommands()
                     flushAssistantVoiceOutbox()
+                    reliableOutbox.flushOnConnect()
                     refreshReminders()
                     replayAndroidAlarmAfterAuthentication()
                     AndroidUpdateReceiver.consumePendingDeploymentReport(context)?.let { report ->
@@ -3237,28 +3230,6 @@ class SignalRClient(
             Log.e("SignalRClient", "Error getting local IP address", e)
         }
         return null
-    }
-
-    private fun updateHubUrlBasedOnLocalIp() {
-        val localIp = getLocalIpAddress() ?: return
-        mainViewModel.addLog("Local IP detected: $localIp", com.omni.sync.ui.screen.LogType.INFO)
-        
-        val octets = localIp.split('.')
-        val newHubIp = if (octets.size == 4 &&
-            (localIp.startsWith("192.168.") || localIp.startsWith("10."))
-        ) {
-            octets.take(3).joinToString(".") + ".37"
-        } else null
-        
-        if (newHubIp != null) {
-            val currentHubUrl = mainViewModel.appConfig.value.hubUrl
-            val newHubUrl = "http://$newHubIp:5000/signalrhub"
-            
-            if (currentHubUrl != newHubUrl) {
-                mainViewModel.addLog("Updating Hub URL to $newHubUrl based on local IP $localIp", com.omni.sync.ui.screen.LogType.INFO)
-                mainViewModel.updateConfig { it.copy(hubUrl = newHubUrl) }
-            }
-        }
     }
 
     private fun removeHubHandlers() {
