@@ -52,7 +52,11 @@ data class AgentSessionUi(
     // Native T3 sidebar placement: settled shelf, pinned, and the desktop sort time (ms).
     val settled: Boolean = false,
     val pinned: Boolean = false,
-    val sortAt: Long? = null
+    val sortAt: Long? = null,
+    // Desktop-owned compact indicators. Null means the publisher did not report a flag.
+    val returnMarker: String? = null,
+    val caffyMode: String? = null,
+    val caffyPaused: Boolean = false
 ) {
     val key get() = "$provider:$id"
 }
@@ -263,6 +267,9 @@ class GenericAgentClient(
                                 settled = if (summary.has("visibility")) updated.settled else previous?.settled ?: false,
                                 pinned = if (summary.has("visibility")) updated.pinned else previous?.pinned ?: false,
                                 sortAt = if (summary.has("visibility")) updated.sortAt else previous?.sortAt,
+                                returnMarker = if (summary.has("visibility")) updated.returnMarker else previous?.returnMarker,
+                                caffyMode = if (summary.has("visibility")) updated.caffyMode else previous?.caffyMode,
+                                caffyPaused = if (summary.has("visibility")) updated.caffyPaused else previous?.caffyPaused ?: false,
                                 workspace = if (summary.has("workspace")) updated.workspace else previous?.workspace,
                                 reachability = if (summary.obj("state")?.has("reachability") == true)
                                     updated.reachability else previous?.reachability ?: updated.reachability,
@@ -570,7 +577,10 @@ class GenericAgentClient(
             obj.obj("state")?.str("activityText") ?: obj.str("activityText"),
             obj.obj("visibility")?.flag("settled") ?: false,
             obj.obj("visibility")?.flag("pinned") ?: false,
-            obj.obj("visibility")?.get("sortAt")?.let { runCatching { it.asLong }.getOrNull() })
+            obj.obj("visibility")?.get("sortAt")?.let { runCatching { it.asLong }.getOrNull() },
+            obj.obj("visibility")?.str("returnMarker"),
+            obj.obj("visibility")?.str("caffyMode"),
+            obj.obj("visibility")?.flag("caffyPaused") ?: false)
     }
 
     /** When true, the catalog also loads settled/snoozed native threads (off by default: there are hundreds). */

@@ -1959,24 +1959,57 @@ fun OmniAiModesScreen(
                         val age = shortAge(maxOf(activityMillis(session.lastActivityAt),
                             viewPrefs.getLong("visited:${session.key}", 0L)), now)
                         if (compactMode) {
-                            // ~34dp rows: long-press for actions instead of a 36dp menu button.
-                            Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(9.dp))
+                            val snoozed = isSnoozed(session)
+                            val persistentAttention = session.returnMarker != null
+                            val caffyMode = session.caffyMode
+                            val cornerIndicators = snoozed || persistentAttention || caffyMode != null
+                            // Corner overlay: the badges/age are drawn over the existing 34dp-ish
+                            // compact row, never measured as another line or extra row height.
+                            Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(9.dp))
                                 .background(if (session.key == selectedKey) p.selected else p.surface)
                                 .border(1.5.dp, session.dotColor(p, online && session.readyAttention(attentionRequests)), RoundedCornerShape(9.dp))
                                 .combinedClickable(onClick = { openSession(session) },
-                                    onLongClick = { rowOptions = session })
-                                .padding(start = 11.dp, end = 10.dp, top = 7.dp, bottom = 7.dp),
-                                verticalAlignment = Alignment.CenterVertically) {
-                                Text(session.title, modifier = Modifier.weight(1f),
-                                    color = if (session.kind == "t3/chatgpt") session.dotColor(p, online && session.readyAttention(attentionRequests)) else p.text,
-                                    maxLines = 1, overflow = TextOverflow.Ellipsis,
-                                    fontWeight = if (session.unread == true) FontWeight.Bold else FontWeight.Medium,
-                                    fontSize = 14.sp)
-                                if (session.isRunning()) CircularProgressIndicator(Modifier.size(11.dp),
-                                    strokeWidth = 1.5.dp, color = session.dotColor(p, online && session.readyAttention(attentionRequests)))
-                                else if (session.needsAttention()) Icon(Icons.Default.PriorityHigh, null,
-                                    tint = p.amber, modifier = Modifier.size(14.dp))
-                                else Text(age, color = p.muted, fontSize = 11.sp)
+                                    onLongClick = { rowOptions = session })) {
+                                Row(Modifier.fillMaxWidth()
+                                    .padding(start = 11.dp, end = 10.dp, top = 7.dp, bottom = 7.dp),
+                                    verticalAlignment = Alignment.CenterVertically) {
+                                    Text(session.title, modifier = Modifier.weight(1f),
+                                        color = if (session.kind == "t3/chatgpt") session.dotColor(p, online && session.readyAttention(attentionRequests)) else p.text,
+                                        maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                        fontWeight = if (session.unread == true) FontWeight.Bold else FontWeight.Medium,
+                                        fontSize = 14.sp)
+                                    if (cornerIndicators) {
+                                        // Reserve only horizontal space so flags never obscure title.
+                                        Spacer(Modifier.width(55.dp))
+                                    } else if (session.isRunning()) CircularProgressIndicator(Modifier.size(11.dp),
+                                        strokeWidth = 1.5.dp, color = session.dotColor(p, online && session.readyAttention(attentionRequests)))
+                                    else if (session.needsAttention()) Icon(Icons.Default.PriorityHigh, null,
+                                        tint = p.amber, modifier = Modifier.size(14.dp))
+                                    else Text(age, color = p.muted, fontSize = 11.sp)
+                                }
+                                if (cornerIndicators) {
+                                    Box(Modifier.matchParentSize().padding(end = 9.dp, top = 2.dp, bottom = 1.dp)) {
+                                        Row(Modifier.align(Alignment.TopEnd),
+                                            horizontalArrangement = Arrangement.spacedBy(3.dp),
+                                            verticalAlignment = Alignment.CenterVertically) {
+                                            if (snoozed) Icon(Icons.Default.Bedtime, "Snoozed",
+                                                tint = Color(0xFFBEB5F2), modifier = Modifier.size(11.dp))
+                                            if (persistentAttention) Icon(Icons.Default.NotificationImportant,
+                                                "Persistent attention: ${session.returnMarker}",
+                                                tint = p.amber, modifier = Modifier.size(11.dp))
+                                            if (caffyMode != null) Icon(Icons.Default.Coffee,
+                                                "Caffy ${if (session.caffyPaused) "paused" else caffyMode}",
+                                                tint = if (session.caffyPaused) p.muted else Color(0xFF7ED8E7),
+                                                modifier = Modifier.size(11.dp))
+                                        }
+                                        if (session.isRunning()) CircularProgressIndicator(
+                                            Modifier.align(Alignment.BottomEnd).size(10.dp),
+                                            strokeWidth = 1.5.dp,
+                                            color = session.dotColor(p, online && session.readyAttention(attentionRequests)))
+                                        else Text(age, Modifier.align(Alignment.BottomEnd),
+                                            color = p.muted, fontSize = 10.sp, lineHeight = 11.sp)
+                                    }
+                                }
                             }
                         } else Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp))
                             .background(if (session.key == selectedKey) p.selected else p.surface)
