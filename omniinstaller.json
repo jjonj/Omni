@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "repository": {
+    "url": "https://github.com/jjonj/Omni.git"
+  },
+  "apps": [
+    {
+      "id": "dev.jjonj.omnizones",
+      "name": "OmniZones",
+      "description": "Standalone Windows tray snapping and zone layouts, distributed as a self-contained release ZIP.",
+      "workingDirectory": "OmniZones",
+      "defaultDestination": "{LocalAppData}/OmniInstaller/Apps/{AppId}",
+      "sources": {
+        "githubRelease": {
+          "assetPattern": "OmniZones-win-x64.zip",
+          "packageFormat": "zip"
+        }
+      },
+      "managedFiles": [
+        "OmniZones.exe",
+        ".omniinstaller-version",
+        ".omniinstaller-appid"
+      ],
+      "commands": {
+        "install": {
+          "script": "OmniZones/scripts/omniinstaller/Invoke-Recipe.ps1",
+          "args": [
+            "install"
+          ]
+        },
+        "detectVersion": {
+          "script": "OmniZones/scripts/omniinstaller/Invoke-Recipe.ps1",
+          "args": [
+            "detectVersion"
+          ]
+        },
+        "launch": {
+          "executable": "{InstallDir}/OmniZones.exe"
+        }
+      }
+    }
+  ]
+}
