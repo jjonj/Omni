@@ -18,6 +18,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.activity.compose.BackHandler
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import android.content.Context
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.foundation.lazy.LazyColumn
@@ -1576,7 +1577,13 @@ fun OmniAiModesScreen(
             HumanInboxScreen(signalRClient, onBack = { humanInbox = false })
         }
     } else {
-        Column(Modifier.fillMaxSize().padding(parentPadding).background(p.bg).imePadding()) {
+        // The Scaffold's bottom padding reserves space for the navigation bar, which
+        // is covered by the IME. Do not leave that space between the composer and keyboard.
+        val keyboardVisible = WindowInsets.ime.getBottom(LocalDensity.current) > 0
+        Column(Modifier.fillMaxSize()
+            .padding(top = parentPadding.calculateTopPadding(),
+                bottom = if (keyboardVisible) 0.dp else parentPadding.calculateBottomPadding())
+            .background(p.bg).imePadding()) {
             // Single compact toolbar; no stacked control bars or vertically wrapped title.
             Row(Modifier.fillMaxWidth().background(p.surface).height(52.dp)
                 .padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
