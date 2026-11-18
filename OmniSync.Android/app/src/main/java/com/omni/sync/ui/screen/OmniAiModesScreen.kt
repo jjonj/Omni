@@ -1398,94 +1398,137 @@ fun OmniAiModesScreen(
             }
     }
     if (attentionSheet) {
+        val visible = attentionRequests.filter { it.status in listOf("pending", "snoozed", "waiting") }
+            .sortedByDescending { it.activatedAt.takeIf { at -> at > 0 } ?: it.createdAt }
+        val readyCount = visible.count { it.status == "pending" && it.nextAt <= System.currentTimeMillis() }
         ModalBottomSheet(onDismissRequest = { attentionSheet = false },
             containerColor = p.surface, contentColor = p.text,
             sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
-            Column(Modifier.fillMaxWidth().fillMaxHeight(0.7f).verticalScroll(rememberScrollState())
-                .padding(20.dp).navigationBarsPadding(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                SheetTitle("Get My Attention", "Same pending requests as T3 desktop", p)
-                if (attentionError != null) Text(attentionError!!, color = p.amber)
-                TextButton(onClick = { refreshAttentionRequests() }) { Text("Refresh desktop status") }
-                val visible = attentionRequests.filter { it.status == "pending" || it.status == "snoozed" ||
-                    it.status == "waiting" }
-                if (visible.isEmpty())
-                    Text("No unresolved requests. When offline, the latest saved notifications remain available.",
-                        color = p.muted)
-                visible.sortedByDescending { it.activatedAt.takeIf { at -> at > 0 } ?: it.createdAt }.forEach { request ->
-                    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(p.raised)
-                        .padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        val owner = sessions.firstOrNull {
-                            it.provider == "t3" && (it.id == request.sessionId ||
-                                it.key.endsWith(":" + request.sessionId))
-                        }
-                        Text("From: " + (owner?.title ?: request.sessionId), color = p.accent,
-                            fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                        Text(request.message, color = p.text)
-                        Text(if (request.status == "snoozed" && request.nextAt > System.currentTimeMillis())
-                            "Snoozed until " + java.text.DateFormat.getDateTimeInstance().format(
-                                java.util.Date(request.nextAt)) else request.status,
+            Column(Modifier.fillMaxWidth().fillMaxHeight(0.78f).navigationBarsPadding()) {
+                Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Needs your attention", color = p.text, fontSize = 22.sp,
+                            fontWeight = FontWeight.Bold)
+                        Text("$readyCount ready · ${visible.size} unresolved",
                             color = p.muted, fontSize = 12.sp)
-                        if (request.status == "waiting")
-                            Text("Waiting for this session's next completed reply; not ready yet.",
-                                color = p.muted, fontSize = 12.sp)
-                        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            TextButton(onClick = {
-                                val session = sessions.firstOrNull {
-                                    it.id == request.sessionId || it.key.endsWith(":" + request.sessionId)
-                                }
-                                if (session == null)
-                                    attentionError = "That session is not currently available. Refresh T3 before opening; request stays active."
-                                else {
-                                    openSession(session); attentionSheet = false
-                                    if (request.status != "waiting" && request.nextAt <= System.currentTimeMillis())
-                                        controlAttention(request, "attention_open")
-                                }
-                            }) { Text(if (request.status == "waiting" || request.nextAt > System.currentTimeMillis())
-                                "View (keep reminder)" else "Open") }
-                            TextButton(enabled = attentionBusy == null && request.status != "waiting", onClick = {
-                                controlAttention(request, "attention_snooze", 10)
-                            }) { Text("10 min") }
-                            Box {
-                                TextButton(enabled = attentionBusy == null && request.status != "waiting",
-                                    onClick = { attentionSnoozeMenuFor = request.id }) { Text("Snooze ▴") }
-                                DropdownMenu(expanded = attentionSnoozeMenuFor == request.id,
-                                    onDismissRequest = { attentionSnoozeMenuFor = null }) {
-                                    if (attentionSnoozeChoices.isEmpty()) DropdownMenuItem(
-                                        text = { Text("Desktop presets unavailable; use custom") }, enabled = false,
-                                        onClick = {})
-                                    attentionSnoozeChoices.forEach { (label, until) ->
-                                        DropdownMenuItem(text = { Text(label) }, onClick = {
-                                            attentionSnoozeMenuFor = null
-                                            controlAttention(request, "attention_snooze", until = until)
-                                        })
-                                    }
-                                    DropdownMenuItem(text = { Text("Custom minutes…") }, onClick = {
-                                        attentionSnoozeMenuFor = null
-                                        attentionCustomFor = request.id
-                                    })
-                                }
+                    }
+                    TextButton(onClick = { refreshAttentionRequests() }) { Text("Refresh") }
+                }
+                if (attentionError != null)
+                    Text(attentionError!!, color = p.amber,
+                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp))
+                if (visible.isEmpty()) {
+                    Column(Modifier.fillMaxWidth().weight(1f).padding(28.dp),
+                        verticalArrangement = Arrangement.Center,
+                        horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(Icons.Default.CheckCircle, null, tint = p.accent,
+                            modifier = Modifier.size(36.dp))
+                        Spacer(Modifier.height(12.dp))
+                        Text("All caught up", color = p.text, fontWeight = FontWeight.SemiBold)
+                        Text("New requests will appear here automatically.",
+                            color = p.muted, fontSize = 13.sp)
+                    }
+                } else {
+                    Column(Modifier.weight(1f).verticalScroll(rememberScrollState())
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        visible.forEach { request ->
+                            val owner = sessions.firstOrNull {
+                                it.provider == "t3" && (it.id == request.sessionId ||
+                                    it.key.endsWith(":" + request.sessionId))
                             }
-                            TextButton(enabled = attentionBusy == null, onClick = {
-                                controlAttention(request, "attention_dismiss")
-                            }) { Text("Dismiss") }
-                        }
-                        if (attentionCustomFor == request.id) {
-                            OutlinedTextField(attentionCustomMinutes,
-                                { attentionCustomMinutes = it.filter(Char::isDigit).take(5) },
-                                modifier = Modifier.fillMaxWidth(), singleLine = true,
-                                label = { Text("Snooze duration (minutes, max 10080)") })
-                            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                TextButton(enabled = attentionBusy == null, onClick = {
-                                    val minutes = attentionCustomMinutes.toIntOrNull()
-                                    if (minutes == null || minutes !in 1..10080)
-                                        attentionError = "Choose 1–10080 minutes."
-                                    else {
-                                        attentionCustomFor = null
-                                        controlAttention(request, "attention_snooze", minutes)
+                            val waiting = request.status == "waiting"
+                            val snoozed = request.status == "snoozed" &&
+                                request.nextAt > System.currentTimeMillis()
+                            Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp))
+                                .background(p.raised).padding(16.dp),
+                                verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Column(Modifier.weight(1f)) {
+                                        Text(owner?.title ?: "T3 session",
+                                            color = p.text, fontWeight = FontWeight.SemiBold,
+                                            maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                        Text(when {
+                                            waiting -> "WAITING FOR REPLY"
+                                            snoozed -> "SNOOZED"
+                                            else -> "READY FOR YOU"
+                                        }, color = if (waiting || snoozed) p.muted else p.amber,
+                                            fontSize = 10.sp, fontWeight = FontWeight.Bold)
                                     }
-                                }) { Text("Apply snooze") }
-                                TextButton(onClick = { attentionCustomFor = null }) { Text("Cancel") }
+                                    TextButton(onClick = {
+                                        if (owner == null)
+                                            attentionError = "Session unavailable. Refresh the session list."
+                                        else {
+                                            openSession(owner)
+                                            attentionSheet = false
+                                            if (!waiting && !snoozed)
+                                                controlAttention(request, "attention_open")
+                                        }
+                                    }) { Text(if (waiting || snoozed) "View" else "Open") }
+                                }
+                                if (request.message.isNotBlank())
+                                    Text(request.message, color = p.text, fontSize = 14.sp)
+                                if (snoozed)
+                                    Text("Until " + java.text.DateFormat.getDateTimeInstance()
+                                        .format(java.util.Date(request.nextAt)),
+                                        color = p.muted, fontSize = 12.sp)
+                                if (waiting)
+                                    Text("Will become ready after the session replies.",
+                                        color = p.muted, fontSize = 12.sp)
+                                Row(Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalAlignment = Alignment.CenterVertically) {
+                                    TextButton(enabled = attentionBusy == null && !waiting,
+                                        onClick = {
+                                            controlAttention(request, "attention_snooze", 10)
+                                        }) { Text("10 min") }
+                                    Box {
+                                        TextButton(enabled = attentionBusy == null && !waiting,
+                                            onClick = { attentionSnoozeMenuFor = request.id }) {
+                                            Text("More snooze ▾")
+                                        }
+                                        DropdownMenu(expanded = attentionSnoozeMenuFor == request.id,
+                                            onDismissRequest = { attentionSnoozeMenuFor = null }) {
+                                            attentionSnoozeChoices.forEach { (label, until) ->
+                                                DropdownMenuItem(text = { Text(label) }, onClick = {
+                                                    attentionSnoozeMenuFor = null
+                                                    controlAttention(request, "attention_snooze", until = until)
+                                                })
+                                            }
+                                            DropdownMenuItem(text = { Text("Custom duration…") },
+                                                onClick = {
+                                                    attentionSnoozeMenuFor = null
+                                                    attentionCustomFor = request.id
+                                                })
+                                        }
+                                    }
+                                    Spacer(Modifier.weight(1f))
+                                    TextButton(enabled = attentionBusy == null,
+                                        onClick = { controlAttention(request, "attention_dismiss") }) {
+                                        Text("Dismiss", color = p.muted)
+                                    }
+                                }
+                                if (attentionCustomFor == request.id) {
+                                    OutlinedTextField(attentionCustomMinutes,
+                                        { attentionCustomMinutes = it.filter(Char::isDigit).take(5) },
+                                        modifier = Modifier.fillMaxWidth(), singleLine = true,
+                                        label = { Text("Minutes (1–10080)") })
+                                    Row {
+                                        TextButton(enabled = attentionBusy == null, onClick = {
+                                            val minutes = attentionCustomMinutes.toIntOrNull()
+                                            if (minutes == null || minutes !in 1..10080)
+                                                attentionError = "Choose 1–10080 minutes."
+                                            else {
+                                                attentionCustomFor = null
+                                                controlAttention(request, "attention_snooze", minutes)
+                                            }
+                                        }) { Text("Apply") }
+                                        TextButton(onClick = { attentionCustomFor = null }) {
+                                            Text("Cancel")
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
