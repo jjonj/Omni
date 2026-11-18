@@ -46,6 +46,11 @@ fun ProcessScreen(
     var commandInput by remember { mutableStateOf("") }
     var target by rememberSaveable { mutableStateOf("Remote") }
     val phoneHistory = signalRClient?.phoneCommands?.history?.collectAsState()?.value ?: emptyList()
+    val appConfig by mainViewModel.appConfig.collectAsState()
+    val connectionMessage = signalRClient?.connectionState?.collectAsState()?.value ?: "Disconnected"
+    val hubAuthenticated = signalRClient?.hubAuthenticated?.collectAsState()?.value ?: false
+    val reliableCommands = signalRClient?.reliableCommandRecords?.collectAsState()?.value ?: emptyList()
+    var showDelivery by rememberSaveable { mutableStateOf(false) }
 
     fun sendInput() {
         val command = commandInput.trim()
@@ -171,6 +176,25 @@ fun ProcessScreen(
                     .padding(8.dp)
                     .verticalScroll(scrollState)
             )
+        }
+
+        if (target == "Remote") {
+            val attentionCount = reliableCommands.count {
+                it.state == "pending" || it.state == "unknown" || it.state == "failed"
+            }
+            TextButton(onClick = { showDelivery = !showDelivery }) {
+                Text("Command delivery" + (if (attentionCount > 0) " ($attentionCount)" else "") +
+                    (if (showDelivery) "  ▲" else "  ▼"))
+            }
+            if (showDelivery && signalRClient != null) {
+                ReliableCommandsCard(
+                    unstableMode = appConfig.unstableInternetMode,
+                    hubAuthenticated = hubAuthenticated,
+                    connectionMessage = connectionMessage,
+                    records = reliableCommands,
+                    client = signalRClient
+                )
+            }
         }
 
         HorizontalDivider()
