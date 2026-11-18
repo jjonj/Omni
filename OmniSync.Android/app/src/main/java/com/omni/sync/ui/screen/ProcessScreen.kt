@@ -50,7 +50,7 @@ fun ProcessScreen(
     val connectionMessage = signalRClient?.connectionState?.collectAsState()?.value ?: "Disconnected"
     val hubAuthenticated = signalRClient?.hubAuthenticated?.collectAsState()?.value ?: false
     val reliableCommands = signalRClient?.reliableCommandRecords?.collectAsState()?.value ?: emptyList()
-    var showDelivery by rememberSaveable { mutableStateOf(false) }
+    var showDelivery by remember { mutableStateOf(false) }
 
     fun sendInput() {
         val command = commandInput.trim()
@@ -179,21 +179,12 @@ fun ProcessScreen(
         }
 
         if (target == "Remote") {
-            val attentionCount = reliableCommands.count {
+            val unresolvedCount = reliableCommands.count {
                 it.state == "pending" || it.state == "unknown" || it.state == "failed"
             }
-            TextButton(onClick = { showDelivery = !showDelivery }) {
-                Text("Command delivery" + (if (attentionCount > 0) " ($attentionCount)" else "") +
-                    (if (showDelivery) "  ▲" else "  ▼"))
-            }
-            if (showDelivery && signalRClient != null) {
-                ReliableCommandsCard(
-                    unstableMode = appConfig.unstableInternetMode,
-                    hubAuthenticated = hubAuthenticated,
-                    connectionMessage = connectionMessage,
-                    records = reliableCommands,
-                    client = signalRClient
-                )
+            // Open the delivery details separately so long histories cannot hide the process list.
+            TextButton(onClick = { showDelivery = true }) {
+                Text("Command delivery" + (if (unresolvedCount > 0) " ($unresolvedCount unresolved)" else ""))
             }
         }
 
@@ -261,6 +252,29 @@ fun ProcessScreen(
             }
         }
         } // PC processes only apply in Remote mode.
+    }
+
+    if (showDelivery && target == "Remote" && signalRClient != null) {
+        ModalBottomSheet(
+            onDismissRequest = { showDelivery = false },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        ) {
+            Column(
+                Modifier.fillMaxWidth()
+                    .fillMaxHeight(0.8f)
+                    .verticalScroll(rememberScrollState())
+                    .navigationBarsPadding()
+                    .padding(horizontal = 12.dp, vertical = 8.dp)
+            ) {
+                ReliableCommandsContent(
+                    unstableMode = appConfig.unstableInternetMode,
+                    hubAuthenticated = hubAuthenticated,
+                    connectionMessage = connectionMessage,
+                    records = reliableCommands,
+                    client = signalRClient
+                )
+            }
+        }
     }
 }
 

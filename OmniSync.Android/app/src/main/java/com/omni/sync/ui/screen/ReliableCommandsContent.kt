@@ -10,7 +10,7 @@ import com.omni.sync.data.repository.ReliableCommandRecord
 import com.omni.sync.data.repository.SignalRClient
 
 @Composable
-internal fun ReliableCommandsCard(
+internal fun ReliableCommandsContent(
     unstableMode: Boolean,
     hubAuthenticated: Boolean,
     connectionMessage: String,
@@ -18,8 +18,7 @@ internal fun ReliableCommandsCard(
     client: SignalRClient
 ) {
     var showAll by remember { mutableStateOf(false) }
-    Card(modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp)) {
-        Column(modifier = Modifier.padding(14.dp)) {
+    Column(modifier = Modifier.fillMaxWidth().padding(8.dp)) {
             Text("Command delivery", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             Text(
                 if (hubAuthenticated) "Hub authenticated" else "Hub unavailable — $connectionMessage",
@@ -83,7 +82,6 @@ internal fun ReliableCommandsCard(
                     }
                 }
             }
-        }
     }
 }
 
