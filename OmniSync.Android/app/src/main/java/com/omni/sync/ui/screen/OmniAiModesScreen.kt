@@ -24,7 +24,7 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -68,6 +68,7 @@ import com.omni.sync.utils.AndroidAttentionStore
 import com.omni.sync.utils.PhoneAgentAttention
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.first
 import kotlin.math.roundToInt
 
 /** Tonal surfaces, rounded session rows and unobtrusive actions follow T3 Android's hierarchy. */
@@ -525,7 +526,7 @@ fun OmniAiModesScreen(
     var archiveQuery by rememberSaveable { mutableStateOf("") }
     var verify by remember { mutableStateOf<AddressIdentityPreview?>(null) }
     var receiptToRemove by remember { mutableStateOf<PendingAgentUi?>(null) }
-    var followingLatest by remember(selectedKey) { mutableStateOf(true) }
+    var followingLatest by remember(selectedKey, listMode) { mutableStateOf(true) }
 
     val active = providers.firstOrNull { it.active }
     // Keep the locally cached conversation list available while Hub reconnects.
@@ -2171,11 +2172,20 @@ fun OmniAiModesScreen(
                 if (historyLoading) LinearProgressIndicator(
                     modifier = Modifier.fillMaxWidth().height(2.dp), color = p.accent,
                     trackColor = p.bg)
-                val scroll = rememberLazyListState()
-                LaunchedEffect(selectedKey, conversationHistory.lastOrNull()?.id,
-                    conversationHistory.lastOrNull()?.revision, threadOutbox.size) {
-                    if ((conversationHistory.isNotEmpty() || threadOutbox.isNotEmpty()) && followingLatest)
-                        scroll.scrollToItem((scroll.layoutInfo.totalItemsCount - 1).coerceAtLeast(0))
+                // Each opening starts at the newest message, including when revisiting the same session.
+                val scroll = remember(selectedKey, listMode) { LazyListState() }
+                val timelineItemCount = conversationHistory.size + threadOutbox.size +
+                    (if (older != null) 1 else 0) + (if (!historyNotice.isNullOrBlank()) 1 else 0)
+                LaunchedEffect(selectedKey, listMode, timelineItemCount,
+                    conversationHistory.lastOrNull()?.id, conversationHistory.lastOrNull()?.revision,
+                    threadOutbox.size, followingLatest) {
+                    if (!listMode && timelineItemCount > 0 && followingLatest) {
+                        // History often arrives after the screen opens. Wait for LazyColumn to
+                        // measure the new rows rather than scrolling using the old item count.
+                        snapshotFlow { scroll.layoutInfo.totalItemsCount }
+                            .first { it >= timelineItemCount }
+                        if (followingLatest) scroll.scrollToItem(timelineItemCount - 1)
+                    }
                 }
                 LaunchedEffect(scroll, selectedKey) {
                     snapshotFlow {
