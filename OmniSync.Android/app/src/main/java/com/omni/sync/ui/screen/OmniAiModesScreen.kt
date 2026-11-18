@@ -325,12 +325,14 @@ fun OmniAiModesScreen(
     var busySlotsOpen by remember { mutableStateOf(false) }
     var busySlotValue by remember { mutableIntStateOf(0) }
     var busySlotsDragging by remember { mutableStateOf(false) }
-    // Always display the effective desktop slider value, not the retained
-    // maxWorking setting while Keep Busy is off. Leave an active drag alone.
-    LaunchedEffect(busySlotsOpen, busyPolicy, busySlotsDragging, keepT3BusyUpdating) {
+    // Effective desktop slider value: zero when auto-fill is disabled.
+    val effectiveBusySlots = if (busyPolicy?.keepT3Busy == true)
+        (busyPolicy?.maxWorking ?: 3).coerceIn(1, 5) else 0
+    // Keep the selector synced to T3 unless the user is dragging it.
+
+    LaunchedEffect(busySlotsOpen, effectiveBusySlots, busySlotsDragging, keepT3BusyUpdating) {
         if (busySlotsOpen && !busySlotsDragging && !keepT3BusyUpdating) {
-            busySlotValue = if (busyPolicy?.keepT3Busy == true)
-                (busyPolicy?.maxWorking ?: 3).coerceIn(1, 5) else 0
+            busySlotValue = effectiveBusySlots
         }
     }
     LaunchedEffect(online) {
@@ -1569,10 +1571,8 @@ fun OmniAiModesScreen(
                         enabled = online && busyPolicy != null && !keepT3BusyUpdating,
                         onValueChangeFinished = {
                             val requested = busySlotValue
-                            val effective = if (busyPolicy?.keepT3Busy == true)
-                                (busyPolicy?.maxWorking ?: 3).coerceIn(1, 5) else 0
                             busySlotsDragging = false
-                            if (requested != effective) {
+                            if (requested != effectiveBusySlots) {
                                 keepT3BusyUpdating = true
                                 scope.launch {
                                     try {
@@ -1675,27 +1675,20 @@ fun OmniAiModesScreen(
                 if (listMode) {
                     Dot(if (t3Connected) p.green else p.amber)
                     Spacer(Modifier.width(7.dp))
-                    Row(Modifier.clip(RoundedCornerShape(10.dp)).combinedClickable(
+                    Row(Modifier.clip(RoundedCornerShape(10.dp)).clickable(
                         enabled = online && busyPolicy != null && !keepT3BusyUpdating,
-                        onLongClick = { busySlotsOpen = true },
-                        onClick = {
-                            keepT3BusyUpdating = true
-                            scope.launch {
-                                try { busyPolicy = signalRClient.t3BusyPolicy(!(busyPolicy?.keepT3Busy ?: false)) }
-                                catch (error: Exception) { note = "Keep T3 Busy failed: " + error.message }
-                                finally { keepT3BusyUpdating = false }
-                            }
-                        }
+                        onClick = { busySlotsOpen = true }
                     ), verticalAlignment = Alignment.CenterVertically) {
-                        Text("Busy", color = if (busyPolicy?.keepT3Busy == true) p.green else p.muted,
+                        Text(if (effectiveBusySlots > 0) "Busy $effectiveBusySlots" else "Busy",
+                            color = if (effectiveBusySlots > 0) p.green else p.muted,
                             fontSize = 11.sp, maxLines = 1)
-                        Switch(checked = busyPolicy?.keepT3Busy == true,
+                        Switch(checked = effectiveBusySlots > 0,
                             enabled = online && busyPolicy != null && !keepT3BusyUpdating,
                             onCheckedChange = null,
                             modifier = Modifier.size(width = 43.dp, height = 36.dp)
                                 .scale(0.7f).semantics {
-                                    contentDescription = "Keep T3 Busy; long press to configure slots"
-                                    stateDescription = if (busyPolicy?.keepT3Busy == true) "On" else "Off"
+                                    contentDescription = "Keep T3 Busy; tap to configure 0 to 5 slots"
+                                    stateDescription = if (effectiveBusySlots > 0) "On, $effectiveBusySlots slots" else "Off"
                                 })
                     }
                     IconButton(onClick = {
