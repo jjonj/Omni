@@ -411,7 +411,7 @@ fun OmniAiModesScreen(
     var attentionSnoozeMenuFor by remember { mutableStateOf<String?>(null) }
     var attentionCustomFor by remember { mutableStateOf<String?>(null) }
     var attentionCustomMinutes by remember { mutableStateOf("90") }
-    var prepfileOpen by remember { mutableStateOf(false) }
+    var createTab by rememberSaveable { mutableStateOf("t3/chatgpt") }
     var prepfileBusy by remember { mutableStateOf(false) }
     var prepfileError by remember { mutableStateOf<String?>(null) }
     var prepfileProgress by remember { mutableStateOf("") }
@@ -905,7 +905,8 @@ fun OmniAiModesScreen(
         }
     }
     fun openPrepfile() {
-        prepfileOpen = true
+        create = true
+        createTab = "prepfile"
         prepfileError = null
         (nativeCatalog ?: client.cachedNativeCatalog())?.let { catalog ->
             nativeCatalog = catalog
@@ -1178,7 +1179,9 @@ fun OmniAiModesScreen(
             return
         }
         workspace = ""; newSessionTitle = ""; firstMessage = ""; createDeliveryMode = "WhenIdle"; createError = null
-        nativeProjectId = ""; nativeModelKey = ""; nativeEffort = ""; create = true
+        nativeProjectId = ""; nativeModelKey = ""; nativeEffort = ""
+        createTab = kind
+        create = true
     }
     fun submit() {
         if (!canSend) return
@@ -1226,10 +1229,8 @@ fun OmniAiModesScreen(
         surfaceVariant = p.raised, onSurfaceVariant = p.muted,
         outline = p.border, surfaceTint = p.accent
     )) {
-    if (prepfileOpen) {
-        ModalBottomSheet(onDismissRequest = { prepfileOpen = false },
-            containerColor = p.surface, contentColor = p.text,
-            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
+    // Share the existing prepfile workflow with the New (+) sheet; no second modal.
+    val prepfileForm: @Composable () -> Unit = {
             Column(Modifier.fillMaxWidth().fillMaxHeight(0.9f)
                 .verticalScroll(rememberScrollState()).navigationBarsPadding()
                 .padding(horizontal = 20.dp, vertical = 10.dp),
@@ -1395,7 +1396,6 @@ fun OmniAiModesScreen(
                 }
                 Spacer(Modifier.height(16.dp))
             }
-        }
     }
     if (attentionSheet) {
         ModalBottomSheet(onDismissRequest = { attentionSheet = false },
@@ -1660,14 +1660,6 @@ fun OmniAiModesScreen(
                     }, modifier = Modifier.size(34.dp)) {
                         Icon(Icons.Default.Refresh, "Refresh", tint = p.text, modifier = Modifier.size(22.dp))
                     }
-                    TextButton(onClick = { openPrepfile() },
-                        modifier = Modifier.height(36.dp),
-                        contentPadding = PaddingValues(horizontal = 4.dp)) {
-                        Icon(Icons.Default.Create, "New prepfile", tint = p.accent,
-                            modifier = Modifier.size(17.dp))
-                        Spacer(Modifier.width(3.dp))
-                        Text("Prepfile", color = p.accent, fontSize = 11.sp)
-                    }
                     IconButton(onClick = { openCreate() }, modifier = Modifier.size(34.dp)) {
                         Icon(Icons.Default.Add, "New session", tint = p.text, modifier = Modifier.size(23.dp))
                     }
@@ -1709,8 +1701,6 @@ fun OmniAiModesScreen(
                                     viewPrefs.edit().putBoolean("compactMode", compactMode).apply()
                                     menu = false
                                 })
-                            DropdownMenuItem(text = { Text("New prepfile") },
-                                onClick = { menu = false; openPrepfile() })
                 DropdownMenuItem(text = { Text("Schedule ChatGPT work") },
                                 enabled = t3Connected,
                                 onClick = { menu = false; openSchedule(null) })
@@ -3181,32 +3171,39 @@ fun OmniAiModesScreen(
                 } finally { creationBusy = false }
             }
         }
+        // All creation paths live under +. Switching tabs retains the draft in each path.
+        Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically) {
+            Text("New", color = p.text, fontWeight = FontWeight.SemiBold,
+                style = MaterialTheme.typography.titleLarge)
+            Spacer(Modifier.width(12.dp))
+            val tabs = if (active.id == "t3")
+                listOf("t3/chatgpt" to "ChatGPT", "t3/thread" to "Native", "prepfile" to "Prepfile")
+                    .filter { it.first == "prepfile" || it.first in active.kinds }
+            else active.kinds.map { it to it }
+            Row(Modifier.weight(1f).horizontalScroll(rememberScrollState())
+                .clip(RoundedCornerShape(10.dp)).background(p.raised).padding(2.dp),
+                horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                tabs.forEach { (value, label) ->
+                    val selectedTab = createTab == value
+                    Text(label, Modifier.clip(RoundedCornerShape(8.dp))
+                        .background(if (selectedTab) p.accentBg else Color.Transparent)
+                        .clickable(enabled = !creationBusy && !prepfileBusy) {
+                            if (value == "prepfile") openPrepfile()
+                            else { createTab = value; kind = value; createError = null }
+                        }.padding(horizontal = 12.dp, vertical = 8.dp),
+                        color = if (selectedTab) p.accent else p.muted, fontSize = 13.sp,
+                        fontWeight = if (selectedTab) FontWeight.SemiBold else FontWeight.Normal)
+                }
+            }
+        }
+        if (createTab == "prepfile") {
+            prepfileForm()
+        } else {
         Column(Modifier.fillMaxWidth().navigationBarsPadding().imePadding()
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 18.dp).padding(bottom = 18.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("New thread", Modifier.weight(1f), color = p.text,
-                    style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
-                if (active.id == "t3") Row(Modifier.clip(RoundedCornerShape(10.dp)).background(p.raised).padding(2.dp)) {
-                    listOf("t3/chatgpt" to "ChatGPT", "t3/thread" to "Native").filter { it.first in active.kinds }
-                        .forEach { (value, label) ->
-                            val on = kind == value
-                            Text(label, Modifier.clip(RoundedCornerShape(8.dp))
-                                .background(if (on) p.accentBg else Color.Transparent)
-                                .clickable(enabled = !creationBusy) { kind = value; createError = null }
-                                .padding(horizontal = 12.dp, vertical = 6.dp),
-                                color = if (on) p.accent else p.muted, fontSize = 13.sp,
-                                fontWeight = if (on) FontWeight.SemiBold else FontWeight.Normal)
-                        }
-                }
-            }
-            if (active.id != "t3") Row(Modifier.horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                active.kinds.forEach { option ->
-                    FilterChip(selected = kind == option, onClick = { kind = option }, label = { Text(option) })
-                }
-            }
             OutlinedTextField(firstMessage, { firstMessage = it.take(30_000) },
                 Modifier.fillMaxWidth(), minLines = 4, maxLines = 10, enabled = !creationBusy,
                 placeholder = { Text(if (active.id == "t3") "What should it work on? (optional)" else "First instruction") },
@@ -3335,6 +3332,7 @@ fun OmniAiModesScreen(
                     Spacer(Modifier.width(8.dp)); Text("Starting…")
                 } else Text(if (firstMessage.isBlank()) "Create empty thread" else "Start")
             }
+        }
         }
     }
     if (addProjectOpen) AlertDialog(
