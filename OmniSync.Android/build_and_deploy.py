@@ -149,23 +149,27 @@ def deploy_via_hub(explicit_public_base_url=None):
     print(f"Hub deployment {request_id}: mode={mode}, status={status}")
     print(response.get("message", "Deployment command dispatched."))
 
-    if mode == "browser" or not request_id:
-        print("[OK] The APK download was opened on the connected legacy Android client.")
+    if mode == "browser":
+        print("[PENDING] APK download sent to phone; waiting for user to update OmniSync. Installation is not confirmed.")
         return True
+    if not request_id:
+        print("[FAIL] Hub did not return a deployment request ID.")
+        return False
 
     terminal_statuses = {
         "current",
         "permission_required",
         "confirmation_required",
-        "installer_started",
         "installed",
+        "waiting_for_user_update",
         "error",
         "busy",
     }
     last_status = None
+    installer_started_at = None
     status_url = f"{controller_base_url}/api/android-update/deploy/{request_id}"
-    # The phone installation can await human approval indefinitely. Once
-    # PackageInstaller starts, hand off as pending rather than timing out.
+    # Installer commit is not installation. A verification rejection may arrive
+    # just afterward; report pending user action instead of a failed deploy.
     while True:
         try:
             status_response = request_json(status_url, api_key)
@@ -175,19 +179,29 @@ def deploy_via_hub(explicit_public_base_url=None):
             continue
 
         current_status = status_response.get("status", "unknown")
+        status_message = status_response.get("message", "")
         if current_status != last_status:
-            print(f"Android deployment status: {current_status} - {status_response.get('message', '')}")
+            print(f"Android deployment status: {current_status} - {status_message}")
             last_status = current_status
+
+        if current_status == "waiting_for_user_update" or (
+            current_status == "error" and "INSTALL_FAILED_VERIFICATION_FAILURE" in status_message
+        ):
+            print("[PENDING] Waiting for user to update OmniSync on the phone; installation is not confirmed.")
+            return True
+        if current_status == "installer_started":
+            if installer_started_at is None:
+                installer_started_at = time.monotonic()
+            if time.monotonic() - installer_started_at >= 6:
+                print("[PENDING] Waiting for user to update OmniSync on the phone; installation is not confirmed.")
+                return True
 
         if current_status in terminal_statuses:
             if current_status in {"error", "busy"}:
-                print("[FAIL] Android reported that Hub deployment did not start.")
+                print(f"[FAIL] Android update failed: {status_message}")
                 return False
-            if current_status == "permission_required":
-                print("[FAIL] Android needs the one-time 'Install unknown apps' permission before unattended updates can run.")
-                return False
-            if current_status in {"installer_started", "confirmation_required"}:
-                print("waiting user install approval on phone")
+            if current_status in {"permission_required", "confirmation_required"}:
+                print("[PENDING] Waiting for user to approve the update on the phone; installation is not confirmed.")
                 return True
             if current_status == "installed":
                 print("[OK] Hub-to-Android deployment installed successfully.")
