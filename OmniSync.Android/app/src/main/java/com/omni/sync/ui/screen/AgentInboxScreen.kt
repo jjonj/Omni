@@ -29,10 +29,13 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.MoreHoriz
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.NotificationsOff
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
@@ -103,6 +106,8 @@ fun AgentInboxScreen(
     var menuFor by remember { mutableStateOf<AgentSessionSummaryData?>(null) }
     var notifyFor by remember { mutableStateOf<AgentSessionSummaryData?>(null) }
     var showNew by remember { mutableStateOf(false) }
+    var showT3Usage by remember { mutableStateOf(false) }
+    val activeHubBaseUrl by signalRClient.currentBaseUrl.collectAsState()
     var renameFor by remember { mutableStateOf<AgentSessionSummaryData?>(null) }
     var deleteFor by remember { mutableStateOf<AgentSessionSummaryData?>(null) }
     val terminal by signalRClient.remoteTerminalClient.session.collectAsState()
@@ -166,6 +171,7 @@ fun AgentInboxScreen(
                 actions = actions,
                 onHistory = { showHistory = true },
                 onNew = { showNew = true },
+                onUsage = { showT3Usage = true },
                 searching = searching,
                 onToggleSearch = { on -> searching = on; if (!on) query = "" },
                 query = query,
@@ -211,6 +217,9 @@ fun AgentInboxScreen(
     notifyFor?.let { s ->
         NotifySheet(s, AgentInboxStore.notifyLevel(s.id), onPick = { AgentInboxStore.setNotify(context, s.id, it); notifyFor = null }, onDismiss = { notifyFor = null })
     }
+    if (showT3Usage) {
+        T3UsageSheet(activeHubBaseUrl, mainViewModel.appConfig.value.apiKey) { showT3Usage = false }
+    }
     if (showNew) {
         NewSessionSheet(rememberProjects(sessions), terminalCommand, onStart = { provider, cwd, message ->
             showNew = false
@@ -236,6 +245,7 @@ private fun InboxContent(
     actions: InboxActions,
     onHistory: () -> Unit,
     onNew: () -> Unit,
+    onUsage: () -> Unit,
     searching: Boolean,
     onToggleSearch: (Boolean) -> Unit,
     query: String,
@@ -249,6 +259,7 @@ private fun InboxContent(
         query.isBlank() || listOf(s.title, s.provider, s.cwd, s.activity, s.model).any { it.contains(query, ignoreCase = true) }
     }
     val p = agentPalette()
+    var overflowOpen by remember { mutableStateOf(false) }
     val placed = remember(sessions, local, now / MINUTE_MS) { sessions.mapNotNull { s -> sectionOf(s, local, now)?.let { s to it } } }
     val active = placed.filter { it.second != AgentSection.ENDED }
     val count = { section: AgentSection -> active.count { it.second == section } }
@@ -296,6 +307,17 @@ private fun InboxContent(
             IconButton(onClick = { onToggleSearch(!searching) }) { Icon(Icons.Default.Search, "Search sessions", tint = if (searching) p.text else p.muted) }
             IconButton(onClick = onHistory) { Icon(Icons.Default.History, "History", tint = p.text) }
             IconButton(onClick = onNew) { Icon(Icons.Default.Add, "New session", tint = p.text) }
+            Box {
+                IconButton(onClick = { overflowOpen = true }) {
+                    Icon(Icons.Default.MoreVert, "More AI actions", tint = p.text)
+                }
+                DropdownMenu(expanded = overflowOpen, onDismissRequest = { overflowOpen = false }) {
+                    DropdownMenuItem(text = { Text("T3 usage") }, onClick = {
+                        overflowOpen = false
+                        onUsage()
+                    })
+                }
+            }
         }
 
         if (searching) {
