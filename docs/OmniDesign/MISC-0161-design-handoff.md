@@ -1,25 +1,23 @@
 # MISC-0161 — OmniDesign Android / offline interaction review
 
-**Status:** Proposed UI, awaiting native TaskBoard visual approval. This work changes no Android, desktop editor, OmniHub, or sync implementation. Interactive preview: `MISC-0161-interactions.html` (registered with OmniHub Presentations as `misc-0161-omnidesign-interactions`).
+**Current state:** Revision 2 mockups prepared for user approval. No Android, desktop-editor, OmniHub service, or synchronization implementation has begun. The dependent implementation task MISC-0162 must wait for an explicit approved verdict on **MISC-0161's native TaskBoard review**.
 
-## Review the five guided flows
+## What changed after the rejected review
 
-1. **Library:** search, open, choose shape/diagram vocabulary, and manage (rename, duplicate, archive) across phone and desktop.
-2. **Draw & edit:** select/drag graph nodes; tap-to-place shapes; connector selection; pinch/wheel zoom; native-style mobile property bottom sheet vs. desktop inspector.
-3. **Offline:** show offline status, create a local diagram with a stable ID, edit while disconnected, and expose queued changes in the library.
-4. **Sync & conflict:** reconnect, revision-checked push, two competing revisions, explicit recoverable choices, immutable revision history. The conservative default is to keep both versions.
-5. **Share & agent:** copy private stable deep link, explain offline reachability, hand off ID + base revision + instructions to an authorized T3 agent, and review its candidate revision.
+The user rejected R1 because its generic blue/white canvas did not match the architecture-diagram skill. R2 now uses the actual reference `C:/Users/crovea/.agents/skills/extra-skill-finder/on-request/architecture-diagram/{SKILL.md,example.html}` for visual identity: charcoal `#14161a` paper, dark `#1d2026` shape cards, warm ivory `#e6e2d8` text and strokes, muted `#a09a8c` explanations, restrained dashed amber `#e0a458` only for optional paths. Connectors are orthogonal and explicitly labelled. Example canvas shows **Game client → Match server → Recording**, with an optional backend branch.
 
-The walkthrough is a **visual prototype** only. Its local changes are simulated in browser memory and do not persist or contact OmniHub; the final editor must implement the behavior with durable storage.
+## Interactive walkthroughs
 
-## Shared engine proposal (requires approval before implementation)
+The single self-contained HTML source is `D:/SSDProjects/Omni/docs/OmniDesign/MISC-0161-interactions.html` and the stable OmniHub presentation ID is `misc-0161-omnidesign-interactions`.
 
-- Use **one graph/document model and rendering/interaction core** for desktop and Android (same shape kinds, anchors, connectors, multi-selection, undo and revision serialization). Use adaptive chrome rather than separate canvas engines: phone bottom sheets/tool modes and touch gestures; desktop sidebar, palette and inspector, pointer and keyboard shortcuts.
-- A TypeScript/SVG/canvas editor embedded inside Android via WebView is one plausible path to reuse, with Compose owning native navigation and OS share; confirm feasibility during the implementation task. Desktop can host the same editor in its web shell. Avoid duplicating geometry and undo in Kotlin.
-- Treat the phone's offline document store and operation journal as durable **device-local** state independent of Hub availability. Mint the persistent diagram ID locally. A transport adapter synchronizes operations against a Hub-owned revision, with idempotent acknowledgements, replay after reconnect, and explicit conflict branches, never silent last-write-wins.
-- Resolve collisions by surfacing both versions, making **save as copy** the non-destructive suggested choice; record any explicit overwrite with the original retrievable in history. Agent edits carry an exact base revision and return a proposed revision for acceptance by default.
-- Example `omni://design/dgm_7c42` represents a **proposed** private deep link; offline copying does not imply that a different device or agent can open it before the document syncs. The production URI/router and authorization contract remain to be finalized during implementation.
+- **Library:** Android/PC browse and manage diagrams with actual dark mini-diagram previews; open, rename, duplicate, archive and choose a diagram vocabulary.
+- **Draw/edit:** select and drag the same SVG nodes by touch/mouse, place shapes, connect, pinch/wheel zoom and pan. Properties use a phone bottom sheet and desktop inspector.
+- **Offline:** Hub unreachable indicator, new locally minted stable ID, editable offline canvas and explicit queued local changes.
+- **Reconnect:** revision-checked sync, conflict between local and Hub edits with two *visual* revision previews, non-destructive save-copy default, timeline/history.
+- **Share/agent:** persistent `omni://design/<id>` proposal, copy, pending-offline reachability caveat, base-revision handoff, candidate revision review.
 
-## Evidence and feedback
+All state is simulated inside the visual prototype. Browser-memory operations are not actual device persistence, network sync, sharing or T3 agent writes. The production architecture proposed for MISC-0162 is **one shared graph/document/interaction engine** embedded in Android and desktop, with adaptive platform chrome, device-local document journal and revision-checked OmniHub adapter. Do not treat mockup behavior as production evidence.
 
-TaskBoard `MISC-0161` is the authoritative visual-review surface. The HTML file is interactive; selected PNG screenshots in the TaskBoard review demonstrate exact Android/editor/library, offline, desktop inspector/library, conflict and agent states. Review direction first; do **not** start dependent implementation `MISC-0162` until the user has approved the native visual review.
+## Acceptance and review
+
+The R2 TaskBoard review must be decided by the user. The editable HTML and screenshots for Android library/editor/properties/offline/agent and PC library/editor/conflict are the evidence. Do not self-approve. Once the user accepts the visual direction, MISC-0162 can implement the actual shared editor, durable local storage, reconnection and revision workflow.
