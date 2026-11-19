@@ -1,0 +1,1924 @@
+[
+  {
+    "format": "omnidesign-pack",
+    "schemaVersion": 1,
+    "id": "architecture",
+    "version": "1",
+    "name": "Architecture",
+    "family": "architecture",
+    "shapes": [
+      {
+        "name": "service",
+        "title": "Service",
+        "icon": "▣",
+        "fallback": "roundRect",
+        "role": "architecture.service",
+        "glyph": "service",
+        "fields": [
+          {
+            "key": "technology",
+            "label": "Technology",
+            "type": "text"
+          },
+          {
+            "key": "status",
+            "label": "Status",
+            "type": "select",
+            "options": [
+              "planned",
+              "active",
+              "done",
+              "blocked"
+            ]
+          }
+        ],
+        "defaults": {
+          "technology": "API",
+          "status": "active"
+        },
+        "width": 210,
+        "height": 112
+      },
+      {
+        "name": "database",
+        "title": "Database",
+        "icon": "▤",
+        "fallback": "roundRect",
+        "role": "architecture.database",
+        "glyph": "database",
+        "fields": [
+          {
+            "key": "engine",
+            "label": "Database engine",
+            "type": "text"
+          }
+        ],
+        "defaults": {
+          "engine": "SQLite"
+        },
+        "width": 210,
+        "height": 112
+      },
+      {
+        "name": "queue",
+        "title": "Queue",
+        "icon": "▥",
+        "fallback": "rect",
+        "role": "architecture.queue",
+        "glyph": "queue",
+        "fields": [
+          {
+            "key": "capacity",
+            "label": "Capacity",
+            "type": "number"
+          }
+        ],
+        "defaults": {
+          "capacity": 100
+        },
+        "width": 210,
+        "height": 112
+      },
+      {
+        "name": "client",
+        "title": "Client",
+        "icon": "▣",
+        "fallback": "roundRect",
+        "role": "architecture.client",
+        "glyph": "screen",
+        "fields": [],
+        "defaults": {},
+        "width": 210,
+        "height": 112
+      },
+      {
+        "name": "cloud",
+        "title": "Cloud",
+        "icon": "☁",
+        "fallback": "ellipse",
+        "role": "architecture.cloud",
+        "glyph": "cloud",
+        "fields": [],
+        "defaults": {},
+        "width": 210,
+        "height": 112
+      }
+    ],
+    "templates": [
+      {
+        "id": "service-map",
+        "title": "Service architecture",
+        "family": "architecture",
+        "description": "Client → gateway → services → data store",
+        "nodes": [
+          {
+            "key": "client",
+            "stencil": "client",
+            "x": 90,
+            "y": 230,
+            "text": "Android / Browser"
+          },
+          {
+            "key": "gateway",
+            "stencil": "service",
+            "x": 360,
+            "y": 230,
+            "text": "OmniHub Gateway",
+            "props": {
+              "technology": "Rust"
+            }
+          },
+          {
+            "key": "worker",
+            "stencil": "service",
+            "x": 645,
+            "y": 120,
+            "text": "Diagram service",
+            "props": {
+              "technology": "HTTP"
+            }
+          },
+          {
+            "key": "queue",
+            "stencil": "queue",
+            "x": 645,
+            "y": 345,
+            "text": "Event queue"
+          },
+          {
+            "key": "data",
+            "stencil": "database",
+            "x": 930,
+            "y": 120,
+            "text": "Local storage",
+            "props": {
+              "engine": "SQLite"
+            }
+          }
+        ],
+        "links": [
+          {
+            "from": "client",
+            "to": "gateway",
+            "label": "HTTPS",
+            "kind": "flow"
+          },
+          {
+            "from": "gateway",
+            "to": "worker",
+            "label": "REST",
+            "kind": "flow"
+          },
+          {
+            "from": "gateway",
+            "to": "queue",
+            "label": "events",
+            "kind": "flow"
+          },
+          {
+            "from": "worker",
+            "to": "data",
+            "label": "SQL",
+            "kind": "flow"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "format": "omnidesign-pack",
+    "schemaVersion": 1,
+    "id": "flowchart",
+    "version": "1",
+    "name": "Flowchart",
+    "family": "flowchart",
+    "shapes": [
+      {
+        "name": "terminator",
+        "title": "Start / End",
+        "icon": "◉",
+        "fallback": "ellipse",
+        "role": "flow.terminator",
+        "fields": [],
+        "defaults": {},
+        "width": 210,
+        "height": 112
+      },
+      {
+        "name": "process",
+        "title": "Process",
+        "icon": "▣",
+        "fallback": "roundRect",
+        "role": "flow.process",
+        "fields": [
+          {
+            "key": "owner",
+            "label": "Owner",
+            "type": "text"
+          }
+        ],
+        "defaults": {},
+        "width": 210,
+        "height": 112
+      },
+      {
+        "name": "decision",
+        "title": "Decision",
+        "icon": "◇",
+        "fallback": "diamond",
+        "role": "flow.decision",
+        "fields": [
+          {
+            "key": "expression",
+            "label": "Condition",
+            "type": "text"
+          }
+        ],
+        "defaults": {},
+        "width": 210,
+        "height": 112
+      },
+      {
+        "name": "document",
+        "title": "Document",
+        "icon": "▤",
+        "fallback": "rect",
+        "role": "flow.document",
+        "glyph": "document",
+        "fields": [],
+        "defaults": {},
+        "width": 210,
+        "height": 112
+      },
+      {
+        "name": "io",
+        "title": "Input / Output",
+        "icon": "▱",
+        "fallback": "polygon",
+        "role": "flow.io",
+        "glyph": "io",
+        "fields": [],
+        "defaults": {},
+        "width": 210,
+        "height": 112
+      }
+    ],
+    "templates": [
+      {
+        "id": "decision-flow",
+        "title": "Decision and retry",
+        "family": "flowchart",
+        "description": "A decision with yes/no branches and retry loop",
+        "nodes": [
+          {
+            "key": "start",
+            "stencil": "terminator",
+            "x": 70,
+            "y": 250,
+            "text": "Request"
+          },
+          {
+            "key": "check",
+            "stencil": "decision",
+            "x": 360,
+            "y": 225,
+            "text": "Is valid?",
+            "width": 185,
+            "height": 135
+          },
+          {
+            "key": "process",
+            "stencil": "process",
+            "x": 670,
+            "y": 110,
+            "text": "Process request"
+          },
+          {
+            "key": "retry",
+            "stencil": "process",
+            "x": 670,
+            "y": 360,
+            "text": "Request correction"
+          },
+          {
+            "key": "end",
+            "stencil": "terminator",
+            "x": 970,
+            "y": 110,
+            "text": "Complete"
+          }
+        ],
+        "links": [
+          {
+            "from": "start",
+            "to": "check",
+            "label": "",
+            "kind": "flow"
+          },
+          {
+            "from": "check",
+            "to": "process",
+            "label": "Yes",
+            "kind": "flow"
+          },
+          {
+            "from": "check",
+            "to": "retry",
+            "label": "No",
+            "kind": "flow"
+          },
+          {
+            "from": "process",
+            "to": "end",
+            "label": "",
+            "kind": "flow"
+          },
+          {
+            "from": "retry",
+            "to": "check",
+            "label": "Retry",
+            "kind": "flow",
+            "fromSide": "left",
+            "toSide": "bottom"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "format": "omnidesign-pack",
+    "schemaVersion": 1,
+    "id": "uml-sequence",
+    "version": "1",
+    "name": "UML · Sequence",
+    "family": "sequence",
+    "shapes": [
+      {
+        "name": "actor",
+        "title": "Actor",
+        "icon": "♙",
+        "fallback": "roundRect",
+        "role": "uml.actor",
+        "glyph": "actor",
+        "fields": [
+          {
+            "key": "stereotype",
+            "label": "Stereotype",
+            "type": "text"
+          }
+        ],
+        "defaults": {},
+        "width": 145,
+        "height": 400
+      },
+      {
+        "name": "lifeline",
+        "title": "Lifeline",
+        "icon": "┊",
+        "fallback": "roundRect",
+        "role": "uml.lifeline",
+        "glyph": "lifeline",
+        "fields": [
+          {
+            "key": "participantType",
+            "label": "Participant",
+            "type": "select",
+            "options": [
+              "object",
+              "service",
+              "boundary",
+              "control",
+              "entity"
+            ]
+          }
+        ],
+        "defaults": {
+          "participantType": "object"
+        },
+        "width": 185,
+        "height": 420
+      },
+      {
+        "name": "activation",
+        "title": "Activation",
+        "icon": "▯",
+        "fallback": "rect",
+        "role": "uml.activation",
+        "glyph": "activation",
+        "fields": [],
+        "defaults": {},
+        "width": 60,
+        "height": 170
+      }
+    ],
+    "templates": [
+      {
+        "id": "request-sequence",
+        "title": "Request sequence",
+        "family": "sequence",
+        "description": "Participants and message order with editable arrow labels",
+        "nodes": [
+          {
+            "key": "user",
+            "stencil": "actor",
+            "x": 100,
+            "y": 100,
+            "text": "User",
+            "height": 470
+          },
+          {
+            "key": "app",
+            "stencil": "lifeline",
+            "x": 390,
+            "y": 100,
+            "text": "Android app",
+            "height": 470
+          },
+          {
+            "key": "hub",
+            "stencil": "lifeline",
+            "x": 700,
+            "y": 100,
+            "text": "OmniHub",
+            "height": 470
+          },
+          {
+            "key": "store",
+            "stencil": "lifeline",
+            "x": 980,
+            "y": 100,
+            "text": "Store",
+            "width": 165,
+            "height": 470
+          }
+        ],
+        "links": [
+          {
+            "from": "user",
+            "to": "app",
+            "label": "1 · Open screen",
+            "kind": "message",
+            "route": "straight"
+          },
+          {
+            "from": "app",
+            "to": "hub",
+            "label": "2 · GET data",
+            "kind": "message",
+            "route": "straight"
+          },
+          {
+            "from": "hub",
+            "to": "store",
+            "label": "3 · Query",
+            "kind": "message",
+            "route": "straight"
+          },
+          {
+            "from": "store",
+            "to": "hub",
+            "label": "4 · Result",
+            "kind": "return",
+            "fromSide": "left",
+            "toSide": "right",
+            "route": "straight"
+          },
+          {
+            "from": "hub",
+            "to": "app",
+            "label": "5 · Response",
+            "kind": "return",
+            "fromSide": "left",
+            "toSide": "right",
+            "route": "straight"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "format": "omnidesign-pack",
+    "schemaVersion": 1,
+    "id": "uml-state",
+    "version": "1",
+    "name": "UML · State",
+    "family": "state",
+    "shapes": [
+      {
+        "name": "initial",
+        "title": "Initial",
+        "icon": "●",
+        "fallback": "ellipse",
+        "role": "state.initial",
+        "glyph": "initial",
+        "fields": [],
+        "defaults": {},
+        "width": 66,
+        "height": 66
+      },
+      {
+        "name": "state",
+        "title": "State",
+        "icon": "▢",
+        "fallback": "roundRect",
+        "role": "state.normal",
+        "fields": [
+          {
+            "key": "entry",
+            "label": "Entry action",
+            "type": "text"
+          },
+          {
+            "key": "exit",
+            "label": "Exit action",
+            "type": "text"
+          }
+        ],
+        "defaults": {},
+        "width": 210,
+        "height": 112
+      },
+      {
+        "name": "final",
+        "title": "Final",
+        "icon": "◎",
+        "fallback": "ellipse",
+        "role": "state.final",
+        "glyph": "final",
+        "fields": [],
+        "defaults": {},
+        "width": 70,
+        "height": 70
+      },
+      {
+        "name": "choice",
+        "title": "Choice",
+        "icon": "◇",
+        "fallback": "diamond",
+        "role": "state.choice",
+        "fields": [],
+        "defaults": {},
+        "width": 210,
+        "height": 112
+      }
+    ],
+    "templates": [
+      {
+        "id": "lifecycle",
+        "title": "State machine",
+        "family": "state",
+        "description": "Initial, transitions, guards and terminal state",
+        "nodes": [
+          {
+            "key": "start",
+            "stencil": "initial",
+            "x": 70,
+            "y": 315,
+            "text": ""
+          },
+          {
+            "key": "idle",
+            "stencil": "state",
+            "x": 220,
+            "y": 280,
+            "text": "Idle",
+            "props": {
+              "entry": "reset"
+            }
+          },
+          {
+            "key": "action",
+            "stencil": "state",
+            "x": 535,
+            "y": 130,
+            "text": "Working",
+            "props": {
+              "entry": "begin work"
+            }
+          },
+          {
+            "key": "error",
+            "stencil": "state",
+            "x": 540,
+            "y": 385,
+            "text": "Failed"
+          },
+          {
+            "key": "end",
+            "stencil": "final",
+            "x": 940,
+            "y": 150,
+            "text": ""
+          }
+        ],
+        "links": [
+          {
+            "from": "start",
+            "to": "idle",
+            "label": "",
+            "kind": "flow"
+          },
+          {
+            "from": "idle",
+            "to": "action",
+            "label": "start [ready]",
+            "kind": "transition"
+          },
+          {
+            "from": "action",
+            "to": "idle",
+            "label": "cancel",
+            "kind": "transition",
+            "fromSide": "bottom",
+            "toSide": "top"
+          },
+          {
+            "from": "action",
+            "to": "error",
+            "label": "error",
+            "kind": "transition",
+            "fromSide": "bottom",
+            "toSide": "top"
+          },
+          {
+            "from": "action",
+            "to": "end",
+            "label": "finish",
+            "kind": "transition"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "format": "omnidesign-pack",
+    "schemaVersion": 1,
+    "id": "erd",
+    "version": "1",
+    "name": "Database · ERD",
+    "family": "erd",
+    "shapes": [
+      {
+        "name": "entity",
+        "title": "Entity / Table",
+        "icon": "▤",
+        "fallback": "rect",
+        "role": "erd.entity",
+        "glyph": "entity",
+        "fields": [
+          {
+            "key": "schema",
+            "label": "Schema",
+            "type": "text"
+          },
+          {
+            "key": "primaryKey",
+            "label": "Primary key",
+            "type": "text"
+          }
+        ],
+        "defaults": {
+          "schema": "public",
+          "primaryKey": "id"
+        },
+        "width": 245,
+        "height": 185
+      },
+      {
+        "name": "weak",
+        "title": "Weak Entity",
+        "icon": "▣",
+        "fallback": "rect",
+        "role": "erd.weak",
+        "glyph": "entity",
+        "fields": [],
+        "defaults": {},
+        "width": 210,
+        "height": 112
+      },
+      {
+        "name": "relationship",
+        "title": "Relationship",
+        "icon": "◇",
+        "fallback": "diamond",
+        "role": "erd.relationship",
+        "fields": [],
+        "defaults": {},
+        "width": 210,
+        "height": 112
+      },
+      {
+        "name": "attribute",
+        "title": "Attribute",
+        "icon": "◯",
+        "fallback": "ellipse",
+        "role": "erd.attribute",
+        "fields": [],
+        "defaults": {},
+        "width": 210,
+        "height": 112
+      }
+    ],
+    "templates": [
+      {
+        "id": "data-model",
+        "title": "Entity relationship model",
+        "family": "erd",
+        "description": "Tables, fields, primary keys and cardinalities",
+        "nodes": [
+          {
+            "key": "users",
+            "stencil": "entity",
+            "x": 85,
+            "y": 155,
+            "text": "Users",
+            "items": [
+              "PK id : uuid",
+              "name : text",
+              "email : text"
+            ],
+            "props": {
+              "schema": "public",
+              "primaryKey": "id"
+            }
+          },
+          {
+            "key": "orders",
+            "stencil": "entity",
+            "x": 470,
+            "y": 155,
+            "text": "Orders",
+            "items": [
+              "PK id : uuid",
+              "FK user_id : uuid",
+              "created_at : date"
+            ],
+            "props": {
+              "primaryKey": "id"
+            }
+          },
+          {
+            "key": "lines",
+            "stencil": "entity",
+            "x": 870,
+            "y": 155,
+            "text": "Order lines",
+            "items": [
+              "PK id : uuid",
+              "FK order_id : uuid",
+              "quantity : int"
+            ],
+            "props": {
+              "primaryKey": "id"
+            }
+          }
+        ],
+        "links": [
+          {
+            "from": "users",
+            "to": "orders",
+            "label": "1 : N",
+            "kind": "crowfoot"
+          },
+          {
+            "from": "orders",
+            "to": "lines",
+            "label": "1 : N",
+            "kind": "crowfoot"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "format": "omnidesign-pack",
+    "schemaVersion": 1,
+    "id": "mindmap",
+    "version": "1",
+    "name": "Mind Map",
+    "family": "mindmap",
+    "shapes": [
+      {
+        "name": "topic",
+        "title": "Main Topic",
+        "icon": "◉",
+        "fallback": "ellipse",
+        "role": "mindmap.root",
+        "fields": [],
+        "defaults": {},
+        "width": 210,
+        "height": 112
+      },
+      {
+        "name": "branch",
+        "title": "Branch",
+        "icon": "⬭",
+        "fallback": "roundRect",
+        "role": "mindmap.branch",
+        "fields": [],
+        "defaults": {},
+        "width": 210,
+        "height": 112
+      },
+      {
+        "name": "detail",
+        "title": "Detail",
+        "icon": "▫",
+        "fallback": "roundRect",
+        "role": "mindmap.detail",
+        "fields": [],
+        "defaults": {},
+        "width": 210,
+        "height": 112
+      }
+    ],
+    "templates": [
+      {
+        "id": "idea-map",
+        "title": "Idea map",
+        "family": "mindmap",
+        "description": "Central idea with three branches and editable details",
+        "nodes": [
+          {
+            "key": "root",
+            "stencil": "topic",
+            "x": 465,
+            "y": 255,
+            "text": "Project vision",
+            "width": 235,
+            "height": 135
+          },
+          {
+            "key": "design",
+            "stencil": "branch",
+            "x": 130,
+            "y": 85,
+            "text": "Design"
+          },
+          {
+            "key": "tech",
+            "stencil": "branch",
+            "x": 130,
+            "y": 420,
+            "text": "Engineering"
+          },
+          {
+            "key": "release",
+            "stencil": "branch",
+            "x": 835,
+            "y": 260,
+            "text": "Release"
+          },
+          {
+            "key": "ref",
+            "stencil": "detail",
+            "x": 130,
+            "y": 260,
+            "text": "References"
+          },
+          {
+            "key": "demo",
+            "stencil": "detail",
+            "x": 855,
+            "y": 90,
+            "text": "Playtest"
+          }
+        ],
+        "links": [
+          {
+            "from": "root",
+            "to": "design",
+            "label": "",
+            "kind": "association",
+            "route": "bezier",
+            "fromSide": "left",
+            "toSide": "right"
+          },
+          {
+            "from": "root",
+            "to": "tech",
+            "label": "",
+            "kind": "association",
+            "route": "bezier",
+            "fromSide": "left",
+            "toSide": "right"
+          },
+          {
+            "from": "root",
+            "to": "release",
+            "label": "",
+            "kind": "association",
+            "route": "bezier"
+          },
+          {
+            "from": "design",
+            "to": "ref",
+            "label": "",
+            "kind": "association",
+            "route": "bezier"
+          },
+          {
+            "from": "release",
+            "to": "demo",
+            "label": "",
+            "kind": "association",
+            "route": "bezier"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "format": "omnidesign-pack",
+    "schemaVersion": 1,
+    "id": "roadmap",
+    "version": "1",
+    "name": "Timeline & Roadmap",
+    "family": "roadmap",
+    "shapes": [
+      {
+        "name": "milestone",
+        "title": "Milestone",
+        "icon": "◆",
+        "fallback": "diamond",
+        "role": "timeline.milestone",
+        "fields": [
+          {
+            "key": "date",
+            "label": "Target date",
+            "type": "text"
+          },
+          {
+            "key": "status",
+            "label": "Status",
+            "type": "select",
+            "options": [
+              "planned",
+              "active",
+              "done",
+              "blocked"
+            ]
+          }
+        ],
+        "defaults": {
+          "date": "2026-12-01",
+          "status": "planned"
+        },
+        "width": 135,
+        "height": 100
+      },
+      {
+        "name": "phase",
+        "title": "Phase",
+        "icon": "▰",
+        "fallback": "roundRect",
+        "role": "timeline.phase",
+        "fields": [
+          {
+            "key": "start",
+            "label": "Start",
+            "type": "text"
+          },
+          {
+            "key": "end",
+            "label": "End",
+            "type": "text"
+          },
+          {
+            "key": "status",
+            "label": "Status",
+            "type": "select",
+            "options": [
+              "planned",
+              "active",
+              "done",
+              "blocked"
+            ]
+          }
+        ],
+        "defaults": {},
+        "width": 210,
+        "height": 112
+      },
+      {
+        "name": "deliverable",
+        "title": "Deliverable",
+        "icon": "▤",
+        "fallback": "rect",
+        "role": "timeline.deliverable",
+        "fields": [],
+        "defaults": {},
+        "width": 210,
+        "height": 112
+      }
+    ],
+    "templates": [
+      {
+        "id": "delivery-roadmap",
+        "title": "Milestone timeline",
+        "family": "roadmap",
+        "description": "Project phases and dated deliverables",
+        "nodes": [
+          {
+            "key": "research",
+            "stencil": "phase",
+            "x": 75,
+            "y": 215,
+            "text": "Discovery",
+            "width": 235,
+            "props": {
+              "start": "Week 1",
+              "end": "Week 2"
+            }
+          },
+          {
+            "key": "m1",
+            "stencil": "milestone",
+            "x": 390,
+            "y": 230,
+            "text": "Spec approved",
+            "props": {
+              "date": "Week 2"
+            }
+          },
+          {
+            "key": "build",
+            "stencil": "phase",
+            "x": 605,
+            "y": 215,
+            "text": "Implementation",
+            "width": 240,
+            "props": {
+              "start": "Week 3",
+              "end": "Week 5"
+            }
+          },
+          {
+            "key": "m2",
+            "stencil": "milestone",
+            "x": 955,
+            "y": 230,
+            "text": "Release",
+            "props": {
+              "date": "Week 6"
+            }
+          },
+          {
+            "key": "deliverable",
+            "stencil": "deliverable",
+            "x": 605,
+            "y": 425,
+            "text": "Playable prototype"
+          }
+        ],
+        "links": [
+          {
+            "from": "research",
+            "to": "m1",
+            "label": "",
+            "kind": "dependency"
+          },
+          {
+            "from": "m1",
+            "to": "build",
+            "label": "",
+            "kind": "dependency"
+          },
+          {
+            "from": "build",
+            "to": "m2",
+            "label": "",
+            "kind": "dependency"
+          },
+          {
+            "from": "build",
+            "to": "deliverable",
+            "label": "produces",
+            "kind": "association"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "format": "omnidesign-pack",
+    "schemaVersion": 1,
+    "id": "network",
+    "version": "1",
+    "name": "Network Topology",
+    "family": "network",
+    "shapes": [
+      {
+        "name": "router",
+        "title": "Router",
+        "icon": "⌘",
+        "fallback": "ellipse",
+        "role": "network.router",
+        "glyph": "router",
+        "fields": [
+          {
+            "key": "ip",
+            "label": "IP address",
+            "type": "text"
+          },
+          {
+            "key": "vlan",
+            "label": "VLAN",
+            "type": "number"
+          }
+        ],
+        "defaults": {
+          "ip": "10.0.0.1",
+          "vlan": 1
+        },
+        "width": 175,
+        "height": 140
+      },
+      {
+        "name": "switch",
+        "title": "Switch",
+        "icon": "▦",
+        "fallback": "rect",
+        "role": "network.switch",
+        "glyph": "switch",
+        "fields": [
+          {
+            "key": "ports",
+            "label": "Physical ports",
+            "type": "number"
+          }
+        ],
+        "defaults": {
+          "ports": 8
+        },
+        "width": 210,
+        "height": 112
+      },
+      {
+        "name": "host",
+        "title": "Host",
+        "icon": "▣",
+        "fallback": "roundRect",
+        "role": "network.host",
+        "glyph": "screen",
+        "fields": [
+          {
+            "key": "ip",
+            "label": "IP address",
+            "type": "text"
+          },
+          {
+            "key": "os",
+            "label": "Operating system",
+            "type": "text"
+          }
+        ],
+        "defaults": {
+          "ip": "10.0.0.2",
+          "os": "Windows"
+        },
+        "width": 210,
+        "height": 112
+      },
+      {
+        "name": "firewall",
+        "title": "Firewall",
+        "icon": "▥",
+        "fallback": "polygon",
+        "role": "network.firewall",
+        "glyph": "firewall",
+        "fields": [
+          {
+            "key": "policy",
+            "label": "Policy",
+            "type": "text"
+          }
+        ],
+        "defaults": {
+          "policy": "deny-by-default"
+        },
+        "width": 210,
+        "height": 112
+      },
+      {
+        "name": "subnet",
+        "title": "Subnet",
+        "icon": "☁",
+        "fallback": "ellipse",
+        "role": "network.subnet",
+        "glyph": "cloud",
+        "fields": [
+          {
+            "key": "cidr",
+            "label": "CIDR",
+            "type": "text"
+          }
+        ],
+        "defaults": {
+          "cidr": "10.0.0.0/24"
+        },
+        "width": 210,
+        "height": 112
+      }
+    ],
+    "templates": [
+      {
+        "id": "home-lan",
+        "title": "LAN topology",
+        "family": "network",
+        "description": "Internet, firewall, switch and endpoint connections",
+        "nodes": [
+          {
+            "key": "net",
+            "stencil": "subnet",
+            "x": 80,
+            "y": 215,
+            "text": "Internet",
+            "props": {
+              "cidr": "WAN"
+            }
+          },
+          {
+            "key": "router",
+            "stencil": "router",
+            "x": 360,
+            "y": 210,
+            "text": "Gateway",
+            "props": {
+              "ip": "192.168.1.1"
+            }
+          },
+          {
+            "key": "switch",
+            "stencil": "switch",
+            "x": 640,
+            "y": 215,
+            "text": "LAN Switch",
+            "props": {
+              "ports": 8
+            }
+          },
+          {
+            "key": "pc",
+            "stencil": "host",
+            "x": 940,
+            "y": 85,
+            "text": "Desktop",
+            "props": {
+              "ip": "192.168.1.10",
+              "os": "Windows"
+            }
+          },
+          {
+            "key": "phone",
+            "stencil": "host",
+            "x": 940,
+            "y": 370,
+            "text": "Android",
+            "props": {
+              "ip": "192.168.1.11",
+              "os": "Android"
+            }
+          }
+        ],
+        "links": [
+          {
+            "from": "net",
+            "to": "router",
+            "label": "",
+            "kind": "link"
+          },
+          {
+            "from": "router",
+            "to": "switch",
+            "label": "",
+            "kind": "link"
+          },
+          {
+            "from": "switch",
+            "to": "pc",
+            "label": "Ethernet",
+            "kind": "link"
+          },
+          {
+            "from": "switch",
+            "to": "phone",
+            "label": "Wi-Fi",
+            "kind": "link"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "format": "omnidesign-pack",
+    "schemaVersion": 1,
+    "id": "game-system",
+    "version": "1",
+    "name": "Game Design",
+    "family": "game-system",
+    "shapes": [
+      {
+        "name": "event",
+        "title": "Event",
+        "icon": "⚡",
+        "fallback": "roundRect",
+        "role": "game.event",
+        "glyph": "event",
+        "fields": [
+          {
+            "key": "trigger",
+            "label": "Trigger",
+            "type": "text"
+          }
+        ],
+        "defaults": {
+          "trigger": "OnInteract"
+        },
+        "width": 210,
+        "height": 112
+      },
+      {
+        "name": "condition",
+        "title": "Condition",
+        "icon": "◇",
+        "fallback": "diamond",
+        "role": "game.condition",
+        "fields": [
+          {
+            "key": "predicate",
+            "label": "Predicate",
+            "type": "text"
+          }
+        ],
+        "defaults": {
+          "predicate": "hasResource"
+        },
+        "width": 210,
+        "height": 112
+      },
+      {
+        "name": "action",
+        "title": "Action",
+        "icon": "▣",
+        "fallback": "roundRect",
+        "role": "game.action",
+        "fields": [
+          {
+            "key": "effect",
+            "label": "Effect",
+            "type": "text"
+          }
+        ],
+        "defaults": {
+          "effect": "modify state"
+        },
+        "width": 210,
+        "height": 112
+      },
+      {
+        "name": "resource",
+        "title": "Resource",
+        "icon": "▤",
+        "fallback": "rect",
+        "role": "game.resource",
+        "glyph": "database",
+        "fields": [
+          {
+            "key": "amount",
+            "label": "Quantity",
+            "type": "number"
+          }
+        ],
+        "defaults": {
+          "amount": 5
+        },
+        "width": 210,
+        "height": 112
+      },
+      {
+        "name": "npc",
+        "title": "NPC / Actor",
+        "icon": "♟",
+        "fallback": "roundRect",
+        "role": "game.actor",
+        "glyph": "actor",
+        "fields": [
+          {
+            "key": "faction",
+            "label": "Faction",
+            "type": "text"
+          }
+        ],
+        "defaults": {
+          "faction": "neutral"
+        },
+        "width": 210,
+        "height": 112
+      }
+    ],
+    "templates": [
+      {
+        "id": "survival-loop",
+        "title": "Survival gameplay loop",
+        "family": "game-system",
+        "description": "Event → condition → action with resources and feedback",
+        "nodes": [
+          {
+            "key": "event",
+            "stencil": "event",
+            "x": 65,
+            "y": 180,
+            "text": "Player forages"
+          },
+          {
+            "key": "gate",
+            "stencil": "condition",
+            "x": 360,
+            "y": 190,
+            "text": "Resource available?",
+            "width": 200,
+            "height": 135
+          },
+          {
+            "key": "award",
+            "stencil": "action",
+            "x": 670,
+            "y": 115,
+            "text": "Collect food",
+            "props": {
+              "effect": "inventory +1"
+            }
+          },
+          {
+            "key": "res",
+            "stencil": "resource",
+            "x": 940,
+            "y": 115,
+            "text": "Food inventory",
+            "props": {
+              "amount": 1
+            }
+          },
+          {
+            "key": "fail",
+            "stencil": "action",
+            "x": 670,
+            "y": 390,
+            "text": "Search elsewhere",
+            "props": {
+              "effect": "set goal"
+            }
+          },
+          {
+            "key": "npc",
+            "stencil": "npc",
+            "x": 65,
+            "y": 445,
+            "text": "Foraging NPC",
+            "props": {
+              "faction": "tribe"
+            }
+          }
+        ],
+        "links": [
+          {
+            "from": "event",
+            "to": "gate",
+            "label": "OnUse",
+            "kind": "event"
+          },
+          {
+            "from": "gate",
+            "to": "award",
+            "label": "Yes",
+            "kind": "flow"
+          },
+          {
+            "from": "gate",
+            "to": "fail",
+            "label": "No",
+            "kind": "flow"
+          },
+          {
+            "from": "award",
+            "to": "res",
+            "label": "Grants",
+            "kind": "resource"
+          },
+          {
+            "from": "npc",
+            "to": "event",
+            "label": "Motivation",
+            "kind": "event"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "format": "omnidesign-pack",
+    "schemaVersion": 1,
+    "id": "floorplan",
+    "version": "1",
+    "name": "Floorplan",
+    "family": "floorplan",
+    "shapes": [
+      {
+        "name": "room",
+        "title": "Room",
+        "icon": "▣",
+        "fallback": "rect",
+        "role": "floor.room",
+        "glyph": "room",
+        "fields": [
+          {
+            "key": "widthMeters",
+            "label": "Width (m)",
+            "type": "number"
+          },
+          {
+            "key": "lengthMeters",
+            "label": "Length (m)",
+            "type": "number"
+          }
+        ],
+        "defaults": {
+          "widthMeters": 4,
+          "lengthMeters": 3
+        },
+        "width": 300,
+        "height": 220
+      },
+      {
+        "name": "door",
+        "title": "Door",
+        "icon": "◫",
+        "fallback": "rect",
+        "role": "floor.door",
+        "glyph": "door",
+        "fields": [
+          {
+            "key": "swing",
+            "label": "Swing",
+            "type": "select",
+            "options": [
+              "left",
+              "right",
+              "sliding"
+            ]
+          }
+        ],
+        "defaults": {
+          "swing": "left"
+        },
+        "width": 90,
+        "height": 30
+      },
+      {
+        "name": "window",
+        "title": "Window",
+        "icon": "═",
+        "fallback": "rect",
+        "role": "floor.window",
+        "glyph": "window",
+        "fields": [],
+        "defaults": {},
+        "width": 140,
+        "height": 27
+      },
+      {
+        "name": "furniture",
+        "title": "Furniture",
+        "icon": "▣",
+        "fallback": "roundRect",
+        "role": "floor.furniture",
+        "fields": [],
+        "defaults": {},
+        "width": 210,
+        "height": 112
+      }
+    ],
+    "templates": [
+      {
+        "id": "rooms",
+        "title": "Room sketch",
+        "family": "floorplan",
+        "description": "Approximate adjacency sketch, not construction CAD",
+        "nodes": [
+          {
+            "key": "living",
+            "stencil": "room",
+            "x": 100,
+            "y": 160,
+            "text": "Living",
+            "width": 440,
+            "height": 375,
+            "props": {
+              "widthMeters": 5,
+              "lengthMeters": 4
+            }
+          },
+          {
+            "key": "kitchen",
+            "stencil": "room",
+            "x": 540,
+            "y": 160,
+            "text": "Kitchen",
+            "width": 400,
+            "height": 225,
+            "props": {
+              "widthMeters": 4,
+              "lengthMeters": 3
+            }
+          },
+          {
+            "key": "bed",
+            "stencil": "room",
+            "x": 540,
+            "y": 385,
+            "text": "Bedroom",
+            "width": 400,
+            "height": 255
+          },
+          {
+            "key": "door1",
+            "stencil": "door",
+            "x": 510,
+            "y": 280,
+            "text": "",
+            "width": 65,
+            "height": 30
+          },
+          {
+            "key": "window1",
+            "stencil": "window",
+            "x": 210,
+            "y": 148,
+            "text": "",
+            "width": 160,
+            "height": 25
+          }
+        ],
+        "links": []
+      }
+    ]
+  },
+  {
+    "format": "omnidesign-pack",
+    "schemaVersion": 1,
+    "id": "swimlane",
+    "version": "1",
+    "name": "Process / Swimlane",
+    "family": "swimlane",
+    "shapes": [
+      {
+        "name": "lane",
+        "title": "Swimlane",
+        "icon": "▰",
+        "fallback": "rect",
+        "role": "process.lane",
+        "glyph": "lane",
+        "fields": [
+          {
+            "key": "owner",
+            "label": "Owner",
+            "type": "text"
+          }
+        ],
+        "defaults": {
+          "owner": "Team"
+        },
+        "width": 1040,
+        "height": 150
+      },
+      {
+        "name": "task",
+        "title": "Task",
+        "icon": "▣",
+        "fallback": "roundRect",
+        "role": "process.task",
+        "fields": [],
+        "defaults": {},
+        "width": 210,
+        "height": 112
+      },
+      {
+        "name": "decision",
+        "title": "Decision",
+        "icon": "◇",
+        "fallback": "diamond",
+        "role": "process.decision",
+        "fields": [],
+        "defaults": {},
+        "width": 210,
+        "height": 112
+      }
+    ],
+    "templates": [
+      {
+        "id": "handoff-process",
+        "title": "Team handoff process",
+        "family": "swimlane",
+        "description": "Editable lanes with cross-lane ownership and flows",
+        "nodes": [
+          {
+            "key": "lane1",
+            "stencil": "lane",
+            "x": 70,
+            "y": 60,
+            "text": "Design",
+            "width": 1060,
+            "height": 165
+          },
+          {
+            "key": "lane2",
+            "stencil": "lane",
+            "x": 70,
+            "y": 245,
+            "text": "Engineering",
+            "width": 1060,
+            "height": 165
+          },
+          {
+            "key": "lane3",
+            "stencil": "lane",
+            "x": 70,
+            "y": 430,
+            "text": "QA",
+            "width": 1060,
+            "height": 165
+          },
+          {
+            "key": "spec",
+            "stencil": "task",
+            "x": 285,
+            "y": 85,
+            "text": "Draft spec",
+            "width": 190,
+            "height": 100
+          },
+          {
+            "key": "impl",
+            "stencil": "task",
+            "x": 540,
+            "y": 280,
+            "text": "Implement",
+            "width": 190,
+            "height": 100
+          },
+          {
+            "key": "verify",
+            "stencil": "task",
+            "x": 845,
+            "y": 455,
+            "text": "Verify",
+            "width": 190,
+            "height": 100
+          }
+        ],
+        "links": [
+          {
+            "from": "spec",
+            "to": "impl",
+            "label": "handoff",
+            "kind": "flow"
+          },
+          {
+            "from": "impl",
+            "to": "verify",
+            "label": "build ready",
+            "kind": "flow"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "format": "omnidesign-pack",
+    "schemaVersion": 1,
+    "id": "wireframe",
+    "version": "1",
+    "name": "Wireframe / UI",
+    "family": "custom",
+    "shapes": [
+      {
+        "name": "screen",
+        "title": "Screen",
+        "icon": "▣",
+        "fallback": "rect",
+        "role": "ui.screen",
+        "glyph": "screen",
+        "fields": [
+          {
+            "key": "platform",
+            "label": "Platform",
+            "type": "select",
+            "options": [
+              "desktop",
+              "mobile",
+              "tablet"
+            ]
+          }
+        ],
+        "defaults": {
+          "platform": "mobile"
+        },
+        "width": 300,
+        "height": 490
+      },
+      {
+        "name": "button",
+        "title": "Button",
+        "icon": "▣",
+        "fallback": "roundRect",
+        "role": "ui.button",
+        "fields": [],
+        "defaults": {},
+        "width": 210,
+        "height": 112
+      },
+      {
+        "name": "input",
+        "title": "Input",
+        "icon": "▱",
+        "fallback": "rect",
+        "role": "ui.input",
+        "fields": [],
+        "defaults": {},
+        "width": 210,
+        "height": 112
+      },
+      {
+        "name": "card",
+        "title": "Card",
+        "icon": "▤",
+        "fallback": "roundRect",
+        "role": "ui.card",
+        "fields": [],
+        "defaults": {},
+        "width": 210,
+        "height": 112
+      }
+    ],
+    "templates": [
+      {
+        "id": "mobile-screen",
+        "title": "Mobile wireframe",
+        "family": "custom",
+        "description": "Screen layout as native editable boxes",
+        "nodes": [
+          {
+            "key": "screen",
+            "stencil": "screen",
+            "x": 365,
+            "y": 65,
+            "text": "App screen",
+            "width": 425,
+            "height": 575,
+            "props": {
+              "platform": "mobile"
+            }
+          },
+          {
+            "key": "header",
+            "stencil": "card",
+            "x": 425,
+            "y": 160,
+            "text": "Header",
+            "width": 300,
+            "height": 65
+          },
+          {
+            "key": "input",
+            "stencil": "input",
+            "x": 425,
+            "y": 260,
+            "text": "Search",
+            "width": 300,
+            "height": 62
+          },
+          {
+            "key": "card1",
+            "stencil": "card",
+            "x": 425,
+            "y": 365,
+            "text": "Result card",
+            "width": 300,
+            "height": 100
+          },
+          {
+            "key": "action",
+            "stencil": "button",
+            "x": 425,
+            "y": 510,
+            "text": "Continue",
+            "width": 300,
+            "height": 68
+          }
+        ],
+        "links": []
+      }
+    ]
+  }
+]

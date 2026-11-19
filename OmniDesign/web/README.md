@@ -46,3 +46,5 @@ The **Link** button on desktop and Android copies a private owner-login Gateway 
 - Sample custom pack: `public/sample.quest-pack.omdpack.json` (also downloadable through Kits). Specification and all 12 family examples: `../../docs/OmniDesign/MISC-0164-packs.md`.
 
 The diagrams are editable visual models, not formal code generators or CAD. All kits remain freeform on the same document, including cross-kit connectors.
+
+Agents use the same built-in packs through an exported catalog at `../service/agent_packs.json`; after changing `src/packs.ts`, run `node scripts/export_agent_catalog.cjs` to refresh it. The PC agent skill authoring CLI creates/reads/patches native documents in the same Hub service (MISC-0169); the current user-visible SVG/PNG export stays a derived visual. See `../../docs/OmniDesign/MISC-0169-skill-integration.md`.

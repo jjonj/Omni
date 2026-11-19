@@ -14,6 +14,12 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlencode, urlsplit
 from urllib.request import Request, urlopen
 
+EDITOR_ROOT = "https://hub.rancorous.online/omnidesign/"
+
+
+def permalink(diagram_id: str) -> str:
+    return EDITOR_ROOT + "?" + urlencode({"diagram": diagram_id})
+
 
 def request(base: str, route: str, method: str = "GET",
             payload: dict | None = None, headers: dict | None = None) -> dict:
@@ -22,6 +28,9 @@ def request(base: str, route: str, method: str = "GET",
                   headers={"Accept": "application/json", **({"Content-Type": "application/json"} if body else {}), **(headers or {})})
     try:
         with urlopen(req, timeout=15) as res:
+            if "json" not in res.headers.get("Content-Type", "").lower():
+                raise RuntimeError("OmniDesign returned non-JSON content (possibly a Gateway login page). "
+                                   "Use the authorized private PC service route; no write was confirmed.")
             return json.load(res)
     except HTTPError as exc:
         try:
@@ -81,6 +90,15 @@ def main() -> int:
                         help="Reachable private OmniDesign service origin (or authenticated Gateway tool URL).")
     parser.add_argument("--no-launch", action="store_true", help="Do not ask local OmniHub Gateway to launch its registered tool.")
     sub = parser.add_subparsers(dest="action", required=True)
+    sub.add_parser("families", help="List editor-owned stencil packs, templates and available node kinds.")
+    draft = sub.add_parser("draft", help="Write a local editable v1 draft; NOT remotely saved.")
+    draft.add_argument("--spec", help="JSON with family, title, nodes and links.")
+    draft.add_argument("--family", default="architecture", help="Built-in stencil pack (or override spec family).")
+    draft.add_argument("--template", help="Optional built-in starter template ID.")
+    draft.add_argument("--title", help="Diagram title (or override spec title).")
+    draft.add_argument("--output", required=True, help="Local native .omd.json draft path.")
+    create = sub.add_parser("create", help="POST a revision-0 native draft to the authoritative PC store.")
+    create.add_argument("--document", required=True, help="Local .omd.json draft; never replaced by an image.")
     read = sub.add_parser("read", help="Retrieve latest native document from permanent link or ID.")
     read.add_argument("link")
     read.add_argument("--output", help="Optional file for lossless JSON source.")
@@ -98,6 +116,48 @@ def main() -> int:
     args = parser.parse_args()
 
     try:
+        from pathlib import Path
+        if args.action in ("draft", "families"):
+            from agent_draft import catalog, write_draft
+            if args.action == "families":
+                print(json.dumps([{"id": p["id"], "family": p["family"],
+                                   "stencils": [s["name"] for s in p["shapes"]],
+                                   "templates": [t["id"] for t in p["templates"]]}
+                                  for p in catalog()], indent=2))
+                return 0
+            if not args.spec and not args.title and not args.template:
+                raise ValueError("Supply --spec, --title or --template; cannot save an unnamed empty diagram.")
+            spec = json.loads(Path(args.spec).read_text(encoding="utf-8")) if args.spec else {}
+            if not isinstance(spec, dict):
+                raise ValueError("--spec must contain a JSON object")
+            if not args.spec or args.family != "architecture":
+                spec["family"] = args.family
+            if args.template:
+                spec["template"] = args.template
+            if args.title:
+                spec["title"] = args.title
+            saved = write_draft(spec, args.output)
+            print(json.dumps({"id": saved["id"], "revision": 0,
+                              "path": str(Path(args.output).resolve()),
+                              "status": "local-only; NOT remotely saved",
+                              "next": "Use create --document with this same file when OmniHub is reachable."}, indent=2))
+            return 0
+        if args.action == "create":
+            from server import validated
+            from fastapi import HTTPException
+            local = json.loads(Path(args.document).read_text(encoding="utf-8"))
+            try:
+                validated(local, revision=0)
+            except HTTPException as exc:
+                raise ValueError(f"Invalid native draft: {exc.detail}") from exc
+            if not args.no_launch:
+                ensure_gateway_tool(args.base_url)
+            saved = request(args.base_url, "diagrams", "POST", local)
+            if saved.get("id") != local["id"] or saved.get("revision") != 1:
+                raise RuntimeError("Unexpected create receipt; verify by reading ID before claiming success.")
+            print(json.dumps({"id": saved["id"], "revision": saved["revision"],
+                              "link": permalink(saved["id"]), "status": "saved to PC OmniDesign"}, indent=2))
+            return 0
         if not args.no_launch:
             ensure_gateway_tool(args.base_url)
         # The resolver validates link shapes and returns from the SAME SQLite DB.
