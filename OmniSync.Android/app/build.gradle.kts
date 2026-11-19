@@ -60,6 +60,8 @@ android {
         }
     }
     sourceSets {
+        // Bundle the exact shared React editor from the sibling OmniDesign project.
+        getByName("main").assets.srcDir(layout.buildDirectory.dir("generated/omnidesignAssets"))
         getByName("test").resources.srcDir(rootProject.file("../Shared"))
     }
 }
@@ -94,6 +96,23 @@ fun registerUpdateMetadata(variant: String) {
         finalizedBy(metadataTask)
     }
 }
+
+// APK assets must match current shared editor sources; WebView never loads a remote page.
+val buildOmniDesignAssets = tasks.register<Exec>("buildOmniDesignAssets") {
+    workingDir = rootProject.file("../OmniDesign/web")
+    commandLine("cmd", "/c", "npm", "run", "build")
+    inputs.dir(rootProject.file("../OmniDesign/web/src"))
+    inputs.file(rootProject.file("../OmniDesign/web/index.html"))
+    inputs.file(rootProject.file("../OmniDesign/web/package-lock.json"))
+    outputs.dir(rootProject.file("../OmniDesign/web/dist"))
+}
+val prepareOmniDesignAssets = tasks.register<Copy>("prepareOmniDesignAssets") {
+    dependsOn(buildOmniDesignAssets)
+    from(rootProject.file("../OmniDesign/web/dist"))
+    into(layout.buildDirectory.dir("generated/omnidesignAssets/omnidesign"))
+}
+tasks.matching { it.name.startsWith("merge") && it.name.endsWith("Assets") }
+    .configureEach { dependsOn(prepareOmniDesignAssets) }
 
 registerUpdateMetadata("debug")
 registerUpdateMetadata("release")

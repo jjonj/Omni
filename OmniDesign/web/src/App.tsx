@@ -3,7 +3,8 @@ import {renderToStaticMarkup} from 'react-dom/server';
 import {Canvas,type CanvasApi} from './Canvas';
 import {GraphicScene} from './GraphicScene';
 import {clone,edge,exampleDiagram,groupElements,itemById,newDiagram,node,origin,palette,removeElements,snap,stamp,translate,ungroupElements,uuid,validateDocument} from './model';
-import {download,filename,getDocuments,putDocument,removeDocument} from './storage';
+import {download,filename,getDocuments,getSynced,needsSync,putDocument,removeDocument,setSynced,type SyncedBaseline} from './storage';
+import {hubHealth,hubJson,HubHttpError,inAndroid} from './androidBridge';
 import type {Diagram,Element,NodeElement,Point,Style,Tool} from './types';
 import {allStencils,allTemplates,attachPack,builtInPacks,documentPacks,findStencil,instantiateTemplate,loadPersonalPacks,parsePack,savePersonalPacks,stencilNode,type Pack,type Stencil} from './packs';
 import {edgeStyleKinds} from './StencilArt';
@@ -27,9 +28,14 @@ function App(){
  const history=useRef<{past:Diagram[];future:Diagram[]}>({past:[],future:[]});
  const [revision,setRevision]=useState(0),[selected,setSelected]=useState<string[]>([]),[tool,setTool]=useState<Tool>('select');
  const [library,setLibrary]=useState(false),[saved,setSaved]=useState<Diagram[]>([]);
+ const [mobileActions,setMobileActions]=useState(false);
  const [panel,setPanel]=useState<'inspector'|'layers'|'outline'|'shapes'|null>('inspector');
  const [mobileSheet,setMobileSheet]=useState(false),[activeLayer,setActiveLayer]=useState<string>('');
  const [message,setMessage]=useState('Saved locally'),[ready,setReady]=useState(false);
+ const [synced,setSyncedMap]=useState<Record<string,SyncedBaseline>>({});
+ const [hubOnline,setHubOnline]=useState<boolean|null>(null),[syncBusy,setSyncBusy]=useState(false);
+ const [conflicts,setConflicts]=useState<Record<string,string>>({});
+ const syncLock=useRef(false);
  const [hubDocs,setHubDocs]=useState<{id:string;title:string;family:string;revision:number}[]>([]),[hubOpen,setHubOpen]=useState(false);
  const [personalPacks,setPersonalPacks]=useState<Pack[]>(loadPersonalPacks);
  const [templateGallery,setTemplateGallery]=useState(false),[shapeSearch,setShapeSearch]=useState(''),[packFilter,setPackFilter]=useState('all');
@@ -37,47 +43,113 @@ function App(){
  const packs=[...builtInPacks,...personalPacks,...documentPacks(doc).filter(p=>!personalPacks.some(q=>q.id===p.id&&q.version===p.version))];
  const canvas=useRef<CanvasApi>(null);
  const replace=(next:Diagram)=>{docRef.current=next;setDoc(next);};
- const updateLibrary=async()=>{try{setSaved((await getDocuments()).sort((a,b)=>b.metadata.updatedAt.localeCompare(a.metadata.updatedAt)));}catch(e){setMessage('Local storage unavailable: '+String(e));}};
+ const updateLibrary=async()=>{try{
+  const [documents,baselines]=await Promise.all([getDocuments(),getSynced()]);
+  setSaved(documents.sort((a,b)=>b.metadata.updatedAt.localeCompare(a.metadata.updatedAt)));
+  setSyncedMap(baselines);
+ }catch(e){setMessage('Local storage unavailable: '+String(e));}};
  const openDoc=(next:Diagram)=>{replace(clone(next));setSelected([]);history.current={past:[],future:[]};setRevision(v=>v+1);setActiveLayer(next.layers[0].id);localStorage.setItem('omnidesign.current',next.id);setLibrary(false);setMobileSheet(false);setTool('select');};
  useEffect(()=>{let live=true;(async()=>{try{
   const all=await getDocuments();if(!live)return;
   const id=localStorage.getItem('omnidesign.current');let prior:Diagram|undefined=all.find(d=>d.id===id)||all[0];
   const deepId=new URLSearchParams(window.location.search).get('diagram');
-  if(deepId){try{const response=await fetch(new URL('./api/v1/diagrams/'+encodeURIComponent(deepId),location.href));if(response.ok){prior=validateDocument(await response.json());await putDocument(prior);}}catch{/* Offline: prefer the local cache. */}
-   if(prior?.id!==deepId)prior=all.find(d=>d.id===deepId);}
+  if(deepId){prior=all.find(d=>d.id===deepId);
+   if(!prior)try{prior=validateDocument(await hubJson('diagrams/'+encodeURIComponent(deepId)));await putDocument(prior);await setSynced(prior);}catch{/* Offline: never replace the locally cached diagram. */}}
   if(prior)openDoc(validateDocument(prior));else{const example=exampleDiagram();openDoc(example);await putDocument(example);}
   await updateLibrary();
  }catch(e){setMessage('Storage issue: '+String(e));}finally{if(live)setReady(true);}})();return()=>{live=false;};},[]);
- useEffect(()=>{if(!ready)return;setMessage('Saving locally…');const timer=setTimeout(async()=>{try{await putDocument(doc);setMessage('Saved locally');updateLibrary();}catch(e){setMessage('Save failed: '+String(e));}},420);return()=>clearTimeout(timer);},[doc,ready]);
+ useEffect(()=>{if(!ready)return;setMessage('Saving locally…');
+  const persist=async()=>{try{await putDocument(doc);setMessage('Saved locally');await updateLibrary();}catch(e){setMessage('Save failed: '+String(e));}};
+  // Android cannot afford to lose the final edit on a fast app switch.
+  if(inAndroid){void persist();return;}
+  const timer=setTimeout(persist,420);return()=>clearTimeout(timer);
+ },[doc,ready]);
+ useEffect(()=>{if(!inAndroid)return;
+  // Native Back waits for the last IndexedDB write to finish before tearing down the WebView.
+  window.omniDesignBeforeExit=()=>{void putDocument(docRef.current).finally(()=>window.OmniDesignNative?.flushed());};
+  return()=>{delete window.omniDesignBeforeExit;};
+ },[]);
+ useEffect(()=>{if(!ready)return;
+  let live=true;const check=async()=>{const online=await hubHealth();if(live)setHubOnline(online);};
+  void check();const interval=setInterval(check,25000);window.addEventListener('online',check);
+  return()=>{live=false;clearInterval(interval);window.removeEventListener('online',check);};
+ },[ready]);
  // Hub writes are explicit; local edits keep their full native document in IndexedDB.
  // Conditional revisions prevent another device or agent from being overwritten.
- const hubRequest=async(path:string,options?:RequestInit):Promise<{response:Response;data:any}>=>{
-  const response=await fetch(new URL('./api/v1/'+path,location.href),options);
-  const data=await response.json().catch(()=>null);
-  if(!response.ok)throw Error((data?.detail?.error??data?.detail??data?.error??response.statusText)+' (HTTP '+response.status+')');
-  return {response,data};
+ const hubRequest=async(path:string,options?:RequestInit):Promise<{data:any}>=>{
+  try{const data=await hubJson(path,options);setHubOnline(true);return {data};}
+  catch(error){if(!(error instanceof HubHttpError)||![409,412,422].includes(error.status))setHubOnline(false);throw error;}
  };
- const saveToHub=async()=>{
-  const snapshot=clone(docRef.current);
+ const uploadDocument=async(snapshot:Diagram)=>{
+  validateDocument(snapshot);
+  const creating=snapshot.revision===0,payload=JSON.stringify(snapshot);
+  // Replaying an uncertain write uses the same idempotency key.
+  const digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(payload));
+  const key=Array.from(new Uint8Array(digest),b=>b.toString(16).padStart(2,'0')).join('');
   try{
-   validateDocument(snapshot);
-   const creating=snapshot.revision===0,payload=JSON.stringify(snapshot);
-   // Same attempted document + base revision => same key after an uncertain response.
-   const digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(payload));
-   const key=Array.from(new Uint8Array(digest),b=>b.toString(16).padStart(2,'0')).join('');
    const {data}=await hubRequest('diagrams'+(creating?'':'/'+snapshot.id),{
     method:creating?'POST':'PUT',
     headers:creating?{'Content-Type':'application/json'}:{'Content-Type':'application/json','If-Match':'"rev-'+snapshot.revision+'"','Idempotency-Key':key},
     body:payload
    });
    const accepted=validateDocument(data);
+   // Record the confirmed revision BEFORE changing the local document.
+   await setSynced(accepted);
    if(docRef.current.id===snapshot.id){
     const unchanged=JSON.stringify(docRef.current)===JSON.stringify(snapshot);
     const next=unchanged?accepted:{...docRef.current,revision:accepted.revision};
-    replace(next);await putDocument(next);await updateLibrary();
-    setMessage(unchanged?'Hub saved · revision '+accepted.revision:'Hub saved previous state; newer local edits remain to publish');
-   }else setMessage('Hub saved '+snapshot.title+'; another diagram is now open.');
-  }catch(e){setMessage('Hub save failed (local copy retained): '+String(e));}
+    replace(next);await putDocument(next);
+   }else{
+    // A different diagram is open; never swap its canvas.
+    await putDocument(accepted);
+   }
+   setConflicts(c=>{const n={...c};delete n[snapshot.id];return n;});
+   await updateLibrary();
+   return accepted;
+  }catch(error){
+   if(error instanceof HubHttpError&&[409,412].includes(error.status))
+    setConflicts(c=>({...c,[snapshot.id]:'Hub has a different revision. Local edits are safe. Keep both or review on PC.'}));
+   throw error;
+  }
+ };
+ const saveToHub=async()=>{
+  if(syncLock.current)return;
+  syncLock.current=true;setSyncBusy(true);
+  try{await putDocument(docRef.current);const accepted=await uploadDocument(clone(docRef.current));setMessage('Hub saved · revision '+accepted.revision);}
+  catch(e){setMessage('Hub save failed; saved locally: '+String(e));}
+  finally{syncLock.current=false;setSyncBusy(false);}
+ };
+ const syncPending=async()=>{
+  if(syncLock.current)return;
+  syncLock.current=true;setSyncBusy(true);
+  let uploaded=0,failed=0;
+  try{
+   await putDocument(docRef.current);
+   const [documents,baselines]=await Promise.all([getDocuments(),getSynced()]);
+   for(const item of documents){
+    const snapshot=item.id===docRef.current.id?clone(docRef.current):item;
+    if(!needsSync(snapshot,baselines[item.id]))continue;
+    try{await uploadDocument(snapshot);uploaded++;}catch{failed++;}
+   }
+   setMessage(failed?uploaded+' synced; '+failed+' kept locally (see pending/conflict)':'All pending diagrams synced · '+uploaded+' uploaded');
+  }catch(error){setMessage('Sync unavailable; diagrams retained locally: '+String(error));}
+  finally{await updateLibrary();syncLock.current=false;setSyncBusy(false);}
+ };
+ const keepBoth=async()=>{
+  const original=clone(docRef.current);
+  const copy={...original,id:uuid('dgm_'),revision:0,title:original.title+' · local copy',
+   metadata:{...original.metadata,updatedAt:stamp(),forkedFrom:{id:original.id,revision:original.revision}}};
+  // First make the conflicting local version durable under a fresh ID.
+  await putDocument(copy);
+  // Then restore the unmodified Hub version to its original stable ID.
+  // If connectivity fails, both local copies remain intact for later reconciliation.
+  try{
+   const {data}=await hubRequest('diagrams/'+original.id),remote=validateDocument(data);
+   await putDocument(remote);await setSynced(remote);
+   setConflicts(c=>{const next={...c};delete next[original.id];return next;});
+  }catch{/* Preserve the original pending local source when Hub is unreachable. */}
+  openDoc(copy);await updateLibrary();
+  setMessage('Local version saved as a separate ID. The Hub original was not overwritten.');
  };
  const openHubLibrary=async()=>{try{
   const {data}=await hubRequest('diagrams?limit=100');
@@ -86,10 +158,15 @@ function App(){
  const openFromHub=async(id:string)=>{try{
   await putDocument(docRef.current); // Keep the current local working state before changing documents.
   const {data}=await hubRequest('diagrams/'+id);
-  const native=validateDocument(data);await putDocument(native);openDoc(native);await updateLibrary();setHubOpen(false);
+  const native=validateDocument(data);
+  const locallySaved=(await getDocuments()).find(d=>d.id===id),baseline=(await getSynced())[id];
+  if(locallySaved&&needsSync(locallySaved,baseline)){
+   openDoc(locallySaved);setHubOpen(false);setMessage('Opened local pending edits, not the newer Hub version.');return;
+  }
+  await putDocument(native);await setSynced(native);openDoc(native);await updateLibrary();setHubOpen(false);
   setMessage('Opened Hub revision '+native.revision);
  }catch(e){setMessage('Hub open failed: '+String(e));}};
- const copyHubLink=async()=>{try{const prefix=location.pathname.includes('/gateway/tools/omnidesign/')?location.origin+'/gateway/tools/omnidesign/':location.origin+'/';await navigator.clipboard.writeText(prefix+'?diagram='+encodeURIComponent(docRef.current.id));setMessage(docRef.current.revision?'Link copied':'Link copied · this ID is local only until first Hub save');}catch(e){setMessage('Unable to copy link: '+String(e));}};
+ const copyHubLink=async()=>{if(inAndroid){setMessage('Use the PC editor to copy its private Hub link.');return;}try{const prefix=location.pathname.includes('/gateway/tools/omnidesign/')?location.origin+'/gateway/tools/omnidesign/':location.origin+'/';await navigator.clipboard.writeText(prefix+'?diagram='+encodeURIComponent(docRef.current.id));setMessage(docRef.current.revision?'Link copied':'Link copied · this ID is local only until first Hub save');}catch(e){setMessage('Unable to copy link: '+String(e));}};
  const commit=(edit:(d:Diagram)=>Diagram)=>{const before=docRef.current,next=edit(clone(before));if(JSON.stringify(before)===JSON.stringify(next))return;history.current.past.push(clone(before));if(history.current.past.length>100)history.current.past.shift();history.current.future=[];next.metadata={...next.metadata,updatedAt:stamp()};replace(next);setRevision(v=>v+1);};
  const preview=(d:Diagram)=>replace(d);
  const finish=(before:Diagram)=>{if(JSON.stringify(before)===JSON.stringify(docRef.current))return;history.current.past.push(before);if(history.current.past.length>100)history.current.past.shift();history.current.future=[];replace({...docRef.current,metadata:{...docRef.current.metadata,updatedAt:stamp()}});setRevision(v=>v+1);};
@@ -158,6 +235,9 @@ function App(){
  const layer=doc.layers.find(l=>l.id===selectedEl?.layerId);
  const activeStencil=selectedEl?.type==='node'?findStencil(packs,selectedEl.shape.libraryId,selectedEl.shape.name):undefined;
  const matches=allStencils(packs).filter(s=>(packFilter==='all'||s.packId===packFilter)&&((s.title+' '+s.packName+' '+s.role).toLowerCase().includes(shapeSearch.toLowerCase())));
+ const staged=saved.some(d=>d.id===doc.id)?saved.map(d=>d.id===doc.id?doc:d):[...saved,doc];
+ const pendingCount=staged.filter(d=>needsSync(d,synced[d.id])).length;
+ const documentState=(d:Diagram)=>conflicts[d.id]?'Conflict':!needsSync(d,synced[d.id])?'Synced':d.revision===0?'Local only':'Pending';
  const toolsPanel=<div className="tool-stack">{shapes.map(s=><Button key={s.tool} title={s.label} active={tool===s.tool} onClick={()=>{setTool(s.tool);setMobileSheet(false);}}><b>{s.icon}</b><span>{s.label}</span></Button>)}<Button title="Shape libraries" active={tool==='stencil'} onClick={()=>{setPanel('shapes');setMobileSheet(true);}}><b>▦</b><span>Kits</span></Button></div>;
  const field=(label:string,children:React.ReactNode)=><label className="field"><span>{label}</span>{children}</label>;
  const updateText=(text:string)=>{if(!selectedEl)return;changeElement(selectedEl.id,e=>{
@@ -226,8 +306,8 @@ function App(){
  <input aria-label="Diagram title" className="title-input" value={doc.title} onChange={e=>commit(d=>({...d,title:e.target.value||'Untitled diagram'}))}/>
  <span className="desktop-only small-status">{message}</span>
  <div className="top-actions">
- <Button className="mobile-only" title="Canvas / Outline" onClick={()=>{setPanel('outline');setMobileSheet(true);}}>☷</Button>
- <Button title="Open local diagram library" onClick={()=>setLibrary(v=>!v)}>☷ <span className="desktop-only">Library</span></Button>
+ <Button className="mobile-only mobile-outline-header" title="Canvas / Outline" onClick={()=>{setPanel('outline');setMobileSheet(true);}}>☷</Button>
+ <Button className="mobile-primary-library" title="Open local diagram library" onClick={()=>setLibrary(v=>!v)}>☷ <span className="desktop-only">Library</span></Button>
  <Button title="Browse editable diagram templates" onClick={()=>{setTemplateGallery(true);setLibrary(false);}}>▦ <span className="desktop-only">Templates</span></Button>
   <Button title="Save this editable diagram to PC OmniHub with revision checks" onClick={saveToHub}>↑ <span className="desktop-only">Hub save</span></Button>
   <Button title="Open the PC OmniHub diagram library" onClick={openHubLibrary}>☁ <span className="desktop-only">Hub library</span></Button>
@@ -235,7 +315,15 @@ function App(){
  <Button title="Create a blank diagram" onClick={addDocument}>＋ <span className="desktop-only">Blank</span></Button>
  <Button title="Import editable .omd.json" onClick={()=>filePicker().click()}>⇧ <span className="desktop-only">Open</span></Button>
  <div className="export-menu"><Button onClick={exportNative}>Save ▾</Button><div className="export-dropdown"><button onClick={exportNative}>Native .omd.json</button><button onClick={exportSvg}>Export SVG</button><button onClick={exportPng}>Export PNG</button></div></div>
+ <Button className="mobile-only mobile-menu-toggle" title="More diagram actions" onClick={()=>setMobileActions(true)}>⋯</Button>
  </div></header>
+ <div className="sync-strip" role="status" aria-live="polite">
+  <span className={'sync-light '+(hubOnline?'online':'offline')}/>
+  <strong>{hubOnline?'Hub connected':hubOnline===false?'Hub unreachable · offline':'Checking Hub'}</strong>
+  <span className="sync-description">{documentState(doc)} · {pendingCount} pending · editable on device</span>
+  {conflicts[doc.id]&&<Button className="conflict-action" onClick={keepBoth}>Conflict · Keep both</Button>}
+  <Button className="sync-action" title="Sync revision-checked local documents to PC (offline copies are always retained)" disabled={syncBusy||!ready} onClick={syncPending}>{syncBusy?'Syncing…':'Sync now'}</Button>
+ </div>
  <div className="workspace">
  <aside className="leftpane">{toolsPanel}<div className="tool-bottom"><Button onClick={()=>{setPanel('layers');setMobileSheet(true);}} title="Layers">▤</Button><Button onClick={()=>{setPanel('outline');setMobileSheet(true);}} title="Outline">☷</Button></div></aside>
  <main className="mainarea">
@@ -255,9 +343,24 @@ function App(){
  <aside className={`rightpane ${mobileSheet?'mobile-open':''}`}><div className="panel-tabs"><Button active={panel==='inspector'} onClick={()=>setPanel('inspector')}>Inspector</Button><Button active={panel==='shapes'} onClick={()=>setPanel('shapes')}>Kits</Button><Button active={panel==='layers'} onClick={()=>setPanel('layers')}>Layers</Button><Button active={panel==='outline'} onClick={()=>setPanel('outline')}>Outline</Button><Button className="close-sheet" onClick={()=>setMobileSheet(false)}>×</Button></div>{pane}</aside>
  </div>
  <nav className="mobile-nav"><Button active={tool==='select'} onClick={()=>{setTool('select');setMobileSheet(false);}}>↖<small>Select</small></Button><Button active={tool==='connect'} onClick={()=>{setTool('connect');setMobileSheet(false);}}>↗<small>Connect</small></Button><Button onClick={()=>{setPanel('shapes');setMobileSheet(true);}}>＋<small>Add</small></Button><Button disabled={!history.current.past.length} onClick={undo}>↶<small>Undo</small></Button><Button disabled={!history.current.future.length} onClick={redo}>↷<small>Redo</small></Button></nav>
- {library&&<div className="scrim" onPointerDown={e=>{if(e.target===e.currentTarget)setLibrary(false);}}><div className="library"><header><div><h2>Diagram library</h2><p>Stored locally in this browser / WebView</p></div><Button onClick={()=>setLibrary(false)}>×</Button></header>
+ {mobileActions&&<div className="scrim mobile-actions-scrim" onPointerDown={e=>{if(e.target===e.currentTarget)setMobileActions(false);}}><div className="mobile-actions-dialog" role="dialog" aria-label="More diagram actions"><header><h2>Diagram actions</h2><Button onClick={()=>setMobileActions(false)}>×</Button></header>
+  <div className="mobile-actions-grid">
+   <Button onClick={()=>{setMobileActions(false);setLibrary(true);}}>Library</Button>
+   <Button onClick={()=>{setMobileActions(false);setTemplateGallery(true);}}>Templates</Button>
+   <Button onClick={()=>{setMobileActions(false);addDocument();}}>New blank</Button>
+   <Button onClick={()=>{setMobileActions(false);filePicker().click();}}>Import native</Button>
+   <Button onClick={()=>{setMobileActions(false);setPanel('outline');setMobileSheet(true);}}>Canvas / Outline</Button>
+   <Button onClick={()=>{setMobileActions(false);setPanel('inspector');setMobileSheet(true);}}>Inspector</Button>
+   <Button onClick={()=>{setMobileActions(false);void saveToHub();}}>Save to Hub</Button>
+   <Button onClick={()=>{setMobileActions(false);void openHubLibrary();}}>Hub library</Button>
+   <Button onClick={()=>{setMobileActions(false);void copyHubLink();}}>Copy link</Button>
+   <Button onClick={()=>{setMobileActions(false);exportNative();}}>Export editable</Button>
+   <Button onClick={()=>{setMobileActions(false);exportSvg();}}>Export SVG</Button>
+   <Button onClick={()=>{setMobileActions(false);void exportPng();}}>Export PNG</Button>
+  </div></div></div>}
+ {library&&<div className="scrim" onPointerDown={e=>{if(e.target===e.currentTarget)setLibrary(false);}}><div className="library"><header><div><h2>Diagram library</h2><p>Editable documents stored on this device</p></div><Button onClick={()=>setLibrary(false)}>×</Button></header>
  <div className="library-cta"><Button onClick={addDocument}>＋ Blank diagram</Button><Button onClick={()=>{setLibrary(false);setTemplateGallery(true);}}>▦ Browse templates</Button><Button onClick={()=>filePicker().click()}>⇧ Import native</Button></div>
- <div className="library-grid">{saved.map(d=><button key={d.id} className={`doc-card ${d.id===doc.id?'current':''}`} onClick={()=>openDoc(d)}><div className="doc-preview"><svg viewBox={`0 0 ${d.page.width} ${d.page.height}`} preserveAspectRatio="xMidYMid meet" role="img" aria-label={d.title+' preview'}><GraphicScene document={d}/></svg></div><strong>{d.title}</strong><small>{d.family} · {new Date(d.metadata.updatedAt).toLocaleString()}</small></button>)}</div>
+ <div className="library-grid">{saved.map(d=><button key={d.id} className={`doc-card ${d.id===doc.id?'current':''}`} onClick={()=>openDoc(d)}><div className="doc-preview"><svg viewBox={`0 0 ${d.page.width} ${d.page.height}`} preserveAspectRatio="xMidYMid meet" role="img" aria-label={d.title+' preview'}><GraphicScene document={d}/></svg></div><strong>{d.title}</strong><small>{d.family} · {new Date(d.metadata.updatedAt).toLocaleString()}</small><small className={'document-sync '+(needsSync(d,synced[d.id])?'waiting':'synced')}>{documentState(d)}</small></button>)}</div>
  <div className="library-bottom"><Button onClick={removeCurrent}>Delete current local diagram</Button></div></div></div>}
  {hubOpen&&<div className="scrim" onPointerDown={e=>{if(e.target===e.currentTarget)setHubOpen(false);}}><div className="library"><header><div><h2>OmniHub diagrams</h2><p>PC-persisted native diagrams · revisions shared with agents</p></div><Button onClick={()=>setHubOpen(false)}>×</Button></header><div className="library-cta"><Button onClick={openHubLibrary}>Refresh Hub list</Button></div><div className="library-grid">{hubDocs.map(d=><button key={d.id} className="doc-card" onClick={()=>openFromHub(d.id)}><strong>{d.title}</strong><small>{d.family} · Hub revision {d.revision}</small></button>)}</div>{hubDocs.length===0&&<p>No Hub diagrams yet. Use Hub save on a local diagram.</p>}</div></div>}
  {templateGallery&&<div className="scrim" onPointerDown={e=>{if(e.target===e.currentTarget)setTemplateGallery(false);}}><div className="library template-library"><header><div><h2>New from template</h2><p>Editable shapes, relationships and properties · one freeform canvas</p></div><Button onClick={()=>setTemplateGallery(false)}>×</Button></header>

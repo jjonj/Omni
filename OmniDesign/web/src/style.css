@@ -35,3 +35,43 @@
  .panel-tabs .button{font-size:11px;padding:4px;min-height:44px}
 }
 .sample-pack-link{font-size:12px;color:#e0a458;display:inline-flex;align-items:center;padding:10px 4px;text-decoration:none}.sample-pack-link:hover{text-decoration:underline}.library-cta{flex-wrap:wrap}
+/* MISC-0166: Local-first status remains visible even when the Hub is down. */
+.sync-strip{display:flex;flex:none;gap:9px;align-items:center;background:#20242b;border-bottom:1px solid #41464e;padding:5px 12px;min-height:38px;font-size:12px;color:#b6b0a4}
+.sync-strip strong{color:#e6e2d8;white-space:nowrap;font-size:12px}
+.sync-light{height:9px;width:9px;border-radius:50%;background:#aa8261;flex-shrink:0}
+.sync-light.online{background:#80c69e}
+.sync-description{overflow:hidden;white-space:nowrap;text-overflow:ellipsis;min-width:0}
+.sync-strip .sync-action{margin-left:auto;color:#e0a458;border:1px solid #73583b;min-height:29px;padding:4px 10px;font-size:12px}
+.sync-strip .conflict-action{color:#efaf92;border:1px solid #995d43;min-height:29px;padding:4px 8px;font-size:12px}
+.document-sync{font-weight:600;color:#83bc9b!important;padding-top:2px!important}
+.document-sync.waiting{color:#e4ae65!important}
+@media(max-width:760px){
+ .sync-strip{padding:5px 7px;gap:6px;min-height:42px}
+ .sync-strip strong{font-size:11px}
+ .sync-strip .sync-action{min-width:66px;min-height:36px}
+ .sync-strip .conflict-action{font-size:10px;white-space:normal;min-height:36px}
+ .sync-description{font-size:10px}
+}
+
+.mobile-actions-scrim{align-items:flex-end;justify-content:center;padding:0}
+.mobile-actions-dialog{background:#20242b;color:#e6e2d8;border:1px solid #4b4e55;border-radius:16px 16px 0 0;width:min(540px,100%);padding:16px 16px 26px;max-height:83dvh;overflow:auto;box-shadow:0 -14px 50px #000a}
+.mobile-actions-dialog header{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+.mobile-actions-dialog h2{font-size:18px;margin:0}
+.mobile-actions-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+.mobile-actions-grid .button{border:1px solid #474d55;min-height:49px;white-space:normal}
+.mobile-actions-grid .button:active{background:#403327}
+@media(max-width:760px){
+ .topbar{gap:5px;padding:0 7px}
+ .topbar .brand{min-width:36px;width:36px;padding:5px}
+ .topbar .title-input{flex:1;min-width:80px;max-width:none;font-size:15px}
+ .topbar .top-actions{gap:2px;flex:none;margin-left:0}
+ .topbar .top-actions > .button:not(.mobile-primary-library):not(.mobile-menu-toggle){display:none!important}
+ .topbar .top-actions .export-menu{display:none}
+ .topbar .top-actions > .mobile-primary-library,.topbar .top-actions > .mobile-menu-toggle{display:inline-flex!important;min-width:40px;min-height:44px;padding:5px}
+ .sync-strip{display:grid;grid-template-columns:9px 1fr auto;grid-template-rows:auto auto;row-gap:2px;column-gap:8px;padding:6px 9px}
+ .sync-strip .sync-light{grid-column:1;grid-row:1}
+ .sync-strip strong{grid-column:2;grid-row:1}
+ .sync-strip .sync-description{grid-column:1 / 3;grid-row:2;min-width:0;white-space:nowrap}
+ .sync-strip .sync-action{grid-column:3;grid-row:1 / 3}
+ .sync-strip .conflict-action{grid-column:2;grid-row:2}
+}

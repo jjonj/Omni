@@ -34,6 +34,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.Alarm
 import androidx.compose.material.icons.filled.Assignment
+import androidx.compose.material.icons.filled.AccountTree
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.Modifier
@@ -57,6 +58,7 @@ val defaultNavigationItems = listOf(
     NavItem(AppScreen.ALARM, "Alarm", Icons.Default.Alarm),
     NavItem(AppScreen.WEB_SERVER, "OmniWeb", Icons.Default.Public),
     NavItem(AppScreen.TASKBOARD, "Tasks", Icons.Default.Assignment),
+    NavItem(AppScreen.OMNIDESIGN, "Design", Icons.Default.AccountTree),
     NavItem(AppScreen.TESTS, "Prototypes", Icons.Default.Assignment),
     NavItem(AppScreen.BOOKS, "Books", Icons.Default.MenuBook)
 )

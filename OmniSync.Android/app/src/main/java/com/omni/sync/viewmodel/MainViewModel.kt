@@ -43,6 +43,7 @@ enum class AppScreen {
     MACRO_MANAGER,
     WEB_SERVER,
     TASKBOARD,
+    OMNIDESIGN,
     TESTS,
     BOOKS,
     PDF_VIEWER,

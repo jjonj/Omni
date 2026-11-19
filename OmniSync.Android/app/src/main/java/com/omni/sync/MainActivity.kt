@@ -353,7 +353,7 @@ class MainActivity : ComponentActivity() {
                     androidx.compose.material3.Scaffold(
                         modifier = if (!isLandscape) Modifier.systemBarsPadding() else Modifier,
                         bottomBar = {
-                            if (!isLandscape) {
+                            if (!isLandscape && currentScreen != AppScreen.OMNIDESIGN) {
                                 val coroutineScope = androidx.compose.runtime.rememberCoroutineScope()
                                 OmniBottomNavigation(
                                     currentScreen = currentScreen,
@@ -657,6 +657,9 @@ class MainActivity : ComponentActivity() {
                     )
                 }
             }
+            AppScreen.OMNIDESIGN -> com.omni.sync.ui.screen.OmniDesignScreen(
+                onBack = { mainViewModel.goBack() }
+            )
             AppScreen.TESTS -> com.omni.sync.ui.screen.TestsScreen()
             AppScreen.TASKBOARD -> com.omni.sync.ui.screen.TaskBoardScreen(
                 signalR = signalRClient,
