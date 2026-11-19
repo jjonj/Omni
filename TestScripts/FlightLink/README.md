@@ -53,6 +53,39 @@ For a **manually chosen** physical-phone LAN test, run `--listen 0.0.0.0` only o
 
 **HTTPS-only simulation**: `flight-link-proxy.cjs --tls-cert <pem> --tls-key <pem> --profile httpsOnly` terminates client TLS, then forwards plaintext to the real local Hub. The Android client must trust the supplied cert and use `https://<test host>:15000/signalrhub`. The default runner uses cleartext loopback, so HTTPS-only cannot be claimed tested without a certificate, DNS and corresponding Android trust/path setup. A real aircraft firewall, DNS interception, Chinese blocking, or Tailscale DERP negotiation is **not** emulated by a `noUdp` TCP-only profile.
 
+### Paired test with the user's existing Android phone (opt-in, no APK installation)
+
+Use this only while the user is present and has agreed to temporarily change the **Omni app's Hub URL**. The headless and emulator paths above are self-contained; this path verifies the actual phone's radio, app connection handling and (optionally) Tailscale transport. **Record the original Hub URL before changing it and restore it immediately afterward.** The phone may overwrite the test URL itself during reconnect (the known `updateHubUrlBasedOnLocalIp` failure); that is a test result, not a reason to reconfigure the home Hub.
+
+On the PC, choose one **already reachable private adapter** (the PC's Tailscale IPv4 for a tailnet test, or its LAN IPv4 for a same-Wi-Fi test). Do not bind to `0.0.0.0`, add a public port-forward or change Windows firewall/Tailscale settings. For Tailscale, read the current IPv4 with `tailscale ip -4`. In a PC PowerShell shell:
+
+```powershell
+$ip = (tailscale ip -4).Trim() # for LAN tests substitute the PC's existing LAN IPv4
+$trace = 'E:/_AgentScratch/Tasks/Omni/OMN-0085/Evidence/paired-phone-proxy.jsonl'
+node TestScripts/FlightLink/flight-link-proxy.cjs --listen $ip --profile clean --trace $trace
+```
+
+The proxy control port remains **127.0.0.1:15001**. It will not alter production network settings. If port 15000 is blocked/unreachable, record the connection failure; don't change the firewall as part of this task. On the phone, connect via the already configured Tailscale/LAN link and temporarily set its Omni Hub URL to `http://<selected-private-ip>:15000/signalrhub`. Use the normal Android UI to open **Files → refresh drives** (a read-only command), noting when the app shows connected, when the list actually appears, and any stale state. The proxy logs request names, timings and Hub completions without message arguments.
+
+While both sides watch the app and PC trace, progress through **clean → slow300 → slow800 → slow2000**, then a forced route switch, 10-second outage and (if tolerable) 120-second outage. Use a second PC shell:
+
+```powershell
+Invoke-RestMethod http://127.0.0.1:15001/profile -Method Post -ContentType application/json -Body '{"profile":"slow800"}'
+Invoke-RestMethod http://127.0.0.1:15001/switch  -Method Post -ContentType application/json -Body '{"profile":"slow300"}'
+Invoke-RestMethod http://127.0.0.1:15001/outage  -Method Post -ContentType application/json -Body '{"seconds":10}'
+# Repeat with {"seconds":120} only when explicitly desired.
+```
+
+Repeat the selected profiles while changing **phone Wi-Fi → mobile data → Wi-Fi**, if the phone's private/Tailscale route remains viable. Record the observed Android reconnect time and verify drive IDs/state **after** reconnect, not just the "connected" badge. For actual Tailscale reachability, run read-only `tailscale status`, `tailscale ping <phone-tailnet-name>` and `tailscale netcheck`, recording direct vs DERP only when genuinely observed. The `noUdp` proxy profile never proves DERP; a HTTPS-only flight path still needs a trusted TLS certificate and separate HTTPS/WSS setup.
+
+End the session by restoring the original phone Hub URL, stopping the proxy with Ctrl+C, and generating the evidence report:
+
+```powershell
+node TestScripts/FlightLink/flight-link-report.cjs --trace E:/_AgentScratch/Tasks/Omni/OMN-0085/Evidence/paired-phone-proxy.jsonl --out E:/_AgentScratch/Tasks/Omni/OMN-0085/Evidence/paired-phone-report
+```
+
+Log **each phone action**, whether it displayed success/failure, whether the Hub returned a completion, the recovery time and any unknown-delivery status. A missing completion is **not proof the Hub never received the command**. Never retry a potentially side-effecting phone action merely to find out; start with the read-only Files refresh.
+
 ### Optional actual packet loss in a disposable container
 
 On a Linux Docker Engine with `NET_ADMIN` capability, the provided `netem/Dockerfile` shapes only **the container's eth0**, not Windows production adapters. Docker is not currently installed on the test PC; this path is supplied for repeatability but was not executed here.
