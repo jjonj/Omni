@@ -267,7 +267,10 @@ public sealed class ZoneManager
         {
             var occupants = Members(area, zone.Id).Where(m => m.Hwnd != hwnd).ToList();
             var rejoin = origin.Placement is { } same && same.Area == area && same.ZoneId == zone.Id;
-            if (occupants.Count > 0 && !rejoin && SnapPolicy.ResolveOccupied(s, holdKey) == OccupiedAction.Swap)
+            var swapOrigin = origin.Placement is { } from && from.LayoutId == layout.Id
+                && SnapPolicy.IsCrossZoneMove(from.ZoneId, from.Area, zone.Id, area)
+                && LayoutAt(from.Area).Zones.Any(z => z.Id == from.ZoneId) ? from : null;
+            if (occupants.Count > 0 && swapOrigin != null && SnapPolicy.ResolveOccupied(s, holdKey) == OccupiedAction.Swap)
             {
                 // In a stack the window under the cursor is the one that gets swapped out.
                 var top = occupants[^1];
@@ -276,19 +279,11 @@ public sealed class ZoneManager
                     var (cx, cy) = WindowTools.CursorPos();
                     top = occupants.LastOrDefault(m => WindowTools.Frame(m.Hwnd) is { } mf && mf.Contains(cx, cy)) ?? top;
                 }
-                var op = origin.Placement;
-                if (op != null && !(op.Area == area && op.ZoneId == zone.Id) && LayoutAt(op.Area).Zones.Any(z => z.Id == op.ZoneId))
-                {
-                    top.ZoneId = op.ZoneId; top.Area = op.Area; top.Order = ++_order;
-                    Home(top.Hwnd, layout.Id, op.ZoneId);
-                    RelayoutArea(op.Area);
-                }
-                else if (origin.Frame is { } f)
-                {
-                    Untrack(top.Hwnd);
-                    WindowTools.Place(top.Hwnd, f);
-                }
-                else Float(top);
+                // A real cross-zone swap sends the displaced window to the source zone's geometry.
+                // A free-floating or same-zone drop must never resize another window to a drag frame.
+                top.ZoneId = swapOrigin.ZoneId; top.Area = swapOrigin.Area; top.Order = ++_order;
+                Home(top.Hwnd, layout.Id, swapOrigin.ZoneId);
+                RelayoutArea(swapOrigin.Area);
                 Log($"Swapped with {WindowTools.ProcessName(top.Hwnd)}");
             }
             else if (occupants.Count > 0 && !rejoin) Log("Stacked on top of the zone's window");
@@ -609,8 +604,13 @@ public sealed class ZoneManager
             var members = Members(area, z.Id).Count(m => m.Hwnd != _dragHwnd);
             var isScene = SnapPolicy.FindScene(s, layout, WindowTools.ProcessName(_dragHwnd), z.Id) != null;
             var hot = z == _hot;
+            var from = _origin.Placement;
+            var canSwap = from != null && from.LayoutId == layout.Id
+                && SnapPolicy.IsCrossZoneMove(from.ZoneId, from.Area, z.Id, area)
+                && LayoutAt(from.Area).Zones.Any(source => source.Id == from.ZoneId);
+            var dropAction = canSwap ? action : OccupiedAction.Stack;
             zones.Add(new OverlayZone(z.Name, ZoneDetail(z, kind, r, members), inner, hot,
-                hot ? SnapPolicy.DescribeDrop(s, z, members, action, _origin.Frame != null, isScene, _plainOnStack) : null, isScene, kind == ZoneKind.Peek));
+                hot ? SnapPolicy.DescribeDrop(s, z, members, dropAction, canSwap, isScene, _plainOnStack) : null, isScene, kind == ZoneKind.Peek));
         }
         ShowOverlay(area, zones);
     }

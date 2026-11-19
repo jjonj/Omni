@@ -27,6 +27,18 @@ public class SnapPolicyTests
     }
 
     [Theory]
+    [InlineData(null, null, "main", false)] // floating window
+    [InlineData("main", 0, "main", false)] // returning to its own zone
+    [InlineData("notes", 0, "main", true)] // different zone, same monitor
+    [InlineData("main", 1, "main", true)] // same zone ID on another monitor
+    public void IsCrossZoneMove_RequiresADifferentSourceZone(string? from, int? area, string target, bool expected)
+    {
+        var left = new RectD(0, 0, 500, 500);
+        var right = new RectD(500, 0, 500, 500);
+        Assert.Equal(expected, SnapPolicy.IsCrossZoneMove(from, area == null ? null : area == 0 ? left : right, target, left));
+    }
+
+    [Theory]
     [InlineData(OccupiedAction.Swap, HoldKey.Ctrl, false, OccupiedAction.Swap)]
     [InlineData(OccupiedAction.Swap, HoldKey.Ctrl, true, OccupiedAction.Stack)]
     [InlineData(OccupiedAction.Stack, HoldKey.Alt, false, OccupiedAction.Stack)]

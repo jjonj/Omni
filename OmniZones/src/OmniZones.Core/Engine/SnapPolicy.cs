@@ -11,6 +11,10 @@ public static class SnapPolicy
     /// </summary>
     public static bool IsEngaged(ZoneSettings s, bool shiftHeld) => s.RequireShift ? shiftHeld : !shiftHeld;
 
+    /// <summary>Only a move from another actual zone can exchange its occupant. Floating and same-zone drops overlap.</summary>
+    public static bool IsCrossZoneMove(string? originZone, RectD? originArea, string targetZone, RectD targetArea) =>
+        originZone != null && originArea is { } area && (originZone != targetZone || area != targetArea);
+
     /// <summary>True when the pointer has reached the physical top edge of the current monitor.</summary>
     public static bool IsAtTopEdge(double cursorY, double monitorTop) => cursorY <= monitorTop;
 
