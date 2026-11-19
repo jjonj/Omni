@@ -4,3 +4,34 @@
  .mobile-only{display:inline-flex}.topbar{height:54px;min-height:54px;padding:0 7px;gap:3px}.brand{font-size:19px;padding:5px 8px}.brand span{display:none}.topbar .divider{display:none}.title-input{font-size:15px;font-weight:600;max-width:none;padding:5px;min-width:60px}.top-actions .button{min-width:44px;min-height:44px;padding:6px;font-size:17px}.desktop-only{display:none!important}.top-actions{gap:0}.export-menu .button{font-size:13px;min-width:52px}.workspace{padding-bottom:66px}.leftpane{display:none}.rightpane{position:fixed;display:none;z-index:11;bottom:66px;left:0;right:0;width:100%;max-height:min(72dvh,600px);border:1px solid #4b4e55;border-radius:16px 16px 0 0;box-shadow:0 -10px 35px #000a}.rightpane.mobile-open{display:block}.rightpane.mobile-open .close-sheet{display:flex}.rightpane .inspector-body{max-height:calc(min(72dvh,600px) - 55px);overflow:auto;padding:14px 18px 30px}.panel-tabs .button{min-height:44px}.mainarea{width:100%}.canvas-actions{height:43px;min-height:43px;overflow:auto;padding:0 6px}.canvas-actions .button{min-width:39px;min-height:36px}.action-left{gap:0}.action-right{gap:0}.canvas-actions .divider{display:none}.zoom-indicator{bottom:46px;font-size:10px;padding:5px 8px}.mobile-nav{position:fixed;z-index:12;bottom:0;left:0;right:0;height:66px;display:flex;justify-content:space-around;align-items:stretch;background:#1c1f25;border-top:1px solid #494b50;padding-bottom:env(safe-area-inset-bottom)}.mobile-nav .button{min-width:0;flex:1;display:flex;flex-direction:column;font-size:22px;gap:0;border-radius:0;min-height:56px}.mobile-nav small{font-size:10px;font-weight:500}.mobile-context{display:flex;position:absolute;bottom:10px;right:9px;z-index:3}.mobile-context .button{border:1px solid #785739;color:#edb66d;background:#2b2622}.library{padding:18px;max-height:95dvh}.scrim{padding:8px}.library-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.doc-preview{height:75px}
 }
 @media(max-width:360px){.action-left .button:nth-of-type(n+4){display:none}.top-actions .button{min-width:38px}.export-menu .button{min-width:45px}}
+
+/* MISC-0164: composable stencil packs, responsive template gallery and semantic inspector. */
+.panel-tabs .button{padding:5px 6px;font-size:11px;min-width:0}
+.catalog-intro{font-size:12px;line-height:1.5;color:#a09a8c;margin:9px 0 18px}
+.shape-catalog .button{white-space:normal;padding:10px 6px;gap:3px;min-height:90px}
+.shape-catalog .button small{font-size:9px;color:#9d968a}
+.shape-catalog .button span{font-size:12px;line-height:1.25}
+.shape-catalog .button.active small{color:#e0a458}
+.style-presets{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px;margin-bottom:15px}
+.style-presets .button{font-size:10px;padding:4px;min-width:0}
+.style-presets i{display:inline-block;width:12px;height:12px;border:2px solid;border-radius:3px;flex-shrink:0}
+.template-library{width:min(1020px,100%);padding:26px}
+.template-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(232px,1fr));gap:16px}
+.template-card{border:1px solid #414650;background:#252a31;border-radius:11px;padding:0;text-align:left;overflow:hidden;color:#e6e2d8;min-width:0}
+.template-card:hover,.template-card:focus-visible{border-color:#e0a458;background:#292d34}
+.template-preview{height:130px;background:#14161a;border-bottom:1px solid #414650;display:flex}
+.template-preview svg{width:100%;height:100%}
+.template-info{padding:12px}
+.template-info small{display:block;font-size:10px;color:#e0a458;margin-bottom:5px;text-transform:uppercase;letter-spacing:.06em}
+.template-info strong{font-size:14px;display:block}
+.template-info p{font-size:11px;color:#aaa397;margin:7px 0 0;line-height:1.3}
+@media(max-width:760px){
+ .template-library{padding:15px;max-height:95dvh}
+ .template-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+ .template-preview{height:80px}
+ .template-info{padding:10px}
+ .template-info p{display:none}
+ .template-info strong{font-size:12px}
+ .panel-tabs .button{font-size:11px;padding:4px;min-height:44px}
+}
+.sample-pack-link{font-size:12px;color:#e0a458;display:inline-flex;align-items:center;padding:10px 4px;text-decoration:none}.sample-pack-link:hover{text-decoration:underline}.library-cta{flex-wrap:wrap}

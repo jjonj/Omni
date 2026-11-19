@@ -5,6 +5,8 @@ import {GraphicScene} from './GraphicScene';
 import {clone,edge,exampleDiagram,groupElements,itemById,newDiagram,node,origin,palette,removeElements,snap,stamp,translate,ungroupElements,uuid,validateDocument} from './model';
 import {download,filename,getDocuments,putDocument,removeDocument} from './storage';
 import type {Diagram,Element,NodeElement,Point,Style,Tool} from './types';
+import {allStencils,allTemplates,attachPack,builtInPacks,documentPacks,findStencil,instantiateTemplate,loadPersonalPacks,parsePack,savePersonalPacks,stencilNode,type Pack,type Stencil} from './packs';
+import {edgeStyleKinds} from './StencilArt';
 const families:Diagram['family'][]=['architecture','flowchart','sequence','state','erd','network','roadmap','floorplan','swimlane','mindmap','game-system','custom'];
 const shapes:{tool:Tool;label:string;icon:string}[]=[
  {tool:'select',label:'Select',icon:'↖'},{tool:'hand',label:'Pan',icon:'✋'},{tool:'connect',label:'Connect',icon:'↗'},
@@ -28,6 +30,10 @@ function App(){
  const [panel,setPanel]=useState<'inspector'|'layers'|'outline'|'shapes'|null>('inspector');
  const [mobileSheet,setMobileSheet]=useState(false),[activeLayer,setActiveLayer]=useState<string>('');
  const [message,setMessage]=useState('Saved locally'),[ready,setReady]=useState(false);
+ const [personalPacks,setPersonalPacks]=useState<Pack[]>(loadPersonalPacks);
+ const [templateGallery,setTemplateGallery]=useState(false),[shapeSearch,setShapeSearch]=useState(''),[packFilter,setPackFilter]=useState('all');
+ const [stencilChoice,setStencilChoice]=useState<{packId:string;name:string}|null>(null),[edgeKind,setEdgeKind]=useState('flow');
+ const packs=[...builtInPacks,...personalPacks,...documentPacks(doc).filter(p=>!personalPacks.some(q=>q.id===p.id&&q.version===p.version))];
  const canvas=useRef<CanvasApi>(null);
  const replace=(next:Diagram)=>{docRef.current=next;setDoc(next);};
  const updateLibrary=async()=>{try{setSaved((await getDocuments()).sort((a,b)=>b.metadata.updatedAt.localeCompare(a.metadata.updatedAt)));}catch(e){setMessage('Local storage unavailable: '+String(e));}};
@@ -46,7 +52,11 @@ function App(){
  const redo=()=>{const next=history.current.future.pop();if(!next)return;history.current.past.push(clone(docRef.current));replace(next);setSelected([]);setRevision(v=>v+1);};
  const create=(kind:Tool,p:Point)=>{let made='';commit(d=>{
   const layer=d.layers.find(l=>l.id===activeLayer&&!l.locked&&l.visible)||d.layers.find(l=>l.visible&&!l.locked);if(!layer)return d;
-  const shape=kind==='text'?{id:uuid('el_'),type:'text' as const,layerId:layer.id,parentId:null,order:d.elements.length,geometry:{x:p.x,y:p.y,width:280,height:60,rotation:0},text:'Double-click to edit',style:{textColor:palette.ink,fontSize:23}}:node(p.x,p.y,kind as NodeElement['shape']['fallback'],layer.id,kind==='diamond'?'Decision':kind==='ellipse'?'State':'New shape');
+  const pack=kind==='stencil'?packs.find(q=>q.id===stencilChoice?.packId):undefined;
+  const definition=pack?.shapes.find(s=>s.name===stencilChoice?.name);
+  if(kind==='stencil'&&(!pack||!definition))return d;
+  const shape=kind==='stencil'&&pack&&definition?stencilNode(pack,definition,p.x,p.y,layer.id):kind==='text'?{id:uuid('el_'),type:'text' as const,layerId:layer.id,parentId:null,order:d.elements.length,geometry:{x:p.x,y:p.y,width:280,height:60,rotation:0},text:'Double-click to edit',style:{textColor:palette.ink,fontSize:23}}:node(p.x,p.y,kind as NodeElement['shape']['fallback'],layer.id,kind==='diamond'?'Decision':kind==='ellipse'?'State':'New shape');
+  if(kind==='stencil'&&pack)attachPack(d,pack);
   shape.order=d.elements.length;made=shape.id;d.elements.push(shape);return d;
  });if(made){setSelected([made]);if(isMobile())setTool('select');}};
  const draw=(points:Point[])=>{commit(d=>{const layer=d.layers.find(l=>l.id===activeLayer&&!l.locked&&l.visible)||d.layers[0];d.elements.push({id:uuid('el_'),type:'path',layerId:layer.id,parentId:null,order:d.elements.length,commands:points.map((p,i)=>({op:i?'L':'M',to:p})),style:{stroke:palette.accent,strokeWidth:3},semantic:{role:'freehand',data:{}}});return d;});};
@@ -59,7 +69,10 @@ function App(){
   const a=itemById(d,from.nodeId),b=itemById(d,to.nodeId);if(!a||a.type!=='node'||!b||b.type!=='node')return d;
   if(d.layers.find(l=>l.id===a.layerId)?.locked||d.layers.find(l=>l.id===b.layerId)?.locked)return d;
   const el=edge(a,a.ports.find(p=>p.id===from.portId)?.anchor.side??'right',b,b.ports.find(p=>p.id===to.portId)?.anchor.side??'left',a.layerId);
-  if(el.type==='edge'){el.source={type:'port',nodeId:a.id,portId:from.portId};el.target={type:'port',nodeId:b.id,portId:to.portId};el.order=d.elements.length;}
+  if(el.type==='edge'){el.source={type:'port',nodeId:a.id,portId:from.portId};el.target={type:'port',nodeId:b.id,portId:to.portId};el.order=d.elements.length;
+   el.semantic={role:edgeKind,data:{kind:edgeKind}};el.route.mode=['message','return','link'].includes(edgeKind)?'straight':'orthogonal';
+   if(edgeKind==='return'||edgeKind==='dependency')el.style={...el.style,strokeDash:[6,5]};
+   if(edgeKind==='association'||edgeKind==='link')el.style={...el.style,stroke:palette.muted};}
   d.elements.push(el);return d;
  });};
  const changeElement=(id:string,patch:(e:Element)=>Element)=>commit(d=>({...d,elements:d.elements.map(e=>e.id===id?patch(e):e)}));
@@ -84,16 +97,23 @@ function App(){
  const svgMarkup=()=>renderToStaticMarkup(<svg xmlns="http://www.w3.org/2000/svg" width={docRef.current.page.width} height={docRef.current.page.height} viewBox={`0 0 ${docRef.current.page.width} ${docRef.current.page.height}`}><GraphicScene document={docRef.current}/></svg>);
  const exportSvg=()=>{download(new Blob([svgMarkup()],{type:'image/svg+xml;charset=utf-8'}),filename(docRef.current.title,'.svg'));};
  const exportPng=async()=>{try{const source=new Blob([svgMarkup()],{type:'image/svg+xml'}),url=URL.createObjectURL(source),img=new Image();await new Promise<void>((resolve,reject)=>{img.onload=()=>resolve();img.onerror=reject;img.src=url;});const c=document.createElement('canvas');c.width=docRef.current.page.width*2;c.height=docRef.current.page.height*2;const ctx=c.getContext('2d');if(!ctx)throw Error('2D canvas unavailable');ctx.drawImage(img,0,0,c.width,c.height);URL.revokeObjectURL(url);c.toBlob(blob=>blob?download(blob,filename(docRef.current.title,'.png')):setMessage('PNG encoder unavailable.'),'image/png');}catch(e){setMessage('PNG failed: '+String(e));}};
+ const importPack=async(file:File)=>{try{const imported=parsePack(JSON.parse(await file.text()));
+  const updated=[...personalPacks.filter(p=>p.id!==imported.id),imported];savePersonalPacks(updated);setPersonalPacks(updated);
+  setPackFilter(imported.id);setPanel('shapes');setMobileSheet(true);setMessage('Library added: '+imported.name+' · '+imported.shapes.length+' shapes');
+ }catch(error){setMessage('Pack import rejected: '+String(error));}};
+ const fromTemplate=(pack:Pack,template:Pack['templates'][number])=>{openDoc(instantiateTemplate(pack,template,packs));setTemplateGallery(false);setMessage('Editable '+template.title+' template created');};
  const importFile=async(file:File)=>{try{const text=await file.text(),parsed=validateDocument(JSON.parse(text));const existing=(await getDocuments()).find(d=>d.id===parsed.id);if(existing&&!window.confirm('Replace the locally saved diagram with the same document ID? Cancel to keep both as a copy.')){parsed.id=uuid('dgm_');parsed.revision=0;parsed.metadata.forkedFrom={id:existing.id,revision:existing.revision};parsed.title+=' · copy';}
   await putDocument(parsed);openDoc(parsed);updateLibrary();setMessage('Native document imported.');}catch(e){setMessage('Import rejected: '+String(e));}};
- const addDocument=()=>{const d=newDiagram('Untitled diagram');openDoc(d);setLibrary(false);};
+ const addDocument=()=>{const d=newDiagram('Untitled diagram');openDoc(d);setLibrary(false);setTemplateGallery(false);};
  const removeCurrent=async()=>{if(!window.confirm('Delete this locally saved diagram? Export it first if you need a backup.'))return;await removeDocument(doc.id);const others=(await getDocuments()).filter(d=>d.id!==doc.id);openDoc(others[0]??newDiagram());updateLibrary();};
  const moveToLayer=(id:string,layerId:string)=>commit(d=>{const target=itemById(d,id);if(!target)return d;const previousOrigin=origin(d,target);const isChild=(e:Element)=>{let p=e.parentId;while(p){if(p===id)return true;p=itemById(d,p)?.parentId??null;}return false;};return {...d,elements:d.elements.map(e=>e.id===id?{...translate(e,previousOrigin.x,previousOrigin.y),layerId,parentId:null}:target.type==='group'&&isChild(e)?{...e,layerId}:e)};});
  const selectedEl=selected.length===1?itemById(doc,selected[0]):undefined;
  const editable=selectedEl&&!selectedEl.locked&&!doc.layers.find(l=>l.id===selectedEl.layerId)?.locked;
  const keyRow=(id:string)=>{const e=itemById(doc,id);if(!e)return '';return e.type==='node'?e.content?.title||e.label?.text||'Shape':e.type==='text'?e.text.slice(0,24):e.type==='group'?e.label?.text||'Group':e.type==='edge'?e.label?.text||'Connection':'Path';};
  const layer=doc.layers.find(l=>l.id===selectedEl?.layerId);
- const toolsPanel=<div className="tool-stack">{shapes.map(s=><Button key={s.tool} title={s.label} active={tool===s.tool} onClick={()=>{setTool(s.tool);setMobileSheet(false);}}><b>{s.icon}</b><span>{s.label}</span></Button>)}</div>;
+ const activeStencil=selectedEl?.type==='node'?findStencil(packs,selectedEl.shape.libraryId,selectedEl.shape.name):undefined;
+ const matches=allStencils(packs).filter(s=>(packFilter==='all'||s.packId===packFilter)&&((s.title+' '+s.packName+' '+s.role).toLowerCase().includes(shapeSearch.toLowerCase())));
+ const toolsPanel=<div className="tool-stack">{shapes.map(s=><Button key={s.tool} title={s.label} active={tool===s.tool} onClick={()=>{setTool(s.tool);setMobileSheet(false);}}><b>{s.icon}</b><span>{s.label}</span></Button>)}<Button title="Shape libraries" active={tool==='stencil'} onClick={()=>{setPanel('shapes');setMobileSheet(true);}}><b>▦</b><span>Kits</span></Button></div>;
  const field=(label:string,children:React.ReactNode)=><label className="field"><span>{label}</span>{children}</label>;
  const updateText=(text:string)=>{if(!selectedEl)return;changeElement(selectedEl.id,e=>{
   if(e.type==='node')return {...e,label:{...e.label,text},...(e.content?{content:{...e.content,title:text}}:{})};
@@ -112,8 +132,17 @@ function App(){
    {field('List items (one per line)',<textarea key={selectedEl.id+'items'} rows={4} defaultValue={selectedEl.content.items.map(i=>i.text).join('\n')} onBlur={ev=>changeElement(selectedEl.id,n=>{if(n.type!=='node'||!n.content)return n;return {...n,content:{...n.content,items:ev.target.value.split('\n').filter(Boolean).map((text,i)=>({...n.content!.items[i],id:n.content!.items[i]?.id||uuid('itm_'),text}))}};})}/>)}
    {field('Chips (one per line)',<textarea key={selectedEl.id+'chips'} defaultValue={selectedEl.content.chips.map(i=>i.text).join('\n')} onBlur={ev=>changeElement(selectedEl.id,n=>{if(n.type!=='node'||!n.content)return n;return {...n,content:{...n.content,chips:ev.target.value.split('\n').filter(Boolean).map((text,i)=>({...n.content!.chips[i],id:n.content!.chips[i]?.id||uuid('itm_'),text}))}};})}/>)}</>}
    </>}
-   {selectedEl.type==='edge'&&field('Route',<select value={selectedEl.route.mode} onChange={ev=>changeElement(selectedEl.id,e=>e.type==='edge'?{...e,route:{...e.route,mode:ev.target.value as 'straight'|'orthogonal'|'bezier',manual:false}}:e)}><option value="orthogonal">Orthogonal</option><option value="straight">Straight</option><option value="bezier">Curved</option></select>)}
+   {selectedEl.type==='node'&&activeStencil&&<><div className="section-head">{activeStencil.title} · {selectedEl.shape.libraryId}</div>
+    {activeStencil.fields?.map(spec=>{const value=selectedEl.semantic?.data?.[spec.key]??activeStencil.defaults?.[spec.key]??'';
+     const change=(next:string|number|boolean)=>changeElement(selectedEl.id,e=>e.type==='node'?{...e,semantic:{role:e.semantic?.role??activeStencil.role,data:{...e.semantic?.data,[spec.key]:next}}}:e);
+     return field(spec.label,spec.type==='boolean'?<input key={selectedEl.id+spec.key} type="checkbox" checked={Boolean(value)} onChange={ev=>change(ev.target.checked)}/>:spec.type==='select'?<select key={selectedEl.id+spec.key} value={String(value)} onChange={ev=>change(ev.target.value)}>{spec.options?.map(o=><option key={o} value={o}>{o}</option>)}</select>:spec.type==='number'?<Numeric key={selectedEl.id+spec.key} value={Number(value)||0} change={change}/>:<input key={selectedEl.id+spec.key} defaultValue={String(value)} onBlur={ev=>change(ev.target.value)}/>);
+    })}</>}
+   {selectedEl.type==='edge'&&<>{field('Connector semantics',<select value={String(selectedEl.semantic?.data?.kind??selectedEl.semantic?.role??'flow')} onChange={ev=>changeElement(selectedEl.id,e=>e.type==='edge'?{...e,semantic:{role:ev.target.value,data:{...e.semantic?.data,kind:ev.target.value}}}:e)}>{edgeStyleKinds.map(k=><option key={k.id} value={k.id}>{k.label}</option>)}</select>)}
+    {field('Route',<select value={selectedEl.route.mode} onChange={ev=>changeElement(selectedEl.id,e=>e.type==='edge'?{...e,route:{...e.route,mode:ev.target.value as 'straight'|'orthogonal'|'bezier',manual:false}}:e)}><option value="orthogonal">Orthogonal</option><option value="straight">Straight</option><option value="bezier">Curved</option></select>)}
+    {['sourceCardinality','targetCardinality'].map(key=>field(key==='sourceCardinality'?'Source multiplicity':'Target multiplicity',<input key={selectedEl.id+key} defaultValue={String(selectedEl.semantic?.data?.[key]??'')} placeholder="0..*, 1, etc." onBlur={ev=>changeElement(selectedEl.id,e=>e.type==='edge'?{...e,semantic:{role:e.semantic?.role??'relationship',data:{...e.semantic?.data,[key]:ev.target.value}}}:e)}/>))}
+    </>}
    <div className="section-head">Appearance</div>
+   <div className="style-presets">{[{name:'Ivory',stroke:'#e6e2d8',fill:'#1d2026'},{name:'Amber',stroke:'#e0a458',fill:'#2c261d'},{name:'Teal',stroke:'#79c5da',fill:'#193039'},{name:'Green',stroke:'#8ec6a3',fill:'#1d3028'},{name:'Alert',stroke:'#e58578',fill:'#352324'}].map(p=><Button key={p.name} title={p.name+' style'} onClick={()=>changeElement(selectedEl.id,e=>({...e,style:{...e.style,fill:p.fill,stroke:p.stroke}}))}><i style={{background:p.fill,borderColor:p.stroke}}/>{p.name}</Button>)}</div>
    <div className="color-grid">{(['fill','stroke','textColor'] as const).map(k=>field(k,<input type="color" value={(selectedEl.style?.[k]??(k==='fill'?palette.panel:k==='stroke'?palette.ink:palette.ink)).match(/^#[0-9a-fA-F]{6}$/)?selectedEl.style?.[k]??palette.ink:palette.ink} onChange={ev=>changeElement(selectedEl.id,e=>k==='textColor'&&e.type==='node'?{...e,label:{text:e.label?.text??'',style:{...e.label?.style,textColor:ev.target.value}}}:{...e,style:{...e.style,[k]:ev.target.value}})}/>))}</div>
    {field('Stroke width',<Numeric value={selectedEl.style?.strokeWidth??2} min={0} max={30} change={v=>changeElement(selectedEl.id,e=>({...e,style:{...e.style,strokeWidth:v}}))}/>)}
    {field('Font size',<Numeric value={selectedEl.type==='node'?(selectedEl.label?.style?.fontSize??selectedEl.style?.fontSize??18):(selectedEl.style?.fontSize??20)} min={6} max={100} change={v=>changeElement(selectedEl.id,e=>e.type==='node'?{...e,label:{text:e.label?.text??'',style:{...e.label?.style,fontSize:v}}}:{...e,style:{...e.style,fontSize:v}})}/>)}
@@ -129,10 +158,23 @@ function App(){
   <Button title="Raise layer" disabled={i===doc.layers.length-1} onClick={()=>commit(d=>{const j=d.layers.findIndex(x=>x.id===l.id);[d.layers[j],d.layers[j+1]]=[d.layers[j+1],d.layers[j]];return d;})}>↑</Button>
  </div>)}</div>;
  const outlinePane=<div className="inspector-body">{doc.layers.map(l=><section key={l.id}><h4>{l.name}</h4>{doc.elements.filter(e=>e.layerId===l.id).map(e=><button className={`outline-item ${selected.includes(e.id)?'active':''}`} style={{paddingLeft:12+(e.parentId?16:0)}} key={e.id} onClick={()=>{select([e.id]);setPanel('inspector');if(isMobile())setMobileSheet(true);}}>{e.type==='edge'?'↗':e.type==='group'?'▧':e.type==='text'?'T':e.type==='path'?'〰':'□'} {keyRow(e.id)}</button>)}</section>)}</div>;
- const shapesPane=<div className="inspector-body"><b>Insert shape</b><p>Choose a shape, then tap the canvas.</p><div className="shape-catalog">{shapes.filter(s=>!['select','hand','connect'].includes(s.tool)).map(s=><Button key={s.tool} onClick={()=>{setTool(s.tool);setMobileSheet(false);}}><b>{s.icon}</b>{s.label}</Button>)}</div></div>;
+ const shapesPane=<div className="inspector-body"><div className="inspector-header"><b>Stencil library</b><Button onClick={()=>setTemplateGallery(true)}>Templates →</Button></div>
+  <p className="catalog-intro">Pick any stencil, then tap the canvas to place it. Kits freely mix in one document.</p>
+  {field('Find shape',<input type="search" placeholder="Search symbols or families" value={shapeSearch} onChange={e=>setShapeSearch(e.target.value)}/>)}
+  {field('Library',<select value={packFilter} onChange={e=>setPackFilter(e.target.value)}><option value="all">All packs · {allStencils(packs).length} shapes</option>{packs.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select>)}
+  <div className="shape-catalog">{matches.map(s=><Button key={s.packId+':'+s.name} active={tool==='stencil'&&stencilChoice?.packId===s.packId&&stencilChoice?.name===s.name} onClick={()=>{setStencilChoice({packId:s.packId,name:s.name});setTool('stencil');setMobileSheet(false);}}><b>{s.icon}</b><span>{s.title}</span><small>{s.packName}</small></Button>)}</div>
+  {!matches.length&&<p>No matching shapes.</p>}
+  <div className="section-head">Connector library</div>
+  {field('New connectors use',<select value={edgeKind} onChange={e=>{setEdgeKind(e.target.value);setTool('connect');setMobileSheet(false);}}>{edgeStyleKinds.map(k=><option key={k.id} value={k.id}>{k.label}</option>)}</select>)}
+  <p className="catalog-intro">After choosing a connector, tap its source and destination ports.</p>
+  <div className="section-head">Extend the library</div><Button onClick={()=>document.getElementById('omd-pack-import')?.click()}>⇧ Import .omdpack.json</Button>
+  <a className="sample-pack-link" href="./sample.quest-pack.omdpack.json" download="sample.quest-pack.omdpack.json">↓ Example: quest & dialogue pack</a>
+  <p className="catalog-intro">Imported JSON packs add stencils and templates without changing the editor. Their definitions are embedded into diagrams that use them.</p>
+  </div>;
  const pane=panel==='layers'?layersPane:panel==='outline'?outlinePane:panel==='shapes'?shapesPane:shapeInspector;
  return <div className="app">
  <input id="omd-import" style={{display:'none'}} type="file" accept=".json,.omd.json,application/json" onChange={e=>{const file=e.target.files?.[0];if(file)importFile(file);e.target.value='';}}/>
+ <input id="omd-pack-import" style={{display:'none'}} type="file" accept=".json,.omdpack.json,application/json" onChange={e=>{const file=e.target.files?.[0];if(file)importPack(file);e.target.value='';}}/>
  <header className="topbar">
  <Button className="brand" onClick={()=>setLibrary(v=>!v)}>◈ <span>OmniDesign</span></Button>
  <span className="divider"/>
@@ -141,7 +183,8 @@ function App(){
  <div className="top-actions">
  <Button className="mobile-only" title="Canvas / Outline" onClick={()=>{setPanel('outline');setMobileSheet(true);}}>☷</Button>
  <Button title="Open local diagram library" onClick={()=>setLibrary(v=>!v)}>☷ <span className="desktop-only">Library</span></Button>
- <Button title="Create a new diagram" onClick={addDocument}>＋ <span className="desktop-only">New</span></Button>
+ <Button title="Browse editable diagram templates" onClick={()=>{setTemplateGallery(true);setLibrary(false);}}>▦ <span className="desktop-only">Templates</span></Button>
+ <Button title="Create a blank diagram" onClick={addDocument}>＋ <span className="desktop-only">Blank</span></Button>
  <Button title="Import editable .omd.json" onClick={()=>filePicker().click()}>⇧ <span className="desktop-only">Open</span></Button>
  <div className="export-menu"><Button onClick={exportNative}>Save ▾</Button><div className="export-dropdown"><button onClick={exportNative}>Native .omd.json</button><button onClick={exportSvg}>Export SVG</button><button onClick={exportPng}>Export PNG</button></div></div>
  </div></header>
@@ -161,13 +204,19 @@ function App(){
  <Canvas ref={canvas} document={doc} tool={tool} selected={selected} select={select} preview={preview} finish={finish} create={create} draw={draw} connect={connect} edit={edit}/>
  <div className="mobile-context">{selected.length>0&&<Button onClick={()=>{setPanel('inspector');setMobileSheet(true);}}>Edit {selected.length} selected</Button>}</div>
  </main>
- <aside className={`rightpane ${mobileSheet?'mobile-open':''}`}><div className="panel-tabs"><Button active={panel==='inspector'} onClick={()=>setPanel('inspector')}>Inspector</Button><Button active={panel==='layers'} onClick={()=>setPanel('layers')}>Layers</Button><Button active={panel==='outline'} onClick={()=>setPanel('outline')}>Outline</Button><Button className="close-sheet" onClick={()=>setMobileSheet(false)}>×</Button></div>{pane}</aside>
+ <aside className={`rightpane ${mobileSheet?'mobile-open':''}`}><div className="panel-tabs"><Button active={panel==='inspector'} onClick={()=>setPanel('inspector')}>Inspector</Button><Button active={panel==='shapes'} onClick={()=>setPanel('shapes')}>Kits</Button><Button active={panel==='layers'} onClick={()=>setPanel('layers')}>Layers</Button><Button active={panel==='outline'} onClick={()=>setPanel('outline')}>Outline</Button><Button className="close-sheet" onClick={()=>setMobileSheet(false)}>×</Button></div>{pane}</aside>
  </div>
  <nav className="mobile-nav"><Button active={tool==='select'} onClick={()=>{setTool('select');setMobileSheet(false);}}>↖<small>Select</small></Button><Button active={tool==='connect'} onClick={()=>{setTool('connect');setMobileSheet(false);}}>↗<small>Connect</small></Button><Button onClick={()=>{setPanel('shapes');setMobileSheet(true);}}>＋<small>Add</small></Button><Button disabled={!history.current.past.length} onClick={undo}>↶<small>Undo</small></Button><Button disabled={!history.current.future.length} onClick={redo}>↷<small>Redo</small></Button></nav>
  {library&&<div className="scrim" onPointerDown={e=>{if(e.target===e.currentTarget)setLibrary(false);}}><div className="library"><header><div><h2>Diagram library</h2><p>Stored locally in this browser / WebView</p></div><Button onClick={()=>setLibrary(false)}>×</Button></header>
- <div className="library-cta"><Button onClick={addDocument}>＋ New diagram</Button><Button onClick={()=>filePicker().click()}>⇧ Import native</Button></div>
+ <div className="library-cta"><Button onClick={addDocument}>＋ Blank diagram</Button><Button onClick={()=>{setLibrary(false);setTemplateGallery(true);}}>▦ Browse templates</Button><Button onClick={()=>filePicker().click()}>⇧ Import native</Button></div>
  <div className="library-grid">{saved.map(d=><button key={d.id} className={`doc-card ${d.id===doc.id?'current':''}`} onClick={()=>openDoc(d)}><div className="doc-preview"><svg viewBox={`0 0 ${d.page.width} ${d.page.height}`} preserveAspectRatio="xMidYMid meet" role="img" aria-label={d.title+' preview'}><GraphicScene document={d}/></svg></div><strong>{d.title}</strong><small>{d.family} · {new Date(d.metadata.updatedAt).toLocaleString()}</small></button>)}</div>
  <div className="library-bottom"><Button onClick={removeCurrent}>Delete current local diagram</Button></div></div></div>}
+ {templateGallery&&<div className="scrim" onPointerDown={e=>{if(e.target===e.currentTarget)setTemplateGallery(false);}}><div className="library template-library"><header><div><h2>New from template</h2><p>Editable shapes, relationships and properties · one freeform canvas</p></div><Button onClick={()=>setTemplateGallery(false)}>×</Button></header>
+   <div className="library-cta"><Button onClick={addDocument}>＋ Blank diagram</Button><Button onClick={()=>document.getElementById('omd-pack-import')?.click()}>⇧ Import stencil pack</Button><a className="sample-pack-link" href="./sample.quest-pack.omdpack.json" download>↓ Sample pack</a></div>
+   <div className="template-grid">{allTemplates(packs).map(t=>{const pack=packs.find(p=>p.id===t.packId)!;return <button key={t.packId+':'+t.id} className="template-card" onClick={()=>fromTemplate(pack,t)}>
+     <div className="template-preview"><svg viewBox="0 0 1200 700" preserveAspectRatio="xMidYMid meet" aria-label={t.title+' template'}><GraphicScene document={instantiateTemplate(pack,t,packs)}/></svg></div>
+     <div className="template-info"><small>{t.packName}</small><strong>{t.title}</strong><p>{t.description}</p></div></button>;})}</div>
+   </div></div>}
  {!ready&&<div className="loading">Opening local diagrams…</div>}
  </div>;
 }

@@ -25,4 +25,4 @@ export type Diagram={
  assets:unknown[];
  extensions?:Record<string,unknown>;
 };
-export type Tool='select'|'hand'|'connect'|'rect'|'roundRect'|'ellipse'|'diamond'|'text'|'pen';
+export type Tool='select'|'hand'|'connect'|'rect'|'roundRect'|'ellipse'|'diamond'|'text'|'pen'|'stencil';

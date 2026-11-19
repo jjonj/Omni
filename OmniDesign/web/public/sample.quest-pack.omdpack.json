@@ -1,0 +1,161 @@
+{
+  "format": "omnidesign-pack",
+  "schemaVersion": 1,
+  "id": "quest-design",
+  "version": "1",
+  "name": "Quest & Dialogue",
+  "family": "game-system",
+  "shapes": [
+    {
+      "name": "quest",
+      "title": "Quest",
+      "icon": "▤",
+      "fallback": "roundRect",
+      "role": "game.quest",
+      "glyph": "document",
+      "width": 230,
+      "height": 130,
+      "defaultStyle": {},
+      "style": {
+        "stroke": "#e0a458",
+        "fill": "#2b2520"
+      },
+      "defaults": {
+        "questId": "quest_001",
+        "status": "planned"
+      },
+      "fields": [
+        {
+          "key": "questId",
+          "label": "Quest ID",
+          "type": "text"
+        },
+        {
+          "key": "status",
+          "label": "Status",
+          "type": "select",
+          "options": [
+            "planned",
+            "active",
+            "complete"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "choice",
+      "title": "Dialogue choice",
+      "icon": "◇",
+      "fallback": "diamond",
+      "role": "game.choice",
+      "width": 220,
+      "height": 125,
+      "defaults": {
+        "reputationMin": 0
+      },
+      "fields": [
+        {
+          "key": "reputationMin",
+          "label": "Minimum reputation",
+          "type": "number"
+        }
+      ]
+    },
+    {
+      "name": "reward",
+      "title": "Reward",
+      "icon": "▣",
+      "fallback": "roundRect",
+      "role": "game.reward",
+      "width": 220,
+      "height": 110,
+      "defaults": {
+        "item": "Food",
+        "quantity": 1
+      },
+      "fields": [
+        {
+          "key": "item",
+          "label": "Item",
+          "type": "text"
+        },
+        {
+          "key": "quantity",
+          "label": "Quantity",
+          "type": "number"
+        }
+      ]
+    }
+  ],
+  "templates": [
+    {
+      "id": "dialogue-quest",
+      "title": "Dialogue quest",
+      "family": "game-system",
+      "description": "A branching quest with typed requirements and reward",
+      "nodes": [
+        {
+          "key": "start",
+          "stencil": "quest",
+          "x": 85,
+          "y": 230,
+          "text": "Find missing supplies",
+          "props": {
+            "questId": "Q001"
+          }
+        },
+        {
+          "key": "choice",
+          "stencil": "choice",
+          "x": 440,
+          "y": 225,
+          "text": "Reputation ≥ 3?",
+          "props": {
+            "reputationMin": 3
+          }
+        },
+        {
+          "key": "reward",
+          "stencil": "reward",
+          "x": 850,
+          "y": 125,
+          "text": "Gain supplies",
+          "props": {
+            "item": "Fruit",
+            "quantity": 5
+          }
+        },
+        {
+          "key": "decline",
+          "stencil": "reward",
+          "x": 850,
+          "y": 405,
+          "text": "Try later",
+          "props": {
+            "item": "None",
+            "quantity": 0
+          }
+        }
+      ],
+      "links": [
+        {
+          "from": "start",
+          "to": "choice",
+          "kind": "flow"
+        },
+        {
+          "from": "choice",
+          "to": "reward",
+          "label": "Yes",
+          "kind": "transition"
+        },
+        {
+          "from": "choice",
+          "to": "decline",
+          "label": "No",
+          "kind": "transition"
+        }
+      ]
+    }
+  ]
+}

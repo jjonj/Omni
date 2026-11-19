@@ -40,7 +40,7 @@ export const Canvas=forwardRef<CanvasApi,Props>(function Canvas({document:d,tool
   if(tool==='pen'){
    drag.current={kind:'draw',pointer:e.pointerId,start:w,view:viewRef.current,before:d,ids:[],moved:false,points:[w]};setStroke([w]);return;
   }
-  if(tool==='rect'||tool==='roundRect'||tool==='ellipse'||tool==='diamond'||tool==='text'){
+  if(tool==='rect'||tool==='roundRect'||tool==='ellipse'||tool==='diamond'||tool==='text'||tool==='stencil'){
    create(tool,{x:snap(w.x,d),y:snap(w.y,d)});return;
   }
   if(tool==='connect'){if(!connectFrom)select([]);setCursor(w);return;}

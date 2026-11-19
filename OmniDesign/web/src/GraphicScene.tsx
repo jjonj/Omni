@@ -1,6 +1,7 @@
 import React from 'react';
 import type {Diagram,Element,NodeElement,Point,Style,Tool} from './types';
-import {absGeometry,anchorPoint,edgeD,endpointPoint,itemById,origin,palette,pathD} from './model';
+import {absGeometry,anchorPoint,edgeD,endpointPoint,origin,palette,pathD} from './model';
+import {StencilArt,edgeMarker,edgeStrokeDash} from './StencilArt';
 type Props={document:Diagram;selection?:string[];tool?:Tool;interactive?:boolean;zoom?:number;onElementDown?:(e:React.PointerEvent<SVGGElement>,id:string)=>void;onResizeDown?:(e:React.PointerEvent<SVGGElement>,id:string)=>void;onPortDown?:(e:React.PointerEvent<SVGGElement>,nodeId:string,portId:string)=>void;connectFrom?:{nodeId:string;portId:string}|null;};
 const color=(s:Style|undefined,k:keyof Style,fallback:string)=>typeof s?.[k]==='string'?s[k] as string:fallback;
 const lines=(text:string,width:number,size:number):string[]=>{
@@ -11,15 +12,21 @@ export function GraphicScene({document:d,selection=[],tool='select',interactive=
  const set=new Set(selection),layerMap=new Map(d.layers.map(l=>[l.id,l]));
  const visible=d.elements.filter(e=>!e.hidden&&layerMap.get(e.layerId)?.visible);
  const ordered=visible.sort((a,b)=>d.layers.findIndex(l=>l.id===a.layerId)-d.layers.findIndex(l=>l.id===b.layerId)||a.order-b.order);
- const groups=ordered.filter(e=>e.type==='group'),edges=ordered.filter(e=>e.type==='edge'),shapes=ordered.filter(e=>e.type!=='edge'&&e.type!=='group');
+ const groups=ordered.filter(e=>e.type==='group'),edges=ordered.filter(e=>e.type==='edge');
+ // Structural containers render below edges and their contents; otherwise a lane's fill hides links.
+ const backRoles=new Set(['process.lane','floor.room','ui.screen','uml.lifeline','uml.actor']);
+ const backgrounds=ordered.filter(e=>e.type==='node'&&backRoles.has(e.semantic?.role??''));
+ const shapes=ordered.filter(e=>e.type!=='edge'&&e.type!=='group'&&!backgrounds.includes(e));
  const selectStroke='#79c5da';
  const handle=(e:React.PointerEvent<SVGGElement>,id:string)=>{if(interactive)onElementDown?.(e,id);};
  const shape=(e:Element)=>{
  if(e.type==='edge'){
   const dpath=edgeD(d,e),label=e.label?.text||'',a=endpointPoint(d,e.source,e),b=endpointPoint(d,e.target,e);
-  const mid={x:(a.x+b.x)/2,y:(a.y+b.y)/2};
+  const mid={x:(a.x+b.x)/2,y:(a.y+b.y)/2},kind=String(e.semantic?.data?.kind??e.semantic?.role??'flow');
+  const details=e.semantic?.data??{};
   return <g key={e.id} data-element={e.id} onPointerDown={evt=>handle(evt,e.id)} style={{cursor:interactive?'pointer':'default'}}>
-   <path d={dpath} fill="none" stroke={e.style?.stroke||palette.accent} strokeWidth={e.style?.strokeWidth??2} strokeDasharray={e.style?.strokeDash?.join(' ')} markerEnd="url(#od-arrow)" opacity={e.style?.opacity??1}/>
+   <path d={dpath} fill="none" stroke={e.style?.stroke||palette.accent} strokeWidth={e.style?.strokeWidth??2} strokeDasharray={edgeStrokeDash(kind,e.style)} markerEnd={edgeMarker(kind)} opacity={e.style?.opacity??1}/>
+   {(['source','target'] as const).map((which)=>{const t=details[which+'Cardinality'];if(!t)return null;const p=which==='source'?a:b;return <text key={which} x={p.x+(which==='source'?14:-14)} y={p.y-10} fontSize={12} fill={palette.ink} textAnchor={which==='source'?'start':'end'}>{String(t).slice(0,20)}</text>;})}
    {interactive&&<path d={dpath} fill="none" stroke="transparent" strokeWidth={Math.max(15,8)} />}
    {label&&<g><rect x={mid.x-label.length*3.6-9} y={mid.y-22} width={label.length*7.2+18} height={23} rx={5} fill={palette.canvas}/><text x={mid.x} y={mid.y-6} fill={color(e.label?.style,'textColor',palette.accent)} fontSize={e.label?.style?.fontSize??13} textAnchor="middle">{label}</text></g>}
    {set.has(e.id)&&interactive&&<path d={dpath} fill="none" stroke={selectStroke} strokeWidth="2" strokeDasharray="3 5" pointerEvents="none"/>}
@@ -54,24 +61,34 @@ export function GraphicScene({document:d,selection=[],tool='select',interactive=
  const font=n.label?.style?.fontSize??style.fontSize??18,fg=n.label?.style?.textColor??style.textColor??palette.ink;
  const title=n.content?.title??n.label?.text??'Shape',subtitle=n.content?.subtitle,items=n.content?.items??[],chips=n.content?.chips??[],footer=n.content?.footer;
  const center=primitive==='ellipse'||primitive==='diamond';
- const left=g.x+(center?g.width/2:18),y=g.y+(center?g.height/2:28);
- const align=center?'middle':'start';
+ const isLifeline=['uml.actor','uml.lifeline'].includes(n.semantic?.role??'');
+ const left=g.x+(center?g.width/2:isLifeline?g.width/2:18),y=g.y+(center?g.height/2:isLifeline?48:28);
+ const align=center||isLifeline?'middle':'start';
+ const special=StencilArt({node:n,g,common});
+ const suppressedTitle=['state.initial','state.final','floor.door','floor.window'].includes(n.semantic?.role??'');
  return <g key={e.id} data-element={e.id} onPointerDown={evt=>handle(evt,e.id)} style={{cursor:interactive?'move':'default'}} >
- <g transform={rotate}>{outline}
+ <g transform={rotate}>{special??outline}
  <text x={left} y={y} textAnchor={align} fontSize={font} fontWeight={600} fontFamily="Segoe UI" fill={fg}>
- {lines(title,center?g.width-42:g.width-35,font).slice(0,3).map((line,i)=><tspan key={i} x={left} dy={i?font*1.15:0}>{line}</tspan>)}
+ {!suppressedTitle&&lines(title,center?g.width-42:g.width-35,font).slice(0,3).map((line,i)=><tspan key={i} x={left} dy={i?font*1.15:0}>{line}</tspan>)}
  </text>
  {subtitle&&<text x={left} y={y+29} textAnchor={align} fontSize={13} fill={palette.muted}>{subtitle.slice(0,75)}</text>}
- {items.map((it,i)=><text key={it.id} x={g.x+18} y={g.y+(subtitle?69:50)+i*20} fontSize={13} fill={it.style?.textColor??palette.ink}>• {it.text.slice(0,70)}</text>)}
+ {items.map((it,i)=><text key={it.id} x={g.x+18} y={g.y+(subtitle?69:55)+i*20} fontSize={13} fill={it.style?.textColor??palette.ink}>{n.semantic?.role==='erd.entity'?'':'• '}{it.text.slice(0,70)}</text>)}
  {chips.slice(0,4).map((chip,i)=><g key={chip.id}><rect x={g.x+15+i*96} y={g.y+g.height-(footer?52:34)} rx={4} width={89} height={21} fill={chip.style?.fill??palette.accent}/><text x={g.x+22+i*96} y={g.y+g.height-(footer?37:19)} fontSize={11} fill={chip.style?.textColor??palette.canvas}>{chip.text.slice(0,12)}</text></g>)}
  {footer&&<text x={g.x+18} y={g.y+g.height-9} fill={palette.muted} fontSize={11}>{footer.slice(0,70)}</text>}
+ {!items.length&&!subtitle&&!isLifeline&&!center&&g.height>=90&&n.semantic?.data&&Object.values(n.semantic.data).length>0&&<text x={g.x+18} y={g.y+g.height-15} fill={palette.muted} fontSize={11}>{Object.entries(n.semantic.data).filter(([key])=>!key.startsWith('omnidesign/')).slice(0,2).map(([key,value])=>String(key)+': '+String(value)).join(' · ').slice(0,45)}</text>}
  {set.has(e.id)&&interactive&&<rect x={g.x-4} y={g.y-4} width={g.width+8} height={g.height+8} fill="none" stroke={selectStroke} strokeWidth={2} strokeDasharray="5 3" pointerEvents="none"/>}{set.has(e.id)&&interactive&&<g onPointerDown={ev=>{ev.stopPropagation();onResizeDown?.(ev,e.id);}} className="resize-handle"><circle cx={g.x+g.width} cy={g.y+g.height} r={23/zoom} fill="transparent"/><circle cx={g.x+g.width} cy={g.y+g.height} r={9/zoom} fill={selectStroke} stroke="#14242e" strokeWidth={2} pointerEvents="none"/></g>}
  </g>
  {interactive&&(tool==='connect'||set.has(e.id))&&n.ports.map(port=>{const pos=anchorPoint(d,n,port.anchor.side,port.anchor.t),active=connectFrom?.nodeId===n.id&&connectFrom.portId===port.id;return <g key={port.id} className="port" onPointerDown={evt=>{evt.stopPropagation();onPortDown?.(evt,n.id,port.id);}}><circle cx={pos.x} cy={pos.y} r={23/zoom} fill="transparent"/><circle cx={pos.x} cy={pos.y} r={(tool==='connect'?8:6)/zoom} fill={active?palette.accent:'#111d24'} stroke={active?palette.ink:selectStroke} strokeWidth={2/zoom} pointerEvents="none"/></g>;})}
  </g>;
  };
- return <><defs><marker id="od-arrow" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M0 0 L7 3.5 L0 7 Z" fill={palette.accent}/></marker></defs>
+ return <><defs>
+ <marker id="od-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 Z" fill={palette.accent}/></marker>
+ <marker id="od-open" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto"><path d="M0 0 L7 4.5 L0 9" fill="none" stroke={palette.accent} strokeWidth={1.5}/></marker>
+ <marker id="od-hollow" markerWidth="13" markerHeight="13" refX="12" refY="6.5" orient="auto"><path d="M0 0 L12 6.5 L0 13 Z" fill={palette.canvas} stroke={palette.accent} strokeWidth={1.4}/></marker>
+ <marker id="od-diamond" markerWidth="13" markerHeight="12" refX="12" refY="6" orient="auto"><path d="M0 6 L6 0 L12 6 L6 12 Z" fill={palette.accent}/></marker>
+ <marker id="od-crowfoot" markerWidth="14" markerHeight="13" refX="13" refY="6.5" orient="auto"><path d="M2 2 L13 6.5 L2 11 M2 0 V13" fill="none" stroke={palette.accent} strokeWidth={1.6}/></marker>
+ </defs>
  <rect x={0} y={0} width={d.page.width} height={d.page.height} fill={d.page.background} />
- {groups.map(shape)}{edges.map(shape)}{shapes.map(shape)}
+ {groups.map(shape)}{backgrounds.map(shape)}{edges.map(shape)}{shapes.map(shape)}
  </>;
 }

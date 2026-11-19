@@ -35,7 +35,7 @@ export function deviceId():string {
  const k='omnidesign.deviceId';try{let v=localStorage.getItem(k);if(!v){v=uuid('dev_');localStorage.setItem(k,v);}return v;}catch{return uuid('dev_');}
 }
 export function edge(a:NodeElement,from:Port['anchor']['side'],b:NodeElement,to:Port['anchor']['side'],layerId:string):Element {
- return {id:uuid('el_'),type:'edge',layerId,parentId:null,order:0,source:{type:'port',nodeId:a.id,portId:a.ports.find(p=>p.anchor.side===from)!.id},target:{type:'port',nodeId:b.id,portId:b.ports.find(p=>p.anchor.side===to)!.id},route:{mode:'orthogonal',waypoints:[],manual:false},label:{text:''},style:{stroke:palette.accent,strokeWidth:2},semantic:{role:'flow',data:{}}};
+ return {id:uuid('el_'),type:'edge',layerId,parentId:null,order:0,source:{type:'port',nodeId:a.id,portId:(a.ports.find(p=>p.anchor.side===from)??a.ports[0]).id},target:{type:'port',nodeId:b.id,portId:(b.ports.find(p=>p.anchor.side===to)??b.ports[0]).id},route:{mode:'orthogonal',waypoints:[],manual:false},label:{text:''},style:{stroke:palette.accent,strokeWidth:2},semantic:{role:'flow',data:{}}};
 }
 export function validateDocument(input:unknown):Diagram {
  if(typeof input!=='object'||!input)throw Error('Not an OmniDesign document.');
