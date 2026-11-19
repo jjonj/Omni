@@ -15,6 +15,9 @@ class CrashReportingTree(private val context: Context) : Timber.DebugTree() {
         super.log(priority, tag, message, t)
 
         if (t != null) {
+            (context.applicationContext as? com.omni.sync.OmniSyncApplication)?.androidDiagnostics
+                ?.record("app", "failed", error = t,
+                    source = "CrashReportingTree", eventName = "timber_exception")
             val crashReport = formatCrashReport(t)
             writeCrashReportToFile(crashReport)
         }

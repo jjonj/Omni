@@ -582,6 +582,7 @@ class FilesViewModel(
                     )
             } else {
                 val cached = getFromCache("")
+                signalRClient.recordOfflineFileBrowse(path, cached != null)
                 if (cached != null) {
                     _fileSystemEntries.value = enrichWithPendingFiles("", cached)
                     _currentPath.value = ""
@@ -616,6 +617,7 @@ class FilesViewModel(
         if (!mainViewModel.isConnected.value) {
             Log.d("FilesViewModel", "Not connected, checking cache for: $path")
             val cachedEntries = getFromCache(path)
+            signalRClient.recordOfflineFileBrowse(path, cachedEntries != null)
             if (cachedEntries != null) {
                 Log.d("FilesViewModel", "Cache hit for: $path")
                 val enrichedEntries = enrichWithPendingFiles(path, cachedEntries)

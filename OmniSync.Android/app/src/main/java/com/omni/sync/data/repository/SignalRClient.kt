@@ -289,6 +289,9 @@ class SignalRClient(
     private var terminalHubConnection: HubConnection? = null
     val remoteTerminalClient = RemoteTerminalClient()
     val phoneCommands by lazy { com.omni.sync.logic.terminal.PhoneCommandService(context, this) }
+    private val diagnostics by lazy {
+        (context.applicationContext as OmniSyncApplication).androidDiagnostics
+    }
     private val hubUrl: String get() = mainViewModel.appConfig.value.hubUrl
 
     private val apiKey: String get() = mainViewModel.appConfig.value.apiKey
@@ -718,6 +721,7 @@ class SignalRClient(
     }
 
     private fun onConnected(url: String) {
+        diagnostics.record("connection", "reconnected", source = "SignalRClient", eventName = "connect")
         _connectionState.value = "Connected"
         val baseUrl = url.substringBefore("/signalrhub")
         _currentBaseUrl.value = baseUrl
@@ -802,6 +806,7 @@ class SignalRClient(
 
             val candidates = resolveCandidateUrls()
             if (candidates.isEmpty()) {
+                diagnostics.record("connection", "offline", source = "SignalRClient", eventName = "connect_failed")
                 _connectionState.value = "Disconnected (No hub URL)"
                 mainViewModel.setConnected(false)
                 return false
@@ -816,6 +821,7 @@ class SignalRClient(
             }
 
             if (token != connectionToken.get()) return false
+            diagnostics.record("connection", "failed", source = "SignalRClient", eventName = "connect_failed")
             _connectionState.value = "Disconnected (All attempts failed)"
             mainViewModel.setConnected(false)
             if (allowScheduleReconnect && !manualStop.get()) {
@@ -875,6 +881,7 @@ class SignalRClient(
     }
 
     private suspend fun tryConnect(url: String, token: Long): Boolean {
+        diagnostics.record("connection", "attempt", source = "SignalRClient", eventName = "connect")
         _connectionState.value = "Connecting..."
         mainViewModel.addLog("Attempting connection: $url", com.omni.sync.ui.screen.LogType.INFO)
 
@@ -935,6 +942,8 @@ class SignalRClient(
 
             true
         } catch (e: Exception) {
+            diagnostics.record("connection", "failed", error = e,
+                source = "SignalRClient", eventName = "connect_failed")
             Log.e("SignalRClient", "Connection error for $url: ${e.message}")
             mainViewModel.addLog("Connection error ($url): ${e.message}", com.omni.sync.ui.screen.LogType.ERROR)
             stopHubConnectionInternal(connection)
@@ -948,6 +957,8 @@ class SignalRClient(
             return
         }
 
+        diagnostics.record("connection", "closed", error = error,
+            source = "SignalRClient", eventName = "connection_closed")
         isHubAuthenticated = false
         if (unstableInternet) reliableOutbox.holdUnsentSensitive()
         val reason = error?.message ?: "Unknown reason"
@@ -977,6 +988,7 @@ class SignalRClient(
 
     @Synchronized
     private fun scheduleReconnect(reason: String) {
+        diagnostics.record("connection", "reconnecting", source = "SignalRClient", eventName = "reconnect_scheduled")
         if (manualStop.get() || hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) return
         if (reconnectJob?.isActive == true) return
 
@@ -1061,6 +1073,13 @@ class SignalRClient(
     private fun registerHubHandlers() {
         if (handlersRegistered) return
         handlersRegistered = true
+        hubConnection?.on("RequestAndroidDiagnostics", { deviceId: String, requestId: String, minutes: Int ->
+            if (deviceId == diagnostics.deviceId &&
+                runCatching { java.util.UUID.fromString(requestId) }.isSuccess &&
+                minutes in 1..AndroidDiagnostics.MAX_MINUTES) {
+                uploadDiagnostics(requestId, minutes)
+            }
+        }, String::class.java, String::class.java, Int::class.java)
         hubConnection?.on("AgentAttentionRequested", { payload: String ->
             runCatching {
                 val attention = com.google.gson.JsonParser.parseString(payload).asJsonObject
@@ -1848,7 +1867,14 @@ class SignalRClient(
      * Call on Dispatchers.IO (or another background dispatcher).
      */
     suspend fun agentCall(method: String, params: Map<String, Any?> = emptyMap()): com.google.gson.JsonElement {
-        return kotlinx.coroutines.withContext(Dispatchers.IO) {
+        val create = method == "sessions.create"
+        val operationId = (params["clientRequestId"] as? String)
+            ?.takeIf { runCatching { java.util.UUID.fromString(it) }.isSuccess }
+            ?: java.util.UUID.randomUUID().toString()
+        if (create) diagnostics.record("sessions.create", "attempt", operationId,
+            source = "SignalRClient", eventName = "session_create")
+        return try {
+            val result = kotlinx.coroutines.withContext(Dispatchers.IO) {
             if (hubConnection?.connectionState != com.microsoft.signalr.HubConnectionState.CONNECTED) {
                 throw IllegalStateException("OmniHub connection unavailable")
             }
@@ -1864,7 +1890,28 @@ class SignalRClient(
             val raw = conn.invoke(Any::class.java, "AgentCall", method, params)
                 .timeout(105, TimeUnit.SECONDS)
                 .blockingGet()
-            com.google.gson.JsonParser.parseString(gson.toJson(raw))
+                com.google.gson.JsonParser.parseString(gson.toJson(raw))
+            }
+            if (create) {
+                val response = runCatching { result.asJsonObject }.getOrNull()
+                val state = runCatching { response?.get("state")?.asString }.getOrNull()
+                val session = runCatching {
+                    (response?.getAsJsonObject("result")?.getAsJsonObject("session")
+                        ?: response?.getAsJsonObject("session"))?.get("id")?.asString
+                }.getOrNull()
+                diagnostics.record("sessions.create", when {
+                    state == "Failed" -> "rejected"
+                    !session.isNullOrBlank() -> "ok"
+                    else -> "unknown"
+                }, operationId, source = "SignalRClient", eventName = "session_result")
+            }
+            result
+        } catch (error: Exception) {
+            if (create) diagnostics.record("sessions.create",
+                if (AndroidDiagnostics.errorKind(error) == "Timeout") "timeout" else
+                    if (hubConnection?.connectionState != com.microsoft.signalr.HubConnectionState.CONNECTED) "offline" else "failed",
+                operationId, error = error, source = "SignalRClient", eventName = "session_result")
+            throw error
         }
     }
 
@@ -2759,15 +2806,36 @@ class SignalRClient(
 
     fun winClose(target: String) = submitReliable("WinClose", target)
 
+    /** A FilesViewModel browse can fail before an RPC is even attempted offline. */
+    fun recordOfflineFileBrowse(path: String, usedCache: Boolean) {
+        diagnostics.record("files.list", "offline", java.util.UUID.randomUUID().toString(),
+            source = "FilesViewModel", eventName = if (usedCache) "cache_fallback" else "directory_list",
+            scope = AndroidDiagnostics.pathScope(path))
+    }
+
     fun listDirectory(path: String): Single<List<FileSystemEntry>>? {
+        val id = java.util.UUID.randomUUID().toString()
+        val scope = AndroidDiagnostics.pathScope(path)
         if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
-            return hubConnection?.invoke(List::class.java, "ListDirectory", path)
+            diagnostics.record("files.list", "attempt", id,
+                source = "SignalRClient", eventName = "directory_list", scope = scope)
+            return hubConnection?.invoke(List::class.java, "ListDirectory", path, id)
                 ?.map { rawList ->
                     val jsonElement = gson.toJsonTree(rawList)
                     val listType = object : TypeToken<List<FileSystemEntry>>() {}.type
-                    gson.fromJson(jsonElement, listType)
-                } as? Single<List<FileSystemEntry>>
+                    gson.fromJson<List<FileSystemEntry>>(jsonElement, listType)
+                }?.timeout(if (unstableInternet) 44L else 19L, TimeUnit.SECONDS)
+                ?.doOnSuccess { entries ->
+                    diagnostics.record("files.list", "ok", id, count = entries.size,
+                        source = "SignalRClient", eventName = "directory_result", scope = scope)
+                }?.doOnError { error ->
+                    diagnostics.record("files.list",
+                        if (AndroidDiagnostics.errorKind(error) == "Timeout") "timeout" else "failed",
+                        id, error = error, source = "SignalRClient", eventName = "directory_result", scope = scope)
+                }
         }
+        diagnostics.record("files.list", "offline", id,
+            source = "SignalRClient", eventName = "directory_list", scope = scope)
         return null
     }
 
@@ -2920,14 +2988,27 @@ class SignalRClient(
     }
 
     fun getAvailableDrives(): Single<List<FileSystemEntry>>? {
+        val id = java.util.UUID.randomUUID().toString()
         if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
-            return hubConnection?.invoke(List::class.java, "GetAvailableDrives")
+            diagnostics.record("files.list", "attempt", id,
+                source = "SignalRClient", eventName = "directory_list", scope = "root")
+            return hubConnection?.invoke(List::class.java, "GetAvailableDrives", id)
                 ?.map { rawList ->
                     val jsonElement = gson.toJsonTree(rawList)
                     val listType = object : TypeToken<List<FileSystemEntry>>() {}.type
-                    gson.fromJson(jsonElement, listType)
-                } as? Single<List<FileSystemEntry>>
+                    gson.fromJson<List<FileSystemEntry>>(jsonElement, listType)
+                }?.timeout(if (unstableInternet) 44L else 19L, TimeUnit.SECONDS)
+                ?.doOnSuccess { entries ->
+                    diagnostics.record("files.list", "ok", id, count = entries.size,
+                        source = "SignalRClient", eventName = "directory_result", scope = "root")
+                }?.doOnError { error ->
+                    diagnostics.record("files.list",
+                        if (AndroidDiagnostics.errorKind(error) == "Timeout") "timeout" else "failed",
+                        id, error = error, source = "SignalRClient", eventName = "directory_result", scope = "root")
+                }
         }
+        diagnostics.record("files.list", "offline", id,
+            source = "SignalRClient", eventName = "directory_list", scope = "root")
         return null
     }
 
@@ -3123,6 +3204,24 @@ class SignalRClient(
         if (now - previous < 12_000L || !lastAgentAuthAttemptMs.compareAndSet(previous, now)) return
         authenticateClient()
     }
+    /** Upload only the sanitized, persisted Android app event ring over the authenticated link.
+     * A failed upload leaves the events on disk for the next reconnection. */
+    private fun uploadDiagnostics(requestId: String?, minutes: Int) {
+        val connection = hubConnection ?: return
+        if (!isHubAuthenticated ||
+            connection.connectionState != com.microsoft.signalr.HubConnectionState.CONNECTED) return
+        coroutineScope.launch {
+            try {
+                connection.invoke(Any::class.java, "ReportAndroidDiagnostics",
+                    diagnostics.deviceId, requestId ?: "", diagnostics.snapshot(minutes))
+                    .timeout(12, TimeUnit.SECONDS).blockingGet()
+            } catch (error: Exception) {
+                diagnostics.record("diagnostics", "failed", error = error,
+                    source = "SignalRClient", eventName = "diagnostic_upload")
+            }
+        }
+    }
+
     private fun authenticateClient() {
         val connection = hubConnection ?: return
         lastAgentAuthAttemptMs.set(android.os.SystemClock.elapsedRealtime())
@@ -3132,6 +3231,8 @@ class SignalRClient(
                 Log.d("SignalR", "Auth success: $success")
                 isHubAuthenticated = success
                 if (success) {
+                    diagnostics.record("connection", "authenticated", source = "SignalRClient", eventName = "auth")
+                    uploadDiagnostics(null, AndroidDiagnostics.MAX_MINUTES)
                     advertiseAssistantCommands()
                     flushAssistantVoiceOutbox()
                     reliableOutbox.flushOnConnect()
@@ -3149,6 +3250,8 @@ class SignalRClient(
                 if (hubConnection === connection) {
                     isHubAuthenticated = false
                 }
+                diagnostics.record("connection", "auth_failed", error = error,
+                    source = "SignalRClient", eventName = "auth")
                 Log.e("SignalR", "Auth failed", error)
             })
     }
@@ -3267,6 +3370,7 @@ class SignalRClient(
         handlersRegistered = false
         
         val hub = hubConnection ?: return
+        hub.remove("RequestAndroidDiagnostics")
         hub.remove("ClipboardUpdated")
         hub.remove("InjectText")
         hub.remove("ReceiveCommandOutput")

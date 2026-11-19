@@ -35,6 +35,7 @@ class OmniSyncApplication : Application(), ImageLoaderFactory {
     // For simplicity, we're using a basic approach here.
     // In a real app, consider a DI framework like Hilt or Koin.
 
+    lateinit var androidDiagnostics: com.omni.sync.data.repository.AndroidDiagnostics
     lateinit var mainViewModel: MainViewModel
     lateinit var signalRClient: SignalRClient
     lateinit var clipboardWatcher: ClipboardWatcher
@@ -47,6 +48,8 @@ class OmniSyncApplication : Application(), ImageLoaderFactory {
         if (applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0) {
             Timber.plant(Timber.DebugTree())
         }
+        androidDiagnostics = com.omni.sync.data.repository.AndroidDiagnostics(applicationContext)
+        androidDiagnostics.record("app", "ok", source = "dashboard", eventName = "startup")
         Timber.plant(CrashReportingTree(applicationContext))
         mainViewModel = MainViewModel(this) // Pass the Application instance
         mainViewModel.addLog("[Android startup] Application ViewModel initialized", com.omni.sync.ui.screen.LogType.INFO)

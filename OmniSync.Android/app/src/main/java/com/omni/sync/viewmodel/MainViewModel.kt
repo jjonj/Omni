@@ -573,6 +573,8 @@ fun setConnected(connected: Boolean) {
     
     // New function to add logs from anywhere
     fun addLog(message: String, type: LogType = LogType.INFO) {
+        (getApplication<Application>() as? com.omni.sync.OmniSyncApplication)
+            ?.androidDiagnostics?.dashboard(message, type.name)
         val newLog = LogEntry(message, type, System.currentTimeMillis())
         // Keep last 100 logs
         _dashboardLogs.value = (_dashboardLogs.value + newLog).takeLast(100)
