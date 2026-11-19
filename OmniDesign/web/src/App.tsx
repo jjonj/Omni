@@ -30,6 +30,7 @@ function App(){
  const [panel,setPanel]=useState<'inspector'|'layers'|'outline'|'shapes'|null>('inspector');
  const [mobileSheet,setMobileSheet]=useState(false),[activeLayer,setActiveLayer]=useState<string>('');
  const [message,setMessage]=useState('Saved locally'),[ready,setReady]=useState(false);
+ const [hubDocs,setHubDocs]=useState<{id:string;title:string;family:string;revision:number}[]>([]),[hubOpen,setHubOpen]=useState(false);
  const [personalPacks,setPersonalPacks]=useState<Pack[]>(loadPersonalPacks);
  const [templateGallery,setTemplateGallery]=useState(false),[shapeSearch,setShapeSearch]=useState(''),[packFilter,setPackFilter]=useState('all');
  const [stencilChoice,setStencilChoice]=useState<{packId:string;name:string}|null>(null),[edgeKind,setEdgeKind]=useState('flow');
@@ -40,11 +41,55 @@ function App(){
  const openDoc=(next:Diagram)=>{replace(clone(next));setSelected([]);history.current={past:[],future:[]};setRevision(v=>v+1);setActiveLayer(next.layers[0].id);localStorage.setItem('omnidesign.current',next.id);setLibrary(false);setMobileSheet(false);setTool('select');};
  useEffect(()=>{let live=true;(async()=>{try{
   const all=await getDocuments();if(!live)return;
-  const id=localStorage.getItem('omnidesign.current'),prior=all.find(d=>d.id===id)||all[0];
+  const id=localStorage.getItem('omnidesign.current');let prior:Diagram|undefined=all.find(d=>d.id===id)||all[0];
+  const deepId=new URLSearchParams(window.location.search).get('diagram');
+  if(deepId){try{const response=await fetch(new URL('./api/v1/diagrams/'+encodeURIComponent(deepId),location.href));if(response.ok){prior=validateDocument(await response.json());await putDocument(prior);}}catch{/* Offline: prefer the local cache. */}
+   if(prior?.id!==deepId)prior=all.find(d=>d.id===deepId);}
   if(prior)openDoc(validateDocument(prior));else{const example=exampleDiagram();openDoc(example);await putDocument(example);}
   await updateLibrary();
  }catch(e){setMessage('Storage issue: '+String(e));}finally{if(live)setReady(true);}})();return()=>{live=false;};},[]);
  useEffect(()=>{if(!ready)return;setMessage('Saving locally…');const timer=setTimeout(async()=>{try{await putDocument(doc);setMessage('Saved locally');updateLibrary();}catch(e){setMessage('Save failed: '+String(e));}},420);return()=>clearTimeout(timer);},[doc,ready]);
+ // Hub writes are explicit; local edits keep their full native document in IndexedDB.
+ // Conditional revisions prevent another device or agent from being overwritten.
+ const hubRequest=async(path:string,options?:RequestInit):Promise<{response:Response;data:any}>=>{
+  const response=await fetch(new URL('./api/v1/'+path,location.href),options);
+  const data=await response.json().catch(()=>null);
+  if(!response.ok)throw Error((data?.detail?.error??data?.detail??data?.error??response.statusText)+' (HTTP '+response.status+')');
+  return {response,data};
+ };
+ const saveToHub=async()=>{
+  const snapshot=clone(docRef.current);
+  try{
+   validateDocument(snapshot);
+   const creating=snapshot.revision===0,payload=JSON.stringify(snapshot);
+   // Same attempted document + base revision => same key after an uncertain response.
+   const digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(payload));
+   const key=Array.from(new Uint8Array(digest),b=>b.toString(16).padStart(2,'0')).join('');
+   const {data}=await hubRequest('diagrams'+(creating?'':'/'+snapshot.id),{
+    method:creating?'POST':'PUT',
+    headers:creating?{'Content-Type':'application/json'}:{'Content-Type':'application/json','If-Match':'"rev-'+snapshot.revision+'"','Idempotency-Key':key},
+    body:payload
+   });
+   const accepted=validateDocument(data);
+   if(docRef.current.id===snapshot.id){
+    const unchanged=JSON.stringify(docRef.current)===JSON.stringify(snapshot);
+    const next=unchanged?accepted:{...docRef.current,revision:accepted.revision};
+    replace(next);await putDocument(next);await updateLibrary();
+    setMessage(unchanged?'Hub saved · revision '+accepted.revision:'Hub saved previous state; newer local edits remain to publish');
+   }else setMessage('Hub saved '+snapshot.title+'; another diagram is now open.');
+  }catch(e){setMessage('Hub save failed (local copy retained): '+String(e));}
+ };
+ const openHubLibrary=async()=>{try{
+  const {data}=await hubRequest('diagrams?limit=100');
+  setHubDocs(data.items??[]);setHubOpen(true);
+ }catch(e){setMessage('Hub unavailable: '+String(e));}};
+ const openFromHub=async(id:string)=>{try{
+  await putDocument(docRef.current); // Keep the current local working state before changing documents.
+  const {data}=await hubRequest('diagrams/'+id);
+  const native=validateDocument(data);await putDocument(native);openDoc(native);await updateLibrary();setHubOpen(false);
+  setMessage('Opened Hub revision '+native.revision);
+ }catch(e){setMessage('Hub open failed: '+String(e));}};
+ const copyHubLink=async()=>{try{const prefix=location.pathname.includes('/gateway/tools/omnidesign/')?location.origin+'/gateway/tools/omnidesign/':location.origin+'/';await navigator.clipboard.writeText(prefix+'?diagram='+encodeURIComponent(docRef.current.id));setMessage(docRef.current.revision?'Link copied':'Link copied · this ID is local only until first Hub save');}catch(e){setMessage('Unable to copy link: '+String(e));}};
  const commit=(edit:(d:Diagram)=>Diagram)=>{const before=docRef.current,next=edit(clone(before));if(JSON.stringify(before)===JSON.stringify(next))return;history.current.past.push(clone(before));if(history.current.past.length>100)history.current.past.shift();history.current.future=[];next.metadata={...next.metadata,updatedAt:stamp()};replace(next);setRevision(v=>v+1);};
  const preview=(d:Diagram)=>replace(d);
  const finish=(before:Diagram)=>{if(JSON.stringify(before)===JSON.stringify(docRef.current))return;history.current.past.push(before);if(history.current.past.length>100)history.current.past.shift();history.current.future=[];replace({...docRef.current,metadata:{...docRef.current.metadata,updatedAt:stamp()}});setRevision(v=>v+1);};
@@ -184,6 +229,9 @@ function App(){
  <Button className="mobile-only" title="Canvas / Outline" onClick={()=>{setPanel('outline');setMobileSheet(true);}}>☷</Button>
  <Button title="Open local diagram library" onClick={()=>setLibrary(v=>!v)}>☷ <span className="desktop-only">Library</span></Button>
  <Button title="Browse editable diagram templates" onClick={()=>{setTemplateGallery(true);setLibrary(false);}}>▦ <span className="desktop-only">Templates</span></Button>
+  <Button title="Save this editable diagram to PC OmniHub with revision checks" onClick={saveToHub}>↑ <span className="desktop-only">Hub save</span></Button>
+  <Button title="Open the PC OmniHub diagram library" onClick={openHubLibrary}>☁ <span className="desktop-only">Hub library</span></Button>
+  <Button title="Copy private Hub link to this diagram" onClick={copyHubLink}>↗ <span className="desktop-only">Link</span></Button>
  <Button title="Create a blank diagram" onClick={addDocument}>＋ <span className="desktop-only">Blank</span></Button>
  <Button title="Import editable .omd.json" onClick={()=>filePicker().click()}>⇧ <span className="desktop-only">Open</span></Button>
  <div className="export-menu"><Button onClick={exportNative}>Save ▾</Button><div className="export-dropdown"><button onClick={exportNative}>Native .omd.json</button><button onClick={exportSvg}>Export SVG</button><button onClick={exportPng}>Export PNG</button></div></div>
@@ -211,6 +259,7 @@ function App(){
  <div className="library-cta"><Button onClick={addDocument}>＋ Blank diagram</Button><Button onClick={()=>{setLibrary(false);setTemplateGallery(true);}}>▦ Browse templates</Button><Button onClick={()=>filePicker().click()}>⇧ Import native</Button></div>
  <div className="library-grid">{saved.map(d=><button key={d.id} className={`doc-card ${d.id===doc.id?'current':''}`} onClick={()=>openDoc(d)}><div className="doc-preview"><svg viewBox={`0 0 ${d.page.width} ${d.page.height}`} preserveAspectRatio="xMidYMid meet" role="img" aria-label={d.title+' preview'}><GraphicScene document={d}/></svg></div><strong>{d.title}</strong><small>{d.family} · {new Date(d.metadata.updatedAt).toLocaleString()}</small></button>)}</div>
  <div className="library-bottom"><Button onClick={removeCurrent}>Delete current local diagram</Button></div></div></div>}
+ {hubOpen&&<div className="scrim" onPointerDown={e=>{if(e.target===e.currentTarget)setHubOpen(false);}}><div className="library"><header><div><h2>OmniHub diagrams</h2><p>PC-persisted native diagrams · revisions shared with agents</p></div><Button onClick={()=>setHubOpen(false)}>×</Button></header><div className="library-cta"><Button onClick={openHubLibrary}>Refresh Hub list</Button></div><div className="library-grid">{hubDocs.map(d=><button key={d.id} className="doc-card" onClick={()=>openFromHub(d.id)}><strong>{d.title}</strong><small>{d.family} · Hub revision {d.revision}</small></button>)}</div>{hubDocs.length===0&&<p>No Hub diagrams yet. Use Hub save on a local diagram.</p>}</div></div>}
  {templateGallery&&<div className="scrim" onPointerDown={e=>{if(e.target===e.currentTarget)setTemplateGallery(false);}}><div className="library template-library"><header><div><h2>New from template</h2><p>Editable shapes, relationships and properties · one freeform canvas</p></div><Button onClick={()=>setTemplateGallery(false)}>×</Button></header>
    <div className="library-cta"><Button onClick={addDocument}>＋ Blank diagram</Button><Button onClick={()=>document.getElementById('omd-pack-import')?.click()}>⇧ Import stencil pack</Button><a className="sample-pack-link" href="./sample.quest-pack.omdpack.json" download>↓ Sample pack</a></div>
    <div className="template-grid">{allTemplates(packs).map(t=>{const pack=packs.find(p=>p.id===t.packId)!;return <button key={t.packId+':'+t.id} className="template-card" onClick={()=>fromTemplate(pack,t)}>

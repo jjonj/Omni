@@ -1,6 +1,6 @@
 # OmniDesign v1 — native document and platform contract (MISC-0162)
 
-**Status:** design and machine-readable schema complete. MISC-0163 subsequently implemented the shared desktop/mobile-responsive web editor at `OmniDesign/web/`; **service, sync and Android host integration are not implemented in this design task**. Downstream work: MISC-0165 (service), then Android/agent/integration tasks. Source owner is `D:/SSDProjects/Omni`.
+**Status:** design and machine-readable schema complete. MISC-0163 implemented the shared desktop/mobile-responsive web editor at `OmniDesign/web/`; MISC-0165 subsequently implemented an on-demand OmniHub storage service and explicit browser Hub save/library actions. **Automatic offline sync, agent UX and Android host integration are still downstream tasks.** Downstream work: MISC-0165 (service), then Android/agent/integration tasks. Source owner is `D:/SSDProjects/Omni`.
 
 ## 1. Approved visual/interaction contract
 
@@ -61,7 +61,7 @@ Agent → same JSON REST API → proposed revision / diff → human accept
 
 ## 4. HTTP + agent contract for MISC-0165 and later
 
-Use JSON UTF-8; all paths below are relative to the registered OmniDesign service origin. Behind the Gateway the public/private route is `/gateway/tools/omnidesign/` and all editor calls must be **relative** to that base. Do not hardcode `localhost` into browser assets.
+Use JSON UTF-8; all paths below are relative to the registered OmniDesign service origin. For authenticated **remote** Gateway access, the tool proxy route is `/gateway/tools/omnidesign/` and all editor calls must be **relative** to that base. The local Rust Gateway :3333 has only a shortcut/launcher; the launched browser connects directly to its loopback service origin and uses the same relative calls. Do not hardcode `localhost` into browser assets.
 
 | Operation | Path | Meaning |
 |---|---|---|
@@ -107,9 +107,9 @@ Exports are **derived** from saved native data, never used as backing storage. W
 ## 7. Task boundary / implementation checklist
 
 - **MISC-0163 (web editor):** implemented in `OmniDesign/web/` as one responsive React/TS SVG canvas with schema validator, fit/zoom/ports/selection/group/layers/undo, IndexedDB atomic snapshots, native import/export and PNG/SVG output. The implementation uses a small shared SVG pointer engine rather than React Flow internal geometry: group-local paths and typed endpoints stay in one native coordinate model, avoiding a separate conversion layer. Visual design follows **approved R3**, not R2.
-- **MISC-0165 (service):** FastAPI + SQLite WAL service, immutable version history, proposal/accept/diff contract, revision CAS + idempotency, on-demand Gateway registration, stable URLs, health identity and storage path. Verify PC cold-start/Hub reconnect after implementing; update Omni Registry service entry **once implemented**.
+- **MISC-0165 (service):** implemented FastAPI + SQLite WAL service, immutable revision snapshots, proposal/accept/discard API, revision CAS + idempotency, on-demand Gateway registration, direct-loopback health, and PC app data storage. Gateway private tool `omnidesign` registered live; isolated DB integration checked and service launched through Gateway. PC reboot and authenticated remote routing have not been tested. See [service operations](../../OmniDesign/service/README.md).
 - **Android follow-up:** package identical built editor in Android assets, Compose navigation + WebViewAssetLoader, scoped Kotlin transport bridge, offline first launch, bidirectional deep links, physical phone sync/conflict flow. Do not create a parallel Compose canvas editor.
 - **Agent follow-up:** teach agent tools to retrieve/validate native documents and create revision-pinned proposals; current/proposed diff/approval UI in same editor. Avoid replacing the document with Mermaid/SVG.
-- **Registry:** Existing [Omni Registry](B:/GDrive/ProjectsG/Omni%20Registry/README.md) catalogs Omni/Omnish and Gateway infrastructure; v1 design is **planned only**, so do not publish it as a running service. This document is the handoff until service activation.
+- **Registry:** [Omni Registry](B:/GDrive/ProjectsG/Omni%20Registry/README.md) now lists the registered on-demand OmniDesign service in services/projects/capabilities, separating observed local launch/health from unverified remote/device or reboot behavior.
 
 **Deliberately deferred:** real-time collaboration and CRDT, live-linked library instances, CAD-grade dimensions/constraints, embedded binary/raster editing, unbounded history policies, multi-user account/permissions system, cloud database, image-to-diagram reconstruction. These do not block native editable v1 or its offline/conflict semantics.
