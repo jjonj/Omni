@@ -10,7 +10,7 @@
 - Every change on Android writes immediately (no desktop's 420 ms debounce). Back initiates one final IndexedDB write and waits for the editor acknowledgement, with a short fallback if WebView cannot respond.
 - Documents created offline already have stable `dgm_<uuid>` IDs. The same ID is sent to the PC create endpoint; successful revisioned writes update the local document and baseline. Subsequent edits compare against the confirmed baseline, so pending state survives WebView/app restart.
 - Library cards show **Local only / Pending / Synced / Conflict**; the persistent strip shows actual Hub reachability and pending count. A failed sync never removes local content.
-- **Sync now** iterates unsynced documents with revision-checked POST/PUT and durable idempotency keys. This is an explicit user action, not an uncontrolled background writer. HTTP 409/412 preserves local edits and marks a conflict; **Keep both** first saves a fork under a new ID, then (if reachable) refreshes the original ID from Hub. No silent last-writer-wins merge.
+- **Sync now** initially uploaded unsynced documents explicitly. Follow-up MISC-0167 added a durable IndexedDB outbox, automatic reconnect/resume sync while the editor is visible, paginated PC downloads, and recoverable conflict records. HTTP 409/412 never overwrite local edits; **Keep both** uses a stable fork ID before restoring the Hub original. See [MISC-0167](MISC-0167-sync.md).
 - Hub library download does not overwrite a locally edited document with the same ID.
 
 ## Connectivity

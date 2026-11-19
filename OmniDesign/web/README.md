@@ -29,7 +29,7 @@ dist/ is self-contained with relative asset URLs for a Gateway subpath or WebVie
 ## Boundaries
 
 - MISC-0165 implements the live on-demand OmniHub SQLite revision service and explicit **Hub save**, **Hub library** and **Link** actions. The browser keeps a local IndexedDB copy, while Hub writes use conditional revisions and refuse stale writes. See [service API/operations](../service/README.md).
-- MISC-0166 adds the Android navigation/WebView bundle, confirmed-sync baselines, pending counts, explicit all-diagram Sync and conflict-safe local forks (see ../../docs/OmniDesign/MISC-0166-android-offline.md). Background sync and agent-side proposal/diff review remain separate work. Per-origin IndexedDB stays authoritative offline until explicitly synced.
+- MISC-0166 bundles the same editor into Android WebView, with durable offline IndexedDB. MISC-0167 adds reconnect/resume synchronization while the Design screen is visible, paginated PC downloads, transactional outbox/idempotent retries and durable Keep-both conflict resolution (see ../../docs/OmniDesign/MISC-0167-sync.md). Agent-side proposal/diff review remains separate work; local source diagrams remain editable offline.
 - Shared SVG pointer/gesture renderer, rather than React Flow internal state, keeps native grouped paths and typed ports in one coordinate model. This is the sole renderer for desktop and WebView.
 - The default 1200×700 artboard sits on an unbounded panning workspace. SVG/PNG exports crop to the artboard; page bounds can be resized in Inspector when nothing is selected; advanced CAD behaviors are future work.
 - Native contract/sample are in ../../docs/OmniDesign/. MISC-0163 evidence: E:/_AgentScratch/Tasks/Misc/MISC-0163/Evidence/.

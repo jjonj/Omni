@@ -3,7 +3,8 @@ import {renderToStaticMarkup} from 'react-dom/server';
 import {Canvas,type CanvasApi} from './Canvas';
 import {GraphicScene} from './GraphicScene';
 import {clone,edge,exampleDiagram,groupElements,itemById,newDiagram,node,origin,palette,removeElements,snap,stamp,translate,ungroupElements,uuid,validateDocument} from './model';
-import {download,filename,getDocuments,getSynced,needsSync,putDocument,removeDocument,setSynced,type SyncedBaseline} from './storage';
+import {adoptRemote,confirmEquivalent,download,filename,getConflicts,getDocuments,getOutbox,getSynced,needsSync,noteConflict,putDocument,removeDocument,setSynced,type SyncedBaseline,type SyncConflict,type PendingOperation} from './storage';
+import {keepBoth as resolveKeepBoth,synchronize} from './sync';
 import {hubHealth,hubJson,HubHttpError,inAndroid} from './androidBridge';
 import type {Diagram,Element,NodeElement,Point,Style,Tool} from './types';
 import {allStencils,allTemplates,attachPack,builtInPacks,documentPacks,findStencil,instantiateTemplate,loadPersonalPacks,parsePack,savePersonalPacks,stencilNode,type Pack,type Stencil} from './packs';
@@ -33,8 +34,9 @@ function App(){
  const [mobileSheet,setMobileSheet]=useState(false),[activeLayer,setActiveLayer]=useState<string>('');
  const [message,setMessage]=useState('Saved locally'),[ready,setReady]=useState(false);
  const [synced,setSyncedMap]=useState<Record<string,SyncedBaseline>>({});
+ const [queued,setQueued]=useState<Record<string,PendingOperation>>({});
  const [hubOnline,setHubOnline]=useState<boolean|null>(null),[syncBusy,setSyncBusy]=useState(false);
- const [conflicts,setConflicts]=useState<Record<string,string>>({});
+ const [conflicts,setConflicts]=useState<Record<string,SyncConflict>>({});
  const syncLock=useRef(false);
  const [hubDocs,setHubDocs]=useState<{id:string;title:string;family:string;revision:number}[]>([]),[hubOpen,setHubOpen]=useState(false);
  const [personalPacks,setPersonalPacks]=useState<Pack[]>(loadPersonalPacks);
@@ -44,9 +46,11 @@ function App(){
  const canvas=useRef<CanvasApi>(null);
  const replace=(next:Diagram)=>{docRef.current=next;setDoc(next);};
  const updateLibrary=async()=>{try{
-  const [documents,baselines]=await Promise.all([getDocuments(),getSynced()]);
+  const [documents,baselines,holds,operations]=await Promise.all([getDocuments(),getSynced(),getConflicts(),getOutbox()]);
   setSaved(documents.sort((a,b)=>b.metadata.updatedAt.localeCompare(a.metadata.updatedAt)));
   setSyncedMap(baselines);
+  setQueued(operations);
+  setConflicts(holds);
  }catch(e){setMessage('Local storage unavailable: '+String(e));}};
  const openDoc=(next:Diagram)=>{replace(clone(next));setSelected([]);history.current={past:[],future:[]};setRevision(v=>v+1);setActiveLayer(next.layers[0].id);localStorage.setItem('omnidesign.current',next.id);setLibrary(false);setMobileSheet(false);setTool('select');};
  useEffect(()=>{let live=true;(async()=>{try{
@@ -70,9 +74,10 @@ function App(){
   return()=>{delete window.omniDesignBeforeExit;};
  },[]);
  useEffect(()=>{if(!ready)return;
-  let live=true;const check=async()=>{const online=await hubHealth();if(live)setHubOnline(online);};
+  let live=true;const check=async()=>{if(document.visibilityState==='hidden')return;const online=await hubHealth();if(!live)return;setHubOnline(online);if(online&&inAndroid)void syncPending();};
   void check();const interval=setInterval(check,25000);window.addEventListener('online',check);
-  return()=>{live=false;clearInterval(interval);window.removeEventListener('online',check);};
+  const resumed=()=>{if(document.visibilityState==='visible')void check();};document.addEventListener('visibilitychange',resumed);
+  return()=>{live=false;clearInterval(interval);window.removeEventListener('online',check);document.removeEventListener('visibilitychange',resumed);};
  },[ready]);
  // Hub writes are explicit; local edits keep their full native document in IndexedDB.
  // Conditional revisions prevent another device or agent from being overwritten.
@@ -80,76 +85,46 @@ function App(){
   try{const data=await hubJson(path,options);setHubOnline(true);return {data};}
   catch(error){if(!(error instanceof HubHttpError)||![409,412,422].includes(error.status))setHubOnline(false);throw error;}
  };
- const uploadDocument=async(snapshot:Diagram)=>{
-  validateDocument(snapshot);
-  const creating=snapshot.revision===0,payload=JSON.stringify(snapshot);
-  // Replaying an uncertain write uses the same idempotency key.
-  const digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(payload));
-  const key=Array.from(new Uint8Array(digest),b=>b.toString(16).padStart(2,'0')).join('');
-  try{
-   const {data}=await hubRequest('diagrams'+(creating?'':'/'+snapshot.id),{
-    method:creating?'POST':'PUT',
-    headers:creating?{'Content-Type':'application/json'}:{'Content-Type':'application/json','If-Match':'"rev-'+snapshot.revision+'"','Idempotency-Key':key},
-    body:payload
-   });
-   const accepted=validateDocument(data);
-   // Record the confirmed revision BEFORE changing the local document.
-   await setSynced(accepted);
-   if(docRef.current.id===snapshot.id){
-    const unchanged=JSON.stringify(docRef.current)===JSON.stringify(snapshot);
-    const next=unchanged?accepted:{...docRef.current,revision:accepted.revision};
-    replace(next);await putDocument(next);
-   }else{
-    // A different diagram is open; never swap its canvas.
-    await putDocument(accepted);
-   }
-   setConflicts(c=>{const n={...c};delete n[snapshot.id];return n;});
-   await updateLibrary();
-   return accepted;
-  }catch(error){
-   if(error instanceof HubHttpError&&[409,412].includes(error.status))
-    setConflicts(c=>({...c,[snapshot.id]:'Hub has a different revision. Local edits are safe. Keep both or review on PC.'}));
-   throw error;
-  }
+ const onSyncAccepted=(confirmed:Diagram)=>{
+  // The canvas may have received more edits since the upload started.
+  // Only its server revision is advanced; never replace its working graph.
+  if(docRef.current.id===confirmed.id&&docRef.current.revision<confirmed.revision)
+   replace({...docRef.current,revision:confirmed.revision});
  };
- const saveToHub=async()=>{
-  if(syncLock.current)return;
-  syncLock.current=true;setSyncBusy(true);
-  try{await putDocument(docRef.current);const accepted=await uploadDocument(clone(docRef.current));setMessage('Hub saved · revision '+accepted.revision);}
-  catch(e){setMessage('Hub save failed; saved locally: '+String(e));}
-  finally{syncLock.current=false;setSyncBusy(false);}
+ const onSyncRemote=(remote:Diagram,previous?:Diagram)=>{
+  // A download must not repaint over live in-editor edits made during HTTP.
+  if(previous&&docRef.current.id===remote.id&&JSON.stringify(docRef.current)===JSON.stringify(previous))
+   openDoc(remote);
  };
  const syncPending=async()=>{
-  if(syncLock.current)return;
+  if(syncLock.current||!ready)return;
   syncLock.current=true;setSyncBusy(true);
-  let uploaded=0,failed=0;
   try{
    await putDocument(docRef.current);
-   const [documents,baselines]=await Promise.all([getDocuments(),getSynced()]);
-   for(const item of documents){
-    const snapshot=item.id===docRef.current.id?clone(docRef.current):item;
-    if(!needsSync(snapshot,baselines[item.id]))continue;
-    try{await uploadDocument(snapshot);uploaded++;}catch{failed++;}
-   }
-   setMessage(failed?uploaded+' synced; '+failed+' kept locally (see pending/conflict)':'All pending diagrams synced · '+uploaded+' uploaded');
-  }catch(error){setMessage('Sync unavailable; diagrams retained locally: '+String(error));}
-  finally{await updateLibrary();syncLock.current=false;setSyncBusy(false);}
+   const result=await synchronize({onAccepted:onSyncAccepted,onRemote:onSyncRemote});
+   setHubOnline(result.failed?await hubHealth():true);
+   await updateLibrary();
+   const changes=result.uploaded+' uploaded · '+result.downloaded+' downloaded';
+   setMessage(result.failed||result.conflicted
+    ?changes+' · '+result.conflicted+' conflict(s), '+result.failed+' retry later; no edits discarded'
+    :'Hub synchronized · '+changes);
+  }catch(error){
+   setHubOnline(false);
+   setMessage('Hub unreachable; local changes safe: '+String(error));
+  }finally{syncLock.current=false;setSyncBusy(false);}
  };
+ const saveToHub=syncPending;
  const keepBoth=async()=>{
-  const original=clone(docRef.current);
-  const copy={...original,id:uuid('dgm_'),revision:0,title:original.title+' · local copy',
-   metadata:{...original.metadata,updatedAt:stamp(),forkedFrom:{id:original.id,revision:original.revision}}};
-  // First make the conflicting local version durable under a fresh ID.
-  await putDocument(copy);
-  // Then restore the unmodified Hub version to its original stable ID.
-  // If connectivity fails, both local copies remain intact for later reconciliation.
+  if(!conflicts[docRef.current.id])return;
   try{
-   const {data}=await hubRequest('diagrams/'+original.id),remote=validateDocument(data);
-   await putDocument(remote);await setSynced(remote);
-   setConflicts(c=>{const next={...c};delete next[original.id];return next;});
-  }catch{/* Preserve the original pending local source when Hub is unreachable. */}
-  openDoc(copy);await updateLibrary();
-  setMessage('Local version saved as a separate ID. The Hub original was not overwritten.');
+   await putDocument(docRef.current);
+   const {fork,restored}=await resolveKeepBoth(clone(docRef.current));
+   openDoc(fork);
+   await updateLibrary();
+   setMessage(restored
+    ?'Both saved: local graph in a new diagram; Hub revision restored under the original ID.'
+    :'Offline copy saved under a stable ID; original conflict awaits Hub reconnect.');
+  }catch(error){setMessage('Conflict resolution failed; original retained: '+String(error));}
  };
  const openHubLibrary=async()=>{try{
   const {data}=await hubRequest('diagrams?limit=100');
@@ -161,10 +136,15 @@ function App(){
   const native=validateDocument(data);
   const locallySaved=(await getDocuments()).find(d=>d.id===id),baseline=(await getSynced())[id];
   if(locallySaved&&needsSync(locallySaved,baseline)){
-   openDoc(locallySaved);setHubOpen(false);setMessage('Opened local pending edits, not the newer Hub version.');return;
+   if(!baseline&&await confirmEquivalent(native)){openDoc(native);setMessage('Recovered identical Hub diagram.');}
+   else{await noteConflict(native);openDoc(locallySaved);setMessage('Both versions retained; resolve conflict to keep both.');}
+  }else if(await adoptRemote(native)==='adopted'){
+   openDoc(native);setMessage('Opened Hub revision '+native.revision);
+  }else{
+   await noteConflict(native);if(locallySaved)openDoc(locallySaved);
+   setMessage('Local edits retained; Hub version recorded as conflict.');
   }
-  await putDocument(native);await setSynced(native);openDoc(native);await updateLibrary();setHubOpen(false);
-  setMessage('Opened Hub revision '+native.revision);
+  await updateLibrary();setHubOpen(false);
  }catch(e){setMessage('Hub open failed: '+String(e));}};
  const copyHubLink=async()=>{if(inAndroid){setMessage('Use the PC editor to copy its private Hub link.');return;}try{const prefix=location.pathname.includes('/gateway/tools/omnidesign/')?location.origin+'/gateway/tools/omnidesign/':location.origin+'/';await navigator.clipboard.writeText(prefix+'?diagram='+encodeURIComponent(docRef.current.id));setMessage(docRef.current.revision?'Link copied':'Link copied · this ID is local only until first Hub save');}catch(e){setMessage('Unable to copy link: '+String(e));}};
  const commit=(edit:(d:Diagram)=>Diagram)=>{const before=docRef.current,next=edit(clone(before));if(JSON.stringify(before)===JSON.stringify(next))return;history.current.past.push(clone(before));if(history.current.past.length>100)history.current.past.shift();history.current.future=[];next.metadata={...next.metadata,updatedAt:stamp()};replace(next);setRevision(v=>v+1);};
@@ -236,8 +216,9 @@ function App(){
  const activeStencil=selectedEl?.type==='node'?findStencil(packs,selectedEl.shape.libraryId,selectedEl.shape.name):undefined;
  const matches=allStencils(packs).filter(s=>(packFilter==='all'||s.packId===packFilter)&&((s.title+' '+s.packName+' '+s.role).toLowerCase().includes(shapeSearch.toLowerCase())));
  const staged=saved.some(d=>d.id===doc.id)?saved.map(d=>d.id===doc.id?doc:d):[...saved,doc];
- const pendingCount=staged.filter(d=>needsSync(d,synced[d.id])).length;
- const documentState=(d:Diagram)=>conflicts[d.id]?'Conflict':!needsSync(d,synced[d.id])?'Synced':d.revision===0?'Local only':'Pending';
+ const pendingCount=staged.filter(d=>conflicts[d.id]||queued[d.id]||needsSync(d,synced[d.id])).length;
+ const conflictCount=staged.filter(d=>Boolean(conflicts[d.id])).length;
+ const documentState=(d:Diagram)=>conflicts[d.id]?'Conflict':queued[d.id]?'Pending':!synced[d.id]?'Local only':needsSync(d,synced[d.id])?'Pending':'Synced';
  const toolsPanel=<div className="tool-stack">{shapes.map(s=><Button key={s.tool} title={s.label} active={tool===s.tool} onClick={()=>{setTool(s.tool);setMobileSheet(false);}}><b>{s.icon}</b><span>{s.label}</span></Button>)}<Button title="Shape libraries" active={tool==='stencil'} onClick={()=>{setPanel('shapes');setMobileSheet(true);}}><b>▦</b><span>Kits</span></Button></div>;
  const field=(label:string,children:React.ReactNode)=><label className="field"><span>{label}</span>{children}</label>;
  const updateText=(text:string)=>{if(!selectedEl)return;changeElement(selectedEl.id,e=>{
@@ -320,8 +301,8 @@ function App(){
  <div className="sync-strip" role="status" aria-live="polite">
   <span className={'sync-light '+(hubOnline?'online':'offline')}/>
   <strong>{hubOnline?'Hub connected':hubOnline===false?'Hub unreachable · offline':'Checking Hub'}</strong>
-  <span className="sync-description">{documentState(doc)} · {pendingCount} pending · editable on device</span>
-  {conflicts[doc.id]&&<Button className="conflict-action" onClick={keepBoth}>Conflict · Keep both</Button>}
+  <span className="sync-description">{documentState(doc)} · {pendingCount} unsynced{conflictCount?' · '+conflictCount+' conflict(s)':''} · editable on device</span>
+  {conflicts[doc.id]&&<div className="conflict-controls"><span className="conflict-details">PC r{conflicts[doc.id].remote.revision} · phone r{doc.revision}</span><Button className="conflict-action" onClick={()=>download(new Blob([JSON.stringify(conflicts[doc.id].remote,null,2)],{type:'application/json'}),filename(doc.title+' · Hub revision','.omd.json'))}>Export PC copy</Button><Button className="conflict-action" onClick={keepBoth}>Conflict · Keep both</Button></div>}
   <Button className="sync-action" title="Sync revision-checked local documents to PC (offline copies are always retained)" disabled={syncBusy||!ready} onClick={syncPending}>{syncBusy?'Syncing…':'Sync now'}</Button>
  </div>
  <div className="workspace">

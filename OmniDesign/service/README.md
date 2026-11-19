@@ -35,7 +35,7 @@ Returns `422` for invalid document, dangling IDs/groups/ports or unknown schema,
 
 ## Browser workflow and limitations
 
-The shared editor exposes **Hub save**, **Hub library**, and **Link** actions. Local IndexedDB saving continues to run independently; uploads are explicit so editing offline does not risk silent overwrite. On conflicts, the Hub refuses the stale revision and preserves the local copy. Client-side automated outbox/reconnect, richer visual proposal diff/approval UX, Android packaging and agent MCP wrappers are downstream MISC-0166/0168 work; REST clients can already perform these operations today.
+The shared editor exposes **Hub save**, **Hub library**, and **Link** actions. Local IndexedDB saving continues to run independently; uploads are explicit so editing offline does not risk silent overwrite. On conflicts, the Hub refuses the stale revision and preserves the local copy. Client-side IndexedDB outbox/reconnect and Keep-both conflicts are implemented by MISC-0167 while the Android editor is visible; richer visual proposal diff/approval UX and agent MCP wrappers remain downstream work; REST clients can already perform these operations today.
 
 Deep link format (private, ID-stable): `/gateway/tools/omnidesign/?diagram=dgm_<uuid>` on the remote host. Local share through `http://localhost:3333/omnidesign` first opens Gateway's launcher; use the service's direct `http://127.0.0.1:8790/?diagram=...` for loopback bookmarks. Deep link requests recover the native document from PC if reachable, else from IndexedDB when available.
 
