@@ -1,0 +1,1005 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>OmniDesign — round 3 prototype (desktop + Android)</title>
+<!--
+  OmniDesign R3 prototype (MISC-0160 / MISC-0161).
+  One responsive app: <= 760px wide renders the Android UI, wider renders the desktop editor.
+  Diagrams render exactly in the architecture-diagram skill style (1200x700 SVG figure, solid ivory vs dashed amber).
+  Screenshot scenarios: add #s=<name> to the URL (lib, ed:<docId>, sel, shapes, edge, offline, conflict,
+  agent, diff, share, history, new, sheet, outline, export). Everything is simulated locally; no network.
+-->
+<style>
+:root{--desk:#0e0f12;--chrome:#16181c;--panel:#1b1d22;--raise:#22252b;--line:#2a2d33;--line2:#383b42;--fg:#e6e2d8;--muted:#a09a8c;--acc:#e0a458;--accbg:#2c241a;--accln:#5c4627;--ok:#9fb59a;--bad:#d48a7e;--paper:#14161a;--box:#1d2026;--selc:#f4f1ea}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--desk);color:var(--fg);font:14px/1.4 "Segoe UI",system-ui,sans-serif;overflow:hidden;-webkit-tap-highlight-color:transparent}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer;padding:0}
+input,textarea,select{font:inherit;color:var(--fg);background:var(--paper);border:1px solid var(--line2);border-radius:6px;padding:7px 9px;width:100%}
+textarea{resize:vertical;min-height:60px;line-height:1.45}
+input:focus,textarea:focus,select:focus{outline:none;border-color:var(--muted)}
+svg.i{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.mut{color:var(--muted)} .acc{color:var(--acc)} .sp{flex:1}
+#app{display:flex;flex-direction:column;height:100%}
+/* top bar */
+.top{height:52px;flex:none;display:flex;align-items:center;gap:6px;padding:0 10px 0 8px;background:var(--chrome);border-bottom:1px solid var(--line);position:relative;z-index:5}
+.logo{display:flex;align-items:center;gap:9px;font-weight:600;font-size:15px;padding:0 8px 0 4px;white-space:nowrap}
+.ib{width:34px;height:34px;display:grid;place-items:center;border-radius:7px;color:var(--muted);flex:none}
+.ib:hover{background:var(--raise);color:var(--fg)} .ib.on{background:var(--raise);color:var(--fg)}
+.ib.sm{width:28px;height:28px}
+.btn{height:32px;padding:0 12px;border-radius:7px;display:inline-flex;align-items:center;gap:7px;border:1px solid var(--line2);color:var(--fg);white-space:nowrap;flex:none}
+.btn:hover{background:var(--raise)} .btn.pri{background:var(--fg);color:#16181c;border-color:var(--fg);font-weight:600} .btn.pri:hover{background:#fff}
+.btn.accb{background:var(--acc);color:#1d1408;border-color:var(--acc);font-weight:600}
+.btn.ghost{border-color:transparent;color:var(--muted)} .btn.ghost:hover{color:var(--fg)}
+.btn.sm{height:28px;padding:0 10px;font-size:13px} .btn.danger{color:var(--bad)}
+.ttl{display:flex;align-items:baseline;gap:10px;min-width:0;padding-left:4px}
+.ttl input{background:transparent;border-color:transparent;font-size:15px;font-weight:600;width:auto;min-width:120px;max-width:420px;padding:5px 8px;field-sizing:content}
+.ttl input:hover{border-color:var(--line2)} .ttl input:focus{border-color:var(--muted);background:var(--paper)}
+.ttl .mut{font-size:13px;white-space:nowrap}
+.vsep{width:1px;height:22px;background:var(--line);margin:0 4px}
+/* sync chip */
+.chip{height:28px;display:inline-flex;align-items:center;gap:7px;padding:0 11px 0 9px;border-radius:99px;border:1px solid var(--line2);font-size:13px;color:var(--muted);white-space:nowrap;flex:none}
+.chip:hover{color:var(--fg)} .chip .dot{width:7px;height:7px;border-radius:50%;background:var(--ok)}
+.chip.off,.chip.rev{color:var(--acc);border-color:var(--accln);background:var(--accbg)}
+.chip svg.i{width:15px;height:15px}
+.spin{width:12px;height:12px;border-radius:50%;border:1.6px solid var(--line2);border-top-color:var(--fg);animation:sp .8s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+.obar{flex:none;display:flex;align-items:center;gap:10px;padding:8px 14px;background:var(--accbg);border-bottom:1px solid var(--accln);color:var(--acc);font-size:13px}
+.obar span{color:#e9d2b0} .obar button{margin-left:auto;color:var(--acc);font-weight:600}
+/* library (desktop) */
+.lib{flex:1;display:flex;min-height:0}
+.nav{width:228px;flex:none;padding:14px 10px;border-right:1px solid var(--line);background:var(--chrome);overflow:auto}
+.nav a{display:flex;gap:10px;align-items:center;padding:7px 10px;border-radius:7px;color:var(--muted);cursor:pointer;font-size:14px}
+.nav a:hover{color:var(--fg)} .nav a.on{background:var(--raise);color:var(--fg)} .nav a .n{margin-left:auto;font-size:12px}
+.nav h5{font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);margin:18px 10px 6px;font-weight:600}
+.libmain{flex:1;overflow:auto;padding:24px 30px 40px}
+.lhead{display:flex;align-items:center;gap:12px;margin-bottom:16px}
+.lhead h2{margin:0;font-size:22px;font-weight:600} .lhead .mut{font-size:14px}
+.search{display:flex;align-items:center;gap:8px;background:var(--paper);border:1px solid var(--line2);border-radius:8px;padding:0 10px;height:34px;width:300px;color:var(--muted)}
+.search input{border:0;background:transparent;padding:0;height:100%}
+.waiting{display:flex;gap:10px;align-items:center;margin:0 0 18px;padding:10px 14px;border:1px solid var(--accln);background:var(--accbg);border-radius:10px;color:#e9d2b0;font-size:13px}
+.waiting svg{color:var(--acc)} .waiting a{color:var(--acc);font-weight:600;cursor:pointer;margin-left:6px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:18px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;overflow:hidden;cursor:pointer;transition:border-color .12s,transform .12s}
+.card:hover{border-color:#4a4d55}
+.thumb{background:var(--paper);aspect-ratio:12/7.4;border-bottom:1px solid var(--line);padding:10px 12px;display:grid;place-items:center}
+.thumb svg{width:100%;height:auto;display:block}
+.cbody{padding:11px 12px 10px} .cttl{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cmeta{font-size:12.5px;color:var(--muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cfoot{display:flex;align-items:center;gap:6px;margin-top:9px}
+.badge{font-size:12px;height:22px;display:inline-flex;align-items:center;gap:6px;padding:0 9px;border-radius:99px;border:1px solid var(--line2);color:var(--muted);white-space:nowrap}
+.badge .dot{width:6px;height:6px;border-radius:50%;background:var(--ok)}
+.badge.a{color:var(--acc);border-color:var(--accln);background:var(--accbg)} .badge svg.i{width:13px;height:13px}
+.cfoot .ib{margin-left:auto}
+/* editor */
+.ed{flex:1;display:flex;min-height:0;position:relative}
+.stage{flex:1;position:relative;overflow:hidden;background:var(--desk) radial-gradient(circle,#23262c 1px,transparent 1.3px) 0 0/22px 22px;touch-action:none;user-select:none;-webkit-user-select:none}
+.stage.panning{cursor:grabbing} .stage.hand{cursor:grab} .stage.conn{cursor:crosshair}
+#world{position:absolute;left:0;top:0;transform-origin:0 0}
+.paper{width:1256px;background:var(--paper);padding:24px 28px 22px;border-radius:3px;box-shadow:0 0 0 1px #262930,0 24px 60px rgba(0,0,0,.5)}
+.paper h1{font-size:22px;margin:0 0 4px;font-weight:600;cursor:text} .paper .sub{margin:0 0 14px;color:var(--muted);font-size:14px;cursor:text}
+.paper svg.doc{width:1200px;height:700px;display:block}
+.paper .cap{color:var(--muted);font-size:14px;margin:10px 0 0;line-height:1.45;cursor:text;min-height:20px}
+.nd{cursor:default} .stage.conn .nd{cursor:crosshair}
+.rail{position:absolute;left:12px;top:50%;transform:translateY(-50%);display:flex;flex-direction:column;gap:2px;padding:5px;background:var(--chrome);border:1px solid var(--line);border-radius:11px;box-shadow:0 8px 24px rgba(0,0,0,.35);z-index:4}
+.rail .ib{width:36px;height:36px;position:relative} .rail .sep{height:1px;background:var(--line);margin:4px 3px}
+[data-tip]:hover::after{content:attr(data-tip);position:absolute;left:46px;top:50%;transform:translateY(-50%);background:#0b0c0e;color:var(--fg);border:1px solid var(--line2);font-size:12px;padding:4px 8px;border-radius:6px;white-space:nowrap;pointer-events:none;z-index:9}
+.flyout{position:absolute;left:62px;top:50%;transform:translateY(-50%);width:304px;max-height:calc(100% - 40px);display:flex;flex-direction:column;background:var(--chrome);border:1px solid var(--line2);border-radius:12px;box-shadow:0 14px 40px rgba(0,0,0,.5);z-index:6}
+.flyout .fh{padding:12px 12px 8px;display:flex;flex-direction:column;gap:9px}
+.flyout .fb{overflow:auto;padding:0 12px 12px}
+.tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.tile{background:var(--paper);border:1px solid var(--line);border-radius:8px;padding:7px 5px 6px;display:flex;flex-direction:column;align-items:center;gap:4px;font-size:11.5px;color:var(--muted);cursor:grab;touch-action:none}
+.tile:hover{border-color:#4a4d55;color:var(--fg)} .tile svg{width:100%;height:44px}
+.fsec{font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);margin:10px 2px 7px;font-weight:600}
+.zoom{position:absolute;left:12px;bottom:12px;display:flex;align-items:center;gap:2px;padding:3px;background:var(--chrome);border:1px solid var(--line);border-radius:9px;z-index:4}
+.zoom span{min-width:46px;text-align:center;font-size:12.5px;color:var(--muted);cursor:pointer}
+.hint{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);font-size:12.5px;color:var(--muted);background:rgba(22,24,28,.85);border:1px solid var(--line);padding:5px 12px;border-radius:99px;white-space:nowrap;pointer-events:none;z-index:3}
+.hint b{color:var(--fg);font-weight:600}
+kbd{font:11px/1 "Segoe UI",sans-serif;border:1px solid var(--line2);border-bottom-width:2px;border-radius:4px;padding:2px 5px;color:var(--fg);background:var(--raise)}
+.banner{position:absolute;top:14px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:10px;padding:6px 6px 6px 12px;background:#1f1a13;border:1px solid var(--accln);border-radius:10px;color:#e9d2b0;font-size:13px;box-shadow:0 10px 30px rgba(0,0,0,.45);z-index:5;white-space:nowrap;max-width:calc(100% - 24px)}
+.banner svg.i{color:var(--acc)} .banner b{color:var(--acc)} .banner span{overflow:hidden;text-overflow:ellipsis}
+/* inspector */
+.insp{width:300px;flex:none;background:var(--chrome);border-left:1px solid var(--line);overflow:auto}
+.tabs{display:flex;gap:2px;padding:8px 10px 0;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--chrome);z-index:1}
+.tabs button{padding:8px 10px 9px;color:var(--muted);font-weight:600;font-size:13px;border-bottom:2px solid transparent;margin-bottom:-1px}
+.tabs button.on{color:var(--fg);border-bottom-color:var(--fg)}
+.sec{padding:14px 16px;border-bottom:1px solid var(--line)}
+.sec h4{font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);margin:0 0 11px;font-weight:600;display:flex;align-items:center;gap:8px}
+.sec h4 .sp{flex:1} .sec h4 button{color:var(--muted);font-size:12px;letter-spacing:0;text-transform:none;font-weight:600} .sec h4 button:hover{color:var(--fg)}
+.fld{margin-bottom:10px} .fld:last-child{margin-bottom:0} .fld>label{display:block;font-size:12px;color:var(--muted);margin-bottom:5px}
+.row{display:flex;gap:8px;align-items:center} .row>*{min-width:0}
+.g4{display:grid;grid-template-columns:repeat(4,1fr);gap:6px} .g4 label{font-size:11px;color:var(--muted);display:flex;align-items:center;gap:5px} .g4 input{padding:5px 6px}
+.seg{display:flex;background:var(--paper);border:1px solid var(--line2);border-radius:7px;padding:2px;gap:2px}
+.seg button{flex:1;height:28px;border-radius:5px;color:var(--muted);display:flex;align-items:center;justify-content:center;gap:7px;font-size:12.5px;white-space:nowrap}
+.seg button.on{background:var(--raise);color:var(--fg);box-shadow:0 0 0 1px var(--line2)} .seg button svg.ln{width:26px;height:8px}
+.chiprow{display:flex;gap:6px;margin-bottom:6px;align-items:flex-start}
+.chiprow .stack{flex:1;display:flex;flex-direction:column;gap:4px} .chiprow input{padding:6px 8px} .chiprow input.subi{font-size:12.5px;color:var(--muted)}
+.addl{display:flex;align-items:center;gap:6px;color:var(--muted);font-size:13px;padding:4px 2px} .addl:hover{color:var(--fg)}
+.acts{display:flex;gap:6px;flex-wrap:wrap}
+.layer{display:flex;align-items:center;gap:9px;padding:6px 16px;color:var(--muted);cursor:pointer;font-size:13px}
+.layer:hover{background:var(--panel);color:var(--fg)} .layer.on{background:var(--raise);color:var(--fg)} .layer .k{margin-left:auto;font-size:11px}
+.layer.in{padding-left:34px}
+.empty{color:var(--muted);font-size:13px;line-height:1.5}
+.kv{display:flex;justify-content:space-between;font-size:13px;padding:3px 0} .kv span:first-child{color:var(--muted)}
+/* menus, modals, toast */
+.menu{position:fixed;min-width:220px;background:var(--chrome);border:1px solid var(--line2);border-radius:10px;padding:5px;box-shadow:0 14px 40px rgba(0,0,0,.55);z-index:60}
+.menu button{display:flex;align-items:center;gap:10px;width:100%;padding:8px 10px;border-radius:6px;text-align:left;font-size:13.5px}
+.menu button:hover{background:var(--raise)} .menu button small{display:block;color:var(--muted);font-size:12px}
+.menu button .kb{margin-left:auto;color:var(--muted);font-size:12px} .menu hr{border:0;border-top:1px solid var(--line);margin:5px 4px}
+.menu .mt{font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);padding:7px 10px 4px;font-weight:600}
+.scrim{position:fixed;inset:0;background:rgba(5,6,8,.62);display:grid;place-items:center;z-index:50}
+.modal{background:var(--chrome);border:1px solid var(--line2);border-radius:14px;width:min(560px,94vw);max-height:90vh;display:flex;flex-direction:column;box-shadow:0 30px 80px rgba(0,0,0,.6)}
+.modal.wide{width:min(1000px,95vw)} .modal.mid{width:min(760px,95vw)} .modal.nar{width:min(420px,94vw)}
+.mh{display:flex;align-items:center;gap:10px;padding:14px 14px 14px 20px;border-bottom:1px solid var(--line)} .mh b{font-size:16px;font-weight:600;white-space:nowrap;min-width:0;overflow:hidden;text-overflow:ellipsis} .mh .ib,.mh .i{flex:none} .mh .mut{font-size:13px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mb{padding:18px 20px;overflow:auto} .mf{padding:12px 16px;border-top:1px solid var(--line);display:flex;justify-content:flex-end;gap:8px;align-items:center}
+.mf .left{margin-right:auto;font-size:13px;color:var(--muted)}
+.cmp{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.cmp figure{margin:0;background:var(--paper);border:1px solid var(--line);border-radius:10px;padding:10px 12px 12px}
+.cmp figcaption{font-size:13px;font-weight:600;margin-bottom:8px;display:flex;gap:8px;align-items:center} .cmp figcaption .mut{font-weight:400}
+.cmp svg:not(.i){width:100%;height:auto;display:block}
+.changes{margin:12px 0 0;padding:0;list-style:none;font-size:13px;display:grid;grid-template-columns:1fr 1fr;gap:4px 14px}
+.changes li{color:var(--muted)} .changes li b{color:var(--fg);font-weight:600}
+.opts{display:flex;flex-direction:column;gap:8px;margin-top:16px}
+.ph .mb.cf{display:flex;flex-direction:column} .ph .mb.cf .opts{order:1;margin:0 0 16px} .ph .mb.cf .cmp{order:2}
+.opt{display:flex;gap:12px;align-items:flex-start;padding:11px 13px;border:1px solid var(--line2);border-radius:10px;cursor:pointer;text-align:left;width:100%}
+.opt:hover{border-color:#4a4d55} .opt.on{border-color:var(--fg);background:var(--panel)}
+.opt .rd{width:16px;height:16px;border-radius:50%;border:1.6px solid var(--muted);flex:none;margin-top:2px;display:grid;place-items:center}
+.opt.on .rd{border-color:var(--fg)} .opt.on .rd::after{content:"";width:8px;height:8px;border-radius:50%;background:var(--fg)}
+.opt b{font-weight:600} .opt small{display:block;color:var(--muted);font-size:12.5px;margin-top:2px}
+.rec{font-size:11px;color:var(--ok);border:1px solid #4b5a48;border-radius:99px;padding:1px 7px;margin-left:6px;font-weight:600}
+.linkrow{display:flex;align-items:center;gap:8px;padding:9px 10px 9px 12px;background:var(--paper);border:1px solid var(--line2);border-radius:8px;margin-top:6px;font-family:Consolas,monospace;font-size:13px}
+.linkrow span{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.note{font-size:12.5px;color:var(--muted);margin-top:8px;line-height:1.5} .note.a{color:#e9d2b0;background:var(--accbg);border:1px solid var(--accln);padding:8px 10px;border-radius:8px}
+.lbl{font-size:12px;color:var(--muted);margin:14px 0 2px} .lbl:first-child{margin-top:0}
+.hist{display:flex;align-items:center;gap:12px;padding:10px 4px;border-bottom:1px solid var(--line)}
+.hist:last-child{border-bottom:0} .hist .av{width:32px;height:32px;border-radius:50%;background:var(--raise);display:grid;place-items:center;color:var(--muted);flex:none}
+.hist .av.ag{color:var(--acc);background:var(--accbg)} .hist b{font-weight:600} .hist .mut{font-size:12.5px} .hist .cur{font-size:12px;color:var(--ok)}
+.sw{width:36px;height:20px;border-radius:99px;background:var(--line2);position:relative;flex:none;transition:background .15s}
+.sw::after{content:"";position:absolute;top:3px;left:3px;width:14px;height:14px;border-radius:50%;background:var(--muted);transition:.15s}
+.sw.on{background:var(--fg)} .sw.on::after{left:19px;background:#16181c}
+.tog{display:flex;align-items:center;gap:12px;padding:10px 0;width:100%;text-align:left} .tog small{display:block;color:var(--muted);font-size:12.5px}
+.statusbig{display:flex;gap:12px;align-items:center;padding:12px 14px;border-radius:10px;background:var(--panel);border:1px solid var(--line);margin-bottom:10px}
+.statusbig .ic{width:36px;height:36px;border-radius:50%;display:grid;place-items:center;background:#1f2a1f;color:var(--ok)} .statusbig.off .ic{background:var(--accbg);color:var(--acc)}
+.tpl{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+.tplc{background:var(--panel);border:1px solid var(--line);border-radius:10px;overflow:hidden;cursor:pointer;text-align:left}
+.tplc:hover{border-color:#4a4d55} .tplc .thumb{padding:8px} .tplc div.t{padding:8px 10px 10px} .tplc b{font-size:13.5px;font-weight:600;display:block} .tplc small{color:var(--muted);font-size:12px}
+.tplc.blank .thumb{color:var(--muted);display:grid;place-items:center} .tplc.blank svg.i{width:28px;height:28px}
+.toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%);background:var(--fg);color:#16181c;padding:9px 16px;border-radius:9px;font-size:13.5px;font-weight:600;z-index:70;box-shadow:0 10px 30px rgba(0,0,0,.5);display:flex;gap:8px;align-items:center;max-width:92vw}
+.pframe{width:440px;height:900px;max-height:86vh;border-radius:38px;border:10px solid #050506;box-shadow:0 0 0 1px #33363d,0 30px 80px rgba(0,0,0,.6);overflow:hidden;background:#000}
+.pframe iframe{width:100%;height:100%;border:0;display:block}
+/* ---------- Android (phone) ---------- */
+.ph{font-size:15px}
+.ph input,.ph textarea,.ph select{font-size:16px;padding:10px 12px;border-radius:10px}
+.sbar{height:28px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 20px;font-size:13px;font-weight:600;background:var(--chrome)}
+.sbar svg{width:15px;height:15px;fill:var(--fg)} .sbar .r{display:flex;gap:6px;align-items:center}
+.pbar{height:58px;flex:none;display:flex;align-items:center;gap:4px;padding:0 6px 0 18px;background:var(--chrome)}
+.pbar.ed{padding:0 6px;border-bottom:1px solid var(--line)}
+.pbar .ib{width:44px;height:44px;border-radius:50%} .pbar .ib svg.i{width:22px;height:22px}
+.ptitle{font-size:22px;font-weight:600}
+.ptbtn{flex:1;min-width:0;text-align:left;padding:4px 6px;border-radius:8px} .ptbtn b{display:block;font-size:16.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis} .ptbtn span{font-size:12.5px;color:var(--muted)}
+.pscroll{flex:1;overflow:auto;padding-bottom:150px}
+.psearch{margin:4px 16px 12px;height:50px;border-radius:25px;background:var(--panel);display:flex;align-items:center;gap:10px;padding:0 18px;color:var(--muted)}
+.psearch input{border:0;background:transparent;padding:0}
+.pchips{display:flex;gap:8px;overflow:auto;padding:0 16px 14px;scrollbar-width:none}
+.pchip{height:34px;padding:0 14px;border-radius:9px;border:1px solid var(--line2);color:var(--muted);white-space:nowrap;font-size:14px;display:flex;align-items:center;gap:6px;flex:none}
+.pchip.on{background:var(--raise);color:var(--fg);border-color:#4a4d55}
+.pwait{margin:0 16px 14px;padding:12px 14px;border-radius:14px;background:var(--accbg);border:1px solid var(--accln);color:#e9d2b0;font-size:14px;display:flex;gap:10px;align-items:center}
+.pwait svg{color:var(--acc)}
+.pgrid{display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:0 16px}
+.ph .card{border-radius:14px} .ph .thumb{padding:8px} .ph .cbody{padding:10px 11px 11px} .ph .cttl{font-size:14.5px} .ph .cmeta{font-size:12px}
+.ph .cfoot{margin-top:8px} .ph .badge{font-size:11.5px;height:22px;padding:0 8px}
+.fab{position:absolute;right:16px;bottom:96px;width:58px;height:58px;border-radius:18px;background:var(--fg);color:#16181c;display:grid;place-items:center;box-shadow:0 8px 24px rgba(0,0,0,.45);z-index:6}
+.fab svg.i{width:26px;height:26px;stroke-width:2}
+.bnav{position:absolute;left:0;right:0;bottom:0;height:80px;background:var(--chrome);border-top:1px solid var(--line);display:flex;padding:8px 6px 16px;z-index:5}
+.bnav button{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;font-size:12px;color:var(--muted)}
+.bnav .pill{width:60px;height:30px;border-radius:15px;display:grid;place-items:center} .bnav .on{color:var(--fg)} .bnav .on .pill{background:var(--raise)}
+.bnav svg.i{width:22px;height:22px}
+.gbar{position:absolute;left:50%;bottom:6px;width:120px;height:4px;border-radius:2px;background:#6b6860;transform:translateX(-50%);z-index:30;pointer-events:none}
+.phwrap{flex:1;display:flex;flex-direction:column;min-height:0;position:relative}
+.vseg{position:absolute;top:12px;left:50%;transform:translateX(-50%);z-index:5;display:flex;background:rgba(22,24,28,.94);border:1px solid var(--line2);border-radius:99px;padding:3px}
+.vseg button{height:34px;padding:0 16px;border-radius:99px;color:var(--muted);font-size:14px;display:flex;align-items:center;gap:7px}
+.vseg button.on{background:var(--raise);color:var(--fg)}
+.ph .banner{top:58px;font-size:13.5px;padding:6px 6px 6px 12px;border-radius:12px}
+.ptools{position:absolute;left:50%;bottom:24px;transform:translateX(-50%);display:flex;gap:2px;padding:6px;background:var(--chrome);border:1px solid var(--line2);border-radius:22px;box-shadow:0 12px 34px rgba(0,0,0,.5);z-index:6}
+.ptools button{width:62px;height:56px;border-radius:16px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;font-size:11.5px;color:var(--muted)}
+.ptools button svg.i{width:22px;height:22px} .ptools button.on{background:var(--raise);color:var(--fg)} .ptools button.dn{color:var(--bad)}
+.ptools button:disabled{opacity:.35}
+.psheet{position:absolute;left:0;right:0;bottom:0;max-height:58%;display:flex;flex-direction:column;background:var(--chrome);border-top:1px solid var(--line2);border-radius:20px 20px 0 0;z-index:20;box-shadow:0 -14px 40px rgba(0,0,0,.45)}
+.psheet .sh{display:flex;align-items:center;gap:8px;padding:6px 20px 6px 20px;position:relative}
+.psheet .sh::before,.ph .modal::before{content:"";position:absolute;top:7px;left:50%;width:36px;height:4px;border-radius:2px;background:#4a4d55;transform:translateX(-50%)}
+.psheet .sh b{font-size:17px;font-weight:600;margin-top:12px} .psheet .sh .btn{margin-top:12px}
+.psheet .sb{overflow:auto;padding-bottom:26px}
+.ph .sec{padding:12px 20px} .ph .seg button{height:36px;font-size:14px}
+.ph .desk-only{display:none!important}
+.outline{position:absolute;inset:0;overflow:auto;background:var(--desk);padding:62px 0 120px;z-index:4}
+.outline h5{font-size:12px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);margin:14px 20px 6px;font-weight:600}
+.oitem{display:flex;align-items:center;gap:12px;padding:11px 20px;width:100%;text-align:left}
+.oitem:active{background:var(--panel)} .oitem .k{width:34px;height:34px;border-radius:9px;background:var(--panel);border:1px solid var(--line);display:grid;place-items:center;color:var(--muted);flex:none}
+.oitem .k.a{border-color:var(--accln);color:var(--acc);background:var(--accbg)} .oitem b{font-weight:600;font-size:15px;display:block} .oitem span{font-size:13px;color:var(--muted)}
+.oitem .tx{flex:1;min-width:0} .oitem .tx>*{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.oitem.on{background:var(--raise)}
+.ph .scrim{place-items:end stretch}
+.ph .modal{width:100%!important;max-width:none;border-radius:22px 22px 0 0;max-height:90vh;border-bottom:0;position:relative}
+.ph .mh{padding:24px 14px 12px 20px} .ph .mh .mut{display:none} .ph .mb{padding:14px 20px} .ph .mf{padding:12px 16px 26px}
+.ph .mf .btn{height:44px;padding:0 18px;border-radius:12px;font-size:15px}
+.ph .cmp{grid-template-columns:minmax(0,1fr)} .ph .modal{overflow:hidden} .ph .mb{min-width:0} .ph .changes{grid-template-columns:1fr}
+.ph .tpl{grid-template-columns:1fr 1fr}
+.ph .menu{position:fixed;left:0!important;right:0;top:auto!important;bottom:0;border-radius:22px 22px 0 0;padding:22px 10px 26px}
+.ph .menu button{padding:13px 14px;font-size:15.5px}
+.ph .toast{bottom:110px}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+/* ===== helpers ===== */
+const $=(s,r=document)=>r.querySelector(s), $$=(s,r=document)=>[...r.querySelectorAll(s)];
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const clone=o=>JSON.parse(JSON.stringify(o));
+const FG='#e6e2d8',MU='#a09a8c',AC='#e0a458',BX='#1d2026',PA='#14161a',SEL='#f4f1ea';
+const isPhone=()=>innerWidth<=760;
+const snap5=v=>Math.round(v/5)*5;
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+
+/* ===== icons (24px stroke set) ===== */
+const IC={back:'M15 5l-7 7 7 7',sel:'M6 3.5l12.5 7-5.6 1.7-2.2 5.6z',hand:'M8 12V6.5a1.5 1.5 0 013 0V11m0-.5V5a1.5 1.5 0 013 0v6m0-.5V7a1.5 1.5 0 013 0v7.5a6 6 0 01-6 6h-.7a6 6 0 01-4.8-2.4l-3-4a1.5 1.5 0 012.3-1.9L8 14',
+shapes:'M4 4h7v7H4zM17.5 4a3.5 3.5 0 110 7 3.5 3.5 0 010-7zM7.5 13.5l3.5 6.5H4zM14 14h7v7h-7z',box:'M6 5h12a2 2 0 012 2v10a2 2 0 01-2 2H6a2 2 0 01-2-2V7a2 2 0 012-2z',
+conn:'M3.5 5h6v5h-6zM14.5 14h6v5h-6zM9.5 7.5h3v9h2',text:'M5 7V5h14v2M12 5v14M9 19h6',zone:'M4 8V4h4M12 4h0M16 4h4v4M20 12v0M20 16v4h-4M12 20h0M8 20H4v-4M4 12v0',
+undo:'M9 5L4 10l5 5M4 10h10a5 5 0 010 10h-3',redo:'M15 5l5 5-5 5M20 10H10a5 5 0 000 10h3',plus:'M12 5v14M5 12h14',minus:'M5 12h14',
+search:'M11 4.5a6.5 6.5 0 110 13 6.5 6.5 0 010-13zM20 20l-4.3-4.3',more:'M12 5.5v.01M12 12v.01M12 18.5v.01',moreh:'M5.5 12h.01M12 12h.01M18.5 12h.01',
+share:'M12 3.5v11M7.5 8L12 3.5 16.5 8M5 13v6.5h14V13',hist:'M3.5 12a8.5 8.5 0 102.5-6L3.5 8.5M3.5 4v4.5H8M12 7.5V12l3 2',down:'M12 4v11M7.5 10.5L12 15l4.5-4.5M5 20h14',
+check:'M5 12.5l4.5 4.5L19 7.5',cloud:'M7 18.5h10a4 4 0 00.6-8 6 6 0 00-11.4-.8A4.5 4.5 0 007 18.5z',cloudoff:'M8 18.5h9.5M19.6 16.6A4 4 0 0017.6 10.5 6 6 0 009 6.3M6.2 9.2A4.5 4.5 0 007 18.5M3.5 3.5l17 17',
+phone:'M8 2.5h8a2 2 0 012 2v15a2 2 0 01-2 2H8a2 2 0 01-2-2v-15a2 2 0 012-2zM11 18.5h2',pc:'M3 4.5h18v11H3zM8 20h8M12 15.5V20',trash:'M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3',
+copy:'M9 9h11v11H9zM5 15H4V4h11v1',accent:'M3 12h4M10 12h4M17 12h4',flip:'M7 4L3 8l4 4M3 8h14M17 12l4 4-4 4M21 16H7',edit:'M4 20h4L19 9l-4-4L4 16zM13.5 6.5l4 4',
+fit:'M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5',x:'M6 6l12 12M18 6L6 18',ai:'M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9zM18.5 15.5l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8z',
+link:'M10 14a4 4 0 005.7 0l3-3a4 4 0 00-5.7-5.7l-1 1M14 10a4 4 0 00-5.7 0l-3 3a4 4 0 005.7 5.7l1-1',chev:'M6 9l6 6 6-6',grid:'M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z',
+clock:'M12 3.5a8.5 8.5 0 110 17 8.5 8.5 0 010-17zM12 7.5V12l3 2',archive:'M3.5 5h17v4h-17zM5 9v10h14V9M10 13h4',dash:'M4 4h7v9H4zM13 4h7v5h-7zM13 11h7v9h-7zM4 15h7v5H4z',
+tasks:'M10 6h10M10 12h10M10 18h10M4 6l1.2 1.2L7.5 5M4 12l1.2 1.2L7.5 11M4 18l1.2 1.2L7.5 17',menu:'M4 7h16M4 12h16M4 17h16',design:'M3.5 5h7v5.5h-7zM13.5 13.5h7V19h-7zM10.5 7.7h2.5v8.5h.5',
+layers:'M12 3.5l8.5 4.5-8.5 4.5L3.5 8zM3.5 12.5l8.5 4.5 8.5-4.5',outline:'M4 6.5h1M8.5 6.5H20M4 12h1M8.5 12H20M4 17.5h1M8.5 17.5H20',device:'M7 3h10v18H7zM11 18h2',
+al:'M4 3v18M8 7h11v4H8zM8 14h6v4H8z',ac:'M12 3v18M5 7h14v4H5zM8 14h8v4H8z',at:'M3 4h18M7 8h4v11H7zM14 8h4v6h-4z',am:'M3 12h18M7 6h4v12H7zM14 8.5h4v7h-4z',dh:'M4 4v16M20 4v16M9.5 8h5v8h-5z',
+star:'M12 4l2.4 5 5.4.6-4 3.7 1.1 5.4L12 16l-4.9 2.7 1.1-5.4-4-3.7 5.4-.6z',info:'M12 3.5a8.5 8.5 0 110 17 8.5 8.5 0 010-17zM12 11v5M12 8v.01',swap:'M7 4v16M7 20l-3-3M7 20l3-3M17 20V4M17 4l-3 3M17 4l3 3'};
+const ic=(n,c='')=>`<svg class="i ${c}" viewBox="0 0 24 24"><path d="${IC[n]}"/></svg>`;
+const LOGO=`<svg viewBox="0 0 30 22" width="30" height="22" fill="none"><rect x="1.5" y="2.5" width="11" height="8" rx="2" stroke="${FG}" stroke-width="1.6"/><rect x="17.5" y="11.5" width="11" height="8" rx="2" stroke="${AC}" stroke-width="1.6" stroke-dasharray="3 2.2"/><path d="M12.5 6.5H15v9h2.5" stroke="${FG}" stroke-width="1.6"/></svg>`;
+const lnSolid=`<svg class="ln" viewBox="0 0 26 8"><line x1="1" y1="4" x2="25" y2="4" stroke="${FG}" stroke-width="1.6"/></svg>`;
+const lnDash=`<svg class="ln" viewBox="0 0 26 8"><line x1="1" y1="4" x2="25" y2="4" stroke="${AC}" stroke-width="1.6" stroke-dasharray="5 3.5"/></svg>`;
+
+/* ===== renderer: architecture-diagram skill style ===== */
+const CONT={zone:1,lane:1,room:1,axis:1};
+let uidN=0;
+function T(x,y,t,sz=13,fill='currentColor',ex=''){return `<text x="${x}" y="${y}" text-anchor="middle" font-size="${sz}" fill="${fill}" stroke="none"${ex}>${esc(t)}</text>`}
+function TS(x,y,t,sz=13,fill='currentColor',anc='start',ex=''){return `<text x="${x}" y="${y}" text-anchor="${anc}" font-size="${sz}" fill="${fill}" stroke="none"${ex}>${esc(t)}</text>`}
+const FW=' font-weight="600"';
+function mk(id,c){return `<marker id="${id}" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="${c}" stroke="none"/></marker>`}
+function crow(id,c){return `<marker id="${id}" viewBox="0 0 16 16" refX="15" refY="8" markerWidth="16" markerHeight="16" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path d="M2 8L15 1.5M2 8L15 14.5M2 8H15" stroke="${c}" stroke-width="1.5" fill="none"/></marker>`}
+function chipsNeed(n){let y=(n.s?70:58);(n.chips||[]).forEach(c=>y+=(c[1]?52:36)+10);if((n.items||[]).length)y+=(n.chips?.length?14:(n.s?20:12))+n.items.length*26;return y+6}
+
+// Box-like title, subtitle, chips and list items, using the skill's exact offsets.
+function boxText(n,tf){
+  const cx=n.x+n.w/2,ch=n.chips||[],it=n.items||[];let s='';
+  if(ch.length||it.length){
+    s+=T(cx,n.y+36,n.t,17,tf,FW); if(n.s) s+=T(cx,n.y+56,n.s,12,MU);
+    let y=n.y+(n.s?70:58);
+    ch.forEach(c=>{const h=c[1]?52:36;s+=`<rect x="${n.x+22}" y="${y}" width="${n.w-44}" height="${h}" rx="5" stroke-width="1"/>`;
+      if(c[1]){s+=T(cx,y+22,c[0]);s+=T(cx,y+40,c[1],12,MU)}else s+=T(cx,y+23,c[0]);y+=h+10});
+    const iy=ch.length?y+14:n.y+(n.s?90:70);
+    if(it.length) s+=`<g font-size="13" fill="currentColor" stroke="none" text-anchor="middle">${it.map((t,i)=>`<text x="${cx}" y="${iy+i*26}">${esc(t)}</text>`).join('')}</g>`;
+  } else if(n.s){const ty=n.y+n.h/2-12+(100-n.h)*.3;s+=T(cx,ty,n.t,17,tf,FW);s+=T(cx,ty+26,n.s,13,MU)}
+  else s+=T(cx,n.y+n.h/2+6,n.t,17,tf,FW);
+  return s;
+}
+function nodeSVG(n){
+  const a=n.a,st=a?` stroke="${AC}" stroke-dasharray="7 5"`:'',tf=a?AC:'currentColor',cx=n.x+n.w/2,cy=n.y+n.h/2;let s='';
+  switch(n.k){
+  case 'box':case 'state':case 'pill':{const rx=n.k=='box'?8:n.k=='state'?18:n.h/2;
+    s+=`<rect x="${n.x}" y="${n.y}" width="${n.w}" height="${n.h}" rx="${rx}" fill="${BX}" stroke-width="1.5"${st}/>`+boxText(n,tf);break}
+  case 'diamond':s+=`<polygon points="${cx},${n.y} ${n.x+n.w},${cy} ${cx},${n.y+n.h} ${n.x},${cy}" fill="${BX}" stroke-width="1.5"${st}/>`;
+    s+=n.s?T(cx,cy-3,n.t,15,tf,FW)+T(cx,cy+17,n.s,12,MU):T(cx,cy+5,n.t,15,tf,FW);break;
+  case 'cyl':{const r=12,rx=n.w/2;s+=`<path d="M${n.x} ${n.y+r} A${rx} ${r} 0 0 1 ${n.x+n.w} ${n.y+r} V${n.y+n.h-r} A${rx} ${r} 0 0 1 ${n.x} ${n.y+n.h-r} Z" fill="${BX}" stroke-width="1.5"${st}/><path d="M${n.x} ${n.y+r} A${rx} ${r} 0 0 0 ${n.x+n.w} ${n.y+r}" stroke-width="1.5"${st}/>`;
+    s+=n.s?T(cx,cy+4,n.t,17,tf,FW)+T(cx,cy+26,n.s,12,MU):T(cx,cy+12,n.t,17,tf,FW);break}
+  case 'table':s+=`<rect x="${n.x}" y="${n.y}" width="${n.w}" height="${n.h}" rx="8" fill="${BX}" stroke-width="1.5"${st}/>`+T(cx,n.y+29,n.t,16,tf,FW);
+    s+=`<line x1="${n.x}" y1="${n.y+44}" x2="${n.x+n.w}" y2="${n.y+44}" stroke-width="1" stroke-opacity=".45"${a?` stroke="${AC}"`:''}/>`;
+    (n.items||[]).forEach((r,i)=>{const [nm,ty]=r.split('|');const y=n.y+66+i*26;s+=TS(n.x+20,y,nm)+TS(n.x+n.w-20,y,ty||'',12,MU,'end')});break;
+  case 'life':s+=`<rect x="${n.x}" y="${n.y}" width="${n.w}" height="50" rx="8" fill="${BX}" stroke-width="1.5"${st}/>`+T(cx,n.y+31,n.t,15,tf,FW);
+    s+=`<line x1="${cx}" y1="${n.y+52}" x2="${cx}" y2="${n.y+n.h}" stroke="${MU}" stroke-width="1" stroke-dasharray="2 5" stroke-opacity=".8"/>`;break;
+  case 'zone':s+=`<rect x="${n.x}" y="${n.y}" width="${n.w}" height="${n.h}" rx="10" stroke-width="1"${a?` stroke="${AC}" stroke-dasharray="7 5"`:' stroke-opacity=".5"'}/>`+TS(n.x+16,n.y+26,n.t,13,a?AC:MU,'start',FW);
+    s+=`<rect x="${n.x}" y="${n.y}" width="${n.w}" height="${n.h}" rx="10" stroke="transparent" stroke-width="12" fill="none"/><rect x="${n.x}" y="${n.y}" width="${Math.min(n.w,260)}" height="38" fill="transparent" stroke="none"/>`;break;
+  case 'lane':s+=`<rect x="${n.x}" y="${n.y}" width="${n.w}" height="${n.h}" stroke-width="1" stroke-opacity=".45"/><line x1="${n.x+40}" y1="${n.y}" x2="${n.x+40}" y2="${n.y+n.h}" stroke-width="1" stroke-opacity=".45"/>`;
+    s+=`<text transform="translate(${n.x+25} ${cy}) rotate(-90)" text-anchor="middle" font-size="13" font-weight="600" fill="${MU}" stroke="none">${esc(n.t)}</text><rect x="${n.x}" y="${n.y}" width="40" height="${n.h}" fill="transparent" stroke="none"/><rect x="${n.x}" y="${n.y}" width="${n.w}" height="${n.h}" stroke="transparent" stroke-width="10" fill="none"/>`;break;
+  case 'room':s+=`<rect x="${n.x}" y="${n.y}" width="${n.w}" height="${n.h}" fill="${BX}" stroke-width="2"/>`+T(cx,cy-3,n.t,15,'currentColor',FW)+(n.s?T(cx,cy+17,n.s,12,MU):'');break;
+  case 'item':s+=`<rect x="${n.x}" y="${n.y}" width="${n.w}" height="${n.h}" rx="3" stroke-width="1"${a?` stroke="${AC}" stroke-dasharray="5 4"`:' stroke-opacity=".7"'}/>`+T(cx,cy+4,n.t,12,a?AC:MU);break;
+  case 'door':{const d=n.d||1,w=n.w,x=n.x,y=n.y,h=n.o!='v';const C=h?[x+w,y]:[x,y+w],O=h?[x,y+d*w]:[x+d*w,y];const sw=(h==(d>0))?1:0;
+    s+=`<line x1="${x}" y1="${y}" x2="${C[0]}" y2="${C[1]}" stroke="${BX}" stroke-width="4"/><line x1="${x}" y1="${y}" x2="${O[0]}" y2="${O[1]}" stroke-width="1.5"/><path d="M${C[0]} ${C[1]} A${w} ${w} 0 0 ${sw} ${O[0]} ${O[1]}" stroke="${MU}" stroke-width="1" stroke-dasharray="3 3"/>`;
+    s+=`<rect x="${Math.min(x,O[0],C[0])}" y="${Math.min(y,O[1],C[1])}" width="${w}" height="${w}" fill="transparent" stroke="none"/>`;break}
+  case 'dim':s+=`<line x1="${n.x}" y1="${n.y+8}" x2="${n.x+n.w}" y2="${n.y+8}" stroke="${MU}" stroke-width="1"/><line x1="${n.x}" y1="${n.y+2}" x2="${n.x}" y2="${n.y+14}" stroke="${MU}"/><line x1="${n.x+n.w}" y1="${n.y+2}" x2="${n.x+n.w}" y2="${n.y+14}" stroke="${MU}"/>`;
+    s+=`<rect x="${cx-34}" y="${n.y}" width="68" height="16" fill="${PA}" stroke="none"/>`+T(cx,n.y+12,n.t,12,MU)+`<rect x="${n.x}" y="${n.y}" width="${n.w}" height="16" fill="transparent" stroke="none"/>`;break;
+  case 'dot':s+=`<circle cx="${cx}" cy="${cy}" r="${n.w/2}" fill="${FG}" stroke="none"/>`;break;
+  case 'bar':s+=`<rect x="${n.x}" y="${n.y}" width="${n.w}" height="${n.h}" rx="5" fill="${BX}" stroke-width="1"${st}/>`+TS(n.x+12,cy+5,n.t,13,tf);break;
+  case 'ms':s+=`<polygon points="${cx},${n.y} ${n.x+n.w},${cy} ${cx},${n.y+n.h} ${n.x},${cy}" fill="${a?AC:FG}" stroke="none"/>`+T(cx,n.y+n.h+20,n.t,13,tf)+`<rect x="${cx-50}" y="${n.y}" width="100" height="${n.h+26}" fill="transparent" stroke="none"/>`;break;
+  case 'axis':{const it=n.items||[],cw=n.w/Math.max(1,it.length);
+    it.forEach((m,i)=>{const x=n.x+i*cw;s+=T(x+cw/2,n.y+22,m,13,MU);if(i)s+=`<line x1="${x}" y1="${n.y}" x2="${x}" y2="${n.y+n.h}" stroke-width="1" stroke-opacity=".13"/>`});
+    s+=`<line x1="${n.x}" y1="${n.y+36}" x2="${n.x+n.w}" y2="${n.y+36}" stroke-width="1" stroke-opacity=".3"/><rect x="${n.x}" y="${n.y}" width="${n.w}" height="36" fill="transparent" stroke="none"/>`;break}
+  case 'text':s+=TS(n.x,n.y+16,n.t,n.fs||13,n.a?AC:MU)+`<rect x="${n.x}" y="${n.y}" width="${n.w}" height="${n.h}" fill="transparent" stroke="none"/>`;break;
+  case 'legend':(n.items||[]).forEach((r,i)=>{const y=n.y+i*30;s+=`<line x1="${n.x}" y1="${y+10}" x2="${n.x+50}" y2="${y+10}" stroke-width="1.5"${r[1]?` stroke="${AC}" stroke-dasharray="7 5"`:''}/>`+TS(n.x+60,y+15,r[0],13,r[1]?AC:'currentColor')});
+    s+=`<rect x="${n.x}" y="${n.y}" width="${n.w}" height="${n.h}" fill="transparent" stroke="none"/>`;break;
+  }
+  return `<g data-n="${n.id}" class="nd">${s}</g>`;
+}
+/* edge routing: orthogonal only, endpoints 2px outside the box */
+function anchor(n,side,off=0){const cx=n.x+n.w/2,cy=n.y+n.h/2;return side=='t'?[cx+off,n.y-2]:side=='b'?[cx+off,n.y+n.h+2]:side=='l'?[n.x-2,cy+off]:[n.x+n.w+2,cy+off]}
+function autoSides(a,b){const hg=b.x>a.x+a.w?b.x-a.x-a.w:a.x>b.x+b.w?a.x-b.x-b.w:-1,vg=b.y>a.y+a.h?b.y-a.y-a.h:a.y>b.y+b.h?a.y-b.y-b.h:-1;
+  if(vg>hg) return b.y>a.y?['b','t']:['t','b']; return b.x>a.x?['r','l']:['l','r']}
+const OPP={t:'b',b:'t',l:'r',r:'l'},isH=s=>s=='l'||s=='r';
+function route(e,a,b){
+  if(e.y!=null){const x1=a.x+a.w/2,x2=b.x+b.w/2,d=Math.sign(x2-x1)||1;return [[x1,e.y],[x2-2*d,e.y]]}
+  const au=autoSides(a,b),fs=e.fs||au[0],ts=e.ts||au[1];
+  if(OPP[fs]==ts&&!e.fo&&!e.to){
+    if(isH(fs)){const lo=Math.max(a.y,b.y),hi=Math.min(a.y+a.h,b.y+b.h);if(hi-lo>=16){const y=(lo+hi)/2;return [[anchor(a,fs)[0],y],[anchor(b,ts)[0],y]]}}
+    else{const lo=Math.max(a.x,b.x),hi=Math.min(a.x+a.w,b.x+b.w);if(hi-lo>=16){const x=(lo+hi)/2;return [[x,anchor(a,fs)[1]],[x,anchor(b,ts)[1]]]}}
+  }
+  const p=anchor(a,fs,e.fo||0),q=anchor(b,ts,e.to||0);
+  if(isH(fs)&&isH(ts)){if(p[1]==q[1])return [p,q];const v=e.via??(p[0]+q[0])/2;return [p,[v,p[1]],[v,q[1]],q]}
+  if(!isH(fs)&&!isH(ts)){if(p[0]==q[0])return [p,q];const v=e.via??(p[1]+q[1])/2;return [p,[p[0],v],[q[0],v],q]}
+  return isH(fs)?[p,[q[0],p[1]],q]:[p,[p[0],q[1]],q];
+}
+function edgeSVG(e,N,u,o){
+  const a=N[e.f],b=N[e.t];if(!a||!b)return '';
+  const pts=route(e,a,b),col=e.a?AC:'currentColor',dash=e.a?' stroke-dasharray="7 5"':'';
+  const hd=e.h||'arrow',m=hd=='crow'?(e.a?u+'ca':u+'c'):(e.a?u+'a':u+'f');
+  const me=hd=='none'?'':` marker-end="url(#${m})"`,ms=hd=='two'?` marker-start="url(#${m})"`:'';
+  const ps=pts.map(p=>p.map(v=>Math.round(v*10)/10).join(',')).join(' ');
+  let s='';
+  if(o.selE==e.id) s+=`<polyline points="${ps}" stroke="${SEL}" stroke-opacity=".22" stroke-width="9" stroke-linejoin="round"/>`;
+  s+=`<polyline points="${ps}" stroke="${col}" stroke-width="1.5"${dash}${me}${ms}/>`;
+  if(o.edit) s+=`<polyline points="${ps}" stroke="transparent" stroke-width="16"/>`;
+  if(e.l){let si=e.seg??0;if(e.seg==null){let best=-1;for(let i=0;i<pts.length-1;i++){const L=Math.abs(pts[i+1][0]-pts[i][0])+Math.abs(pts[i+1][1]-pts[i][1]);if(L>best){best=L;si=i}}}
+    si=Math.min(si,pts.length-2);const p1=pts[si],p2=pts[si+1],hz=p1[1]==p2[1],mx=(p1[0]+p2[0])/2,my=(p1[1]+p2[1])/2;
+    const lp=e.lp||(hz?'a':'r'),ld=e.ld||[0,0],lf=e.a?AC:'currentColor';let x,y,anc='middle',y2;
+    if(lp=='a'){x=mx;y=my-(e.l2?18:12);y2=my+22}else if(lp=='b'){x=mx;y=my+22;y2=my+40}else if(lp=='r'){x=mx+12;y=my+5;anc='start';y2=my+23}else{x=mx-12;y=my+5;anc='end';y2=my+23}
+    x+=ld[0];y+=ld[1];y2+=ld[1];
+    s+=TS(Math.round(x*10)/10,y,e.l,13,lf,anc);if(e.l2)s+=TS(Math.round(x*10)/10,y2,e.l2,12,MU,anc);}
+  if(o.selE==e.id) s+=[pts[0],pts[pts.length-1]].map(p=>`<circle cx="${p[0]}" cy="${p[1]}" r="4.5" fill="${PA}" stroke="${SEL}" stroke-width="1.5"/>`).join('');
+  return `<g data-e="${e.id}">${s}</g>`;
+}
+// svgDoc(doc, o) -> complete <svg> string. o: {edit, sel[], selE, hl[] (changed ids), flash[], temp, mq, bg}
+function svgDoc(d,o={}){
+  const u='m'+(++uidN),N={};d.nodes.forEach(n=>N[n.id]=n);
+  let s=`<defs>${mk(u+'f',FG)}${mk(u+'a',AC)}${crow(u+'c',FG)}${crow(u+'ca',AC)}</defs>`;
+  if(o.bg) s+=`<rect width="1200" height="700" fill="${PA}" stroke="none"/>`;
+  const ring=(n,c,w,op)=>`<rect x="${n.x-7}" y="${n.y-7}" width="${n.w+14}" height="${n.h+14}" rx="12" stroke="${c}" stroke-width="${w}" stroke-opacity="${op}" fill="${c}" fill-opacity=".05" pointer-events="none"/>`;
+  (o.hl||[]).forEach(id=>N[id]&&(s+=ring(N[id],SEL,2.5,.6)));
+  (o.flash||[]).forEach(id=>N[id]&&(s+=ring(N[id],AC,3,.7)));
+  d.nodes.filter(n=>CONT[n.k]).forEach(n=>s+=nodeSVG(n));
+  d.nodes.filter(n=>!CONT[n.k]).forEach(n=>s+=nodeSVG(n));
+  d.edges.forEach(e=>s+=edgeSVG(e,N,u,o));
+  if(o.edit){
+    (o.sel||[]).forEach(id=>{const n=N[id];if(!n)return;s+=`<rect x="${n.x-5}" y="${n.y-5}" width="${n.w+10}" height="${n.h+10}" rx="4" stroke="${SEL}" stroke-width="1.3" pointer-events="none"/>`;
+      if(o.sel.length==1&&RESIZE[n.k]) [['nw',n.x-5,n.y-5],['ne',n.x+n.w+5,n.y-5],['sw',n.x-5,n.y+n.h+5],['se',n.x+n.w+5,n.y+n.h+5]].forEach(([h,x,y])=>s+=`<rect data-h="${h}" x="${x-5}" y="${y-5}" width="10" height="10" rx="2" fill="${PA}" stroke="${SEL}" stroke-width="1.5" style="cursor:${h=='nw'||h=='se'?'nwse':'nesw'}-resize"/>`)});
+    if(o.temp) s+=`<line x1="${o.temp[0]}" y1="${o.temp[1]}" x2="${o.temp[2]}" y2="${o.temp[3]}" stroke="${SEL}" stroke-width="1.5" stroke-opacity=".8" marker-end="url(#${u}f)" pointer-events="none"/>`;
+    if(o.mq){const [x1,y1,x2,y2]=o.mq;s+=`<rect x="${Math.min(x1,x2)}" y="${Math.min(y1,y2)}" width="${Math.abs(x2-x1)}" height="${Math.abs(y2-y1)}" fill="${SEL}" fill-opacity=".06" stroke="${SEL}" stroke-opacity=".6" stroke-width="1" pointer-events="none"/>`}
+    if(!d.nodes.length) s+=T(600,340,'Empty diagram',17,MU,FW)+T(600,368,'Double-click to add a box, press / for shapes, or start from a kit',13,MU);
+  }
+  return `<svg class="doc" viewBox="0 0 1200 700" fill="none" stroke="currentColor" color="${FG}" font-family="Segoe UI, system-ui, sans-serif" role="img" aria-label="${esc(d.title)}">${s}</svg>`;
+}
+const RESIZE={box:1,state:1,pill:1,diamond:1,cyl:1,table:1,life:1,zone:1,lane:1,room:1,item:1,bar:1,text:1,dim:1,axis:1};
+function miniSVG(n){const p=10;return `<svg viewBox="${n.x-p} ${n.y-p} ${n.w+2*p} ${n.h+2*p+(n.k=='ms'?24:0)}" fill="none" stroke="currentColor" color="${FG}" font-family="Segoe UI, system-ui, sans-serif" preserveAspectRatio="xMidYMid meet">${nodeSVG(n)}</svg>`}
+
+/* ===== sample diagrams (kits) ===== */
+const B=(id,x,y,w,h,t,s,o={})=>({id,k:'box',x,y,w,h,t,s,...o});
+const E=(id,f,t,o={})=>({id,f,t,...o});
+const LG=(x,y,a,b)=>({id:'lg',k:'legend',x,y,w:360,h:60,items:[[a,0],[b,1]]});
+const KN={arch:'Architecture',flow:'Flowchart',seq:'Sequence',state:'State machine',erd:'Data model',net:'Network',road:'Roadmap',floor:'Floor plan',swim:'Swimlane',mind:'Mind map',blank:'Blank'};
+const KD={arch:'Services, parts, solid vs optional links',flow:'Decisions and branches',seq:'Who talks to whom, in order',state:'States and the events between them',erd:'Tables, fields and relations',net:'Devices, zones and links',road:'Work on a month timeline',floor:'Rooms, doors and fixtures',swim:'Steps split by who does them',mind:'One idea and its branches'};
+function sampleDocs(){return [
+{id:'dgm_7c42',kit:'arch',title:'Wartribes online architecture — proposal',meta:'WT-0666 · 2026-11-15 · Proposed design, nothing implemented',rev:17,by:'PC',ago:'2 h ago',shared:1,
+ caption:'A playable match needs only the solid parts: client, platform and a match server, which is what the first two build steps deliver. The dashed parts are added for ranked and tournament play and never change gameplay code. The match server knows nothing about Steam, queues or ratings; it is driven by one match spec.',
+ nodes:[B('platform',40,50,270,100,'Platform','Steam, or Direct (no Steam)'),
+  B('client',40,260,270,200,'Game client','',{chips:[['Session flow: host, join, rejoin'],['Seams: platform, transport'],['Seams: backend, anti-cheat']]}),
+  B('match',465,260,270,200,'Match server','one process = one match',{chips:[['Match host','slots, admission, reconnect, result'],['Simulation','world, NPC minds, combat']]}),
+  B('rec',465,560,270,90,'Recording','replays, delayed live viewing, review'),
+  B('backend',890,50,270,250,'Online backend','web service, engine-independent',{a:1,items:['Accounts and login','Matchmaking','Allocation and join tokens','Results and ladder','Tournaments','Replay index']}),
+  B('fleet',890,430,270,100,'Fleet provider','local process, rented hosts, or vendor',{a:1}),
+  LG(40,590,'every match, including player-hosted','ranked and tournament matches only')],
+ edges:[E('e1','client','platform',{fs:'t',ts:'b',h:'two',l:'identity, friends, invites',lp:'r'}),
+  E('e2','client','match',{fs:'r',ts:'l',h:'two',l:'join and play',l2:'token or open'}),
+  E('e3','match','rec',{fs:'b',ts:'t',l:'records once',lp:'r'}),
+  E('e4','client','backend',{fs:'t',fo:75,ts:'l',to:15,a:1,h:'two',l:'login and queue, then a join token comes back'}),
+  E('e5','backend','fleet',{fs:'b',ts:'t',a:1,l:'start a server',lp:'r'}),
+  E('e6','fleet','match',{fs:'l',ts:'r',to:60,via:810,a:1,l:'launches with match spec',lp:'b',seg:0,ld:[-37,0]}),
+  E('e7','match','backend',{fs:'r',fo:-70,ts:'l',to:75,via:810,a:1,l:'result, heartbeat',lp:'b',seg:0,ld:[38,10]})]},
+{id:'dgm_a19e',kit:'flow',title:'Supply run decisions',meta:'Wartribes · camp AI · how a camp decides to fetch supplies',rev:4,by:'phone',ago:'yesterday',
+ caption:'Every dawn the camp checks its stores. Escorts are only sent when the road is unsafe; the normal path never waits for guards.',
+ nodes:[{id:'s',k:'pill',x:465,y:24,w:270,h:52,t:'Supply check at dawn'},{id:'d1',k:'diamond',x:465,y:120,w:270,h:110,t:'Stores below half?'},
+  B('idle',890,135,270,80,'Wait for next check','workers keep current jobs'),B('pick',465,280,270,96,'Pick nearest source','forest, quarry or trader'),
+  {id:'d2',k:'diamond',x:465,y:420,w:270,h:110,t:'Road is safe?'},B('esc',40,435,270,80,'Send an escort first','guards clear the road',{a:1}),
+  {id:'go',k:'pill',x:465,y:600,w:270,h:52,t:'Dispatch the supply run'},LG(890,590,'normal path','only when the road is unsafe')],
+ edges:[E('f1','s','d1'),E('f2','d1','idle',{fs:'r',ts:'l',l:'no'}),E('f3','d1','pick',{l:'yes'}),E('f4','pick','d2'),E('f5','d2','go',{l:'yes'}),
+  E('f6','d2','esc',{fs:'l',ts:'r',a:1,l:'no'}),E('f7','esc','go',{fs:'b',ts:'l',a:1,l:'then continue'})]},
+{id:'dgm_51d0',kit:'seq',title:'Join a ranked match',meta:'WT-0671 · message order for a ranked join',rev:6,by:'agent',ago:'just now',prop:1,shared:1,
+ caption:'Ranked joins go through the backend and fleet (dashed). Once the client holds a join token it talks to the match server directly, exactly like a player-hosted game.',
+ nodes:[{id:'p',k:'life',x:50,y:30,w:200,h:560,t:'Player client'},{id:'b',k:'life',x:350,y:30,w:200,h:560,t:'Online backend',a:1},
+  {id:'f',k:'life',x:650,y:30,w:200,h:560,t:'Fleet provider',a:1},{id:'m',k:'life',x:950,y:30,w:200,h:560,t:'Match server'},LG(40,620,'every match','ranked matches only')],
+ edges:[E('m1','p','b',{y:130,a:1,l:'login and queue'}),E('m2','b','f',{y:185,a:1,l:'start a server'}),E('m3','f','m',{y:240,a:1,l:'launch with match spec'}),
+  E('m4','m','b',{y:295,a:1,l:'ready, address'}),E('m5','b','p',{y:350,a:1,l:'join token'}),E('m6','p','m',{y:420,l:'join with token'}),
+  E('m7','m','p',{y:480,l:'snapshot, then live updates'}),E('m8','m','b',{y:555,a:1,l:'result, heartbeat'})]},
+{id:'dgm_0b77',kit:'state',title:'Unit order lifecycle',meta:'Wartribes · unit AI · states a single order moves through',rev:9,by:'PC',ago:'3 d ago',
+ caption:'Orders run left to right. Combat (dashed) can interrupt any order; a fleeing unit returns to Idle once it is safe, never straight back to work.',
+ nodes:[{id:'st',k:'dot',x:22,y:329,w:14,h:14},{id:'idle',k:'state',x:80,y:300,w:200,h:72,t:'Idle',s:'waiting for orders'},
+  {id:'mov',k:'state',x:380,y:150,w:200,h:72,t:'Moving',s:'path to target'},{id:'work',k:'state',x:680,y:150,w:200,h:72,t:'Working',s:'gather or build'},
+  {id:'done',k:'state',x:960,y:300,w:200,h:72,t:'Done',s:'report to camp'},{id:'fight',k:'state',x:680,y:450,w:200,h:72,t:'Fighting',s:'engage attacker',a:1},
+  {id:'flee',k:'state',x:380,y:450,w:200,h:72,t:'Fleeing',s:'return to camp',a:1},LG(40,600,'normal order flow','combat interrupts the order')],
+ edges:[E('s0','st','idle',{fs:'r',ts:'l'}),E('s1','idle','mov',{fs:'t',ts:'l',l:'order given'}),E('s2','mov','work',{fs:'r',ts:'l',l:'arrived'}),
+  E('s3','work','done',{fs:'r',ts:'t',l:'job complete'}),E('s4','work','fight',{fs:'b',ts:'t',a:1,l:'attacked'}),E('s5','fight','flee',{fs:'l',ts:'r',a:1,l:'health low'}),
+  E('s6','flee','idle',{fs:'l',ts:'b',a:1,l:'safe again'})]},
+{id:'dgm_e2c4',kit:'erd',title:'Match database',meta:'WT-0680 · tables behind results and replays',rev:12,by:'PC',ago:'last week',shared:1,
+ caption:'Players and matches meet in match_players. Replays and tournaments (dashed) are only needed once ranked play exists.',
+ nodes:[{id:'pl',k:'table',x:40,y:60,w:270,h:186,t:'players',items:['id|uuid','name|text','rating|int','region|text','created|time']},
+  {id:'ma',k:'table',x:465,y:60,w:270,h:186,t:'matches',items:['id|uuid','map|text','started|time','ended|time','server|text']},
+  {id:'mp',k:'table',x:465,y:400,w:270,h:160,t:'match_players',items:['match_id|uuid','player_id|uuid','team|int','result|text']},
+  {id:'re',k:'table',x:890,y:60,w:270,h:160,t:'replays',a:1,items:['id|uuid','match_id|uuid','path|text','size|int']},
+  {id:'to',k:'table',x:890,y:400,w:270,h:134,t:'tournaments',a:1,items:['id|uuid','name|text','starts|time']},LG(40,600,'exists today','planned for tournaments')],
+ edges:[E('r1','pl','mp',{fs:'b',ts:'l',h:'crow',l:'plays in'}),E('r2','ma','mp',{fs:'b',ts:'t',h:'crow',l:'has',lp:'r'}),
+  E('r3','ma','re',{fs:'r',ts:'l',a:1,l:'recorded as'}),E('r4','to','ma',{fs:'l',ts:'r',to:50,via:810,a:1,h:'crow',l:'groups'})]},
+{id:'dgm_93fa',kit:'net',title:'Home network',meta:'Omni · where the Hub, MCP servers and devices live',rev:3,by:'phone',ago:'5 h ago',
+ caption:'Everything runs on the desktop PC inside the home LAN. The phone and laptop reach it only over Tailscale (dashed); nothing is exposed to the internet.',
+ nodes:[{id:'lan',k:'zone',x:40,y:170,w:720,h:470,t:'Home LAN'},{id:'ts',k:'zone',x:860,y:170,w:320,h:470,t:'Tailscale (private overlay)',a:1},
+  B('inet',40,40,270,80,'Internet','fibre, dynamic address'),B('router',80,230,270,100,'Router','DHCP, no port forwards'),
+  B('pc',450,230,270,214,'Desktop PC','Windows 11, always on',{chips:[['OmniHub · 5000, 3333'],['MCP Core · 8772'],['MCP Tools · 8773']]}),
+  B('nas',80,400,270,100,'NAS','backups and media'),B('prn',450,520,270,80,'Printer','shared from the PC'),
+  B('phn',885,230,270,100,'Android phone','Omni app, OmniDesign'),B('lap',885,400,270,100,'Laptop','travel, remote desktop'),LG(420,62,'on the home LAN','over Tailscale, from anywhere')],
+ edges:[E('n1','inet','router',{l:'WAN'}),E('n2','router','pc',{fs:'r',ts:'l',h:'two',l:'LAN'}),E('n3','pc','nas',{fs:'l',ts:'r',l:'nightly backup'}),
+  E('n4','pc','prn',{l:'print'}),E('n5','phn','pc',{fs:'l',ts:'r',a:1,h:'two',l:'WireGuard'}),E('n6','lap','pc',{fs:'l',ts:'r',a:1,h:'two',l:'RDP'})]},
+{id:'dgm_6d12',kit:'road',title:'OmniDesign roadmap',meta:'MISC-0162 · proposed order of work, Dec–May',rev:21,by:'PC',ago:'1 h ago',shared:1,
+ caption:'The renderer and both editors come first; the dashed items depend on agents and only start once v1 runs on PC and phone.',
+ nodes:[{id:'ax',k:'axis',x:40,y:30,w:1120,h:560,items:['Dec','Jan','Feb','Mar','Apr','May']},
+  {id:'b1',k:'bar',x:40,y:90,w:300,h:36,t:'Renderer in skill style'},{id:'b2',k:'bar',x:190,y:140,w:370,h:36,t:'Desktop editor'},
+  {id:'b3',k:'bar',x:330,y:190,w:390,h:36,t:'Android editor'},{id:'b4',k:'bar',x:450,y:240,w:370,h:36,t:'Offline queue and sync'},
+  {id:'b5',k:'bar',x:600,y:310,w:360,h:36,t:'Agent handoff over MCP',a:1},{id:'b6',k:'bar',x:720,y:360,w:280,h:36,t:'Conflict review',a:1},
+  {id:'b7',k:'bar',x:820,y:410,w:340,h:36,t:'Templates and kits'},
+  {id:'m1',k:'ms',x:552,y:492,w:16,h:16,t:'v1 on PC'},{id:'m2',k:'ms',x:812,y:492,w:16,h:16,t:'v1 on phone'},{id:'m3',k:'ms',x:992,y:492,w:16,h:16,t:'agents can edit',a:1},
+  LG(40,620,'committed','stretch, after v1')],edges:[]},
+{id:'dgm_f80c',kit:'floor',title:'Workshop ground floor',meta:'Home · layout before the dust extraction install',rev:0,by:'phone',ago:'20 min ago',local:1,pending:2,
+ caption:'Measured on site with the phone. Dashed items are planned and not installed yet.',
+ nodes:[{id:'r1',k:'room',x:40,y:40,w:560,h:330,t:'Workshop',s:'42 m²'},{id:'r2',k:'room',x:600,y:40,w:280,h:200,t:'Office',s:'12 m²'},
+  {id:'r3',k:'room',x:880,y:40,w:280,h:200,t:'Storage',s:'11 m²'},{id:'r4',k:'room',x:600,y:240,w:560,h:130,t:'Hall',s:'7 m²'},
+  {id:'r5',k:'room',x:40,y:370,w:560,h:240,t:'Garage',s:'26 m²'},{id:'r6',k:'room',x:600,y:370,w:280,h:240,t:'Utility',s:'8 m²'},{id:'r7',k:'room',x:880,y:370,w:280,h:240,t:'WC',s:'4 m²'},
+  {id:'i1',k:'item',x:60,y:60,w:250,h:46,t:'Workbench'},{id:'i2',k:'item',x:380,y:60,w:200,h:46,t:'Dust extraction',a:1},{id:'i3',k:'item',x:420,y:170,w:140,h:90,t:'Table saw'},
+  {id:'i4',k:'item',x:60,y:322,w:240,h:30,t:'Tool wall'},{id:'i5',k:'item',x:60,y:400,w:230,h:130,t:'Car'},{id:'i6',k:'item',x:470,y:550,w:110,h:40,t:'EV charger',a:1},
+  {id:'i7',k:'item',x:620,y:540,w:100,h:56,t:'Boiler'},{id:'i8',k:'item',x:760,y:540,w:100,h:56,t:'Washer'},{id:'i9',k:'item',x:1090,y:60,w:56,h:160,t:'Shelves'},{id:'i10',k:'item',x:620,y:60,w:120,h:50,t:'Desk'},
+  {id:'d1',k:'door',x:600,y:290,w:50,h:50,o:'v'},{id:'d2',k:'door',x:680,y:240,w:50,h:50,o:'h'},{id:'d3',k:'door',x:960,y:240,w:50,h:50,o:'h'},
+  {id:'d4',k:'door',x:680,y:370,w:50,h:50,o:'h'},{id:'d5',k:'door',x:960,y:370,w:50,h:50,o:'h'},{id:'d6',k:'door',x:430,y:370,w:60,h:60,o:'h'},{id:'d7',k:'door',x:1160,y:290,w:50,h:50,o:'v',d:-1},
+  {id:'dm',k:'dim',x:40,y:14,w:1120,h:16,t:'28.0 m'},{id:'lg',k:'legend',x:40,y:630,w:360,h:60,items:[['built',0],['planned',1]]}],edges:[]},
+{id:'dgm_c3a5',kit:'swim',title:'Diagram change request',meta:'MISC-0161 · who does what when a diagram changes',rev:5,by:'agent',ago:'10 min ago',prop:1,shared:1,
+ caption:'Agents never overwrite a diagram: they propose the next revision and the person reviews it on whichever device is at hand.',
+ nodes:[{id:'l1',k:'lane',x:40,y:30,w:1120,h:180,t:'Phone'},{id:'l2',k:'lane',x:40,y:210,w:1120,h:180,t:'Omni Hub'},{id:'l3',k:'lane',x:40,y:390,w:1120,h:180,t:'Agent'},
+  B('w1',120,80,200,80,'Edit offline','changes queue on device'),B('w2',420,80,200,80,'Reconnect','queue replays to Hub'),B('w3',900,80,200,80,'Review proposal','accept or discard'),
+  B('w4',420,260,200,80,'Merge revision','or flag a conflict'),B('w5',660,260,200,80,'Notify agent','if the doc is shared'),B('w6',660,440,200,80,'Propose next rev','never edits directly',{a:1}),
+  LG(40,610,'always happens','only for shared diagrams')],
+ edges:[E('c1','w1','w2',{fs:'r',ts:'l'}),E('c2','w2','w4',{fs:'b',ts:'t'}),E('c3','w4','w5',{fs:'r',ts:'l'}),E('c4','w5','w6',{fs:'b',ts:'t',a:1,l:'MCP'}),E('c5','w6','w3',{fs:'r',ts:'b',a:1,l:'proposal'})]},
+{id:'dgm_2e61',kit:'mind',title:'OmniDesign v1 scope',meta:'MISC-0160 · what ships first',rev:2,by:'PC',ago:'Oct 30',
+ caption:'v1 is one editor that behaves the same on phone and PC. Agent tools and templates (dashed) follow once the editor is stable.',
+ nodes:[{id:'c',k:'pill',x:465,y:305,w:270,h:90,t:'OmniDesign v1',s:'one tool, phone and PC'},
+  B('m1',40,60,270,100,'Desktop editor','inspector, shapes, shortcuts'),B('m2',40,300,270,100,'Android editor','touch-first, edit sheet'),B('m3',40,540,270,100,'Sync and offline','queue, conflict review'),
+  B('m4',890,60,270,100,'Agent tools','MCP read, propose, edit',{a:1}),B('m5',890,300,270,100,'Export','SVG, PNG, HTML, JSON'),B('m6',890,540,270,100,'Templates','ten diagram kits',{a:1}),
+  LG(465,600,'in v1','after v1')],
+ edges:[E('k1','c','m1',{fs:'l',ts:'r',h:'none',via:388}),E('k2','c','m2',{fs:'l',ts:'r',h:'none'}),E('k3','c','m3',{fs:'l',ts:'r',h:'none',via:388}),
+  E('k4','c','m4',{fs:'r',ts:'l',h:'none',via:812,a:1}),E('k5','c','m5',{fs:'r',ts:'l',h:'none'}),E('k6','c','m6',{fs:'r',ts:'l',h:'none',via:812,a:1})]}
+].map(d=>({pending:0,pendingList:d.pending?['Moved Car','Added EV charger']:[],hist:mkHist(d),...d}))}
+function mkHist(d){if(d.local)return [];const r=d.rev,w=['Edited labels','Moved boxes','Added a connection','Changed caption','Created from kit'];
+  return [{rev:r,by:d.by,ago:d.ago,what:d.by=='agent'?'Accepted agent proposal':'Edited labels'},{rev:r-1,by:'PC',ago:'yesterday',what:'Moved boxes'},{rev:r-2,by:'phone',ago:'2 d ago',what:'Added a connection'},{rev:1,by:'PC',ago:'last week',what:'Created from kit'}].filter(h=>h.rev>0).filter((h,i,a)=>a.findIndex(x=>x.rev==h.rev)==i)}
+
+/* ===== shape templates (Shapes flyout + phone Add sheet) ===== */
+const SH=[['box','Box',{k:'box',w:270,h:100,t:'New box',s:'what it does'}],['chips','Box with parts',{k:'box',w:270,h:200,t:'Component',s:'',chips:[['First part'],['Second part'],['Third part']]}],
+ ['accent','Optional box',{k:'box',w:270,h:100,t:'Optional part',s:'added later',a:1}],['list','Box with list',{k:'box',w:270,h:200,t:'Service',s:'what it holds',items:['First item','Second item','Third item']}],
+ ['state','State',{k:'state',w:200,h:72,t:'State'}],['pill','Start / end',{k:'pill',w:270,h:52,t:'Start'}],['diamond','Decision',{k:'diamond',w:240,h:110,t:'Decision?'}],
+ ['cyl','Store',{k:'cyl',w:200,h:110,t:'Store',s:'database'}],['table','Table',{k:'table',w:270,h:134,t:'table_name',items:['id|uuid','name|text','created|time']}],
+ ['zone','Zone',{k:'zone',w:420,h:300,t:'Zone'}],['lane','Lane',{k:'lane',w:1120,h:180,t:'Lane'}],['life','Lifeline',{k:'life',w:200,h:560,t:'Participant'}],
+ ['text','Text',{k:'text',w:240,h:24,t:'Free text'}],['legend','Legend',{k:'legend',w:360,h:60,items:[['always',0],['only sometimes',1]]}],['bar','Timeline bar',{k:'bar',w:300,h:36,t:'Work item'}],
+ ['ms','Milestone',{k:'ms',w:16,h:16,t:'Milestone'}],['room','Room',{k:'room',w:280,h:200,t:'Room',s:'12 m²'}],['door','Door',{k:'door',w:50,h:50,o:'h'}],['item','Fixture',{k:'item',w:120,h:50,t:'Fixture'}]];
+const SHG=[['Basic',['box','chips','list','accent','text','legend']],['Flow and states',['pill','diamond','state','cyl','life','table']],['Grouping',['zone','lane']],['Plans and timelines',['bar','ms','room','door','item']]];
+
+/* ===== state ===== */
+const S={docs:sampleDocs(),view:'lib',cur:null,sel:[],selE:null,tool:'sel',hub:true,conflictSim:false,z:.5,px:0,py:0,undo:[],redo:[],nav:'all',kitF:'',q:'',tab:'design',
+  flyout:false,shq:'',sheet:false,outline:false,saving:false,needsReview:false,props:{},flash:[],mq:null,temp:null,choice:'both',shareTab:'link',agentMode:'propose',ph:isPhone()};
+const D=()=>S.docs.find(d=>d.id==S.cur);
+const N=id=>D().nodes.find(n=>n.id==id);
+const EG=id=>D().edges.find(e=>e.id==id);
+const snapState=()=>{const d=D();return JSON.stringify({nodes:d.nodes,edges:d.edges,title:d.title,meta:d.meta,caption:d.caption})};
+function restore(js){Object.assign(D(),JSON.parse(js))}
+const nid=p=>p+Math.random().toString(36).slice(2,7);
+const devName=()=>isPhone()?'phone':'PC';
+
+/* Every user change goes through mut() (undo + sync). Live text typing coalesces into one undo step. */
+function mut(label,fn,keepSel){const b=snapState();fn();S.undo.push(b);S.redo=[];changed(label);refresh(keepSel)}
+function changed(label){
+  const d=D();d.ago='just now';d.by=devName();
+  if(!S.hub||d.local&&!S.hub){d.pending++;d.pendingList.push(label);if(!d.base)d.base=clone({nodes:d.base0?.nodes||d.nodes,edges:d.edges});renderSync();return}
+  S.saving=true;renderSync();clearTimeout(S.saveT);
+  S.saveT=setTimeout(()=>{const d=D();if(!d){S.saving=false;return}if(d.local){d.local=0;d.pending=0;d.pendingList=[]}d.rev++;d.hist.unshift({rev:d.rev,by:devName(),ago:'just now',what:label});S.saving=false;renderSync()},750);
+}
+function undo(){if(!S.undo.length)return toast('Nothing to undo');S.redo.push(snapState());restore(S.undo.pop());changed('Undo');refresh()}
+function redo(){if(!S.redo.length)return;S.undo.push(snapState());restore(S.redo.pop());changed('Redo');refresh()}
+
+/* ===== top-level rendering ===== */
+const app=$('#app');
+function render(){
+  S.ph=isPhone();document.body.classList.toggle('ph',S.ph);
+  if(S.view=='lib') app.innerHTML=S.ph?sbar()+libPhone():libDesk();
+  else{app.innerHTML=S.ph?sbar()+edPhone():edDesk();mountEditor()}
+}
+function sbar(){return `<div class="sbar"><span>9:41</span><span class="r"><svg viewBox="0 0 16 16"><path d="M1 13h2v2H1zM5 10h2v5H5zM9 7h2v8H9zM13 3h2v12h-2z"/></svg><svg viewBox="0 0 16 16"><path d="M8 13.5l2-2.4a3 3 0 00-4 0zM3 8.4l1.4 1.6a5.5 5.5 0 017.2 0L13 8.4a7.6 7.6 0 00-10 0zM.5 5.5l1.4 1.6a9 9 0 0112.2 0l1.4-1.6a11 11 0 00-15 0z"/></svg><svg viewBox="0 0 26 14" style="width:24px"><rect x="1" y="1.5" width="21" height="11" rx="2.5" fill="none" stroke="#e6e2d8" stroke-width="1.2"/><rect x="3" y="3.5" width="14" height="7" rx="1"/><rect x="23" y="5" width="2" height="4" rx="1"/></svg></span></div>`}
+function syncChip(compact){
+  const d=S.view=='ed'?D():null;let cls='',inner;
+  if(!d){inner=S.hub?`<span class="dot"></span>Hub connected`:`${ic('cloudoff')}Hub offline`;cls=S.hub?'':'off'}
+  else if(S.needsReview){cls='rev';inner=`${ic('info')}${compact?'Review':'Needs review'}`}
+  else if(S.saving){inner=`<span class="spin"></span>${compact?'Saving':'Saving…'}`}
+  else if(!S.hub){cls='off';inner=`${ic('cloudoff')}${compact?d.pending:'Offline · '+d.pending+' on device'}`}
+  else if(d.local){cls='off';inner=`${ic('device')}${compact?'Local':'Local only'}`}
+  else inner=`<span class="dot"></span>${compact?'r'+d.rev:'Synced · r'+d.rev}`;
+  return `<button class="chip ${cls}" id="sync" data-a="sync" title="Sync status">${inner}</button>`;
+}
+function renderSync(){const c=$('#sync');if(c)c.outerHTML=syncChip(S.ph);const o=$('#obar');if(o)o.outerHTML=obar();const m=$('#revlbl');if(m&&D())m.textContent=revLbl(D())}
+const revLbl=d=>`${KN[d.kit]} · ${d.local?'local only':'r'+d.rev}`;
+function obar(){const d=D();if(S.hub)return '<div id="obar" hidden></div>';const n=d?d.pending:0;
+  return `<div class="obar" id="obar">${ic('cloudoff')}<span><b style="color:var(--acc)">Hub unreachable.</b> ${S.ph?(n?n+' change'+(n==1?'':'s')+' saved on this phone.':'Edits are saved on this phone.'):(n?n+' change'+(n==1?' is':'s are')+' saved on this device and will sync when the Hub is back.':'You can keep editing; changes are saved on this device.')}</span><button data-a="sync">${S.ph?'Details':'Sync details'}</button></div>`}
+
+/* ===== library ===== */
+function visibleDocs(){return S.docs.filter(d=>!d.archived||S.nav=='archived').filter(d=>{
+  if(S.nav=='archived'&&!d.archived)return false;if(S.nav=='recent'&&!/min|h ago|just/.test(d.ago))return false;
+  if(S.nav=='device'&&!d.local)return false;if(S.nav=='agents'&&!d.shared)return false;if(S.kitF&&d.kit!=S.kitF)return false;
+  if(S.q&&!d.title.toLowerCase().includes(S.q.toLowerCase()))return false;return true})}
+function badge(d){if(d.local)return `<span class="badge a">${ic('device')}Local only${d.pending?' · '+d.pending+' pending':''}</span>`;
+  if(S.props[d.id]||d.prop)return `<span class="badge a">${ic('ai')}Agent proposal</span>`;return `<span class="badge"><span class="dot"></span>Synced · r${d.rev}</span>`}
+function card(d){return `<div class="card" data-a="open" data-id="${d.id}"><div class="thumb">${svgDoc(d)}</div><div class="cbody"><div class="cttl">${esc(d.title)}</div>
+  <div class="cmeta">${KN[d.kit]} · ${d.ago}${d.by?' on '+(d.by=='agent'?'agent':d.by):''}</div><div class="cfoot">${badge(d)}${d.shared&&!S.ph?`<span class="badge" title="Agents can read this diagram">${ic('ai')}Agents</span>`:''}<button class="ib sm" data-a="cardMenu" data-id="${d.id}" title="More">${ic(S.ph?'more':'moreh')}</button></div></div></div>`}
+const NAV=[['all','All diagrams','grid'],['recent','Recent','clock'],['device','On this device','device'],['agents','Shared with agents','ai'],['archived','Archived','archive']];
+function navCount(k){const o=S.nav,f=S.kitF,q=S.q;S.nav=k;S.kitF='';S.q='';const n=visibleDocs().length;S.nav=o;S.kitF=f;S.q=q;return n}
+function waitingRow(ph){const w=S.docs.filter(d=>!d.archived&&(d.prop||S.props[d.id]));if(!w.length)return '';
+  return ph?`<div class="pwait">${ic('ai')}<span>${w.length} agent proposal${w.length>1?'s':''} waiting for review</span></div>`
+   :`<div class="waiting">${ic('ai')}<span>Waiting for you:</span>${w.map(d=>`<a data-a="open" data-id="${d.id}">${esc(d.title)}</a>`).join('<span class="mut">·</span>')}<span class="mut" style="margin-left:auto">agents propose, you decide</span></div>`}
+function libDesk(){const docs=visibleDocs();
+  return `<header class="top"><div class="logo">${LOGO}OmniDesign</div><div class="vsep"></div><span class="mut" style="font-size:13px">Diagrams in the house style, on phone and PC</span><div class="sp"></div>
+  ${syncChip()}<button class="ib" data-a="scen" title="Prototype scenarios">${ic('moreh')}</button><button class="btn pri" data-a="new">${ic('plus')}New diagram</button></header>
+  ${S.hub?'':`<div class="obar" id="obar">${ic('cloudoff')}<span><b style="color:var(--acc)">Hub unreachable.</b> Diagrams stay editable; new changes are kept on this device.</span><button data-a="sync">Sync details</button></div>`}
+  <div class="lib"><nav class="nav">${NAV.map(([k,l,i])=>`<a class="${S.nav==k?'on':''}" data-a="nav" data-v="${k}">${ic(i)}${l}<span class="n">${navCount(k)}</span></a>`).join('')}
+   <h5>Kits</h5>${Object.keys(KD).map(k=>`<a class="${S.kitF==k?'on':''}" data-a="kit" data-v="${k}">${kitIcon(k)}${KN[k]}</a>`).join('')}</nav>
+  <main class="libmain"><div class="lhead"><h2>${S.kitF?KN[S.kitF]:NAV.find(n=>n[0]==S.nav)[1]}</h2><span class="mut">${docs.length}</span><div class="sp"></div>
+   <label class="search">${ic('search')}<input id="q" placeholder="Search diagrams" value="${esc(S.q)}"></label></div>
+   ${S.nav=='all'&&!S.kitF?waitingRow():''}
+   <div class="grid">${docs.map(card).join('')||`<p class="empty">Nothing here yet.</p>`}</div></main></div>`}
+function kitIcon(k){return ic({arch:'design',flow:'conn',seq:'outline',state:'box',erd:'grid',net:'link',road:'clock',floor:'zone',swim:'layers',mind:'ai'}[k]||'box')}
+function libPhone(){const docs=visibleDocs();
+  return `<div class="phwrap"><div class="pbar"><div class="ptitle">Design</div><div class="sp"></div>${syncChip(true)}<button class="ib" data-a="scen">${ic('more')}</button></div>
+  ${S.hub?'':`<div class="obar" id="obar">${ic('cloudoff')}<span>Hub unreachable — edits stay on this phone.</span></div>`}
+  <div class="pscroll"><label class="psearch">${ic('search')}<input id="q" placeholder="Search diagrams" value="${esc(S.q)}"></label>
+   <div class="pchips">${[['all','All'],['recent','Recent'],['device','On this phone'],['agents','Shared with agents']].map(([k,l])=>`<button class="pchip ${S.nav==k&&!S.kitF?'on':''}" data-a="nav" data-v="${k}">${l}</button>`).join('')}${Object.keys(KD).map(k=>`<button class="pchip ${S.kitF==k?'on':''}" data-a="kit" data-v="${k}">${KN[k]}</button>`).join('')}</div>
+   ${S.nav=='all'&&!S.kitF?waitingRow(1):''}
+   <div class="pgrid">${docs.map(card).join('')}</div></div>
+  <button class="fab" data-a="new" title="New diagram">${ic('plus')}</button>
+  <nav class="bnav">${[['dash','Dash'],['ai','AI'],['tasks','Tasks'],['design','Design'],['menu','More']].map(([i,l])=>`<button class="${i=='design'?'on':''}" data-a="${i=='design'?'nav':'noop'}" data-v="all"><span class="pill">${ic(i)}</span>${l}</button>`).join('')}</nav><div class="gbar"></div></div>`}
+
+/* ===== editor ===== */
+function paper(){const d=D();return `<div id="world"><div class="paper"><h1 id="ph1" data-a="docEdit">${esc(d.title)}</h1><p class="sub" id="psub" data-a="docEdit">${esc(d.meta)}</p><div id="dw"></div><p class="cap" id="pcap" data-a="docEdit">${esc(d.caption)}</p></div></div>`}
+function banner(){const p=S.props[S.cur];if(!p)return '';return `<div class="banner">${ic('ai')}<b>Agent proposed r${p.rev}</b><span>${esc(p.title)}</span><button class="btn sm accb" data-a="propReview">Review</button><button class="ib sm" data-a="propDismiss" title="Hide">${ic('x')}</button></div>`}
+function edDesk(){const d=D();
+  return `<header class="top"><button class="ib" data-a="home" title="All diagrams">${ic('back')}</button><div class="logo" style="padding-left:2px">${LOGO}</div>
+   <div class="ttl"><input id="ttl" data-df="title" value="${esc(d.title)}" spellcheck="false"><span class="mut" id="revlbl">${revLbl(d)}</span></div><div class="sp"></div>
+   ${syncChip()}<button class="ib" data-a="history" title="Version history">${ic('hist')}</button><div class="vsep"></div>
+   <button class="btn" data-a="agent">${ic('ai')}Ask an agent</button><button class="btn" data-a="share">${ic('link')}Share</button><button class="btn pri" data-a="export">${ic('down')}Export${ic('chev')}</button>
+   <button class="ib" data-a="scen" title="Prototype scenarios">${ic('moreh')}</button></header>${obar()}
+  <div class="ed"><div class="stage" id="stage">${paper()}
+   <div class="rail">${[['sel','sel','Select','V'],['hand','hand','Hand','H']].map(([t,i,l,k])=>`<button class="ib ${S.tool==t?'on':''}" data-a="tool" data-v="${t}" data-tip="${l}  ${k}">${ic(i)}</button>`).join('')}
+    <div class="sep"></div><button class="ib ${S.flyout?'on':''}" data-a="flyout" data-tip="Shapes  /">${ic('shapes')}</button>
+    <button class="ib" data-a="add" data-v="box" data-tip="Box  R">${ic('box')}</button><button class="ib ${S.tool=='conn'?'on':''}" data-a="tool" data-v="conn" data-tip="Connect  C">${ic('conn')}</button>
+    <button class="ib" data-a="add" data-v="text" data-tip="Text  T">${ic('text')}</button><button class="ib" data-a="add" data-v="zone" data-tip="Zone  F">${ic('zone')}</button>
+    <div class="sep"></div><button class="ib" data-a="undo" data-tip="Undo  Ctrl+Z">${ic('undo')}</button><button class="ib" data-a="redo" data-tip="Redo  Ctrl+Y">${ic('redo')}</button></div>
+   ${S.flyout?flyout():''}
+   <div class="zoom"><button class="ib sm" data-a="zout" title="Zoom out">${ic('minus')}</button><span id="zl" data-a="fit" title="Fit (1)">${Math.round(S.z*100)}%</span><button class="ib sm" data-a="zin" title="Zoom in">${ic('plus')}</button><button class="ib sm" data-a="fit" title="Fit to screen  1">${ic('fit')}</button></div>
+   <div class="hint" id="hint">${hint()}</div>${banner()}</div>
+  <aside class="insp" id="insp"></aside></div>`}
+function hint(){if(S.tool=='conn')return 'Drag from one box to another to connect them · <kbd>Esc</kbd> cancels';if(S.tool=='hand')return 'Drag to pan · scroll to pan · <kbd>Ctrl</kbd>+scroll to zoom';
+  if(S.selE)return 'Edit the label on the right · <kbd>Del</kbd> removes the connection';if(S.sel.length)return 'Drag to move · corners resize · arrows nudge · <kbd>Ctrl</kbd>+<kbd>D</kbd> duplicates';
+  return 'Double-click empty space to add a box · <kbd>C</kbd> connects · <kbd>/</kbd> opens shapes · <kbd>Ctrl</kbd>+scroll zooms'}
+function flyout(){const q=S.shq.toLowerCase();
+  return `<div class="flyout" id="flyout"><div class="fh"><div class="row"><b style="font-size:14px">Shapes</b><div class="sp"></div><button class="ib sm" data-a="flyout">${ic('x')}</button></div>
+   <label class="search" style="width:100%">${ic('search')}<input id="shq" placeholder="Search shapes" value="${esc(S.shq)}"></label></div><div class="fb">${shapeTiles(q)}</div></div>`}
+function shapeTiles(q){return SHG.map(([g,ks])=>{const items=ks.map(k=>SH.find(s=>s[0]==k)).filter(s=>!q||s[1].toLowerCase().includes(q));if(!items.length)return '';
+  return `<div class="fsec">${g}</div><div class="tiles">${items.map(([k,l,t])=>`<div class="tile" data-a="add" data-v="${k}" data-drag="${k}" title="Click to add, or drag onto the canvas">${miniSVG({...t,x:0,y:0,id:'_'})}<span>${l}</span></div>`).join('')}</div>`}).join('')}
+function edPhone(){const d=D();
+  return `<div class="phwrap"><header class="pbar ed"><button class="ib" data-a="home">${ic('back')}</button><button class="ptbtn" data-a="docEdit"><b>${esc(d.title)}</b><span id="revlbl">${revLbl(d)}</span></button>${syncChip(true)}<button class="ib" data-a="pmenu">${ic('more')}</button></header>${obar()}
+   <div class="stage" id="stage">${paper()}
+    <div class="vseg"><button class="${S.outline?'':'on'}" data-a="outline" data-v="0">${ic('design')}Canvas</button><button class="${S.outline?'on':''}" data-a="outline" data-v="1">${ic('outline')}Outline</button></div>
+    ${S.outline?outlineHTML():''}${banner()}<div class="ptools" id="ptools"${S.sheet?' hidden':''}>${ptools()}</div>
+    ${S.sheet?`<div class="psheet" id="psheet">${sheetHTML()}</div>`:''}</div><div class="gbar"></div></div>`}
+function ptools(){const b=(a,i,l,on,v='')=>`<button class="${on?'on':''}${a=='del'?' dn':''}" data-a="${a}" data-v="${v}">${ic(i)}${l}</button>`;
+  if(S.selE)return b('edit','edit','Edit')+b('flip','flip','Flip')+b('accent','accent',EG(S.selE)?.a?'Solid':'Dashed')+b('del','trash','Delete');
+  if(S.sel.length){const n=N(S.sel[0]);return b('edit','edit','Edit')+b('tool','conn','Connect',S.tool=='conn','conn')+b('accent','accent',n?.a?'Solid':'Dashed')+b('dup','copy','Copy')+b('del','trash','Delete')}
+  return b('tool','sel','Select',S.tool=='sel','sel')+b('tool','conn','Connect',S.tool=='conn','conn')+b('flyout','plus','Add')+`<button data-a="undo"${S.undo.length?'':' disabled'}>${ic('undo')}Undo</button><button data-a="redo"${S.redo.length?'':' disabled'}>${ic('redo')}Redo</button>`}
+function sheetHTML(){const what=S.selE?'Edit connection':S.sel.length>1?S.sel.length+' items':S.sel.length?'Edit '+(KLBL[N(S.sel[0]).k]||'shape'):'Diagram details';
+  return `<div class="sh"><b>${what}</b><div class="sp"></div><button class="btn pri sm" data-a="sheetClose">Done</button></div><div class="sb">${inspBody()}</div>`}
+const KLBL={box:'box',state:'state',pill:'start / end',diamond:'decision',cyl:'store',table:'table',life:'lifeline',zone:'zone',lane:'lane',room:'room',item:'fixture',door:'door',bar:'bar',ms:'milestone',axis:'timeline',text:'text',legend:'legend',dot:'start dot',dim:'dimension'};
+const cap=s=>s?s[0].toUpperCase()+s.slice(1):s;
+function outlineHTML(){const d=D(),nm=id=>{const n=d.nodes.find(n=>n.id==id);return n?(n.t||KLBL[n.k]):'?'};
+  const nodes=d.nodes.filter(n=>!['door','dim','dot','axis'].includes(n.k));
+  return `<div class="outline" id="outl"><h5>Shapes · ${nodes.length}</h5>${nodes.map(n=>`<button class="oitem ${S.sel.includes(n.id)?'on':''}" data-a="osel" data-id="${n.id}"><span class="k ${n.a?'a':''}">${ic(n.k=='legend'?'accent':n.k=='zone'||n.k=='lane'?'zone':n.k=='text'?'text':'box')}</span><span class="tx"><b>${esc(n.t||cap(KLBL[n.k]))}</b><span>${esc(n.s||(n.chips?.length?n.chips.length+' parts':n.items?.length?n.items.length+' items':KLBL[n.k]))}</span></span>${ic('chev','mut')}</button>`).join('')}
+   <h5>Connections · ${d.edges.length}</h5>${d.edges.map(e=>`<button class="oitem ${S.selE==e.id?'on':''}" data-a="oselE" data-id="${e.id}"><span class="k ${e.a?'a':''}">${e.a?lnDash:lnSolid}</span><span class="tx"><b>${esc(nm(e.f))} ${e.h=='two'?'↔':e.h=='none'?'—':'→'} ${esc(nm(e.t))}</b><span>${esc(e.l||'no label')}</span></span>${ic('chev','mut')}</button>`).join('')}</div>`}
+function mountEditor(){draw();renderInsp();bindStage();requestAnimationFrame(()=>{if(!S.viewSet){fit();S.viewSet=1}else applyView()})}
+function draw(){const d=D(),w=$('#dw');if(!w)return;w.innerHTML=svgDoc(d,{edit:1,sel:S.sel,selE:S.selE,flash:S.flash,temp:S.temp,mq:S.mq});
+  $('#ph1').textContent=d.title;$('#psub').textContent=d.meta;$('#pcap').textContent=d.caption||(S.ph?'':'Add a caption in the panel on the right.')}
+function renderInsp(){const el=$('#insp');if(el)el.innerHTML=inspHTML();const pt=$('#ptools');if(pt)pt.innerHTML=ptools();const h=$('#hint');if(h)h.innerHTML=hint();
+  const ps=$('#psheet');if(ps)ps.innerHTML=sheetHTML();const ol=$('#outl');if(ol)ol.outerHTML=outlineHTML()}
+function refresh(){if(S.view!='ed')return render();draw();renderInsp();renderSync()}
+// Re-render the whole editor shell but keep the current view transform.
+function rerender(){render()}
+
+/* ===== inspector (desktop right panel; reused inside the phone edit sheet) ===== */
+function inspHTML(){const tabs=`<div class="tabs"><button class="${S.tab=='design'?'on':''}" data-a="tab" data-v="design">Design</button><button class="${S.tab=='layers'?'on':''}" data-a="tab" data-v="layers">Layers</button></div>`;
+  return tabs+(S.tab=='layers'?layersHTML():inspBody())}
+function inspBody(){if(S.selE&&EG(S.selE))return edgeInsp(EG(S.selE));if(S.sel.length>1)return multiInsp();if(S.sel.length==1&&N(S.sel[0]))return nodeInsp(N(S.sel[0]));return docInsp()}
+const fld=(l,inner)=>`<div class="fld"><label>${l}</label>${inner}</div>`;
+const segEnc=(on,a='set',f='a')=>`<div class="seg"><button class="${on?'':'on'}" data-a="${a}" data-f="${f}" data-v="0">${lnSolid}Solid</button><button class="${on?'on':''}" data-a="${a}" data-f="${f}" data-v="1">${lnDash}Dashed amber</button></div>`;
+function docInsp(){const d=D();return `<div class="sec"><h4>Diagram</h4>${fld('Title',`<input data-df="title" value="${esc(d.title)}">`)}${fld('Sub-line',`<input data-df="meta" value="${esc(d.meta)}">`)}${fld('Caption',`<textarea data-df="caption" rows="4">${esc(d.caption)}</textarea>`)}</div>
+  <div class="sec"><h4>Line meaning</h4><div class="empty">The diagram uses one encoding, like the skill: <b style="color:var(--fg)">solid ivory</b> for the core path and <b style="color:var(--acc)">dashed amber</b> for optional or later parts. Edit the legend box to say what each means here.</div></div>
+  <div class="sec desk-only"><h4>Details</h4><div class="kv"><span>Kit</span><span>${KN[d.kit]}</span></div><div class="kv"><span>Revision</span><span>${d.local?'not synced yet':'r'+d.rev}</span></div><div class="kv"><span>ID</span><span style="font-family:Consolas,monospace;font-size:12px">${d.id}</span></div><div class="kv"><span>Shapes</span><span>${d.nodes.length} · ${d.edges.length} connections</span></div></div>
+  <div class="sec desk-only"><h4>Shortcuts</h4><div class="empty" style="line-height:2"><kbd>V</kbd> select <kbd>H</kbd> hand <kbd>R</kbd> box <kbd>C</kbd> connect <kbd>T</kbd> text <kbd>F</kbd> zone <kbd>/</kbd> shapes <kbd>1</kbd> fit <kbd>Space</kbd> drag to pan</div></div>`}
+function nodeInsp(n){let s=`<div class="sec"><h4>${KLBL[n.k]||'Shape'}<span class="sp"></span></h4>`;
+  const hasT=!['door','dot','legend','axis'].includes(n.k),hasS=['box','state','pill','diamond','cyl','room'].includes(n.k);
+  if(hasT)s+=fld(n.k=='table'?'Table name':'Title',`<input data-f="t" value="${esc(n.t)}">`);
+  if(hasS)s+=fld(n.k=='room'?'Area':'Subtitle',`<input data-f="s" value="${esc(n.s||'')}" placeholder="optional">`);
+  if(!['door','dot','legend','axis','room','life','lane','dim'].includes(n.k))s+=fld('Line style',segEnc(n.a));
+  if(['box','state','pill','diamond','cyl'].includes(n.k))s+=fld('Shape',`<div class="seg">${[['box','Box'],['state','Rounded'],['pill','Pill'],['diamond','Decision'],['cyl','Store']].map(([k,l])=>`<button class="${n.k==k?'on':''}" data-a="set" data-f="k" data-v="${k}">${l}</button>`).join('')}</div>`);
+  if(n.k=='door')s+=fld('Orientation',`<div class="seg"><button class="${n.o!='v'?'on':''}" data-a="set" data-f="o" data-v="h">Horizontal wall</button><button class="${n.o=='v'?'on':''}" data-a="set" data-f="o" data-v="v">Vertical wall</button></div>`)+fld('Swing',`<div class="seg"><button class="${(n.d||1)>0?'on':''}" data-a="set" data-f="d" data-v="1">Down / right</button><button class="${(n.d||1)<0?'on':''}" data-a="set" data-f="d" data-v="-1">Up / left</button></div>`);
+  s+='</div>';
+  if(n.k=='box'){s+=`<div class="sec"><h4>Parts<span class="sp"></span><button data-a="chipAdd">+ Add part</button></h4>${(n.chips||[]).map((c,i)=>`<div class="chiprow"><div class="stack"><input data-ci="${i}" data-cp="0" value="${esc(c[0])}"><input class="subi" data-ci="${i}" data-cp="1" value="${esc(c[1]||'')}" placeholder="detail line (optional)"></div><button class="ib sm" data-a="chipDel" data-v="${i}" title="Remove">${ic('x')}</button></div>`).join('')||'<div class="empty">Parts are the small labelled boxes inside, like “Match host”. The box grows to fit them.</div>'}</div>`;
+    s+=`<div class="sec"><h4>List items</h4><textarea data-f="items" rows="${Math.max(3,(n.items||[]).length)}" placeholder="One item per line">${esc((n.items||[]).join('\n'))}</textarea></div>`}
+  if(n.k=='table')s+=`<div class="sec"><h4>Columns</h4><textarea data-f="items" rows="${Math.max(3,(n.items||[]).length)}" placeholder="name|type, one per line">${esc((n.items||[]).join('\n'))}</textarea></div>`;
+  if(n.k=='axis')s+=`<div class="sec"><h4>Columns</h4><textarea data-f="items" rows="4" placeholder="One column per line">${esc((n.items||[]).join('\n'))}</textarea></div>`;
+  if(n.k=='legend')s+=`<div class="sec"><h4>Legend rows<span class="sp"></span><button data-a="lgAdd">+ Add row</button></h4>${(n.items||[]).map((r,i)=>`<div class="chiprow"><div class="stack"><input data-li="${i}" value="${esc(r[0])}"><div class="seg">${[0,1].map(v=>`<button class="${(r[1]?1:0)==v?'on':''}" data-a="lgSet" data-i="${i}" data-v="${v}">${v?lnDash+'Dashed':lnSolid+'Solid'}</button>`).join('')}</div></div><button class="ib sm" data-a="lgDel" data-v="${i}">${ic('x')}</button></div>`).join('')}</div>`;
+  s+=`<div class="sec desk-only"><h4>Position and size</h4><div class="g4">${['x','y','w','h'].map(k=>`<label>${k.toUpperCase()}<input type="number" step="5" data-f="${k}" value="${Math.round(n[k])}"></label>`).join('')}</div></div>`;
+  s+=`<div class="sec"><div class="acts"><button class="btn sm" data-a="dup">${ic('copy')}Duplicate</button><button class="btn sm" data-a="tool" data-v="conn">${ic('conn')}Connect</button><button class="btn sm danger" data-a="del">${ic('trash')}Delete</button></div></div>`;
+  return s}
+function multiInsp(){return `<div class="sec"><h4>${S.sel.length} selected</h4>${fld('Align',`<div class="acts">${[['l','al','Left'],['c','ac','Centre'],['t','at','Top'],['m','am','Middle']].map(([v,i,l])=>`<button class="btn sm" data-a="align" data-v="${v}">${ic(i)}${l}</button>`).join('')}</div>`)}
+  ${fld('Spacing',`<button class="btn sm" data-a="dist">${ic('dh')}Distribute evenly</button>`)}${fld('Line style',segEnc(S.sel.every(id=>N(id)?.a),'setAll'))}</div>
+  <div class="sec"><div class="acts"><button class="btn sm" data-a="dup">${ic('copy')}Duplicate</button><button class="btn sm danger" data-a="del">${ic('trash')}Delete</button></div></div>`}
+function edgeInsp(e){const d=D(),nm=id=>d.nodes.find(n=>n.id==id)?.t||id;
+  const sides=f=>`<select data-ef="${f}"><option value="">Auto</option>${[['t','Top'],['r','Right'],['b','Bottom'],['l','Left']].map(([v,l])=>`<option value="${v}"${e[f]==v?' selected':''}>${l}</option>`).join('')}</select>`;
+  return `<div class="sec"><h4>Connection</h4><div class="empty" style="margin-bottom:10px;color:var(--fg)">${esc(nm(e.f))} <span class="mut">${e.h=='two'?'↔':'→'}</span> ${esc(nm(e.t))}</div>
+   ${fld('Label',`<input data-ef="l" value="${esc(e.l||'')}" placeholder="what flows along it">`)}${fld('Second line',`<input data-ef="l2" value="${esc(e.l2||'')}" placeholder="optional, smaller and muted">`)}
+   ${fld('Line style',segEnc(e.a))}
+   ${fld('Arrows',`<div class="seg">${[['arrow','One way'],['two','Both'],['none','None'],['crow','Many']].map(([v,l])=>`<button class="${(e.h||'arrow')==v?'on':''}" data-a="setE" data-f="h" data-v="${v}">${l}</button>`).join('')}</div>`)}</div>
+   ${e.y==null?`<div class="sec desk-only"><h4>Route</h4><div class="row" style="margin-bottom:10px"><div style="flex:1">${fld('Leaves from',sides('fs'))}</div><div style="flex:1">${fld('Arrives at',sides('ts'))}</div></div>
+   ${fld('Label position',`<div class="seg">${[['a','Above'],['b','Below'],['l','Left'],['r','Right']].map(([v,l])=>`<button class="${e.lp==v?'on':''}" data-a="setE" data-f="lp" data-v="${v}">${l}</button>`).join('')}</div>`)}</div>`:''}
+   <div class="sec"><div class="acts"><button class="btn sm" data-a="flip">${ic('swap')}Reverse</button><button class="btn sm danger" data-a="del">${ic('trash')}Delete</button></div></div>`}
+function layersHTML(){const d=D();const inside=(c,n)=>c!==n&&n.x>=c.x&&n.y>=c.y&&n.x+n.w<=c.x+c.w&&n.y+n.h<=c.y+c.h;
+  const conts=d.nodes.filter(n=>CONT[n.k]);let s='<div style="padding:8px 0">';
+  d.nodes.slice().reverse().forEach(n=>{const parent=!CONT[n.k]&&conts.find(c=>inside(c,n));
+    s+=`<div class="layer ${parent?'in':''} ${S.sel.includes(n.id)?'on':''}" data-a="osel" data-id="${n.id}">${ic(CONT[n.k]?'zone':n.k=='text'?'text':n.k=='legend'?'accent':'box')}<span style="${n.a?'color:var(--acc)':''}">${esc(n.t||KLBL[n.k])}</span><span class="k">${KLBL[n.k]}</span></div>`});
+  s+=`<div class="layer" style="cursor:default;font-size:11px;letter-spacing:.07em;text-transform:uppercase;font-weight:600;margin-top:8px">Connections</div>`;
+  d.edges.forEach(e=>s+=`<div class="layer ${S.selE==e.id?'on':''}" data-a="oselE" data-id="${e.id}">${e.a?lnDash:lnSolid}<span>${esc(e.l||'unlabelled')}</span></div>`);
+  return s+'</div>'}
+
+/* ===== view: pan / zoom ===== */
+function applyView(){const w=$('#world');if(w)w.style.transform=`translate(${S.px}px,${S.py}px) scale(${S.z})`;const z=$('#zl');if(z)z.textContent=Math.round(S.z*100)+'%'}
+function fit(){const st=$('#stage'),pp=$('.paper');if(!st||!pp)return;const W=st.clientWidth,H=st.clientHeight,pw=pp.offsetWidth,ph=pp.offsetHeight;
+  const [ml,mr,mt,mb]=S.ph?[8,8,64,104]:[70,24,24,58];S.z=Math.min((W-ml-mr)/pw,(H-mt-mb)/ph,1.2);
+  S.px=ml+(W-ml-mr-pw*S.z)/2;S.py=mt+(H-mt-mb-ph*S.z)/2;applyView()}
+function zoomAt(cx,cy,nz){const r=$('#stage').getBoundingClientRect(),mx=cx-r.left,my=cy-r.top;nz=clamp(nz,.12,3);S.px=mx-(mx-S.px)*nz/S.z;S.py=my-(my-S.py)*nz/S.z;S.z=nz;applyView()}
+function zoomBy(f){const r=$('#stage').getBoundingClientRect();zoomAt(r.left+r.width/2,r.top+r.height/2,S.z*f)}
+// Center node n at vertical fraction fy of the stage (phone: above the edit sheet).
+function focusNode(n,z,fy=.5){const st=$('#stage');S.z=z;applyView();const svg=$('#dw svg'),r=st.getBoundingClientRect();
+  const p=new DOMPoint(n.x+n.w/2,n.y+n.h/2).matrixTransform(svg.getScreenCTM());S.px+=r.left+r.width/2-p.x;S.py+=r.top+r.height*fy-p.y;applyView()}
+function svgPt(e){const svg=$('#dw svg');const p=new DOMPoint(e.clientX,e.clientY).matrixTransform(svg.getScreenCTM().inverse());return [p.x,p.y]}
+function viewCenter(){const st=$('#stage').getBoundingClientRect();return svgPt({clientX:st.left+st.width/2-(S.ph?0:150),clientY:st.top+st.height/2})}
+
+/* ===== pointer + gestures ===== */
+let P=null,spaceDown=false,lastTap={t:0,id:null};const ptrs=new Map();
+const dist=(a,b)=>Math.hypot(a[0]-b[0],a[1]-b[1]),midp=(a,b)=>[(a[0]+b[0])/2,(a[1]+b[1])/2];
+function containedIds(ids){const d=D(),out=new Set(ids);ids.forEach(id=>{const c=N(id);if(c&&CONT[c.k])d.nodes.forEach(n=>{if(n!==c&&!CONT[n.k]&&n.x>=c.x&&n.y>=c.y&&n.x+n.w<=c.x+c.w&&n.y+n.h<=c.y+c.h)out.add(n.id)})});return [...out]}
+function bindStage(){const st=$('#stage');if(!st)return;
+  st.addEventListener('pointerdown',onDown);st.addEventListener('pointermove',onMove);st.addEventListener('pointerup',onUp);st.addEventListener('pointercancel',onUp);
+  st.addEventListener('wheel',e=>{if(e.target.closest('.flyout,.outline,.psheet'))return;e.preventDefault();if(e.ctrlKey||e.metaKey)zoomAt(e.clientX,e.clientY,S.z*Math.exp(-e.deltaY*.0018));else{S.px-=e.deltaX;S.py-=e.deltaY;applyView()}},{passive:false});
+  st.addEventListener('dblclick',e=>{if(S.ph||e.target.closest('.rail,.zoom,.flyout,.banner'))return;const nEl=e.target.closest('[data-n]');
+    if(nEl){S.sel=[nEl.dataset.n];S.selE=null;S.tab='design';refresh();const i=$('#insp [data-f="t"]');i&&(i.focus(),i.select());return}
+    if(e.target.closest('#dw'))addNode('box',svgPt(e))});
+  st.addEventListener('contextmenu',e=>{if(!e.target.closest('#dw'))return;e.preventDefault();ctxMenu(e)});
+  st.className='stage'+(S.tool=='hand'?' hand':S.tool=='conn'?' conn':'');
+}
+const UI_SEL='.rail,.zoom,.flyout,.ptools,.vseg,.banner,.psheet,.outline,.paper h1,.paper .sub,.paper .cap';
+function onDown(e){
+  if(e.target.closest(UI_SEL)){if(e.target.closest('.paper h1,.paper .sub,.paper .cap')&&!S.ph){S.sel=[];S.selE=null;refresh()}return}
+  closeMenu();const st=$('#stage');st.setPointerCapture(e.pointerId);ptrs.set(e.pointerId,[e.clientX,e.clientY]);
+  if(ptrs.size==2){const [a,b]=[...ptrs.values()];P={k:'pinch',d0:dist(a,b),z0:S.z,m0:midp(a,b),px:S.px,py:S.py};S.temp=null;return}
+  const t=e.target,p=svgPt(e),hEl=t.closest('[data-h]'),nEl=t.closest('[data-n]'),eEl=t.closest('[data-e]');
+  if(e.button==1||S.tool=='hand'||spaceDown){P={k:'pan',x:e.clientX,y:e.clientY,px:S.px,py:S.py};st.classList.add('panning');return}
+  if(hEl){const n=N(S.sel[0]);P={k:'rs',h:hEl.dataset.h,p,o:{x:n.x,y:n.y,w:n.w,h:n.h},n,b:snapState()};return}
+  if(nEl){const id=nEl.dataset.n;
+    if(S.tool=='conn'){const n=N(id);P={k:'conn',f:id};S.temp=[n.x+n.w/2,n.y+n.h/2,p[0],p[1]];draw();return}
+    if(e.shiftKey)S.sel=S.sel.includes(id)?S.sel.filter(x=>x!=id):[...S.sel,id];else if(!S.sel.includes(id))S.sel=[id];
+    S.selE=null;const ids=containedIds(S.sel);
+    P={k:'drag',p,o:ids.map(i=>{const n=N(i);return [n,n.x,n.y]}),b:snapState(),moved:false,id,x:e.clientX,y:e.clientY};draw();renderInsp();return}
+  if(eEl){S.selE=eEl.dataset.e;S.sel=[];P={k:'tapE',id:S.selE};refresh();return}
+  if(S.ph||S.tool=='conn'){P={k:'pan',x:e.clientX,y:e.clientY,px:S.px,py:S.py,tap:true};return}
+  if(!e.shiftKey){S.sel=[];S.selE=null}P={k:'mq',p,base:e.shiftKey?[...S.sel]:[]};refresh();
+}
+function onMove(e){
+  if(ptrs.has(e.pointerId))ptrs.set(e.pointerId,[e.clientX,e.clientY]);if(!P)return;
+  if(P.k=='pinch'){if(ptrs.size<2)return;const [a,b]=[...ptrs.values()],r=$('#stage').getBoundingClientRect(),nz=clamp(P.z0*dist(a,b)/P.d0,.12,3),m=midp(a,b);
+    const wx=(P.m0[0]-r.left-P.px)/P.z0,wy=(P.m0[1]-r.top-P.py)/P.z0;S.z=nz;S.px=m[0]-r.left-wx*nz;S.py=m[1]-r.top-wy*nz;applyView();return}
+  if(P.k=='pan'){const dx=e.clientX-P.x,dy=e.clientY-P.y;if(Math.hypot(dx,dy)>6)P.tap=false;S.px=P.px+dx;S.py=P.py+dy;applyView();return}
+  const q=svgPt(e);
+  if(P.k=='drag'){if(!P.moved&&Math.hypot(e.clientX-P.x,e.clientY-P.y)<4)return;P.moved=true;const dx=snap5(q[0]-P.p[0]),dy=snap5(q[1]-P.p[1]);P.o.forEach(([n,x,y])=>{n.x=x+dx;n.y=y+dy});draw();return}
+  if(P.k=='rs'){const o=P.o,n=P.n,dx=snap5(q[0]-P.p[0]),dy=snap5(q[1]-P.p[1]);
+    if(P.h.includes('e'))n.w=Math.max(40,o.w+dx);if(P.h.includes('s'))n.h=Math.max(24,o.h+dy);
+    if(P.h.includes('w')){n.w=Math.max(40,o.w-dx);n.x=o.x+o.w-n.w}if(P.h.includes('n')){n.h=Math.max(24,o.h-dy);n.y=o.y+o.h-n.h}draw();return}
+  if(P.k=='mq'){S.mq=[P.p[0],P.p[1],q[0],q[1]];draw();return}
+  if(P.k=='conn'){S.temp[2]=q[0];S.temp[3]=q[1];draw()}
+}
+function onUp(e){
+  ptrs.delete(e.pointerId);$('#stage')?.classList.remove('panning');
+  if(!P)return;if(P.k=='pinch'){if(ptrs.size<2)P=null;return}
+  const k=P.k;
+  if(k=='drag'){if(P.moved){S.undo.push(P.b);S.redo=[];changed(P.o.length>1?'Moved '+P.o.length+' shapes':'Moved '+(N(P.id)?.t||'shape'));renderInsp()}
+    else if(S.ph){const now=Date.now();if(lastTap.id==P.id&&now-lastTap.t<350)openSheet();lastTap={t:now,id:P.id};renderInsp()}}
+  else if(k=='rs'){S.undo.push(P.b);S.redo=[];changed('Resized '+(P.n.t||'shape'));renderInsp()}
+  else if(k=='mq'){const m=S.mq;S.mq=null;if(m){const x1=Math.min(m[0],m[2]),x2=Math.max(m[0],m[2]),y1=Math.min(m[1],m[3]),y2=Math.max(m[1],m[3]);
+      S.sel=[...new Set([...P.base,...D().nodes.filter(n=>n.x<x2&&n.x+n.w>x1&&n.y<y2&&n.y+n.h>y1&&(!CONT[n.k]||n.x>=x1&&n.x+n.w<=x2&&n.y>=y1&&n.y+n.h<=y2)).map(n=>n.id)])]}
+    refresh()}
+  else if(k=='conn'){const el=document.elementFromPoint(e.clientX,e.clientY)?.closest('[data-n]');S.temp=null;
+    if(el&&el.dataset.n!=P.f){const id=nid('e');mut('Connected shapes',()=>D().edges.push({id,f:P.f,t:el.dataset.n,h:'arrow'}));S.selE=id;S.sel=[];if(!S.ph)S.tool='sel';rerender()}else draw()}
+  else if(k=='pan'&&P.tap){const now=Date.now();if(now-lastTap.t<320&&lastTap.id=='bg'){if(S.z<.5)zoomAt(e.clientX,e.clientY,.75);else fit();lastTap={t:0}}
+    else{lastTap={t:now,id:'bg'};if(S.sel.length||S.selE){S.sel=[];S.selE=null;refresh()}}}
+  P=null;
+}
+
+/* ===== editing actions ===== */
+function addNode(kind,at){const t=SH.find(s=>s[0]==kind);if(!t)return;const n={...clone(t[2]),id:nid('n')};const c=at||viewCenter();n.x=snap5(clamp(c[0]-n.w/2,0,1200-n.w));n.y=snap5(clamp(c[1]-n.h/2,0,700-n.h));
+  mut('Added '+t[1].toLowerCase(),()=>D().nodes.push(n));S.sel=[n.id];S.selE=null;S.flyout=false;closeModal();rerender();if(S.ph)focusNode(n,Math.max(S.z,.55),.4)}
+function del(){const d=D();if(S.selE){mut('Deleted connection',()=>d.edges=d.edges.filter(e=>e.id!=S.selE));S.selE=null}
+  else if(S.sel.length){const ids=S.sel;mut('Deleted '+ids.length+' shape'+(ids.length>1?'s':''),()=>{d.nodes=d.nodes.filter(n=>!ids.includes(n.id));d.edges=d.edges.filter(e=>!ids.includes(e.f)&&!ids.includes(e.t))});S.sel=[]}
+  S.sheet=false;rerender()}
+function dup(){if(!S.sel.length)return;const ids=[];mut('Duplicated',()=>S.sel.forEach(id=>{const n={...clone(N(id)),id:nid('n')};n.x+=30;n.y+=30;D().nodes.push(n);ids.push(n.id)}));S.sel=ids;refresh()}
+function toggleAccent(){if(S.selE){const e=EG(S.selE);mut(e.a?'Made connection solid':'Made connection dashed',()=>e.a=e.a?0:1)}else if(S.sel.length){const v=N(S.sel[0]).a?0:1;mut('Changed line style',()=>S.sel.forEach(id=>N(id).a=v))}}
+function flip(){const e=EG(S.selE);if(!e)return;mut('Reversed connection',()=>{[e.f,e.t]=[e.t,e.f];[e.fs,e.ts]=[e.ts,e.fs];[e.fo,e.to]=[e.to,e.fo];delete e.ld;delete e.seg})}
+function openSheet(){S.sheet=true;rerender();const n=S.sel.length?N(S.sel[0]):null,d=D();
+  if(n)focusNode(n,Math.max(S.z,.55),.24);else if(S.selE){const e=EG(S.selE),a=N(e.f),b=N(e.t);focusNode({x:Math.min(a.x,b.x),y:Math.min(a.y,b.y),w:Math.abs(a.x-b.x)+a.w,h:Math.abs(a.y-b.y)+a.h},Math.max(S.z,.4),.24)}}
+function nudge(dx,dy){if(!S.sel.length)return;const b=snapState();containedIds(S.sel).forEach(id=>{const n=N(id);n.x+=dx;n.y+=dy});
+  if(S.nudgeT&&Date.now()-S.nudgeT<600){}else{S.undo.push(b);S.redo=[]}S.nudgeT=Date.now();changed('Nudged');draw();renderInsp()}
+function align(v){const ns=S.sel.map(N);mut('Aligned',()=>{if(v=='l'){const x=Math.min(...ns.map(n=>n.x));ns.forEach(n=>n.x=x)}if(v=='t'){const y=Math.min(...ns.map(n=>n.y));ns.forEach(n=>n.y=y)}
+  if(v=='c'){const c=ns[0].x+ns[0].w/2;ns.forEach(n=>n.x=snap5(c-n.w/2))}if(v=='m'){const c=ns[0].y+ns[0].h/2;ns.forEach(n=>n.y=snap5(c-n.h/2))}})}
+function distribute(){const ns=S.sel.map(N).sort((a,b)=>a.x-b.x);if(ns.length<3)return toast('Select three or more shapes to distribute');
+  const tot=ns.reduce((s,n)=>s+n.w,0),span=ns[ns.length-1].x+ns[ns.length-1].w-ns[0].x,gap=(span-tot)/(ns.length-1);mut('Distributed',()=>{let x=ns[0].x;ns.forEach(n=>{n.x=snap5(x);x+=n.w+gap})})}
+function fitChips(n){n.h=Math.max(n.h,chipsNeed(n))}
+
+/* text fields: live update, one undo step per field edit */
+document.addEventListener('focusin',e=>{if(S.view=='ed'&&e.target.matches('[data-f],[data-df],[data-ef],[data-ci],[data-li]'))S.before=snapState()});
+document.addEventListener('input',e=>{const t=e.target;
+  if(t.id=='q'){S.q=t.value;const g=$(S.ph?'.pgrid':'.grid');if(g)g.innerHTML=visibleDocs().map(card).join('');return}
+  if(t.id=='shq'){S.shq=t.value;$('#flyout .fb').innerHTML=shapeTiles(t.value.toLowerCase());return}
+  if(S.view!='ed')return;const d=D();
+  if(t.dataset.df){d[t.dataset.df]=t.value;if(t.dataset.df=='title'){$$('[data-df="title"]').forEach(i=>i!==t&&(i.value=t.value));const pb=$('.ptbtn b');if(pb)pb.textContent=t.value}draw();return}
+  if(t.dataset.f&&S.sel[0]){const n=N(S.sel[0]),f=t.dataset.f;if(['x','y','w','h'].includes(f)){const v=parseFloat(t.value);if(!isNaN(v))n[f]=v}
+    else if(f=='items'){n.items=t.value.split('\n').filter(x=>x.trim()!=='');if(n.k=='table')n.h=Math.max(70,44+n.items.length*26+12);if(n.k=='box')fitChips(n)}else n[f]=t.value;draw();return}
+  if(t.dataset.ci!=null){const n=N(S.sel[0]);n.chips[+t.dataset.ci][+t.dataset.cp]=t.value;if(+t.dataset.cp==1)fitChips(n);draw();return}
+  if(t.dataset.li!=null){N(S.sel[0]).items[+t.dataset.li][0]=t.value;draw();return}
+});
+document.addEventListener('change',e=>{const t=e.target;if(S.view!='ed')return;
+  if(t.dataset.ef){const ed=EG(S.selE),b=S.before||snapState(),f=t.dataset.ef;if(t.value)ed[f]=t.value;else delete ed[f];if(f=='fs'||f=='ts'){delete ed.fo;delete ed.to;delete ed.via;delete ed.ld;delete ed.seg}
+    S.undo.push(b);S.redo=[];S.before=null;changed('Edited connection');draw();return}
+  if(S.before){if(snapState()!==S.before){S.undo.push(S.before);S.redo=[];changed(t.dataset.df?'Edited '+t.dataset.df:'Edited text')}S.before=null}});
+document.addEventListener('input',e=>{const t=e.target;if(S.view=='ed'&&t.dataset.ef&&['l','l2'].includes(t.dataset.ef)){const ed=EG(S.selE);if(t.value)ed[t.dataset.ef]=t.value;else delete ed[t.dataset.ef];draw()}});
+
+/* keyboard */
+document.addEventListener('keydown',e=>{
+  if(e.key=='Escape'&&($('.scrim')||$('.menu'))){closeModal();closeMenu();return}
+  if(S.view!='ed'||$('.scrim'))return;if(e.target.matches('input,textarea,select')){if(e.key=='Escape'||e.key=='Enter'&&e.target.tagName=='INPUT')e.target.blur();return}
+  const k=e.key.toLowerCase(),c=e.ctrlKey||e.metaKey;
+  if(k==' '){if(!spaceDown){spaceDown=true;$('#stage')?.classList.add('hand')}e.preventDefault();return}
+  if(c&&k=='z'){e.preventDefault();e.shiftKey?redo():undo();return}if(c&&k=='y'){e.preventDefault();redo();return}
+  if(c&&k=='d'){e.preventDefault();dup();return}if(c&&k=='a'){e.preventDefault();S.sel=D().nodes.map(n=>n.id);S.selE=null;refresh();return}
+  if(k=='delete'||k=='backspace'){del();return}
+  if(k=='escape'){S.sel=[];S.selE=null;S.flyout=false;S.tool='sel';S.temp=null;rerender();return}
+  const ar={arrowleft:[-1,0],arrowright:[1,0],arrowup:[0,-1],arrowdown:[0,1]}[k];if(ar){e.preventDefault();const st=e.shiftKey?20:5;nudge(ar[0]*st,ar[1]*st);return}
+  if(c)return;
+  if(k=='v')setTool('sel');else if(k=='h')setTool('hand');else if(k=='c')setTool('conn');else if(k=='r')addNode('box');else if(k=='t')addNode('text');else if(k=='f')addNode('zone');
+  else if(k=='/'){e.preventDefault();S.flyout=!S.flyout;rerender();setTimeout(()=>$('#shq')?.focus())}else if(k=='1')fit();else if(k=='='||k=='+')zoomBy(1.2);else if(k=='-')zoomBy(1/1.2);
+});
+document.addEventListener('keyup',e=>{if(e.key==' '){spaceDown=false;$('#stage')?.classList.toggle('hand',S.tool=='hand')}});
+function setTool(t){S.tool=t;if(t!='sel')S.flyout=false;rerender()}
+
+/* ===== tile drag from Shapes flyout ===== */
+document.addEventListener('pointerdown',e=>{const t=e.target.closest('[data-drag]');if(!t)return;S.dragNew={k:t.dataset.drag,x:e.clientX,y:e.clientY,moved:false}});
+document.addEventListener('pointermove',e=>{if(S.dragNew&&Math.hypot(e.clientX-S.dragNew.x,e.clientY-S.dragNew.y)>8){S.dragNew.moved=true;document.body.style.cursor='copy'}});
+document.addEventListener('pointerup',e=>{const g=S.dragNew;S.dragNew=null;document.body.style.cursor='';if(!g||!g.moved)return;
+  const el=document.elementFromPoint(e.clientX,e.clientY);if(el&&el.closest('#stage')&&!el.closest('.flyout')){S.suppressClick=true;addNode(g.k,svgPt(e))}});
+
+/* ===== sync, offline, conflict ===== */
+function goOffline(){S.hub=false;const d=D();if(d&&!d.base)d.base=clone({nodes:d.nodes,edges:d.edges});S.view=='ed'?rerender():render();toast('Hub unreachable — you can keep working')}
+function goOnline(){S.hub=true;const d=D();
+  if(d&&d.pending&&S.conflictSim){S.needsReview=true;render();openConflict();return}
+  if(d&&d.pending){const n=d.pending;d.rev++;d.hist.unshift({rev:d.rev,by:devName(),ago:'just now',what:n+' offline change'+(n>1?'s':'')});d.pending=0;d.pendingList=[];d.base=null;d.local=0;render();toast(`Back online — synced ${n} change${n>1?'s':''} as r${d.rev}`);return}
+  if(d)d.base=null;render();toast('Hub connected')}
+// The Hub's version during a conflict = the pre-offline base plus an edit made on the PC.
+function hubVersion(d){const h=clone(d.base);const n=h.nodes.find(n=>n.id=='backend')||h.nodes.find(n=>n.s&&n.k=='box')||h.nodes.find(n=>n.t);
+  if(n){if(n.id=='backend')n.s='web service, any engine';else n.s=(n.s?n.s+' ':'')+'(edited on PC)'}return {h,id:n?.id}}
+function diffIds(a,b){const out=[];const m=Object.fromEntries(a.nodes.map(n=>[n.id,JSON.stringify(n)]));b.nodes.forEach(n=>{if(m[n.id]!==JSON.stringify(n))out.push(n.id)});return out}
+function diffList(base,v){const bm=Object.fromEntries(base.nodes.map(n=>[n.id,n]));const out=[];
+  v.nodes.forEach(n=>{const o=bm[n.id];if(!o)out.push(['Added',n.t||KLBL[n.k]]);else if(JSON.stringify(o)!==JSON.stringify(n)){const what=o.t!==n.t?'Renamed':o.s!==n.s?'Subtitle':o.x!==n.x||o.y!==n.y?'Moved':'Edited';out.push([what,n.t||KLBL[n.k]])}});
+  base.nodes.forEach(n=>{if(!v.nodes.find(x=>x.id==n.id))out.push(['Removed',n.t||KLBL[n.k]])});
+  const be=Object.fromEntries(base.edges.map(e=>[e.id,JSON.stringify(e)]));v.edges.forEach(e=>{if(!be[e.id])out.push(['Connected',e.l||'new link']);else if(be[e.id]!==JSON.stringify(e))out.push(['Connection',e.l||'link'])});return out}
+function openConflict(){const d=D(),{h}=hubVersion(d),mine={nodes:d.nodes,edges:d.edges};
+  const mineD={...d,...mine},hubD={...d,...h},cm=diffList(d.base,mine),ch=diffList(d.base,h);
+  openModal(`<div class="mh">${ic('info','acc')}<b>This diagram changed in two places</b><div class="sp"></div><button class="ib" data-a="closeModal">${ic('x')}</button></div>
+  <div class="mb cf"><p class="mut" style="margin:0 0 14px">While ${S.ph?'this phone':'this device'} was offline you made ${d.pending} change${d.pending>1?'s':''}. Meanwhile the PC saved r${d.rev+1} to the Hub. Nothing is lost until you choose.</p>
+   <div class="cmp"><figure><figcaption>${ic(S.ph?'phone':'pc')}Your version <span class="mut">· ${d.pending} offline change${d.pending>1?'s':''}</span></figcaption>${svgDoc(mineD,{hl:diffIds(d.base,mine),bg:1})}<ul class="changes" style="grid-template-columns:1fr">${cm.map(c=>`<li><b>${c[0]}</b> · ${esc(c[1])}</li>`).join('')}</ul></figure>
+   <figure><figcaption>${ic('cloud')}On the Hub <span class="mut">· r${d.rev+1} from the PC</span></figcaption>${svgDoc(hubD,{hl:diffIds(d.base,h),bg:1})}<ul class="changes" style="grid-template-columns:1fr">${ch.map(c=>`<li><b>${c[0]}</b> · ${esc(c[1])}</li>`).join('')}</ul></figure></div>
+   <div class="opts">${[['both','Keep both','The Hub version stays here. Your edits are saved as a separate copy you can merge by hand.',1],['mine','Use mine','Your version becomes r'+(d.rev+2)+'. The PC change is kept in history.'],['hub',"Use the Hub's",'Your '+d.pending+' offline change'+(d.pending>1?'s are':' is')+' discarded.']].map(([v,t,s,r])=>`<button class="opt ${S.choice==v?'on':''}" data-a="choice" data-v="${v}"><span class="rd"></span><span><b>${t}</b>${r?'<span class="rec">Recommended</span>':''}<small>${s}</small></span></button>`).join('')}</div></div>
+  <div class="mf"><span class="left desk-only">Highlighted shapes are the ones that differ.</span><button class="btn" data-a="closeModal">Decide later</button><button class="btn pri" data-a="resolve">Apply</button></div>`,'wide')}
+function resolve(){const d=D(),{h}=hubVersion(d),mine=clone({nodes:d.nodes,edges:d.edges}),n=d.pending,c=S.choice;
+  if(c=='both'){const cp={...clone(d),id:nid('dgm_'),title:d.title+' (offline copy)',rev:1,...mine,hist:[{rev:1,by:devName(),ago:'just now',what:'Saved offline edits as a copy'}],base:null,pending:0,pendingList:[]};S.docs.splice(S.docs.indexOf(d)+1,0,cp);
+    Object.assign(d,h);d.rev++;d.hist.unshift({rev:d.rev,by:'PC',ago:'just now',what:'Edited on PC'});toast('Kept both — your edits are in “'+cp.title+'”')}
+  else if(c=='mine'){d.rev+=2;d.hist.unshift({rev:d.rev-1,by:'PC',ago:'just now',what:'Edited on PC'});d.hist.unshift({rev:d.rev,by:devName(),ago:'just now',what:'Kept my offline version'});toast('Your version is now r'+d.rev)}
+  else{Object.assign(d,h);d.rev++;d.hist.unshift({rev:d.rev,by:'PC',ago:'just now',what:'Edited on PC'});toast('Using the Hub version (r'+d.rev+')')}
+  d.pending=0;d.pendingList=[];d.base=null;S.needsReview=false;S.conflictSim=false;closeModal();rerender()}
+function offlineEdits(){const d=D();const b=snapState();if(!d.base)d.base=clone({nodes:d.nodes,edges:d.edges});
+  const set=(id,f,v,l)=>{const n=d.nodes.find(n=>n.id==id);if(n){n[f]=v;d.pending++;d.pendingList.push(l)}};
+  if(d.id=='dgm_7c42'){set('platform','s','Steam, Epic, or Direct','Platform subtitle');set('match','s','one process per match','Match server subtitle');set('rec','s','replays and delayed live viewing','Recording subtitle')}
+  else d.nodes.filter(n=>n.k=='box'||n.k=='state').slice(0,2).forEach(n=>{n.s=(n.s||'')+' ✓';d.pending++;d.pendingList.push('Edited '+n.t)});S.undo.push(b)}
+function openSync(){const d=S.view=='ed'?D():null,n=d?d.pending:0;
+  openModal(`<div class="mh"><b>Sync</b><div class="sp"></div><button class="ib" data-a="closeModal">${ic('x')}</button></div><div class="mb">
+   <div class="statusbig ${S.hub?'':'off'}"><span class="ic">${ic(S.hub?'cloud':'cloudoff')}</span><div><b>${S.hub?(S.needsReview?'Connected — a conflict needs your decision':'Connected to Omni Hub'):'Hub unreachable'}</b><div class="mut" style="font-size:13px">${S.hub?(d?(d.local?'This diagram is not on the Hub yet':'Up to date at r'+d.rev):'All diagrams up to date'):(n?n+' change'+(n>1?'s':'')+' waiting on this device':'Changes will be kept on this device')}</div></div></div>
+   ${n?`<div class="lbl">Waiting to sync</div>${d.pendingList.slice(-6).map(l=>`<div class="kv"><span>${esc(l)}</span><span class="acc">on device</span></div>`).join('')}`:''}
+   <div class="lbl">Prototype controls</div>
+   <button class="tog" data-a="toggleHub"><span class="sw ${S.hub?'on':''}"></span><span>Hub reachable<small>Turn off to simulate leaving home Wi-Fi or Tailscale dropping.</small></span></button>
+   <button class="tog" data-a="toggleConf"><span class="sw ${S.conflictSim?'on':''}"></span><span>Someone edits on the PC meanwhile<small>When you reconnect, you will be asked how to merge.</small></span></button>
+   <div class="kv" style="margin-top:6px"><span>Hub</span><span>omnihub:3333</span></div><div class="kv"><span>This device</span><span>${S.ph?'Android phone':'Desktop PC'}</span></div></div>
+   <div class="mf">${S.needsReview?`<button class="btn pri" data-a="openConflict">Review conflict</button>`:`<button class="btn" data-a="closeModal">Close</button>`}</div>`,'nar')}
+
+/* ===== agent proposals ===== */
+function makeProposal(d,instr){const v=clone({nodes:d.nodes,edges:d.edges});let title=instr||'Clarify labels';
+  if(d.id=='dgm_7c42'&&!v.nodes.find(n=>n.id=='rpi')){title='Move Replay index into its own service fed by Recording';v.nodes.find(n=>n.id=='backend').items=v.nodes.find(n=>n.id=='backend').items.filter(i=>i!='Replay index');
+    v.nodes.push(B('rpi',890,580,270,90,'Replay index','search past matches by player',{a:1}));v.edges.push(E('e8','rec','rpi',{fs:'r',ts:'l',a:1,l:'indexes'}))}
+  else if(d.id=='dgm_51d0'){title='Add the replay link the client gets after the match';v.edges.push(E('m9','b','p',{y:585,a:1,l:'replay link'}));v.nodes.find(n=>n.id=='lg').y=630}
+  else if(d.id=='dgm_c3a5'){title='Show that the agent explains its proposal on the card';v.nodes.push(B('w7',900,440,200,80,'Explain the change','note on the TaskBoard card',{a:1}));v.edges.push(E('c6','w6','w7',{fs:'r',ts:'l',a:1}))}
+  else{const n=v.nodes.find(n=>n.k=='box'||n.k=='state');if(n)n.s='clarified by agent';}
+  return {rev:d.rev+1,title,by:'Codex agent',...v}}
+function openDiff(){const d=D(),p=S.props[d.id];if(!p)return;const pv={...d,nodes:p.nodes,edges:p.edges},ch=diffList(d,pv);
+  openModal(`<div class="mh">${ic('ai','acc')}<b>Agent proposal · r${p.rev}</b><span class="mut">${esc(p.by)} · based on r${d.rev}</span><div class="sp"></div><button class="ib" data-a="closeModal">${ic('x')}</button></div>
+  <div class="mb"><p style="margin:0 0 14px">${esc(p.title)}</p><div class="cmp"><figure><figcaption>Current <span class="mut">· r${d.rev}</span></figcaption>${svgDoc(d,{bg:1})}</figure><figure><figcaption>Proposed <span class="mut">· r${p.rev}</span></figcaption>${svgDoc(pv,{hl:diffIds(d,pv),bg:1})}</figure></div>
+   <ul class="changes">${ch.map(c=>`<li><b>${c[0]}</b> · ${esc(c[1])}</li>`).join('')}</ul></div>
+  <div class="mf"><span class="left desk-only">Accepting creates r${p.rev}. You can undo it from history.</span><button class="btn" data-a="propDiscard">Discard</button><button class="btn pri" data-a="propAccept">Accept as r${p.rev}</button></div>`,'wide')}
+function acceptProp(){const d=D(),p=S.props[d.id],b=snapState(),ids=diffIds(d,p);d.nodes=p.nodes;d.edges=p.edges;d.rev=p.rev;d.prop=0;d.hist.unshift({rev:d.rev,by:'agent',ago:'just now',what:'Accepted: '+p.title});
+  delete S.props[d.id];S.undo.push(b);closeModal();S.flash=ids;rerender();toast('Accepted r'+d.rev);setTimeout(()=>{S.flash=[];draw()},2200)}
+
+/* ===== share, agent handoff, history, export ===== */
+function openShare(tab){S.shareTab=tab||S.shareTab;const d=D(),id=d.id;const instr=d.id=='dgm_7c42'?'Move the replay index out of the backend into its own service fed by Recording.':'';
+  const tabs=`<div class="seg" style="margin-bottom:16px"><button class="${S.shareTab=='link'?'on':''}" data-a="shareTab" data-v="link">${ic('link')}Link</button><button class="${S.shareTab=='agent'?'on':''}" data-a="shareTab" data-v="agent">${ic('ai')}Hand to an agent</button></div>`;
+  const link=`<div class="lbl">Open in Omni (phone or PC)</div><div class="linkrow"><span>omni://design/${id}</span><button class="btn sm" data-a="copy" data-v="omni://design/${id}">${ic('copy')}Copy</button></div>
+   <div class="lbl">Browser on your network</div><div class="linkrow"><span>http://omnihub:3333/design/${id}</span><button class="btn sm" data-a="copy" data-v="http://omnihub:3333/design/${id}">${ic('copy')}Copy</button></div>
+   ${d.local||!S.hub?`<div class="note a">${d.local?'This diagram only exists on this device so far.':'The Hub is unreachable right now.'} The link works for other devices once it syncs; the ID will not change.</div>`:`<div class="note">Links stay private to your own devices. The ID never changes, even if you rename the diagram.</div>`}`;
+  const ag=`<div class="lbl">What should the agent do?</div><textarea id="instr" rows="3" placeholder="e.g. Add the replay service and connect it to Recording">${esc(instr)}</textarea>
+   <div class="lbl">How</div><div class="seg"><button class="${S.agentMode=='propose'?'on':''}" data-a="agentMode" data-v="propose">Propose a revision</button><button class="${S.agentMode=='edit'?'on':''}" data-a="agentMode" data-v="edit">Edit directly</button></div>
+   <div class="note">${S.agentMode=='propose'?'Recommended. The agent sends r'+(d.rev+1)+' as a proposal; it shows up here for you to accept or discard.':'The agent saves straight to the Hub as a new revision. You can still roll back from history.'} Agents reach the diagram through the OmniDesign MCP tools using <code>${id}</code>.</div>`;
+  openModal(`<div class="mh"><b>Share “${esc(d.title)}”</b><div class="sp"></div><button class="ib" data-a="closeModal">${ic('x')}</button></div><div class="mb">${tabs}${S.shareTab=='link'?link:ag}</div>
+   <div class="mf">${S.shareTab=='link'?`<button class="btn" data-a="closeModal">Done</button>`:`<button class="btn" data-a="copyHandoff">${ic('copy')}Copy handoff</button><button class="btn pri" data-a="sendAgent">${ic('ai')}Send to agent</button>`}</div>`,'')}
+function openHistory(){const d=D();
+  openModal(`<div class="mh"><b>Version history</b><span class="mut">${esc(d.title)}</span><div class="sp"></div><button class="ib" data-a="closeModal">${ic('x')}</button></div><div class="mb" style="padding-top:6px">
+   ${d.local?'<p class="empty">Not synced yet — history starts when this diagram reaches the Hub.</p>':d.hist.map((h,i)=>`<div class="hist"><span class="av ${h.by=='agent'?'ag':''}">${ic(h.by=='agent'?'ai':h.by=='phone'?'phone':'pc')}</span><div style="flex:1"><b>r${h.rev}</b> · ${esc(h.what)}<div class="mut">${h.by=='agent'?'Agent':h.by=='phone'?'Phone':'PC'} · ${h.ago}</div></div>${i==0?'<span class="cur">Current</span>':`<button class="btn sm" data-a="restore" data-v="${h.rev}">Restore</button>`}</div>`).join('')}</div>`,'nar')}
+function exportItems(){return [['svg','SVG','Vector file, opens anywhere'],['png','PNG','2× image for chat and documents'],['html','HTML figure','Same page format as the diagram skill'],['json','JSON','OmniDesign source, for agents and backups']]}
+function download(name,blob){const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},500)}
+function exportAs(f){const d=D(),base=d.title.replace(/[^\w\- ]+/g,'').trim().replace(/\s+/g,'-').toLowerCase()||'diagram',svg=svgDoc(d,{}).replace('<svg ','<svg xmlns="http://www.w3.org/2000/svg" ');
+  if(f=='svg')download(base+'.svg',new Blob([svg],{type:'image/svg+xml'}));
+  if(f=='json')download(base+'.json',new Blob([JSON.stringify({id:d.id,rev:d.rev,title:d.title,meta:d.meta,caption:d.caption,nodes:d.nodes,edges:d.edges},null,2)],{type:'application/json'}));
+  if(f=='html')download(base+'.html',new Blob([`<!doctype html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n<meta name="viewport" content="width=device-width, initial-scale=1">\n<title>${esc(d.title)}</title>\n<style>\n  :root { --bg:#14161a; --fg:#e6e2d8; --muted:#a09a8c; --accent:#e0a458; --panel:#1d2026; }\n  html, body { margin:0; background:var(--bg); color:var(--fg); font-family: "Segoe UI", system-ui, sans-serif; }\n  main { max-width:1240px; margin:0 auto; padding:20px 16px 28px; }\n  h1 { font-size:22px; margin:0 0 4px; font-weight:600; }\n  p.sub { margin:0 0 14px; color:var(--muted); font-size:14px; }\n  figure { margin:0; }\n  svg { max-width:100%; height:auto; display:block; }\n  figcaption { color:var(--muted); font-size:14px; margin-top:10px; line-height:1.45; }\n</style>\n</head>\n<body>\n<main>\n  <h1>${esc(d.title)}</h1>\n  <p class="sub">${esc(d.meta)}</p>\n  <figure>\n  ${svg}\n  <figcaption>${esc(d.caption)}</figcaption>\n  </figure>\n</main>\n</body>\n</html>\n`],{type:'text/html'}));
+  if(f=='png'){const img=new Image(),c=document.createElement('canvas');c.width=2400;c.height=1400;img.onload=()=>{const x=c.getContext('2d');x.fillStyle=PA;x.fillRect(0,0,2400,1400);x.drawImage(img,0,0,2400,1400);c.toBlob(b=>download(base+'.png',b))};
+    img.src='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(svgDoc(d,{bg:1}).replace('<svg ','<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="700" '))}
+  closeMenu();closeModal();toast('Exported '+f.toUpperCase())}
+
+/* ===== templates ===== */
+function openNew(){openModal(`<div class="mh"><b>New diagram</b><span class="mut">Start from a kit — every kit uses the same house style</span><div class="sp"></div><button class="ib" data-a="closeModal">${ic('x')}</button></div>
+  <div class="mb"><div class="tpl"><button class="tplc blank" data-a="newKit" data-v="blank"><div class="thumb">${ic('plus')}</div><div class="t"><b>Blank</b><small>Empty 1200 × 700 figure</small></div></button>
+  ${Object.keys(KD).map(k=>{const d=sampleDocs().find(x=>x.kit==k);return `<button class="tplc" data-a="newKit" data-v="${k}"><div class="thumb">${svgDoc(d)}</div><div class="t"><b>${KN[k]}</b><small>${KD[k]}</small></div></button>`}).join('')}</div></div>`,'wide')}
+function newDoc(kit){const src=kit=='blank'?null:sampleDocs().find(x=>x.kit==kit);
+  const d={id:'dgm_'+Math.random().toString(16).slice(2,6),kit:kit=='blank'?'blank':kit,title:kit=='blank'?'Untitled diagram':'Untitled '+KN[kit].toLowerCase(),meta:'2026-11-19 · draft',caption:src?src.caption:'',
+    rev:0,by:devName(),ago:'just now',local:S.hub?0:1,pending:0,pendingList:[],hist:[],nodes:src?clone(src.nodes):[],edges:src?clone(src.edges):[]};
+  if(S.hub){d.rev=1;d.hist=[{rev:1,by:devName(),ago:'just now',what:'Created from '+(KN[kit]||'blank')}]}
+  S.docs.unshift(d);closeModal();openDoc(d.id)}
+function openDoc(id){S.cur=id;S.view='ed';S.sel=[];S.selE=null;S.undo=[];S.redo=[];S.sheet=false;S.outline=false;S.flyout=false;S.tool='sel';S.viewSet=0;
+  const d=D();if(d.prop&&!S.props[id])S.props[id]=makeProposal(d);render()}
+
+/* ===== menus, modals, toast ===== */
+function openMenu(anchor,html){closeMenu();const m=document.createElement('div');m.className='menu';m.innerHTML=html;document.body.appendChild(m);
+  if(!S.ph){const r=anchor.getBoundingClientRect?anchor.getBoundingClientRect():{left:anchor.x,right:anchor.x,bottom:anchor.y,top:anchor.y};
+    let x=anchor.getBoundingClientRect?r.right-m.offsetWidth:r.left,y=r.bottom+6;x=clamp(x,8,innerWidth-m.offsetWidth-8);if(y+m.offsetHeight>innerHeight-8)y=Math.max(8,r.top-m.offsetHeight-6);m.style.left=x+'px';m.style.top=y+'px'}
+  else{const s=document.createElement('div');s.className='scrim menuscrim';s.dataset.a='closeMenu';document.body.insertBefore(s,m)}}
+function closeMenu(){$$('.menu,.menuscrim').forEach(m=>m.remove())}
+const mi=(a,i,l,sub='',kb='',v='')=>`<button data-a="${a}" data-v="${v}">${ic(i)}<span>${l}${sub?`<small>${sub}</small>`:''}</span>${kb?`<span class="kb">${kb}</span>`:''}</button>`;
+function openModal(html,cls=''){closeModal();closeMenu();const s=document.createElement('div');s.className='scrim';s.innerHTML=`<div class="modal ${cls}">${html}</div>`;
+  s.addEventListener('pointerdown',e=>{if(e.target===s)closeModal()});document.body.appendChild(s)}
+function closeModal(){$$('.scrim:not(.menuscrim)').forEach(s=>s.remove())}
+function toast(msg){$$('.toast').forEach(t=>t.remove());const t=document.createElement('div');t.className='toast';t.innerHTML=ic('check')+esc(msg);document.body.appendChild(t);clearTimeout(S.toastT);S.toastT=setTimeout(()=>t.remove(),2600)}
+function scenMenu(el){const d=S.view=='ed'?D():null;
+  openMenu(el,`<div class="mt">Prototype scenarios</div>${S.ph?'':mi('phonePrev','phone','Phone preview','Same file at Android width')}
+   ${mi(S.hub?'goOff':'goOn',S.hub?'cloudoff':'cloud',S.hub?'Go offline':'Back online',S.hub?'Simulate losing the Hub':'Reconnect and sync')}
+   ${d?mi('scConflict','info','Offline edits, then a conflict','3 edits here, 1 on the PC'):''}${d?mi('scAgent','ai','Agent proposes a change','Shows the review banner'):''}<hr>${mi('reset','undo','Reset prototype')}`)}
+function ctxMenu(e){const nEl=e.target.closest('[data-n]'),eEl=e.target.closest('[data-e]');
+  if(nEl){const id=nEl.dataset.n;if(!S.sel.includes(id)){S.sel=[id];S.selE=null;refresh()}
+    openMenu({x:e.clientX,y:e.clientY},mi('focusTitle','edit','Edit text','','Dbl-click')+mi('dup','copy','Duplicate','','Ctrl+D')+mi('accent','accent',N(id).a?'Make solid':'Make dashed amber')+mi('tool','conn','Connect from here','','C','conn')+mi('front','layers','Bring to front')+'<hr>'+mi('del','trash','Delete','','Del'))}
+  else if(eEl){S.selE=eEl.dataset.e;S.sel=[];refresh();openMenu({x:e.clientX,y:e.clientY},mi('focusLabel','edit','Edit label')+mi('flip','swap','Reverse')+mi('accent','accent','Toggle dashed amber')+'<hr>'+mi('del','trash','Delete','','Del'))}
+  else{S.ctxAt=svgPt(e);openMenu({x:e.clientX,y:e.clientY},mi('addHere','box','Add box here','','Dbl-click')+mi('flyout','shapes','More shapes…','','/')+'<hr>'+mi('selAll','sel','Select all','','Ctrl+A')+mi('fit','fit','Fit to screen','','1'))}}
+
+/* ===== click actions (delegated on data-a) ===== */
+const A={
+ noop(){toast('Other Omni tabs are outside this prototype')},
+ home(){S.view='lib';S.cur=null;S.needsReview=false;render()},open(el){openDoc(el.dataset.id)},new(){openNew()},newKit(el){newDoc(el.dataset.v)},
+ nav(el){S.nav=el.dataset.v;S.kitF='';render()},kit(el){S.kitF=S.kitF==el.dataset.v?'':el.dataset.v;S.nav='all';render()},
+ cardMenu(el){const id=el.dataset.id;S.menuDoc=id;openMenu(el,mi('open','box','Open','','','')+mi('renameDoc','edit','Rename')+mi('dupDoc','copy','Duplicate')+mi('copyLink','link','Copy link')+'<hr>'+mi('archiveDoc','archive',S.docs.find(d=>d.id==id).archived?'Unarchive':'Archive'));$$('.menu [data-a="open"]').forEach(b=>b.dataset.id=id)},
+ renameDoc(){const d=S.docs.find(x=>x.id==S.menuDoc);closeMenu();openModal(`<div class="mh"><b>Rename</b></div><div class="mb"><input id="rn" value="${esc(d.title)}"></div><div class="mf"><button class="btn" data-a="closeModal">Cancel</button><button class="btn pri" data-a="renameOk">Rename</button></div>`,'nar');setTimeout(()=>$('#rn').select())},
+ renameOk(){const d=S.docs.find(x=>x.id==S.menuDoc);d.title=$('#rn').value||d.title;closeModal();render();toast('Renamed — links keep working')},
+ dupDoc(){const d=S.docs.find(x=>x.id==S.menuDoc),c={...clone(d),id:'dgm_'+Math.random().toString(16).slice(2,6),title:d.title+' copy',rev:1,ago:'just now',prop:0,hist:[]};S.docs.splice(S.docs.indexOf(d)+1,0,c);closeMenu();render();toast('Duplicated')},
+ copyLink(){A.copy({dataset:{v:'omni://design/'+S.menuDoc}});closeMenu()},archiveDoc(){const d=S.docs.find(x=>x.id==S.menuDoc);d.archived=!d.archived;closeMenu();render();toast(d.archived?'Archived':'Restored')},
+ tool(el){setTool(el.dataset.v);closeMenu()},flyout(){closeMenu();if(S.ph){openModal(`<div class="mh"><b>Add a shape</b><div class="sp"></div><button class="ib" data-a="closeModal">${ic('x')}</button></div><div class="mb">${shapeTiles('')}</div>`);return}S.flyout=!S.flyout;S.tool='sel';rerender()},
+ add(el){if(S.suppressClick){S.suppressClick=false;return}addNode(el.dataset.v)},addHere(){closeMenu();addNode('box',S.ctxAt)},
+ undo(){undo()},redo(){redo()},zin(){zoomBy(1.25)},zout(){zoomBy(1/1.25)},fit(){closeMenu();fit()},
+ tab(el){S.tab=el.dataset.v;renderInsp()},
+ set(el){const n=N(S.sel[0]),f=el.dataset.f;let v=el.dataset.v;if(f=='a'||f=='d')v=+v;mut('Changed '+(f=='a'?'line style':f=='k'?'shape':f),()=>{n[f]=v;if(f=='k'&&v=='pill')n.h=Math.min(n.h,90)})},
+ setAll(el){const v=+el.dataset.v;mut('Changed line style',()=>S.sel.forEach(id=>N(id).a=v))},
+ setE(el){const e=EG(S.selE),f=el.dataset.f,v=el.dataset.v;mut('Edited connection',()=>{if(f=='a')e.a=+v;else e[f]=v;if(f=='lp')delete e.ld})},
+ chipAdd(){const n=N(S.sel[0]);mut('Added a part',()=>{n.chips=n.chips||[];n.chips.push(['New part']);fitChips(n)});setTimeout(()=>{const l=$$('[data-ci][data-cp="0"]').pop();l&&(l.focus(),l.select())})},
+ chipDel(el){const n=N(S.sel[0]);mut('Removed a part',()=>n.chips.splice(+el.dataset.v,1))},
+ lgAdd(){const n=N(S.sel[0]);mut('Added legend row',()=>{n.items.push(['meaning',0]);n.h=n.items.length*30})},lgDel(el){const n=N(S.sel[0]);mut('Removed legend row',()=>{n.items.splice(+el.dataset.v,1);n.h=Math.max(30,n.items.length*30)})},
+ lgSet(el){const n=N(S.sel[0]);mut('Changed legend',()=>n.items[+el.dataset.i][1]=+el.dataset.v)},
+ dup(){closeMenu();dup()},del(){closeMenu();del()},accent(){closeMenu();toggleAccent()},flip(){closeMenu();flip()},
+ align(el){align(el.dataset.v)},dist(){distribute()},front(){closeMenu();const d=D();mut('Brought to front',()=>S.sel.forEach(id=>{const n=N(id);d.nodes=d.nodes.filter(x=>x!==n);d.nodes.push(n)}))},
+ selAll(){closeMenu();S.sel=D().nodes.map(n=>n.id);refresh()},focusTitle(){closeMenu();if(S.ph)return openSheet();const i=$('#insp [data-f="t"]');i&&(i.focus(),i.select())},focusLabel(){closeMenu();if(S.ph)return openSheet();const i=$('#insp [data-ef="l"]');i&&i.focus()},
+ edit(){openSheet()},sheetClose(){S.sheet=false;rerender()},docEdit(){if(S.ph){S.sel=[];S.selE=null;openSheet()}else{S.sel=[];S.selE=null;S.tab='design';refresh();$('#insp [data-df="title"]')?.focus()}},
+ outline(el){S.outline=el.dataset.v=='1';rerender()},osel(el){S.sel=[el.dataset.id];S.selE=null;if(S.ph){S.outline=false;openSheet()}else refresh()},oselE(el){S.selE=el.dataset.id;S.sel=[];if(S.ph){S.outline=false;openSheet()}else refresh()},
+ pmenu(el){openMenu(el,mi('share','link','Share link')+mi('agent','ai','Ask an agent')+mi('history','hist','Version history')+mi('export','down','Export')+mi('sync','cloud','Sync status')+'<hr>'+mi('scen','moreh','Prototype scenarios'))},
+ sync(){closeMenu();openSync()},toggleHub(){closeModal();S.hub?goOffline():goOnline()},toggleConf(){S.conflictSim=!S.conflictSim;openSync()},openConflict(){openConflict()},
+ choice(el){S.choice=el.dataset.v;$$('.opt').forEach(o=>o.classList.toggle('on',o.dataset.v==S.choice))},resolve(){resolve()},
+ history(){closeMenu();openHistory()},restore(el){const d=D();closeModal();d.rev++;d.hist.unshift({rev:d.rev,by:devName(),ago:'just now',what:'Restored r'+el.dataset.v});renderSync();toast('Restored r'+el.dataset.v+' as r'+d.rev)},
+ share(){closeMenu();openShare('link')},agent(){closeMenu();openShare('agent')},shareTab(el){openShare(el.dataset.v)},agentMode(el){S.agentMode=el.dataset.v;const t=$('#instr')?.value;openShare('agent');if(t!=null)$('#instr').value=t},
+ copy(el){navigator.clipboard?.writeText(el.dataset.v).catch(()=>{});toast('Copied')},
+ copyHandoff(){const d=D(),t=$('#instr')?.value||'';navigator.clipboard?.writeText(`OmniDesign diagram ${d.id} “${d.title}” at r${d.rev}.\nRead it with get_diagram("${d.id}") and ${S.agentMode=='propose'?`send propose_revision("${d.id}", base_rev=${d.rev}, …)`:`save with update_diagram("${d.id}", base_rev=${d.rev}, …)`}.\nTask: ${t}`).catch(()=>{});toast('Handoff copied — paste it into any agent')},
+ sendAgent(){const d=D(),t=$('#instr')?.value;closeModal();toast('Sent — the agent will propose r'+(d.rev+1));setTimeout(()=>{if(S.cur!=d.id)return;S.props[d.id]=makeProposal(d,t);rerender();toast('Agent proposed r'+(d.rev+1))},1500)},
+ propReview(){openDiff()},propAccept(){acceptProp()},propDiscard(){const d=D();delete S.props[d.id];d.prop=0;closeModal();rerender();toast('Proposal discarded')},propDismiss(){S.bannerHidden=1;$('.banner')?.remove()},
+ export(el){if(S.ph){closeMenu();openMenu(el,`<div class="mt">Export</div>`+exportItems().map(([f,l,s])=>mi('exp','down',l,s,'',f)).join(''));return}openMenu(el,exportItems().map(([f,l,s])=>mi('exp','down',l,s,'',f)).join(''))},
+ exp(el){exportAs(el.dataset.v)},
+ scen(el){closeMenu();scenMenu(el)},goOff(){closeMenu();goOffline()},goOn(){closeMenu();goOnline()},
+ scConflict(){closeMenu();const d=D();if(S.hub)S.hub=false;offlineEdits();S.conflictSim=true;rerender();toast(d.pending+' edits saved on this device — now reconnect from the sync chip')},
+ scAgent(){closeMenu();const d=D();S.props[d.id]=makeProposal(d);rerender()},
+ phonePrev(){closeMenu();const h=S.view=='ed'?'#s=ed:'+S.cur:'#s=lib';openModal(`<div class="mh"><b>Android preview</b><span class="mut">the same prototype at phone width — fully interactive</span><div class="sp"></div><button class="ib" data-a="closeModal">${ic('x')}</button></div><div class="mb" style="display:grid;place-items:center;background:var(--desk)"><div class="pframe"><iframe src="${location.href.split('#')[0]+h}"></iframe></div></div>`,'mid')},
+ reset(){closeMenu();location.hash='';location.reload()},closeModal(){closeModal()},closeMenu(){closeMenu()},
+};
+document.addEventListener('click',e=>{const el=e.target.closest('[data-a]');if(!el)return;const f=A[el.dataset.a];if(f){e.preventDefault();f(el,e)}});
+
+/* ===== hash scenarios for screenshots ===== */
+function scenario(){const s=(location.hash.match(/s=([^&]+)/)||[])[1];if(!s){render();return}
+  const arch='dgm_7c42',[name,arg]=s.split(':');
+  if(name=='lib'){render();return}
+  if(name=='new'){render();openNew();return}
+  openDoc(name=='ed'?arg:arch);const d=D();
+  const after=fn=>setTimeout(fn,60);
+  if(name=='sel'){S.sel=['match'];refresh()}
+  if(name=='multi'){S.sel=['platform','client'];refresh()}
+  if(name=='shapes'){S.flyout=true;rerender()}
+  if(name=='edge'){S.selE='e4';refresh()}
+  if(name=='offline'){S.hub=false;offlineEdits();S.sel=['match'];rerender()}
+  if(name=='conflict'){S.hub=false;offlineEdits();S.conflictSim=true;goOnline()}
+  if(name=='agent'){S.props[arch]=makeProposal(d);rerender()}
+  if(name=='diff'){S.props[arch]=makeProposal(d);rerender();openDiff()}
+  if(name=='share')openShare('link');
+  if(name=='handoff')openShare('agent');
+  if(name=='history')openHistory();
+  if(name=='sync')openSync();
+  if(name=='export')after(()=>A.export($('[data-a="export"]')));
+  if(name=='sheet'){S.sel=['match'];after(()=>openSheet())}
+  if(name=='esheet'){S.selE='e4';after(()=>openSheet())}
+  if(name=='zoom'){S.sel=['match'];after(()=>{focusNode(N('match'),.62,.45);renderInsp()})}
+  if(name=='outline'){S.outline=true;rerender()}
+  if(name=='add'){after(()=>A.flyout())}
+}
+let lastPh=isPhone();addEventListener('resize',()=>{if(isPhone()!=lastPh){lastPh=isPhone();S.viewSet=0;S.sheet=false;render()}});
+scenario();
+</script>
+</body>
+</html>
