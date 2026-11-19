@@ -56,7 +56,10 @@ data class AgentSessionUi(
     // Desktop-owned compact indicators. Null means the publisher did not report a flag.
     val returnMarker: String? = null,
     val caffyMode: String? = null,
-    val caffyPaused: Boolean = false
+    val caffyPaused: Boolean = false,
+    val caffyOnceOnly: Boolean = false,
+    val caffyIntervalMinutes: Int? = null,
+    val caffyBeginAt: Long? = null
 ) {
     val key get() = "$provider:$id"
 }
@@ -270,6 +273,9 @@ class GenericAgentClient(
                                 returnMarker = if (summary.has("visibility")) updated.returnMarker else previous?.returnMarker,
                                 caffyMode = if (summary.has("visibility")) updated.caffyMode else previous?.caffyMode,
                                 caffyPaused = if (summary.has("visibility")) updated.caffyPaused else previous?.caffyPaused ?: false,
+                                caffyOnceOnly = if (summary.has("visibility")) updated.caffyOnceOnly else previous?.caffyOnceOnly ?: false,
+                                caffyIntervalMinutes = if (summary.has("visibility")) updated.caffyIntervalMinutes else previous?.caffyIntervalMinutes,
+                                caffyBeginAt = if (summary.has("visibility")) updated.caffyBeginAt else previous?.caffyBeginAt,
                                 workspace = if (summary.has("workspace")) updated.workspace else previous?.workspace,
                                 reachability = if (summary.obj("state")?.has("reachability") == true)
                                     updated.reachability else previous?.reachability ?: updated.reachability,
@@ -580,7 +586,10 @@ class GenericAgentClient(
             obj.obj("visibility")?.get("sortAt")?.let { runCatching { it.asLong }.getOrNull() },
             obj.obj("visibility")?.str("returnMarker"),
             obj.obj("visibility")?.str("caffyMode"),
-            obj.obj("visibility")?.flag("caffyPaused") ?: false)
+            obj.obj("visibility")?.flag("caffyPaused") ?: false,
+            obj.obj("visibility")?.flag("caffyOnceOnly") ?: false,
+            obj.obj("visibility")?.get("caffyIntervalMinutes")?.let { runCatching { it.asInt }.getOrNull() },
+            obj.obj("visibility")?.get("caffyBeginAt")?.let { runCatching { it.asLong }.getOrNull() })
     }
 
     /** When true, the catalog also loads settled/snoozed native threads (off by default: there are hundreds). */

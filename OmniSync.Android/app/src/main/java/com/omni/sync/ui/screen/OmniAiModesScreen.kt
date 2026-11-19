@@ -1988,8 +1988,10 @@ fun OmniAiModesScreen(
                         if (compactMode) {
                             val snoozed = isSnoozed(session)
                             val persistentAttention = session.returnMarker != null
-                            val caffyMode = session.caffyMode
-                            val cornerIndicators = snoozed || persistentAttention || caffyMode != null
+                            val caffyBadge = desktopCaffyBadge(session, now)
+                            val attentionReady = session.returnMarker == "ready" && !snoozed &&
+                                caffyBadge == null && !session.isRunning()
+                            val cornerIndicators = snoozed || persistentAttention || caffyBadge != null
                             // Corner overlay: the badges/age are drawn over the existing 34dp-ish
                             // compact row, never measured as another line or extra row height.
                             Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(9.dp))
@@ -2007,7 +2009,11 @@ fun OmniAiModesScreen(
                                         fontSize = 14.sp)
                                     if (cornerIndicators) {
                                         // Reserve only horizontal space so flags never obscure title.
-                                        Spacer(Modifier.width(55.dp))
+                                        val badgeWidth = (if (snoozed) 13 else 0) +
+                                            (if (persistentAttention) 13 else 0) +
+                                            (if (caffyBadge != null) 18 + caffyBadge.code.length * 6 else 0) +
+                                            (listOf(snoozed, persistentAttention, caffyBadge != null).count { it } - 1).coerceAtLeast(0) * 3 + 5
+                                        Spacer(Modifier.width(badgeWidth.dp))
                                     } else if (session.isRunning()) CircularProgressIndicator(Modifier.size(11.dp),
                                         strokeWidth = 1.5.dp, color = session.dotColor(p, online && session.readyAttention(attentionRequests)))
                                     else if (session.needsAttention()) Icon(Icons.Default.PriorityHigh, null,
@@ -2019,15 +2025,13 @@ fun OmniAiModesScreen(
                                         Row(Modifier.align(Alignment.TopEnd),
                                             horizontalArrangement = Arrangement.spacedBy(3.dp),
                                             verticalAlignment = Alignment.CenterVertically) {
-                                            if (snoozed) Icon(Icons.Default.Bedtime, "Snoozed",
-                                                tint = Color(0xFFBEB5F2), modifier = Modifier.size(11.dp))
-                                            if (persistentAttention) Icon(Icons.Default.NotificationImportant,
-                                                "Persistent attention: ${session.returnMarker}",
-                                                tint = p.amber, modifier = Modifier.size(11.dp))
-                                            if (caffyMode != null) Icon(Icons.Default.Coffee,
-                                                "Caffy ${if (session.caffyPaused) "paused" else caffyMode}",
-                                                tint = if (session.caffyPaused) p.muted else Color(0xFF7ED8E7),
-                                                modifier = Modifier.size(11.dp))
+                                            if (snoozed) T3SidebarStatusGlyph(
+                                                T3SidebarGlyph.Snooze, p.muted, "Snoozed")
+                                            if (persistentAttention) T3SidebarStatusGlyph(
+                                                T3SidebarGlyph.PersistentAttention,
+                                                if (attentionReady) Color(0xFFFACC15) else p.muted,
+                                                if (attentionReady) "Persistent attention ready" else "Persistent attention armed")
+                                            if (caffyBadge != null) T3CaffyCompactBadgeView(caffyBadge)
                                         }
                                         if (session.isRunning()) CircularProgressIndicator(
                                             Modifier.align(Alignment.BottomEnd).size(10.dp),
