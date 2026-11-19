@@ -1,6 +1,6 @@
 # OMN-0085 — Flight-grade Android → OmniHub transport reproduction
 
-This harness sends **real SignalR requests to the running Rust OmniHub** through a locally scoped, disposable TCP impairment proxy. It is not a mocked Hub. An optional disposable Android emulator runner installs and starts the **real debug APK** through the same proxy. No OS routes, production Hub configuration, firewall rules, Tailscale settings or home router settings are modified.
+This harness sends **real SignalR requests to the running Rust OmniHub** through a locally scoped, disposable TCP impairment proxy. It is not a mocked Hub. An optional disposable Android emulator runner installs and starts the **real debug APK** through the same proxy. The default isolated harness changes no OS routes, Hub configuration, firewall rules, Tailscale settings or home router settings. The separately opted-in live physical-phone WAN session uses a temporary router NAT-PMP lease and a dedicated temporary firewall rule, documented below.
 
 ## Quick reproduction (Windows)
 
@@ -23,12 +23,13 @@ Profiles (the values are **synthetic test parameters**, not measurements from Ai
 | slow300 | 300 ms | ±75 ms | 64 kb/s | 1% |
 | slow800 | 800 ms | ±200 ms | 32 kb/s | 3% |
 | slow2000 | 2000 ms | ±500 ms | 16 kb/s | 10% |
+| **flightChaos** | **300–4000 ms dynamically** | **varying** | **4–256 kb/s dynamically** | **0–45% degradation, randomized full 100% blackouts lasting 4–60 s** |
 | noUdp | 800 ms | ±200 ms | 32 kb/s | 0; TCP-only application transport |
 | route_change | disconnection, then slow300 | — | — | explicit socket reset |
 | outage10 | 10s total outage; recovery after link up | — | — | all active sockets closed |
 | outage120 | 120s total outage (`--full`) | — | — | all active sockets closed |
 
-The built-in proxy **does not drop individual TCP packets**. To avoid silently corrupting a reliable byte stream, `lossPct` models disruption as seeded connection resets with a per-~1400-byte probability. This is good for observing **uncertain delivery/reconnect**, but **not** for measuring TCP retransmissions, congestion response or Tailscale path election. `kbps` shapes buffered TCP chunks and both directions; it is not radio bandwidth. The optional Linux Docker `netem/` mode below can apply actual network-layer loss.
+The built-in proxy **does not drop individual TCP packets**. In fixed profiles, `lossPct` models disruption as seeded connection resets with a per-~1400-byte probability. `flightChaos` instead generates a continuously changing moderate/degraded/severe/blackout state: per-chunk 300–4000 ms RTT, partial-loss-like retransmission stalls, occasional connection resets, and unpredictable **100% no-forwarding periods up to 60 seconds**. Most blackouts are short, some last 40–60 seconds; a blackout is selected at random after 45 seconds without one, and forced at the next phase transition after 120 seconds without one. It holds both directions' queued TCP bytes while the link is down and releases them in FIFO order afterward; the client may close/reconnect on its own timeout. This avoids corrupting WebSocket frames, but cannot measure actual TCP retransmits. The profile is intentionally very rough and **not calibrated to measured flight Wi-Fi performance**: airline, equipment, route, weather and restrictions vary widely. This is good for observing **uncertain delivery/reconnect**, but **not** for measuring TCP congestion or Tailscale path election. `kbps` shapes buffered TCP chunks and both directions; it is not radio bandwidth. The optional Linux Docker `netem/` mode below can apply actual network-layer loss.
 
 ### Interactive path and real Android APK
 
@@ -40,6 +41,12 @@ node TestScripts/FlightLink/flight-link-proxy.cjs --profile slow800 --trace E:/_
 node TestScripts/FlightLink/flight-link-android.cjs --serial emulator-5554 --profile slow800 --seconds 35
 Invoke-RestMethod http://127.0.0.1:15001/outage -Method Post -ContentType application/json -Body '{"seconds":10}'
 Invoke-RestMethod http://127.0.0.1:15001/switch -Method Post -ContentType application/json -Body '{"profile":"slow300"}'
+# Start automatically cycling random flight impairment without touching Android:
+Invoke-RestMethod http://127.0.0.1:15001/profile -Method Post -ContentType application/json -Body '{"profile":"flightChaos"}'
+# Inspect current phase, measured commands and time left in a blackout:
+Invoke-RestMethod http://127.0.0.1:15001/status
+# Stop random changes and restore normal speed:
+Invoke-RestMethod http://127.0.0.1:15001/profile -Method Post -ContentType application/json -Body '{"profile":"clean"}'
 node TestScripts/FlightLink/flight-link-report.cjs --trace E:/_AgentScratch/Tasks/Omni/OMN-0085/Evidence/android-proxy.jsonl --out E:/_AgentScratch/Tasks/Omni/OMN-0085/Evidence/android-report
 ```
 
@@ -47,7 +54,7 @@ The separate `flight-link-report.cjs` combines each recorded Android invocation 
 
 The Android runner **refuses a physical-device serial**. It uses `adb reverse tcp:15000 tcp:15000`, installs the existing debug APK, changes only the disposable emulator's saved `hubUrl`, `wanIp` and `apiKey`, and captures filtered SignalR logs. Its profile uses the **actual Android SignalR client** with real `/signalrhub`, `/terminalhub` and `/remoteterminalhub` requests; unlike `flight-link-run`, no protocol emulator substitutes for app code. Launch an Android Files screen and refresh drives to exercise an explicit read-only UI command (the headless script does not tap UI automatically). It requires a working, booted emulator and any first-run Android permission dialogs to be handled. Stop with `adb -s emulator-5554 shell am force-stop com.omni.sync`, `adb -s emulator-5554 reverse --remove tcp:15000`, and Ctrl+C for the proxy. The task's disposable AVD was stored in `E:/_AgentScratch/Tasks/Omni/OMN-0085/Temporary/avd`; nothing was installed on the user's phone.
 
-For a **manually chosen** physical-phone LAN test, run `--listen 0.0.0.0` only on a trusted LAN, point the app's Hub URL at `http://<PC LAN IP>:15000/signalrhub`, and restore the phone's normal URL afterward. Beware: the existing Android `updateHubUrlBasedOnLocalIp()` can rewrite that URL during reconnect. Do **not** expose port 15000 to the public internet or treat this proxy as an authentication layer.
+For a **manually chosen** physical-phone LAN test, run `--listen 0.0.0.0` only on a trusted LAN, point the app's Hub URL at `http://<PC LAN IP>:15000/signalrhub`, and restore the phone's normal URL afterward. Beware: the existing Android `updateHubUrlBasedOnLocalIp()` can rewrite that URL during reconnect. The default harness must not expose port 15000 to the public internet or treat this proxy as an authentication layer; a separately approved and documented temporary WAN test is described below.
 
 **Current overlay observation:** read-only `tailscale status --json` reported local backend `Running` with 23 known peers but no currently active peer paths at inspection time. It therefore establishes **neither a direct UDP path nor a DERP relay path to this phone**. When the Android device is online, inspect `tailscale status --json` and `tailscale ping <device>` or supported `tailscale netcheck` from the endpoint without changing configuration; record direct/relay transitions alongside these app traces.
 
@@ -85,6 +92,12 @@ node TestScripts/FlightLink/flight-link-report.cjs --trace E:/_AgentScratch/Task
 ```
 
 Log **each phone action**, whether it displayed success/failure, whether the Hub returned a completion, the recovery time and any unknown-delivery status. A missing completion is **not proof the Hub never received the command**. Never retry a potentially side-effecting phone action merely to find out; start with the read-only Files refresh.
+
+### Temporary public-IP physical-phone session (19 November 2026)
+
+The user chose **mobile data and no phone Tailscale**. With their explicit approval, port 15000 was temporarily forwarded by the home Zyxel router via NAT-PMP (one-hour lease) to 192.168.1.37:15000; Windows Firewall has an explicit temporary inbound TCP allowance for 15000 on that specific local IP and the active Public Ethernet profile. The proxy binds **only** 192.168.1.37:15000, forwarding to Rust Hub 127.0.0.1:5000; control remains loopback-only at 127.0.0.1:15001. **The existing public 5000 Hub remains unchanged.** Use `http://<current-public-IP>:15000/signalrhub` in the real Android app while testing; restore its working `http://<current-public-IP>:5000/signalrhub` afterward.
+
+The temporary port is public **plaintext HTTP** with the same Hub API-key authentication as port 5000. Do not send sensitive commands/data when its transport is untrusted; it does not add encryption or authentication and should not be left open after testing. The NAT-PMP lease automatically expires if not renewed. To release it early, send a NAT-PMP TCP mapping request with internal/external port 15000 and lifetime zero to gateway 192.168.1.1, remove the specifically named Windows rule `OMN-0085 FlightLink temporary TCP 15000`, and stop the proxy. Do not delete the existing Omni rule or change 5000. Read the current profile from localhost `/status` before intentionally disturbing the phone. For actual flight-grade intermittent HTTP over the public internet, this reproduces the application's behavior under shaped TCP; **real in-flight captive-portal filters, DNS blocking, TLS-only enforcement or IP censorship are not simulated**.
 
 ### Optional actual packet loss in a disposable container
 
@@ -126,4 +139,4 @@ Read the exact redacted evidence at `E:/_AgentScratch/Tasks/Omni/OMN-0085/Eviden
 5. **P1 — Verify HTTPS-only/DERP in a separate endpoint-instrumented pass.** Run Android with trusted HTTPS front-end and WSS/LongPolling, then separately compare Tailscale direct UDP, DERP and blocked UDP using `tailscale status`/metrics (read-only). Captive portal and Chinese DNS/HTTPS filtering cannot be inferred from a localhost shaper.
 6. **P2 — Reconcile state after reconnect.** Refresh the affected screen's snapshots, compare stable entity IDs/revisions, and surface stale data rather than silently claiming resumed. This harness checks read-only drive identity; it does not establish all UI state consistency.
 
-No production networking was changed, no flight connectivity claims are implied, no phone configuration was modified, and no destructive RPCs were sent.
+These initial isolated measurements made no production network or phone configuration changes. The later user-approved live WAN test temporarily changed only a dedicated TCP 15000 firewall rule and NAT-PMP lease, and the user temporarily selected the phone's test URL. No airline connectivity claims are implied and the read-only reproduction runner sends no destructive RPCs.

@@ -13,6 +13,8 @@ const profiles = {
   slow300:  {rttMs:300,  jitterMs:75,  kbps:64,  lossPct:1},
   slow800:  {rttMs:800,  jitterMs:200, kbps:32,  lossPct:3},
   slow2000: {rttMs:2000, jitterMs:500, kbps:16,  lossPct:10},
+  // Stateful, seeded variability. The effective values change on their own.
+  flightChaos:{rttMs:800,  jitterMs:250, kbps:96, lossPct:1},
   noUdp:    {rttMs:800,  jitterMs:200, kbps:32,  lossPct:0, note:'TCP-only; Tailscale routing NOT emulated'},
   httpsOnly:{rttMs:800,  jitterMs:200, kbps:32,  lossPct:0, note:'requires --tls-key/--tls-cert; does NOT enforce external firewall'},
 };
@@ -40,6 +42,54 @@ function log(event,fields={}) {
   trace.write(line+'\n');
   if(['command','command_outcome','link','startup','error'].includes(event))
     process.stdout.write(line+'\n');
+}
+// The chaos profile simulates volatile onboard connectivity, NOT measured
+// airline statistics or real packet-level loss. A complete blackout holds all
+// forwarded bytes (100% delivery interruption); partial losses emulate TCP
+// retransmission stalls and rare link resets without corrupting byte order.
+let chaosTimer=null, chaos=null, lastBlackoutAt=Date.now();
+const randint=(min,max)=>Math.floor(min+rand()*(max-min+1));
+function stopChaos() {
+  if(chaosTimer!==null)clearTimeout(chaosTimer);
+  chaosTimer=null;chaos=null;
+}
+function nextChaosPhase(forced=null) {
+  if(profileName!=='flightChaos')return;
+  const now=Date.now(), elapsed=now-lastBlackoutAt;
+  const pick=rand();
+  const phase=forced || (elapsed>=120000 || (elapsed>=45000 && pick<0.32)
+    ? 'blackout' : pick<0.48?'moderate':pick<0.84?'degraded':'severe');
+  let durationMs;
+  if(phase==='blackout') {
+    // Most outages are short; some last almost the full requested minute.
+    const q=rand();
+    durationMs=(q<0.65?randint(4,17):q<0.85?randint(18,39):randint(40,60))*1000;
+    lastBlackoutAt=now;
+    current={rttMs:4000,jitterMs:0,kbps:0,lossPct:100};
+  } else if(phase==='moderate') {
+    durationMs=randint(12,36)*1000;
+    current={rttMs:randint(300,1350),jitterMs:randint(150,450),kbps:randint(64,256),lossPct:randint(0,3)};
+  } else if(phase==='degraded') {
+    durationMs=randint(9,27)*1000;
+    current={rttMs:randint(1300,3000),jitterMs:randint(300,800),kbps:randint(16,64),lossPct:randint(5,20)};
+  } else {
+    durationMs=randint(6,20)*1000;
+    current={rttMs:randint(2800,4000),jitterMs:randint(300,1000),kbps:randint(4,24),lossPct:randint(20,45)};
+  }
+  chaos={phase,since:now,until:now+durationMs};
+  epoch++;
+  log('link',{action:'chaos_phase',phase,durationMs,values:current});
+  // Sometimes the aircraft link drops abruptly, sometimes it just stalls.
+  if(phase==='blackout' && rand()<0.35)
+    for(const conn of [...connections])destroy(conn,'chaos_blackout_link_reset');
+  chaosTimer=setTimeout(()=>nextChaosPhase(),durationMs);
+}
+function startChaos(){
+  stopChaos();lastBlackoutAt=Date.now();nextChaosPhase('moderate');
+}
+function blackoutRemainingMs(){
+  return profileName==='flightChaos' && chaos?.phase==='blackout'
+    ? Math.max(0,chaos.until-Date.now()) : 0;
 }
 function noteCommand(conn,record) {
   if(record.type===1) {
@@ -125,7 +175,10 @@ function destroy(conn,reason) {
   conn.client.destroy();conn.server.destroy();
 }
 function delayFor(bytes) {
-  const latency=Math.max(0,current.rttMs/2+(rand()*2-1)*current.jitterMs/2);
+  const rtt=profileName==='flightChaos'
+    ? Math.max(300,Math.min(4000,current.rttMs+(rand()*2-1)*current.jitterMs))
+    : current.rttMs+(rand()*2-1)*current.jitterMs;
+  const latency=Math.max(0,rtt/2);
   const transmit=current.kbps?bytes*8/current.kbps:0; // kbps equals bits/ms
   return latency+transmit;
 }
@@ -133,9 +186,52 @@ function makePipe(conn,source,dest,direction) {
   let tail=0;
   let queued=0;
   const observer=new Observer(conn,direction);
+  // FIFO delivery is essential for TCP/SignalR. In chaos mode wait through
+  // blackouts instead of removing individual bytes from a live TCP stream.
+  const chaosQueue=[];
+  let chaosDraining=false;
+  function drainChaos() {
+    if(chaosDraining || conn.dead || !chaosQueue.length)return;
+    chaosDraining=true;
+    function advance() {
+      if(conn.dead)return;
+      if(!chaosQueue.length){chaosDraining=false;return;}
+      const remaining=Math.max(blackoutRemainingMs(),Math.max(0,blockedUntil-Date.now()));
+      if(remaining>0){setTimeout(advance,Math.min(500,remaining));return;}
+      const chunk=chaosQueue[0];
+      let ms=delayFor(chunk.length);
+      if(profileName==='flightChaos' && rand()<current.lossPct/100) {
+        // TCP handles actual radio loss by retransmitting. This additional
+        // pause models the resulting stall instead of corrupting a WS frame.
+        const retransmitDelayMs=randint(600,5000);
+        ms+=retransmitDelayMs;
+        log('link',{action:'chaos_retransmission_stall',connection:conn.id,
+          direction,lossPct:current.lossPct,delayMs:retransmitDelayMs});
+        // Occasional complete link reset, not one reset per 'lost packet'.
+        if(rand()<0.035){destroy(conn,'chaos_loss_link_reset');return;}
+      }
+      setTimeout(()=>{
+        if(conn.dead)return;
+        if(blackoutRemainingMs()>0 || Date.now()<blockedUntil){advance();return;}
+        if(!dest.writable){destroy(conn,'peer_not_writable');return;}
+        dest.write(chunk);
+        chaosQueue.shift();queued-=chunk.length;
+        advance();
+      },Math.max(0,Math.ceil(ms)));
+    }
+    advance();
+  }
   source.on('data',data=>{
     if(conn.dead)return;
     observer.push(data);
+    if(profileName==='flightChaos' || chaosDraining || chaosQueue.length) {
+      for(let i=0;i<data.length;i+=1400){
+        const chunk=data.subarray(i,i+1400);
+        chaosQueue.push(chunk);queued+=chunk.length;
+      }
+      if(queued>2*1024*1024){destroy(conn,'shaper_queue_overflow');return;}
+      drainChaos();return;
+    }
     // Reset probability per ~MTU-equivalent input packet. This models lost
     // transport, NOT TCP packet-level retransmission.
     const packetCount=Math.ceil(data.length/1400);
@@ -177,7 +273,7 @@ server.on('error',e=>{log('error',{message:e.message});process.exitCode=1;});
 const api=http.createServer((req,res)=>{
   if(req.method==='GET'&&req.url==='/status'){
     res.setHeader('Content-Type','application/json');
-    return res.end(JSON.stringify({instanceToken,profile:profileName,values:current,outageRemainingMs:Math.max(0,blockedUntil-Date.now()),connections:connections.size,trace:output}));
+    return res.end(JSON.stringify({instanceToken,profile:profileName,values:current,outageRemainingMs:Math.max(0,blockedUntil-Date.now()),blackoutRemainingMs:blackoutRemainingMs(),chaos:chaos?{...chaos,remainingMs:Math.max(0,chaos.until-Date.now())}:null,connections:connections.size,trace:output}));
   }
   if(req.method!=='POST'|| !['/profile','/outage','/switch'].includes(req.url)){res.writeHead(404);return res.end();}
   if(instanceToken && req.headers['x-flight-instance']!==instanceToken){res.writeHead(403);return res.end('Wrong test instance');}
@@ -194,15 +290,20 @@ const api=http.createServer((req,res)=>{
       }else{
         if(!profiles[input.profile])throw Error('Unknown profile');
         if(input.profile==='httpsOnly'&&!tlsCert)throw Error('httpsOnly requires TLS listener and a trusted certificate');
+        stopChaos();
         profileName=input.profile;current=profiles[profileName];
         epoch++;
         if(req.url==='/switch')for(const conn of [...connections])destroy(conn,'route_change');
         log('link',{action:req.url==='/switch'?'route_switch':'profile',values:current});
+        if(profileName==='flightChaos')startChaos();
       }
       res.writeHead(200,{'Content-Type':'application/json'});res.end(JSON.stringify({ok:true,profile:profileName}));
     }catch(e){res.writeHead(400);res.end(JSON.stringify({error:e.message}));}
   });
 });
 api.listen(controlPort,'127.0.0.1');
-server.listen(port,listen,()=>log('startup',{listen,port,controlPort,upstreamHost,upstreamPort,seed,trace:output,tls:!!tlsCert}));
-process.on('SIGINT',()=>{for(const c of [...connections])destroy(c,'operator_stop');server.close();api.close();trace.end();});
+server.listen(port,listen,()=>{
+  log('startup',{listen,port,controlPort,upstreamHost,upstreamPort,seed,trace:output,tls:!!tlsCert});
+  if(profileName==='flightChaos')startChaos();
+});
+process.on('SIGINT',()=>{stopChaos();for(const c of [...connections])destroy(c,'operator_stop');server.close();api.close();trace.end();});
