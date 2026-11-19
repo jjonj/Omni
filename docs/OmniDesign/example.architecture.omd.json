@@ -1,0 +1,371 @@
+{
+  "format": "omnidesign",
+  "schemaVersion": 1,
+  "id": "dgm_00000000-0000-4000-8000-000000000001",
+  "revision": 0,
+  "title": "Camp systems · architecture",
+  "family": "architecture",
+  "metadata": {
+    "createdAt": "2026-11-19T08:00:00Z",
+    "updatedAt": "2026-11-19T08:00:00Z",
+    "originDeviceId": "dev_00000000-0000-4000-8000-000000000001",
+    "forkedFrom": null,
+    "description": "Editable OmniDesign example; no server revision yet.",
+    "tags": [
+      "wartribes",
+      "architecture"
+    ]
+  },
+  "page": {
+    "width": 1200,
+    "height": 700,
+    "background": "#14161a",
+    "grid": {
+      "enabled": false,
+      "size": 20,
+      "snap": true
+    },
+    "units": "px"
+  },
+  "theme": {
+    "name": "R3 · diagram skill",
+    "tokens": {
+      "canvas": "#14161a",
+      "panel": "#1d2026",
+      "ink": "#e6e2d8",
+      "muted": "#a09a8c",
+      "accent": "#e0a458"
+    }
+  },
+  "layers": [
+    {
+      "id": "lyr_00000000-0000-4000-8000-000000000001",
+      "name": "Systems and connections",
+      "visible": true,
+      "locked": false
+    },
+    {
+      "id": "lyr_00000000-0000-4000-8000-000000000002",
+      "name": "Annotations",
+      "visible": true,
+      "locked": false
+    }
+  ],
+  "libraries": {
+    "references": [
+      {
+        "id": "core",
+        "version": "1"
+      }
+    ],
+    "embedded": [
+      {
+        "id": "example.service",
+        "version": "1",
+        "name": "Example service boxes",
+        "shapes": [
+          {
+            "name": "storage",
+            "fallback": "roundRect",
+            "defaultStyle": {
+              "fill": "#1d2026",
+              "stroke": "#e0a458",
+              "strokeDash": [
+                6,
+                4
+              ],
+              "textColor": "#e6e2d8"
+            },
+            "defaultPorts": [
+              {
+                "name": "input",
+                "direction": "in",
+                "anchor": {
+                  "side": "left",
+                  "t": 0.5
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "assets": [],
+  "elements": [
+    {
+      "id": "el_00000000-0000-4000-8000-000000000001",
+      "type": "group",
+      "layerId": "lyr_00000000-0000-4000-8000-000000000001",
+      "parentId": null,
+      "order": 0,
+      "geometry": {
+        "x": 110,
+        "y": 140,
+        "width": 390,
+        "height": 360,
+        "rotation": 0
+      },
+      "label": {
+        "text": "Simulation",
+        "style": {
+          "textColor": "#a09a8c",
+          "fontSize": 14
+        }
+      },
+      "style": {
+        "fill": "#1d2026",
+        "stroke": "#a09a8c",
+        "strokeWidth": 1
+      },
+      "semantic": {
+        "role": "boundary",
+        "data": {
+          "owner": "gameplay"
+        }
+      }
+    },
+    {
+      "id": "el_00000000-0000-4000-8000-000000000002",
+      "type": "node",
+      "layerId": "lyr_00000000-0000-4000-8000-000000000001",
+      "parentId": "el_00000000-0000-4000-8000-000000000001",
+      "order": 0,
+      "geometry": {
+        "x": 30,
+        "y": 60,
+        "width": 260,
+        "height": 205,
+        "rotation": 0
+      },
+      "shape": {
+        "libraryId": "core",
+        "name": "panel",
+        "version": "1",
+        "fallback": "roundRect"
+      },
+      "ports": [
+        {
+          "id": "prt_00000000-0000-4000-8000-000000000001",
+          "name": "events",
+          "direction": "out",
+          "dataType": "survival-event",
+          "anchor": {
+            "side": "right",
+            "t": 0.5
+          }
+        }
+      ],
+      "label": {
+        "text": "Survival simulation",
+        "style": {
+          "textColor": "#e6e2d8",
+          "fontSize": 18,
+          "fontFamily": "Segoe UI"
+        }
+      },
+      "style": {
+        "fill": "#1d2026",
+        "stroke": "#e6e2d8",
+        "strokeWidth": 2
+      },
+      "semantic": {
+        "role": "service",
+        "data": {
+          "features": [
+            "needs",
+            "wounds",
+            "recruitment"
+          ]
+        }
+      },
+      "content": {
+        "title": "Survival simulation",
+        "subtitle": "Local-first game logic",
+        "items": [
+          {
+            "id": "itm_00000000-0000-4000-8000-000000000001",
+            "text": "Water / food / rest"
+          },
+          {
+            "id": "itm_00000000-0000-4000-8000-000000000002",
+            "text": "Wounds and recovery"
+          }
+        ],
+        "chips": [
+          {
+            "id": "itm_00000000-0000-4000-8000-000000000003",
+            "text": "authoritative",
+            "style": {
+              "fill": "#e0a458",
+              "textColor": "#14161a"
+            }
+          }
+        ],
+        "footer": "events → evidence memory"
+      }
+    },
+    {
+      "id": "el_00000000-0000-4000-8000-000000000003",
+      "type": "node",
+      "layerId": "lyr_00000000-0000-4000-8000-000000000001",
+      "parentId": null,
+      "order": 1,
+      "geometry": {
+        "x": 720,
+        "y": 220,
+        "width": 290,
+        "height": 115,
+        "rotation": 0
+      },
+      "shape": {
+        "libraryId": "example.service",
+        "name": "storage",
+        "version": "1",
+        "fallback": "roundRect"
+      },
+      "ports": [
+        {
+          "id": "prt_00000000-0000-4000-8000-000000000002",
+          "name": "input",
+          "direction": "in",
+          "dataType": "survival-event",
+          "anchor": {
+            "side": "left",
+            "t": 0.5
+          }
+        }
+      ],
+      "label": {
+        "text": "Evidence memory",
+        "style": {
+          "textColor": "#e6e2d8",
+          "fontSize": 18
+        }
+      },
+      "style": {
+        "fill": "#1d2026",
+        "stroke": "#e0a458",
+        "strokeWidth": 2,
+        "strokeDash": [
+          6,
+          4
+        ]
+      },
+      "semantic": {
+        "role": "store",
+        "data": {
+          "durable": true
+        }
+      }
+    },
+    {
+      "id": "el_00000000-0000-4000-8000-000000000004",
+      "type": "edge",
+      "layerId": "lyr_00000000-0000-4000-8000-000000000001",
+      "parentId": null,
+      "order": 2,
+      "source": {
+        "type": "port",
+        "nodeId": "el_00000000-0000-4000-8000-000000000002",
+        "portId": "prt_00000000-0000-4000-8000-000000000001"
+      },
+      "target": {
+        "type": "port",
+        "nodeId": "el_00000000-0000-4000-8000-000000000003",
+        "portId": "prt_00000000-0000-4000-8000-000000000002"
+      },
+      "route": {
+        "mode": "orthogonal",
+        "waypoints": [
+          {
+            "x": 590,
+            "y": 302.5
+          },
+          {
+            "x": 590,
+            "y": 277.5
+          }
+        ],
+        "manual": false
+      },
+      "label": {
+        "text": "observations",
+        "style": {
+          "textColor": "#e0a458",
+          "fontSize": 14
+        }
+      },
+      "style": {
+        "stroke": "#e0a458",
+        "strokeWidth": 2
+      },
+      "semantic": {
+        "role": "event-flow",
+        "data": {
+          "direction": "unidirectional"
+        }
+      }
+    },
+    {
+      "id": "el_00000000-0000-4000-8000-000000000005",
+      "type": "text",
+      "layerId": "lyr_00000000-0000-4000-8000-000000000002",
+      "parentId": null,
+      "order": 0,
+      "geometry": {
+        "x": 110,
+        "y": 80,
+        "width": 900,
+        "height": 45,
+        "rotation": 0
+      },
+      "text": "Wartribes · grounded systems",
+      "style": {
+        "textColor": "#e6e2d8",
+        "fontSize": 26,
+        "fontFamily": "Segoe UI"
+      },
+      "semantic": {
+        "role": "heading",
+        "data": {}
+      }
+    },
+    {
+      "id": "el_00000000-0000-4000-8000-000000000006",
+      "type": "path",
+      "layerId": "lyr_00000000-0000-4000-8000-000000000002",
+      "parentId": null,
+      "order": 1,
+      "commands": [
+        {
+          "op": "M",
+          "to": {
+            "x": 110,
+            "y": 575
+          }
+        },
+        {
+          "op": "L",
+          "to": {
+            "x": 1010,
+            "y": 575
+          }
+        }
+      ],
+      "style": {
+        "stroke": "#a09a8c",
+        "strokeWidth": 1
+      },
+      "semantic": {
+        "role": "divider",
+        "data": {}
+      }
+    }
+  ],
+  "extensions": {
+    "omnidesign/layout": {
+      "source": "approved-r3"
+    }
+  }
+}
