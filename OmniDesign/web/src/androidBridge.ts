@@ -5,7 +5,7 @@
  */
 declare global {
  interface Window {
-  OmniDesignNative?: {request:(id:string,method:string,route:string,body:string,revision:string,key:string)=>void;flushed:()=>void};
+  OmniDesignNative?: {request:(id:string,method:string,route:string,body:string,revision:string,key:string)=>void;flushed:()=>void;copyLink?:(id:string)=>string};
   omniDesignBeforeExit?:()=>void;
   omniDesignNativeReply?: (id:string,payload:string)=>void;
  }

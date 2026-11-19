@@ -16,6 +16,7 @@ import os
 from pathlib import Path
 import re
 import sqlite3
+from urllib.parse import parse_qs, urlsplit
 from typing import Any, Iterator
 
 from fastapi import FastAPI, Header, HTTPException, Query, Request
@@ -209,10 +210,12 @@ def required_id(value: str) -> str:
     return value
 
 
-def current(db: sqlite3.Connection, diagram_id: str) -> sqlite3.Row:
+def current(db: sqlite3.Connection, diagram_id: str, *, writable: bool = False) -> sqlite3.Row:
     row = db.execute("SELECT * FROM diagrams WHERE id=?", (required_id(diagram_id),)).fetchone()
     if row is None:
-        problem(404, "Diagram not found")
+        problem(404, "Diagram not found; it may not have synchronized to this Hub")
+    if writable and row["archived"]:
+        problem(410, "Diagram is archived; restore it before editing", diagramId=diagram_id)
     return row
 
 
@@ -248,6 +251,37 @@ def condition(match: str | None) -> int:
 
 def stale(row: sqlite3.Row) -> None:
     problem(412, "Stale revision", currentRevision=row["revision"], etag='"rev-%d"' % row["revision"])
+
+
+def link_id(link: str) -> str:
+    """Resolve ID-only and private Gateway editor URLs, never arbitrary external URLs."""
+    if ID.fullmatch(link):
+        return link
+    url = urlsplit(link)
+    if url.scheme == "omnidesign" and url.netloc == "diagram":
+        return required_id(url.path.lstrip("/"))
+    if url.scheme not in ("https", "http") or not url.netloc:
+        problem(422, "Expected diagram ID or OmniDesign editor URL")
+    path = url.path.rstrip("/")
+    if not (path.endswith("/omnidesign") or path.endswith("/gateway/tools/omnidesign")
+            or (path in ("", "/index.html") and url.hostname in ("localhost", "127.0.0.1"))):
+        problem(422, "URL is not an OmniDesign editor link")
+    values = parse_qs(url.query).get("diagram", [])
+    if len(values) != 1:
+        problem(422, "Editor link must have exactly one diagram ID")
+    if not ID.fullmatch(values[0]):
+        problem(422, "Invalid diagram ID in link")
+    return values[0]
+
+
+@app.get("/api/v1/links/resolve")
+def resolve_diagram_link(link: str = Query(..., max_length=2048)):
+    """Agent-friendly lookup: native document, same DB/revision as the editor."""
+    with connection() as db:
+        row = current(db, link_id(link))
+        if row["archived"]:
+            problem(410, "Linked diagram is archived; restore it to reopen", diagramId=row["id"])
+    return document_response(json.loads(row["document"]))
 
 
 @app.get("/api/health")
@@ -325,7 +359,7 @@ async def update_diagram(diagram_id: str, request: Request,
     proposed = validated(await body_json(request), expected_id=diagram_id, revision=base)
     digest = hashlib.sha256((if_match + serialized(proposed)).encode()).hexdigest()
     with connection(writing=True) as db:
-        row = current(db, diagram_id)
+        row = current(db, diagram_id, writable=True)
         receipt = db.execute("SELECT * FROM mutations WHERE diagram_id=? AND mutation_key=?",
                              (diagram_id, idempotency_key)).fetchone()
         if receipt:
@@ -337,6 +371,74 @@ async def update_diagram(diagram_id: str, request: Request,
         if row["revision"] != base:
             stale(row)
         updated = {**proposed, "revision": base + 1}
+        store_revision(db, updated, now())
+        db.execute("INSERT INTO mutations VALUES(?,?,?,?)",
+                   (diagram_id, idempotency_key, digest, base + 1))
+    return document_response(updated)
+
+
+@app.patch("/api/v1/diagrams/{diagram_id}/elements")
+async def patch_elements(diagram_id: str, request: Request,
+                         if_match: str | None = Header(None, alias="If-Match"),
+                         idempotency_key: str | None = Header(None, alias="Idempotency-Key")):
+    """Atomic stable-ID shape operations for agents. Never merge stale revisions."""
+    base = condition(if_match)
+    if not idempotency_key or not re.fullmatch(r"[A-Za-z0-9_-]{8,128}", idempotency_key):
+        problem(428, "Idempotency-Key (8-128 URL-safe characters) required")
+    payload = await body_json(request)
+    ops = payload.get("operations")
+    if not isinstance(ops, list) or not 1 <= len(ops) <= 200:
+        problem(422, "operations must contain 1-200 add/replace/remove/rename actions")
+    digest = hashlib.sha256(("PATCH " + if_match + serialized(payload)).encode()).hexdigest()
+    with connection(writing=True) as db:
+        row = current(db, diagram_id, writable=True)
+        receipt = db.execute("SELECT * FROM mutations WHERE diagram_id=? AND mutation_key=?",
+                             (diagram_id, idempotency_key)).fetchone()
+        if receipt:
+            if receipt["request_hash"] != digest:
+                problem(409, "Idempotency-Key reused for another write")
+            saved = db.execute("SELECT document FROM revisions WHERE diagram_id=? AND revision=?",
+                               (diagram_id, receipt["result_revision"])).fetchone()
+            return document_response(json.loads(saved["document"]))
+        if row["revision"] != base:
+            stale(row)
+        doc = json.loads(row["document"])
+        for index, op in enumerate(ops):
+            if not isinstance(op, dict):
+                problem(422, "Each operation must be an object", operation=index)
+            action = op.get("op")
+            elements = doc["elements"]
+            if action in ("add", "replace"):
+                element = op.get("element")
+                if not isinstance(element, dict) or not isinstance(element.get("id"), str):
+                    problem(422, "Operation requires native element with stable ID", operation=index)
+                existing = next((i for i, e in enumerate(elements) if e["id"] == element["id"]), None)
+                if action == "add":
+                    if existing is not None:
+                        problem(409, "Element ID already exists", elementId=element["id"])
+                    elements.append(element)
+                else:
+                    if existing is None:
+                        problem(404, "Element to replace not found", elementId=element["id"])
+                    elements[existing] = element
+            elif action == "remove":
+                element_id = op.get("id")
+                existing = next((i for i, e in enumerate(elements) if e["id"] == element_id), None)
+                if existing is None:
+                    problem(404, "Element to remove not found", elementId=element_id)
+                del elements[existing]
+            elif action == "rename":
+                title = op.get("title")
+                if not isinstance(title, str):
+                    problem(422, "Rename requires title", operation=index)
+                doc["title"] = title
+            else:
+                problem(422, "Unsupported element operation", operation=index, action=action)
+        # A removed node/group referenced by an edge or child fails validation;
+        # agents must explicitly replace/delete those dependents in the same patch.
+        doc["metadata"]["updatedAt"] = now()
+        validated(doc, expected_id=diagram_id, revision=base)
+        updated = {**doc, "revision": base + 1}
         store_revision(db, updated, now())
         db.execute("INSERT INTO mutations VALUES(?,?,?,?)",
                    (diagram_id, idempotency_key, digest, base + 1))
@@ -376,7 +478,7 @@ async def add_proposal(diagram_id: str, request: Request):
     doc = validated(payload.get("document"), expected_id=diagram_id, revision=base)
     blob = serialized(doc)
     with connection(writing=True) as db:
-        current(db, diagram_id)
+        current(db, diagram_id, writable=True)
         old = db.execute("SELECT * FROM proposals WHERE diagram_id=? AND proposal_id=?",
                          (diagram_id, pid)).fetchone()
         if old:
@@ -415,7 +517,7 @@ def read_proposal(diagram_id: str, proposal_id: str):
 @app.post("/api/v1/diagrams/{diagram_id}/proposals/{proposal_id}/accept")
 def accept_proposal(diagram_id: str, proposal_id: str):
     with connection(writing=True) as db:
-        row = current(db, diagram_id)
+        row = current(db, diagram_id, writable=True)
         proposal = db.execute("SELECT * FROM proposals WHERE diagram_id=? AND proposal_id=?",
                               (diagram_id, proposal_id)).fetchone()
         if not proposal:

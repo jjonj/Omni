@@ -26,6 +26,10 @@ dist/ is self-contained with relative asset URLs for a Gateway subpath or WebVie
 - Native .omd.json is authoritative editable model. SVG and 2× PNG are exports only. Semantic data, embedded libraries, extensions, authored waypoints and group-local geometry survive edits.
 - Unknown future schema versions are rejected without rewriting them.
 
+## Permanent diagram links (MISC-0168)
+
+The **Link** button on desktop and Android copies a private owner-login Gateway editor URL with the same stable `dgm_<uuid>` minted for the diagram, never an `appassets` URL or image export. The URL stays unchanged after syncing; an offline-only diagram is clearly not remotely available until first successful upload. The shared editor deep-link handler resolves the native document from the existing PC service (or local IndexedDB cache), detects remote conflicts without silently replacing unsynced edits, and shows explicit retry/error state for unreachable, archived or unknown diagrams. Agents can read the same native source by link and change shapes through the revision-checked API; see [agent contract](../../docs/OmniDesign/MISC-0168-links-and-agents.md).
+
 ## Boundaries
 
 - MISC-0165 implements the live on-demand OmniHub SQLite revision service and explicit **Hub save**, **Hub library** and **Link** actions. The browser keeps a local IndexedDB copy, while Hub writes use conditional revisions and refuse stale writes. See [service API/operations](../service/README.md).

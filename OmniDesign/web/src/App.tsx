@@ -6,6 +6,7 @@ import {clone,edge,exampleDiagram,groupElements,itemById,newDiagram,node,origin,
 import {adoptRemote,confirmEquivalent,download,filename,getConflicts,getDocuments,getOutbox,getSynced,needsSync,noteConflict,putDocument,removeDocument,setSynced,type SyncedBaseline,type SyncConflict,type PendingOperation} from './storage';
 import {keepBoth as resolveKeepBoth,synchronize} from './sync';
 import {hubHealth,hubJson,HubHttpError,inAndroid} from './androidBridge';
+import {copyDiagramLink,isDiagramId} from './links';
 import type {Diagram,Element,NodeElement,Point,Style,Tool} from './types';
 import {allStencils,allTemplates,attachPack,builtInPacks,documentPacks,findStencil,instantiateTemplate,loadPersonalPacks,parsePack,savePersonalPacks,stencilNode,type Pack,type Stencil} from './packs';
 import {edgeStyleKinds} from './StencilArt';
@@ -33,6 +34,8 @@ function App(){
  const [panel,setPanel]=useState<'inspector'|'layers'|'outline'|'shapes'|null>('inspector');
  const [mobileSheet,setMobileSheet]=useState(false),[activeLayer,setActiveLayer]=useState<string>('');
  const [message,setMessage]=useState('Saved locally'),[ready,setReady]=useState(false);
+ const [linkError,setLinkError]=useState<{id:string;reason:string}|null>(null);
+ const [cachedDeepLink,setCachedDeepLink]=useState<string|null>(null);
  const [synced,setSyncedMap]=useState<Record<string,SyncedBaseline>>({});
  const [queued,setQueued]=useState<Record<string,PendingOperation>>({});
  const [hubOnline,setHubOnline]=useState<boolean|null>(null),[syncBusy,setSyncBusy]=useState(false);
@@ -52,14 +55,27 @@ function App(){
   setQueued(operations);
   setConflicts(holds);
  }catch(e){setMessage('Local storage unavailable: '+String(e));}};
- const openDoc=(next:Diagram)=>{replace(clone(next));setSelected([]);history.current={past:[],future:[]};setRevision(v=>v+1);setActiveLayer(next.layers[0].id);localStorage.setItem('omnidesign.current',next.id);setLibrary(false);setMobileSheet(false);setTool('select');};
+ const openDoc=(next:Diagram,preserveRequestedLink=false)=>{replace(clone(next));setSelected([]);history.current={past:[],future:[]};setRevision(v=>v+1);setActiveLayer(next.layers[0].id);localStorage.setItem('omnidesign.current',next.id);setLibrary(false);setMobileSheet(false);setTool('select');if(!preserveRequestedLink){setLinkError(null);try{const url=new URL(location.href);url.searchParams.set('diagram',next.id);window.history.replaceState(null,'',url);}catch{/* Embedded URL may not support history updates. */}}};
  useEffect(()=>{let live=true;(async()=>{try{
   const all=await getDocuments();if(!live)return;
   const id=localStorage.getItem('omnidesign.current');let prior:Diagram|undefined=all.find(d=>d.id===id)||all[0];
   const deepId=new URLSearchParams(window.location.search).get('diagram');
+  let unavailable=false;
   if(deepId){prior=all.find(d=>d.id===deepId);
-   if(!prior)try{prior=validateDocument(await hubJson('diagrams/'+encodeURIComponent(deepId)));await putDocument(prior);await setSynced(prior);}catch{/* Offline: never replace the locally cached diagram. */}}
-  if(prior)openDoc(validateDocument(prior));else{const example=exampleDiagram();openDoc(example);await putDocument(example);}
+   if(prior)setCachedDeepLink(deepId); // Open instantly; refresh asynchronously without blocking offline use.
+   if(!isDiagramId(deepId)){unavailable=true;setLinkError({id:deepId,reason:'Invalid OmniDesign diagram ID in link.'});}
+   else if(!prior)try{
+    const remote=validateDocument(await hubJson('links/resolve?link='+encodeURIComponent(deepId)));
+    await putDocument(remote);await setSynced(remote);prior=remote;
+   }catch(error){
+    unavailable=true;
+    setLinkError({id:deepId,reason:error instanceof HubHttpError&&error.status===404
+     ?'Not found on this Hub. This ID may be offline-only until its first synchronization, or unknown here.'
+     :error instanceof HubHttpError&&error.status===410
+     ?'This linked diagram is archived; restore it on the PC first.'
+     :'Hub unavailable; only locally cached diagrams can open until the connection is restored. '+String(error)});
+   }}
+  if(prior)openDoc(validateDocument(prior),unavailable);else{const example=exampleDiagram();openDoc(example,unavailable);await putDocument(example);}
   await updateLibrary();
  }catch(e){setMessage('Storage issue: '+String(e));}finally{if(live)setReady(true);}})();return()=>{live=false;};},[]);
  useEffect(()=>{if(!ready)return;setMessage('Saving locally…');
@@ -83,7 +99,7 @@ function App(){
  // Conditional revisions prevent another device or agent from being overwritten.
  const hubRequest=async(path:string,options?:RequestInit):Promise<{data:any}>=>{
   try{const data=await hubJson(path,options);setHubOnline(true);return {data};}
-  catch(error){if(!(error instanceof HubHttpError)||![409,412,422].includes(error.status))setHubOnline(false);throw error;}
+  catch(error){if(!(error instanceof HubHttpError)||![404,409,410,412,422,428].includes(error.status))setHubOnline(false);throw error;}
  };
  const onSyncAccepted=(confirmed:Diagram)=>{
   // The canvas may have received more edits since the upload started.
@@ -126,27 +142,46 @@ function App(){
     :'Offline copy saved under a stable ID; original conflict awaits Hub reconnect.');
   }catch(error){setMessage('Conflict resolution failed; original retained: '+String(error));}
  };
+ useEffect(()=>{if(ready&&cachedDeepLink)void openFromHub(cachedDeepLink,true);},[ready,cachedDeepLink]);
+ // A link opened before first device sync becomes resolvable on Hub reconnect.
+ useEffect(()=>{if(!ready||!hubOnline)return;const id=new URLSearchParams(location.search).get('diagram');
+  if(id&&isDiagramId(id)&&linkError?.id===id)void openFromHub(id);
+ },[ready,hubOnline]);
  const openHubLibrary=async()=>{try{
   const {data}=await hubRequest('diagrams?limit=100');
   setHubDocs(data.items??[]);setHubOpen(true);
  }catch(e){setMessage('Hub unavailable: '+String(e));}};
- const openFromHub=async(id:string)=>{try{
-  await putDocument(docRef.current); // Keep the current local working state before changing documents.
-  const {data}=await hubRequest('diagrams/'+id);
+ const openFromHub=async(id:string,background=false)=>{try{
+  const before=docRef.current;
+  await putDocument(before); // Keep the live working graph before network I/O.
+  const {data}=await hubRequest('links/resolve?link='+encodeURIComponent(id));
   const native=validateDocument(data);
   const locallySaved=(await getDocuments()).find(d=>d.id===id),baseline=(await getSynced())[id];
+  if(docRef.current.id===id&&JSON.stringify(docRef.current)!==JSON.stringify(before)){
+   // Edits that happened during HTTP must never be painted over or promoted as clean.
+   await putDocument(docRef.current);
+   if(!baseline||native.revision!==baseline.revision)await noteConflict(native);
+   await updateLibrary();setMessage('Kept edits made while opening Hub link.');return;
+  }
   if(locallySaved&&needsSync(locallySaved,baseline)){
-   if(!baseline&&await confirmEquivalent(native)){openDoc(native);setMessage('Recovered identical Hub diagram.');}
-   else{await noteConflict(native);openDoc(locallySaved);setMessage('Both versions retained; resolve conflict to keep both.');}
+   if(!baseline&&await confirmEquivalent(native)){if(!background)openDoc(native);setMessage('Recovered identical Hub diagram.');}
+   else if(baseline?.revision===native.revision){if(!background)openDoc(locallySaved);setMessage('Linked diagram opened locally · unsynced edits retained');}
+   else{await noteConflict(native);if(!background)openDoc(locallySaved);setMessage('Both versions retained; resolve conflict to keep both.');}
   }else if(await adoptRemote(native)==='adopted'){
-   openDoc(native);setMessage('Opened Hub revision '+native.revision);
+   if(docRef.current.id===id&&JSON.stringify(docRef.current)!==JSON.stringify(before)){
+    await putDocument(docRef.current);await noteConflict(native);
+    setMessage('Linked diagram changed during fetch; local/Hub versions retained.');
+   }else{
+    if(!background||docRef.current.id===id)openDoc(native);
+    setMessage('Fetched Hub revision '+native.revision);
+   }
   }else{
-   await noteConflict(native);if(locallySaved)openDoc(locallySaved);
+   await noteConflict(native);
    setMessage('Local edits retained; Hub version recorded as conflict.');
   }
-  await updateLibrary();setHubOpen(false);
- }catch(e){setMessage('Hub open failed: '+String(e));}};
- const copyHubLink=async()=>{if(inAndroid){setMessage('Use the PC editor to copy its private Hub link.');return;}try{const prefix=location.pathname.includes('/gateway/tools/omnidesign/')?location.origin+'/gateway/tools/omnidesign/':location.origin+'/';await navigator.clipboard.writeText(prefix+'?diagram='+encodeURIComponent(docRef.current.id));setMessage(docRef.current.revision?'Link copied':'Link copied · this ID is local only until first Hub save');}catch(e){setMessage('Unable to copy link: '+String(e));}};
+  await updateLibrary();setHubOpen(false);if(docRef.current.id===id)setLinkError(null);
+ }catch(e){setMessage('Hub open failed: '+String(e));if(new URLSearchParams(location.search).get('diagram')===id)setLinkError({id,reason:'Hub link cannot be refreshed: '+String(e)+' · locally cached edits remain available.'});}};
+ const copyHubLink=async()=>{try{await copyDiagramLink(docRef.current.id);setMessage(synced[docRef.current.id]?'Private diagram link copied · synced on Hub':'Private diagram link copied · unavailable remotely until first sync');}catch(e){setMessage('Unable to copy link: '+String(e));}};
  const commit=(edit:(d:Diagram)=>Diagram)=>{const before=docRef.current,next=edit(clone(before));if(JSON.stringify(before)===JSON.stringify(next))return;history.current.past.push(clone(before));if(history.current.past.length>100)history.current.past.shift();history.current.future=[];next.metadata={...next.metadata,updatedAt:stamp()};replace(next);setRevision(v=>v+1);};
  const preview=(d:Diagram)=>replace(d);
  const finish=(before:Diagram)=>{if(JSON.stringify(before)===JSON.stringify(docRef.current))return;history.current.past.push(before);if(history.current.past.length>100)history.current.past.shift();history.current.future=[];replace({...docRef.current,metadata:{...docRef.current.metadata,updatedAt:stamp()}});setRevision(v=>v+1);};
@@ -302,6 +337,7 @@ function App(){
   <span className={'sync-light '+(hubOnline?'online':'offline')}/>
   <strong>{hubOnline?'Hub connected':hubOnline===false?'Hub unreachable · offline':'Checking Hub'}</strong>
   <span className="sync-description">{documentState(doc)} · {pendingCount} unsynced{conflictCount?' · '+conflictCount+' conflict(s)':''} · editable on device</span>
+  {linkError&&<div className="link-error" role="alert"><strong>Link not opened:</strong> {linkError.reason} <Button disabled={!isDiagramId(linkError.id)} onClick={()=>void openFromHub(linkError.id)}>Retry link</Button></div>}
   {conflicts[doc.id]&&<div className="conflict-controls"><span className="conflict-details">PC r{conflicts[doc.id].remote.revision} · phone r{doc.revision}</span><Button className="conflict-action" onClick={()=>download(new Blob([JSON.stringify(conflicts[doc.id].remote,null,2)],{type:'application/json'}),filename(doc.title+' · Hub revision','.omd.json'))}>Export PC copy</Button><Button className="conflict-action" onClick={keepBoth}>Conflict · Keep both</Button></div>}
   <Button className="sync-action" title="Sync revision-checked local documents to PC (offline copies are always retained)" disabled={syncBusy||!ready} onClick={syncPending}>{syncBusy?'Syncing…':'Sync now'}</Button>
  </div>

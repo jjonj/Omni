@@ -96,6 +96,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private var pendingAttentionRequestId by mutableStateOf<String?>(null)
+    private var pendingOmniDesignId by mutableStateOf<String?>(null)
     private lateinit var mainViewModel: MainViewModel
     private lateinit var omniSyncApplication: OmniSyncApplication
     
@@ -524,6 +525,20 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun handleIntent(intent: Intent?) {
+        // Both the private Gateway link and the native scheme address the SAME
+        // stable document ID; the WebView resolves a cached or PC-backed copy.
+        val data = intent?.data
+        val isDesignLink = data != null && ((data.scheme == "omnidesign" && data.host == "diagram") ||
+            (data.scheme == "https" && data.host == "hub.rancorous.online" &&
+                (data.path?.startsWith("/omnidesign") == true || data.path?.startsWith("/gateway/tools/omnidesign") == true)))
+        val linkedId = if (isDesignLink) {
+            if (data?.scheme == "omnidesign") data.lastPathSegment else data?.getQueryParameter("diagram")
+        } else null
+        if (linkedId != null && Regex("^dgm_[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$").matches(linkedId)) {
+            pendingOmniDesignId = linkedId
+            mainViewModel.navigateTo(AppScreen.OMNIDESIGN)
+            return
+        }
         val screenName = intent?.getStringExtra("OPEN_SCREEN")
         pendingAttentionRequestId = intent?.data
             ?.takeIf { it.scheme == "omni" && it.host == "agent-attention" }
@@ -658,7 +673,8 @@ class MainActivity : ComponentActivity() {
                 }
             }
             AppScreen.OMNIDESIGN -> com.omni.sync.ui.screen.OmniDesignScreen(
-                onBack = { mainViewModel.goBack() }
+                onBack = { pendingOmniDesignId = null; mainViewModel.goBack() },
+                diagramId = pendingOmniDesignId
             )
             AppScreen.TESTS -> com.omni.sync.ui.screen.TestsScreen()
             AppScreen.TASKBOARD -> com.omni.sync.ui.screen.TaskBoardScreen(

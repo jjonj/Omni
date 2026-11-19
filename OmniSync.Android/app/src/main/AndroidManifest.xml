@@ -68,12 +68,27 @@
             android:excludeFromRecents="false"
             android:noHistory="false"
             android:alwaysRetainTaskState="true"
+            android:launchMode="singleTop"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden"
             android:windowSoftInputMode="adjustResize"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <!-- Private HTTPS links also open in the Gateway browser if Omni is not chosen. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="hub.rancorous.online" android:pathPrefix="/omnidesign" />
+                <data android:scheme="https" android:host="hub.rancorous.online" android:pathPrefix="/gateway/tools/omnidesign" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="omnidesign" android:host="diagram" />
             </intent-filter>
         </activity>
 

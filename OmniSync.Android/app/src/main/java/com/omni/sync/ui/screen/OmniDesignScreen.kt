@@ -1,6 +1,9 @@
 package com.omni.sync.ui.screen
 
 import android.annotation.SuppressLint
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.webkit.CookieManager
 import android.webkit.JavascriptInterface
 import android.webkit.WebChromeClient
@@ -19,6 +22,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -35,6 +39,7 @@ import java.util.concurrent.Executors
 
 private const val LOCAL_EDITOR = "https://appassets.androidplatform.net/assets/omnidesign/index.html"
 private const val DEFAULT_SYNC_ENDPOINT = "https://hub.rancorous.online/gateway/tools/omnidesign/"
+private const val PERMANENT_EDITOR_URL = "https://hub.rancorous.online/omnidesign/"
 
 /**
  * Hosts the actual shared OmniDesign editor from the APK, never the remote website.
@@ -43,7 +48,7 @@ private const val DEFAULT_SYNC_ENDPOINT = "https://hub.rancorous.online/gateway/
  */
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
-fun OmniDesignScreen(onBack: () -> Unit) {
+fun OmniDesignScreen(onBack: () -> Unit, diagramId: String? = null) {
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences("omnidesign", android.content.Context.MODE_PRIVATE) }
     var endpoint by remember { mutableStateOf(prefs.getString("sync_endpoint", DEFAULT_SYNC_ENDPOINT) ?: DEFAULT_SYNC_ENDPOINT) }
@@ -74,15 +79,39 @@ fun OmniDesignScreen(onBack: () -> Unit) {
             webChromeClient = WebChromeClient()
             bridge.attach(this)
             addJavascriptInterface(bridge, "OmniDesignNative")
-            loadUrl(LOCAL_EDITOR)
+            // URI navigation is performed by LaunchedEffect, including new deep links.
         }
     }
     var leavePending by remember { mutableStateOf(false) }
+    var pendingLinkedNavigation by remember { mutableStateOf<String?>(null) }
     val handler = remember { Handler(Looper.getMainLooper()) }
     bridge.onFlushed = {
-        if (leavePending) {
+        val destination = pendingLinkedNavigation
+        if (destination != null) {
+            pendingLinkedNavigation = null
+            webView.loadUrl(destination)
+        } else if (leavePending) {
             leavePending = false
             onBack()
+        }
+    }
+    LaunchedEffect(diagramId) {
+        val linked = diagramId?.takeIf {
+            Regex("^dgm_[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$").matches(it)
+        }
+        val destination = LOCAL_EDITOR + (linked?.let { "?diagram=$it" } ?: "")
+        if (webView.url.isNullOrBlank()) {
+            webView.loadUrl(destination)
+        } else if (webView.url != destination) {
+            // A second VIEW intent may arrive while drawing; flush the existing
+            // native graph to IndexedDB before replacing this WebView page.
+            pendingLinkedNavigation = destination
+            webView.evaluateJavascript("if (window.omniDesignBeforeExit) { window.omniDesignBeforeExit(); true } else false") { response ->
+                if (response == "false" && pendingLinkedNavigation == destination) {
+                    pendingLinkedNavigation = null
+                    webView.loadUrl(destination)
+                }
+            }
         }
     }
     val requestExit: () -> Unit = {
@@ -152,6 +181,17 @@ internal class OmniDesignApiBridge(private val endpoint: () -> String) {
     @Volatile private var webView: WebView? = null
     var onFlushed: (() -> Unit)? = null
     @JavascriptInterface fun flushed() { webView?.post { onFlushed?.invoke() } }
+
+    /** Copy the stable owner-login editor URL, never a changing LAN IP or appassets origin. */
+    @JavascriptInterface fun copyLink(diagramId: String): String {
+        if (!Regex("^dgm_[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$").matches(diagramId)) return ""
+        val url = PERMANENT_EDITOR_URL + "?diagram=" + diagramId
+        webView?.post {
+            val manager = webView?.context?.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+            manager?.setPrimaryClip(ClipData.newPlainText("OmniDesign diagram", url))
+        }
+        return url
+    }
     fun attach(view: WebView) { webView = view }
     fun close() { webView = null; worker.shutdownNow() }
 
@@ -162,7 +202,7 @@ internal class OmniDesignApiBridge(private val endpoint: () -> String) {
             val result = JSONObject()
             try {
                 // No arbitrary native network bridge: OmniDesign REST paths only.
-                require(Regex("^api/(health|v1/diagrams(?:[/?][a-zA-Z0-9_/?=&.%-]*)?)$").matches(route))
+                require(Regex("^api/(health|v1/(diagrams|links/resolve)(?:[/?][a-zA-Z0-9_/?=&.%-]*)?)$").matches(route))
                 require(method in listOf("GET", "POST", "PUT"))
                 val base = endpoint().trimEnd('/') + "/"
                 val url = URL(URL(base), route)

@@ -22,6 +22,8 @@ All JSON bodies are the entire native v1 document (not SVG, React Flow nodes or 
 | `GET /diagrams?cursor=&limit=50&includeArchived=false` | Keyset-paged metadata (`items`, `nextCursor`) |
 | `POST /diagrams` | Client-generated `dgm_<uuid>` at revision 0 → stored revision 1; exact duplicate POST is idempotent |
 | `GET /diagrams/{id}` | Full editable source, strong ETag `"rev-N"` |
+| `GET /links/resolve?link=<url-or-id>` | Resolve a private permanent diagram link/ID to the **same native document** and ETag; 404 unsynced/unknown, 410 archived |
+| `PATCH /diagrams/{id}/elements` | CAS/idempotent native shape-level `add`/`replace`/`remove` and document `rename` operations; full graph validation in one transaction |
 | `PUT /diagrams/{id}` | Full document with body revision N, `If-Match: "rev-N"`, `Idempotency-Key: <uuid>` → revision N+1 |
 | `GET /diagrams/{id}/revisions` | History metadata; `GET /.../revisions/{N}` returns immutable snapshot |
 | `POST /diagrams/{id}/proposals` | `{proposalId,baseRevision,document,summary}`, immutable pending suggestion |
@@ -33,9 +35,13 @@ All JSON bodies are the entire native v1 document (not SVG, React Flow nodes or 
 
 Returns `422` for invalid document, dangling IDs/groups/ports or unknown schema, `409` for duplicate/conflicting stable IDs, `428` for missing write preconditions, and `412` (including `currentRevision` and ETag) for stale writes. Idempotency receipts are durable and replays do not advance the revision again. Rejected operations never mutate database rows. Agent clients should **propose**, not silently replace, unless directly requested. A human's accept acts on the proposal endpoint; no claim of additional permission checks is made.
 
+## Permanent links and agent editing (MISC-0168)
+
+The editor and Android client both copy a private ID-stable link (`https://hub.rancorous.online/omnidesign/?diagram=dgm_<uuid>`), including for diagrams minted offline. Until first synchronization, that link is **not** remotely dereferenceable. Browser/Android deep links open the native cached/Hub revision, keep local edits, and explicitly report unavailable/unknown/archived cases. The Python CLI `agent_cli.py` lets agents via OMCP run_command resolve/read, revision-check and submit shape patches or reviewable native proposals against **this same service**; the CLI uses the registered Gateway on-demand launch when necessary. See [MISC-0168 agent contract](../../docs/OmniDesign/MISC-0168-links-and-agents.md). No alternate document store or image routes were created.
+
 ## Browser workflow and limitations
 
-The shared editor exposes **Hub save**, **Hub library**, and **Link** actions. Local IndexedDB saving continues to run independently; uploads are explicit so editing offline does not risk silent overwrite. On conflicts, the Hub refuses the stale revision and preserves the local copy. Client-side IndexedDB outbox/reconnect and Keep-both conflicts are implemented by MISC-0167 while the Android editor is visible; richer visual proposal diff/approval UX and agent MCP wrappers remain downstream work; REST clients can already perform these operations today.
+The shared editor exposes **Hub save**, **Hub library**, and **Link** actions on PC and Android. Local IndexedDB saving continues to run independently; uploads are explicit so editing offline does not risk silent overwrite. On conflicts, the Hub refuses the stale revision and preserves the local copy. Client-side IndexedDB outbox/reconnect and Keep-both conflicts are implemented by MISC-0167 while the Android editor is visible; richer visual proposal diff/approval UX and agent MCP wrappers remain downstream work; REST clients can already perform these operations today.
 
 Deep link format (private, ID-stable): `/gateway/tools/omnidesign/?diagram=dgm_<uuid>` on the remote host. Local share through `http://localhost:3333/omnidesign` first opens Gateway's launcher; use the service's direct `http://127.0.0.1:8790/?diagram=...` for loopback bookmarks. Deep link requests recover the native document from PC if reachable, else from IndexedDB when available.
 
