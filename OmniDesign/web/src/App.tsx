@@ -157,14 +157,23 @@ function App(){
   const {data}=await hubRequest('links/resolve?link='+encodeURIComponent(id));
   const native=validateDocument(data);
   const locallySaved=(await getDocuments()).find(d=>d.id===id),baseline=(await getSynced())[id];
+   const pendingCreate=!baseline&&(await getOutbox())[id]?.method==='POST';
   if(docRef.current.id===id&&JSON.stringify(docRef.current)!==JSON.stringify(before)){
    // Edits that happened during HTTP must never be painted over or promoted as clean.
    await putDocument(docRef.current);
-   if(!baseline||native.revision!==baseline.revision)await noteConflict(native);
+    // A lost CREATE response leaves a durable POST receipt to replay. Opening
+    // its link must not turn that pending acknowledgement into a conflict.
+    if(!pendingCreate&&(!baseline||native.revision!==baseline.revision))await noteConflict(native);
    await updateLibrary();setMessage('Kept edits made while opening Hub link.');return;
   }
   if(locallySaved&&needsSync(locallySaved,baseline)){
-   if(!baseline&&await confirmEquivalent(native)){if(!background)openDoc(native);setMessage('Recovered identical Hub diagram.');}
+   if(pendingCreate){
+     // The server may have committed this exact POST. Only a replay of its
+     // durable snapshot proves an acknowledgement or a genuine conflict.
+     if(!background)openDoc(locallySaved);
+     setMessage('Pending create receipt retained; synchronization will reconcile it.');
+    }
+    else if(!baseline&&await confirmEquivalent(native)){if(!background)openDoc(native);setMessage('Recovered identical Hub diagram.');}
    else if(baseline?.revision===native.revision){if(!background)openDoc(locallySaved);setMessage('Linked diagram opened locally · unsynced edits retained');}
    else{await noteConflict(native);if(!background)openDoc(locallySaved);setMessage('Both versions retained; resolve conflict to keep both.');}
   }else if(await adoptRemote(native)==='adopted'){
