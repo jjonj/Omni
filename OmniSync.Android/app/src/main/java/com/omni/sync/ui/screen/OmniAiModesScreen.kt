@@ -640,6 +640,17 @@ fun OmniAiModesScreen(
                 val receipt = client.sessionAction(target, "Control",
                     mapOf("command" to command, "options" to options))
                 note = "${command.replace('_', ' ')}: $receipt"
+                // Close is idempotent on the desktop: refresh the list and dismiss,
+                // instead of asking the user to inspect state before retrying.
+                if (command == "close") {
+                    runCatching { client.refresh() }
+                    val gone = client.sessions.value.none { it.key == target.key }
+                    note = if (gone || receipt != "Unknown" && receipt != "Pending") "Closed"
+                        else "Close sent; the PC hasn't confirmed yet."
+                    rowControlError = null
+                    rowOptions = null
+                    return@launch
+                }
                 if (receipt == "Unknown" || receipt == "Pending") {
                     rowControlError = "T3 has not confirmed ${command.replace('_', ' ')}. Refresh PC state before retrying."
                     runCatching { client.sessionControls(target) }
@@ -661,16 +672,14 @@ fun OmniAiModesScreen(
                         else "Stop accepted, but session has not reported Idle yet. Check again shortly."
                 }
                 rowControlError = null
-                if (command == "close") rowOptions = null
-                else if (rowOptions?.key == target.key) {
+                if (rowOptions?.key == target.key) {
                     try { rowControls = client.sessionControls(target) }
                     catch (e: Exception) {
                         rowControlError = "Action delivered, but status refresh failed: " + e.message
                     }
                 }
             } catch (e: Exception) {
-                rowControlError = "${command.replace('_', ' ')} failed: " + e.message +
-                    ". If the operation timed out, inspect its state before retrying."
+                rowControlError = "${command.replace('_', ' ')} failed: " + e.message
                 note = rowControlError
             } finally { rowControlBusy = false }
         }
