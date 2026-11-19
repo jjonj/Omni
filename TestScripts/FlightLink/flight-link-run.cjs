@@ -10,6 +10,12 @@ const argv=process.argv.slice(2);
 const arg=(name,fallback)=>{const i=argv.indexOf('--'+name);return i<0?fallback:argv[i+1];};
 const full=argv.includes('--full');
 const reliable=argv.includes('--reliable');
+// HTTPS-only runs use the real Hub through a TLS-terminating local listener.
+// Trust the isolated test CA with NODE_EXTRA_CA_CERTS before launching Node.
+const httpsOnly=argv.includes('--https-only');
+const tlsCert=arg('tls-cert',null), tlsKey=arg('tls-key',null);
+if(httpsOnly && (!tlsCert || !tlsKey))throw Error('--https-only requires --tls-cert and --tls-key');
+const httpScheme=httpsOnly?'https':'http', wsScheme=httpsOnly?'wss':'ws';
 // Each run has private ports so a 120-second outage cannot impact another run.
 const port=Number(arg('port',String(16000+(process.pid%30000))));
 const controlPort=Number(arg('control-port',String(port+1)));
@@ -68,12 +74,12 @@ class Session{
 }
 async function connect(scenario,timeout=10000){
   const begun=Date.now();
-  const response=await fetch('http://127.0.0.1:'+port+'/signalrhub/negotiate?negotiateVersion=1',
+  const response=await fetch(httpScheme+'://127.0.0.1:'+port+'/signalrhub/negotiate?negotiateVersion=1',
     {method:'POST',signal:AbortSignal.timeout(timeout)});
   if(!response.ok)throw Error('negotiate_status_'+response.status);
   const data=await response.json();
   if(!data.connectionToken)throw Error('negotiate_missing_token');
-  const ws=new WebSocket('ws://127.0.0.1:'+port+'/signalrhub?id='+encodeURIComponent(data.connectionToken));
+  const ws=new WebSocket(wsScheme+'://127.0.0.1:'+port+'/signalrhub?id='+encodeURIComponent(data.connectionToken));
   try {
     await Promise.race([
       new Promise((resolve,reject)=>{
@@ -91,7 +97,7 @@ async function connect(scenario,timeout=10000){
     const authorized=await conn.invoke(scenario,'Authenticate',[key],timeout);
     if(authorized!==true)throw Error('hub_authentication_failed');
   }catch(e){conn.close();throw e;}
-  record('connected',{scenario,elapsedMs:Date.now()-begun,transport:'HTTP negotiate + WebSocket'});
+  record('connected',{scenario,elapsedMs:Date.now()-begun,transport:httpsOnly?'HTTPS negotiate + WSS':'HTTP negotiate + WebSocket'});
   return conn;
 }
 // GetAvailableDrives includes a freshly generated last_modified timestamp.
@@ -253,7 +259,8 @@ async function run(){
   try{
     const options={cwd:__dirname,stdio:['ignore','ignore','pipe'],windowsHide:true};
     child=spawn(process.execPath,[path.join(__dirname,'flight-link-proxy.cjs'),'--port',String(port),
-      '--control-port',String(controlPort),'--upstream-port',String(upstreamPort),'--trace',tracePath,'--instance-token',runId],options);
+      '--control-port',String(controlPort),'--upstream-port',String(upstreamPort),'--trace',tracePath,'--instance-token',runId,
+      ...(httpsOnly?['--tls-cert',tlsCert,'--tls-key',tlsKey]:[])],options);
     child.on('error',e=>record('proxy_error',{reason:e.message}));
     let ready=false;
     for(let i=0;i<70;i++){
@@ -269,9 +276,9 @@ async function run(){
       await sleep(100);
     }
     if(!ready)throw Error('Proxy startup timeout');
-    record('run_start',{dir,full,reliable,port,controlPort,profiles:['clean','slow300','slow800','slow2000','noUdp','route_change','outage10',...(full?['outage120']:[])]});
+    record('run_start',{dir,full,reliable,httpsOnly,port,controlPort,profiles:['clean','slow300','slow800','slow2000','noUdp',...(httpsOnly?['httpsOnly']:[]),'route_change','outage10',...(full?['outage120']:[])]});
     await attempt('clean','clean');
-    for(const profile of ['slow300','slow800','slow2000','noUdp'])await attempt(profile,profile);
+    for(const profile of ['slow300','slow800','slow2000','noUdp',...(httpsOnly?['httpsOnly']:[])])await attempt(profile,profile);
     await switchPath();
     await disruption('outage10',10);
     if(full)await disruption('outage120',120);
