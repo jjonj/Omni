@@ -5,4 +5,4 @@
 - **Versioned editable document contract:** [omnidesign.document.v1.schema.json](omnidesign.document.v1.schema.json).
 - **Editable native sample:** [example.architecture.omd.json](example.architecture.omd.json).
 
-**Implementation is not deployed.** Next owners: MISC-0163 (one shared desktop/mobile web editor) and MISC-0165 (OmniHub-managed local service), followed by Android and agent integrations. Only the R3 visual direction is approved; older R1/R2 files are historical.
+**Web editor implemented (MISC-0163):** [shared React/TypeScript editor](../../OmniDesign/web/README.md), native JSON roundtrip, IndexedDB autosave, SVG/PNG export and desktop/mobile-sized controls. The service and Android shell are not deployed yet; next owners: MISC-0165 (OmniHub service), MISC-0168 (Android WebView packaging), MISC-0166 (agent integration). Only the R3 visual direction is approved; older R1/R2 mockups are historical.

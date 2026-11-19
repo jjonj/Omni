@@ -1,6 +1,6 @@
 # OmniDesign v1 — native document and platform contract (MISC-0162)
 
-**Status:** design and machine-readable schema complete; **no production editor, service, sync or Android screen is implemented by this task**. Downstream work: MISC-0163 (editor), MISC-0165 (service), then Android/agent/integration tasks. Source owner is `D:/SSDProjects/Omni`.
+**Status:** design and machine-readable schema complete. MISC-0163 subsequently implemented the shared desktop/mobile-responsive web editor at `OmniDesign/web/`; **service, sync and Android host integration are not implemented in this design task**. Downstream work: MISC-0165 (service), then Android/agent/integration tasks. Source owner is `D:/SSDProjects/Omni`.
 
 ## 1. Approved visual/interaction contract
 
@@ -106,7 +106,7 @@ Exports are **derived** from saved native data, never used as backing storage. W
 
 ## 7. Task boundary / implementation checklist
 
-- **MISC-0163 (web editor):** build shared React/TS graph editor and native schema serializer/validator, adapt R3 desktop + Android-sized chrome, fit/zoom/ports/selection/group/layers/undo, IndexedDB atomic snapshots, native load/save and export. Visual parity must follow **approved R3**, not R2.
+- **MISC-0163 (web editor):** implemented in `OmniDesign/web/` as one responsive React/TS SVG canvas with schema validator, fit/zoom/ports/selection/group/layers/undo, IndexedDB atomic snapshots, native import/export and PNG/SVG output. The implementation uses a small shared SVG pointer engine rather than React Flow internal geometry: group-local paths and typed endpoints stay in one native coordinate model, avoiding a separate conversion layer. Visual design follows **approved R3**, not R2.
 - **MISC-0165 (service):** FastAPI + SQLite WAL service, immutable version history, proposal/accept/diff contract, revision CAS + idempotency, on-demand Gateway registration, stable URLs, health identity and storage path. Verify PC cold-start/Hub reconnect after implementing; update Omni Registry service entry **once implemented**.
 - **Android follow-up:** package identical built editor in Android assets, Compose navigation + WebViewAssetLoader, scoped Kotlin transport bridge, offline first launch, bidirectional deep links, physical phone sync/conflict flow. Do not create a parallel Compose canvas editor.
 - **Agent follow-up:** teach agent tools to retrieve/validate native documents and create revision-pinned proposals; current/proposed diff/approval UI in same editor. Avoid replacing the document with Mermaid/SVG.
