@@ -363,33 +363,50 @@ class SignalRClient(
     private val manualStop = AtomicBoolean(false)
     private val connectivityManager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
     @Volatile private var connectedDefaultNetwork: Network? = null
+    // A network callback wakes a suspended reconnect attempt without polling offline.
+    private val networkRevision = MutableStateFlow(0L)
+    @Volatile private var validatedDefaultNetwork = false
     @Volatile private var networkRecoveryJob: Job? = null
+
+    private fun hasNetworkRoute(): Boolean = connectivityManager.activeNetwork != null
     private val networkCallback = object : ConnectivityManager.NetworkCallback() {
         override fun onAvailable(network: Network) {
+            validatedDefaultNetwork = false
+            // Wake the retry loop immediately, including when it is sleeping
+            // between attempts. The callback itself never sends a message.
+            networkRevision.value++
             if (manualStop.get() || networkRecoveryJob?.isActive == true) return
-            // Android can keep an old WebSocket marked CONNECTED across a
-            // cellular/Wi-Fi handover. Its TCP route is no longer usable.
             val changed = connectedDefaultNetwork?.let { it != network } == true
             if (!changed && (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED ||
                 isConnecting.get() || connectJob?.isActive == true || reconnectJob?.isActive == true)) return
             networkRecoveryJob = coroutineScope.launch {
-                delay(2_500)
-                if (manualStop.get()) return@launch
+                delay(250) // Coalesce rapid VPN/Wi-Fi callbacks without delaying recovery.
+                if (manualStop.get() || !hasNetworkRoute() || reconnectJob?.isActive == true) return@launch
                 val stillChanged = connectedDefaultNetwork?.let {
                     it != connectivityManager.activeNetwork
                 } == true
                 if (!stillChanged && (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED ||
-                    isConnecting.get() || connectJob?.isActive == true || reconnectJob?.isActive == true)) return@launch
+                    isConnecting.get() || connectJob?.isActive == true)) return@launch
                 requestConnect(force = stillChanged, reason = if (stillChanged) "default network changed" else "network available")
             }
         }
+        override fun onCapabilitiesChanged(network: Network, capabilities: NetworkCapabilities) {
+            if (network != connectivityManager.activeNetwork) return
+            val validated = capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+            if (validated && !validatedDefaultNetwork) networkRevision.value++
+            validatedDefaultNetwork = validated
+        }
         override fun onLost(network: Network) {
-            // Android may temporarily report no default network while changing
-            // between Wi-Fi and VPN. Only the actual Hub socket closing is a
-            // reason to flip connected -> disconnected and hold queued actions.
-            if (hubConnection?.connectionState != com.microsoft.signalr.HubConnectionState.CONNECTED &&
-                connectivityManager.activeNetwork == null) {
+            validatedDefaultNetwork = false
+            networkRevision.value++
+            // Do not probe the Hub while Android has no default network.
+            // Explicitly retire any stale CONNECTED socket; a link restoration
+            // will wake the suspended reconnect job above.
+            if (!hasNetworkRoute() && !manualStop.get()) {
+                isHubAuthenticated = false
                 _connectionState.value = "Waiting for network..."
+                mainViewModel.setConnected(false)
+                requestConnect(force = true, reason = "default network lost")
             }
         }
     }
@@ -768,10 +785,19 @@ class SignalRClient(
 
     @Synchronized
     private fun requestConnect(force: Boolean, reason: String) {
+        // Do not launch a timed socket probe without an Android network route.
+        // The reconnect coroutine suspends until the network callback wakes it.
+        if (!force && !hasNetworkRoute()) {
+            manualStop.set(false)
+            _connectionState.value = "Waiting for network..."
+            scheduleReconnect("Network unavailable")
+            return
+        }
         // Multiple Android entry points (activity, foreground service, receivers) call startConnection.
         // A routine ensure-connected request must not cancel an active connection or retry cycle.
         if (!force && !manualStop.get() && (
-                hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED ||
+                (hasNetworkRoute() && connectedDefaultNetwork == connectivityManager.activeNetwork &&
+                    hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) ||
                 isConnecting.get() || connectJob?.isActive == true || reconnectJob?.isActive == true
             )) return
 
@@ -792,7 +818,8 @@ class SignalRClient(
         reason: String,
         allowScheduleReconnect: Boolean
     ): Boolean {
-        if (!force && hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
+        if (!force && hasNetworkRoute() && connectedDefaultNetwork == connectivityManager.activeNetwork &&
+            hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
             _connectionState.value = "Connected"
             return true
         }
@@ -804,8 +831,17 @@ class SignalRClient(
 
         try {
             if (token != connectionToken.get()) return false
-            // Another attempt may have connected while we waited for the connection lock.
-            if (!force && hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
+            if (!hasNetworkRoute()) {
+                // A previously CONNECTED socket may survive a network loss;
+                // retire it without attempting a handshake while offline.
+                stopHubConnectionInternal()
+                _connectionState.value = "Waiting for network..."
+                if (allowScheduleReconnect && !manualStop.get()) scheduleReconnect("Network unavailable")
+                return false
+            }
+            // Another attempt may have connected on the current network.
+            if (!force && connectedDefaultNetwork == connectivityManager.activeNetwork &&
+                hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
                 _connectionState.value = "Connected"
                 return true
             }
@@ -1002,23 +1038,34 @@ class SignalRClient(
     @Synchronized
     private fun scheduleReconnect(reason: String) {
         diagnostics.record("connection", "reconnecting", source = "SignalRClient", eventName = "reconnect_scheduled")
-        if (manualStop.get() || hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) return
+        if (manualStop.get() || (hasNetworkRoute() &&
+            connectedDefaultNetwork == connectivityManager.activeNetwork &&
+            hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED)) return
         if (reconnectJob?.isActive == true) return
 
         reconnectJob = coroutineScope.launch {
             var attempt = 0
             while (!manualStop.get()) {
+                if (!hasNetworkRoute()) {
+                    _connectionState.value = "Waiting for network..."
+                    // No timer or retries offline; onAvailable resumes immediately.
+                    networkRevision.first { hasNetworkRoute() }
+                    attempt = 0
+                }
                 val delayMs = getRetryDelay(attempt)
                 if (delayMs > 0) {
+                    val revision = networkRevision.value
                     _connectionState.value = "Reconnecting in ${delayMs / 1000}s..."
-                    mainViewModel.addLog("Reconnecting in ${delayMs / 1000}s (Attempt ${attempt + 1})...", com.omni.sync.ui.screen.LogType.INFO)
-                    delay(delayMs)
-                } else {
-                    mainViewModel.addLog("Attempting immediate reconnection...", com.omni.sync.ui.screen.LogType.INFO)
+                    // Cancel the backoff as soon as Android reports restored/changed connectivity.
+                    val restored = withTimeoutOrNull(delayMs) {
+                        networkRevision.first { it != revision }
+                    } != null
+                    if (restored) attempt = 0
                 }
-
-                // A concurrent start may have recovered connectivity during the retry delay.
-                if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) return@launch
+                if (!hasNetworkRoute()) continue
+                // A concurrent start may have recovered connectivity during the delay.
+                if (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED &&
+                    connectedDefaultNetwork == connectivityManager.activeNetwork && isHubAuthenticated) return@launch
                 val token = connectionToken.incrementAndGet()
                 val success = connectInternal(token, force = false, reason = reason, allowScheduleReconnect = false)
                 if (success) return@launch
