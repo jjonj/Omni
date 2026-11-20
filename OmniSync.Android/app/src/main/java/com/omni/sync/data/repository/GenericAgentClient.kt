@@ -109,8 +109,19 @@ private data class SavedAgentRequest(
     var stableRecipientJson: String? = null,
     val kind: String? = null,
     val deliveryMode: String? = null,
-    val maxActiveWorkers: Int? = null
+    val maxActiveWorkers: Int? = null,
+    /** Count of same-ID retransmissions for diagnostics; not a delivery cutoff. */
+    var autoRetries: Int = 0
 )
+
+/** Hub journals clientRequestId before dispatch for 24h. Retransmit only a
+ * receipt-less Unknown with the SAME ID during a conservative 23h window.
+ * A fixed attempt cap would exhaust during a bad cellular stretch, long before
+ * a brief usable connection returns. */
+private const val SAFE_RESUBMIT_WINDOW_MS = 23L * 3600 * 1000
+private fun retryableUnknown(item: SavedAgentRequest) =
+    item.state == "Unknown" && item.operationId == null &&
+        System.currentTimeMillis() - item.createdAt < SAFE_RESUBMIT_WINDOW_MS
 
 /**
  * Android-side client infrastructure for the generic provider API.
@@ -231,9 +242,10 @@ class GenericAgentClient(
         scope.launch {
             signalR.hubAuthenticated.collectLatest { authenticated ->
                 if (authenticated) {
-                    refresh()
-                    recoverCapacityCreate()
+                    // Send durable messages before the potentially slow paged catalog.
                     drain()
+                    recoverCapacityCreate()
+                    refresh()
                 } else {
                     _status.value = "Offline; messages are saved on this device."
                 }
@@ -332,14 +344,31 @@ class GenericAgentClient(
                 if (signalR.hubAuthenticated.value && _selected.value != null) watchSelection()
             }
         }
+        // Independent delivery clock: a slow catalog refresh or status poll must
+        // never monopolize a brief cellular connection window.
+        scope.launch {
+            while (true) {
+                delay(6_000)
+                if (signalR.hubAuthenticated.value) {
+                    try { drain() } catch (e: Exception) {
+                        Log.w("GenericAgents", "Outbox drain will retry", e)
+                    }
+                }
+            }
+        }
+        scope.launch {
+            while (true) {
+                delay(30_000)
+                if (signalR.hubAuthenticated.value) refresh()
+            }
+        }
         scope.launch {
             while (true) {
                 delay(30_000)
                 if (signalR.hubAuthenticated.value) {
-                    refresh()
-                    // Accepted/Queued operations also need periodic reconciliation even
-                    // when no new pending items exist.
-                    drain()
+                    try { reconcileAccepted() } catch (e: Exception) {
+                        Log.w("GenericAgents", "Receipt reconciliation will retry", e)
+                    }
                 }
             }
         }
@@ -1027,7 +1056,7 @@ class GenericAgentClient(
         }
         return try {
             val detail=signalR.agentCall("sessions.get", mapOf("session" to mapOf(
-                "provider" to item.provider,"id" to item.target))).asJsonObject
+                "provider" to item.provider,"id" to item.target)), timeoutSeconds = 12L).asJsonObject
             val status=detail.obj("state")?.str("activity") ?: "Unknown"
             val currentBinding=detail.str("conversation")
             // Recheck the PC's authoritative full-conversation flag before draining
@@ -1071,28 +1100,33 @@ class GenericAgentClient(
     }
     /**
      * Single serialized drain: Pending/Blocked messages are auto-submitted
-     * ONLY if preflight capabilities/readiness allow it. Network ambiguity
-     * remains Unknown and is NEVER retransmitted automatically.
+     * ONLY if preflight capabilities/readiness allow it. A receipt-less
+     * Unknown is resubmitted with the SAME clientRequestId inside the Hub's
+     * journal window (idempotent, see [retryableUnknown]); never after it.
      */
     suspend fun drain() = operationMutex.withLock {
         if (!outboxWritable) return@withLock
         if (!signalR.hubAuthenticated.value) return@withLock
-        reconcileAccepted()
-        val pending = synchronized(diskGuard) { entries.values.filter { it.state in listOf("Pending","Blocked") }.map { it.id } }
+        val sendable = { it: SavedAgentRequest -> it.state in listOf("Pending","Blocked") || retryableUnknown(it) }
+        val pending = synchronized(diskGuard) { entries.values.filter(sendable).map { it.id } }
         for (id in pending) {
             if (!signalR.hubAuthenticated.value) break
             val preview = synchronized(diskGuard) { entries[id]?.copy() } ?: continue
             if (!canDeliver(preview)) continue
             val item = synchronized(diskGuard) {
                 val current = entries[id] ?: return@synchronized null
-                if (current.state !in listOf("Pending","Blocked")) return@synchronized null
+                if (!sendable(current)) return@synchronized null
+                if (current.state == "Unknown") current.autoRetries++
                 current.state = "InFlight"
                 persistOutbox()
                 publishOutbox()
                 current.copy()
             } ?: continue
             try {
-                val answer = signalR.agentCall("messages.submit", buildRequest(item)).asJsonObject
+                // A short timeout gives intermittent mobile links more chances to
+                // recover; the Hub's durable clientRequestId prevents duplicates.
+                val answer = signalR.agentCall("messages.submit", buildRequest(item),
+                    timeoutSeconds = 20L).asJsonObject
                 val operationId = answer.str("id")
                 val state = answer.str("state") ?: "Unknown"
                 synchronized(diskGuard) {
@@ -1111,9 +1145,11 @@ class GenericAgentClient(
                         // show it as Failed with the reason instead of looking pending.
                         val knownUnsupported=e.message?.startsWith("Unsupported:")==true
                         it.state = if (knownUnsupported) "Failed" else "Unknown"
-                        it.error = if (knownUnsupported)
-                            "Not sent: ${e.message}"
-                        else "Unconfirmed delivery; check the recipient before retrying: ${e.message}"
+                        it.error = when {
+                            knownUnsupported -> "Not sent: ${e.message}"
+                            retryableUnknown(it) -> "Unconfirmed delivery; retrying automatically (same request, no duplicate): ${e.message}"
+                            else -> "Unconfirmed delivery; check the recipient before retrying: ${e.message}"
+                        }
                     }
                     persistOutbox()
                     publishOutbox()
@@ -1128,12 +1164,14 @@ class GenericAgentClient(
         // A large offline backlog must not monopolize the single serialized
         // drain with hundreds of network round trips on reconnect.
         val statuses = synchronized(diskGuard) { entries.values.filter {
-            it.state in listOf("Accepted","Queued") && it.operationId != null
+            it.operationId != null && (it.state in listOf("Accepted","Queued") ||
+                (it.state == "Unknown" && System.currentTimeMillis() - it.createdAt < SAFE_RESUBMIT_WINDOW_MS))
         }.take(12).map { it.id to it.operationId!! } }
         for ((id, operation) in statuses) {
             if (!signalR.hubAuthenticated.value) return
             try {
-                val result = signalR.agentCall("operations.get", mapOf("operation" to operation)).asJsonObject
+                val result = signalR.agentCall("operations.get", mapOf("operation" to operation),
+                    timeoutSeconds = 12L).asJsonObject
                 val state = result.str("state") ?: "Unknown"
                 synchronized(diskGuard) {
                     if (state in listOf("Delivered","Failed","Unknown","Accepted","Queued")) {
@@ -1147,7 +1185,19 @@ class GenericAgentClient(
                         }
                     }
                 }
-            } catch (_: Exception) { /* a missing journal entry is not proof of failed delivery */ }
+            } catch (e: Exception) {
+                // An expired journal entry is not proof of failure, but polling it
+                // forever never resolves anything. Park it as Unknown for the user.
+                if (e.message?.contains("NotFound") != true) continue
+                synchronized(diskGuard) {
+                    entries[id]?.let {
+                        it.state = "Unknown"
+                        it.error = "Hub no longer tracks this request (journal expired); check the session before resending"
+                        persistOutbox()
+                        publishOutbox()
+                    }
+                }
+            }
         }
     }
     /** Discard only messages known not to be in transport. A concurrent drain

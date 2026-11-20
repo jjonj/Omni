@@ -362,21 +362,25 @@ class SignalRClient(
     private val isConnecting = AtomicBoolean(false)
     private val manualStop = AtomicBoolean(false)
     private val connectivityManager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+    @Volatile private var connectedDefaultNetwork: Network? = null
     @Volatile private var networkRecoveryJob: Job? = null
     private val networkCallback = object : ConnectivityManager.NetworkCallback() {
         override fun onAvailable(network: Network) {
-            if (manualStop.get() ||
-                hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED ||
-                isConnecting.get() || connectJob?.isActive == true || reconnectJob?.isActive == true ||
-                networkRecoveryJob?.isActive == true) return
-            // Network/VPN callbacks can fire repeatedly. Coalesce them rather
-            // than forcing a new socket (or perpetually resetting the debounce).
+            if (manualStop.get() || networkRecoveryJob?.isActive == true) return
+            // Android can keep an old WebSocket marked CONNECTED across a
+            // cellular/Wi-Fi handover. Its TCP route is no longer usable.
+            val changed = connectedDefaultNetwork?.let { it != network } == true
+            if (!changed && (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED ||
+                isConnecting.get() || connectJob?.isActive == true || reconnectJob?.isActive == true)) return
             networkRecoveryJob = coroutineScope.launch {
                 delay(2_500)
-                if (manualStop.get() ||
-                    hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED ||
-                    isConnecting.get() || connectJob?.isActive == true || reconnectJob?.isActive == true) return@launch
-                requestConnect(force = false, reason = "network available")
+                if (manualStop.get()) return@launch
+                val stillChanged = connectedDefaultNetwork?.let {
+                    it != connectivityManager.activeNetwork
+                } == true
+                if (!stillChanged && (hubConnection?.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED ||
+                    isConnecting.get() || connectJob?.isActive == true || reconnectJob?.isActive == true)) return@launch
+                requestConnect(force = stillChanged, reason = if (stillChanged) "default network changed" else "network available")
             }
         }
         override fun onLost(network: Network) {
@@ -592,6 +596,9 @@ class SignalRClient(
     }
 
     init {
+        // Restore and drain the persisted AI outbox even if Android restarts
+        // into the foreground service without opening the AI screen.
+        genericAgents
         // Default-network callbacks cover flight Wi-Fi reconnects and cellular
         // switches; the underlying SignalR client still uses HTTPS/TCP normally.
         if (android.os.Build.VERSION.SDK_INT >= 24) {
@@ -715,12 +722,15 @@ class SignalRClient(
         if (attempt <= 0) return 0L
         val cappedAttempt = attempt.coerceAtMost(5)
         val baseDelay = 2000L * (1L shl cappedAttempt)
-        val capped = minOf(baseDelay, 60000L)
+        // A one-minute backoff misses short cellular connectivity windows.
+        // Attempts are serialized, so a 12-second cap does not overlap sockets.
+        val capped = minOf(baseDelay, 12_000L)
         val jitter = Random.nextLong(0, 1500)
         return capped + jitter
     }
 
     private fun onConnected(url: String) {
+        connectedDefaultNetwork = connectivityManager.activeNetwork
         diagnostics.record("connection", "reconnected", source = "SignalRClient", eventName = "connect")
         _connectionState.value = "Connected"
         val baseUrl = url.substringBefore("/signalrhub")
@@ -912,7 +922,7 @@ class SignalRClient(
 
         return try {
             connection.start()
-                .timeout(if (unstableInternet) 75L else 25L, TimeUnit.SECONDS)
+                .timeout(if (unstableInternet) 20L else 25L, TimeUnit.SECONDS)
                 .blockingAwait()
 
             if (token != connectionToken.get()) {
@@ -1869,7 +1879,8 @@ class SignalRClient(
      * SignalR Authenticate; this does not use the removed legacy AI target names.
      * Call on Dispatchers.IO (or another background dispatcher).
      */
-    suspend fun agentCall(method: String, params: Map<String, Any?> = emptyMap()): com.google.gson.JsonElement {
+    suspend fun agentCall(method: String, params: Map<String, Any?> = emptyMap(),
+                          timeoutSeconds: Long = 105L): com.google.gson.JsonElement {
         val create = method == "sessions.create"
         val operationId = (params["clientRequestId"] as? String)
             ?.takeIf { runCatching { java.util.UUID.fromString(it) }.isSuccess }
@@ -1891,7 +1902,7 @@ class SignalRClient(
                 "OmniHub authentication lost before TaskBoard write"
             }
             val raw = conn.invoke(Any::class.java, "AgentCall", method, params)
-                .timeout(105, TimeUnit.SECONDS)
+                .timeout(timeoutSeconds, TimeUnit.SECONDS)
                 .blockingGet()
                 com.google.gson.JsonParser.parseString(gson.toJson(raw))
             }
