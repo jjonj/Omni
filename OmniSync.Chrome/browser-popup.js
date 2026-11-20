@@ -105,6 +105,7 @@ async function cleanTabs(immediate = false) {
   $('clean-tabs').disabled = true;
   $('clean-matches').disabled = true;
   try {
+    show(immediate ? 'Cleaning matching tabs…' : 'Cleaning old tabs…');
     const result = await send(immediate ? 'cleanup:matching-now' : 'cleanup:run');
     await refreshArchive();
     show(cleanupMessage(result, immediate), result.failed > 0);
@@ -143,8 +144,15 @@ chrome.storage.onChanged.addListener((changes, area) => {
     void refreshArchive().catch(error => show(error.message, true));
   }
 });
-void Promise.all([refresh(), refreshArchive()]).then(() => {
-  const query = new URLSearchParams(window.location.search);
-  if (query.has('cleanupResult')) show(query.get('cleanupResult'));
-  if (query.get('confirmMatching') === '1') $('confirm-matching').showModal();
-}).catch(error => show(error.message, true));
+// Context-menu launches must work even when the separate browser-control
+// status endpoint is unavailable: show confirmation/progress immediately.
+const query = new URLSearchParams(window.location.search);
+if (query.has('cleanupResult')) show(query.get('cleanupResult'));
+if (query.get('runOld') === '1') void cleanTabs();
+if (query.get('confirmMatching') === '1') $('confirm-matching').showModal();
+void Promise.allSettled([refresh(), refreshArchive()]).then(results => {
+  const failure = results.find(result => result.status === 'rejected');
+  if (failure && query.get('runOld') !== '1' && !query.has('cleanupResult')) {
+    show(failure.reason?.message || String(failure.reason), true);
+  }
+});

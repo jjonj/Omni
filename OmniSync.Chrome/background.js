@@ -181,17 +181,6 @@ function shouldCleanTab(tabUrl, tabTitle) {
     return false;
 }
 
-function cleanupResultMessage(result, immediate = false) {
-    const summary = `${result.closed} tab${result.closed === 1 ? '' : 's'} closed, ${result.archived} archived` +
-        (result.failed ? `, ${result.failed} failed` : '') + '.';
-    if (immediate) return `${summary} Only tabs matching your cleanup patterns were considered.`;
-    if (result.closed || !result.skippedRecent) return summary;
-    const next = result.nextEligibleAt
-        ? ` Next tracked tab qualifies ${new Date(result.nextEligibleAt).toLocaleString()}.` : '';
-    return `${summary} ${result.skippedRecent} eligible-type tabs are under 72 hours since first tracked` +
-        ` (${result.matchedRecent} match cleanup patterns).${next} Use “Clean matching now” to override the age limit explicitly.`;
-}
-
 async function runCleanup(includeRecentMatching = false) {
     if (!globalThis.TabCleanup) throw Error('Tab cleanup failed to initialize; reload the extension.');
     if (includeRecentMatching) {
@@ -601,23 +590,16 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
             }
         });
     } else if (info.menuItemId === "cleanTabs") {
-        void runCleanup()
-            .then(async result => {
-                const message = cleanupResultMessage(result);
-                if (result.closed === 0) {
-                    // OS notifications can be suppressed: show a visible explanation
-                    // and the already-available explicit matching cleanup action.
-                    const url = new URL(chrome.runtime.getURL("browser-popup.html"));
-                    url.searchParams.set("cleanupResult", message);
-                    await chrome.windows.create({ url: url.toString(), type: "popup", width: 460, height: 580 });
-                } else {
-                    await showCleanupNotification(message);
-                }
-            })
-            .catch(error => {
-                console.error("Clean Tabs failed:", error);
-                void showCleanupNotification(String(error.message || error), true);
-            });
+        // Open feedback before starting cleanup. OS notifications can be hidden,
+        // and without an immediate result users cannot tell a 72h no-op from failure.
+        // The popup runs the same cleanup command as its manual button.
+        void chrome.windows.create({
+            url: chrome.runtime.getURL("browser-popup.html?runOld=1"),
+            type: "popup", width: 460, height: 580
+        }).catch(error => {
+            console.error("Could not open Clean Tabs popup:", error);
+            void showCleanupNotification(String(error.message || error), true);
+        });
     } else if (info.menuItemId === "cleanMatchingTabs") {
         // Recent matching tabs require explicit confirmation before closing.
         void chrome.windows.create({
