@@ -17,7 +17,8 @@ class TaskBoardPhoneClient(
     private val drafts: TaskBoardOfflineDrafts
 ) {
     data class Submission(val operationId: String, val status: String,
-                          val revision: String? = null, val details: String? = null)
+                          val revision: String? = null, val details: String? = null,
+                          val taskId: String? = null)
 
     private val sendMutex = Mutex()
 
@@ -101,6 +102,38 @@ class TaskBoardPhoneClient(
             baseSource = File(root, "_board.md").readText(Charsets.UTF_8),
             edited = draftJson(draft), operationId = operationId)
         return sendSaved(operationId)
+    }
+
+    /** Recover legacy create previews from the PC journal without replaying a write.
+     * A task may have changed revision many times before Syncthing receives it. */
+    suspend fun recoverAppliedCreateIdentities(): Int {
+        var recovered = 0
+        for (pending in drafts.all().filter {
+            it.taskId == "CREATE" && it.state == "applied" && it.createdTaskId == null
+        }.take(8)) {
+            val response = try {
+                signalR.agentCall("taskboard.phone.create.receipt", mapOf(
+                    "operationId" to pending.operationId, "board" to pending.boardId,
+                    "baseBoardRevision" to pending.baseRevision,
+                    "draft" to com.google.gson.Gson().fromJson(pending.edited, Map::class.java)
+                ))
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                // Older Hub versions may not expose the read-only lookup yet.
+                Log.w("TaskBoardPhone", "Create receipt lookup deferred: ${error.message}")
+                break
+            }
+            if (!response.isJsonObject) break
+            val receipt = response.asJsonObject
+            if (receipt.get("operationId")?.asString != pending.operationId) break
+            if (receipt.get("status")?.asString != "applied") continue
+            val taskId = receipt.get("taskId")?.asString ?: continue
+            val revision = receipt.get("revision")?.asString ?: continue
+            drafts.recordCreateIdentity(pending.operationId, revision, taskId)
+            recovered++
+        }
+        return recovered
     }
 
     /** Real desktop execution intents, not a phone-only simulated queue. */
@@ -336,9 +369,13 @@ class TaskBoardPhoneClient(
             "applied" -> {
                 val revision = data.get("revision")?.asString
                     ?: error("PC success omitted revision; phone draft retained")
-                if (isCreate) drafts.acknowledgeCreate(pending.operationId, revision)
-                else drafts.acknowledge(pending.operationId, pending.operationId)
-                Submission(pending.operationId, "applied", revision)
+                val createdTaskId = if (isCreate) data.get("taskId")?.asString
+                    ?: data.getAsJsonObject("task")?.get("id")?.asString else null
+                if (isCreate) {
+                    val taskId = createdTaskId ?: error("PC create success omitted task ID; draft retained")
+                    drafts.acknowledgeCreate(pending.operationId, revision, taskId)
+                } else drafts.acknowledge(pending.operationId, pending.operationId)
+                Submission(pending.operationId, "applied", revision, taskId = createdTaskId)
             }
             "conflict" -> {
                 drafts.conflict(

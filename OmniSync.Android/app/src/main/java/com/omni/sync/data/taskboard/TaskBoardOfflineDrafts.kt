@@ -25,7 +25,8 @@ class TaskBoardOfflineDrafts(context: Context) {
         val createdAt: Long,
         val state: String = "draft",
         val currentSource: String? = null,
-        val explanation: String? = null
+        val explanation: String? = null,
+        val createdTaskId: String? = null
     )
 
     private fun fileFor(id: String): File {
@@ -45,6 +46,7 @@ class TaskBoardOfflineDrafts(context: Context) {
         put("state", row.state)
         put("currentSource", row.currentSource)
         put("explanation", row.explanation)
+        put("createdTaskId", row.createdTaskId)
     }
 
     private fun decode(file: File): Pending {
@@ -60,7 +62,8 @@ class TaskBoardOfflineDrafts(context: Context) {
             createdAt = json.getLong("createdAt"),
             state = json.getString("state"),
             currentSource = json.optString("currentSource").takeIf { it.isNotBlank() && it != "null" },
-            explanation = json.optString("explanation").takeIf { it.isNotBlank() && it != "null" }
+            explanation = json.optString("explanation").takeIf { it.isNotBlank() && it != "null" },
+            createdTaskId = json.optString("createdTaskId").takeIf { it.isNotBlank() && it != "null" }
         )
     }
 
@@ -136,17 +139,34 @@ class TaskBoardOfflineDrafts(context: Context) {
         }
     }
 
-    /** Keep confirmed creates visible until the synced Markdown carries the exact
-     * PC revision. Retaining the original journal entry avoids matching by title
-     * (two legitimate tasks can have identical titles). */
+    /** Persist the PC-assigned task ID. Revisions change as soon as an agent
+     * edits a task; they cannot be used as durable create identities. */
     @Synchronized
-    fun acknowledgeCreate(operationId: String, revision: String) {
+    fun acknowledgeCreate(operationId: String, revision: String, taskId: String) {
+        require(revision.matches(Regex("[a-fA-F0-9]{64}")))
+        require(taskId.matches(Regex("[A-Za-z][A-Za-z0-9]{1,11}-[0-9]+")))
+        updateCreate(operationId) { it.copy(state = "applied", currentSource = revision,
+            createdTaskId = taskId) }
+    }
+
+    /** Upgrade previously acknowledged creates using a read-only PC journal
+     * lookup. Never replay a create merely to learn its task ID. */
+    @Synchronized
+    fun recordCreateIdentity(operationId: String, revision: String, taskId: String) {
+        require(revision.matches(Regex("[a-fA-F0-9]{64}")))
+        require(taskId.matches(Regex("[A-Za-z][A-Za-z0-9]{1,11}-[0-9]+")))
+        updateCreate(operationId) { previous ->
+            require(previous.state == "applied" && previous.currentSource == revision)
+            previous.copy(createdTaskId = taskId)
+        }
+    }
+
+    private fun updateCreate(operationId: String, change: (Pending) -> Pending) {
         val file = fileFor(operationId)
         val previous = decode(file)
-        require(previous.taskId == "CREATE" && revision.matches(Regex("[a-fA-F0-9]{64}")))
-        val changed = previous.copy(state = "applied", currentSource = revision)
+        require(previous.taskId == "CREATE")
         val temporary = File(root, "$operationId.tmp")
-        temporary.writeText(encode(changed).toString(), Charsets.UTF_8)
+        temporary.writeText(encode(change(previous)).toString(), Charsets.UTF_8)
         try {
             Files.move(temporary.toPath(), file.toPath(),
                 StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
@@ -156,12 +176,14 @@ class TaskBoardOfflineDrafts(context: Context) {
         }
     }
 
-    /** Retire predictions only when the authoritative synced task is present. */
+    /** Retire only after Syncthing supplies the actual PC task or its archived
+     * ID. Pre-upgrade drafts retain the exact-revision fallback. */
     @Synchronized
-    fun retireSyncedCreates(boardId: String, revisions: Set<String>) {
-        all().filter { it.boardId == boardId && it.taskId == "CREATE" &&
-            it.state == "applied" && it.currentSource in revisions }
-            .forEach { fileFor(it.operationId).delete() }
+    fun retireSyncedCreates(boardId: String, taskIds: Set<String>, revisions: Set<String>) {
+        all().filter { it.boardId == boardId && it.taskId == "CREATE" && it.state == "applied" &&
+            (if (it.createdTaskId != null) it.createdTaskId in taskIds
+             else it.currentSource in revisions) }
+            .forEach { check(fileFor(it.operationId).delete()) { "Could not retire synced create" } }
     }
 
     /** Only call this after the PC returns a durable receipt for this exact ID. */

@@ -367,7 +367,9 @@ private fun TaskBoardContents(parentPadding: PaddingValues, signalR: SignalRClie
         val current = snapshot
         val boardId = runCatching { phoneWriter.boardIdentity(store.root) }.getOrNull()
         if (current != null && boardId != null) {
-            offlineDrafts.retireSyncedCreates(boardId, current.tasks.map { it.revision }.toSet())
+            offlineDrafts.retireSyncedCreates(boardId,
+                current.tasks.map { it.id }.toSet() + current.archivedIds,
+                current.tasks.map { it.revision }.toSet())
         }
         val persisted = if (boardId == null) emptyList() else offlineDrafts.all()
             .filter { it.boardId == boardId && it.taskId == "CREATE" }
@@ -656,14 +658,22 @@ private fun TaskBoardContents(parentPadding: PaddingValues, signalR: SignalRClie
     // survive app restarts and replay with the original idempotent operation ID.
     LaunchedEffect(phoneWriter) {
         delay(1200) // Allow a newly submitted edit to complete its first attempt.
+        var lastReceiptCheck = 0L
         while (true) {
             val hasPending = offlineDrafts.all().any { it.state == "draft" }
             if (hasPending) signalR.ensureAgentAuthentication()
-            if (hasPending && signalR.hubAuthenticated.value) {
+            if (signalR.hubAuthenticated.value) {
                 try {
-                    val delivered = withContext(Dispatchers.IO) { phoneWriter.syncPending() }
+                    val delivered = if (hasPending) withContext(Dispatchers.IO) {
+                        phoneWriter.syncPending()
+                    } else 0
                     if (delivered > 0) refresh()
-                    pendingPhoneEditsRevision++
+                    val now = android.os.SystemClock.elapsedRealtime()
+                    val recovered = if (lastReceiptCheck == 0L || now - lastReceiptCheck > 45_000L) {
+                        lastReceiptCheck = now
+                        withContext(Dispatchers.IO) { phoneWriter.recoverAppliedCreateIdentities() }
+                    } else 0
+                    if (hasPending || recovered > 0) pendingPhoneEditsRevision++
                 } catch (cancelled: CancellationException) {
                     throw cancelled
                 } catch (failure: Exception) {
@@ -1936,12 +1946,19 @@ private fun TaskBoardColumns(
         mutableStateOf(setOf("draft", "blocked", "done"))
     }
     Column(modifier = Modifier.fillMaxSize()) {
-        // Render local creates before the PC ACK and retain them until the exact
-        // confirmed revision arrives via file sync. No fabricated editable ID.
+        // Only unresolved creates need full preview cards. Confirmed PC creates
+        // share one compact sync notice until the assigned task ID arrives locally.
+        val unresolvedCreates = predictedCreates.filter { it.status != "Created on PC · awaiting phone sync" }
+        val confirmedCreates = predictedCreates.size - unresolvedCreates.size
         if (predictedCreates.isNotEmpty()) {
             Column(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
                 verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                predictedCreates.takeLast(4).asReversed().forEach { pending ->
+                if (confirmedCreates > 0) Text(
+                    "$confirmedCreates created on PC · awaiting task file sync",
+                    color = TaskBoardColors.muted, style = MaterialTheme.typography.labelSmall,
+                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                )
+                unresolvedCreates.takeLast(4).asReversed().forEach { pending ->
                     Surface(color = TaskBoardColors.card, shape = RoundedCornerShape(8.dp),
                         modifier = Modifier.fillMaxWidth().border(1.dp,
                             TaskBoardColors.teal.copy(alpha = .55f), RoundedCornerShape(8.dp))) {
@@ -1954,7 +1971,7 @@ private fun TaskBoardColumns(
                         }
                     }
                 }
-                if (predictedCreates.size > 4) Text("+${predictedCreates.size - 4} more pending sync",
+                if (unresolvedCreates.size > 4) Text("+${unresolvedCreates.size - 4} more pending sync",
                     color = TaskBoardColors.muted, style = MaterialTheme.typography.labelSmall)
             }
         }
