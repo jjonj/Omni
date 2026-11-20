@@ -52,6 +52,30 @@ const chrome = {
   scripting: { async executeScript({func,args,target}) {
     assert.equal(target.tabId, tab.id);
     injectionCalls++;
+    if (injectionMode === "frames") {
+      if (target.documentIds) {
+        assert.ok(["doc-child-1234", "doc-opaque-1234"].includes(target.documentIds[0]),
+          "Exact child document must be targeted");
+        assert.ok(["https://widget.example.test", "null"].includes(args[1]),
+          "Frame origin must be pinned");
+        assert.equal(args[2], "body > button:nth-of-type(1)");
+        return [{frameId: args[1] === "null" ? 8 : 7,
+          result: {clicked:true, selector:args[2]}}];
+      }
+      const main = func(...args);
+      const child = {
+        origin:"https://widget.example.test", title:"Support chat",
+        text:"Conversation input", shadowRootCount:0, iframeCount:0,
+        elements:[{tag:"button", role:"", label:"Continue", selector:"body > button:nth-of-type(1)"}],
+        matches:[{snippet:"Conversation input", selector:"body > button:nth-of-type(1)"}],
+        count:1, truncated:false, readyState:"complete"
+      };
+      const opaque = { ...child, origin:"null", title:"Opaque chat frame",
+        elements:[{tag:"button", role:"", label:"Opaque action", selector:"body > button:nth-of-type(1)"}] };
+      return [{frameId:0, result:main},
+        {frameId:7, documentId:"doc-child-1234", result:child},
+        {frameId:8, documentId:"doc-opaque-1234", result:opaque}];
+    }
     if (injectionMode === "empty") return [];
     if (injectionMode === "navigated") throw Error("No frame with id 0 in tab 14");
     if (injectionMode === "restricted") throw Error("Cannot access contents of URL: https://example.test/?access_token=DO_NOT_RETURN");
@@ -240,12 +264,55 @@ function message(command, args = {}) {
   const ssidPath = snapshot.elements.find(el => el.selector.includes("div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1)") && el.tag === "input");
   assert.ok(ssidPath?.selector.split(" > ").length >= 14, "Deep controls need complete body-anchored selectors");
   assert.ok(snapshot.elements.every(x => x.selector && x.tag));
+  // A mounted support widget's open shadow DOM must be discoverable and actionable.
+  const shadowHost = new FakeElement("DIV", {id:"support-widget"});
+  shadowHost.parentElement = body;
+  body.children.push(shadowHost);
+  const shadowButton = new FakeElement("BUTTON", {}, "Start conversation");
+  const shadowRoot = {
+    host:shadowHost, children:[shadowButton],
+    querySelectorAll(sel) { return sel === "*" || sel.includes("button") ? [shadowButton] : []; },
+    querySelector(sel) { return sel === "button:nth-of-type(1)" ? shadowButton : null; }
+  };
+  shadowButton.parentNode = shadowRoot;
+  shadowButton.getRootNode = () => shadowRoot;
+  shadowHost.shadowRoot = shadowRoot;
+  const oldAll = document.querySelectorAll;
+  const oldQuery = document.querySelector;
+  document.querySelectorAll = sel => sel === "*" ? body.children : oldAll(sel);
+  const nested = api.inspectOrAct("inspect", "https://example.test", "", "");
+  const foundShadow = nested.elements.find(el => el.label === "Start conversation");
+  assert.ok(foundShadow?.selector.includes(" >>> "), "Open shadow controls need a scoped selector");
+  assert.equal(nested.shadowRootCount, 1);
+  const hostSelector = foundShadow.selector.split(" >>> ")[0];
+  document.querySelector = sel => sel === hostSelector ? shadowHost : oldQuery(sel);
+  assert.equal(api.inspectOrAct("click", "https://example.test", foundShadow.selector, "").clicked, true);
+  assert.equal(shadowButton.clicked, true);
+  document.querySelector = oldQuery;
+  document.querySelectorAll = oldAll;
+  body.children.pop();
+  shadowHost.shadowRoot = null;
+
   data.omniBrowserControl = {mode:"local",enabled:true};
   tab.url = "http://192.168.1.1/?session=REDACT_ME";
   assert.equal((await api.execute({action:"tabs",deadline:Date.now()+10000})).tabs[0].url, "http://192.168.1.1/");
   tab.url = "https://example.test/?access_token=hidden";
   const work = (action, arguments_={}) => ({action, deadline:Date.now()+10000,
     arguments:{tabId:14, ...arguments_}});
+  // Child-frame discovery must expose actionable, origin-bound selectors.
+  injectionMode = "frames";
+  const framed = await api.execute(work("inspect"));
+  const childControl = framed.elements.find(el => el.frameId === 7);
+  assert.ok(childControl?.selector.startsWith("@frame(7,https%3A%2F%2Fwidget.example.test,doc-child-1234) "));
+  assert.equal(framed.frames[0].origin, "https://widget.example.test");
+  assert.equal((await api.execute(work("click", {selector:childControl.selector}))).clicked, true);
+  const opaqueControl = framed.elements.find(el => el.frameId === 8);
+  assert.ok(opaqueControl?.selector.startsWith("@frame(8,null,doc-opaque-1234) "));
+  assert.equal((await api.execute(work("click", {selector:opaqueControl.selector}))).clicked, true);
+  assert.equal((await api.execute(work("find", {text:"Conversation input"}))).count, 2);
+  assert.equal((await api.execute(work("page_state"))).frames[0].frameId, 7);
+  assert.equal((await api.execute(work("click", {selector:"@frame(bad) #x"}))).code, "DOM_INVALID_SELECTOR");
+  injectionMode = "normal";
   // No result after a click can mean successful click followed by navigation.
   // Never resend a potentially mutating action automatically.
   injectionMode = "empty";
@@ -350,5 +417,5 @@ function message(command, args = {}) {
   assert.equal(data.browserControlAutoReloadCount, 1);
   assert.equal(data.browserControlLastCommandAt, fakeNow - 3 * 60 * 1000);
   await message("disable"); // Stop background poll loop before test exit.
-  console.log("PASS: unrestricted HTTP and form actions, redacted inspection, safe click outcomes, idle unpacked reload");
+  console.log("PASS: shadow DOM and child-frame routing, redacted inspection, safe click outcomes, idle reload");
 })().catch(err => { console.error(err); process.exitCode = 1; });

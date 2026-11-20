@@ -1,4 +1,4 @@
-/* OmniMCP loopback browser bridge (MV3 service worker).
+﻿/* OmniMCP loopback browser bridge (MV3 service worker).
  * Auto-starts locally. No pairing prompts or per-site approvals required.
  * Host permissions come from the installed extension manifest. */
 (() => {
@@ -10,7 +10,7 @@
   const AUTO_RELOAD_ALARM = "browser-control-development-reload";
   const RELOAD_KEY = "browserControlAutoReloadCount";
   const LAST_COMMAND_KEY = "browserControlLastCommandAt";
-  const BUILD_MARKER = "browser-control-dom-outcomes-20261029";
+  const BUILD_MARKER = "browser-control-nested-v2-20261120";
   const AUTO_RELOAD_MINUTES = 5;
   const QUIET_BEFORE_RELOAD_MS = 2 * 60 * 1000;
   let lastCommandAt = Date.now();
@@ -85,7 +85,7 @@
     // Once a mutation begins, never treat an exception as safely retryable.
     let actionStarted = false;
     try {
-    if (location.origin !== expectedOrigin) throw Error("Tab navigated outside approved origin.");
+    if (expectedOrigin && location.origin !== expectedOrigin) throw Error("Tab navigated outside approved origin.");
     const sensitive = /(passw|passwd|secret|token|auth|otp|one.?time|2fa|pin|cvv|cvc|card.?num|credit|debit|payment|social.?security|iban|bank|recovery|api.?key|session)/i;
     const visible = el => {
       if (!el || !el.getClientRects().length) return false;
@@ -94,23 +94,66 @@
     };
     const label = el => String(el.getAttribute("aria-label") || el.innerText ||
       el.getAttribute("placeholder") || "").replace(/\s+/g, " ").slice(0, 90);
-    const path = el => {
-      const parts = [];
-      // Walk all the way to body: truncating after 8 levels produced selectors
-      // that looked plausible but pointed at entirely different router controls.
-      for (let cur = el; cur && cur !== document.body; cur = cur.parentElement) {
-        const siblings = [...(cur.parentElement?.children || [])]
-          .filter(child => child.tagName === cur.tagName);
-        const tag = cur.tagName.toLowerCase();
-        parts.unshift(tag + ":nth-of-type(" + (siblings.indexOf(cur) + 1) + ")");
+    const inViewport = el => {
+      const rect = el.getBoundingClientRect?.();
+      return !rect || (rect.right > 0 && rect.bottom > 0 &&
+        rect.left < window.innerWidth && rect.top < window.innerHeight);
+    };
+    // Walk open shadow roots as well as the normal document. Chat widgets
+    // frequently mount controls in shadow DOM, invisible to document.querySelector.
+    const roots = () => {
+      const found = [document];
+      for (let n = 0; n < found.length && found.length < 32; n++) {
+        const hosts = found[n].querySelectorAll("*");
+        for (const host of hosts) {
+          if (host.shadowRoot) found.push(host.shadowRoot);
+          if (found.length >= 32) break;
+        }
       }
-      const selector = "body > " + parts.join(" > ");
-      // If the structural path is too long for tool inputs, use an exact unique ID.
-      if (selector.length > 512 && el.id) {
-        const byId = `[id=${JSON.stringify(el.id)}]`;
-        if (byId.length <= 512 && document.querySelectorAll(byId).length === 1) return byId;
+      return found;
+    };
+    const path = el => {
+      const segments = [];
+      let node = el;
+      while (node) {
+        const root = node.getRootNode?.() || document;
+        const stop = root === document ? document.body : root;
+        const parts = [];
+        for (let cur = node; cur && cur !== stop; cur = cur.parentElement || cur.parentNode) {
+          const parent = cur.parentElement || cur.parentNode;
+          if (!parent) break;
+          const siblings = [...(parent.children || [])].filter(x => x.tagName === cur.tagName);
+          parts.unshift(cur.tagName.toLowerCase() + ":nth-of-type(" + (siblings.indexOf(cur) + 1) + ")");
+        }
+        const part = parts.join(" > ");
+        if (!part) return "";
+        segments.unshift(root === document ? "body > " + part : part);
+        if (!root.host) break;
+        node = root.host;
+      }
+      const selector = segments.join(" >>> ");
+      if (selector.length <= 360) return selector;
+      // Reserve room for a child-frame scope prefix. IDs/test IDs produce
+      // shorter and more stable selectors than deeply nested nth-of-type paths.
+      const root = el.getRootNode?.() || document;
+      for (const attr of ["id", "data-testid"]) {
+        const value = el.getAttribute(attr);
+        if (!value) continue;
+        const unique = "[" + attr + "=" + JSON.stringify(value) + "]";
+        if (root.querySelectorAll(unique).length !== 1) continue;
+        const short = root.host ? path(root.host) + " >>> " + unique : unique;
+        if (short.length <= 360) return short;
       }
       return selector.length <= 512 ? selector : "";
+    };
+    const query = scopedSelector => {
+      let scope = document, element;
+      for (const part of scopedSelector.split(" >>> ")) {
+        element = scope?.querySelector(part.trim());
+        if (!element) return null;
+        scope = element.shadowRoot;
+      }
+      return element;
     };
     if (action === "page_state") {
       return {
@@ -118,7 +161,9 @@
         readyState: document.readyState,
         viewport: { width: window.innerWidth, height: window.innerHeight },
         scroll: { x: Math.round(window.scrollX), y: Math.round(window.scrollY) },
-        pageHeight: Math.round(document.documentElement.scrollHeight)
+        pageHeight: Math.round(document.documentElement.scrollHeight),
+        iframeCount: document.querySelectorAll("iframe").length,
+        shadowRootCount: roots().length - 1
       };
     }
     if (action === "find") {
@@ -127,22 +172,23 @@
       const maxResults = Number.isInteger(options.maxResults) ? options.maxResults : 12;
       if (maxResults < 1 || maxResults > 20) throw Error("Invalid result limit.");
       const matches = [];
-      const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
       let nodesVisited = 0, count = 0;
-      while (walker.nextNode() && nodesVisited++ < 3000 && count < 200) {
-        const node = walker.currentNode, parent = node.parentElement;
-        if (!parent || !visible(parent) ||
-            parent.closest("input, textarea, select, [contenteditable], script, style, noscript, [data-private]") ||
-            sensitive.test(parent.getAttribute("autocomplete") || "")) continue;
-        const text = (node.textContent || "").replace(/\s+/g, " ").trim();
-        if (!text || !text.toLocaleLowerCase().includes(needle)) continue;
-        count++;
-        if (matches.length < maxResults) matches.push({
-          selector: path(parent),
-          snippet: text.slice(0, 180)
-        });
+      for (const root of roots().reverse()) {
+        const walker = document.createTreeWalker(root.body || root, NodeFilter.SHOW_TEXT);
+        while (walker.nextNode() && nodesVisited++ < 4000 && count < 200) {
+          const node = walker.currentNode, parent = node.parentElement;
+          if (!parent || !visible(parent) ||
+              parent.closest("input, textarea, select, [contenteditable], script, style, noscript, [data-private]") ||
+              sensitive.test(parent.getAttribute("autocomplete") || "")) continue;
+          const text = (node.textContent || "").replace(/\s+/g, " ").trim();
+          if (!text || !text.toLocaleLowerCase().includes(needle)) continue;
+          count++;
+          if (matches.length < maxResults) matches.push({ selector: path(parent), snippet: text.slice(0, 180) });
+        }
+        if (nodesVisited >= 4000 || count >= 200) break;
       }
-      return { matches, count, truncated: count >= 200 || nodesVisited > 3000 };
+      return { origin: location.origin, matches, count,
+        truncated: count >= 200 || nodesVisited >= 4000 };
     }
     if (action === "scroll" && !selector) {
       const dx = options.deltaX ?? 0, dy = options.deltaY ?? 0;
@@ -153,29 +199,49 @@
       return { scrolled: true };
     }
     if (action === "inspect") {
+      const discoveredRoots = roots();
       const chunks = [];
-      const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
-      while (walker.nextNode() && chunks.join(" ").length < 5500) {
-        const node = walker.currentNode, parent = node.parentElement;
-        if (!parent || !visible(parent) ||
-            parent.closest("input, textarea, select, [contenteditable], script, style, noscript, [data-private]") ||
-            sensitive.test(parent.getAttribute("autocomplete") || "")) continue;
-        const text = (node.textContent || "").replace(/\s+/g, " ").trim();
-        if (text && text.length < 1000) chunks.push(text);
+      let textLength = 0, nodesVisited = 0;
+      // Shadow content first so a long underlying page cannot hide its chat.
+      for (const root of discoveredRoots.slice().reverse()) {
+        const walker = document.createTreeWalker(root.body || root, NodeFilter.SHOW_TEXT);
+        while (walker.nextNode() && textLength < 4400 && nodesVisited++ < 6000) {
+          const node = walker.currentNode, parent = node.parentElement;
+          if (!parent || !visible(parent) ||
+              parent.closest("input, textarea, select, [contenteditable], script, style, noscript, [data-private]") ||
+              sensitive.test(parent.getAttribute("autocomplete") || "")) continue;
+          const text = (node.textContent || "").replace(/\s+/g, " ").trim();
+          if (text && text.length < 1000) {
+            chunks.push(text);
+            textLength += text.length + 1;
+          }
+        }
       }
-      const elements = [...document.querySelectorAll("a, button, input, textarea, [role=button], select")].slice(0, 400)
-        .filter(visible)
-        .slice(0, 60).map(el => ({
-          tag: el.tagName.toLowerCase(), role: el.getAttribute("role") || "",
-          label: label(el), selector: path(el)
-        }));
+      const candidates = [];
+      for (const root of discoveredRoots.slice().reverse()) {
+        for (const el of root.querySelectorAll("a, button, input, textarea, [role=button], select")) {
+          if (!visible(el)) continue;
+          const selector = path(el);
+          if (!selector) continue;
+          candidates.push({priority: inViewport(el) ? 0 : 1,
+            control: { tag: el.tagName.toLowerCase(), role: el.getAttribute("role") || "",
+              label: label(el), selector }});
+          if (candidates.length >= 400) break;
+        }
+        if (candidates.length >= 400) break;
+      }
+      // A visible floating chat must not disappear behind 75 off-screen footer controls.
+      candidates.sort((a, b) => a.priority - b.priority);
+      const elements = candidates.slice(0, 75).map(c => c.control);
       return { origin: location.origin, title: document.title.slice(0, 160),
-        text: chunks.join(" ").slice(0, 5500), elements };
+        text: chunks.join(" ").slice(0, 4400), elements,
+        iframeCount: document.querySelectorAll("iframe").length,
+        shadowRootCount: discoveredRoots.length - 1 };
     }
     if (typeof selector !== "string" || selector.length > 512)
       throw Error("Invalid selector.");
     let element;
-    try { element = document.querySelector(selector); }
+    try { element = query(selector); }
     catch { throw Error("Invalid selector."); }
     if (action === "wait_for" && (!element || !visible(element)))
       return { found: false };
@@ -213,7 +279,8 @@
       actionStarted = true;
       element.click();
       // A dispatched click is not proof that the site accepted or saved a change.
-      return { clicked: true, selector, confirmation: "CLICK_DISPATCHED_ONLY" };
+      return { clicked: true, selector, confirmation: "CLICK_DISPATCHED_ONLY",
+        trustedUserActivation: false };
     }
     if (action === "type") {
       if (!(element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement))
@@ -343,15 +410,115 @@
     const runDom = async () => {
       const approvedTab = await getApprovedTab(a.tabId);
       const origin = validOrigin(approvedTab.url);
-      try {
-        const result = await chrome.scripting.executeScript({
-          target: { tabId: a.tabId }, world: "ISOLATED",
-          func: inspectOrAct, args: [work.action, origin, a.selector || "", a.text || "", a]
-        });
-        return result?.[0]?.result ?? injectionFailure(work.action, null);
-      } catch (error) {
-        return injectionFailure(work.action, error);
+      let selector = a.selector || "";
+      let expectedOrigin = origin;
+      const target = { tabId: a.tabId };
+      // Keep the public MCP schema unchanged: child-frame selectors carry their
+      // frame ID and original origin, so a navigated frame cannot be acted upon.
+      const scoped = /^@frame\((\d+),([^,)]*)(?:,([^)]*))?\) (.+)$/s.exec(selector);
+      if (selector.startsWith("@frame(") && !scoped) {
+        return { error: "Invalid frame selector.", code: "DOM_INVALID_SELECTOR",
+          outcome: "unavailable", retrySafe: true };
       }
+      if (scoped) {
+        const frameId = Number(scoped[1]);
+        if (!Number.isSafeInteger(frameId) || frameId < 0) {
+          return { error: "Invalid frame selector.", code: "DOM_INVALID_SELECTOR",
+            outcome: "unavailable", retrySafe: true };
+        }
+        // Pin the exact document where supported. This matters especially for
+        // sandboxed frames whose location.origin is always the opaque "null".
+        if (scoped[3]) {
+          let documentId;
+          try { documentId = decodeURIComponent(scoped[3]); } catch {}
+          if (!documentId || !/^[A-Za-z0-9_-]{8,128}$/.test(documentId)) {
+            return { error: "Invalid frame document ID.", code: "DOM_INVALID_SELECTOR",
+              outcome: "unavailable", retrySafe: true };
+          }
+          target.documentIds = [documentId];
+        } else {
+          target.frameIds = [frameId];
+        }
+        selector = scoped[4];
+        try { expectedOrigin = decodeURIComponent(scoped[2]); }
+        catch { return { error: "Invalid frame origin.", code: "DOM_INVALID_SELECTOR",
+          outcome: "unavailable", retrySafe: true }; }
+        if (expectedOrigin !== "null" &&
+            (!validOrigin(expectedOrigin) || validOrigin(expectedOrigin) !== expectedOrigin)) {
+          return { error: "Invalid frame origin.", code: "DOM_INVALID_SELECTOR",
+            outcome: "unavailable", retrySafe: true };
+        }
+      }
+      const crossFrame = ["inspect", "find", "page_state"].includes(work.action);
+      if (crossFrame) {
+        target.allFrames = true;
+        expectedOrigin = null; // Each frame can have its own permitted origin.
+      }
+      let results;
+      try {
+        results = await chrome.scripting.executeScript({
+          target, world: "ISOLATED", func: inspectOrAct,
+          args: [work.action, expectedOrigin, selector, a.text || "", a]
+        });
+      } catch (error) {
+        if (!crossFrame) return injectionFailure(work.action, error);
+        // A restricted child frame must not make the readable top frame disappear.
+        try {
+          results = await chrome.scripting.executeScript({
+            target: { tabId: a.tabId }, world: "ISOLATED", func: inspectOrAct,
+            args: [work.action, origin, selector, a.text || "", a]
+          });
+        } catch (fallbackError) { return injectionFailure(work.action, fallbackError); }
+      }
+      if (!crossFrame) return results?.[0]?.result ?? injectionFailure(work.action, null);
+      const frames = (results || []).map(r => ({
+        frameId: r.frameId ?? 0, documentId: r.documentId || null, data: r.result
+      }))
+        .filter(r => r.data && !r.data.error);
+      const main = frames.find(r => r.frameId === 0)?.data;
+      if (!main) return injectionFailure(work.action, null);
+      if (main.origin !== origin) {
+        return { error: "Tab origin changed during inspection.", code: "DOM_ORIGIN_CHANGED",
+          outcome: "unavailable", retrySafe: true };
+      }
+      const children = frames.filter(r => r.frameId !== 0).slice(0, 15);
+      const prefix = r => "@frame(" + r.frameId + "," +
+        encodeURIComponent(r.data.origin) +
+        (r.documentId ? "," + encodeURIComponent(r.documentId) : "") + ") ";
+      if (work.action === "inspect") {
+        const elements = [...main.elements];
+        for (const frame of children) {
+          for (const element of frame.data.elements || []) {
+            const selector = prefix(frame) + element.selector;
+            if (selector.length <= 512 && elements.length < 100)
+              elements.push({...element, selector, frameId: frame.frameId});
+          }
+        }
+        return {...main, elements,
+          text: ([main.text, ...children.map(r => "[frame " + r.frameId + "] " +
+            (r.data.text || "").slice(0, 750))]).join(" ").slice(0, 8000),
+          frames: children.map(r => ({ frameId: r.frameId, origin: r.data.origin,
+            title: r.data.title, documentId: r.documentId,
+            shadowRootCount: r.data.shadowRootCount,
+            iframeCount: r.data.iframeCount }))};
+      }
+      if (work.action === "find") {
+        const matches = [...main.matches];
+        for (const frame of children) {
+          for (const match of frame.data.matches || []) {
+            const selector = prefix(frame) + match.selector;
+            if (selector.length <= 512 && matches.length < (a.maxResults || 12))
+              matches.push({...match, selector, frameId: frame.frameId});
+          }
+        }
+        return {...main, matches,
+          count: frames.reduce((n,r) => n + (r.data.count || 0), 0),
+          truncated: frames.some(r => r.data.truncated)};
+      }
+      return {...main, frames: children.map(r => ({frameId:r.frameId,
+        origin:r.data.origin, documentId:r.documentId,
+        readyState:r.data.readyState,
+        shadowRootCount:r.data.shadowRootCount, iframeCount:r.data.iframeCount}))};
     };
     if (work.action === "wait_for") {
       const timeoutMs = Number.isInteger(a.timeoutMs) ? a.timeoutMs : 4000;

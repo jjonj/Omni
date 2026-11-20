@@ -19,6 +19,21 @@ browser_control(action="bring_to_front", tabId=123)
 browser_control(action="type", tabId=123, selector="input[type=search]", text="Anivia")
 ```
 
+### Embedded chat widgets
+
+`inspect`/`find` now include accessible child frames and **open** shadow roots. For a
+child frame, the reported selector begins `@frame(<id>,<encoded-origin>[,<document-id>]) `; for
+shadow controls it contains ` >>> ` between the host and its shadow content.
+Pass the selector back **unchanged** to `click`, `type`, `focus`, `select`, or
+`wait_for`. The frame's original origin is checked before acting; where available the
+exact document ID is also pinned (including opaque `null`-origin sandbox frames), avoiding an
+unintended click if the frame navigates. Closed shadow roots and browser-protected
+frames cannot be read by extension scripts.
+
+`click` currently dispatches `HTMLElement.click()` (not a trusted hardware
+activation), so `clicked:true` confirms dispatch only, **not** that an embedded
+messenger opened, a popup was allowed, or any backend operation succeeded.
+The response explicitly includes `trustedUserActivation:false`.
 All 15 actions: tabs, navigate, inspect, click, type, activate, bring_to_front, close,
 reload, page_state, scroll, focus, find, wait_for and select. `activate` selects a tab in its existing browser window without bringing the window forward. `bring_to_front` selects the tab, restores its containing window if minimized, and asks Chrome to foreground that exact window. The response includes `focused` (Chrome's reported focus state), `windowId`, and `restored`; a `focused: false` reply is not confirmation of OS foreground focus.
 
