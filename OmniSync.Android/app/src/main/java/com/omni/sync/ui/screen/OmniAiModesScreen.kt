@@ -3522,7 +3522,7 @@ fun OmniAiModesScreen(
             onClick = { addProjectOpen = false }) { Text("Cancel") } }
     )
     if (showT3Usage) {
-        T3UsageSheet(activeHubBaseUrl, mainViewModel.appConfig.value.apiKey) {
+        T3QuotaPacingSheet(activeHubBaseUrl, mainViewModel.appConfig.value.apiKey) {
             showT3Usage = false
         }
     }
