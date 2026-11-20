@@ -221,9 +221,16 @@ function makePipe(conn,source,dest,direction) {
     }
     advance();
   }
+  dest.on('drain',()=>{if(!conn.dead)source.resume();});
   source.on('data',data=>{
     if(conn.dead)return;
     observer.push(data);
+    // Unshaped mode must stream large APKs without a fixed 2MB queue limit.
+    // Native socket backpressure avoids overflowing on fast Hub responses.
+    if(profileName==='clean' && !chaosDraining && !chaosQueue.length && tail<=Date.now()) {
+      if(!dest.write(data))source.pause();
+      return;
+    }
     if(profileName==='flightChaos' || chaosDraining || chaosQueue.length) {
       for(let i=0;i<data.length;i+=1400){
         const chunk=data.subarray(i,i+1400);
