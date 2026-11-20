@@ -34,10 +34,12 @@ fun PendingPhoneTaskEditsDialog(
     onClose: () -> Unit
 ) {
     var inspecting by remember { mutableStateOf<String?>(null) }
-    val selected = drafts.firstOrNull { it.operationId == inspecting }
+    val unresolved = drafts.filter { it.state != "applied" }
+    val confirmedCreates = drafts.count { it.state == "applied" && it.taskId == "CREATE" }
+    val selected = unresolved.firstOrNull { it.operationId == inspecting }
     AlertDialog(
         onDismissRequest = onClose,
-        title = { Text("Phone TaskBoard edits · ${drafts.size} pending") },
+        title = { Text("Phone TaskBoard edits · ${unresolved.size} pending") },
         text = {
             Column(
                 modifier = Modifier.fillMaxWidth().heightIn(max = 480.dp)
@@ -46,10 +48,13 @@ fun PendingPhoneTaskEditsDialog(
             ) {
                 Text("These drafts live privately on this phone. PC TaskBoard Markdown is authoritative. An UNKNOWN operation must be resolved by its exact PC receipt; no automatic duplicate edits.",
                     style = MaterialTheme.typography.bodySmall)
-                if (drafts.isEmpty()) {
+                if (confirmedCreates > 0) Text(
+                    "$confirmedCreates task(s) already created on PC; awaiting local file sync.",
+                    style = MaterialTheme.typography.bodySmall)
+                if (unresolved.isEmpty()) {
                     Text("No unacknowledged edits.")
                 }
-                drafts.forEach { draft ->
+                unresolved.forEach { draft ->
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text("${draft.boardId} · ${draft.taskId}", fontWeight = FontWeight.SemiBold)
                         Text("State: ${draft.state} · operation ${draft.operationId}",
