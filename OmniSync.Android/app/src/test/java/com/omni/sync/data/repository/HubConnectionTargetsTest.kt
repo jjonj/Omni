@@ -23,6 +23,20 @@ class HubConnectionTargetsTest {
         assertEquals(listOf(local, full), HubConnectionTargets.resolve(local, full, true))
         assertEquals(listOf(full), HubConnectionTargets.resolve(local, "89.150.166.124:15000", false))
     }
+    @Test fun manuallyEnteredIpAndPortDisplaysTheCompleteHubUrl() {
+        assertEquals("http://89.150.166.124:15000/signalrhub",
+            HubConnectionTargets.resolveWanUrl(local, "89.150.166.124:15000"))
+        assertEquals("http://89.150.166.124:5000/signalrhub",
+            HubConnectionTargets.resolveWanUrl(local, "89.150.166.124"))
+    }
+    @Test fun discoveredIpKeepsManualPortButNotAnOldFullUrl() {
+        assertEquals("89.150.166.125:15000",
+            HubConnectionTargets.updateDiscoveredIp("89.150.166.124:15000", "89.150.166.125"))
+        assertEquals("89.150.166.125",
+            HubConnectionTargets.updateDiscoveredIp("89.150.166.124", "89.150.166.125"))
+        assertEquals("https://other.example:9443/signalrhub",
+            HubConnectionTargets.updateDiscoveredIp("https://other.example:9443/signalrhub", "89.150.166.125"))
+    }
     @Test fun explicitHttpsWanProxyRetainsItsOwnPort() {
         assertEquals(listOf("https://myhub.example:443/signalrhub"),
             HubConnectionTargets.resolve(local, "https://myhub.example:443/signalrhub", false))

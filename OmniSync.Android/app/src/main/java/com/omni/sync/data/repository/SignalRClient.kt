@@ -856,13 +856,12 @@ class SignalRClient(
         }
 
         val previous = mainViewModel.appConfig.value.wanIp.trim()
-        // Keep a manually chosen HTTPS/public test endpoint and its port;
-        // periodic external-IP discovery is only for the plain IP field.
-        if (previous.startsWith("http://", ignoreCase = true) ||
-            previous.startsWith("https://", ignoreCase = true)) return
-        if (trimmed == previous) return
+        // Discovery updates the IP, not the configured endpoint's port.
+        // Full custom URLs remain pinned; host:port keeps its explicit port.
+        val updated = HubConnectionTargets.updateDiscoveredIp(previous, trimmed)
+        if (updated == previous) return
 
-        mainViewModel.updateConfig { it.copy(wanIp = trimmed) }
+        mainViewModel.updateConfig { it.copy(wanIp = updated) }
         val checkedAt = if (updatedAtUnix > 0) {
             java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.getDefault())
                 .format(java.util.Date(updatedAtUnix * 1000))
@@ -870,7 +869,7 @@ class SignalRClient(
             "unknown time"
         }
         mainViewModel.addLog(
-            "Hub public address updated: $previous -> $trimmed (checked $checkedAt).",
+            "Hub public address updated: $previous -> $updated (checked $checkedAt).",
             com.omni.sync.ui.screen.LogType.INFO
         )
     }

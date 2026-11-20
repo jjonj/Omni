@@ -19,6 +19,7 @@ import androidx.compose.ui.unit.sp
 import com.omni.sync.viewmodel.MainViewModel
 import com.omni.sync.viewmodel.AppScreen
 import com.omni.sync.ui.components.NavigationOrderEditor
+import com.omni.sync.data.repository.HubConnectionTargets
 import android.content.Context
 import android.content.Intent
 import com.omni.sync.service.ForegroundService
@@ -266,8 +267,12 @@ fun SettingsScreen(
             OutlinedTextField(
                 value = wanIp,
                 onValueChange = { wanIp = it },
-                label = { Text("WAN IP or full URL") },
-                supportingText = { Text("An IP uses the local URL's port; full URLs preserve their own port and are not auto-replaced") },
+                label = { Text("WAN IP, IP:port, or full URL") },
+                supportingText = {
+                    val resolved = HubConnectionTargets.resolveWanUrl(hubUrl, wanIp)
+                    Text(if (resolved.isNotBlank()) "Connects to: $resolved"
+                         else "Enter a public IP, IP:port, or full URL")
+                },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth()
             )
