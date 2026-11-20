@@ -19,6 +19,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.io.File
+import java.security.MessageDigest
 import java.util.UUID
 import java.util.Collections
 import java.util.LinkedHashMap
@@ -146,6 +147,14 @@ class GenericAgentClient(
     private val archivePrefs=context.getSharedPreferences("agent-history-archive",Context.MODE_PRIVATE)
     private val providerPrefs=context.getSharedPreferences("agent-provider-binding",Context.MODE_PRIVATE)
     private val blankCreatePrefs=context.getSharedPreferences("agent-blank-create-v1",Context.MODE_PRIVATE)
+    // Keep uncertain blank creates separate: a previous request must never block a new one.
+    private fun blankCreateKey(kind: String, project: String, instruction: String,
+                               title: String, modelSelection: Map<String, Any?>?): String {
+        val payload = gson.toJson(listOf(kind, project, instruction, title, modelSelection))
+        val hash = MessageDigest.getInstance("SHA-256").digest(payload.toByteArray(Charsets.UTF_8))
+            .joinToString("") { "%02x".format(it) }
+        return "pending:$hash"
+    }
     private val genericCreatePrefs=context.getSharedPreferences("agent-generic-create-v1",Context.MODE_PRIVATE)
     private val archive:AgentHistoryArchive by lazy {AgentHistoryArchive(context)}
     private val workCreate by lazy { AgentWorkCreateStore(context) }
@@ -1281,35 +1290,42 @@ class GenericAgentClient(
      * operations. Persist their stable IDs and instructions before creating a
      * guest; on restart we can complete the queueing step without spawning
      * another browser or guessing an ambiguous creation result. */
-    private fun pendingCapacityCreate(): JsonObject? =
-        runCatching { providerPrefs.getString("capacityCreatePending", null)?.let {
+    private fun pendingCapacityCreate(key: String): JsonObject? =
+        runCatching { providerPrefs.getString(key, null)?.let {
             JsonParser.parseString(it).takeIf { value -> value.isJsonObject }?.asJsonObject
         } }.getOrNull()
 
-    private fun persistCapacityCreate(value: JsonObject?) {
+    private fun persistCapacityCreate(key: String, value: JsonObject?) {
         val ok=providerPrefs.edit().apply {
-            if(value==null) remove("capacityCreatePending")
-            else putString("capacityCreatePending",value.toString())
+            if(value==null) remove(key)
+            else putString(key,value.toString())
         }.commit()
         check(ok) { "Could not durably save the capacity session operation" }
     }
 
     private suspend fun recoverCapacityCreate(): String? = capacityCreateMutex.withLock {
-        val intent=pendingCapacityCreate() ?: return@withLock null
-        val target=intent.str("sessionId") ?: return@withLock "Blank-session creation outcome is uncertain; do not create another tab."
-        val first=intent.str("message") ?: return@withLock "Missing preserved first instruction"
-        val messageId=intent.str("queueId") ?: return@withLock "Missing first message identity"
-        val workers=intent.get("maxWorkers")?.takeIf { it.isJsonPrimitive }?.asInt ?: 4
-        val kind=intent.str("kind") ?: "t3/chatgpt"
-        val session=AgentSessionUi("t3",target,"Queued first instruction",kind,
-            "Unknown","Unknown",null,listOf("WaitForSlot"))
-        enqueueSession(session, first, if (kind == "t3/thread") "WhenIdle" else "WaitForSlot",
-            if (kind == "t3/thread") null else workers, messageId)
-        // The mobile outbox now owns delivery/restart recovery. Do not keep a
-        // second pending creator that could queue it twice.
-        persistCapacityCreate(null)
-        _createdSessionKey.value="t3:$target"
-        "T3 session $target created. Initial instruction queued${if (kind == "t3/thread") " natively" else " for a worker slot"}."
+        // Recover every confirmed create, not just the latest one. Unconfirmed
+        // creates retain their own request IDs without blocking new work.
+        var recovered: String? = null
+        val keys = providerPrefs.all.keys.filter {
+            it == "capacityCreatePending" || it.startsWith("capacityCreatePending:")
+        }
+        for (key in keys) {
+            val intent = pendingCapacityCreate(key) ?: continue
+            val target = intent.str("sessionId") ?: continue
+            val first = intent.str("message") ?: continue
+            val messageId = intent.str("queueId") ?: continue
+            val workers = intent.get("maxWorkers")?.takeIf { it.isJsonPrimitive }?.asInt ?: 4
+            val kind = intent.str("kind") ?: "t3/chatgpt"
+            val session = AgentSessionUi("t3",target,"Queued first instruction",kind,
+                "Unknown","Unknown",null,listOf("WaitForSlot"))
+            enqueueSession(session, first, if (kind == "t3/thread") "WhenIdle" else "WaitForSlot",
+                if (kind == "t3/thread") null else workers, messageId)
+            persistCapacityCreate(key, null)
+            _createdSessionKey.value = "t3:$target"
+            recovered = "T3 session $target created; initial instruction queued."
+        }
+        recovered
     }
 
     private suspend fun createCapacitySession(
@@ -1317,7 +1333,17 @@ class GenericAgentClient(
         modelSelection:Map<String,Any?>? = null
     ): String = capacityCreateMutex.withLock {
         require(kind in listOf("t3/chatgpt", "t3/thread") && maxWorkers in 1..100)
-        val pending=pendingCapacityCreate()
+        val key = "capacityCreatePending:${blankCreateKey(kind, workspace, firstMessage, title, modelSelection)}:$maxWorkers"
+        // Migrate only a matching pre-upgrade request. Other unresolved creates stay intact.
+        val legacy = pendingCapacityCreate("capacityCreatePending")?.takeIf {
+            it.str("workspace") == workspace && it.str("message") == firstMessage &&
+                it.str("kind") == kind && it.str("title") == title &&
+                it.get("modelSelection")?.toString() == gson.toJsonTree(modelSelection).toString() &&
+                (it.get("maxWorkers")?.asInt ?: 4) == maxWorkers
+        }
+        val intentKey = if (pendingCapacityCreate(key) != null) key
+            else if (legacy != null) "capacityCreatePending" else key
+        val pending = pendingCapacityCreate(intentKey)
         val intent = pending ?: JsonObject().apply {
             addProperty("requestId",UUID.randomUUID().toString())
             addProperty("queueId",UUID.randomUUID().toString())
@@ -1327,7 +1353,7 @@ class GenericAgentClient(
             addProperty("maxWorkers",maxWorkers)
             addProperty("title",title)
             add("modelSelection",gson.toJsonTree(modelSelection))
-        }.also {persistCapacityCreate(it)}
+        }.also {persistCapacityCreate(intentKey, it)}
         require(intent.str("workspace")==workspace && intent.str("message")==firstMessage &&
             intent.str("kind")==kind && (intent.str("title") ?: "Android AI work")==title &&
             intent.get("modelSelection")?.toString() == gson.toJsonTree(modelSelection).toString()) {
@@ -1339,7 +1365,7 @@ class GenericAgentClient(
                 "Unknown","Unknown",null,listOf("WaitForSlot"))
             enqueueSession(session, firstMessage, if (kind == "t3/thread") "WhenIdle" else "WaitForSlot",
                 if (kind == "t3/thread") null else maxWorkers, intent.str("queueId"))
-            persistCapacityCreate(null)
+            persistCapacityCreate(intentKey, null)
             _createdSessionKey.value="t3:$existing"
             return@withLock "T3 session $existing created; first instruction queued."
         }
@@ -1359,18 +1385,18 @@ class GenericAgentClient(
         val ref=result.obj("result")?.obj("session") ?: result.obj("session")
         val id=ref?.str("id")
         if (result.str("state") == "Failed") {
-            persistCapacityCreate(null) // Hub confirmed that no session was created.
+            persistCapacityCreate(intentKey, null) // Hub confirmed that no session was created.
             return@withLock "T3 creation rejected: " +
                 (result.obj("result")?.obj("details")?.str("reason") ?: result.str("error") ?: "unknown reason")
         }
         if(id==null) return@withLock "T3 creation not confirmed; original request preserved."
         intent.addProperty("sessionId",id)
-        persistCapacityCreate(intent) // crash after this cannot lose first message
+        persistCapacityCreate(intentKey, intent) // crash after this cannot lose first message
         val session=AgentSessionUi("t3",id,"Queued first instruction",kind,
             "Unknown","Unknown",null,listOf("WaitForSlot"))
         enqueueSession(session, firstMessage, if (kind == "t3/thread") "WhenIdle" else "WaitForSlot",
             if (kind == "t3/thread") null else maxWorkers, intent.str("queueId"))
-        persistCapacityCreate(null)
+        persistCapacityCreate(intentKey, null)
         _createdSessionKey.value="t3:$id"
         "T3 session $id created blank; first instruction queued."
     }
@@ -1405,23 +1431,25 @@ class GenericAgentClient(
             // subsequent Create retries use the same idempotent request ID.
             val project = workspace.trim()
             val instruction = firstMessage.trim()
-            val pendingId = blankCreatePrefs.getString("requestId", null)
-            if (pendingId != null) {
-                check(blankCreatePrefs.getString("kind", null) == kind &&
-                    blankCreatePrefs.getString("project", null) == project &&
-                    blankCreatePrefs.getString("instruction", "") == instruction &&
-                    (blankCreatePrefs.getString("title", null) ?: "Android AI work") == effectiveTitle &&
-                    blankCreatePrefs.getString("modelSelection", "null") == gson.toJson(modelSelection)) {
-                    "A different blank creation is unresolved. Retry with its original settings."
-                }
+            val pendingKey = blankCreateKey(kind, project, instruction, effectiveTitle, modelSelection)
+            // Preserve pre-upgrade pending IDs when the original settings are retried.
+            val legacyMatches = blankCreatePrefs.getString("requestId", null) != null &&
+                blankCreatePrefs.getString("kind", null) == kind &&
+                blankCreatePrefs.getString("project", null) == project &&
+                blankCreatePrefs.getString("instruction", "") == instruction &&
+                (blankCreatePrefs.getString("title", null) ?: "Android AI work") == effectiveTitle &&
+                blankCreatePrefs.getString("modelSelection", "null") == gson.toJson(modelSelection)
+            val pendingId = blankCreatePrefs.getString(pendingKey, null)
+                ?: blankCreatePrefs.getString("requestId", null).takeIf { legacyMatches }
+            val requestId = pendingId ?: UUID.randomUUID().toString()
+            check(blankCreatePrefs.edit().putString(pendingKey, requestId).commit()) {
+                "Could not persist create identity; no new session started"
             }
-            val requestId = pendingId ?: UUID.randomUUID().toString().also { id ->
-                check(blankCreatePrefs.edit().putString("requestId", id)
-                    .putString("kind", kind).putString("project", project)
-                    .putString("instruction", instruction).putString("title", effectiveTitle)
-                    .putString("modelSelection", gson.toJson(modelSelection)).commit()) {
-                    "Could not persist create identity; no new session started"
-                }
+            fun clearThisRequest() {
+                val edit = blankCreatePrefs.edit().remove(pendingKey)
+                if (legacyMatches) listOf("requestId", "kind", "project", "instruction", "title", "modelSelection")
+                    .forEach { edit.remove(it) }
+                edit.commit()
             }
             val params = mutableMapOf<String, Any>(
                 "provider" to provider.id, "kind" to kind, "title" to effectiveTitle,
@@ -1440,11 +1468,11 @@ class GenericAgentClient(
             if (id != null) {
                 _createdSessionKey.value = "t3:$id"
                 providerPrefs.edit().putString("lastCreatedSession", "t3:$id").commit()
-                blankCreatePrefs.edit().clear().commit()
+                clearThisRequest()
                 if (instruction.isEmpty()) "Created empty ${if (kind == "t3/thread") "native T3 thread" else "ChatGPT session"} $id."
                 else "Created ChatGPT session $id. Initial instruction requested."
             } else if (receipt?.str("state") == "Failed") {
-                blankCreatePrefs.edit().clear().commit()
+                clearThisRequest()
                 "Session creation rejected: " +
                     (receipt.obj("result")?.obj("details")?.str("reason") ?: receipt.str("error") ?: "unknown reason")
             } else "Creation unconfirmed. Original request saved; retry Create to reconcile without duplicates."

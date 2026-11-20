@@ -77,11 +77,8 @@ internal class AgentWorkCreateStore(context: Context) {
                 }
                 return@synchronized existing to false
             }
-            // A different uncertain request must not silently become another agent
-            // merely because the user tapped the same screen again.
-            check(records.none { it.source == source && it.state == "Unknown" }) {
-                "A previous app work request is uncertain; reconcile its operation first"
-            }
+            // Unknown results remain in the ledger for reconciliation, but do not
+            // prevent an explicitly different Create request with its own identity.
             val fresh = Intent(UUID.randomUUID().toString(),source,incidentId,project,kind,instructions,title)
             persist(records + fresh) // write-ahead admission, before network mutation
             fresh to true
