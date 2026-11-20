@@ -1,6 +1,5 @@
 package com.omni.sync.ui.screen
 
-import android.content.Context
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -14,7 +13,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -63,45 +61,48 @@ private fun parse(json: String): List<Account> {
     }
 }
 /** Sample timestamps come from T3's provider checks, not from sheet renders. */
-private class History(context: Context) {
-    private val prefs = context.getSharedPreferences("omni-quota-pacing-v1", Context.MODE_PRIVATE)
-    fun read(): Map<String, List<Point>> {
-        val stored = runCatching { JSONObject(prefs.getString("history", "{}") ?: "{}") }.getOrDefault(JSONObject())
-        return stored.keys().asSequence().mapNotNull { key ->
-            val list = stored.optJSONArray(key) ?: return@mapNotNull null
-            key to (0 until list.length()).mapNotNull sample@ { i ->
-                val point = list.optJSONObject(i) ?: return@sample null
-                Point(point.optLong("at"), point.optDouble("used").toFloat())
+private data class Payload(
+    val accounts: List<Account>,
+    val desktopAccounts: List<Account>,
+    val history: Map<String, List<Point>>,
+    val capturedAt: Long?
+)
+/** Match selected desktop quota windows and exact historical readings; never sample on Android. */
+private fun parsePayload(json: String): Payload {
+    val root = JSONObject(json)
+    val snapshot = root.optJSONObject("quotaPacing")
+    val rows = snapshot?.optJSONArray("series")
+    val accountInfo = linkedMapOf<String, Account>()
+    val windowsByAccount = linkedMapOf<String, MutableList<Window>>()
+    val history = mutableMapOf<String, List<Point>>()
+    for (i in 0 until (rows?.length() ?: 0)) {
+        val item = rows?.optJSONObject(i) ?: continue
+        val key = item.optString("accountKey").takeIf { it.isNotBlank() } ?: continue
+        val driver = item.optString("driver")
+        if (driver != "codex" && driver != "claudeAgent") continue
+        val w = item.optJSONObject("window") ?: continue
+        val minutes = w.optInt("windowDurationMins")
+        if (minutes != 300 && minutes != 10080) continue
+        val reset = millis(w.optString("resetsAt")) ?: continue
+        val window = Window(w.optString("id"), w.optString("kind"), minutes,
+            w.optDouble("usedPercent").toFloat().coerceIn(0f, 100f), reset)
+        val account = Account(item.optString("accountName", driver), driver, key,
+            millis(item.optString("checkedAt")), emptyList(), null, null)
+        accountInfo[key] = account
+        windowsByAccount.getOrPut(key) { mutableListOf() }.add(window)
+        val samples = item.optJSONArray("samples")
+        history[Series(account, window).key] = (0 until (samples?.length() ?: 0))
+            .mapNotNull { j ->
+                val sample = samples?.optJSONObject(j) ?: return@mapNotNull null
+                val at = sample.optLong("at")
+                if (at <= 0) null else Point(at, sample.optDouble("used").toFloat().coerceIn(0f, 100f))
             }.sortedBy { it.at }
-        }.toMap()
     }
-    fun add(accounts: List<Account>, now: Long): Map<String, List<Point>> {
-        val data = read().toMutableMap()
-        for (account in accounts) for (window in account.windows) {
-            if (window.minutes !in listOf(300, 10080)) continue
-            val reset = window.reset ?: continue
-            val at = account.checked ?: continue
-            if (reset <= now || at !in (reset - window.minutes * MIN)..now) continue
-            val key = Series(account, window).key
-            val points = data[key].orEmpty().filter { it.at >= reset - window.minutes * MIN }.toMutableList()
-            if (points.isEmpty() || at > points.last().at) points += Point(at, window.used)
-            data[key] = if (points.size > 256) points.filterIndexed { index, _ ->
-                index % 2 == 0 || index == points.lastIndex
-            } else points
-        }
-        val recent = data.filterValues { (it.lastOrNull()?.at ?: 0L) >= now - 7 * 24 * HOUR }
-            .entries.sortedByDescending { it.value.lastOrNull()?.at ?: 0L }.take(32)
-        val json = JSONObject()
-        recent.forEach { (key, points) ->
-            val samples = JSONArray()
-            points.forEach { samples.put(JSONObject().put("at", it.at).put("used", it.used.toDouble())) }
-            json.put(key, samples)
-        }
-        prefs.edit().putString("history", json.toString()).apply()
-        return recent.associate { it.key to it.value }
-    }
+    return Payload(parse(json), windowsByAccount.mapNotNull { (key, windows) ->
+        accountInfo[key]?.copy(windows = windows)
+    }, history, snapshot?.optLong("capturedAt"))
 }
-private suspend fun load(base: String, token: String, refresh: Boolean): List<Account> =
+private suspend fun load(base: String, token: String, refresh: Boolean): Payload =
     withContext(Dispatchers.IO) {
         require(base.isNotBlank()) { "Connect to OmniHub to view quota pacing." }
         val url = base.trimEnd('/') + "/api/t3/usage" + if (refresh) "?refresh=1" else ""
@@ -111,7 +112,7 @@ private suspend fun load(base: String, token: String, refresh: Boolean): List<Ac
             conn.readTimeout = 25000
             conn.setRequestProperty("x-omni-api-key", token)
             if (conn.responseCode != 200) error("Quota data unavailable (" + conn.responseCode + ")")
-            parse(conn.inputStream.bufferedReader().use { it.readText() })
+            parsePayload(conn.inputStream.bufferedReader().use { it.readText() })
         } finally { conn.disconnect() }
     }
 private fun pick(accounts: List<Account>, driver: String, duration: Int, now: Long, fable: Boolean = false): Series? =
@@ -250,10 +251,10 @@ private fun weeklyRisk(week: Series, history: Map<String, List<Point>>, now: Lon
 
 @Composable fun T3QuotaPacingSheet(base: String, apiKey: String, onDismiss: () -> Unit) {
     val p = agentPalette()
-    val context = LocalContext.current
-    val historyStore = remember(context) { History(context) }
-    var history by remember { mutableStateOf(historyStore.read()) }
+    var history by remember { mutableStateOf<Map<String, List<Point>>>(emptyMap()) }
     var accounts by remember { mutableStateOf<List<Account>>(emptyList()) }
+    var desktopAccounts by remember { mutableStateOf<List<Account>>(emptyList()) }
+    var syncedAt by remember { mutableStateOf<Long?>(null) }
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
     var refresh by remember { mutableIntStateOf(0) }
@@ -265,8 +266,10 @@ private fun weeklyRisk(week: Series, history: Map<String, List<Point>>, now: Lon
             try {
                 val data = load(base, apiKey, refresh > 0 || cycle > 0)
                 now = System.currentTimeMillis()
-                history = historyStore.add(data, now)
-                accounts = data
+                history = data.history
+                accounts = data.accounts
+                desktopAccounts = data.desktopAccounts
+                syncedAt = data.capturedAt
                 error = null
             } catch (e: Exception) { error = e.message ?: "Quota pacing unavailable" }
             finally { loading = false }
@@ -275,11 +278,11 @@ private fun weeklyRisk(week: Series, history: Map<String, List<Point>>, now: Lon
         }
     }
     LaunchedEffect(Unit) { while (true) { delay(MIN); now = System.currentTimeMillis() } }
-    val short = listOfNotNull(pick(accounts, "codex", 300, now)?.let { it to BLUE },
-        pick(accounts, "claudeAgent", 300, now)?.let { it to ORANGE })
-    val weekly = listOfNotNull(pick(accounts, "codex", 10080, now)?.let { it to BLUE },
-        pick(accounts, "claudeAgent", 10080, now)?.let { it to ORANGE },
-        pick(accounts, "claudeAgent", 10080, now, true)?.let { it to GOLD })
+    val short = listOfNotNull(pick(desktopAccounts, "codex", 300, now)?.let { it to BLUE },
+        pick(desktopAccounts, "claudeAgent", 300, now)?.let { it to ORANGE })
+    val weekly = listOfNotNull(pick(desktopAccounts, "codex", 10080, now)?.let { it to BLUE },
+        pick(desktopAccounts, "claudeAgent", 10080, now)?.let { it to ORANGE },
+        pick(desktopAccounts, "claudeAgent", 10080, now, true)?.let { it to GOLD })
     AgentSheet(onDismiss) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 8.dp),
             horizontalArrangement = Arrangement.SpaceBetween) {
@@ -307,7 +310,7 @@ private fun weeklyRisk(week: Series, history: Map<String, List<Point>>, now: Lon
             weekly.mapNotNull { (series, _) -> weeklyRisk(series, history, now) }.forEach { warning ->
                 Text(warning, Modifier.padding(vertical = 5.dp), color = p.yellow, fontSize = 12.sp)
             }
-            Text("History starts with actual Android observations; existing desktop chart history is not yet synchronised.",
+            Text(if (desktopAccounts.isEmpty()) "Desktop quota history unavailable. Open T3 desktop Quota pacing to sync existing history." else "T3 desktop history · synced " + ((now - (syncedAt ?: now)).coerceAtLeast(0) / MIN) + "m ago.",
                 Modifier.padding(top = 8.dp, bottom = 10.dp), color = p.muted, fontSize = 11.sp)
         }
     }
