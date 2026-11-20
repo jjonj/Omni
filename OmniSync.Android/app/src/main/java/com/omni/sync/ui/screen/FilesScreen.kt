@@ -27,6 +27,9 @@ import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.RadioButtonUnchecked
+import com.omni.sync.viewmodel.BulkFileOperation
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import android.content.ClipboardManager
@@ -102,11 +105,36 @@ fun FilesScreen(
     var showCopyDialog by remember { mutableStateOf(false) }
     var showMoveDialog by remember { mutableStateOf(false) }
     var sourceEntry by remember { mutableStateOf<FileSystemEntry?>(null) }
+    var bulkDestinationEntries by remember { mutableStateOf<List<FileSystemEntry>>(emptyList()) }
+    var selectedPaths by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var showBulkActions by remember { mutableStateOf(false) }
+    var showBulkDeleteConfirmation by remember { mutableStateOf(false) }
+    var showBulkDownloadDialog by remember { mutableStateOf(false) }
+    var bulkEncrypt by remember { mutableStateOf(false) }
+    val bulkEntries = fileSystemEntries.filter { it.path in selectedPaths }
+    val selectionMode = selectedPaths.isNotEmpty()
+    val remoteSelection = bulkEntries.isNotEmpty() && bulkEntries.all { !it.path.contains("downloaded_videos") }
+    val remoteFiles = bulkEntries.filter { !it.isDirectory }
+    val bulkBusy by filesViewModel.isBulkOperationRunning.collectAsState()
+    val bulkProgress by filesViewModel.bulkOperationProgress.collectAsState()
+
+    fun toggleSelection(entry: FileSystemEntry) {
+        if (entry.name == ".." || entry.path.startsWith("VIRTUAL_") ||
+            (entry.path.length <= 3 && entry.path.contains(':'))) return
+        selectedPaths = if (entry.path in selectedPaths) selectedPaths - entry.path else selectedPaths + entry.path
+        if (selectedPaths.isEmpty()) showBulkActions = false
+    }
+
+    // Selections belong to one visible listing, never to a previously visited folder/search.
+    LaunchedEffect(currentPath, searchQuery) {
+        selectedPaths = emptySet()
+        showBulkActions = false
+    }
 
     // Handle back press to navigate up or close panels
     val isKeyboardVisible = androidx.compose.foundation.layout.WindowInsets.ime.getBottom(androidx.compose.ui.platform.LocalDensity.current) > 0
 
-    BackHandler(enabled = !isKeyboardVisible && ((currentPath.isNotEmpty() && currentPath != "/") || showBookmarksList || showCachesList || showCopyDialog || showMoveDialog)) {
+    BackHandler(enabled = !isKeyboardVisible && ((currentPath.isNotEmpty() && currentPath != "/") || showBookmarksList || showCachesList || showCopyDialog || showMoveDialog || selectionMode)) {
         if (showBookmarksList) {
             showBookmarksList = false
         } else if (showCachesList) {
@@ -115,6 +143,9 @@ fun FilesScreen(
             showCopyDialog = false
         } else if (showMoveDialog) {
             showMoveDialog = false
+        } else if (selectionMode) {
+            selectedPaths = emptySet()
+            showBulkActions = false
         } else {
             filesViewModel.loadDirectory(getParentPath(currentPath))
         }
@@ -382,6 +413,92 @@ fun FilesScreen(
                 shape = RoundedCornerShape(12.dp)
             )
 
+            if (selectionMode) {
+                Surface(color = MaterialTheme.colorScheme.primaryContainer, tonalElevation = 2.dp) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 2.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        IconButton(onClick = { selectedPaths = emptySet(); showBulkActions = false }) {
+                            Icon(Icons.Default.Close, contentDescription = "Exit selection")
+                        }
+                        Text("${bulkEntries.size} selected", modifier = Modifier.weight(1f))
+                        TextButton(onClick = {
+                            val selectable = fileSystemEntries.filter { it.name != ".." &&
+                                !it.path.startsWith("VIRTUAL_") &&
+                                !(it.path.length <= 3 && it.path.contains(':')) }.map { it.path }.toSet()
+                            selectedPaths = if (selectedPaths.size == selectable.size) emptySet() else selectable
+                        }) { Text("All") }
+                        Box {
+                            Button(onClick = { showBulkActions = true }, enabled = !bulkBusy) {
+                                Text("Actions")
+                            }
+                            DropdownMenu(expanded = showBulkActions, onDismissRequest = { showBulkActions = false }) {
+                                if (remoteSelection) {
+                                    DropdownMenuItem(text = { Text("Copy to...") }, onClick = {
+                                        bulkDestinationEntries = bulkEntries.toList()
+                                        showCopyDialog = true
+                                        showBulkActions = false
+                                    })
+                                    DropdownMenuItem(text = { Text("Move to...") }, onClick = {
+                                        bulkDestinationEntries = bulkEntries.toList()
+                                        showMoveDialog = true
+                                        showBulkActions = false
+                                    })
+                                    if (remoteFiles.isNotEmpty()) {
+                                        DropdownMenuItem(text = { Text("Download to App (${remoteFiles.size})") }, onClick = {
+                                            showBulkActions = false
+                                            showBulkDownloadDialog = true
+                                        })
+                                    }
+                                    if (bulkEntries.all { !it.isDirectory }) {
+                                        DropdownMenuItem(text = { Text("Duplicate") }, onClick = {
+                                            showBulkActions = false
+                                            filesViewModel.performBulkFileOperation(bulkEntries, BulkFileOperation.DUPLICATE)
+                                            selectedPaths = emptySet()
+                                        })
+                                    }
+                                    if (bulkEntries.any { it.isDirectory }) {
+                                        DropdownMenuItem(text = { Text("Cache selected folders") }, onClick = {
+                                            showBulkActions = false
+                                            bulkEntries.filter { it.isDirectory }.forEach(filesViewModel::cacheFolderRecursive)
+                                            selectedPaths = emptySet()
+                                        })
+                                    }
+                                    DropdownMenuItem(text = { Text("Open on PC") }, onClick = {
+                                        showBulkActions = false
+                                        bulkEntries.forEach(filesViewModel::openFileOnPC)
+                                        selectedPaths = emptySet()
+                                    })
+                                }
+                                DropdownMenuItem(text = { Text("Copy paths") }, onClick = {
+                                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                    clipboard.setPrimaryClip(ClipData.newPlainText("Paths", bulkEntries.joinToString("\n") { it.path }))
+                                    showBulkActions = false
+                                })
+                                DropdownMenuItem(text = { Text("Add bookmarks") }, onClick = {
+                                    bulkEntries.filterNot { filesViewModel.isBookmarked(it.path) }.forEach(filesViewModel::toggleBookmark)
+                                    showBulkActions = false
+                                })
+                                DropdownMenuItem(text = { Text("Remove bookmarks") }, onClick = {
+                                    bulkEntries.filter { filesViewModel.isBookmarked(it.path) }.forEach(filesViewModel::toggleBookmark)
+                                    showBulkActions = false
+                                })
+                                DropdownMenuItem(text = { Text("Delete (${bulkEntries.size})") }, onClick = {
+                                    showBulkActions = false
+                                    showBulkDeleteConfirmation = true
+                                })
+                            }
+                        }
+                    }
+                }
+            }
+            if (bulkBusy && bulkProgress != null) {
+                Text(bulkProgress!!, modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                    style = MaterialTheme.typography.bodySmall)
+                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+            }
+
             if (isLoading || isDownloading) {
                 LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
                 if (isDownloading && downloadingFile != null) {
@@ -433,6 +550,10 @@ fun FilesScreen(
                                 isBookmarked = filesViewModel.isBookmarked(entry.path),
                                 hasPendingEdit = hasPendingEdit,
                                 isRecentlyChanged = isRecentlyChanged,
+                                isSelectionMode = selectionMode,
+                                isSelected = entry.path in selectedPaths,
+                                onSelect = { toggleSelection(it) },
+                                onSelectionActions = { showBulkActions = true },
                                 formatFileSize = { filesViewModel.formatFileSize(it) },
                                 onBookmarkToggle = { filesViewModel.toggleBookmark(it) },
                                 onAddToSession = { entry, name ->
@@ -440,7 +561,9 @@ fun FilesScreen(
                                     Toast.makeText(context, "Added to $name", Toast.LENGTH_SHORT).show()
                                 },
                                 onClick = { clickedEntry ->
-                                    if (clickedEntry.isDirectory) {
+                                    if (selectionMode) {
+                                        toggleSelection(clickedEntry)
+                                    } else if (clickedEntry.isDirectory) {
                                         if (clickedEntry.path == "VIRTUAL_ENCRYPTED") {
                                             if (filesViewModel.isGlobalPasswordSet()) {
                                                 passwordAction = { filesViewModel.loadDirectory(clickedEntry.path) }
@@ -716,6 +839,7 @@ fun FilesScreen(
                         if (filesViewModel.isGlobalPasswordSet()) {
                             if (filesViewModel.verifyGlobalPassword(passwordInput)) {
                                 passwordAction?.invoke()
+                                passwordAction = null
                                 showPasswordDialog = false
                                 passwordInput = ""
                             } else {
@@ -724,6 +848,8 @@ fun FilesScreen(
                         } else {
                             if (passwordInput.isNotBlank()) {
                                 filesViewModel.setGlobalPassword(null, passwordInput)
+                                passwordAction?.invoke()
+                                passwordAction = null
                                 if (passwordTargetEntry != null) {
                                     filesViewModel.loadDirectory(passwordTargetEntry!!.path)
                                 }
@@ -744,35 +870,99 @@ fun FilesScreen(
         )
     }
 
-    if (showCopyDialog && sourceEntry != null) {
+    if (showBulkDeleteConfirmation) {
+        AlertDialog(
+            onDismissRequest = { showBulkDeleteConfirmation = false },
+            title = { Text("Delete ${bulkEntries.size} selected items?") },
+            text = { Text("Selected files and folders will be permanently deleted. This cannot be undone.") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showBulkDeleteConfirmation = false
+                        filesViewModel.performBulkFileOperation(bulkEntries.toList(), BulkFileOperation.DELETE)
+                        selectedPaths = emptySet()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) { Text("Delete") }
+            },
+            dismissButton = { TextButton(onClick = { showBulkDeleteConfirmation = false }) { Text("Cancel") } }
+        )
+    }
+
+    if (showBulkDownloadDialog) {
+        AlertDialog(
+            onDismissRequest = { showBulkDownloadDialog = false },
+            title = { Text("Download to App") },
+            text = {
+                Column {
+                    Text("Download ${remoteFiles.size} selected files into app storage?")
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(checked = bulkEncrypt, onCheckedChange = { bulkEncrypt = it })
+                        Text("Encrypt with global password")
+                    }
+                }
+            },
+            confirmButton = {
+                Button(onClick = {
+                    showBulkDownloadDialog = false
+                    val entries = remoteFiles.toList()
+                    if (bulkEncrypt && (!filesViewModel.isGlobalPasswordSet() || filesViewModel.getVerifiedPassword() == null)) {
+                        passwordAction = {
+                            filesViewModel.downloadFilesToApp(entries, filesViewModel.getVerifiedPassword(), true)
+                            selectedPaths = emptySet()
+                        }
+                        showPasswordDialog = true
+                    } else {
+                        filesViewModel.downloadFilesToApp(entries, filesViewModel.getVerifiedPassword(), bulkEncrypt)
+                        selectedPaths = emptySet()
+                    }
+                }) { Text("Download") }
+            },
+            dismissButton = { TextButton(onClick = { showBulkDownloadDialog = false }) { Text("Cancel") } }
+        )
+    }
+
+    if (showCopyDialog && (sourceEntry != null || bulkDestinationEntries.isNotEmpty())) {
         val isConnectedState by filesViewModel.mainViewModel.isConnected.collectAsState()
         DirectoryPickerDialog(
             signalRClient = filesViewModel.signalRClient,
             isConnected = isConnectedState,
-            onDismiss = { showCopyDialog = false },
+            onDismiss = { showCopyDialog = false; bulkDestinationEntries = emptyList(); sourceEntry = null },
             onConfirm = { destDir, _ ->
                 showCopyDialog = false
                 val separator = if (destDir.contains("/")) "/" else "\\"
                 val entryName = sourceEntry?.name ?: ""
                 val destPath = if (destDir.endsWith(separator)) "${destDir}${entryName}" else "${destDir}${separator}${entryName}"
-                filesViewModel.copyFile(sourceEntry!!.path, destPath)
+                if (bulkDestinationEntries.isNotEmpty()) {
+                    filesViewModel.performBulkFileOperation(bulkDestinationEntries, BulkFileOperation.COPY, destDir)
+                    bulkDestinationEntries = emptyList()
+                    selectedPaths = emptySet()
+                } else {
+                    filesViewModel.copyFile(sourceEntry!!.path, destPath)
+                }
                 sourceEntry = null
             }
         )
     }
 
-    if (showMoveDialog && sourceEntry != null) {
+    if (showMoveDialog && (sourceEntry != null || bulkDestinationEntries.isNotEmpty())) {
         val isConnectedState by filesViewModel.mainViewModel.isConnected.collectAsState()
         DirectoryPickerDialog(
             signalRClient = filesViewModel.signalRClient,
             isConnected = isConnectedState,
-            onDismiss = { showMoveDialog = false },
+            onDismiss = { showMoveDialog = false; bulkDestinationEntries = emptyList(); sourceEntry = null },
             onConfirm = { destDir, _ ->
                 showMoveDialog = false
                 val separator = if (destDir.contains("/")) "/" else "\\"
                 val entryName = sourceEntry?.name ?: ""
                 val destPath = if (destDir.endsWith(separator)) "${destDir}${entryName}" else "${destDir}${separator}${entryName}"
-                filesViewModel.moveFile(sourceEntry!!.path, destPath)
+                if (bulkDestinationEntries.isNotEmpty()) {
+                    filesViewModel.performBulkFileOperation(bulkDestinationEntries, BulkFileOperation.MOVE, destDir)
+                    bulkDestinationEntries = emptyList()
+                    selectedPaths = emptySet()
+                } else {
+                    filesViewModel.moveFile(sourceEntry!!.path, destPath)
+                }
                 sourceEntry = null
             }
         )
@@ -930,6 +1120,10 @@ fun FileSystemEntryItem(
     isBookmarked: Boolean = false,
     hasPendingEdit: Boolean = false,
     isRecentlyChanged: Boolean = false,
+    isSelectionMode: Boolean = false,
+    isSelected: Boolean = false,
+    onSelect: (FileSystemEntry) -> Unit = {},
+    onSelectionActions: () -> Unit = {},
     formatFileSize: (Long) -> String = { "" },
     onBookmarkToggle: (FileSystemEntry) -> Unit = {},
     onClick: (FileSystemEntry) -> Unit, 
@@ -957,14 +1151,14 @@ fun FileSystemEntryItem(
         animationSpec = androidx.compose.animation.core.tween(durationMillis = 500)
     )
 
-    Box(modifier = Modifier.background(flashColor, RoundedCornerShape(8.dp))) {
+    Box(modifier = Modifier.background(if (isSelected) MaterialTheme.colorScheme.primaryContainer else flashColor, RoundedCornerShape(8.dp))) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .combinedClickable(
-                    onClick = { onClick(entry) },
-                    onLongClick = { 
-                        showMenu = true
+                    onClick = { if (isSelectionMode) onSelect(entry) else onClick(entry) },
+                    onLongClick = {
+                        if (isSelectionMode) onSelectionActions() else showMenu = true
                     }
                 )
                 .padding(vertical = 8.dp),
@@ -979,12 +1173,22 @@ fun FileSystemEntryItem(
                 else -> Icons.Default.InsertDriveFile
             }
 
-            Icon(
-                imageVector = icon,
-                contentDescription = if (entry.isDirectory) "Folder" else "File",
-                modifier = Modifier.size(24.dp)
-            )
-            Spacer(Modifier.width(8.dp))
+            // The leftmost icon alone starts selection; long-pressing the row otherwise
+            // preserves its original single-file menu. Once selecting, long-press opens bulk actions.
+            Box(
+                modifier = Modifier.size(40.dp).combinedClickable(
+                    onClick = { if (isSelectionMode) onSelect(entry) else onClick(entry) },
+                    onLongClick = { if (isSelectionMode) onSelectionActions() else onSelect(entry) }
+                ),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = if (isSelected) Icons.Default.CheckCircle else if (isSelectionMode) Icons.Default.RadioButtonUnchecked else icon,
+                    contentDescription = if (isSelected) "Selected" else if (isSelectionMode) "Select" else "Long press to select",
+                    tint = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(24.dp)
+                )
+            }
             Column(modifier = Modifier.weight(1f)) {
                 val displayName = if (!entry.isDirectory && hasPendingEdit) entry.name + " *" else entry.name
                 Text(text = displayName, style = MaterialTheme.typography.bodyLarge)
@@ -996,7 +1200,7 @@ fun FileSystemEntryItem(
                 }
             }
             
-            IconButton(onClick = { onBookmarkToggle(entry) }) {
+            if (!isSelectionMode) IconButton(onClick = { onBookmarkToggle(entry) }) {
                 Icon(
                     imageVector = if (isBookmarked) Icons.Default.Star else Icons.Default.StarBorder,
                     contentDescription = "Bookmark",
@@ -1008,7 +1212,7 @@ fun FileSystemEntryItem(
                 val ts = entry.lastModified.time
                 if (ts <= 0L) "" else SimpleDateFormat("MMM dd, HH:mm", Locale.getDefault()).format(entry.lastModified)
             }
-            if (lmText.isNotEmpty()) {
+            if (!isSelectionMode && lmText.isNotEmpty()) {
                 Text(
                     text = lmText,
                     style = MaterialTheme.typography.bodySmall,
@@ -1018,7 +1222,7 @@ fun FileSystemEntryItem(
         }
 
         DropdownMenu(
-            expanded = showMenu,
+            expanded = showMenu && !isSelectionMode,
             onDismissRequest = { showMenu = false }
         ) {
             if (entry.path == "VIRTUAL_ENCRYPTED") {

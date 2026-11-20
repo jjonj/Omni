@@ -40,6 +40,8 @@ import java.util.UUID
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.Dispatchers
 
+enum class BulkFileOperation { COPY, MOVE, DELETE, DUPLICATE }
+
 class FilesViewModel(
     application: Application, // Add application to constructor
     val signalRClient: SignalRClient,
@@ -64,6 +66,11 @@ class FilesViewModel(
 
     private val _errorMessage = MutableStateFlow<String?>(null)
     val errorMessage: StateFlow<String?> = _errorMessage
+
+    private val _isBulkOperationRunning = MutableStateFlow(false)
+    val isBulkOperationRunning: StateFlow<Boolean> = _isBulkOperationRunning
+    private val _bulkOperationProgress = MutableStateFlow<String?>(null)
+    val bulkOperationProgress: StateFlow<String?> = _bulkOperationProgress
 
     // --- File Streaming/Download State ---
     private val _downloadingFile = MutableStateFlow<FileSystemEntry?>(null)
@@ -1905,6 +1912,78 @@ class FilesViewModel(
         downloadedVideosPrefs.edit().putString("downloaded_videos", json).apply()
     }
 
+    /** Executes file actions serially over one selection, reporting partial failures and refreshing once. */
+    fun performBulkFileOperation(entries: List<FileSystemEntry>, operation: BulkFileOperation, destinationDir: String? = null) {
+        if (entries.isEmpty() || _isBulkOperationRunning.value) return
+        if (operation != BulkFileOperation.DELETE && !mainViewModel.isConnected.value) {
+            _errorMessage.value = "Not connected to OmniSync Hub."
+            return
+        }
+        if ((operation == BulkFileOperation.COPY || operation == BulkFileOperation.MOVE) && destinationDir.isNullOrBlank()) {
+            _errorMessage.value = "Choose a destination folder."
+            return
+        }
+        _isBulkOperationRunning.value = true
+        _errorMessage.value = null
+        viewModelScope.launch(Dispatchers.IO) {
+            var completed = 0
+            val failures = mutableListOf<String>()
+            try {
+                for ((index, entry) in entries.withIndex()) {
+                    _bulkOperationProgress.value = "${operation.name.lowercase().replaceFirstChar { it.uppercase() }} ${index + 1}/${entries.size}: ${entry.name}"
+                    try {
+                        require(entry.name != ".." && !entry.path.startsWith("VIRTUAL_")) { "Virtual item" }
+                        val local = _downloadedVideos.value.firstOrNull { it.localPath == entry.path }
+                        if (local != null && operation == BulkFileOperation.DELETE) {
+                            val file = File(local.localPath)
+                            check(!file.exists() || file.delete()) { "Could not delete local file" }
+                            File(getApplication<Application>().cacheDir, "decrypted/${local.id}").deleteRecursively()
+                            _downloadedVideos.value = _downloadedVideos.value.filterNot { it.id == local.id }
+                            saveDownloadedVideos()
+                            completed++
+                            continue
+                        }
+                        require(local == null) { "Local files only support Delete" }
+                        check(mainViewModel.isConnected.value) { "Disconnected" }
+                        val separator = if (destinationDir?.contains('\\') == true) "\\" else "/"
+                        val target = when (operation) {
+                            BulkFileOperation.COPY, BulkFileOperation.MOVE -> destinationDir!!.trimEnd('\\', '/') + separator + entry.name
+                            BulkFileOperation.DUPLICATE -> {
+                                require(!entry.isDirectory) { "Cannot duplicate folders" }
+                                val dot = entry.name.lastIndexOf('.')
+                                val name = if (dot > 0) entry.name.substring(0, dot) + ".copy" + entry.name.substring(dot) else entry.name + ".copy"
+                                val parent = getParentPath(entry.path)
+                                parent.trimEnd('\\', '/') + (if (entry.path.contains('\\')) "\\" else "/") + name
+                            }
+                            BulkFileOperation.DELETE -> ""
+                        }
+                        if (operation != BulkFileOperation.DELETE) {
+                            check(pathKey(target) != pathKey(entry.path)) { "Source and destination are the same" }
+                            if (entry.isDirectory) {
+                                check(!pathKey(target).startsWith(pathKey(entry.path) + "/")) { "Cannot move or copy a folder into itself" }
+                            }
+                        }
+                        val result = when (operation) {
+                            BulkFileOperation.DELETE -> signalRClient.deleteFile(entry.path)
+                            BulkFileOperation.MOVE -> signalRClient.moveFile(entry.path, target)
+                            BulkFileOperation.COPY, BulkFileOperation.DUPLICATE -> signalRClient.copyFile(entry.path, target)
+                        }?.subscribeOn(Schedulers.io())?.timeout(60, java.util.concurrent.TimeUnit.SECONDS)?.blockingGet() ?: false
+                        check(result) { "Hub rejected operation" }
+                        completed++
+                    } catch (e: Exception) {
+                        failures.add("${entry.name}: ${e.message}")
+                    }
+                }
+                mainViewModel.addLog("${operation.name}: $completed/${entries.size} succeeded", if (failures.isEmpty()) com.omni.sync.ui.screen.LogType.SUCCESS else com.omni.sync.ui.screen.LogType.WARNING)
+                if (failures.isNotEmpty()) _errorMessage.value = "${operation.name}: $completed/${entries.size} succeeded. ${failures.joinToString("; ").take(400)}"
+                if (completed > 0) withContext(Dispatchers.Main) { loadDirectory(_currentPath.value) }
+            } finally {
+                _bulkOperationProgress.value = null
+                _isBulkOperationRunning.value = false
+            }
+        }
+    }
+
     fun deleteByPath(path: String) {
         val video = _downloadedVideos.value.find { it.localPath == path }
         if (video != null) {
@@ -2009,16 +2088,21 @@ class FilesViewModel(
         // Need to refactor this to take the password string from UI
     }
 
-    fun downloadVideoWithGlobalPassword(entry: FileSystemEntry, password: String?, isEncrypted: Boolean) {
+    fun downloadVideoWithGlobalPassword(entry: FileSystemEntry, password: String?, isEncrypted: Boolean) =
+        downloadFilesToApp(listOf(entry), password, isEncrypted)
+
+    /** Queues app-storage downloads in order; avoids silently rejecting every file after the first. */
+    fun downloadFilesToApp(entries: List<FileSystemEntry>, password: String?, isEncrypted: Boolean) {
         if (!mainViewModel.isConnected.value) {
             _downloadErrorMessage.value = "Not connected to OmniSync Hub."
             return
         }
-        if (entry.isDirectory) {
-            _downloadErrorMessage.value = "Cannot download a directory."
+        val files = entries.filterNot { it.isDirectory || it.path.contains("downloaded_videos") }
+        if (files.isEmpty()) {
+            _downloadErrorMessage.value = "No remote files selected for download."
             return
         }
-        
+
         // Use either provided password, session password, OR RSA Public Key (no password needed!)
         val finalPassword = password ?: verifiedGlobalPassword
         val publicKey = if (isEncrypted) encryptionManager.getPublicKey() else null
@@ -2033,14 +2117,18 @@ class FilesViewModel(
             return
         }
 
-        _downloadingFile.value = entry
-        _downloadProgress.value = 0
-        _downloadingSpeed.value = null
         _downloadErrorMessage.value = null
         _isDownloading.value = true
 
         viewModelScope.launch(Schedulers.io().asCoroutineDispatcher()) {
+            val failures = mutableListOf<String>()
             try {
+                for (entry in files) {
+                    _downloadingFile.value = entry
+                    _downloadProgress.value = 0
+                    _downloadingSpeed.value = null
+                    var partialOutput: File? = null
+                    try {
                 val videoId = java.util.UUID.randomUUID().toString()
                 val videosDir = File(mainViewModel.applicationContext.filesDir, "downloaded_videos")
                 if (!videosDir.exists()) {
@@ -2055,7 +2143,8 @@ class FilesViewModel(
 
                 val fileName = if (isEncrypted) "$videoId.encrypted" else "$videoId.${entry.name.substringAfterLast('.')}"
                 val outputFile = File(videosDir, fileName)
-                
+                partialOutput = outputFile
+
                 val fos = FileOutputStream(outputFile)
                 
                 var cipher: Cipher? = null
@@ -2149,10 +2238,14 @@ class FilesViewModel(
                 saveDownloadedVideos()
 
                 _downloadErrorMessage.value = null
-                mainViewModel.addLog("Video downloaded: ${entry.name}", com.omni.sync.ui.screen.LogType.SUCCESS)
-            } catch (e: Exception) {
-                _downloadErrorMessage.value = "Download failed: ${e.message}"
-                Log.e("FilesViewModel", "Video download error", e)
+                mainViewModel.addLog("Downloaded to app: ${entry.name}", com.omni.sync.ui.screen.LogType.SUCCESS)
+                    } catch (e: Exception) {
+                        partialOutput?.delete()
+                        failures.add("${entry.name}: ${e.message}")
+                        Log.e("FilesViewModel", "App download failed", e)
+                    }
+                }
+                if (failures.isNotEmpty()) _downloadErrorMessage.value = "${files.size - failures.size}/${files.size} downloads succeeded. ${failures.joinToString("; ").take(400)}"
             } finally {
                 _isDownloading.value = false
                 _downloadingFile.value = null
