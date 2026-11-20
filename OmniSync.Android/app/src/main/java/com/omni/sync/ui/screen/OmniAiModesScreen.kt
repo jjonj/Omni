@@ -152,7 +152,8 @@ private data class AiPalette(
 )
 private fun AgentSessionUi.needsAttention() =
     (attention.isNotBlank() && !attention.equals("None", true)) ||
-        activity.equals("WaitingOnUser", true)
+        // Browser sessions use explicit GMA/Return markers, not the legacy question marker.
+        (kind != "t3/chatgpt" && activity.equals("WaitingOnUser", true))
 /** Human-readable reason this session needs the user. */
 private fun AgentSessionUi.attentionLabel(): String =
     attention.takeUnless { it.isBlank() || it.equals("None", true) }
@@ -202,18 +203,43 @@ private fun AgentSessionUi.listGroup(sortMode: String): String =
     if (sortMode == "project") projectName() else groupName()
 
 private fun AgentSessionUi.groupName(): String = when {
-    needsAttention() || unread == true -> "NEEDS YOU"
     isRunning() -> "WORKING"
+    kind == "t3/chatgpt" && (borderColor != null || conversationFull) -> "HIGHLIGHTED"
+    needsAttention() || unread == true -> "NEEDS YOU"
+    kind == "t3/chatgpt" && activity.equals("Errored", true) -> "ERRORS"
     else -> "CONVERSATIONS"
 }
 private fun AgentSessionUi.groupRank(): Int = when (groupName()) {
-    "NEEDS YOU" -> 0
-    "WORKING" -> 1
-    else -> 2
+    "WORKING" -> 0
+    "HIGHLIGHTED" -> 1
+    "NEEDS YOU" -> 2
+    "CONVERSATIONS" -> 3
+    else -> 4
 }
 /** Activity timestamps are optional in the provider protocol; unknown is always oldest. */
 private fun activityMillis(iso: String?): Long =
     runCatching { java.time.Instant.parse(iso ?: "").toEpochMilli() }.getOrDefault(0L)
+
+/** Personal colors and exhausted conversations are T3-owned, not guessed on-device. */
+private fun AgentSessionUi.highlightColor(): Color? {
+    if (conversationFull) return Color(0xFF8B5CF6) // Terminal: purple even if personally highlighted.
+    return when (borderColor) {
+        "red" -> Color(0xFFF87171)
+        "orange" -> Color(0xFFFB923C)
+        "yellow" -> Color(0xFFFACC15)
+        "green" -> Color(0xFF34D399)
+        "blue" -> Color(0xFF38BDF8)
+        "purple" -> Color(0xFFA78BFA)
+        "pink" -> Color(0xFFF472B6)
+        else -> null
+    }
+}
+private fun AgentSessionUi.problemLabel(): String? = when {
+    conversationFull -> "Maximum conversation length · reboot required"
+    kind == "t3/chatgpt" && activity.equals("Errored", true) ->
+        activityText?.takeIf { it.isNotBlank() } ?: "ChatGPT error · desktop is checking recovery"
+    else -> null
+}
 
 /** T3 GMA requests become yellow only after T3 reports the idle transition. */
 private fun AgentSessionUi.readyAttention(requests: List<PhoneAgentAttention>): Boolean =
@@ -230,6 +256,8 @@ private fun AgentSessionUi.dotColor(p: AiPalette, readyAttention: Boolean = fals
     val failed = activity.equals("Error", true) || activity.equals("Errored", true) ||
         activity.equals("Failed", true)
     val interrupted = activity.equals("Interrupted", true) ||
+        activityText?.startsWith("Connection interrupted") == true ||
+        activityText?.startsWith("Message delivery timed out") == true ||
         attention.contains("interrupted", true) || attention.contains("timeout", true)
     val unloaded = kind == "t3/chatgpt" && reachability != "Reachable"
     return when {
@@ -360,6 +388,9 @@ fun OmniAiModesScreen(
     var searchExpanded by rememberSaveable { mutableStateOf(false) }
     var sessionFilter by rememberSaveable { mutableStateOf("All") }
     var projectFilter by rememberSaveable { mutableStateOf("") }
+    // Comma-separated persistence permits multi-color desktop-style filtering in Saveable state.
+    var highlightColors by rememberSaveable { mutableStateOf("") }
+    val selectedHighlightColors = highlightColors.split(',').filter { it.isNotBlank() }
     var threadKind by rememberSaveable {
         mutableStateOf(viewPrefs.getString("threadKind", "t3/chatgpt") ?: "t3/chatgpt")
     }
@@ -558,7 +589,7 @@ fun OmniAiModesScreen(
     val t3Connected = online && providers.any {
         it.id == "t3" && it.active && it.capabilities.contains("Submit")
     }
-    val sessionDeliveryReady = selected != null &&
+    val sessionDeliveryReady = selected != null && !selected.conversationFull &&
         (!online || (selected.provider == active?.id &&
             selected.capabilities.contains("Submit") &&
             (selected.modes.contains("WhenIdle") || selected.modes.contains("Queue") ||
@@ -568,6 +599,8 @@ fun OmniAiModesScreen(
             (!online || active?.capabilities?.contains("SubmitToAgent") == true)
         else sessionDeliveryReady)
     val deliveryHint = when {
+        selected?.conversationFull == true && !addressMode ->
+            "Maximum conversation length · reboot this T3 session"
         !online -> "Offline · draft saved; tap Send to queue"
         addressMode -> "Recipient confirmation required"
         selected == null -> "Select a conversation"
@@ -760,13 +793,15 @@ fun OmniAiModesScreen(
         }.map { it.projectName() }
             .distinct().sortedWith(String.CASE_INSENSITIVE_ORDER).toList()
     }
-    val visibleSessions = remember(sessions, sessionSearch, sessionFilter, projectFilter, sortMode,
+    val visibleSessions = remember(sessions, sessionSearch, sessionFilter, projectFilter, highlightColors, sortMode,
         hideUnloaded, showWorkers, viewRevision, now / MINUTE_MS, threadKind, listProvider) {
         sessions.asSequence().filter { s ->
             if (listProvider == "t3") s.provider == "t3" && s.kind == threadKind
             else s.provider == listProvider
         }.filter { s ->
             projectFilter.isBlank() || s.projectName().equals(projectFilter, ignoreCase = true)
+        }.filter { s ->
+            highlightColors.isBlank() || (s.kind == "t3/chatgpt" && s.borderColor in selectedHighlightColors)
         }.filter { s ->
             sessionSearch.isBlank() || s.title.contains(sessionSearch, true) ||
                 s.id.contains(sessionSearch, true) || s.kind.contains(sessionSearch, true) ||
@@ -1670,6 +1705,8 @@ fun OmniAiModesScreen(
                                 selected.kindLabel(),
                                 selected.workspace?.takeIf { it.isNotBlank() }?.let { selected.projectName() },
                                 when {
+                                    selected.conversationFull -> "maximum length · reboot required"
+                                    selected.problemLabel() != null -> selected.problemLabel()
                                     !online -> "offline · cached"
                                     historyLoading && unloaded -> "opening on PC…"
                                     unloaded -> "not loaded · tap to load"
@@ -1873,6 +1910,7 @@ fun OmniAiModesScreen(
                                         viewPrefs.edit().putString("threadKind", value).apply()
                                         sessionFilter = "All"
                                         projectFilter = ""
+                                        highlightColors = ""
                                     }.padding(horizontal = 10.dp, vertical = 6.dp),
                                 color = if (on) p.accent else p.muted, fontSize = 13.sp,
                                 fontWeight = if (on) FontWeight.SemiBold else FontWeight.Normal, maxLines = 1)
@@ -1882,14 +1920,14 @@ fun OmniAiModesScreen(
                     Box {
                         var filterMenu by remember { mutableStateOf(false) }
                         Row(Modifier.clip(RoundedCornerShape(10.dp))
-                            .background(if (sessionFilter != "All" || projectFilter.isNotBlank()) p.accentBg else Color.Transparent)
+                            .background(if (sessionFilter != "All" || projectFilter.isNotBlank() || highlightColors.isNotBlank()) p.accentBg else Color.Transparent)
                             .clickable { filterMenu = true }.padding(horizontal = 8.dp, vertical = 6.dp),
                             verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.FilterList, null, tint = if (sessionFilter != "All" || projectFilter.isNotBlank()) p.accent else p.muted,
+                            Icon(Icons.Default.FilterList, null, tint = if (sessionFilter != "All" || projectFilter.isNotBlank() || highlightColors.isNotBlank()) p.accent else p.muted,
                                 modifier = Modifier.size(16.dp))
                             Spacer(Modifier.width(4.dp))
-                            Text(if (projectFilter.isNotBlank()) projectFilter else if (sessionFilter == "All" && attention > 0) "$attention need you" else sessionFilter,
-                                color = if (sessionFilter != "All" || projectFilter.isNotBlank() || attention > 0) p.accent else p.muted,
+                            Text(if (highlightColors.isNotBlank()) "Colors " + selectedHighlightColors.size else if (projectFilter.isNotBlank()) projectFilter else if (sessionFilter == "All" && attention > 0) "$attention need you" else sessionFilter,
+                                color = if (sessionFilter != "All" || projectFilter.isNotBlank() || highlightColors.isNotBlank() || attention > 0) p.accent else p.muted,
                                 fontSize = 13.sp, maxLines = 1)
                         }
                         DropdownMenu(expanded = filterMenu, onDismissRequest = { filterMenu = false }) {
@@ -1903,6 +1941,33 @@ fun OmniAiModesScreen(
                                     "Active" -> "Working"
                                     else -> value
                                 }) }, onClick = { sessionFilter = value; filterMenu = false })
+                            }
+                            if (listProvider == "t3" && threadKind == "t3/chatgpt") {
+                                HorizontalDivider()
+                                DropdownMenuItem(text = { Text("Highlight colors · All") },
+                                    onClick = { highlightColors = ""; filterMenu = false })
+                                listOf("red", "orange", "yellow", "green", "blue", "purple", "pink").forEach { color ->
+                                    DropdownMenuItem(text = {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Dot(when (color) {
+                                                "red" -> Color(0xFFF87171)
+                                                "orange" -> Color(0xFFFB923C)
+                                                "yellow" -> Color(0xFFFACC15)
+                                                "green" -> Color(0xFF34D399)
+                                                "blue" -> Color(0xFF38BDF8)
+                                                "purple" -> Color(0xFFA78BFA)
+                                                else -> Color(0xFFF472B6)
+                                            })
+                                            Spacer(Modifier.width(7.dp))
+                                            Text((if (color in selectedHighlightColors) "✓ " else "") +
+                                                color.replaceFirstChar { it.uppercase() })
+                                        }
+                                    }, onClick = {
+                                        highlightColors = (if (color in selectedHighlightColors)
+                                            selectedHighlightColors.filterNot { it == color }
+                                        else selectedHighlightColors + color).joinToString(",")
+                                    })
+                                }
                             }
                             if (availableProjects.isNotEmpty()) {
                                 HorizontalDivider()
@@ -2005,7 +2070,9 @@ fun OmniAiModesScreen(
                             // compact row, never measured as another line or extra row height.
                             Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(9.dp))
                                 .background(if (session.key == selectedKey) p.selected else p.surface)
-                                .border(1.5.dp, session.dotColor(p, online && session.readyAttention(attentionRequests)), RoundedCornerShape(9.dp))
+                                .border(if (session.highlightColor() != null) 2.dp else 1.5.dp,
+                                    session.highlightColor() ?: session.dotColor(p, online && session.readyAttention(attentionRequests)),
+                                    RoundedCornerShape(9.dp))
                                 .combinedClickable(onClick = { openSession(session) },
                                     onLongClick = { rowOptions = session })) {
                                 Row(Modifier.fillMaxWidth()
@@ -2016,6 +2083,21 @@ fun OmniAiModesScreen(
                                         maxLines = 1, overflow = TextOverflow.Ellipsis,
                                         fontWeight = if (session.unread == true) FontWeight.Bold else FontWeight.Medium,
                                         fontSize = 14.sp)
+                                    if (session.conversationFull) {
+                                        Text("FULL", color = Color(0xFFA78BFA), fontSize = 10.sp,
+                                            fontWeight = FontWeight.Bold, modifier = Modifier.padding(end = 5.dp))
+                                    } else if (session.kind == "t3/chatgpt" &&
+                                        session.activity.equals("Errored", true)) {
+                                        Text(when {
+                                            session.activityText?.startsWith("A temporary limit") == true -> "LIMIT"
+                                            session.activityText?.startsWith("Connection interrupted") == true -> "INT"
+                                            else -> "ERR"
+                                        }, color = session.dotColor(p), fontSize = 10.sp,
+                                            fontWeight = FontWeight.Bold, modifier = Modifier.padding(end = 5.dp))
+                                    } else if (session.verificationPending) {
+                                        Text("VERIFY", color = p.amber, fontSize = 10.sp,
+                                            fontWeight = FontWeight.Bold, modifier = Modifier.padding(end = 5.dp))
+                                    }
                                     if (cornerIndicators) {
                                         // Reserve only horizontal space so flags never obscure title.
                                         val badgeWidth = (if (snoozed) 13 else 0) +
@@ -2053,6 +2135,8 @@ fun OmniAiModesScreen(
                             }
                         } else Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp))
                             .background(if (session.key == selectedKey) p.selected else p.surface)
+                            .border(if (session.highlightColor() != null) 2.dp else 0.dp,
+                                session.highlightColor() ?: Color.Transparent, RoundedCornerShape(16.dp))
                             .combinedClickable(onClick = { openSession(session) },
                                 onLongClick = { rowOptions = session })
                             .padding(start = 12.dp, end = 2.dp, top = 9.dp, bottom = 9.dp),
@@ -2073,6 +2157,10 @@ fun OmniAiModesScreen(
                                         maxLines = 1, overflow = TextOverflow.Ellipsis,
                                         fontWeight = if (session.unread == true) FontWeight.Bold else FontWeight.Medium,
                                         style = MaterialTheme.typography.bodyLarge)
+                                    if (session.conversationFull) Text("FULL", color = Color(0xFFA78BFA),
+                                        fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                    else if (session.verificationPending) Text("VERIFY", color = p.amber,
+                                        fontSize = 10.sp, fontWeight = FontWeight.Bold)
                                     Text(age, color = p.muted, fontSize = 11.sp,
                                         modifier = Modifier.padding(start = 6.dp))
                                 }
@@ -2084,6 +2172,8 @@ fun OmniAiModesScreen(
                                             sessionFilter == "Hidden" -> "Hidden"
                                             sessionFilter == "Snoozed" -> "Snoozed · " +
                                                 ((snoozedUntil(session) - now + MINUTE_MS - 1) / MINUTE_MS).coerceAtLeast(1) + "m left"
+                                            session.problemLabel() != null -> session.problemLabel()
+                                            session.verificationPending -> "Awaiting verification"
                                             session.needsAttention() -> session.attentionLabel()
                                             session.isRunning() -> session.activityText?.takeIf { it.isNotBlank() } ?: "Working"
                                             session.kind == "t3/chatgpt" && session.reachability != "Reachable" -> "Unloaded"
@@ -2879,7 +2969,7 @@ fun OmniAiModesScreen(
                     Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                         horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         listOf("red", "orange", "yellow", "green", "blue", "purple", "pink", "none").forEach { color ->
-                            FilterChip(selected = field("borderColor") == color, onClick = {
+                            FilterChip(selected = field("borderColor") == color.takeUnless { it == "none" }, onClick = {
                                 performRowControl(target, "highlight",
                                     mapOf("value" to color.takeUnless { it == "none" }))
                             }, label = { Text(color.replaceFirstChar { it.uppercase() }) })

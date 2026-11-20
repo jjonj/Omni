@@ -59,7 +59,10 @@ data class AgentSessionUi(
     val caffyPaused: Boolean = false,
     val caffyOnceOnly: Boolean = false,
     val caffyIntervalMinutes: Int? = null,
-    val caffyBeginAt: Long? = null
+    val caffyBeginAt: Long? = null,
+    val borderColor: String? = null,
+    val conversationFull: Boolean = false,
+    val verificationPending: Boolean = false
 ) {
     val key get() = "$provider:$id"
 }
@@ -276,6 +279,9 @@ class GenericAgentClient(
                                 caffyOnceOnly = if (summary.has("visibility")) updated.caffyOnceOnly else previous?.caffyOnceOnly ?: false,
                                 caffyIntervalMinutes = if (summary.has("visibility")) updated.caffyIntervalMinutes else previous?.caffyIntervalMinutes,
                                 caffyBeginAt = if (summary.has("visibility")) updated.caffyBeginAt else previous?.caffyBeginAt,
+                                borderColor = if (summary.has("visibility")) updated.borderColor else previous?.borderColor,
+                                conversationFull = if (summary.has("visibility")) updated.conversationFull else previous?.conversationFull ?: false,
+                                verificationPending = if (summary.has("visibility")) updated.verificationPending else previous?.verificationPending ?: false,
                                 workspace = if (summary.has("workspace")) updated.workspace else previous?.workspace,
                                 reachability = if (summary.obj("state")?.has("reachability") == true)
                                     updated.reachability else previous?.reachability ?: updated.reachability,
@@ -589,7 +595,10 @@ class GenericAgentClient(
             obj.obj("visibility")?.flag("caffyPaused") ?: false,
             obj.obj("visibility")?.flag("caffyOnceOnly") ?: false,
             obj.obj("visibility")?.get("caffyIntervalMinutes")?.let { runCatching { it.asInt }.getOrNull() },
-            obj.obj("visibility")?.get("caffyBeginAt")?.let { runCatching { it.asLong }.getOrNull() })
+            obj.obj("visibility")?.get("caffyBeginAt")?.let { runCatching { it.asLong }.getOrNull() },
+            obj.obj("visibility")?.str("borderColor"),
+            obj.obj("visibility")?.flag("conversationFull") ?: false,
+            obj.obj("visibility")?.flag("verificationPending") ?: false)
     }
 
     /** When true, the catalog also loads settled/snoozed native threads (off by default: there are hundreds). */
@@ -873,6 +882,9 @@ class GenericAgentClient(
                        deliveryMode: String = "WhenIdle", maxActiveWorkers: Int? = null,
                        stableMessageId: String? = null): String {
         require(deliveryMode in listOf("WhenIdle","Steer","WaitForSlot")) { "Unknown delivery choice" }
+        require(session.kind != "t3/chatgpt" || !session.conversationFull) {
+            "Maximum conversation length reached; reboot the T3 session before sending."
+        }
         require(maxActiveWorkers==null || maxActiveWorkers in 1..100) { "Max working agents must be 1..100" }
         return enqueue(SavedAgentRequest(stableMessageId ?: UUID.randomUUID().toString(), session.provider,
             "session", session.id, session.conversation, text, kind = session.kind,
@@ -1018,6 +1030,13 @@ class GenericAgentClient(
                 "provider" to item.provider,"id" to item.target))).asJsonObject
             val status=detail.obj("state")?.str("activity") ?: "Unknown"
             val currentBinding=detail.str("conversation")
+            // Recheck the PC's authoritative full-conversation flag before draining
+            // previously queued/offline messages. Never send to a terminal chat.
+            if (item.kind == "t3/chatgpt" &&
+                detail.obj("visibility")?.flag("conversationFull") == true) {
+                notePending(item.id, "Maximum conversation length reached; reboot the session on T3 before sending")
+                return false
+            }
             if (item.conversation!=currentBinding) {
                 notePending(item.id, "Conversation binding changed; this message will not be redirected")
                 return false
