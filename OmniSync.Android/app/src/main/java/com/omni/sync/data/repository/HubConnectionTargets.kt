@@ -15,11 +15,34 @@ internal object HubConnectionTargets {
                 host.split('.').take(2).let {
                     it.size == 2 && it[0] == "172" && (it[1].toIntOrNull() ?: 0) in 16..31
                 })
-        val remote = if (!legacyLan || wanIp.isBlank()) "" else runCatching {
-            URI(parsed?.scheme ?: "http", null, wanIp.trim(), parsed?.port ?: -1,
-                parsed?.path, parsed?.query, null).toString()
+        if (!legacyLan) return listOfNotNull(local.takeIf { it.isNotBlank() })
+
+        // WAN accepts an IP, IP:port, or full URL. A full URL preserves its
+        // own port (e.g. the FlightLink test proxy on :15000), not LAN's :5000.
+        val raw = wanIp.trim()
+        val remote = runCatching {
+            if (raw.isBlank()) return@runCatching ""
+            val explicitUrl = raw.startsWith("http://", ignoreCase = true) ||
+                raw.startsWith("https://", ignoreCase = true)
+            val wan = URI(if (explicitUrl) raw else "http://$raw")
+            if (wan.host.isNullOrBlank() || wan.userInfo != null ||
+                (wan.scheme != "http" && wan.scheme != "https")) return@runCatching ""
+            if (explicitUrl) {
+                if (wan.path.isNullOrBlank() || wan.path == "/")
+                    URI(wan.scheme, null, wan.host, wan.port, parsed?.path, parsed?.query, null).toString()
+                else wan.toString()
+            } else {
+                if (!wan.path.isNullOrBlank() || wan.query != null || wan.fragment != null)
+                    return@runCatching ""
+                URI(parsed?.scheme ?: "http", null, wan.host,
+                    if (wan.port >= 0) wan.port else parsed?.port ?: -1,
+                    parsed?.path, parsed?.query, null).toString()
+            }
         }.getOrDefault("")
-        return (if (wifi) listOf(local, remote) else listOf(remote, local))
+
+        // Without Wi-Fi, a private LAN address cannot be reached. Never waste
+        // the mobile-data reconnect timeout attempting it after WAN fails.
+        return (if (wifi) listOf(local, remote) else listOf(remote))
             .filter { it.isNotBlank() }.distinct()
     }
 }

@@ -856,6 +856,10 @@ class SignalRClient(
         }
 
         val previous = mainViewModel.appConfig.value.wanIp.trim()
+        // Keep a manually chosen HTTPS/public test endpoint and its port;
+        // periodic external-IP discovery is only for the plain IP field.
+        if (previous.startsWith("http://", ignoreCase = true) ||
+            previous.startsWith("https://", ignoreCase = true)) return
         if (trimmed == previous) return
 
         mainViewModel.updateConfig { it.copy(wanIp = trimmed) }

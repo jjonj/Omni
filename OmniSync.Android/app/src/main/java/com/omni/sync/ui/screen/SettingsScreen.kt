@@ -266,8 +266,8 @@ fun SettingsScreen(
             OutlinedTextField(
                 value = wanIp,
                 onValueChange = { wanIp = it },
-                label = { Text("WAN IP (Public, auto)") },
-                supportingText = { Text("Refreshed by the Hub every few hours") },
+                label = { Text("WAN IP or full URL") },
+                supportingText = { Text("An IP uses the local URL's port; full URLs preserve their own port and are not auto-replaced") },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth()
             )
