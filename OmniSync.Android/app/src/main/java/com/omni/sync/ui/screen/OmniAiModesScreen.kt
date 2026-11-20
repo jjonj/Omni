@@ -435,6 +435,8 @@ fun OmniAiModesScreen(
     var addressMode by rememberSaveable { mutableStateOf(false) }
     var address by rememberSaveable { mutableStateOf("") }
     var sheet by remember { mutableStateOf<String?>(null) }
+    var showT3Usage by remember { mutableStateOf(false) }
+    val activeHubBaseUrl by signalRClient.currentBaseUrl.collectAsState()
     var note by remember { mutableStateOf<String?>(null) }
     var humanInbox by remember { mutableStateOf(false) }
     var attentionSheet by remember { mutableStateOf(false) }
@@ -1814,6 +1816,8 @@ fun OmniAiModesScreen(
                                 onClick = { sessionFilter = "Hidden"; menu = false })
                             HorizontalDivider(color = p.border)
                         }
+                        DropdownMenuItem(text = { Text("T3 usage") },
+                            onClick = { menu = false; showT3Usage = true })
                         if (!listMode) {
                             DropdownMenuItem(text = { Text("Session actions") }, onClick = {
                                 menu = false; rowOptions = selected
@@ -3517,6 +3521,11 @@ fun OmniAiModesScreen(
         dismissButton = { TextButton(enabled = !addProjectBusy,
             onClick = { addProjectOpen = false }) { Text("Cancel") } }
     )
+    if (showT3Usage) {
+        T3UsageSheet(activeHubBaseUrl, mainViewModel.appConfig.value.apiKey) {
+            showT3Usage = false
+        }
+    }
     switchProvider?.let { provider ->
         AlertDialog(onDismissRequest = { switchProvider = null },
             title = { Text("Activate " + provider.name + "?") },
