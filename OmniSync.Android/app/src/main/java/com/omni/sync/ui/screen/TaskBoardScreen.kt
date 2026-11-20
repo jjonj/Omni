@@ -660,8 +660,12 @@ private fun TaskBoardContents(parentPadding: PaddingValues, signalR: SignalRClie
         delay(1200) // Allow a newly submitted edit to complete its first attempt.
         var lastReceiptCheck = 0L
         while (true) {
-            val hasPending = offlineDrafts.all().any { it.state == "draft" }
-            if (hasPending) signalR.ensureAgentAuthentication()
+            val localEdits = offlineDrafts.all()
+            val hasPending = localEdits.any { it.state == "draft" }
+            val needsReceipt = localEdits.any {
+                it.taskId == "CREATE" && it.state == "applied" && it.createdTaskId == null
+            }
+            if (hasPending || needsReceipt) signalR.ensureAgentAuthentication()
             if (signalR.hubAuthenticated.value) {
                 try {
                     val delivered = if (hasPending) withContext(Dispatchers.IO) {
