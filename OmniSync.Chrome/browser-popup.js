@@ -143,4 +143,8 @@ chrome.storage.onChanged.addListener((changes, area) => {
     void refreshArchive().catch(error => show(error.message, true));
   }
 });
-void Promise.all([refresh(), refreshArchive()]).catch(error => show(error.message, true));
+void Promise.all([refresh(), refreshArchive()]).then(() => {
+  const query = new URLSearchParams(window.location.search);
+  if (query.has('cleanupResult')) show(query.get('cleanupResult'));
+  if (query.get('confirmMatching') === '1') $('confirm-matching').showModal();
+}).catch(error => show(error.message, true));

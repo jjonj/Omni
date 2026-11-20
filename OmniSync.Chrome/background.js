@@ -557,7 +557,13 @@ chrome.runtime.onInstalled.addListener(() => {
 
     chrome.contextMenus.create({
         id: "cleanTabs",
-        title: "Clean Tabs",
+        title: "Clean old tabs (72h)",
+        contexts: ["action", "page"]
+    });
+
+    chrome.contextMenus.create({
+        id: "cleanMatchingTabs",
+        title: "Clean matching tabs now…",
         contexts: ["action", "page"]
     });
 
@@ -596,11 +602,28 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
         });
     } else if (info.menuItemId === "cleanTabs") {
         void runCleanup()
-            .then(result => showCleanupNotification(cleanupResultMessage(result)))
+            .then(async result => {
+                const message = cleanupResultMessage(result);
+                if (result.closed === 0) {
+                    // OS notifications can be suppressed: show a visible explanation
+                    // and the already-available explicit matching cleanup action.
+                    const url = new URL(chrome.runtime.getURL("browser-popup.html"));
+                    url.searchParams.set("cleanupResult", message);
+                    await chrome.windows.create({ url: url.toString(), type: "popup", width: 460, height: 580 });
+                } else {
+                    await showCleanupNotification(message);
+                }
+            })
             .catch(error => {
-                console.error('Clean Tabs failed:', error);
+                console.error("Clean Tabs failed:", error);
                 void showCleanupNotification(String(error.message || error), true);
             });
+    } else if (info.menuItemId === "cleanMatchingTabs") {
+        // Recent matching tabs require explicit confirmation before closing.
+        void chrome.windows.create({
+            url: chrome.runtime.getURL("browser-popup.html?confirmMatching=1"),
+            type: "popup", width: 460, height: 580
+        });
     } else if (info.menuItemId === "editCleanupPatterns") {
         void chrome.windows.create({
             url: chrome.runtime.getURL("cleanup-patterns.html"),
