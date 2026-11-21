@@ -572,12 +572,14 @@ fun setConnected(connected: Boolean) {
         _commandOutput.value = ""
     }
     
-    // New function to add logs from anywhere
+    // Single entry point for ALL visible Android dashboard rows: the persistent
+    // diagnostic ring receives the same timestamp and severity as the UI.
     fun addLog(message: String, type: LogType = LogType.INFO) {
+        val timestamp = System.currentTimeMillis()
         (getApplication<Application>() as? com.omni.sync.OmniSyncApplication)
-            ?.androidDiagnostics?.dashboard(message, type.name)
-        val newLog = LogEntry(message, type, System.currentTimeMillis())
-        // Keep last 100 logs
+            ?.androidDiagnostics?.dashboard(message, type.name, timestamp)
+        val newLog = LogEntry(message, type, timestamp)
+        // Keep last 100 logs in the UI; the diagnostic ring retains up to 300.
         _dashboardLogs.value = (_dashboardLogs.value + newLog).takeLast(100)
     }
 

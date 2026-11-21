@@ -6,6 +6,12 @@ The **production Hub is Rust** at `D:\SSDProjects\Tools\Omnish\main` (separate G
 The obsolete C# `OmniSync.Hub` source was retired on 2026-10-18.
 Do not recreate C# Hub project references or restart the live Rust service as part of client builds.
 
+## Remote Android app diagnostics (OMN-0138)
+
+`MainViewModel.addLog()` sends **every Android Dashboard app-log row** into `AndroidDiagnostics` (same UTC timestamp and INFO/SUCCESS/WARNING/ERROR), before displaying the row. Up to 300 sanitized app-origin events survive app restarts and link outages for 24 hours and upload over authenticated SignalR after reconnect. The separate **Hub logs** tab is server-origin and is *not* part of this Android stream. The remote view contains safe event summaries, not raw dashboard text, paths, prompts, voice input or keys.
+
+PC: run `D:\SSDProjects\Tools\Omnish\main\scripts\get-android-diagnostics.ps1 -ListDevices` then `-Minutes 60` (optional `-DeviceId <UUID>`). Requires the existing OmniHub API key, a compatible running Rust Hub and an updated Android APK; unavailable phones explicitly return `unreachable` with a stale phone-origin snapshot. See `D:\SSDProjects\Tools\Omnish\main\docs\OMN-0138-ANDROID-DIAGNOSTICS.md` for limits, interpretation and rollout.
+
 ## User-maintained Obsidian notes
 `OmniNotes/` is an ignored junction to the user's vault. Before feature work read
 `design.txt`, `OmniNotes/_Agent Index.md` and relevant Inbox/Design/Backlog notes.

@@ -24,7 +24,9 @@ data class AndroidDiagnosticEvent(
     val source: String? = null,
     val eventName: String? = null,
     val scope: String? = null,
-    val exceptionType: String? = null
+    val exceptionType: String? = null,
+    // Present for EVERY MainViewModel.addLog entry, preserving the visible severity.
+    val logLevel: String? = null
 )
 
 class AndroidDiagnostics(context: Context) {
@@ -47,6 +49,7 @@ class AndroidDiagnostics(context: Context) {
             else -> "other"
         }
         private val sources = setOf("dashboard", "SignalRClient", "FilesViewModel", "GenericAgentClient", "CrashReportingTree")
+        private val logLevels = setOf("INFO", "SUCCESS", "WARNING", "ERROR")
         private val eventNames = setOf("startup", "auth", "connect", "connect_failed",
             "connection_closed", "reconnect_scheduled", "directory_list", "directory_result",
             "session_create", "session_result", "dashboard_error", "dashboard_file",
@@ -54,6 +57,10 @@ class AndroidDiagnostics(context: Context) {
             "dashboard_file_cached", "dashboard_file_loaded", "dashboard_file_failed",
             "dashboard_connected", "dashboard_disconnected", "dashboard_reconnect",
             "dashboard_session_failed", "dashboard_session_created",
+            "dashboard_voice", "dashboard_sleep", "dashboard_alarm", "dashboard_reminder",
+            "dashboard_remote", "dashboard_webview", "dashboard_book", "dashboard_clipboard",
+            "dashboard_macro", "dashboard_update", "dashboard_wol", "dashboard_log_control",
+            "dashboard_command", "dashboard_browser", "dashboard_settings",
             "timber_exception", "diagnostic_upload", "cache_fallback")
         private val statuses = setOf(
             "attempt", "ok", "failed", "offline", "timeout", "authenticated",
@@ -105,18 +112,19 @@ class AndroidDiagnostics(context: Context) {
         category: String, status: String, operationId: String? = null,
         error: Throwable? = null, count: Int? = null,
         source: String? = null, eventName: String? = null,
-        scope: String? = null
+        scope: String? = null, logLevel: String? = null, timestampMs: Long = System.currentTimeMillis()
     ): String {
         require(category in categories && status in statuses)
         require(source == null || source in sources)
         require(eventName == null || eventName in eventNames)
         require(scope == null || scope in scopes)
+        require(logLevel == null || logLevel in logLevels)
         val exceptionType = error?.javaClass?.simpleName?.takeIf { it in exceptionTypes }
         val id = operationId?.takeIf { runCatching { UUID.fromString(it) }.isSuccess }
         val entry = AndroidDiagnosticEvent(
-            UUID.randomUUID().toString(), System.currentTimeMillis(), category, status, id,
+            UUID.randomUUID().toString(), timestampMs, category, status, id,
             error?.let(::errorKind), count?.coerceIn(0, 1_000_000), source, eventName,
-            scope, exceptionType
+            scope, exceptionType, logLevel
         )
         synchronized(guard) {
             events.addLast(entry)
@@ -126,10 +134,32 @@ class AndroidDiagnostics(context: Context) {
         return entry.eventId
     }
 
-    /** Capture existing UI/app log activity without persisting raw messages or exceptions. */
-    fun dashboard(message: String, level: String) {
+    /** Every visible app-dashboard row passes here. Keep 1 event per row, with its
+     * exact UI timestamp/severity, but classify text on-device rather than upload it.
+     * This is NOT the separately selectable Hub server-log tab.
+     */
+    fun dashboard(message: String, level: String, timestampMs: Long) {
         val normalized = message.lowercase()
         val event = when {
+            // These represent dashboard rows from every feature, even if their
+            // free-form text contains filenames, URLs, voice input or credentials.
+            normalized.startsWith("[voice]") || "voice recognition" in normalized -> "dashboard_voice"
+            normalized.startsWith("[sleep tracker]") -> "dashboard_sleep"
+            normalized.startsWith("[wake alarm") || normalized.startsWith("[wake detection") ||
+                "alarm" in normalized -> "dashboard_alarm"
+            normalized.startsWith("[reminders]") -> "dashboard_reminder"
+            normalized.startsWith("[remote]") -> "dashboard_remote"
+            normalized.startsWith("webview") -> "dashboard_webview"
+            normalized.startsWith("[books]") -> "dashboard_book"
+            "clipboard" in normalized -> "dashboard_clipboard"
+            "macro" in normalized -> "dashboard_macro"
+            "update" in normalized || "deployment" in normalized -> "dashboard_update"
+            normalized.startsWith("[wol]") || "wol" in normalized -> "dashboard_wol"
+            normalized == "logs cleared" || normalized.startsWith("logs copied") ||
+                "fetch hub logs" in normalized || "log entries from hub" in normalized -> "dashboard_log_control"
+            normalized.startsWith("[command ") || "command output" in normalized -> "dashboard_command"
+            normalized.startsWith("browser") || "bookmark" in normalized -> "dashboard_browser"
+            "setting" in normalized || "password" in normalized -> "dashboard_settings"
             "directory" in normalized && "cache" in normalized -> "dashboard_file_cached"
             "loaded" in normalized && "entries" in normalized -> "dashboard_file_loaded"
             "directory" in normalized && ("error" in normalized || "failed" in normalized) -> "dashboard_file_failed"
@@ -153,9 +183,10 @@ class AndroidDiagnostics(context: Context) {
             "failed" in normalized || "error" in normalized -> "failed"
             else -> "ok"
         }
-        // Existing dashboard text can contain paths, URLs and even command output.
-        // Record the safe app-side classification, NEVER the original text.
-        record("app", status, source = "dashboard", eventName = event)
+        // Preserve the visible row (timestamp, severity, category and order)
+        // without persisting any free-form message, credentials or transcript.
+        record("app", status, source = "dashboard", eventName = event,
+            logLevel = level, timestampMs = timestampMs)
     }
 
     fun snapshot(minutes: Int): List<AndroidDiagnosticEvent> = synchronized(guard) {
