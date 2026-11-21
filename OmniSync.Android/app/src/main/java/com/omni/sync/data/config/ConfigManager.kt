@@ -51,7 +51,14 @@ class ConfigManager(private val context: Context) {
     fun loadConfig(): AppConfig {
         val config = if (configFile.exists()) {
             try {
-                gson.fromJson(configFile.readText(), AppConfig::class.java)
+                val json = configFile.readText()
+                gson.fromJson<AppConfig>(json, AppConfig::class.java).also {
+                    // Gson skips constructor defaults for missing fields in older saved configs.
+                    if (!com.google.gson.JsonParser.parseString(json).asJsonObject
+                            .has("stillAwakeMediaPauseMinutes")) {
+                        it.stillAwakeMediaPauseMinutes = 30
+                    }
+                }
             } catch (e: Exception) {
                 android.util.Log.e("ConfigManager", "Error loading config", e)
                 AppConfig()

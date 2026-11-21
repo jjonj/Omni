@@ -460,7 +460,8 @@ private fun AlarmScreenContent(
             val imminentWakeAlarms = wakeAlarms.map { alarm ->
                 alarm to com.omni.sync.utils.WakeAlarmActions.nextTrigger(alarm, currentTime)
             }.filter { (_, at) -> at > currentTime && at - currentTime <= 12L * 60 * 60 * 1000 }
-            if (imminentWakeAlarms.isNotEmpty() && !isRinging && !isSnoozing) {
+            // Still Awake also starts the media timer when there is no enabled wake alarm.
+            if (!isRinging && !isSnoozing) {
                 Button(
                     onClick = { com.omni.sync.utils.WakeAlarmActions.stillAwake(context) },
                     modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp).height(64.dp),
