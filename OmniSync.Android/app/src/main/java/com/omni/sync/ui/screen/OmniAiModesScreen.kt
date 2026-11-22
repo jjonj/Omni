@@ -368,6 +368,10 @@ fun OmniAiModesScreen(
     var busySlotsOpen by remember { mutableStateOf(false) }
     var busySlotValue by remember { mutableIntStateOf(0) }
     var busySlotsDragging by remember { mutableStateOf(false) }
+    var dailyWorkOpen by remember { mutableStateOf(false) }
+    var dailyWorkEnabled by remember { mutableStateOf(false) }
+    var dailyWorkHours by remember { mutableIntStateOf(4) }
+    var confirmIdleShutdown by remember { mutableStateOf(false) }
     // Effective desktop slider value: zero when auto-fill is disabled.
     val effectiveBusySlots = if (busyPolicy?.keepT3Busy == true)
         (busyPolicy?.maxWorking ?: 3).coerceIn(1, 5) else 0
@@ -1661,7 +1665,7 @@ fun OmniAiModesScreen(
                             busySlotValue = it.roundToInt().coerceIn(0, 5)
                         },
                         valueRange = 0f..5f, steps = 4,
-                        enabled = online && busyPolicy != null && !keepT3BusyUpdating,
+                        enabled = online && busyPolicy != null && !keepT3BusyUpdating && busyPolicy?.dailyWorkCompleted != true,
                         onValueChangeFinished = {
                             val requested = busySlotValue
                             busySlotsDragging = false
@@ -1683,9 +1687,119 @@ fun OmniAiModesScreen(
                     )
                     Text("0 = off · 1–5 = active work slots. Running sessions are not stopped.",
                         color = p.muted, style = MaterialTheme.typography.bodySmall)
+                    HorizontalDivider(color = p.border)
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                        Column(Modifier.weight(1f)) {
+                            Text("Shut down PC when idle", color = p.text)
+                            Text("After 5 minutes idle; force-closes open programs.",
+                                color = p.muted, style = MaterialTheme.typography.bodySmall)
+                        }
+                        Switch(
+                            checked = busyPolicy?.shutdownWhenIdle == true,
+                            enabled = online && busyPolicy != null && !keepT3BusyUpdating,
+                            onCheckedChange = { checked ->
+                                if (checked) { busySlotsOpen = false; confirmIdleShutdown = true }
+                                else {
+                                    keepT3BusyUpdating = true
+                                    scope.launch {
+                                        try { busyPolicy = signalRClient.t3BusyPolicy(shutdownWhenIdle = false) }
+                                        catch (error: Exception) { note = "Shutdown update failed: ${error.message}" }
+                                        finally { keepT3BusyUpdating = false }
+                                    }
+                                }
+                            }
+                        )
+                    }
+                    HorizontalDivider(color = p.border)
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text("Daily work budget", color = p.text)
+                            Text(
+                                when {
+                                    busyPolicy?.dailyWorkCompleted == true -> "Completed this run · restarts next T3 launch"
+                                    busyPolicy?.dailyWorkMinutes != null ->
+                                        "${(busyPolicy?.dailyWorkMinutes ?: 0) / 60}h each launch · then idle shutdown"
+                                    else -> "Off · run for a set time on every T3 launch"
+                                },
+                                color = p.muted, style = MaterialTheme.typography.bodySmall
+                            )
+                        }
+                        TextButton(onClick = {
+                            dailyWorkEnabled = busyPolicy?.dailyWorkMinutes != null
+                            dailyWorkHours = ((busyPolicy?.dailyWorkMinutes ?: 240) / 60).coerceIn(1, 12)
+                            busySlotsOpen = false
+                            dailyWorkOpen = true
+                        }, enabled = online && busyPolicy != null && !keepT3BusyUpdating) {
+                            Text("Configure")
+                        }
+                    }
                 }
             },
             confirmButton = { TextButton(onClick = { busySlotsOpen = false }) { Text("Done") } }
+        )
+    }
+    if (confirmIdleShutdown) {
+        AlertDialog(
+            onDismissRequest = { confirmIdleShutdown = false },
+            title = { Text("Enable automatic PC shutdown?") },
+            text = { Text("T3 will force Windows to shut down after sessions have been idle for 5 minutes. Unsaved work in other apps will be lost. The arm expires after 10 hours.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmIdleShutdown = false
+                    keepT3BusyUpdating = true
+                    scope.launch {
+                        try { busyPolicy = signalRClient.t3BusyPolicy(shutdownWhenIdle = true) }
+                        catch (error: Exception) { note = "Shutdown update failed: ${error.message}" }
+                        finally { keepT3BusyUpdating = false }
+                    }
+                }) { Text("Enable shutdown") }
+            },
+            dismissButton = { TextButton(onClick = { confirmIdleShutdown = false }) { Text("Cancel") } }
+        )
+    }
+    if (dailyWorkOpen) {
+        AlertDialog(
+            onDismissRequest = { dailyWorkOpen = false },
+            title = { Text("Daily T3 work") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text("Enable each T3 launch", Modifier.weight(1f), color = p.text)
+                        Switch(checked = dailyWorkEnabled, onCheckedChange = { dailyWorkEnabled = it })
+                    }
+                    if (dailyWorkEnabled) {
+                        Text("Work budget: $dailyWorkHours hours", color = p.text)
+                        Slider(
+                            value = dailyWorkHours.toFloat(),
+                            onValueChange = { dailyWorkHours = it.roundToInt().coerceIn(1, 12) },
+                            valueRange = 1f..12f,
+                            steps = 10
+                        )
+                    }
+                    Text("T3 resumes the last working-slot limit at launch. After the budget, new automatic work stops (0 slots); active sessions can finish. Idle shutdown is then armed. This repeats only when T3 restarts, not every 24 hours.",
+                        color = p.muted, style = MaterialTheme.typography.bodySmall)
+                    Text("Windows shutdown force-closes unsaved programs after T3 is idle.",
+                        color = p.muted, style = MaterialTheme.typography.bodySmall)
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    dailyWorkOpen = false
+                    keepT3BusyUpdating = true
+                    scope.launch {
+                        try {
+                            busyPolicy = if (dailyWorkEnabled)
+                                signalRClient.t3BusyPolicy(dailyWorkMinutes = dailyWorkHours * 60)
+                            else signalRClient.t3BusyPolicy(disableDailyWork = true)
+                            note = if (dailyWorkEnabled) "Daily T3 work set to $dailyWorkHours hours per launch"
+                                else "Daily T3 work disabled"
+                        } catch (error: Exception) {
+                            note = "Daily work update failed: ${error.message}"
+                        } finally { keepT3BusyUpdating = false }
+                    }
+                }, enabled = online && busyPolicy != null && !keepT3BusyUpdating) { Text("Save") }
+            },
+            dismissButton = { TextButton(onClick = { dailyWorkOpen = false }) { Text("Cancel") } }
         )
     }
     if (pendingBusyMinutes != null) {

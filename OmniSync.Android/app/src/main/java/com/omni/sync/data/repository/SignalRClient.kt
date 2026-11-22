@@ -66,7 +66,9 @@ data class T3BusyPolicyState(
     val keepT3Busy: Boolean,
     val shutdownWhenIdle: Boolean,
     val busyUntil: Long?,
-    val maxWorking: Int?
+    val maxWorking: Int?,
+    val dailyWorkMinutes: Int?,
+    val dailyWorkCompleted: Boolean
 )
 
 data class AndroidAlarmActionData(
@@ -1888,7 +1890,8 @@ class SignalRClient(
 
     /** All T3 Busy scheduling is authoritative on the PC, including its deadline. */
     suspend fun t3BusyPolicy(enabled: Boolean? = null, scheduleMinutes: Int? = null,
-                             maxWorking: Int? = null): T3BusyPolicyState =
+                             maxWorking: Int? = null, shutdownWhenIdle: Boolean? = null,
+                             dailyWorkMinutes: Int? = null, disableDailyWork: Boolean = false): T3BusyPolicyState =
         kotlinx.coroutines.withContext(Dispatchers.IO) {
             val conn = hubConnection ?: throw IllegalStateException("OmniHub connection unavailable")
             check(isHubAuthenticated &&
@@ -1901,6 +1904,13 @@ class SignalRClient(
                     conn.invoke(Any::class.java, "T3CaffySetSlots", maxWorking)
                 }
                 scheduleMinutes != null -> conn.invoke(Any::class.java, "T3CaffySchedule", scheduleMinutes)
+                shutdownWhenIdle != null -> conn.invoke(Any::class.java, "T3CaffySetShutdown", shutdownWhenIdle)
+                dailyWorkMinutes != null || disableDailyWork -> {
+                    require(disableDailyWork || (dailyWorkMinutes!! in 60..720 && dailyWorkMinutes % 60 == 0)) {
+                        "Daily work must be 1–12 whole hours"
+                    }
+                    conn.invoke(Any::class.java, "T3CaffyDailyWork", if (disableDailyWork) 0 else dailyWorkMinutes!!)
+                }
                 enabled != null -> conn.invoke(Any::class.java, "T3CaffySetBusy", enabled)
                 else -> conn.invoke(Any::class.java, "T3CaffyStatus")
             }
@@ -1917,7 +1927,9 @@ class SignalRClient(
                 keepT3Busy = state.asBoolean,
                 shutdownWhenIdle = response.get("shutdownWhenIdle")?.takeUnless { it.isJsonNull }?.asBoolean ?: false,
                 busyUntil = response.get("busyUntil")?.takeUnless { it.isJsonNull }?.asLong,
-                maxWorking = confirmedSlots
+                maxWorking = confirmedSlots,
+                dailyWorkMinutes = response.get("dailyWorkMinutes")?.takeUnless { it.isJsonNull }?.asInt,
+                dailyWorkCompleted = response.get("dailyWorkCompleted")?.takeUnless { it.isJsonNull }?.asBoolean ?: false
             )
         }
 
