@@ -678,6 +678,26 @@ fun OmniAiModesScreen(
             catch (e: Exception) { rowControlError = "T3 control status unavailable: " + e.message }
         }
     }
+    // The sheet may stay open across scheduler ticks or changes made on the PC.
+    LaunchedEffect(rowOptions?.key, rowActionPage, online) {
+        val target = rowOptions
+        if (target == null || !online || rowActionPage != "Caffy" ||
+            !isT3Browser(target) || !target.capabilities.contains("RemoteControl")) return@LaunchedEffect
+        while (true) {
+            delay(20_000)
+            if (rowControlBusy) continue
+            try {
+                val latest = client.sessionControls(target)
+                if (rowOptions?.key == target.key) {
+                    rowControls = latest
+                    rowControlError = null
+                }
+            } catch (e: Exception) {
+                if (rowOptions?.key == target.key && rowControls == null)
+                    rowControlError = "T3 control status unavailable: " + e.message
+            }
+        }
+    }
     fun performRowControl(target: AgentSessionUi, command: String,
                           options: Map<String, Any?> = emptyMap()) {
         if (!online || !target.capabilities.contains("RemoteControl")) {
@@ -2530,10 +2550,23 @@ fun OmniAiModesScreen(
             note = "$label copied"
         }
         val caffy = details?.get("caffy")?.takeIf { it.isJsonObject }?.asJsonObject
-        fun caffyField(name: String): String? =
-            caffy?.get(name)?.takeUnless { it.isJsonNull }?.let {
+        // Match the list badge even while the slower detailed-controls RPC is unavailable.
+        val currentSession = sessions.firstOrNull { it.key == target.key } ?: target
+        fun caffyField(name: String): String? {
+            val detail = caffy?.get(name)?.takeUnless { it.isJsonNull }?.let {
                 runCatching { it.asString }.getOrNull()
             }
+            if (name == "mode" && currentSession.caffyMode != null)
+                return currentSession.caffyMode
+            return detail ?: when (name) {
+                "mode" -> currentSession.caffyMode
+                "paused" -> currentSession.caffyPaused.toString().takeIf { currentSession.caffyMode != null }
+                "onceOnly" -> currentSession.caffyOnceOnly.toString().takeIf { currentSession.caffyMode != null }
+                "intervalMinutes" -> currentSession.caffyIntervalMinutes?.toString()
+                "beginAt" -> currentSession.caffyBeginAt?.toString()
+                else -> null
+            }
+        }
         var customDuration by remember(target.key) { mutableStateOf("60") }
         var customInterval by remember(target.key) { mutableStateOf("20") }
         var caffyRepeat by remember(target.key, caffyField("repeatPrompt")) {
@@ -2714,10 +2747,16 @@ fun OmniAiModesScreen(
                     }
                 }
                 if (remote && rowActionPage == "Caffy") {
-                    val activeMode = caffyField("mode")
+                    val activeMode = caffyField("mode")?.takeIf { it.isNotBlank() }
                     val paused = caffyField("paused") == "true"
-                    SheetTitle("Caffy · ${activeMode ?: "Off"}" +
+                    val statusUnknown = activeMode == null &&
+                        (details == null || field("caffyAvailable") == "false")
+                    SheetTitle("Caffy · ${activeMode ?: if (statusUnknown) "Status unavailable" else "Off"}" +
                         (if (paused) " (paused)" else ""), "T3-owned wake control", p)
+                    if (currentSession.caffyMode != null &&
+                        caffy?.get("mode")?.takeUnless { it.isJsonNull }?.asString != currentSession.caffyMode)
+                        Text("Caffy is enabled in the session list; detailed status is still syncing.",
+                            color = p.amber, fontSize = 12.sp)
                     // PC-owned live scheduler state, never inferred from local timers.
                     fun at(name: String): String = caffyField(name)?.toLongOrNull()?.let {
                         java.text.DateFormat.getDateTimeInstance().format(java.util.Date(it))
@@ -2760,8 +2799,11 @@ fun OmniAiModesScreen(
                                     else p.muted, fontSize = 12.sp)
                             }
                         }
-                        Text("Capacity policy: " + if (caffyRespectSlots) "Wait for a free T3 slot"
-                            else "Independent of busy slots", color = p.muted, fontSize = 12.sp)
+                        Text("Capacity policy: " + when (caffyField("respectSlots")) {
+                            "true" -> "Wait for a free T3 slot"
+                            "false" -> "Independent of busy slots"
+                            else -> "Not available"
+                        }, color = p.muted, fontSize = 12.sp)
                         val caffyEvents = rowControls?.get("caffy")?.takeIf { it.isJsonObject }
                             ?.asJsonObject?.get("recentEvents")?.takeIf { it.isJsonArray }?.asJsonArray
                         caffyEvents?.toList()?.takeLast(5)?.forEach { event ->
