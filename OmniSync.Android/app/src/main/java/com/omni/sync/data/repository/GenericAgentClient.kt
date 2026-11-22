@@ -21,6 +21,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.io.File
 import java.security.MessageDigest
+import java.time.Instant
 import java.util.UUID
 import java.util.Collections
 import java.util.LinkedHashMap
@@ -70,7 +71,9 @@ data class AgentSessionUi(
 }
 data class AgentHistoryUi(
     val id: String, val kind: String, val text: String, val partial: Boolean,
-    val revision: Long = 1, val streaming: Boolean = false
+    val revision: Long = 1, val streaming: Boolean = false,
+    /** Provider UTC timestamp, needed to prove native user-message reconciliation. */
+    val sourceAt: String? = null
 )
 data class NativeProjectUi(
     val id: String, val title: String, val workspaceRoot: String,
@@ -150,11 +153,11 @@ class GenericAgentClient(
     private val userVisibleTraces = Collections.synchronizedSet(mutableSetOf<String>())
     private val assistantVisibleTraces = Collections.synchronizedSet(mutableSetOf<String>())
 
-    private fun traceChatGPTDelivery(
+    private fun traceAgentDelivery(
         item: SavedAgentRequest, stage: String, status: String = "ok",
         elapsedMs: Long? = null, atMs: Long = System.currentTimeMillis()
     ) {
-        if (item.kind != "t3/chatgpt") return
+        if (item.kind != "t3/chatgpt" && item.kind != "t3/thread") return
         try {
             deliveryDiagnostics?.record(
                 "agents.delivery", status, operationId = item.id,
@@ -167,37 +170,69 @@ class GenericAgentClient(
         }
     }
 
-    /** Called only for the visible ChatGPT timeline, after Compose receives new content.
-     * Match locally against an already-confirmed sent request; do not upload text.
-     * For direct Steer sends T3 has no message stamp, so match the actual user turn.
+    /** Called only for the visible T3 timeline after Compose receives content.
+     * Match locally without uploading message text. Native messages also require the
+     * authoritative source timestamp so old identical messages cannot clear receipts.
      */
     fun noteTimelineVisible(sessionKey: String, rows: List<AgentHistoryUi>) {
         if (!sessionKey.startsWith("t3:") || rows.isEmpty()) return
         val now = System.currentTimeMillis()
         val candidates = synchronized(diskGuard) {
             entries.values.filter { entry ->
-                entry.kind == "t3/chatgpt" && "t3:${entry.target}" == sessionKey &&
-                    entry.state == "Delivered" && now - entry.createdAt in 0L..300_000L &&
-                    (!userVisibleTraces.contains(entry.id) || !assistantVisibleTraces.contains(entry.id))
-            }.map { it.copy() }
+                "t3:${entry.target}" == sessionKey &&
+                    (entry.kind == "t3/chatgpt" && entry.state == "Delivered" ||
+                     entry.kind == "t3/thread" && entry.state in listOf("Accepted", "Delivered")) &&
+                    now - entry.createdAt in 0L..300_000L &&
+                    (entry.kind == "t3/thread" && entry.state == "Accepted" ||
+                     !userVisibleTraces.contains(entry.id) || !assistantVisibleTraces.contains(entry.id))
+            }.map { it.copy() }.sortedBy { it.createdAt }
         }
         if (candidates.isEmpty()) return
         scope.launch {
+            val claimedNativeRows = mutableSetOf<String>()
             for (entry in candidates) {
+                val native = entry.kind == "t3/thread"
                 val index = rows.indexOfLast { row ->
-                    row.kind.equals("user", ignoreCase = true) &&
-                        (row.text.trim() == entry.message.trim() ||
-                            (row.text.startsWith("[T3-MSG:${entry.id}]") &&
-                                row.text.contains(entry.message.trim())))
+                    if (native) {
+                        // Native Queue returns Accepted when its command is committed.
+                        // Only a real, timestamped provider history item proves the
+                        // corresponding user turn actually appeared. Never match stale
+                        // identical messages (or another pending outbox placeholder).
+                        val at = row.sourceAt?.let {
+                            runCatching { Instant.parse(it).toEpochMilli() }.getOrNull()
+                        }
+                        row.kind == "user_message" && row.id !in claimedNativeRows &&
+                            row.text.trim() == entry.message.trim() &&
+                            at != null && at in (entry.createdAt - 30_000L)..(entry.createdAt + 300_000L)
+                    } else {
+                        row.kind.equals("user", ignoreCase = true) &&
+                            (row.text.trim() == entry.message.trim() ||
+                                (row.text.startsWith("[T3-MSG:${entry.id}]") &&
+                                    row.text.contains(entry.message.trim())))
+                    }
                 }
                 if (index < 0) continue
+                if (native) {
+                    claimedNativeRows.add(rows[index].id)
+                    synchronized(diskGuard) {
+                        entries[entry.id]?.let { stored ->
+                            if (stored.state == "Accepted" || stored.state == "Queued") {
+                                stored.state = "Delivered"
+                                stored.error = null
+                                if (outboxWritable) persistOutbox()
+                                publishOutbox()
+                            }
+                        }
+                    }
+                }
                 if (userVisibleTraces.add(entry.id)) {
-                    traceChatGPTDelivery(entry, "agent_user_visible", elapsedMs = now - entry.createdAt)
+                    traceAgentDelivery(entry, "agent_user_visible", elapsedMs = now - entry.createdAt)
                 }
                 if (rows.drop(index + 1).any {
-                        it.kind.equals("assistant", ignoreCase = true) && it.text.isNotBlank()
+                        it.kind.equals(if (native) "assistant_message" else "assistant", ignoreCase = true) &&
+                            it.text.isNotBlank()
                     } && assistantVisibleTraces.add(entry.id)) {
-                    traceChatGPTDelivery(entry, "agent_assistant_visible", elapsedMs = now - entry.createdAt)
+                    traceAgentDelivery(entry, "agent_assistant_visible", elapsedMs = now - entry.createdAt)
                 }
             }
         }
@@ -395,17 +430,28 @@ class GenericAgentClient(
                     "operation.changed" -> {
                         val payload = event.get("payload")?.takeIf { it.isJsonObject }?.asJsonObject
                         val id = payload?.str("clientRequestId")
+                        var nativeRefreshKey: String? = null
                         if (id != null) synchronized(diskGuard) {
                             val item = entries[id]
                             val state = payload.str("state")
                             if (item != null && state in listOf("Delivered","Failed","Unknown","Accepted","Queued")) {
-                                item.state = state!!
-                                item.operationId = payload.str("id")
-                                item.error = payload.str("error")
-                                if (outboxWritable) persistOutbox()
-                                publishOutbox()
+                                // A late Accepted event must not undo proof from native history.
+                                if (item.state != "Delivered" || state == "Delivered") {
+                                    item.state = state!!
+                                    item.operationId = payload.str("id")
+                                    item.error = payload.str("error")
+                                    if (outboxWritable) persistOutbox()
+                                    publishOutbox()
+                                }
+                                if (item.kind == "t3/thread" && state == "Accepted" &&
+                                    _selected.value == "t3:${item.target}") {
+                                    nativeRefreshKey = "t3:${item.target}"
+                                }
                             }
                         }
+                        // Native Accepted is a durable, committed user turn. Fetch it now
+                        // instead of waiting for the 1-2s UI poll or a model reply.
+                        nativeRefreshKey?.let { key -> scope.launch { select(key, reload = true) } }
                     }
                     "resync.required" -> refresh()
                 }
@@ -649,7 +695,8 @@ class GenericAgentClient(
         val streaming = raw.flag("streaming")
         val item = AgentHistoryUi(id, raw.str("kind") ?: "Assistant", historyContent(raw),
             raw.str("completeness") != "Full",
-            raw.get("revision")?.let { runCatching { it.asLong }.getOrNull() } ?: 1L, streaming)
+            raw.get("revision")?.let { runCatching { it.asLong }.getOrNull() } ?: 1L,
+            streaming, raw.str("at"))
         val merged = synchronized(historyCache) {
             val list = historyCache[key].orEmpty()
             val prev = list.firstOrNull { it.id == id }
@@ -889,7 +936,7 @@ class GenericAgentClient(
                 AgentHistoryUi(id, obj.str("kind") ?: "Notice",
                     historyContent(obj), obj.str("completeness") != "Full",
                     obj.get("revision")?.let { runCatching { it.asLong }.getOrNull() } ?: 1L,
-                    obj.flag("streaming"))
+                    obj.flag("streaming"), obj.str("at"))
             } ?: emptyList()
             // A full read is only the *latest page*, not a replacement for pages
             // fetched with Load earlier. Even a manual refresh/reconnect preserves them.
@@ -960,7 +1007,7 @@ class GenericAgentClient(
                 AgentHistoryUi(id, row.str("kind") ?: "Notice", historyContent(row),
                     row.str("completeness") != "Full",
                     row.get("revision")?.let { runCatching { it.asLong }.getOrNull() } ?: 1L,
-                    row.flag("streaming"))
+                    row.flag("streaming"), row.str("at"))
             }.orEmpty()
             // Preserve provider ordering while deduplicating by stable source ID.
             val merged = synchronized(historyCache) {
@@ -1027,7 +1074,7 @@ class GenericAgentClient(
             publishOutbox()
         }
         scope.launch {
-            traceChatGPTDelivery(item, "agent_enqueue", status = "attempt",
+            traceAgentDelivery(item, "agent_enqueue", status = "attempt",
                 elapsedMs = 0, atMs = item.createdAt)
             drain()
         }
@@ -1242,7 +1289,7 @@ class GenericAgentClient(
             val preview = synchronized(diskGuard) { entries[id]?.copy() } ?: continue
             val preflightStartMs = System.currentTimeMillis()
             if (!canDeliver(preview)) continue
-            traceChatGPTDelivery(preview, "agent_preflight_ready",
+            traceAgentDelivery(preview, "agent_preflight_ready",
                 elapsedMs = System.currentTimeMillis() - preflightStartMs)
             val item = synchronized(diskGuard) {
                 val current = entries[id] ?: return@synchronized null
@@ -1254,7 +1301,7 @@ class GenericAgentClient(
                 current.copy()
             } ?: continue
             val submitStartMs = System.currentTimeMillis()
-            traceChatGPTDelivery(item, "agent_submit_start", status = "attempt",
+            traceAgentDelivery(item, "agent_submit_start", status = "attempt",
                 elapsedMs = submitStartMs - item.createdAt, atMs = submitStartMs)
             try {
                 // A short timeout gives intermittent mobile links more chances to
@@ -1263,20 +1310,28 @@ class GenericAgentClient(
                     timeoutSeconds = 20L).asJsonObject
                 val operationId = answer.str("id")
                 val state = answer.str("state") ?: "Unknown"
-                traceChatGPTDelivery(item, "agent_hub_receipt",
-                    status = if (state == "Delivered") "ok" else "unknown",
+                traceAgentDelivery(item, "agent_hub_receipt",
+                    status = if (state == "Delivered" || state == "Accepted") "ok" else "unknown",
                     elapsedMs = System.currentTimeMillis() - submitStartMs)
                 synchronized(diskGuard) {
                     entries[id]?.let {
-                        it.state = if (state in listOf("Delivered","Accepted","Queued","Failed")) state else "Unknown"
-                        it.operationId = operationId
-                        it.error = answer.str("error")
+                        // A parallel native history read may already have proved the
+                        // canonical user turn. Never regress Delivered to Accepted.
+                        if (it.state != "Delivered" || state == "Delivered") {
+                            it.state = if (state in listOf("Delivered","Accepted","Queued","Failed")) state else "Unknown"
+                            it.operationId = operationId
+                            it.error = answer.str("error")
+                        }
                     }
                     persistOutbox()
                     publishOutbox()
                 }
+                if (item.kind == "t3/thread" && state == "Accepted") {
+                    val key = "t3:${item.target}"
+                    if (_selected.value == key) scope.launch { select(key, reload = true) }
+                }
             } catch (e: Exception) {
-                traceChatGPTDelivery(item, "agent_transport_unknown", status = "unknown",
+                traceAgentDelivery(item, "agent_transport_unknown", status = "unknown",
                     elapsedMs = System.currentTimeMillis() - submitStartMs)
                 synchronized(diskGuard) {
                     entries[id]?.let {
@@ -1316,7 +1371,8 @@ class GenericAgentClient(
                     if (state in listOf("Delivered","Failed","Unknown","Accepted","Queued")) {
                         val item = entries[id]
                         val error = result.str("error")
-                        if (item != null && (item.state != state || item.error != error)) {
+                        if (item != null && (item.state != state || item.error != error) &&
+                            (item.state != "Delivered" || state == "Delivered")) {
                             item.state = state
                             item.error = error
                             persistOutbox()

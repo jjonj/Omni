@@ -906,7 +906,15 @@ fun OmniAiModesScreen(
     // Keep reading the latest state inside the long-lived poll coroutine. Previously the
     // coroutine captured the opening session state (often Idle) and kept using its 8s
     // delay even after the model started replying.
-    val selectedNowRunning by rememberUpdatedState(selected?.isRunning() == true)
+    // Native Queue accepts a user turn before T3 publishes Working. Until the
+    // authoritative history confirms that turn, poll with the active-chat cadence
+    // rather than the idle cadence so the optimistic bubble resolves promptly.
+    val nativeAwaitingHistory = selected?.kind == "t3/thread" &&
+        outbox.any { item -> item.provider == selected?.provider &&
+            item.target == selected?.id && item.state in listOf("InFlight", "Accepted") &&
+            System.currentTimeMillis() - item.createdAt in 0L..60_000L }
+    val selectedNowRunning by rememberUpdatedState(
+        selected?.isRunning() == true || nativeAwaitingHistory)
     LaunchedEffect(online, listMode, selectedKey) {
         if (online && !listMode && selectedKey != null) {
             while (true) {
@@ -2295,9 +2303,9 @@ fun OmniAiModesScreen(
                     conversationHistory.lastOrNull()?.text?.length, outbox) {
                     if (conversationHistory.isNotEmpty()) {
                         lastContentAt = System.currentTimeMillis()
-                        // This is the first point where Android knows the message reached
-                        // the visible timeline, rather than merely receiving a Hub receipt.
-                        if (selected?.kind == "t3/chatgpt")
+                        // For browser and native T3 threads, this distinguishes visible
+                        // canonical messages from Hub receipt/queue acceptance.
+                        if (selected?.kind == "t3/chatgpt" || selected?.kind == "t3/thread")
                             selectedKey?.let { key -> client.noteTimelineVisible(key, conversationHistory) }
                     }
                 }
