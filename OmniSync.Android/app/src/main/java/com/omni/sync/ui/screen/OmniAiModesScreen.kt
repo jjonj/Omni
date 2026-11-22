@@ -202,19 +202,27 @@ private fun projectLabel(project: NativeProjectUi, all: List<NativeProjectUi>): 
 private fun AgentSessionUi.listGroup(sortMode: String): String =
     if (sortMode == "project") projectName() else groupName()
 
+/** The provider's explicit status wins; older desktop publishers exposed this exact verified limit as Errored. */
+private fun AgentSessionUi.isUsageLimited(): Boolean =
+    activity.equals("UsageLimited", true) ||
+        (kind == "t3/chatgpt" && activity.equals("Errored", true) &&
+            activityText?.startsWith("A temporary limit", true) == true)
+
 private fun AgentSessionUi.groupName(): String = when {
     isRunning() -> "WORKING"
     kind == "t3/chatgpt" && (borderColor != null || conversationFull) -> "HIGHLIGHTED"
     needsAttention() || unread == true -> "NEEDS YOU"
-    kind == "t3/chatgpt" && activity.equals("Errored", true) -> "ERRORS"
+    isUsageLimited() -> "USAGE LIMITED"
+    activity.equals("Errored", true) -> "ERRORS"
     else -> "CONVERSATIONS"
 }
 private fun AgentSessionUi.groupRank(): Int = when (groupName()) {
     "WORKING" -> 0
     "HIGHLIGHTED" -> 1
     "NEEDS YOU" -> 2
-    "CONVERSATIONS" -> 3
-    else -> 4
+    "USAGE LIMITED" -> 3
+    "CONVERSATIONS" -> 4
+    else -> 5
 }
 /** Activity timestamps are optional in the provider protocol; unknown is always oldest. */
 private fun activityMillis(iso: String?): Long =
@@ -236,8 +244,12 @@ private fun AgentSessionUi.highlightColor(): Color? {
 }
 private fun AgentSessionUi.problemLabel(): String? = when {
     conversationFull -> "Maximum conversation length · reboot required"
+    isUsageLimited() ->
+        activityText?.takeIf { it.isNotBlank() && it != "Failed" } ?: "Usage limit reached"
     kind == "t3/chatgpt" && activity.equals("Errored", true) ->
         activityText?.takeIf { it.isNotBlank() } ?: "ChatGPT error · desktop is checking recovery"
+    kind == "t3/thread" && activity.equals("Errored", true) ->
+        activityText?.takeIf { it.isNotBlank() && it != "Failed" } ?: "Native T3 error"
     else -> null
 }
 
@@ -255,6 +267,7 @@ private fun AgentSessionUi.dotColor(p: AiPalette, readyAttention: Boolean = fals
     val working = isRunning()
     val failed = activity.equals("Error", true) || activity.equals("Errored", true) ||
         activity.equals("Failed", true)
+    val usageLimited = isUsageLimited()
     val interrupted = activity.equals("Interrupted", true) ||
         activityText?.startsWith("Connection interrupted") == true ||
         activityText?.startsWith("Message delivery timed out") == true ||
@@ -262,6 +275,7 @@ private fun AgentSessionUi.dotColor(p: AiPalette, readyAttention: Boolean = fals
     val unloaded = kind == "t3/chatgpt" && reachability != "Reachable"
     return when {
         interrupted -> Color(0xFFF6A34A)
+        usageLimited -> p.amber
         failed -> Color(0xFFE38D8D)
         unloaded && working && recent -> Color(0xFF587A5D)
         unloaded && recent -> Color(0xFF546C85)
@@ -2092,13 +2106,17 @@ fun OmniAiModesScreen(
                                     if (session.conversationFull) {
                                         Text("FULL", color = Color(0xFFA78BFA), fontSize = 10.sp,
                                             fontWeight = FontWeight.Bold, modifier = Modifier.padding(end = 5.dp))
+                                    } else if (session.isUsageLimited()) {
+                                        Text("LIMIT", color = p.amber, fontSize = 10.sp,
+                                            fontWeight = FontWeight.Bold, modifier = Modifier.padding(end = 5.dp))
                                     } else if (session.kind == "t3/chatgpt" &&
                                         session.activity.equals("Errored", true)) {
-                                        Text(when {
-                                            session.activityText?.startsWith("A temporary limit") == true -> "LIMIT"
-                                            session.activityText?.startsWith("Connection interrupted") == true -> "INT"
-                                            else -> "ERR"
-                                        }, color = session.dotColor(p), fontSize = 10.sp,
+                                        Text(if (session.activityText?.startsWith("Connection interrupted") == true) "INT" else "ERR",
+                                            color = session.dotColor(p), fontSize = 10.sp,
+                                            fontWeight = FontWeight.Bold, modifier = Modifier.padding(end = 5.dp))
+                                    } else if (session.kind == "t3/thread" &&
+                                        session.activity.equals("Errored", true)) {
+                                        Text("ERR", color = session.dotColor(p), fontSize = 10.sp,
                                             fontWeight = FontWeight.Bold, modifier = Modifier.padding(end = 5.dp))
                                     } else if (session.verificationPending) {
                                         Text("VERIFY", color = p.amber, fontSize = 10.sp,
