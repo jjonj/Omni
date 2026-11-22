@@ -34,7 +34,7 @@ class AndroidDiagnostics(context: Context) {
         const val MAX_EVENTS = 300
         const val MAX_MINUTES = 1440
         private const val RETENTION_MS = 24L * 60 * 60 * 1000
-        private val categories = setOf("app", "connection", "files.list", "sessions.create", "diagnostics")
+        private val categories = setOf("app", "connection", "files.list", "sessions.create", "agents.delivery", "diagnostics")
         private val scopes = setOf("root", "wartribes", "obsidian", "taskboard", "drive", "other")
         private val exceptionTypes = setOf("TimeoutException", "SocketTimeoutException", "ConnectException",
             "IllegalStateException", "IllegalArgumentException", "HttpException", "IOException",
@@ -61,7 +61,10 @@ class AndroidDiagnostics(context: Context) {
             "dashboard_remote", "dashboard_webview", "dashboard_book", "dashboard_clipboard",
             "dashboard_macro", "dashboard_update", "dashboard_wol", "dashboard_log_control",
             "dashboard_command", "dashboard_browser", "dashboard_settings",
-            "timber_exception", "diagnostic_upload", "cache_fallback")
+            "timber_exception", "diagnostic_upload", "cache_fallback",
+            "agent_enqueue", "agent_preflight_ready", "agent_submit_start",
+            "agent_hub_receipt", "agent_transport_unknown", "agent_user_visible",
+            "agent_assistant_visible")
         private val statuses = setOf(
             "attempt", "ok", "failed", "offline", "timeout", "authenticated",
             "auth_failed", "closed", "reconnecting", "reconnected", "rejected", "unknown"

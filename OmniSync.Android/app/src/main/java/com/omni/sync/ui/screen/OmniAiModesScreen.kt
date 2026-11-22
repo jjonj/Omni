@@ -883,13 +883,15 @@ fun OmniAiModesScreen(
         if (online && !wasConnected && selectedKey != null) client.select(selectedKey)
         wasConnected = online
     }
+    // Keep reading the latest state inside the long-lived poll coroutine. Previously the
+    // coroutine captured the opening session state (often Idle) and kept using its 8s
+    // delay even after the model started replying.
+    val selectedNowRunning by rememberUpdatedState(selected?.isRunning() == true)
     LaunchedEffect(online, listMode, selectedKey) {
         if (online && !listMode && selectedKey != null) {
             while (true) {
-                // T3 publishes growing assistant/tool entries before a turn finishes.
-                // Poll more frequently only while the selected session is working.
-                // Pushed session.changed events refresh sooner; this is the fallback.
-                delay(if (selected?.isRunning() == true) 2_000 else 8_000)
+                // Active, visible conversation only. Live pushes remain the preferred path.
+                delay(if (selectedNowRunning) 1_000L else 2_000L)
                 client.select(selectedKey, reload = true)
             }
         }
@@ -2270,8 +2272,14 @@ fun OmniAiModesScreen(
                 var lastContentAt by remember(selectedKey) { mutableLongStateOf(0L) }
                 LaunchedEffect(conversationHistory.lastOrNull()?.id,
                     conversationHistory.lastOrNull()?.revision,
-                    conversationHistory.lastOrNull()?.text?.length) {
-                    if (conversationHistory.isNotEmpty()) lastContentAt = System.currentTimeMillis()
+                    conversationHistory.lastOrNull()?.text?.length, outbox) {
+                    if (conversationHistory.isNotEmpty()) {
+                        lastContentAt = System.currentTimeMillis()
+                        // This is the first point where Android knows the message reached
+                        // the visible timeline, rather than merely receiving a Hub receipt.
+                        if (selected?.kind == "t3/chatgpt")
+                            selectedKey?.let { key -> client.noteTimelineVisible(key, conversationHistory) }
+                    }
                 }
                 val firstSeenRunning = remember(selectedKey, running) {
                     if (running) System.currentTimeMillis() else 0L

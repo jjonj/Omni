@@ -3,6 +3,7 @@ package com.omni.sync.data.repository
 import android.content.Context
 import android.util.AtomicFile
 import android.util.Log
+import com.omni.sync.OmniSyncApplication
 import com.google.gson.JsonArray
 import com.google.gson.JsonElement
 import com.google.gson.JsonObject
@@ -141,6 +142,66 @@ class GenericAgentClient(
 ) {
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private val operationMutex = Mutex()
+    // Remote diagnostics persist only request UUID, stage, timestamp and elapsed milliseconds.
+    // No prompts, transcript contents, device identifiers or connection secrets are exported.
+    private val deliveryDiagnostics by lazy {
+        (context.applicationContext as? OmniSyncApplication)?.androidDiagnostics
+    }
+    private val userVisibleTraces = Collections.synchronizedSet(mutableSetOf<String>())
+    private val assistantVisibleTraces = Collections.synchronizedSet(mutableSetOf<String>())
+
+    private fun traceChatGPTDelivery(
+        item: SavedAgentRequest, stage: String, status: String = "ok",
+        elapsedMs: Long? = null, atMs: Long = System.currentTimeMillis()
+    ) {
+        if (item.kind != "t3/chatgpt") return
+        try {
+            deliveryDiagnostics?.record(
+                "agents.delivery", status, operationId = item.id,
+                source = "GenericAgentClient", eventName = stage, timestampMs = atMs,
+                // Count holds stage duration (ms), not an event count, for agents.delivery.
+                count = elapsedMs?.coerceIn(0, 1_000_000)?.toInt()
+            )
+        } catch (error: Exception) {
+            Log.w("GenericAgents", "Could not store delivery stage $stage", error)
+        }
+    }
+
+    /** Called only for the visible ChatGPT timeline, after Compose receives new content.
+     * Match locally against an already-confirmed sent request; do not upload text.
+     * For direct Steer sends T3 has no message stamp, so match the actual user turn.
+     */
+    fun noteTimelineVisible(sessionKey: String, rows: List<AgentHistoryUi>) {
+        if (!sessionKey.startsWith("t3:") || rows.isEmpty()) return
+        val now = System.currentTimeMillis()
+        val candidates = synchronized(diskGuard) {
+            entries.values.filter { entry ->
+                entry.kind == "t3/chatgpt" && "t3:${entry.target}" == sessionKey &&
+                    entry.state == "Delivered" && now - entry.createdAt in 0L..300_000L &&
+                    (!userVisibleTraces.contains(entry.id) || !assistantVisibleTraces.contains(entry.id))
+            }.map { it.copy() }
+        }
+        if (candidates.isEmpty()) return
+        scope.launch {
+            for (entry in candidates) {
+                val index = rows.indexOfLast { row ->
+                    row.kind.equals("user", ignoreCase = true) &&
+                        (row.text.trim() == entry.message.trim() ||
+                            (row.text.startsWith("[T3-MSG:${entry.id}]") &&
+                                row.text.contains(entry.message.trim())))
+                }
+                if (index < 0) continue
+                if (userVisibleTraces.add(entry.id)) {
+                    traceChatGPTDelivery(entry, "agent_user_visible", elapsedMs = now - entry.createdAt)
+                }
+                if (rows.drop(index + 1).any {
+                        it.kind.equals("assistant", ignoreCase = true) && it.text.isNotBlank()
+                    } && assistantVisibleTraces.add(entry.id)) {
+                    traceChatGPTDelivery(entry, "agent_assistant_visible", elapsedMs = now - entry.createdAt)
+                }
+            }
+        }
+    }
     private val capacityCreateMutex = Mutex()
     private val diskGuard = Any()
     private val gson = Gson()
@@ -965,7 +1026,11 @@ class GenericAgentClient(
             catch (e: Exception) { entries.remove(item.id); throw e }
             publishOutbox()
         }
-        scope.launch { drain() }
+        scope.launch {
+            traceChatGPTDelivery(item, "agent_enqueue", status = "attempt",
+                elapsedMs = 0, atMs = item.createdAt)
+            drain()
+        }
         return item.id
     }
     private fun buildRequest(item: SavedAgentRequest): Map<String, Any?> {
@@ -1175,7 +1240,10 @@ class GenericAgentClient(
         for (id in pending) {
             if (!signalR.hubAuthenticated.value) break
             val preview = synchronized(diskGuard) { entries[id]?.copy() } ?: continue
+            val preflightStartMs = System.currentTimeMillis()
             if (!canDeliver(preview)) continue
+            traceChatGPTDelivery(preview, "agent_preflight_ready",
+                elapsedMs = System.currentTimeMillis() - preflightStartMs)
             val item = synchronized(diskGuard) {
                 val current = entries[id] ?: return@synchronized null
                 if (!sendable(current)) return@synchronized null
@@ -1185,6 +1253,9 @@ class GenericAgentClient(
                 publishOutbox()
                 current.copy()
             } ?: continue
+            val submitStartMs = System.currentTimeMillis()
+            traceChatGPTDelivery(item, "agent_submit_start", status = "attempt",
+                elapsedMs = submitStartMs - item.createdAt, atMs = submitStartMs)
             try {
                 // A short timeout gives intermittent mobile links more chances to
                 // recover; the Hub's durable clientRequestId prevents duplicates.
@@ -1192,6 +1263,9 @@ class GenericAgentClient(
                     timeoutSeconds = 20L).asJsonObject
                 val operationId = answer.str("id")
                 val state = answer.str("state") ?: "Unknown"
+                traceChatGPTDelivery(item, "agent_hub_receipt",
+                    status = if (state == "Delivered") "ok" else "unknown",
+                    elapsedMs = System.currentTimeMillis() - submitStartMs)
                 synchronized(diskGuard) {
                     entries[id]?.let {
                         it.state = if (state in listOf("Delivered","Accepted","Queued","Failed")) state else "Unknown"
@@ -1202,6 +1276,8 @@ class GenericAgentClient(
                     publishOutbox()
                 }
             } catch (e: Exception) {
+                traceChatGPTDelivery(item, "agent_transport_unknown", status = "unknown",
+                    elapsedMs = System.currentTimeMillis() - submitStartMs)
                 synchronized(diskGuard) {
                     entries[id]?.let {
                         // Unsupported is a pre-dispatch refusal (nothing was sent), so
