@@ -101,7 +101,8 @@ private data class SavedAgentRequest(
     val provider: String,
     val targetType: String, // session or address
     val target: String,
-    val conversation: String?,
+    /** Null = a not-yet-started ChatGPT chat; adopted once the PC binds one (see canDeliver). */
+    var conversation: String?,
     val message: String,
     var state: String = "Pending",
     val createdAt: Long = System.currentTimeMillis(),
@@ -109,7 +110,8 @@ private data class SavedAgentRequest(
     var error: String? = null,
     var stableRecipientJson: String? = null,
     val kind: String? = null,
-    val deliveryMode: String? = null,
+    /** ChatGPT WhenIdle/Steer is re-picked from live state right before first submit (see canDeliver). */
+    var deliveryMode: String? = null,
     val maxActiveWorkers: Int? = null,
     /** Count of same-ID retransmissions for diagnostics; not a delivery cutoff. */
     var autoRetries: Int = 0
@@ -120,6 +122,7 @@ private data class SavedAgentRequest(
  * A fixed attempt cap would exhaust during a bad cellular stretch, long before
  * a brief usable connection returns. */
 private const val SAFE_RESUBMIT_WINDOW_MS = 23L * 3600 * 1000
+private val T3_MSG_STAMP = Regex("""\[T3-MSG:([0-9a-fA-F-]{36})]""")
 private fun retryableUnknown(item: SavedAgentRequest) =
     item.state == "Unknown" && item.operationId == null &&
         System.currentTimeMillis() - item.createdAt < SAFE_RESUBMIT_WINDOW_MS
@@ -791,7 +794,16 @@ class GenericAgentClient(
             }
         }
         if (isBrowser) chosen = refreshExactSession(key) ?: chosen
-        if (isBrowser && (chosen.reachability != "Reachable" || chosen.conversation.isNullOrBlank())) {
+        if (isBrowser && chosen.conversation.isNullOrBlank()) {
+            // A fresh ChatGPT chat has no conversation (so no history) until its first
+            // message is delivered. Nothing to wait for; let the user send that message.
+            if (_selected.value == key) {
+                _historyLoading.value = false
+                _historyNotice.value = "No messages yet. Messages are delivered once ChatGPT is ready on the PC."
+            }
+            return
+        }
+        if (isBrowser && chosen.reachability != "Reachable") {
             // The PC owner wakes and loads the browser asynchronously. Keep the
             // cached transcript visible while Android polls the exact binding.
             if (_selected.value == key) {
@@ -830,6 +842,7 @@ class GenericAgentClient(
                 }
                 byId.values.toList().takeLast(500).also { historyCache[key] = it }
             }
+            absorbDeliveredFromHistory(rows)
             // A null cursor after paging to the beginning means 'exhausted', not
             // 'uninitialized'. Do not resurrect the Load earlier button on refresh.
             if (!historyOlderCursors.containsKey(key)) historyOlderCursors[key] = page.str("older")
@@ -940,7 +953,7 @@ class GenericAgentClient(
             entries[item.id]?.let { previous ->
                 require(previous.provider==item.provider && previous.target==item.target &&
                     previous.conversation==item.conversation && previous.message==item.message &&
-                    previous.deliveryMode==item.deliveryMode &&
+                    (previous.deliveryMode==item.deliveryMode || item.kind=="t3/chatgpt") &&
                     previous.maxActiveWorkers==item.maxActiveWorkers) {
                     "Original queued message identity conflicts; never overwrite an existing outbox entry"
                 }
@@ -1075,6 +1088,16 @@ class GenericAgentClient(
                 notePending(item.id, "Maximum conversation length reached; reboot the session on T3 before sending")
                 return false
             }
+            val browser = item.kind == "t3/chatgpt"
+            if (browser && item.conversation == null && currentBinding != null) {
+                // Sent while the chat had no conversation yet (or the phone's list was stale).
+                // It was meant for this exact session, so follow the conversation the PC bound.
+                synchronized(diskGuard) {
+                    entries[item.id]?.conversation = currentBinding
+                    persistOutbox()
+                }
+                item.conversation = currentBinding
+            }
             if (item.conversation!=currentBinding) {
                 notePending(item.id, "Conversation binding changed; this message will not be redirected")
                 return false
@@ -1085,10 +1108,26 @@ class GenericAgentClient(
                 notePending(item.id, "Native T3 queue is unavailable; keeping message on the phone")
                 return false
             }
+            // Phone messages to ChatGPT interrupt instead of waiting for idle: an open chat
+            // gets a direct Steer send (works mid-reply). A sleeping/unloaded guest falls back
+            // to T3's queue, which wakes it. Only re-picked before the first submit so a
+            // same-ID retransmission never changes the request the Hub journaled.
+            if (browser && item.state == "Pending" && item.operationId == null &&
+                item.deliveryMode in listOf(null, "WhenIdle", "Steer")) {
+                val open = detail.obj("state")?.str("reachability") == "Reachable" &&
+                    currentBinding != null && detail.strings("deliveryModes").contains("Steer")
+                val picked = if (open) "Steer" else "WhenIdle"
+                if (picked != item.deliveryMode) {
+                    synchronized(diskGuard) { entries[item.id]?.deliveryMode = picked; persistOutbox() }
+                    item.deliveryMode = picked
+                }
+            }
             val mode=item.deliveryMode ?: "WhenIdle"
+            // T3 ChatGPT sessions own a durable queue that wakes the guest and waits for
+            // idle itself; gating on "Idle" here starved sleeping/unknown-activity sessions.
             if (!nativeQueue && (!detail.strings("deliveryModes").contains(mode) ||
                     !detail.strings("capabilities").contains("Submit") ||
-                    (mode == "WhenIdle" && status!="Idle"))) {
+                    (mode == "WhenIdle" && !browser && status!="Idle"))) {
                 notePending(item.id, "Waiting until the original session supports $mode delivery")
                 return false
             }
@@ -1097,6 +1136,21 @@ class GenericAgentClient(
         } catch (e: Exception) {
             notePending(item.id,"Session unavailable; queued on device")
             false
+        }
+    }
+    /** T3's browser queue stamps each turn it types with "[T3-MSG:<clientRequestId>]".
+     * Seeing that stamp in history is the delivery receipt; the Hub journal itself
+     * stays "Queued" forever for queued browser sends. */
+    private fun absorbDeliveredFromHistory(rows: List<AgentHistoryUi>) {
+        val seen = rows.flatMap { row -> T3_MSG_STAMP.findAll(row.text).map { it.groupValues[1].lowercase() }.toList() }
+            .toSet()
+        if (seen.isEmpty()) return
+        synchronized(diskGuard) {
+            val hits = entries.values.filter { it.id.lowercase() in seen && it.state != "Delivered" }
+            if (hits.isEmpty()) return
+            hits.forEach { it.state = "Delivered"; it.error = null }
+            persistOutbox()
+            publishOutbox()
         }
     }
     private fun notePending(id:String,detail:String?) = synchronized(diskGuard) {
@@ -1414,7 +1468,8 @@ class GenericAgentClient(
         val effectiveTitle = title.trim().take(180).ifBlank {
             if (kind == "t3/thread") firstMessage.lineSequence().firstOrNull()?.trim()?.take(120)
                 ?.ifBlank { "New native T3 thread" } ?: "New native T3 thread"
-            else "Android AI work"
+            else firstMessage.lineSequence().firstOrNull()?.trim()?.take(120)
+                ?.ifBlank { "New ChatGPT session" } ?: "New ChatGPT session"
         }
 
         if (provider.id != "t3") require(workspace.isNotBlank() && firstMessage.isNotBlank()) {

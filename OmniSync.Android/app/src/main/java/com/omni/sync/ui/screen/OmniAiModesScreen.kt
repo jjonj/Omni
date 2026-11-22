@@ -610,6 +610,8 @@ fun OmniAiModesScreen(
         !sessionDeliveryReady -> "This session cannot receive messages here"
         selected.kind == "t3/thread" -> "Native T3 queue · does not interrupt the current run"
         deliveryMode == "WaitForSlot" -> "Waits for capacity; T3 queues the message"
+        // GenericAgentClient.canDeliver turns WhenIdle into Steer for open ChatGPT chats.
+        selected.kind == "t3/chatgpt" -> "Sends now, interrupting any reply · wakes the chat if asleep"
         deliveryMode == "Steer" -> "Immediate; may interrupt current reply"
         selected.modes.contains("Queue") -> "Native queue"
         else -> "Delivers when idle"
