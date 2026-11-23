@@ -111,7 +111,8 @@ private class TaskBoardQueuedException : Exception()
 
 /** Phone-only presentation. The PC remains authoritative and assigns the real task ID. */
 private data class OptimisticTaskCreate(
-    val operationId: String, val draft: TaskBoardTaskDraft, val status: String
+    val operationId: String, val draft: TaskBoardTaskDraft, val status: String,
+    val taskId: String? = null
 )
 
 private fun requirePcApplied(receipt: TaskBoardPhoneClient.Submission) {
@@ -182,6 +183,37 @@ private fun mobileTaskMatches(task: TaskBoardTask, board: TaskBoardSnapshot, mod
         "blocked" -> "blocked" in task.attention || task.column == "blocked"
         "done" -> terminal && task.kind != "epic"
         "epics" -> task.kind == "epic"
+        else -> true
+    }
+}
+
+/** A creation has no locally synced Markdown yet. Match view filters using its
+ * persisted draft, without inventing a canonical task or enabling PC-side actions. */
+private fun pendingCreateMatches(
+    create: OptimisticTaskCreate, board: TaskBoardSnapshot, mode: String
+): Boolean {
+    val draft = create.draft
+    val column = board.columns.firstOrNull { it.id == draft.column }
+    val terminal = column?.terminal == true
+    val waiting = draft.dependsOn.any { id ->
+        id !in board.archivedIds && board.taskById(id)?.let { task ->
+            task.completed == null && board.columns.none { it.id == task.column && it.terminal }
+        } != false
+    }
+    return when (mode) {
+        "all", "today" -> true // The creation is always new today.
+        "ready" -> !terminal && column?.aiReady == true
+        "doing" -> !terminal && draft.column == "in-progress"
+        "focus" -> !terminal && draft.kind != "epic" &&
+            (draft.kind == "for_user" || draft.attention.any { it in setOf("priority", "needs-user") })
+        "priority" -> !terminal && "priority" in draft.attention
+        "attention" -> draft.attention.isNotEmpty()
+        "user" -> draft.kind == "for_user" || "needs-user" in draft.attention
+        "waiting" -> waiting
+        "blocked" -> draft.column == "blocked" || "blocked" in draft.attention
+        "done" -> terminal && draft.kind != "epic"
+        "epics" -> draft.kind == "epic"
+        "queued" -> false // Queue intent is PC-owned, never inferred from a draft.
         else -> true
     }
 }
@@ -376,14 +408,23 @@ private fun TaskBoardContents(parentPadding: PaddingValues, signalR: SignalRClie
             .mapNotNull { saved ->
                 runCatching {
                     val json = JSONObject(saved.edited)
+                    fun strings(key: String): List<String> = json.optJSONArray(key)?.let { array ->
+                        (0 until array.length()).mapNotNull { index ->
+                            array.optString(index).takeIf { it.isNotBlank() }
+                        }
+                    }.orEmpty()
+                    fun optional(key: String): String? =
+                        json.optString(key).takeUnless { it.isBlank() || it == "null" }
                     OptimisticTaskCreate(saved.operationId, TaskBoardTaskDraft(
                         title = json.getString("title"), column = json.getString("column"),
-                        kind = json.optString("kind", "task"), description = json.optString("description")
+                        kind = json.optString("kind", "task"), description = json.optString("description"),
+                        parent = optional("parent"), category = optional("category"),
+                        attention = strings("attention"), dependsOn = strings("depends_on")
                     ), when (saved.state) {
                         "applied" -> "Created on PC · awaiting phone sync"
                         "draft" -> "Saved on phone · sending to PC"
                         else -> "Unconfirmed · review Pending PC edits"
-                    })
+                    }, saved.createdTaskId)
                 }.getOrNull()
             }
         (persisted + creatingLocally.filterNot { local ->
@@ -1940,8 +1981,26 @@ private fun TaskBoardColumns(
                 .any { it.contains(filterText, ignoreCase = true) })
     }
     val tasksByColumn = filteredTasks.groupBy { snapshot.displayColumn(it) }
+    val createsByColumn = predictedCreates.filter { create ->
+        val draft = create.draft
+        val folded = query.isBlank() && draft.parent in collapsedEpics && filterMode == "all"
+        val waiting = draft.dependsOn.any { id ->
+            id !in snapshot.archivedIds && snapshot.taskById(id)?.let { task ->
+                task.completed == null && snapshot.columns.none { it.id == task.column && it.terminal }
+            } != false
+        }
+        pendingCreateMatches(create, snapshot, filterMode) && !folded &&
+            (!hideWaiting || filterMode == "waiting" || filterMode == "blocked" || !waiting) &&
+            (focusedColumn == null || draft.column == focusedColumn) &&
+            (!attentionOnly || draft.attention.isNotEmpty()) &&
+            (query.isBlank() || listOfNotNull(create.taskId, draft.title, draft.description,
+                draft.category, draft.parent, draft.kind).any {
+                it.contains(query.trim(), ignoreCase = true)
+            })
+    }.groupBy { it.draft.column }
     val visibleColumns = snapshot.columns.filter { if (filterMode == "user")
-        tasksByColumn[it.id]?.isNotEmpty() == true else showHiddenColumns ||
+        tasksByColumn[it.id]?.isNotEmpty() == true || createsByColumn[it.id]?.isNotEmpty() == true
+        else showHiddenColumns ||
         (!it.hidden && !it.snoozedNow()) }
         .filter { focusedColumn == null || it.id == focusedColumn }
         // Keep configured columns visible even when filtering leaves them empty.
@@ -1950,35 +2009,6 @@ private fun TaskBoardColumns(
         mutableStateOf(setOf("draft", "blocked", "done"))
     }
     Column(modifier = Modifier.fillMaxSize()) {
-        // Only unresolved creates need full preview cards. Confirmed PC creates
-        // share one compact sync notice until the assigned task ID arrives locally.
-        val unresolvedCreates = predictedCreates.filter { it.status != "Created on PC · awaiting phone sync" }
-        val confirmedCreates = predictedCreates.size - unresolvedCreates.size
-        if (predictedCreates.isNotEmpty()) {
-            Column(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
-                verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                if (confirmedCreates > 0) Text(
-                    "$confirmedCreates created on PC · awaiting task file sync",
-                    color = TaskBoardColors.muted, style = MaterialTheme.typography.labelSmall,
-                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                )
-                unresolvedCreates.takeLast(4).asReversed().forEach { pending ->
-                    Surface(color = TaskBoardColors.card, shape = RoundedCornerShape(8.dp),
-                        modifier = Modifier.fillMaxWidth().border(1.dp,
-                            TaskBoardColors.teal.copy(alpha = .55f), RoundedCornerShape(8.dp))) {
-                        Column(Modifier.padding(horizontal = 10.dp, vertical = 7.dp)) {
-                            Text(pending.draft.title, color = TaskBoardColors.text,
-                                fontWeight = FontWeight.SemiBold, maxLines = 1,
-                                overflow = TextOverflow.Ellipsis)
-                            Text("${pending.draft.column} · ${pending.status}",
-                                color = TaskBoardColors.muted, style = MaterialTheme.typography.labelSmall)
-                        }
-                    }
-                }
-                if (unresolvedCreates.size > 4) Text("+${unresolvedCreates.size - 4} more pending sync",
-                    color = TaskBoardColors.muted, style = MaterialTheme.typography.labelSmall)
-            }
-        }
         if (snapshot.warnings.isNotEmpty()) {
             Text(
                 text = snapshot.warnings.joinToString(" • "),
@@ -2004,6 +2034,7 @@ private fun TaskBoardColumns(
             ) {
                 visibleColumns.forEach { column ->
                     val columnTasks = mobileOrderedTasks(tasksByColumn[column.id].orEmpty(), sortMode)
+                    val columnCreates = createsByColumn[column.id].orEmpty().asReversed()
                     item(key = "heading-${column.id}") {
                         Row(
                             Modifier.fillMaxWidth()
@@ -2029,7 +2060,7 @@ private fun TaskBoardColumns(
                                 style = MaterialTheme.typography.labelSmall)
                             if (column.snoozedNow()) Text("SNOOZED", color = TaskBoardColors.amber,
                                 style = MaterialTheme.typography.labelSmall)
-                            TaskBoardBadge("${columnTasks.size}", parseColumnColor(column.color),
+                            TaskBoardBadge("${columnTasks.size + columnCreates.size}", parseColumnColor(column.color),
                                 TaskBoardColors.card)
                             if (column.canAutoQueue()) TextButton(
                                 onClick = { onColumnQueueToggle(column) },
@@ -2046,17 +2077,21 @@ private fun TaskBoardColumns(
                             }
                         }
                     }
-                    if (column.id !in foldedColumns || filterMode == "user")
-                    itemsIndexed(columnTasks, key = { _, task -> "${column.id}-${task.id}" }) { index, task ->
-                        val epic = task.parent?.let { id -> snapshot.taskById(id)?.takeIf { it.kind == "epic" } }
-                        if (epic != null && snapshot.displayColumn(epic) != column.id &&
-                            columnTasks.getOrNull(index - 1)?.parent != epic.id) {
-                            EpicProxy(epic, onTaskClick)
+                    if (column.id !in foldedColumns || filterMode == "user") {
+                        items(columnCreates, key = { "create-${it.operationId}" }) { create ->
+                            PendingCreateCard(create, column)
                         }
-                        TaskCard(task, snapshot, onTaskClick, onTaskChange, onTaskArchive, onCreateChild,
-                            selecting, task.id in selection, onSelect, onStartSelection,
-                            task.id in collapsedEpics, onToggleEpic,
-                            queueModes[task.id], onQueueToggle, task.id in changedTaskIds)
+                        itemsIndexed(columnTasks, key = { _, task -> "${column.id}-${task.id}" }) { index, task ->
+                            val epic = task.parent?.let { id -> snapshot.taskById(id)?.takeIf { it.kind == "epic" } }
+                            if (epic != null && snapshot.displayColumn(epic) != column.id &&
+                                columnTasks.getOrNull(index - 1)?.parent != epic.id) {
+                                EpicProxy(epic, onTaskClick)
+                            }
+                            TaskCard(task, snapshot, onTaskClick, onTaskChange, onTaskArchive, onCreateChild,
+                                selecting, task.id in selection, onSelect, onStartSelection,
+                                task.id in collapsedEpics, onToggleEpic,
+                                queueModes[task.id], onQueueToggle, task.id in changedTaskIds)
+                        }
                     }
                 }
             }
@@ -2070,6 +2105,7 @@ private fun TaskBoardColumns(
                     TaskColumn(
                         column = column,
                         tasks = tasksByColumn[column.id].orEmpty(),
+                        pendingCreates = createsByColumn[column.id].orEmpty().asReversed(),
                         snapshot = snapshot,
                         onTaskClick = onTaskClick,
                         onTaskChange = onTaskChange,
@@ -2096,10 +2132,54 @@ private fun TaskBoardColumns(
     }
 }
 
+/** Placeholder occupies the actual target column immediately; it is not an editable
+ * TaskBoardTask until the PC-authored Markdown arrives on the phone. */
+@Composable
+private fun PendingCreateCard(create: OptimisticTaskCreate, column: TaskBoardColumn) {
+    var expanded by remember(create.operationId) { mutableStateOf(false) }
+    val confirmed = create.status.startsWith("Created on PC")
+    val accent = if (confirmed) parseColumnColor(column.color) else TaskBoardColors.amber
+    Card(
+        modifier = Modifier.fillMaxWidth()
+            .border(1.dp, accent.copy(alpha = .6f), RoundedCornerShape(7.dp))
+            .clickable { expanded = !expanded },
+        shape = RoundedCornerShape(7.dp),
+        colors = CardDefaults.cardColors(containerColor = TaskBoardColors.card)
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth().drawBehind {
+                drawRect(accent, size = Size(4.dp.toPx(), size.height))
+            }.padding(start = 12.dp, end = 9.dp, top = 7.dp, bottom = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(create.taskId ?: "NEW", style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Bold, color = accent)
+                Spacer(Modifier.weight(1f))
+                Text(if (confirmed) "Syncing" else "Pending",
+                    style = MaterialTheme.typography.labelSmall, color = accent)
+            }
+            Text(create.draft.title, fontWeight = FontWeight.SemiBold,
+                color = TaskBoardColors.text, style = MaterialTheme.typography.bodyMedium,
+                maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text(create.status, color = TaskBoardColors.muted,
+                style = MaterialTheme.typography.labelSmall)
+            if (expanded) {
+                if (create.draft.description.isNotBlank())
+                    Text(create.draft.description.trim().take(500),
+                        color = TaskBoardColors.muted, style = MaterialTheme.typography.bodySmall)
+                Text("Editing available after the task file reaches this phone.",
+                    color = TaskBoardColors.muted, style = MaterialTheme.typography.labelSmall)
+            }
+        }
+    }
+}
+
 @Composable
 private fun TaskColumn(
     column: TaskBoardColumn,
     tasks: List<TaskBoardTask>,
+    pendingCreates: List<OptimisticTaskCreate>,
     snapshot: TaskBoardSnapshot,
     onTaskClick: (TaskBoardTask) -> Unit,
     onTaskChange: (TaskBoardTask, TaskBoardTaskDraft) -> Unit,
@@ -2144,7 +2224,7 @@ private fun TaskColumn(
             Spacer(Modifier.width(9.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(column.name, fontWeight = FontWeight.Bold, color = TaskBoardColors.text)
-                Text("${tasks.size} cards", style = MaterialTheme.typography.labelSmall,
+                Text("${tasks.size + pendingCreates.size} cards", style = MaterialTheme.typography.labelSmall,
                     color = TaskBoardColors.muted)
             }
             if (column.canAutoQueue()) TextButton(
@@ -2168,6 +2248,9 @@ private fun TaskColumn(
             contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
             verticalArrangement = Arrangement.spacedBy(7.dp)
         ) {
+            items(pendingCreates, key = { "create-${it.operationId}" }) { create ->
+                PendingCreateCard(create, column)
+            }
             itemsIndexed(sortedTasks, key = { _, task -> task.id }) { index, task ->
                 val epic = task.parent?.let { id -> snapshot.taskById(id)?.takeIf { it.kind == "epic" } }
                 if (epic != null && snapshot.displayColumn(epic) != column.id &&
