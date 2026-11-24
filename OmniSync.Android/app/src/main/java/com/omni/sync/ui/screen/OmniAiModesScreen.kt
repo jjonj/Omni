@@ -726,6 +726,13 @@ fun OmniAiModesScreen(
                     rowOptions = null
                     return@launch
                 }
+                if (command == "reload") {
+                    rowControlError = null
+                    rowOptions = null
+                    note = if (receipt == "Delivered") "Reload requested"
+                        else "Reload requested; PC confirmation: $receipt"
+                    return@launch
+                }
                 if (receipt == "Unknown" || receipt == "Pending") {
                     rowControlError = "T3 has not confirmed ${command.replace('_', ' ')}. Refresh PC state before retrying."
                     runCatching { client.sessionControls(target) }
@@ -2025,10 +2032,14 @@ fun OmniAiModesScreen(
                     }
                 }
             }
-            if (note != null) Row(Modifier.fillMaxWidth().background(p.accentBg)
-                .padding(start = 14.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(note!!, Modifier.weight(1f), color = p.text, style = MaterialTheme.typography.bodySmall)
-                ActionIcon(Icons.Default.Close, "Dismiss notice", p) { note = null }
+            note?.let { message ->
+                Row(Modifier.fillMaxWidth().background(p.accentBg)
+                    .padding(start = 14.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(message, Modifier.weight(1f).clickable(onClickLabel = "Copy notice") {
+                        clipboard.setText(AnnotatedString(message))
+                    }, color = p.text, style = MaterialTheme.typography.bodySmall)
+                    ActionIcon(Icons.Default.Close, "Dismiss notice", p) { note = null }
+                }
             }
 
             if (listMode) {
@@ -2728,8 +2739,11 @@ fun OmniAiModesScreen(
                 verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 SheetTitle(if (remote) "T3 session actions" else "Session visibility", field("title") ?: target.title, p)
                 if (rowControlBusy) LinearProgressIndicator(Modifier.fillMaxWidth())
-                if (rowControlError != null)
-                    Text(rowControlError!!, color = p.amber, style = MaterialTheme.typography.bodySmall)
+                rowControlError?.let { error ->
+                    Text(error, Modifier.fillMaxWidth().clickable(onClickLabel = "Copy error") {
+                        clipboard.setText(AnnotatedString(error))
+                    }, color = p.amber, style = MaterialTheme.typography.bodySmall)
+                }
                 if (remote) {
                     Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                         horizontalArrangement = Arrangement.spacedBy(6.dp)) {
