@@ -14,13 +14,18 @@ import org.json.JSONObject
  */
 class TaskBoardPhoneClient(
     private val signalR: SignalRClient,
-    private val drafts: TaskBoardOfflineDrafts
+    private val drafts: TaskBoardOfflineDrafts,
+    context: android.content.Context? = null
 ) {
     data class Submission(val operationId: String, val status: String,
                           val revision: String? = null, val details: String? = null,
                           val taskId: String? = null)
 
     private val sendMutex = Mutex()
+    private val boardReader = context?.let { TaskBoardRemoteReader(it.applicationContext, signalR) }
+
+    suspend fun loadBoard(store: TaskBoardStore): TaskBoardSnapshot =
+        boardReader?.load(store, boardIdentity(store.root)) ?: store.load()
 
     /** Keep JSON integer fields (e.g. review viewport_width) integral over
      * SignalR; Gson's raw Map deserialization coerces every number to Double. */
@@ -89,17 +94,18 @@ class TaskBoardPhoneClient(
         val encoded = draftJson(edited)
         drafts.saveOffline(
             boardId = board, taskId = task.id, baseRevision = task.revision,
-            baseSource = task.file.readText(Charsets.UTF_8),
+            baseSource = task.sourceText ?: task.file.readText(Charsets.UTF_8),
             edited = encoded, operationId = operationId
         )
         return sendSaved(operationId)
     }
 
     suspend fun submitCreate(root: File, baseBoardRevision: String, draft: TaskBoardTaskDraft,
-                             operationId: String = UUID.randomUUID().toString()): Submission {
+                             operationId: String = UUID.randomUUID().toString(),
+                             boardSource: String? = null): Submission {
         val board = boardIdentity(root)
         drafts.saveOffline(boardId = board, taskId = "CREATE", baseRevision = baseBoardRevision,
-            baseSource = File(root, "_board.md").readText(Charsets.UTF_8),
+            baseSource = boardSource ?: File(root, "_board.md").readText(Charsets.UTF_8),
             edited = draftJson(draft), operationId = operationId)
         return sendSaved(operationId)
     }
@@ -181,7 +187,7 @@ class TaskBoardPhoneClient(
         val operationId = UUID.randomUUID().toString()
         drafts.saveOffline(boardId = boardIdentity(root), taskId = task.id,
             baseRevision = authoritativeRevision ?: task.revision,
-            baseSource = task.file.readText(Charsets.UTF_8),
+            baseSource = task.sourceText ?: task.file.readText(Charsets.UTF_8),
             edited = JSONObject().put("_operation", "queue")
                 .put("mode", if (queue) "queue" else "backlog").toString(),
             operationId = operationId)
@@ -191,7 +197,7 @@ class TaskBoardPhoneClient(
     suspend fun submitArchive(root: File, task: TaskBoardTask): Submission {
         val operationId = UUID.randomUUID().toString()
         drafts.saveOffline(boardId = boardIdentity(root), taskId = task.id,
-            baseRevision = task.revision, baseSource = task.file.readText(Charsets.UTF_8),
+            baseRevision = task.revision, baseSource = task.sourceText ?: task.file.readText(Charsets.UTF_8),
             edited = JSONObject().put("_operation", "archive").toString(), operationId = operationId)
         return sendSaved(operationId)
     }
@@ -237,7 +243,7 @@ class TaskBoardPhoneClient(
     }
 
     suspend fun submitColumns(root: File, expectedBoardRevision: String,
-                              columns: List<TaskBoardColumn>): Submission {
+                              columns: List<TaskBoardColumn>, boardSource: String? = null): Submission {
         val operationId = UUID.randomUUID().toString()
         val encoded = JSONObject().put("_operation", "columns").put("columns",
             org.json.JSONArray().apply {
@@ -259,7 +265,7 @@ class TaskBoardPhoneClient(
             }).toString()
         drafts.saveOffline(boardId = boardIdentity(root), taskId = "COLUMNS",
             baseRevision = expectedBoardRevision,
-            baseSource = File(root, "_board.md").readText(Charsets.UTF_8),
+            baseSource = boardSource ?: File(root, "_board.md").readText(Charsets.UTF_8),
             edited = encoded, operationId = operationId)
         return sendSaved(operationId)
     }

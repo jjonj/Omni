@@ -59,7 +59,9 @@ data class TaskBoardTask(
     val file: File,
     val revision: String,
     val positionAfter: String? = null,
-    val positionedAt: String? = null
+    val positionedAt: String? = null,
+    val sourceText: String? = null,
+    val modifiedAtMillis: Long = file.lastModified()
 ) {
     val questionPrompt: String?
         get() = question?.prompt
@@ -115,7 +117,9 @@ data class TaskBoardSnapshot(
     val warnings: List<String>,
     val root: File,
     val boardRevision: String,
-    val archivedIds: Set<String>
+    val archivedIds: Set<String>,
+    val sourceText: String? = null,
+    val liveFromPc: Boolean = false
 ) {
     // Large boards are rendered repeatedly by Compose; dependency/epic lookups
     // must not scan hundreds of tasks for every displayed card.
@@ -310,11 +314,6 @@ class TaskBoardStore(
         }
 
         val boardText = boardFile.readText()
-        val (boardFrontmatter, _) = splitFrontmatter(boardText)
-        val boardFields = parseTopLevelScalars(boardFrontmatter)
-        val columns = parseColumns(boardFrontmatter)
-        require(columns.isNotEmpty()) { "TaskBoard has no columns" }
-
         val warnings = mutableListOf<String>()
         val activeDir = File(root, "Active")
         val tasks = if (!activeDir.isDirectory) {
@@ -327,24 +326,42 @@ class TaskBoardStore(
                     runCatching { parseTask(file, file.readText()) }
                         .onFailure { warnings += "${file.name}: ${it.message}" }
                         .getOrNull()
-                }
-                .sortedBy { it.id }
-                .toList()
+                }.toList()
         }
+        val archived = File(root, "Archive").takeIf { it.isDirectory }
+            ?.walkTopDown()?.filter { it.isFile && taskFileName.matches(it.name) }
+            ?.map { it.nameWithoutExtension }?.toSet().orEmpty()
+        return snapshotFrom(boardText, tasks, archived, warnings)
+    }
 
+    /** Parse PC-authored bytes without writing into the independently synced vault. */
+    internal fun loadPcSnapshot(boardText: String, sources: List<PcTaskSource>,
+                                archived: Set<String>, live: Boolean): TaskBoardSnapshot {
+        val tasks = sources.map { source ->
+            parseTask(File(root, source.relativePath), source.text)
+                .copy(modifiedAtMillis = source.modifiedAtMillis)
+        }
+        return snapshotFrom(boardText, tasks, archived, emptyList()).copy(liveFromPc = live)
+    }
+
+    private fun snapshotFrom(boardText: String, tasks: List<TaskBoardTask>,
+                             archived: Set<String>, warnings: List<String>): TaskBoardSnapshot {
+        val (boardFrontmatter, _) = splitFrontmatter(boardText)
+        val boardFields = parseTopLevelScalars(boardFrontmatter)
+        val columns = parseColumns(boardFrontmatter)
+        require(columns.isNotEmpty()) { "TaskBoard has no columns" }
         return TaskBoardSnapshot(
             name = boardFields["name"] ?: "TaskBoard",
             schema = boardFields["schema"]?.toIntOrNull() ?: 1,
             taskPrefix = boardFields["task_prefix"]?.takeIf { prefixFormat.matches(it) } ?: "WT",
             epicPrefix = boardFields["epic_prefix"]?.takeIf { prefixFormat.matches(it) } ?: "WTE",
             columns = columns.sortedBy { it.order },
-            tasks = tasks,
+            tasks = tasks.sortedBy { it.id },
             warnings = warnings,
             root = root,
             boardRevision = revision(boardText),
-            archivedIds = File(root, "Archive").takeIf { it.isDirectory }
-                ?.walkTopDown()?.filter { it.isFile && taskFileName.matches(it.name) }
-                ?.map { it.nameWithoutExtension }?.toSet().orEmpty()
+            archivedIds = archived,
+            sourceText = boardText
         )
     }
 
@@ -909,7 +926,8 @@ class TaskBoardStore(
             file = file,
             revision = revision(text),
             positionAfter = fields["position_after"],
-            positionedAt = fields["positioned_at"]
+            positionedAt = fields["positioned_at"],
+            sourceText = text
         )
     }
 

@@ -269,7 +269,7 @@ private fun mobileTodaysWorkIds(board: TaskBoardSnapshot): Set<String> {
     val active = board.tasks.filter { it.kind != "epic" }
     val touched = active.filter { task ->
         listOf(task.created, task.completed, task.completedAt).any { date(it)?.toString() == day } ||
-            java.time.Instant.ofEpochMilli(task.file.lastModified())
+            java.time.Instant.ofEpochMilli(task.modifiedAtMillis)
                 .atZone(java.time.ZoneId.systemDefault()).toLocalDate().toString() == day
     }.map { it.id }.toMutableSet()
     val candidates = active.mapNotNull { task ->
@@ -277,7 +277,7 @@ private fun mobileTodaysWorkIds(board: TaskBoardSnapshot): Set<String> {
         if (column == null || column.terminal || task.completed != null || task.claimedBy != null ||
             task.kind !in setOf("task", "recurring") || task.column == "draft" ||
             board.waitingFor(task).isNotEmpty() || task.attention.any { it in setOf("needs-user", "question", "prepare") }) return@mapNotNull null
-        val ageHours = (System.currentTimeMillis() - task.file.lastModified()) / 3600000
+        val ageHours = (System.currentTimeMillis() - task.modifiedAtMillis) / 3600000
         val tier = when {
             "priority" in task.attention -> 1
             task.column == "in-progress" && ageHours >= 24 -> 2
@@ -332,7 +332,7 @@ private fun TaskBoardContents(parentPadding: PaddingValues, signalR: SignalRClie
     var selectedRoot by remember { mutableStateOf(boardPreferences.getString("selected_board", TaskBoardStore.defaultRoot().absolutePath) ?: TaskBoardStore.defaultRoot().absolutePath) }
     val store = remember(selectedRoot) { TaskBoardStore(java.io.File(selectedRoot)) }
     val offlineDrafts = remember { TaskBoardOfflineDrafts(context) }
-    val phoneWriter = remember(signalR) { TaskBoardPhoneClient(signalR, offlineDrafts) }
+    val phoneWriter = remember(signalR) { TaskBoardPhoneClient(signalR, offlineDrafts, context) }
     var projects by remember { mutableStateOf<List<TaskBoardProject>>(emptyList()) }
     var projectOrder by remember { mutableStateOf(
         boardPreferences.getString("mobile_board_order", "").orEmpty().split('|').filter { it.isNotBlank() }
@@ -455,7 +455,7 @@ private fun TaskBoardContents(parentPadding: PaddingValues, signalR: SignalRClie
             error = null
             runCatching {
                 withContext(Dispatchers.IO) {
-                    TaskBoardStore.discoverBoards() to currentStore.load()
+                    TaskBoardStore.discoverBoards() to phoneWriter.loadBoard(currentStore)
                 }
             }.onSuccess { (available, board) ->
                 if (selectedRoot == currentStore.root.absolutePath) {
@@ -496,7 +496,7 @@ private fun TaskBoardContents(parentPadding: PaddingValues, signalR: SignalRClie
             runCatching {
                 withContext(Dispatchers.IO) {
                     action()
-                    store.load()
+                    phoneWriter.loadBoard(store)
                 }
             }.onSuccess {
                 snapshot = it
@@ -561,7 +561,7 @@ private fun TaskBoardContents(parentPadding: PaddingValues, signalR: SignalRClie
                 error = "$confirmed confirmed, $queued queued. " +
                     (failure.message ?: "Remaining edits not applied")
             } finally {
-                snapshot = runCatching { withContext(Dispatchers.IO) { store.load() } }
+                snapshot = runCatching { withContext(Dispatchers.IO) { phoneWriter.loadBoard(store) } }
                     .getOrNull() ?: snapshot
                 pendingPhoneEditsRevision++
                 loading = false
@@ -570,7 +570,7 @@ private fun TaskBoardContents(parentPadding: PaddingValues, signalR: SignalRClie
     }
 
     suspend fun saveColumnsViaPc(columns: List<TaskBoardColumn>, expectedRevision: String) {
-        val result = phoneWriter.submitColumns(store.root, expectedRevision, columns)
+        val result = phoneWriter.submitColumns(store.root, expectedRevision, columns, snapshot?.sourceText)
         requirePcApplied(result)
     }
 
@@ -647,11 +647,11 @@ private fun TaskBoardContents(parentPadding: PaddingValues, signalR: SignalRClie
                 val nextSnapshot = withContext(Dispatchers.IO) {
                     for (preview in prepared) {
                         val result = phoneWriter.submitCreate(currentStore.root, board.boardRevision,
-                            preview.draft, preview.operationId)
+                            preview.draft, preview.operationId, board.sourceText)
                         requirePcApplied(result)
                         completed++
                     }
-                    currentStore.load()
+                    phoneWriter.loadBoard(currentStore)
                 }
                 snapshot = nextSnapshot
                 showTaskDump = false
@@ -666,7 +666,7 @@ private fun TaskBoardContents(parentPadding: PaddingValues, signalR: SignalRClie
                     if (item.index in priorities) index else null
                 }.toSet()
                 if (!pending) error = "$completed of ${rows.size} tasks created; remaining lines preserved. ${failure.message}"
-                snapshot = runCatching { withContext(Dispatchers.IO) { currentStore.load() } }.getOrNull() ?: snapshot
+                snapshot = runCatching { withContext(Dispatchers.IO) { phoneWriter.loadBoard(currentStore) } }.getOrNull() ?: snapshot
             } finally {
                 val ids = prepared.map { it.operationId }.toSet()
                 creatingLocally = creatingLocally.filterNot { it.operationId in ids }
@@ -729,38 +729,34 @@ private fun TaskBoardContents(parentPadding: PaddingValues, signalR: SignalRClie
         }
     }
 
-    // Metadata-only probes avoid parsing every card on every timer tick.
-    // Periodically force a full scan for sync tools preserving size and mtime.
+    // Refresh against the PC while connected. The independent vault sync may be
+    // minutes behind (or stopped entirely), so local mtime is not an online signal.
     LaunchedEffect(selectedRoot, reviewMode) {
         if (!reviewMode) {
-            delay(12000) // The initial refresh is already in flight.
-            var signature = runCatching { withContext(Dispatchers.IO) { store.changeSignature() } }.getOrNull()
-            var lastFullScan = android.os.SystemClock.elapsedRealtime()
-            while (!reviewMode) {
-                delay(15000)
-                if (loading || editingTask != null || createTaskRequest != null || snapshot == null) continue
-                val current = runCatching { withContext(Dispatchers.IO) { store.changeSignature() } }.getOrNull()
-                    ?: continue
-                val now = android.os.SystemClock.elapsedRealtime()
-                if (signature == current && now - lastFullScan < 180_000L) continue
-                runCatching { withContext(Dispatchers.IO) { store.load() } }.onSuccess { fresh ->
-                    val previous = snapshot
-                    if (previous == null || fresh.boardRevision != previous.boardRevision ||
-                        fresh.tasks.size != previous.tasks.size ||
-                        fresh.archivedIds != previous.archivedIds ||
-                        fresh.tasks.zip(previous.tasks).any { (a, b) ->
-                            a.id != b.id || a.revision != b.revision }) {
-                        if (previous != null) {
-                            val revisions = previous.tasks.associate { it.id to it.revision }
-                            changedTaskIds = changedTaskIds + fresh.tasks.filter {
-                                revisions[it.id] != it.revision
-                            }.map { it.id }
+            delay(5000)
+            while (true) {
+                if (!loading && editingTask == null && createTaskRequest == null) {
+                    val currentStore = store
+                    signalR.ensureAgentAuthentication()
+                    runCatching { withContext(Dispatchers.IO) {
+                        phoneWriter.loadBoard(currentStore)
+                    } }.onSuccess { fresh ->
+                        if (selectedRoot == currentStore.root.absolutePath && !loading &&
+                            editingTask == null && createTaskRequest == null) {
+                            val previous = snapshot
+                            if (previous != null) {
+                                val revisions = previous.tasks.associate { it.id to it.revision }
+                                changedTaskIds = changedTaskIds + fresh.tasks.filter {
+                                    revisions[it.id] != it.revision
+                                }.map { it.id }
+                            }
+                            if (previous != fresh) snapshot = fresh
                         }
-                        snapshot = fresh
+                    }.onFailure { failure ->
+                        if (failure is CancellationException) throw failure
                     }
-                    signature = current
-                    lastFullScan = now
                 }
+                delay(15000)
             }
         }
     }
@@ -994,7 +990,7 @@ private fun TaskBoardContents(parentPadding: PaddingValues, signalR: SignalRClie
                 ) {
                     Text("Board not available on this phone", style = MaterialTheme.typography.titleMedium)
                     Spacer(Modifier.height(8.dp))
-                    Text("Android reads synced TaskBoard files from SharedWithPc/Obsidian/jjj. Sync the project's Tasks folder, or select another board above.", style = MaterialTheme.typography.bodyMedium)
+                    Text("The PC board and offline copy are unavailable. Reconnect to OmniHub or select another board above.", style = MaterialTheme.typography.bodyMedium)
                     Spacer(Modifier.height(12.dp))
                     Text(selectedRoot, style = MaterialTheme.typography.labelSmall)
                     TextButton(onClick = { refresh() }) { Text("Retry discovery") }
@@ -1002,6 +998,12 @@ private fun TaskBoardContents(parentPadding: PaddingValues, signalR: SignalRClie
 
                 else -> snapshot?.let {
                     Column(Modifier.fillMaxSize().background(TaskBoardColors.background)) {
+                        if (!it.liveFromPc) {
+                            Text("PC board unavailable - showing offline copy",
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 3.dp),
+                                color = TaskBoardColors.amber,
+                                style = MaterialTheme.typography.labelSmall)
+                        }
                         val filterCounts = remember(it, queueModes) {
                             val todayIds = mobileTodaysWorkIds(it)
                             mobileFilters.associate { (id, _) ->
@@ -1347,7 +1349,7 @@ private fun TaskBoardContents(parentPadding: PaddingValues, signalR: SignalRClie
                             val references = TaskBoardAttachmentStore.copyPickedFiles(
                                 context.contentResolver, store.root, attachments)
                             val result = phoneWriter.submitCreate(store.root, board.boardRevision,
-                                TaskBoardAttachmentStore.withReferences(draft, references), operationId)
+                                TaskBoardAttachmentStore.withReferences(draft, references), operationId, board.sourceText)
                             requirePcApplied(result)
                         },
                         onSuccess = {
