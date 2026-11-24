@@ -39,6 +39,8 @@ android {
     }
     kotlinOptions {
         jvmTarget = "1.8"
+        // K2 FIR control-flow analysis stalls on the large AI screen. Use K1 until it is split.
+        languageVersion = "1.9"
         freeCompilerArgs = freeCompilerArgs + listOf(
             "-opt-in=androidx.compose.material3.ExperimentalMaterial3Api",
             "-opt-in=androidx.media3.common.util.UnstableApi"
