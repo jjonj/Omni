@@ -27,6 +27,53 @@ class TaskBoardPhoneClient(
     suspend fun loadBoard(store: TaskBoardStore): TaskBoardSnapshot =
         boardReader?.load(store, boardIdentity(store.root)) ?: store.load()
 
+    /** The live PC Inbox is the sole authority. Pending operations are durable,
+     * so leaving the screen or restarting the app cannot resurrect a submitted round. */
+    suspend fun loadInbox(includeResolved: Boolean): MobileInboxSnapshot {
+        signalR.ensureAgentAuthentication()
+        require(signalR.hubAuthenticated.value) { "PC disconnected" }
+        val response = signalR.agentCall("taskboard.phone.inbox.list",
+            mapOf("includeResolved" to includeResolved), timeoutSeconds = 30L)
+        val data = JSONObject(response.toString())
+        val pending = drafts.all().filter { it.state in setOf("draft", "unknown") }
+        val pendingReviews = pending.mapNotNull { row ->
+            val payload = runCatching { JSONObject(row.edited) }.getOrNull()
+            if (payload?.optString("_operation") != "review") null
+            else Triple(row.boardId, row.taskId, payload.optString("manifestRevision"))
+        }.toSet()
+        var suppressedReviews = 0
+        val items = data.getJSONArray("items")
+        val result = (0 until items.length()).mapNotNull { index ->
+            val item = items.getJSONObject(index)
+            val boardId = item.getString("board")
+            val id = item.getString("taskId")
+            val historical = item.optBoolean("historical")
+            val root = File(TaskBoardStore.projectsRoot(), boardId)
+            val project = TaskBoardProject(item.getString("project"), boardId.substringBeforeLast('/'), root)
+            val manifest = item.optJSONObject("manifest")
+            val revision = manifest?.optString("revision")
+            if (!historical && revision != null && Triple(boardId, id, revision) in pendingReviews) {
+                suppressedReviews++
+                return@mapNotNull null
+            }
+            // A text task with an unsent phone edit is not safe to answer again.
+            if (!historical && manifest == null && pending.any {
+                it.boardId == boardId && it.taskId == id &&
+                    runCatching { JSONObject(it.edited).optString("_operation") }.getOrNull().isNullOrBlank()
+            }) return@mapNotNull null
+            val review = manifest?.let {
+                MobileReview(project, id, item.getString("title"), it,
+                    requireNotNull(revision), item.getString("taskRevision"), File(root, "Active/$id.md"))
+            }
+            MobileInboxItem(project, id, item.getString("title"), item.optString("created"),
+                historical, if (review != null) "review" else item.optString("type", "user"),
+                review, item.optJSONObject("question"))
+        }
+        val warnings = data.optJSONArray("warnings")
+        return MobileInboxSnapshot(result,
+            if (warnings == null) emptyList() else (0 until warnings.length()).map { warnings.getString(it) },
+            suppressedReviews)
+    }
     /** Keep JSON integer fields (e.g. review viewport_width) integral over
      * SignalR; Gson's raw Map deserialization coerces every number to Double. */
     private fun rpcJson(value: Any?): Any? = when (value) {
@@ -226,7 +273,7 @@ class TaskBoardPhoneClient(
             })
         drafts.saveOffline(boardId = boardIdentity(review.project.root),
             taskId = review.taskId, baseRevision = review.taskRevision,
-            baseSource = review.taskFile.readText(Charsets.UTF_8),
+            baseSource = "Review ${review.taskId} · round ${review.round.optInt("number")} · ${review.title}",
             edited = payload.toString(), operationId = operationId)
         return sendSaved(operationId)
     }
@@ -390,7 +437,8 @@ class TaskBoardPhoneClient(
                     data.get("message")?.asString ?: "PC version differs; choose changes manually"
                 )
                 Submission(pending.operationId, "conflict", details =
-                    "PC task changed. Phone edit remains private; compare both versions before resolving.")
+                    if (isReview) data.get("message")?.asString ?: "Review changed; refresh the Inbox."
+                    else "PC task changed. Phone edit remains private; compare both versions before resolving.")
             }
             "unknown" -> {
                 drafts.uncertain(pending.operationId,

@@ -64,6 +64,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -85,6 +86,8 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.omni.sync.data.taskboard.MobileReview
+import com.omni.sync.data.taskboard.MobileInboxItem
+import kotlinx.coroutines.CancellationException
 import com.omni.sync.data.taskboard.MobileReviewDecision
 import com.omni.sync.data.taskboard.MobileReviewPin
 import com.omni.sync.data.taskboard.MobileReviewAttachment
@@ -105,9 +108,9 @@ import java.util.Base64
  */
 @Composable
 fun TaskBoardReviewScreen(onClose: () -> Unit, phoneWriter: TaskBoardPhoneClient,
-                          modifier: Modifier = Modifier) {
+                          modifier: Modifier = Modifier, onOpenTask: (MobileInboxItem) -> Unit = {}) {
     val scope = rememberCoroutineScope()
-    var queue by remember { mutableStateOf<List<MobileReview>>(emptyList()) }
+    var queue by remember { mutableStateOf<List<MobileInboxItem>>(emptyList()) }
     var selected by remember { mutableStateOf<String?>(null) }
     var showResolved by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -148,31 +151,60 @@ fun TaskBoardReviewScreen(onClose: () -> Unit, phoneWriter: TaskBoardPhoneClient
     var videoView by remember { mutableStateOf<VideoView?>(null) }
     var webView by remember { mutableStateOf<WebView?>(null) }
     var focused by remember { mutableStateOf(0) }
-    var queueOpen by remember { mutableStateOf(true) }
+    var queueOpen by remember { mutableStateOf(false) }
     var fullscreenVideo by remember { mutableStateOf(false) }
     var playbackError by remember { mutableStateOf<String?>(null) }
 
-    fun refresh() {
-        scope.launch {
-            runCatching { withContext(Dispatchers.IO) { TaskBoardReviewStore.queue(showResolved) } }
-                .onSuccess { fresh ->
-                    queue = fresh.filterNot { item ->
-                        submittedRounds[item.project.root.path + "/" + item.taskId] == item.manifestRevision
+    var refreshNonce by remember { mutableStateOf(0) }
+    var live by remember { mutableStateOf(false) }
+    var loadingQueue by remember { mutableStateOf(true) }
+    var connectionNotice by remember { mutableStateOf<String?>(null) }
+    var pendingCount by remember { mutableStateOf(0) }
+    var openCount by remember { mutableStateOf(0) }
+    fun refresh() { refreshNonce++ }
+
+    // A single poller owns selection and queue updates. No local synced
+    // manifest can put an already answered request back into the live Inbox.
+    LaunchedEffect(showResolved, refreshNonce) {
+        while (true) {
+            if (!saving) {
+                try {
+                    val fresh = withContext(Dispatchers.IO) { phoneWriter.loadInbox(showResolved) }
+                    if (!saving) {
+                        live = true
+                        pendingCount = fresh.pendingCount
+                        openCount = fresh.items.count { !it.historical }
+                        queue = fresh.items.filter { it.historical == showResolved }.filterNot { item ->
+                            !item.historical && item.review?.manifestRevision != null &&
+                                submittedRounds[item.key] == item.review.manifestRevision
+                        }
+                        if (selected == null || queue.none { it.key == selected }) {
+                            selected = queue.firstOrNull()?.key
+                        }
+                        connectionNotice = fresh.warnings.takeIf { it.isNotEmpty() }
+                            ?.let { "${it.size} PC board/review read warning(s). " + it.first() }
                     }
-                    if (selected == null || queue.none { it.project.root.path + "/" + it.taskId == selected })
-                        selected = queue.firstOrNull()?.let { it.project.root.path + "/" + it.taskId }
-                    error = null
-                }.onFailure { error = "Unable to read synced review files: ${it.message}" }
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (failure: Exception) {
+                    live = false
+                    connectionNotice = "Inbox unavailable from PC. Reconnect to refresh; cached items cannot be answered."
+                } finally {
+                    loadingQueue = false
+                }
+            }
+            delay(10000)
         }
     }
-    LaunchedEffect(showResolved) { refresh() }
-    val review = queue.firstOrNull { it.project.root.path + "/" + it.taskId == selected }
+    val selectedItem = queue.firstOrNull { it.key == selected }
+    val review = selectedItem?.review
     val artifacts = remember(review?.manifestRevision) {
         review?.round?.optJSONArray("artifacts")?.let { ar ->
             (0 until ar.length()).map { ar.getJSONObject(it) }
         } ?: emptyList()
     }
-    LaunchedEffect(selected, review?.manifestRevision) {
+    LaunchedEffect(selected, review?.round?.optInt("number")) {
+        error = null
         choice = review?.round?.optJSONObject("result")?.optJSONArray("choices")?.optString(0)
         ranking.clear()
         pins.clear()
@@ -186,7 +218,7 @@ fun TaskBoardReviewScreen(onClose: () -> Unit, phoneWriter: TaskBoardPhoneClient
         playbackError = null
         focused = artifacts.indexOfFirst { it.optString("id") == choice }.coerceAtLeast(0)
     }
-    val canAnswer = review != null && review.status == "open" &&
+    val canAnswer = live && selectedItem?.historical == false && review != null && review.status == "open" &&
         (review.round.isNull("result") || !review.round.has("result"))
     LaunchedEffect(videoView) {
         while (videoView != null) {
@@ -228,20 +260,22 @@ fun TaskBoardReviewScreen(onClose: () -> Unit, phoneWriter: TaskBoardPhoneClient
             }.onSuccess { receipt ->
                 when (receipt.status) {
                     "applied", "queued" -> {
-                        val key = current.project.root.path + "/" + current.taskId
+                        val key = selectedItem?.key ?: return@onSuccess
                         submittedRounds = submittedRounds + (key to current.manifestRevision)
-                        queue = queue.filterNot { it.project.root.path + "/" + it.taskId == key }
-                        selected = queue.firstOrNull()?.let { it.project.root.path + "/" + it.taskId }
+                        queue = queue.filterNot { it.key == key }
+                        openCount = (openCount - 1).coerceAtLeast(0)
+                        selected = queue.firstOrNull()?.key
                         reviewImages.clear()
                         reviewNotice = if (receipt.status == "queued")
                             "Review saved on phone. Pending edits will retry on reconnection."
-                        else "Verdict accepted by PC. Waiting for the synced review to update."
+                        else "Verdict saved."
                         error = null
                     }
-                    else -> error = receipt.details ?: "Review ${receipt.status}; open Pending PC edits to resolve."
+                    else -> { error = receipt.details ?: "Review ${receipt.status}; refresh the Inbox."; live = false }
                 }
             }.onFailure { error = "Review conflict or save error: ${it.message}. Refresh to retry." }
             saving = false
+            refresh()
         }
     }
 
@@ -268,20 +302,20 @@ fun TaskBoardReviewScreen(onClose: () -> Unit, phoneWriter: TaskBoardPhoneClient
         ))
     }
 
-    val openCount = queue.count { it.status == "open" }
+    
     Column(modifier.fillMaxSize()) {
         // Concise heading: back, title + open count, queue toggle, refresh.
         Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 2.dp),
             verticalAlignment = Alignment.CenterVertically) {
             TextButton(onClick = onClose) { Text("← Board", maxLines = 1) }
             Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("Review", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text("Inbox", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 Text(if (openCount == 1) "1 open" else "$openCount open",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            FilterChip(selected = queueOpen || review == null, onClick = { queueOpen = !queueOpen },
-                label = { Text("Queue · ${queue.size}", maxLines = 1) })
+            FilterChip(selected = queueOpen || selectedItem == null, onClick = { queueOpen = !queueOpen },
+                label = { Text(if (queueOpen) "Review" else "Queue · $openCount", maxLines = 1) })
             TextButton(onClick = { refresh() }) { Text("↻", style = MaterialTheme.typography.titleMedium) }
         }
         reviewNotice?.let { message ->
@@ -296,40 +330,67 @@ fun TaskBoardReviewScreen(onClose: () -> Unit, phoneWriter: TaskBoardPhoneClient
                     style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(10.dp))
             }
         }
-        if (queueOpen || review == null) {
-            Column(Modifier.fillMaxWidth().padding(horizontal = 10.dp)) {
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    FilterChip(selected = showResolved, onClick = { showResolved = !showResolved },
-                        label = { Text("Include resolved") })
+        connectionNotice?.let { message ->
+            Text(message, Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        if (pendingCount > 0) Text("$pendingCount verdict(s) awaiting PC confirmation",
+            Modifier.padding(horizontal = 12.dp, vertical = 2.dp),
+            style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (queueOpen || selectedItem == null) {
+            Column(Modifier.weight(1f).fillMaxWidth().padding(horizontal = 10.dp)) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(selected = !showResolved, onClick = { if (showResolved) { live = false; loadingQueue = true; queue = emptyList(); showResolved = false } },
+                        label = { Text("Pending · $openCount") })
+                    FilterChip(selected = showResolved, onClick = { if (!showResolved) { live = false; loadingQueue = true; queue = emptyList(); showResolved = true } },
+                        label = { Text("History") })
                     Spacer(Modifier.weight(1f))
-                    Text("Human verdicts only", style = MaterialTheme.typography.labelSmall,
+                    Text("Newest tasks first", style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 220.dp),
+                if (loadingQueue) Text("Loading Inbox from PC…", Modifier.padding(12.dp))
+                else if (queue.isEmpty()) Text(
+                    if (!live) "Connect to PC to load the Inbox."
+                    else if (showResolved) "No review history."
+                    else "Inbox clear. Nothing awaiting your response.", Modifier.padding(12.dp),
+                    style = MaterialTheme.typography.bodyMedium)
+                LazyColumn(modifier = Modifier.weight(1f).fillMaxWidth(),
                     contentPadding = PaddingValues(vertical = 4.dp),
                     verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    items(queue, key = { it.project.root.path + it.taskId }) { item ->
-                        val key = item.project.root.path + "/" + item.taskId
-                        ReviewQueueCard(item, isSelected = key == selected, onClick = {
-                            selected = key
+                    items(queue, key = { it.key }) { item ->
+                        ReviewQueueCard(item, isSelected = item.key == selected, onClick = {
+                            selected = item.key
+                            error = null
+                            reviewNotice = null
                             queueOpen = false
                         })
                     }
                 }
             }
+            return@Column
         }
         if (review == null) {
-            Card(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp)) {
-                Text("No synced reviews available. Sync the board's Reviews folder from your PC.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(16.dp))
+            Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("${selectedItem.project.name} · ${selectedItem.taskId}", style = MaterialTheme.typography.labelMedium)
+                Text(selectedItem.title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+                selectedItem.question?.optString("prompt")?.takeIf { it.isNotBlank() }?.let {
+                    Text(it, style = MaterialTheme.typography.bodyLarge)
+                }
+                selectedItem.question?.optString("answer")?.takeIf { it.isNotBlank() && it != "null" }?.let {
+                    Text("Answer: $it", style = MaterialTheme.typography.bodyMedium)
+                }
+                if (!selectedItem.historical) Button(onClick = { onOpenTask(selectedItem) }, enabled = live) {
+                    Text("Open task to respond")
+                }
             }
             return@Column
         }
         val focusIdx = focused.coerceIn(0, (artifacts.size - 1).coerceAtLeast(0))
         val focusedArtifact = artifacts.getOrNull(focusIdx)
         val scroller = rememberScrollState()
+        LaunchedEffect(selected) { scroller.scrollTo(0) }
         Column(Modifier.weight(1f).verticalScroll(scroller).padding(horizontal = 10.dp, vertical = 4.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)) {
             ReviewStageHeader(review, canAnswer)
@@ -581,12 +642,12 @@ private fun ReviewCandidateChip(
 }
 
 @Composable
-private fun ReviewQueueCard(item: MobileReview, isSelected: Boolean, onClick: () -> Unit) {
+private fun ReviewQueueCard(item: MobileInboxItem, isSelected: Boolean, onClick: () -> Unit) {
     val accent = when {
-        item.status != "open" -> TaskBoardColors.muted
-        item.mode == "approve" -> TaskBoardColors.green
-        item.mode == "pick" -> TaskBoardColors.purple
-        item.mode == "rank" -> TaskBoardColors.blue
+        item.historical -> TaskBoardColors.muted
+        item.review?.mode == "approve" -> TaskBoardColors.green
+        item.review?.mode == "pick" -> TaskBoardColors.purple
+        item.review?.mode == "rank" -> TaskBoardColors.blue
         else -> TaskBoardColors.orange
     }
     Card(onClick = onClick,
@@ -604,18 +665,18 @@ private fun ReviewQueueCard(item: MobileReview, isSelected: Boolean, onClick: ()
                     horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                     Text(item.taskId, style = MaterialTheme.typography.labelSmall,
                         color = TaskBoardColors.blue, fontWeight = FontWeight.Bold)
-                    Text(item.mode.uppercase(), style = MaterialTheme.typography.labelSmall,
+                    Text((item.review?.mode ?: item.type).uppercase(), style = MaterialTheme.typography.labelSmall,
                         color = accent, fontWeight = FontWeight.Bold)
-                    Text("R${item.round.optInt("number")}", style = MaterialTheme.typography.labelSmall,
+                    Text(item.review?.let { "R${it.round.optInt("number")}" }.orEmpty(), style = MaterialTheme.typography.labelSmall,
                         color = TaskBoardColors.muted)
                     Spacer(Modifier.weight(1f))
-                    Text(if (item.status == "open") "Needs review" else "Resolved",
+                    Text(if (!item.historical) "Pending" else "Resolved",
                         style = MaterialTheme.typography.labelSmall,
-                        color = if (item.status == "open") TaskBoardColors.orange else TaskBoardColors.muted)
+                        color = if (!item.historical) TaskBoardColors.orange else TaskBoardColors.muted)
                 }
                 Text(item.title, fontWeight = FontWeight.SemiBold, maxLines = 2,
                     overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall)
-                Text(item.project.name, style = MaterialTheme.typography.labelSmall,
+                Text(item.project.name + " · " + item.created, style = MaterialTheme.typography.labelSmall,
                     color = TaskBoardColors.muted, maxLines = 1)
             }
         }
@@ -678,16 +739,17 @@ private fun ReviewArtifactPreview(
     val canRender = file?.isFile == true
     var size by remember { mutableStateOf(IntSize(1, 1)) }
     var accumulatedSwipe by remember { mutableStateOf(0f) }
-    val swipeModifier = if (review.mode == "approve") Modifier.pointerInput(review.taskId) {
+    val swipeAction by rememberUpdatedState(onApproveSwipe)
+    val swipeModifier = if (review.mode == "approve" && !pinMode) Modifier.pointerInput(review.taskId) {
         detectHorizontalDragGestures(onHorizontalDrag = { _, amount ->
             accumulatedSwipe += amount
         }, onDragEnd = {
-            if (accumulatedSwipe > 110f) onApproveSwipe(1)
-            if (accumulatedSwipe < -110f) onApproveSwipe(-1)
+            if (accumulatedSwipe > 110f) swipeAction(1)
+            if (accumulatedSwipe < -110f) swipeAction(-1)
             accumulatedSwipe = 0f
         }, onDragCancel = { accumulatedSwipe = 0f })
     } else Modifier
-    val stageHeight = (LocalConfiguration.current.screenHeightDp * 0.36f).coerceIn(200f, 340f).dp
+    val stageHeight = (LocalConfiguration.current.screenHeightDp * 0.57f).coerceIn(240f, 620f).dp
     val stageShape = RoundedCornerShape(8.dp)
     Box(Modifier.fillMaxWidth().height(stageHeight).clip(stageShape)
         .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))

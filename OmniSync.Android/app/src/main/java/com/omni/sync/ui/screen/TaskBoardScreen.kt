@@ -366,6 +366,8 @@ private fun TaskBoardContents(parentPadding: PaddingValues, signalR: SignalRClie
     }
     var queueMode by remember { mutableStateOf(false) }
     var reviewMode by remember { mutableStateOf(false) }
+    var pendingInboxTask by remember { mutableStateOf<Pair<String, String>?>(null) }
+    var returnToInbox by remember { mutableStateOf(false) }
     var skippedQueueIds by remember(selectedRoot) { mutableStateOf<Set<String>>(emptySet()) }
     var queueSnoozes by remember(selectedRoot) { mutableStateOf(readTaskQueueSnoozes(boardPreferences, selectedRoot)) }
     var filterMode by remember { mutableStateOf(boardPreferences.getString("mobile_filter", "all") ?: "all") }
@@ -693,6 +695,18 @@ private fun TaskBoardContents(parentPadding: PaddingValues, signalR: SignalRClie
         refresh()
     }
 
+    LaunchedEffect(snapshot, pendingInboxTask, loading) {
+        val target = pendingInboxTask ?: return@LaunchedEffect
+        val current = snapshot ?: return@LaunchedEffect
+        if (loading || current.root.absolutePath != target.first || !current.liveFromPc) return@LaunchedEffect
+        pendingInboxTask = null
+        editingTask = current.taskById(target.second)
+        queueMode = false
+        if (editingTask == null) {
+            returnToInbox = false
+            reviewMode = true
+        }
+    }
     LaunchedEffect(snapshot?.boardRevision, selectedRoot) {
         snapshot?.let { board ->
             awaitingColumnSync = awaitingColumnSync.filter { (id, expected) ->
@@ -856,20 +870,9 @@ private fun TaskBoardContents(parentPadding: PaddingValues, signalR: SignalRClie
                     }
                 },
                 actions = {
-                    TextButton(onClick = {
-                        val first = snapshot?.let { visibleTaskQueue(it, queueSnoozes).firstOrNull() }
-                        if (first != null) {
-                            queueMode = true
-                            skippedQueueIds = emptySet()
-                            editingTask = first
-                        } else reviewMode = true
-                    }, enabled = storageAccess && editingTask == null && createTaskRequest == null) {
-                        val count = snapshot?.userQueue()?.size ?: 0
-                        Text("Inbox" + if (count > 0) " $count" else "", color = TaskBoardColors.orange)
-                    }
-                    TextButton(onClick = { reviewMode = !reviewMode },
+                    TextButton(onClick = { reviewMode = true },
                         enabled = storageAccess && editingTask == null && createTaskRequest == null) {
-                        Text(if (reviewMode) "Board" else "Review", color = TaskBoardColors.blue)
+                        Text("Inbox", color = TaskBoardColors.orange)
                     }
                     Box {
                         TextButton(onClick = { newMenuExpanded = true },
@@ -982,8 +985,26 @@ private fun TaskBoardContents(parentPadding: PaddingValues, signalR: SignalRClie
                     }
                 )
 
-                reviewMode -> TaskBoardReviewScreen(
-                    onClose = { reviewMode = false }, phoneWriter = phoneWriter)
+                reviewMode -> Dialog(
+                    onDismissRequest = { reviewMode = false; refresh() },
+                    properties = DialogProperties(usePlatformDefaultWidth = false, dismissOnClickOutside = false)
+                ) {
+                    Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+                        TaskBoardReviewScreen(onClose = { reviewMode = false; refresh() },
+                            phoneWriter = phoneWriter,
+                            onOpenTask = { item ->
+                                val root = item.project.root.absolutePath
+                                pendingInboxTask = root to item.taskId
+                                returnToInbox = true
+                                reviewMode = false
+                                if (selectedRoot == root) refresh()
+                                else {
+                                    selectedRoot = root
+                                    boardPreferences.edit().putString("selected_board", root).apply()
+                                }
+                            })
+                    }
+                }
 
                 loading && snapshot == null -> CircularProgressIndicator(
                     modifier = Modifier.align(Alignment.Center)
@@ -1382,7 +1403,7 @@ private fun TaskBoardContents(parentPadding: PaddingValues, signalR: SignalRClie
                 initialKind = task.kind,
                 snapshot = board,
                 busy = loading,
-                onDismiss = { editingTask = null; queueMode = false },
+                onDismiss = { editingTask = null; queueMode = false; if (returnToInbox) { returnToInbox = false; reviewMode = true } },
                 inQueue = queueMode,
                 onSkip = {
                     skippedQueueIds = skippedQueueIds + task.id
@@ -1414,7 +1435,10 @@ private fun TaskBoardContents(parentPadding: PaddingValues, signalR: SignalRClie
                                 editingTask = snapshot?.let { visibleTaskQueue(it, queueSnoozes)
                                     .firstOrNull { next -> next.id !in skippedQueueIds } }
                                 if (editingTask == null) queueMode = false
-                            } else editingTask = null
+                            } else {
+                                editingTask = null
+                                if (returnToInbox) { returnToInbox = false; reviewMode = true }
+                            }
                         }
                     )
                 },

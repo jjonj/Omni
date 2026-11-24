@@ -2,7 +2,6 @@ package com.omni.sync.data.taskboard
 
 import org.json.JSONObject
 import java.io.File
-import java.nio.charset.StandardCharsets
 import android.util.Base64
 import java.security.MessageDigest
 
@@ -27,6 +26,25 @@ data class MobileReview(
     val status: String get() = manifest.optString("status", "open")
 }
 
+/** PC-owned queue metadata. Local files are only preview/attachment storage. */
+data class MobileInboxItem(
+    val project: TaskBoardProject,
+    val taskId: String,
+    val title: String,
+    val created: String,
+    val historical: Boolean,
+    val type: String,
+    val review: MobileReview? = null,
+    val question: JSONObject? = null,
+) {
+    val key: String get() = project.root.path + "/" + taskId + "/" + type
+}
+
+data class MobileInboxSnapshot(
+    val items: List<MobileInboxItem>,
+    val warnings: List<String>,
+    val pendingCount: Int,
+)
 data class MobileReviewPin(
     val x: Double, val y: Double,
     val artifact: String? = null,
@@ -62,35 +80,6 @@ data class MobileReviewDecision(
 object TaskBoardReviewStore {
     private fun sha(raw: ByteArray) = MessageDigest.getInstance("SHA-256")
         .digest(raw).joinToString("") { "%02x".format(it) }
-    private fun sha(file: File): String = sha(file.readBytes())
-    private fun taskFile(root: File, id: String) = File(root, "Active/$id.md")
-
-    /** Refreshes from phone's synced SharedWithPc tree, including user-created boards. */
-    fun queue(includeResolved: Boolean = false): List<MobileReview> =
-        TaskBoardStore.discoverBoards().flatMap { board ->
-            val dir = File(board.root, "Reviews")
-            dir.listFiles()?.filter { it.isDirectory }?.mapNotNull { folder ->
-                runCatching {
-                    val file = File(folder, "manifest.json")
-                    if (!file.isFile) return@runCatching null
-                    val bytes = file.readBytes()
-                    val manifest = JSONObject(String(bytes, StandardCharsets.UTF_8).trimStart('\uFEFF'))
-                    val id = manifest.optString("task_id")
-                    if (id != folder.name || !id.matches(Regex("[A-Za-z0-9-]+"))) return@runCatching null
-                    val status = manifest.optString("status")
-                    if (status != "open" && (!includeResolved || status != "resolved")) return@runCatching null
-                    val task = taskFile(board.root, id)
-                    if (!task.isFile) return@runCatching null
-                    val taskRaw = task.readBytes()
-                    val text = String(taskRaw, StandardCharsets.UTF_8)
-                    val title = Regex("(?m)^title:\\s*(.+)$").find(text)?.groupValues?.get(1)
-                        ?.trim()?.trim('"', '\'') ?: id
-                    if ((manifest.optJSONArray("rounds")?.length() ?: 0) == 0) return@runCatching null
-                    MobileReview(board, id, title, manifest, sha(bytes), sha(taskRaw), task)
-                }.getOrNull()
-            } ?: emptyList()
-        }.sortedWith(compareByDescending<MobileReview> { it.round.optString("requested_at") }
-            .thenBy { it.taskId })
 
     fun artifactFile(review: MobileReview, artifact: JSONObject): File? {
         val stored = artifact.optString("storage", "synced")
