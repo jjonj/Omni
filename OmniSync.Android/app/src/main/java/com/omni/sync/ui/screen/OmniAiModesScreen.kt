@@ -418,6 +418,7 @@ fun OmniAiModesScreen(
     var rowControlBusy by remember { mutableStateOf(false) }
     var rowActionPage by remember { mutableStateOf("Session") }
     var closeConfirmation by remember { mutableStateOf<AgentSessionUi?>(null) }
+    var nativeConfirmation by remember { mutableStateOf<Pair<AgentSessionUi, String>?>(null) }
     var message by rememberSaveable { mutableStateOf("") }
     var deliveryMode by rememberSaveable { mutableStateOf("WhenIdle") }
     var maxActiveWorkers by rememberSaveable { mutableIntStateOf(4) }
@@ -676,7 +677,7 @@ fun OmniAiModesScreen(
         rowControlError = null
         rowActionPage = "Session"
         val target = rowOptions
-        if (target != null && online && isT3Browser(target) &&
+        if (target != null && online && (isT3Browser(target) || target.kind == "t3/thread") &&
             target.capabilities.contains("RemoteControl")) {
             try { rowControls = client.sessionControls(target) }
             catch (e: Exception) { rowControlError = "T3 control status unavailable: " + e.message }
@@ -717,10 +718,10 @@ fun OmniAiModesScreen(
                 note = "${command.replace('_', ' ')}: $receipt"
                 // Close is idempotent on the desktop: refresh the list and dismiss,
                 // instead of asking the user to inspect state before retrying.
-                if (command == "close") {
+                if (command == "close" || (command in listOf("archive", "delete") && receipt == "Delivered")) {
                     runCatching { client.refresh() }
                     val gone = client.sessions.value.none { it.key == target.key }
-                    note = if (gone || receipt != "Unknown" && receipt != "Pending") "Closed"
+                    note = if (gone || receipt != "Unknown" && receipt != "Pending") "${command.replaceFirstChar { it.uppercase() }} complete"
                         else "Close sent; the PC hasn't confirmed yet."
                     rowControlError = null
                     rowOptions = null
@@ -754,6 +755,8 @@ fun OmniAiModesScreen(
                         else "Stop accepted, but session has not reported Idle yet. Check again shortly."
                 }
                 rowControlError = null
+                // Native placement changes (settle/snooze/pin/rename) reshape the list.
+                if (target.kind == "t3/thread" && !command.startsWith("caffy_")) runCatching { client.refresh() }
                 if (rowOptions?.key == target.key) {
                     try { rowControls = client.sessionControls(target) }
                     catch (e: Exception) {
@@ -1235,8 +1238,12 @@ fun OmniAiModesScreen(
         if (scheduleBusy) return
         scheduleBusy = true
         scheduleError = null
-        val command = if (scheduleTarget == null) "caffy_schedule_spawn" else "caffy_begin"
-        val options: Map<String, Any?> = if (scheduleTarget == null) mapOf(
+        val nativeSchedule = scheduleTarget?.kind == "t3/thread"
+        val command = if (nativeSchedule) "caffy_set" else if (scheduleTarget == null) "caffy_schedule_spawn" else "caffy_begin"
+        val options: Map<String, Any?> = if (nativeSchedule) mapOf(
+            "mode" to "idle", "onceOnly" to true, "beginAt" to at,
+            "repeatPrompt" to prompt, "respectSlots" to false
+        ) else if (scheduleTarget == null) mapOf(
             "jobId" to scheduleRequestId, "title" to title, "prompt" to prompt,
             "beginAt" to at, "onIdle" to onIdle
         ) else mapOf("prompt" to prompt, "beginAt" to at, "onIdle" to onIdle)
@@ -1244,7 +1251,8 @@ fun OmniAiModesScreen(
             try {
                 val receipt = client.sessionAction(carrier, "Control",
                     mapOf("command" to command, "options" to options))
-                note = if (onIdle) "ChatGPT work queued ahead of TaskBoard: $receipt"
+                note = if (nativeSchedule) "Native prompt scheduled: $receipt"
+                    else if (onIdle) "ChatGPT work queued ahead of TaskBoard: $receipt"
                     else "ChatGPT work scheduled: $receipt"
                 scheduleOpen = false
                 refreshScheduledJobs()
@@ -1648,6 +1656,7 @@ fun OmniAiModesScreen(
                 targetTitle = scheduleTarget?.title,
                 initialBeginAt = scheduleBeginAt,
                 initialOnIdle = scheduleInitialIdle,
+                nativeThread = scheduleTarget?.kind == "t3/thread",
                 jobs = scheduledJobs,
                 busy = scheduleBusy,
                 error = scheduleError,
@@ -2672,6 +2681,8 @@ fun OmniAiModesScreen(
 
     rowOptions?.let { target ->
         val remote = isT3Browser(target) && target.capabilities.contains("RemoteControl")
+        // Native T3 threads get the desktop sidebar's menu: placement + Caffy.
+        val native = target.kind == "t3/thread" && target.capabilities.contains("RemoteControl")
         val details = rowControls
         fun field(name: String): String? =
             details?.get(name)?.takeUnless { it.isJsonNull }?.let {
@@ -2720,6 +2731,25 @@ fun OmniAiModesScreen(
         var showParentChoices by remember(target.key) { mutableStateOf(false) }
         var customSnoozeMinutes by remember(target.key) { mutableStateOf("90") }
         var rebootPrompt by remember(target.key) { mutableStateOf("") }
+        var renameText by remember(target.key) { mutableStateOf(target.title) }
+        var projectSettingsOpen by remember(target.key) { mutableStateOf(false) }
+        var projectTitle by remember(target.key, field("projectTitle")) { mutableStateOf(field("projectTitle").orEmpty()) }
+        var nativeAutoOpen by remember(target.key) { mutableStateOf(false) }
+        var nativeAutoMode by remember(target.key) { mutableStateOf("idle") }
+        var nativeAutoDuration by remember(target.key) { mutableStateOf("240") }
+        var nativeAutoInterval by remember(target.key) { mutableStateOf("20") }
+        var nativeAutoPrompt by remember(target.key) { mutableStateOf("") }
+        var nativeAutoSlots by remember(target.key) { mutableStateOf(false) }
+        var nativeAutoNow by remember(target.key) { mutableStateOf(false) }
+        fun nativePayload(command: String, options: Map<String, Any?> = emptyMap(), done: (com.google.gson.JsonObject) -> Unit) {
+            if (rowControlBusy || !online) return
+            rowControlBusy = true
+            scope.launch {
+                try { done(client.nativeControlData(target, command, options)) }
+                catch (e: Exception) { rowControlError = e.message; note = e.message }
+                finally { rowControlBusy = false }
+            }
+        }
         val pendingReboot = details?.get("pendingReboot")?.takeIf { it.isJsonObject }?.asJsonObject
         val desktopSnoozeChoices = details?.get("attentionSnoozePresets")
             ?.takeIf { it.isJsonArray }?.asJsonArray?.mapNotNull { preset ->
@@ -2737,7 +2767,8 @@ fun OmniAiModesScreen(
                 .navigationBarsPadding().verticalScroll(rememberScrollState())
                 .padding(horizontal = 20.dp).padding(bottom = 24.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                SheetTitle(if (remote) "T3 session actions" else "Session visibility", field("title") ?: target.title, p)
+                SheetTitle(if (native) "T3 thread actions" else if (remote) "T3 session actions" else "Session visibility",
+                    field("title") ?: target.title, p)
                 if (rowControlBusy) LinearProgressIndicator(Modifier.fillMaxWidth())
                 rowControlError?.let { error ->
                     Text(error, Modifier.fillMaxWidth().clickable(onClickLabel = "Copy error") {
@@ -2754,7 +2785,219 @@ fun OmniAiModesScreen(
                         }
                     }
                 }
-                if (!remote || rowActionPage == "Session") {
+                if (native) {
+                    if (details == null && rowControlError == null)
+                        Text("Loading thread state…", color = p.muted, fontSize = 12.sp)
+                    val settled = field("settled") == "true"
+                    val snoozeUntil = field("snoozedUntil")?.toLongOrNull()?.takeIf { it > now }
+                    if (target.capabilities.contains("Interrupt") && currentSession.isRunning())
+                        SheetAction("Stop turn", p) {
+                            scope.launch {
+                                try { note = "Stop: " + client.sessionAction(target, "Interrupt") }
+                                catch (e: Exception) { note = e.message }
+                            }
+                            rowOptions = null
+                        }
+                    if (!field("branch").isNullOrBlank()) SheetAction("New thread on " + field("branch"), p) {
+                        nativePayload("new_on_branch", mapOf("requestId" to UUID.randomUUID().toString())) { data ->
+                            val id = data.get("sessionId")?.asString
+                            if (id != null) scope.launch {
+                                val key = "t3:$id"
+                                runCatching { client.refresh() }
+                                if (client.sessions.value.any { it.key == key } || client.ensureSession(key)) {
+                                    client.select(key); listMode = false; rowOptions = null
+                                } else note = "Thread created; refresh the list to open it."
+                            }
+                        }
+                    }
+                    SheetAction(if (field("pinned") == "true") "Unpin thread" else "Pin thread", p) {
+                        performRowControl(target, if (field("pinned") == "true") "unpin" else "pin")
+                    }
+                    SheetAction(if (settled) "Un-settle thread" else "Settle thread", p) {
+                        performRowControl(target, if (settled) "unsettle" else "settle"); rowOptions = null
+                    }
+                    if (snoozeUntil != null) SheetAction("Wake thread · snoozed until " +
+                        java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.SHORT, java.text.DateFormat.SHORT)
+                            .format(java.util.Date(snoozeUntil)), p) {
+                        performRowControl(target, "unsnooze")
+                    } else {
+                        Text("Snooze", color = p.muted, style = MaterialTheme.typography.labelMedium)
+                        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            desktopSnoozeChoices.forEach { (label, until) ->
+                                FilterChip(false, onClick = {
+                                    performRowControl(target, "snooze", mapOf("until" to until)); rowOptions = null
+                                }, label = { Text(label) })
+                            }
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedTextField(customSnoozeMinutes,
+                                { customSnoozeMinutes = it.filter(Char::isDigit).take(6) },
+                                Modifier.weight(1f), singleLine = true, label = { Text("Custom (minutes)") })
+                            TextButton(onClick = {
+                                val minutes = customSnoozeMinutes.toLongOrNull()
+                                if (minutes == null || minutes !in 1..525_000)
+                                    rowControlError = "Snooze must be 1–525000 minutes."
+                                else { performRowControl(target, "snooze",
+                                    mapOf("until" to System.currentTimeMillis() + minutes * MINUTE_MS)); rowOptions = null }
+                            }) { Text("Snooze") }
+                        }
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("Auto-settle", Modifier.weight(1f), color = p.text)
+                        Switch(checked = field("autoSettleEnabled") != "false", enabled = details != null,
+                            onCheckedChange = { performRowControl(target, "auto_settle", mapOf("value" to it)) })
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedTextField(renameText, { renameText = it.take(180) },
+                            Modifier.weight(1f), singleLine = true, label = { Text("Thread title") })
+                        TextButton(onClick = {
+                            if (renameText.isBlank()) rowControlError = "Title can't be empty."
+                            else performRowControl(target, "rename", mapOf("value" to renameText.trim()))
+                        }) { Text("Rename") }
+                    }
+                    if (details != null && field("regeneratingTitle") != "true")
+                        SheetAction("Regenerate title", p) { performRowControl(target, "regenerate_title") }
+                    SheetAction("Mark unread", p) { performRowControl(target, "mark_unread") }
+                    if (field("canShareGuest") == "true") SheetAction("Share with guest (create link)", p) {
+                        nativeConfirmation = target to "share_guest"
+                    }
+                    SheetAction(if (projectFilter == target.projectName()) "Show all projects"
+                        else "Filter by " + target.projectName(), p) {
+                        projectFilter = if (projectFilter == target.projectName()) "" else target.projectName()
+                        sessionFilter = "All"; listMode = true; rowOptions = null
+                    }
+                    if (field("canPromote") == "true" && !currentSession.isRunning())
+                        SheetAction("Turn into project", p) { nativeConfirmation = target to "turn_into_project" }
+                    Text("Copy", color = p.muted, style = MaterialTheme.typography.labelMedium)
+                    SheetAction("Copy path", p) { copyValue("Path", field("workspace") ?: target.workspace) }
+                    field("branch")?.takeIf { it.isNotBlank() }?.let { branch ->
+                        SheetAction("Copy branch", p) { copyValue("Branch", branch) }
+                    }
+                    SheetAction("Copy thread", p) { copyValue("Thread", field("threadReference")) }
+                    SheetAction("Copy thread ID", p) {
+                        copyValue("Thread ID", java.net.URLDecoder.decode(target.id.removePrefix("thread:"), "UTF-8"))
+                    }
+                    if (field("projectId") != null) {
+                        SheetAction("Project settings", p) { projectSettingsOpen = !projectSettingsOpen }
+                        if (projectSettingsOpen) {
+                            Text(field("projectWorkspace").orEmpty(), color = p.muted, fontSize = 12.sp)
+                            OutlinedTextField(projectTitle, { projectTitle = it.take(180) },
+                                Modifier.fillMaxWidth(), singleLine = true, label = { Text("Project title") })
+                            TextButton(onClick = {
+                                performRowControl(target, "rename_project", mapOf("value" to projectTitle.trim()))
+                            }, enabled = projectTitle.isNotBlank() && !rowControlBusy) { Text("Save project title") }
+                        }
+                    }
+                    if (!currentSession.isRunning()) SheetAction("Archive thread", p) {
+                        nativeConfirmation = target to "archive"
+                    }
+                    SheetAction("Delete thread...", p, Color(0xFFE58B8B)) {
+                        nativeConfirmation = target to "delete"
+                    }
+                    HorizontalDivider(color = p.border)
+                    val caffyMode = caffyField("mode")
+                    val caffyPaused = caffyField("paused") == "true"
+                    Text("Caffy · " + (caffyMode ?: "Off") + (if (caffyPaused) " (paused)" else "") +
+                        (caffyField("expiresAt")?.toLongOrNull()?.let { " · until " +
+                            java.text.DateFormat.getTimeInstance(java.text.DateFormat.SHORT).format(java.util.Date(it)) } ?: ""),
+                        color = p.muted, style = MaterialTheme.typography.labelMedium)
+                    if (details != null && field("caffyAvailable") != "true")
+                        Text("Caffy needs the T3 desktop app running.", color = p.muted, fontSize = 12.sp)
+                    else {
+                        val quick = caffyMode == "idle" && !caffyPaused &&
+                            caffyField("onceOnly") != "true" && caffyField("startup") != "true" &&
+                            caffyField("respectSlots") != "true" && caffyField("beginAt").isNullOrBlank() &&
+                            caffyField("repeatPrompt").isNullOrBlank() &&
+                            (caffyField("expiresAt")?.toLongOrNull()?.let { expiry ->
+                                caffyField("createdAt")?.toLongOrNull()?.let { created ->
+                                    expiry > now && kotlin.math.abs(expiry - created - 240 * MINUTE_MS) < 1000
+                                }
+                            } == true)
+                        SheetAction(if (quick) "Stop 4h auto-continue" else "Keep working (4h)", p) {
+                            if (quick) performRowControl(target, "caffy_stop")
+                            else performRowControl(target, "caffy_set", mapOf("mode" to "idle",
+                                "durationMinutes" to 240, "intervalMinutes" to 20))
+                        }
+                        SheetAction("Schedule prompt...", p) { openSchedule(target, idle = true) }
+                        SheetAction("Auto-continue...", p) { nativeAutoOpen = !nativeAutoOpen }
+                        if (nativeAutoOpen) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                listOf("idle", "periodic").forEach { mode ->
+                                    FilterChip(nativeAutoMode == mode, onClick = { nativeAutoMode = mode },
+                                        label = { Text(if (mode == "idle") "On idle" else "Interval") })
+                                }
+                            }
+                            OutlinedTextField(nativeAutoPrompt, { nativeAutoPrompt = it.take(8000) },
+                                Modifier.fillMaxWidth(), minLines = 2, label = { Text("Repeat prompt (optional)") })
+                            OutlinedTextField(nativeAutoDuration, { nativeAutoDuration = it.filter(Char::isDigit).take(6) },
+                                Modifier.fillMaxWidth(), singleLine = true, label = { Text("Duration minutes (blank = unlimited)") })
+                            OutlinedTextField(nativeAutoInterval, { nativeAutoInterval = it.filter(Char::isDigit).take(6) },
+                                Modifier.fillMaxWidth(), singleLine = true, label = { Text("Interval minutes") })
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("Respect available slots", Modifier.weight(1f), color = p.text)
+                                Switch(nativeAutoSlots, { nativeAutoSlots = it })
+                            }
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("Wake now", Modifier.weight(1f), color = p.text)
+                                Switch(nativeAutoNow, { nativeAutoNow = it })
+                            }
+                            SheetAction("Apply auto-continue", p) {
+                                val duration = nativeAutoDuration.toIntOrNull()
+                                val interval = nativeAutoInterval.toIntOrNull()
+                                if ((nativeAutoDuration.isNotBlank() && (duration == null || duration !in 1..525600)) ||
+                                    interval == null || interval !in 1..525600) rowControlError = "Enter valid positive minutes."
+                                else performRowControl(target, "caffy_set", mapOf("mode" to nativeAutoMode,
+                                    "durationMinutes" to duration, "intervalMinutes" to interval,
+                                    "repeatPrompt" to nativeAutoPrompt, "respectSlots" to nativeAutoSlots,
+                                    "wakeNow" to nativeAutoNow))
+                            }
+                        }
+                        Text("Wake on idle", color = p.muted, fontSize = 12.sp)
+                        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            listOf(1, 2, 8).forEach { hours ->
+                                FilterChip(false, onClick = {
+                                    performRowControl(target, "caffy_set",
+                                        mapOf("mode" to "idle", "durationMinutes" to hours * 60))
+                                }, label = { Text("${hours}h") })
+                            }
+                            FilterChip(false, onClick = {
+                                performRowControl(target, "caffy_set", mapOf("mode" to "idle"))
+                            }, label = { Text("Infinite") })
+                            FilterChip(false, onClick = {
+                                performRowControl(target, "caffy_set", mapOf("mode" to "idle", "onceOnly" to true))
+                            }, label = { Text("Once") })
+                        }
+                        Text("Periodic wake · every", color = p.muted, fontSize = 12.sp)
+                        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            listOf(10, 20, 30, 60).forEach { minutes ->
+                                FilterChip(false, onClick = {
+                                    performRowControl(target, "caffy_set",
+                                        mapOf("mode" to "periodic", "intervalMinutes" to minutes))
+                                }, label = { Text("${minutes}m") })
+                            }
+                        }
+                        if (caffyMode != null) SheetAction(if (caffyPaused) "Resume Caffy" else "Pause Caffy", p) {
+                            performRowControl(target, if (caffyPaused) "caffy_resume" else "caffy_pause")
+                        }
+                        SheetAction(if (caffyField("startup") == "true") "Don't resume on T3 startup"
+                            else "Resume when T3 starts", p) {
+                            if (caffyMode == null) performRowControl(target, "caffy_set",
+                                mapOf("mode" to "startup", "startup" to true))
+                            else performRowControl(target, "caffy_startup",
+                                mapOf("value" to (caffyField("startup") != "true")))
+                        }
+                        SheetAction("Wake now", p) { performRowControl(target, "caffy_wake") }
+                        if (caffyMode != null) SheetAction("Stop Caffy", p, Color(0xFFE58B8B)) {
+                            performRowControl(target, "caffy_stop")
+                        }
+                    }
+                }
+                if (!native && (!remote || rowActionPage == "Session")) {
                     if (!remote && target.capabilities.contains("Interrupt"))
                         SheetAction("Stop turn", p) { operation("Interrupt"); rowOptions = null }
                     if (remote) {
@@ -3248,6 +3491,36 @@ fun OmniAiModesScreen(
                     color = p.muted, style = MaterialTheme.typography.labelSmall)
             }
         }
+    }
+    nativeConfirmation?.let { (target, command) ->
+        AlertDialog(onDismissRequest = { nativeConfirmation = null },
+            title = { Text(when (command) {
+                "delete" -> "Delete thread permanently?"
+                "archive" -> "Archive thread?"
+                "share_guest" -> "Create a guest link?"
+                else -> "Turn thread into project?"
+            }) },
+            text = { Text(when (command) {
+                "delete" -> "This permanently clears the conversation history for " + target.title + "."
+                "archive" -> target.title + " will leave the active list."
+                "share_guest" -> "Anyone with the guest link can access the shared conversation. The link will be copied to your clipboard."
+                else -> "Make the thread's existing folder into a named T3 project."
+            }) },
+            confirmButton = { TextButton(enabled = !rowControlBusy, onClick = {
+                nativeConfirmation = null
+                if (command == "share_guest") {
+                    rowControlBusy = true
+                    scope.launch {
+                        try {
+                            val url = client.nativeControlData(target, command).get("url")?.asString
+                                ?: error("No guest link returned")
+                            clipboard.setText(AnnotatedString(url)); note = "Guest link copied"
+                        } catch (e: Exception) { note = e.message; rowControlError = e.message }
+                        finally { rowControlBusy = false }
+                    }
+                } else performRowControl(target, command, mapOf("confirmed" to true))
+            }) { Text("Confirm") } },
+            dismissButton = { TextButton(onClick = { nativeConfirmation = null }) { Text("Cancel") } })
     }
     closeConfirmation?.let { target ->
         AlertDialog(onDismissRequest = { closeConfirmation = null },

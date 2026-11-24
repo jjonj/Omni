@@ -35,6 +35,7 @@ internal fun OmniAiScheduleDialog(
     targetTitle: String?,
     initialBeginAt: Long,
     initialOnIdle: Boolean,
+    nativeThread: Boolean = false,
     jobs: List<OmniScheduledTask>,
     busy: Boolean,
     error: String?,
@@ -113,7 +114,7 @@ internal fun OmniAiScheduleDialog(
                         leadingIcon = { Icon(Icons.Default.Bolt, null, Modifier.size(16.dp)) })
                 }
                 if (onIdle) {
-                    Text("Wait for an available Keep T3 Busy slot. This request takes priority over new TaskBoard work. Keep T3 Busy must be on.",
+                    Text(if (nativeThread) "Send the prompt once when this native thread becomes idle." else "Wait for an available Keep T3 Busy slot. This request takes priority over new TaskBoard work. Keep T3 Busy must be on.",
                         style = MaterialTheme.typography.bodySmall,
                         modifier = Modifier.fillMaxWidth()
                             .background(MaterialTheme.colorScheme.secondaryContainer, RoundedCornerShape(12.dp))

@@ -1430,16 +1430,30 @@ class GenericAgentClient(
             if (_selected.value==session.key) _remoteQueue.value=list
         } catch (e: Exception) {_status.value="Queue read failed: ${e.message}"}
     }
-    /** Fresh T3-owned context details: URLs, role, Caffy and parent/project
-     * state are never guessed from Android's cached session listing. */
+    /** Fresh T3-owned context details (browser sessions: URLs, role, Caffy, parent/project;
+     * native threads: settle/snooze/pin/auto-settle + Caffy), never guessed from the cached list. */
     suspend fun sessionControls(session: AgentSessionUi): JsonObject {
-        require(session.provider == "t3" && session.kind == "t3/chatgpt") {
-            "T3 browser session required"
+        require(session.provider == "t3" && (session.kind == "t3/chatgpt" || session.kind == "t3/thread")) {
+            "T3 session required"
         }
         check(signalR.hubAuthenticated.value) { "Hub offline" }
         return signalR.agentCall("sessions.controls", mapOf(
             "session" to mapOf("provider" to session.provider, "id" to session.id)
         )).asJsonObject
+    }
+
+    /** Native control with a returned payload (guest URL or newly created thread). */
+    suspend fun nativeControlData(session: AgentSessionUi, command: String,
+        options: Map<String, Any?> = emptyMap()): JsonObject {
+        require(session.kind == "t3/thread" && session.provider == "t3")
+        check(signalR.hubAuthenticated.value) { "Hub offline" }
+        val receipt = signalR.agentCall("sessions.control", mapOf(
+            "session" to mapOf("provider" to session.provider, "id" to session.id),
+            "command" to command, "options" to options,
+            "clientRequestId" to UUID.randomUUID().toString()
+        )).asJsonObject
+        check(receipt.str("state") == "Delivered") { "Control outcome unconfirmed; refresh before retrying." }
+        return receipt.obj("result")?.obj("data") ?: error("Confirmed control did not return a payload.")
     }
 
     suspend fun sessionAction(session: AgentSessionUi, action:String,
