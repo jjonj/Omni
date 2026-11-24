@@ -227,7 +227,13 @@ private fun mobileTaskSort(mode: String): Comparator<TaskBoardTask> = when (mode
 
 /** Match desktop's column-local persisted insertion anchors. A compact
  * 'Position below' chooser replaces mouse drag/drop on the phone. */
-private fun mobileOrderedTasks(tasks: List<TaskBoardTask>, sort: String): List<TaskBoardTask> {
+private fun completionTime(task: TaskBoardTask): Long =
+    task.completedAt?.let { runCatching { java.time.Instant.parse(it).toEpochMilli() }.getOrNull() }
+        ?: task.completed?.let { runCatching { java.time.LocalDate.parse(it).atStartOfDay(java.time.ZoneOffset.UTC).toInstant().toEpochMilli() }.getOrNull() }
+        ?: 0L
+
+private fun mobileOrderedTasks(tasks: List<TaskBoardTask>, sort: String, terminal: Boolean): List<TaskBoardTask> {
+    if (terminal) return tasks.sortedWith(compareByDescending<TaskBoardTask> { completionTime(it) }.thenByDescending { it.id })
     val base = tasks.sortedWith(mobileTaskSort(sort))
     if (sort != "priority") return base
     val arranged = base.toMutableList()
@@ -2035,7 +2041,7 @@ private fun TaskBoardColumns(
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 visibleColumns.forEach { column ->
-                    val columnTasks = mobileOrderedTasks(tasksByColumn[column.id].orEmpty(), sortMode)
+                    val columnTasks = mobileOrderedTasks(tasksByColumn[column.id].orEmpty(), sortMode, column.terminal)
                     val columnCreates = createsByColumn[column.id].orEmpty().asReversed()
                     item(key = "heading-${column.id}") {
                         Row(
@@ -2202,7 +2208,7 @@ private fun TaskColumn(
     onStartSelection: (TaskBoardTask) -> Unit,
     onToggleEpic: (TaskBoardTask) -> Unit
 ) {
-    val sortedTasks = remember(tasks, sortMode) { mobileOrderedTasks(tasks, sortMode) }
+    val sortedTasks = remember(tasks, sortMode, column.terminal) { mobileOrderedTasks(tasks, sortMode, column.terminal) }
     val tint = parseColumnColor(column.color)
 
     Card(
