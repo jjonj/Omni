@@ -1251,6 +1251,10 @@ fun OmniAiModesScreen(
             try {
                 val receipt = client.sessionAction(carrier, "Control",
                     mapOf("command" to command, "options" to options))
+                if (receipt != "Delivered") {
+                    scheduleError = "Schedule not confirmed ($receipt). Inspect T3 before retrying."
+                    return@launch
+                }
                 note = if (nativeSchedule) "Native prompt scheduled: $receipt"
                     else if (onIdle) "ChatGPT work queued ahead of TaskBoard: $receipt"
                     else "ChatGPT work scheduled: $receipt"
@@ -2700,6 +2704,8 @@ fun OmniAiModesScreen(
             val detail = caffy?.get(name)?.takeUnless { it.isJsonNull }?.let {
                 runCatching { it.asString }.getOrNull()
             }
+            // Native controls are authoritative after an action; a cached badge may lag.
+            if (native && field("caffyAvailable") == "true") return detail
             if (name == "mode" && currentSession.caffyMode != null)
                 return currentSession.caffyMode
             return detail ?: when (name) {
@@ -2741,6 +2747,7 @@ fun OmniAiModesScreen(
         var nativeAutoPrompt by remember(target.key) { mutableStateOf("") }
         var nativeAutoSlots by remember(target.key) { mutableStateOf(false) }
         var nativeAutoNow by remember(target.key) { mutableStateOf(false) }
+        var nativeAutoDelay by remember(target.key) { mutableStateOf("") }
         fun nativePayload(command: String, options: Map<String, Any?> = emptyMap(), done: (com.google.gson.JsonObject) -> Unit) {
             if (rowControlBusy || !online) return
             rowControlBusy = true
@@ -2911,6 +2918,9 @@ fun OmniAiModesScreen(
                             caffyField("onceOnly") != "true" && caffyField("startup") != "true" &&
                             caffyField("respectSlots") != "true" && caffyField("beginAt").isNullOrBlank() &&
                             caffyField("repeatPrompt").isNullOrBlank() &&
+                            caffyField("delayedPrompt").isNullOrBlank() &&
+                            caffyField("autoRebootMinutes").isNullOrBlank() &&
+                            caffyField("autoRebootEveryRuns").isNullOrBlank() &&
                             (caffyField("expiresAt")?.toLongOrNull()?.let { expiry ->
                                 caffyField("createdAt")?.toLongOrNull()?.let { created ->
                                     expiry > now && kotlin.math.abs(expiry - created - 240 * MINUTE_MS) < 1000
@@ -2922,7 +2932,21 @@ fun OmniAiModesScreen(
                                 "durationMinutes" to 240, "intervalMinutes" to 20))
                         }
                         SheetAction("Schedule prompt...", p) { openSchedule(target, idle = true) }
-                        SheetAction("Auto-continue...", p) { nativeAutoOpen = !nativeAutoOpen }
+                        SheetAction("Auto-continue...", p) {
+                            if (!nativeAutoOpen && caffyMode != null && caffyField("onceOnly") != "true") {
+                                nativeAutoMode = if (caffyMode == "periodic") "periodic" else "idle"
+                                nativeAutoPrompt = caffyField("repeatPrompt").orEmpty()
+                                nativeAutoInterval = caffyField("intervalMinutes") ?: "20"
+                                nativeAutoDuration = caffyField("expiresAt")?.toLongOrNull()?.let {
+                                    ((it - now).coerceAtLeast(MINUTE_MS) / MINUTE_MS).toString()
+                                }.orEmpty()
+                                nativeAutoSlots = caffyField("respectSlots") == "true"
+                                nativeAutoDelay = caffyField("beginAt")?.toLongOrNull()?.takeIf { it > now }
+                                    ?.let { ((it - now + MINUTE_MS - 1) / MINUTE_MS).toString() }.orEmpty()
+                                nativeAutoNow = false
+                            }
+                            nativeAutoOpen = !nativeAutoOpen
+                        }
                         if (nativeAutoOpen) {
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 listOf("idle", "periodic").forEach { mode ->
@@ -2942,16 +2966,24 @@ fun OmniAiModesScreen(
                             }
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text("Wake now", Modifier.weight(1f), color = p.text)
-                                Switch(nativeAutoNow, { nativeAutoNow = it })
+                                Switch(nativeAutoNow, { nativeAutoNow = it; if (it) nativeAutoDelay = "" })
                             }
+                            if (!nativeAutoNow) OutlinedTextField(nativeAutoDelay,
+                                { nativeAutoDelay = it.filter(Char::isDigit).take(6) },
+                                Modifier.fillMaxWidth(), singleLine = true,
+                                label = { Text("Start in minutes (blank = on idle)") })
                             SheetAction("Apply auto-continue", p) {
                                 val duration = nativeAutoDuration.toIntOrNull()
                                 val interval = nativeAutoInterval.toIntOrNull()
+                                val delayMinutes = nativeAutoDelay.toLongOrNull()
                                 if ((nativeAutoDuration.isNotBlank() && (duration == null || duration !in 1..525600)) ||
-                                    interval == null || interval !in 1..525600) rowControlError = "Enter valid positive minutes."
+                                    interval == null || interval !in 1..525600 ||
+                                    (nativeAutoDelay.isNotBlank() && (delayMinutes == null || delayMinutes !in 1L..525600L)))
+                                    rowControlError = "Enter valid positive minutes."
                                 else performRowControl(target, "caffy_set", mapOf("mode" to nativeAutoMode,
                                     "durationMinutes" to duration, "intervalMinutes" to interval,
                                     "repeatPrompt" to nativeAutoPrompt, "respectSlots" to nativeAutoSlots,
+                                    "beginAt" to delayMinutes?.let { System.currentTimeMillis() + it * MINUTE_MS },
                                     "wakeNow" to nativeAutoNow))
                             }
                         }
