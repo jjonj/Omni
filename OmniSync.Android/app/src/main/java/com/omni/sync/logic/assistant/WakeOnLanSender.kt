@@ -3,6 +3,7 @@ package com.omni.sync.logic.assistant
 import java.net.DatagramPacket
 import java.net.DatagramSocket
 import java.net.InetAddress
+import java.net.URI
 
 data class WakeOnLanResult(
     val messages: List<String>,
@@ -43,10 +44,30 @@ object WakeOnLanSender {
 
             trySend("Subnet", broadcastIp)
             trySend("Global", "255.255.255.255")
-            trySend("Remote", wanIp)
+            if (wanIp.isNotBlank()) {
+                val host = remoteHost(wanIp)
+                if (host == null) {
+                    messages += "Remote WOL failed: invalid WAN address"
+                } else {
+                    trySend("Remote", host)
+                }
+            }
         }
 
         return WakeOnLanResult(messages, anySuccess)
+    }
+
+    // WAN settings also serve SignalR; WOL needs only the host, not its HTTP port or path.
+    internal fun remoteHost(wanAddress: String): String? {
+        val raw = wanAddress.trim()
+        if (raw.isEmpty()) return null
+        return runCatching {
+            val uri = URI(if (raw.contains("://")) raw else "http://$raw")
+            if (uri.scheme.equals("http", ignoreCase = true) ||
+                uri.scheme.equals("https", ignoreCase = true)) {
+                uri.host?.takeIf { it.isNotBlank() && uri.userInfo == null }
+            } else null
+        }.getOrNull()
     }
 
     private fun parseMac(macAddress: String): ByteArray {
