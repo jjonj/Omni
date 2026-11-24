@@ -232,7 +232,7 @@ private fun completionTime(task: TaskBoardTask): Long =
         ?: task.completed?.let { runCatching { java.time.LocalDate.parse(it).atStartOfDay(java.time.ZoneOffset.UTC).toInstant().toEpochMilli() }.getOrNull() }
         ?: 0L
 
-private fun mobileOrderedTasks(tasks: List<TaskBoardTask>, sort: String, terminal: Boolean): List<TaskBoardTask> {
+private fun mobileOrderedTasks(tasks: List<TaskBoardTask>, sort: String, terminal: Boolean = false): List<TaskBoardTask> {
     if (terminal) return tasks.sortedWith(compareByDescending<TaskBoardTask> { completionTime(it) }.thenByDescending { it.id })
     val base = tasks.sortedWith(mobileTaskSort(sort))
     if (sort != "priority") return base
