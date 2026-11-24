@@ -49,10 +49,40 @@ class OmniSyncApplication : Application(), ImageLoaderFactory {
             Timber.plant(Timber.DebugTree())
         }
         androidDiagnostics = com.omni.sync.data.repository.AndroidDiagnostics(applicationContext)
+        // Persist fatal exception classification before Android terminates the process.
+        // The next connection uploads it; the platform still owns crash handling.
+        val previousCrashHandler = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { thread, error ->
+            try {
+                val wartribes = generateSequence(error) { it.cause }
+                    .take(8).any { cause -> cause.stackTrace.any { it.className.contains("WartribesScreen") || it.className.contains("WartribesOfflineCache") } }
+                androidDiagnostics.record("app", "failed", error = error,
+                    source = "CrashReportingTree", eventName = "timber_exception",
+                    scope = if (wartribes) "wartribes" else "other")
+                // Only exception types and app code locations, never messages or user data.
+                val report = generateSequence(error) { it.cause }.take(8).joinToString("\n") { cause ->
+                    cause.javaClass.name + "\n" + cause.stackTrace.filter {
+                        it.className.startsWith("com.omni.sync.")
+                    }.take(12).joinToString("\n") { "  at $it" }
+                }
+                java.io.File(filesDir, "last_fatal_crash.txt").writeText(report)
+            } catch (_: Throwable) {
+                // Never replace the original failure with a diagnostics failure.
+            } finally {
+                previousCrashHandler?.uncaughtException(thread, error)
+            }
+        }
         androidDiagnostics.record("app", "ok", source = "dashboard", eventName = "startup")
         Timber.plant(CrashReportingTree(applicationContext))
         mainViewModel = MainViewModel(this) // Pass the Application instance
         mainViewModel.addLog("[Android startup] Application ViewModel initialized", com.omni.sync.ui.screen.LogType.INFO)
+        runCatching {
+            val lastCrash = java.io.File(filesDir, "last_fatal_crash.txt")
+            if (lastCrash.isFile) {
+                mainViewModel.addLog("Previous fatal crash:\n" + lastCrash.readText(), com.omni.sync.ui.screen.LogType.ERROR)
+                lastCrash.delete()
+            }
+        }
         androidUpdateManager = AndroidUpdateManager(applicationContext)
         signalRClient = SignalRClient(
             context = applicationContext,
