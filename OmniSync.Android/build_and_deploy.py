@@ -216,7 +216,7 @@ def build_apk(clean=False, release=False):
     print("\n=== Building APK ===")
     
     # Use gradlew.bat on Windows, gradlew on Unix
-    gradle_cmd = ["gradlew.bat"] if sys.platform == "win32" else ["./gradlew"]
+    gradle_cmd = [str(PROJECT_DIR / "gradlew.bat")] if sys.platform == "win32" else ["./gradlew"]
     
     if clean:
         print("Cleaning project...")
