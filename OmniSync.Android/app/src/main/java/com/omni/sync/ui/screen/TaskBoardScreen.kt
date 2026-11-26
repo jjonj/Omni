@@ -443,6 +443,7 @@ private fun TaskBoardContents(parentPadding: PaddingValues, signalR: SignalRClie
     var renameColumn by remember { mutableStateOf<TaskBoardColumn?>(null) }
     var deleteColumn by remember { mutableStateOf<TaskBoardColumn?>(null) }
     var loading by remember { mutableStateOf(false) }
+    var refreshing by remember(selectedRoot) { mutableStateOf(false) }
     var storageAccess by remember { mutableStateOf(TaskBoardStore.hasStorageAccess()) }
     var error by remember { mutableStateOf<String?>(null) }
     var syncNotice by remember { mutableStateOf<String?>(null) }
@@ -457,24 +458,36 @@ private fun TaskBoardContents(parentPadding: PaddingValues, signalR: SignalRClie
             snapshot = null
             return
         }
+        // Only one full PC scan at a time. A distant connection can take far
+        // longer than the polling period, especially for a large board.
+        if (refreshing) return
+        refreshing = true
         val currentStore = store
         scope.launch {
-            loading = true
+            loading = snapshot == null
             error = null
-            runCatching {
-                withContext(Dispatchers.IO) {
+            try {
+                // Read-only, clearly offline-marked cached data appears before
+                // the potentially slow PC round-trip. Never replace a live board
+                // with an older cache or a different selected board's snapshot.
+                if (snapshot == null) {
+                    val cached = withContext(Dispatchers.IO) { phoneWriter.cachedBoard(currentStore) }
+                    if (selectedRoot == currentStore.root.absolutePath && snapshot == null && cached != null) {
+                        snapshot = cached
+                        loading = false
+                    }
+                }
+                val (available, board) = withContext(Dispatchers.IO) {
                     TaskBoardStore.discoverBoards() to phoneWriter.loadBoard(currentStore)
                 }
-            }.onSuccess { (available, board) ->
                 if (selectedRoot == currentStore.root.absolutePath) {
                     projects = available
-                    // A previously selected legacy alias may now be hidden because
-                    // the same-named canonical folder is present. Switch to it.
                     val canonical = available.firstOrNull { it.name.equals(board.name, ignoreCase = true) }
                     if (available.none { it.root.absolutePath == selectedRoot } && canonical != null) {
                         selectedRoot = canonical.root.absolutePath
                         boardPreferences.edit().putString("selected_board", selectedRoot).apply()
-                    } else {
+                    } else if (!loading || snapshot == null) {
+                        // A concurrent edit must not be replaced by a stale read.
                         val previous = snapshot?.takeIf { it.root.absolutePath == currentStore.root.absolutePath }
                         if (previous != null) {
                             val revisions = previous.tasks.associate { it.id to it.revision }
@@ -485,11 +498,17 @@ private fun TaskBoardContents(parentPadding: PaddingValues, signalR: SignalRClie
                         snapshot = board
                     }
                 }
-            }.onFailure {
-                error = it.message ?: it.toString()
-                projects = withContext(Dispatchers.IO) { TaskBoardStore.discoverBoards() }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                if (selectedRoot == currentStore.root.absolutePath) {
+                    error = failure.message ?: failure.toString()
+                    projects = withContext(Dispatchers.IO) { TaskBoardStore.discoverBoards() }
+                }
+            } finally {
+                if (selectedRoot == currentStore.root.absolutePath) loading = false
+                refreshing = false
             }
-            loading = false
         }
     }
 
@@ -753,9 +772,9 @@ private fun TaskBoardContents(parentPadding: PaddingValues, signalR: SignalRClie
     // minutes behind (or stopped entirely), so local mtime is not an online signal.
     LaunchedEffect(selectedRoot, reviewMode) {
         if (!reviewMode) {
-            delay(5000)
+            delay(60000)
             while (true) {
-                if (!loading && editingTask == null && createTaskRequest == null) {
+                if (!loading && !refreshing && editingTask == null && createTaskRequest == null) {
                     val currentStore = store
                     signalR.ensureAgentAuthentication()
                     runCatching { withContext(Dispatchers.IO) {
@@ -776,7 +795,7 @@ private fun TaskBoardContents(parentPadding: PaddingValues, signalR: SignalRClie
                         if (failure is CancellationException) throw failure
                     }
                 }
-                delay(15000)
+                delay(60000)
             }
         }
     }
@@ -1026,7 +1045,8 @@ private fun TaskBoardContents(parentPadding: PaddingValues, signalR: SignalRClie
                 else -> snapshot?.let {
                     Column(Modifier.fillMaxSize().background(TaskBoardColors.background)) {
                         if (!it.liveFromPc) {
-                            Text("PC board unavailable - showing offline copy",
+                            Text(if (refreshing) "Showing saved tasks - refreshing from PC"
+                                else "PC board unavailable - showing offline copy",
                                 modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 3.dp),
                                 color = TaskBoardColors.amber,
                                 style = MaterialTheme.typography.labelSmall)

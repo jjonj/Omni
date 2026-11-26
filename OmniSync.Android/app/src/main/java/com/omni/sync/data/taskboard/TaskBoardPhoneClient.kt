@@ -27,6 +27,10 @@ class TaskBoardPhoneClient(
     suspend fun loadBoard(store: TaskBoardStore): TaskBoardSnapshot =
         boardReader?.load(store, boardIdentity(store.root)) ?: store.load()
 
+    suspend fun cachedBoard(store: TaskBoardStore): TaskBoardSnapshot? =
+        boardReader?.cached(store, boardIdentity(store.root))
+            ?: runCatching { store.load() }.getOrNull()
+
     /** The live PC Inbox is the sole authority. Pending operations are durable,
      * so leaving the screen or restarting the app cannot resurrect a submitted round. */
     suspend fun loadInbox(includeResolved: Boolean): MobileInboxSnapshot {

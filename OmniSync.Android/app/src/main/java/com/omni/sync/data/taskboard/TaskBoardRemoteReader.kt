@@ -71,6 +71,15 @@ internal class TaskBoardRemoteReader(context: Context, private val signalR: Sign
     private fun BoardCache.snapshot(store: TaskBoardStore, live: Boolean) =
         store.loadPcSnapshot(board.text, tasks, archivedIds, live)
 
+    /** Show the last complete board immediately while the PC refresh runs separately.
+     * No network request or remote-read mutex is involved in this path. */
+    suspend fun cached(store: TaskBoardStore, boardId: String): TaskBoardSnapshot? =
+        withContext(Dispatchers.IO) {
+            readCache(cacheFile(boardId))?.let { cache ->
+                runCatching { cache.snapshot(store, false) }.getOrNull()
+            } ?: runCatching { store.load() }.getOrNull()
+        }
+
     suspend fun load(store: TaskBoardStore, boardId: String): TaskBoardSnapshot =
         withContext(Dispatchers.IO) {
             lock.withLock {
@@ -96,7 +105,8 @@ internal class TaskBoardRemoteReader(context: Context, private val signalR: Sign
         }
 
     private fun list(path: String): List<FileSystemEntry> =
-        requireNotNull(signalR.listDirectory(path)) { "PC is disconnected" }.blockingGet()
+        requireNotNull(signalR.listDirectory(path)) { "PC is disconnected" }
+            .timeout(15, TimeUnit.SECONDS).blockingGet()
 
     private fun taskFiles(path: String, relative: String): List<Pair<String, FileSystemEntry>> =
         list(path).filter { it.name != ".." }.flatMap { entry ->
@@ -145,7 +155,7 @@ internal class TaskBoardRemoteReader(context: Context, private val signalR: Sign
         val now = System.currentTimeMillis()
         // Some servers expose second-resolution mtimes. Periodically recheck
         // content even if the metadata is unchanged.
-        val force = previous == null || now - previous.verifiedAt > 900_000
+        val force = previous == null || now - previous.verifiedAt > 3_600_000
         val previousTasks = previous?.tasks.orEmpty().associateBy { it.relativePath }
         val board = async { source("_board.md", boardEntry, previous?.board, force) }
         val tasks = activeFiles.map { (relative, entry) ->
