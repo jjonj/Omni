@@ -648,12 +648,12 @@ fun OmniAiModesScreen(
     // Keep the locally cached conversation list available while Hub reconnects.
     val listProvider = active?.id ?: lastProvider ?: "t3"
     val selected = sessions.firstOrNull { it.key == selectedKey }
-    val pending = outbox.count { it.state in listOf("Pending", "Blocked", "InFlight", "Accepted", "Queued") }
-    val uncertain = outbox.count { it.state == "Unknown" }
+    val pending = outbox.count { it.phase == "sending" }
+    val uncertain = outbox.count { it.failed }
     val outboxLabel = "Outbox" + when {
-        pending > 0 && uncertain > 0 -> " ($pending pending · $uncertain unconfirmed)"
-        pending > 0 -> " ($pending pending)"
-        uncertain > 0 -> " ($uncertain unconfirmed)"
+        pending > 0 && uncertain > 0 -> " ($pending sending · $uncertain not sent)"
+        pending > 0 -> " ($pending sending)"
+        uncertain > 0 -> " ($uncertain not sent)"
         else -> ""
     }
     val localSessionMessages = outbox.filter { it.provider == selected?.provider &&
@@ -674,11 +674,13 @@ fun OmniAiModesScreen(
     val t3Connected = online && providers.any {
         it.id == "t3" && it.active && it.capabilities.contains("Submit")
     }
+    // Send is never blocked by stale/half-loaded state (provider list still loading, chat
+    // asleep, capabilities not refreshed yet): the durable outbox holds the message and
+    // GenericAgentClient.canDeliver re-checks the live session before it goes out.
+    // Only a session that definitely can't take messages disables Send.
     val sessionDeliveryReady = selected != null && !selected.conversationFull &&
-        (!online || (selected.provider == active?.id &&
-            selected.capabilities.contains("Submit") &&
-            (selected.modes.contains("WhenIdle") || selected.modes.contains("Queue") ||
-             selected.modes.contains("WaitForSlot") || selected.modes.contains("Steer"))))
+        (active == null || selected.provider == active.id) &&
+        (selected.capabilities.isEmpty() || selected.capabilities.contains("Submit"))
     val canSend = loadedDraftFor == draftKey && message.isNotBlank() && (if (addressMode)
         address.trim().contains("@") && (active?.id ?: lastProvider) != null &&
             (!online || active?.capabilities?.contains("SubmitToAgent") == true)
@@ -2619,7 +2621,7 @@ fun OmniAiModesScreen(
                 // Messages this phone sent to this thread that history hasn't absorbed yet.
                 // Failed ones stay visible here so a send can never vanish silently.
                 val threadOutbox = outbox.filter { it.provider == selected?.provider &&
-                    it.targetType == "session" && it.target == selected?.id && it.state != "Delivered" }
+                    it.targetType == "session" && it.target == selected?.id && it.phase != "delivered" }
                     .sortedBy { it.createdAt }
 
                 if (historyLoading) LinearProgressIndicator(
@@ -2686,7 +2688,18 @@ fun OmniAiModesScreen(
                         }
                         items(conversationHistory, key = { it.id }) { item -> MessageRow(item, p) }
                         items(threadOutbox, key = { "local:" + it.id }) { item ->
-                            LocalOutgoingRow(item, p) { sheet = "outbox" }
+                            LocalOutgoingRow(item, p, online,
+                                onRetry = {
+                                    try { client.retry(item.id); followingLatest = true }
+                                    catch (e: Exception) { note = "Couldn't resend: " + e.message }
+                                },
+                                onRemove = {
+                                    try {
+                                        if (item.failed) client.dismissReceipt(item.id)
+                                        else client.cancelPending(item.id)
+                                    } catch (e: Exception) { note = e.message }
+                                },
+                                onCopy = { clipboard.setText(AnnotatedString(item.text)); note = "Copied" })
                         }
                     }
                     // Floating status pill: what it's doing, how long, and Stop — only while relevant.
@@ -3782,15 +3795,15 @@ fun OmniAiModesScreen(
                 "outbox" -> {
                     SheetTitle("Delivery outbox", "Messages and delivery receipts", p)
                     if (outbox.isEmpty()) Text("Outbox is empty", color = p.muted)
-                    if (outbox.any { it.state == "Unknown" }) Text(
-                        "A message has an unconfirmed outcome. Check its destination before sending the same text again.",
-                        color = p.amber, style = MaterialTheme.typography.bodySmall)
                     LazyColumn(Modifier.heightIn(max = 480.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         items(outbox.take(50), key = { it.id }) { item ->
                             Column(Modifier.fillMaxWidth().background(p.raised, RoundedCornerShape(15.dp))
                                 .padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                Text(item.target + " · " + item.state, color = p.accent,
+                                Text(item.target + " · " + when (item.phase) {
+                                    "sending" -> "sending"; "sent" -> "sent"
+                                    "delivered" -> "delivered"; else -> "not sent"
+                                }, color = if (item.failed) p.amber else p.accent,
                                     style = MaterialTheme.typography.labelMedium)
                                 Text(item.text, maxLines = 3, overflow = TextOverflow.Ellipsis,
                                     color = p.text, style = MaterialTheme.typography.bodyMedium)
@@ -3815,6 +3828,10 @@ fun OmniAiModesScreen(
                                         TextButton(onClick = { receiptToRemove = item }) {
                                             Text("Cancel pending")
                                         }
+                                    if (item.failed && item.targetType == "session") TextButton(onClick = {
+                                        try { client.retry(item.id) }
+                                        catch (e: Exception) { note = "Couldn't resend: " + e.message }
+                                    }) { Text("Resend") }
                                     if (item.state in listOf("Delivered", "Failed", "Unknown"))
                                         TextButton(onClick = { receiptToRemove = item }) {
                                             Text("Remove receipt")
@@ -4274,27 +4291,55 @@ fun OmniAiModesScreen(
     }
 }
 
-/** A message sent from this phone that the provider hasn't shown in history yet. */
-@Composable private fun LocalOutgoingRow(item: PendingAgentUi, p: AiPalette, onOpenOutbox: () -> Unit) {
-    val failed = item.state == "Failed" || item.state == "Unknown"
-    Column(Modifier.fillMaxWidth().clickable(onClick = onOpenOutbox), horizontalAlignment = Alignment.End) {
-        Box(Modifier.widthIn(max = 320.dp).clip(RoundedCornerShape(18.dp, 18.dp, 4.dp, 18.dp))
-            .background(p.accentBg.copy(alpha = 0.55f))
-            .border(1.dp, if (failed) Color(0xFFE38D8D) else Color.Transparent,
-                RoundedCornerShape(18.dp, 18.dp, 4.dp, 18.dp))
-            .padding(horizontal = 14.dp, vertical = 10.dp)) {
-            Text(item.text, color = p.text, style = MaterialTheme.typography.bodyMedium, lineHeight = 21.sp)
+private val t3MsgStamp = Regex("""\[T3-MSG:[0-9a-fA-F-]{36}]""")
+
+/** A message sent from this phone that the provider hasn't shown in history yet.
+ *  Fire-and-forget: retries happen on their own, so only three calm states show —
+ *  "Sending…" (with the reason only if it's been stuck a while), "Sent ✓" (the PC has
+ *  it), or a red "Not sent · tap" whose menu offers Resend / Copy / Remove. */
+@Composable private fun LocalOutgoingRow(
+    item: PendingAgentUi, p: AiPalette, online: Boolean,
+    onRetry: () -> Unit, onRemove: () -> Unit, onCopy: () -> Unit
+) {
+    val failed = item.failed
+    val red = Color(0xFFE38D8D)
+    var menu by remember(item.id) { mutableStateOf(false) }
+    // Recompose every few seconds so "stuck" reasons appear without other state changes.
+    var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(item.id, item.phase) {
+        while (item.phase == "sending") { now = System.currentTimeMillis(); delay(5_000) }
+    }
+    val slow = now - item.createdAt > 20_000L
+    Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.End) {
+        Box {
+            Box(Modifier.widthIn(max = 320.dp).clip(RoundedCornerShape(18.dp, 18.dp, 4.dp, 18.dp))
+                .background(p.accentBg.copy(alpha = if (item.phase == "sending") 0.55f else 0.85f))
+                .border(1.dp, if (failed) red else Color.Transparent,
+                    RoundedCornerShape(18.dp, 18.dp, 4.dp, 18.dp))
+                .clickable { menu = true }
+                .padding(horizontal = 14.dp, vertical = 10.dp)) {
+                Text(item.text, color = p.text, style = MaterialTheme.typography.bodyMedium, lineHeight = 21.sp)
+            }
+            DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                if (failed) DropdownMenuItem(text = { Text("Resend") }, onClick = { menu = false; onRetry() })
+                DropdownMenuItem(text = { Text("Copy text") }, onClick = { menu = false; onCopy() })
+                if (failed || item.state in listOf("Pending", "Blocked"))
+                    DropdownMenuItem(text = { Text(if (failed) "Remove" else "Cancel send") },
+                        onClick = { menu = false; onRemove() })
+                item.error?.takeIf { it.isNotBlank() }?.let { reason ->
+                    DropdownMenuItem(text = { Text(reason, color = p.muted, fontSize = 12.sp) },
+                        onClick = { menu = false }, enabled = false)
+                }
+            }
         }
-        Text(when (item.state) {
-            "Pending" -> "Waiting to send"
-            "InFlight" -> "Sending…"
-            "Accepted", "Queued" -> "Queued"
-            "Blocked" -> "Blocked · tap for details"
-            "Unknown" -> "Unconfirmed · check before resending"
-            "Failed" -> "Failed" + (item.error?.let { " · $it" } ?: "")
-            else -> item.state
-        }, color = if (failed) Color(0xFFE38D8D) else p.muted, fontSize = 11.sp,
-            maxLines = 2, overflow = TextOverflow.Ellipsis,
+        Text(when {
+            failed -> "Not sent · tap to resend"
+            item.phase == "sent" -> "Sent ✓"
+            !online -> "Offline · sends when connected"
+            slow && !item.error.isNullOrBlank() -> "Sending… · " + item.error
+            else -> "Sending…"
+        }, color = if (failed) red else p.muted, fontSize = 11.sp,
+            maxLines = 1, overflow = TextOverflow.Ellipsis,
             modifier = Modifier.padding(top = 3.dp, end = 4.dp))
     }
 }
