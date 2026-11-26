@@ -95,8 +95,13 @@ data class PendingAgentUi(
     val error: String?, val createdAt: Long,
     val needsVerification: Boolean = false,
     val provider: String = "",
-    val targetType: String = "session"
-)
+    val targetType: String = "session",
+    /** User-facing phase: "sending" (still on the phone or being retried automatically),
+     *  "sent" (PC accepted it; T3 owns delivery), "delivered", or "failed" (needs a tap). */
+    val phase: String = "sending"
+) {
+    val failed get() = phase == "failed"
+}
 data class AddressIdentityPreview(
     val requestId: String, val summary: String, val stableRecipientJson: String
 )
@@ -336,7 +341,8 @@ class GenericAgentClient(
             for (item in entries.values) {
                 if (item.state == "InFlight") {
                     item.state = "Unknown"
-                    item.error = "App restarted while delivery was in progress. Check destination before retrying."
+                    // Resubmitted automatically with the same ID; the Hub dedupes it.
+                    item.error = "App restarted mid-send; resending"
                 }
             }
             if (outboxWritable) persistOutbox()
@@ -573,12 +579,41 @@ class GenericAgentClient(
         }.joinToString("\n")
     }
 
+    /** Collapses the transport states into the few the user cares about. */
+    private fun phaseOf(it: SavedAgentRequest) = when {
+        it.state == "Delivered" -> "delivered"
+        it.state in listOf("Accepted", "Queued") -> "sent"
+        it.state == "Failed" -> "failed"
+        // Past the Hub's journal window nothing resolves an Unknown by itself anymore.
+        it.state == "Unknown" && System.currentTimeMillis() - it.createdAt >= SAFE_RESUBMIT_WINDOW_MS -> "failed"
+        else -> "sending" // Pending/Blocked/InFlight, or Unknown being auto-retried/reconciled
+    }
     private fun publishOutbox() {
+        pruneOutbox()
         _outbox.value = entries.values.sortedByDescending { it.createdAt }.map {
             PendingAgentUi(it.id, it.target, it.message, it.state, it.error, it.createdAt,
                 it.targetType=="address" && it.stableRecipientJson.isNullOrBlank(),
-                it.provider, it.targetType)
+                it.provider, it.targetType, phaseOf(it))
         }
+    }
+    /** Finished receipts are history, not outbox content. Without this the outbox
+     * eventually hit its 1000-entry cap and refused every new message. Delivered drops
+     * after an hour; a PC-accepted send after a day (T3's own queue owns it by then);
+     * failures stay a week so they can't vanish unseen. Caller holds diskGuard. */
+    private fun pruneOutbox() {
+        val now = System.currentTimeMillis()
+        val stale = entries.values.filter {
+            val age = now - it.createdAt
+            when (it.state) {
+                "Delivered" -> age > 3_600_000L
+                "Accepted", "Queued" -> age > 24 * 3_600_000L
+                "Failed", "Unknown" -> age > 7 * 24 * 3_600_000L
+                else -> false
+            }
+        }
+        if (stale.isEmpty()) return
+        stale.forEach { entries.remove(it.id) }
+        if (outboxWritable) runCatching { persistOutbox() }
     }
     private fun loadOutbox() {
         if (!disk.baseFile.exists()) return
@@ -858,7 +893,8 @@ class GenericAgentClient(
             } else historyCache[key].orEmpty()
             _remoteQueue.value = emptyList()
             _olderHistoryCursor.value = key?.let { historyOlderCursors[it] }
-            _historyNotice.value = if (key != null) "Offline cache may be partial." else null
+            // Loading state is shown by the header/progress bar; notices are for problems only.
+            _historyNotice.value = null
         }
         if (key == null || !signalR.hubAuthenticated.value) {
             _historyLoading.value = false
@@ -878,7 +914,6 @@ class GenericAgentClient(
         if (shouldLoad) {
             lastBrowserLoadAttempt[key] = now
             if (!reload) {
-                _historyNotice.value = "Opening this ChatGPT session on the PC…"
                 val patch = mutableMapOf<String, Any?>()
                 if (chosen.visibilityHidden == true) patch["hidden"] = false
                 if ((chosen.visibilitySnoozedUntil ?: 0L) > now)
@@ -894,11 +929,11 @@ class GenericAgentClient(
                 signalR.agentCall("sessions.load", mapOf(
                     "session" to mapOf("provider" to chosen.provider, "id" to chosen.id)
                 ))
-                if (_selected.value == key)
-                    _historyNotice.value = "PC accepted the load request. Waiting for ChatGPT to open…"
+                if (_selected.value == key) _historyNotice.value = null
             } catch (e: Exception) {
+                // Sending doesn't depend on this: T3's queue wakes the chat itself.
                 if (_selected.value == key) _historyNotice.value =
-                    "PC load request failed; retrying automatically: ${e.message}"
+                    "Couldn't open this chat on the PC yet; retrying"
             }
         }
         if (isBrowser) chosen = refreshExactSession(key) ?: chosen
@@ -907,7 +942,7 @@ class GenericAgentClient(
             // message is delivered. Nothing to wait for; let the user send that message.
             if (_selected.value == key) {
                 _historyLoading.value = false
-                _historyNotice.value = "No messages yet. Messages are delivered once ChatGPT is ready on the PC."
+                _historyNotice.value = null
             }
             return
         }
@@ -916,10 +951,6 @@ class GenericAgentClient(
             // cached transcript visible while Android polls the exact binding.
             if (_selected.value == key) {
                 _historyLoading.value = true
-                if (_historyNotice.value?.contains("failed", ignoreCase = true) != true)
-                    _historyNotice.value = if (chosen.reachability == "Reachable")
-                        "Browser open on PC. Waiting for its conversation to become readable…"
-                    else "Loading ChatGPT on PC… Browser startup may take a minute."
             }
             return
         }
@@ -950,7 +981,7 @@ class GenericAgentClient(
                 }
                 byId.values.toList().takeLast(500).also { historyCache[key] = it }
             }
-            absorbDeliveredFromHistory(rows)
+            absorbDeliveredFromHistory(key, merged)
             // A null cursor after paging to the beginning means 'exhausted', not
             // 'uninitialized'. Do not resurrect the Load earlier button on refresh.
             if (!historyOlderCursors.containsKey(key)) historyOlderCursors[key] = page.str("older")
@@ -976,15 +1007,14 @@ class GenericAgentClient(
                 _history.value = if (_archiveEnabled.value) {
                     runCatching {archive.read(key,500)}.getOrDefault(merged)
                 } else merged
-                _historyNotice.value = page.str("warning") ?: if (!page.flag("complete")) "History is partial." else null
+                // "Load earlier messages" already signals a partial page; no extra notice.
+                _historyNotice.value = page.str("warning")
             }
         } catch (e: Exception) {
+            // A browser chat that is still opening just keeps the progress bar; polling retries.
             keepLoading = isBrowser
-            if (_selected.value == key) {
-                _historyNotice.value = if (isBrowser)
-                    "Browser history is still loading on PC. Retrying automatically… (${e.message})"
-                else "History read failed; displaying cached entries: ${e.message}"
-            }
+            if (_selected.value == key && !isBrowser)
+                _historyNotice.value = "History read failed; showing cached messages"
         } finally {
             if (_selected.value == key) _historyLoading.value = keepLoading
         }
@@ -1201,18 +1231,18 @@ class GenericAgentClient(
                 return false
             }
             val browser = item.kind == "t3/chatgpt"
-            if (browser && item.conversation == null && currentBinding != null) {
-                // Sent while the chat had no conversation yet (or the phone's list was stale).
-                // It was meant for this exact session, so follow the conversation the PC bound.
+            // The message was typed into this session, so it follows the session's current
+            // conversation (fresh chat binding, T3 auto-reboot of a full chat, stale phone
+            // list). T3's own delivery queue follows the slot the same way. Only a
+            // never-submitted message is rebound: a retransmission must stay identical to
+            // what the Hub may already have journaled, and the Hub rejects it if stale.
+            if (item.state in listOf("Pending", "Blocked") && item.operationId == null &&
+                item.conversation != currentBinding) {
                 synchronized(diskGuard) {
                     entries[item.id]?.conversation = currentBinding
                     persistOutbox()
                 }
                 item.conversation = currentBinding
-            }
-            if (item.conversation!=currentBinding) {
-                notePending(item.id, "Conversation binding changed; this message will not be redirected")
-                return false
             }
             val nativeQueue = item.kind == "t3/thread"
             if (nativeQueue && (!detail.strings("deliveryModes").contains("Queue") ||
@@ -1250,15 +1280,41 @@ class GenericAgentClient(
             false
         }
     }
-    /** T3's browser queue stamps each turn it types with "[T3-MSG:<clientRequestId>]".
-     * Seeing that stamp in history is the delivery receipt; the Hub journal itself
-     * stays "Queued" forever for queued browser sends. */
-    private fun absorbDeliveredFromHistory(rows: List<AgentHistoryUi>) {
+    /** History is the delivery receipt; the Hub journal itself stays "Queued" forever for
+     * queued browser sends. Two proofs:
+     *  - T3's browser queue stamps each turn it types with "[T3-MSG:<clientRequestId>]".
+     *  - Otherwise, a user turn with the same text that is newer than the send. Only for
+     *    messages the PC already has (never Pending/InFlight, which would then never be
+     *    sent), each history row proves at most one message, and timestamped rows must
+     *    fall in the send window, so an old identical "continue" can't count. Without a
+     *    timestamp the row must sit among the newest turns. Worst case of a false match is
+     *    a "Sent" bubble hiding early; the message itself is already with T3. */
+    private fun absorbDeliveredFromHistory(key: String, rows: List<AgentHistoryUi>) {
         val seen = rows.flatMap { row -> T3_MSG_STAMP.findAll(row.text).map { it.groupValues[1].lowercase() }.toList() }
             .toSet()
-        if (seen.isEmpty()) return
         synchronized(diskGuard) {
-            val hits = entries.values.filter { it.id.lowercase() in seen && it.state != "Delivered" }
+            val open = entries.values.filter { "${it.provider}:${it.target}" == key &&
+                it.targetType == "session" && it.state != "Delivered" }
+            if (open.isEmpty()) return
+            val hits = open.filter { it.id.lowercase() in seen }.toMutableSet()
+            val userRows = rows.withIndex().filter { (_, r) ->
+                r.kind.lowercase().let { it.contains("user") || it.contains("human") }
+            }
+            val claimed = mutableSetOf<String>()
+            open.filter { it !in hits && (it.state in listOf("Accepted", "Queued") ||
+                    it.state == "Unknown" && it.operationId != null) }
+                .sortedBy { it.createdAt }.forEach { entry ->
+                    val text = entry.message.trim()
+                    val match = userRows.firstOrNull { (index, row) ->
+                        if (row.id in claimed) return@firstOrNull false
+                        val body = row.text.replace(T3_MSG_STAMP, "").trim()
+                        if (body != text) return@firstOrNull false
+                        val at = row.sourceAt?.let { runCatching { Instant.parse(it).toEpochMilli() }.getOrNull() }
+                        if (at != null) at in (entry.createdAt - 30_000L)..(entry.createdAt + 24 * 3_600_000L)
+                        else index >= rows.size - 8
+                    }
+                    if (match != null) { claimed += match.value.id; hits += entry }
+                }
             if (hits.isEmpty()) return
             hits.forEach { it.state = "Delivered"; it.error = null }
             persistOutbox()
@@ -1341,7 +1397,7 @@ class GenericAgentClient(
                         it.state = if (knownUnsupported) "Failed" else "Unknown"
                         it.error = when {
                             knownUnsupported -> "Not sent: ${e.message}"
-                            retryableUnknown(it) -> "Unconfirmed delivery; retrying automatically (same request, no duplicate): ${e.message}"
+                            retryableUnknown(it) -> "Connection hiccup; resending automatically"
                             else -> "Unconfirmed delivery; check the recipient before retrying: ${e.message}"
                         }
                     }
@@ -1381,13 +1437,15 @@ class GenericAgentClient(
                     }
                 }
             } catch (e: Exception) {
-                // An expired journal entry is not proof of failure, but polling it
-                // forever never resolves anything. Park it as Unknown for the user.
+                // Inside our window the journal can't have expired, so NotFound means
+                // the Hub lost it. Resubmit (same ID) rather than leaving it stuck;
+                // a rare duplicate beats a message that silently never arrives.
                 if (e.message?.contains("NotFound") != true) continue
                 synchronized(diskGuard) {
                     entries[id]?.let {
                         it.state = "Unknown"
-                        it.error = "Hub no longer tracks this request (journal expired); check the session before resending"
+                        it.operationId = null
+                        it.error = "PC lost track of this message; resending"
                         persistOutbox()
                         publishOutbox()
                     }
@@ -1405,6 +1463,19 @@ class GenericAgentClient(
         entries.remove(id)
         try { persistOutbox() } catch (e: Exception) { entries[id] = item; throw e }
         publishOutbox()
+    }
+    /** One-tap resend of a failed bubble: a fresh request (new ID) to the same session's
+     * current conversation, replacing the failed receipt. Used by the chat bubble menu. */
+    fun retry(id: String): String {
+        val old = synchronized(diskGuard) { entries[id]?.copy() } ?: error("Message not found")
+        require(old.targetType == "session" && phaseOf(old) == "failed") { "Only failed messages can be resent" }
+        val session = _sessions.value.firstOrNull { it.provider == old.provider && it.id == old.target }
+        val newId = enqueue(SavedAgentRequest(UUID.randomUUID().toString(), old.provider, "session",
+            old.target, session?.conversation ?: old.conversation, old.message,
+            kind = old.kind, deliveryMode = old.deliveryMode,
+            maxActiveWorkers = old.maxActiveWorkers))
+        dismissReceipt(id)
+        return newId
     }
     /** The user has checked the destination and explicitly accepted losing the
      * uncertain local receipt. This NEVER retransmits an ambiguous message. */
@@ -1432,14 +1503,14 @@ class GenericAgentClient(
     }
     /** Fresh T3-owned context details (browser sessions: URLs, role, Caffy, parent/project;
      * native threads: settle/snooze/pin/auto-settle + Caffy), never guessed from the cached list. */
-    suspend fun sessionControls(session: AgentSessionUi): JsonObject {
+    suspend fun sessionControls(session: AgentSessionUi, timeoutSeconds: Long = 105L): JsonObject {
         require(session.provider == "t3" && (session.kind == "t3/chatgpt" || session.kind == "t3/thread")) {
             "T3 session required"
         }
         check(signalR.hubAuthenticated.value) { "Hub offline" }
         return signalR.agentCall("sessions.controls", mapOf(
             "session" to mapOf("provider" to session.provider, "id" to session.id)
-        )).asJsonObject
+        ), timeoutSeconds).asJsonObject
     }
 
     /** Native control with a returned payload (guest URL or newly created thread). */
@@ -1457,7 +1528,8 @@ class GenericAgentClient(
     }
 
     suspend fun sessionAction(session: AgentSessionUi, action:String,
-        extra: Map<String, Any?> = emptyMap()): String {
+        extra: Map<String, Any?> = emptyMap(), timeoutSeconds: Long = 105L,
+        refreshAfter: Boolean = true): String {
         if (!signalR.hubAuthenticated.value) throw IllegalStateException("Hub offline")
         val method=when(action) {
             "Interrupt"->"sessions.interrupt"
@@ -1473,15 +1545,17 @@ class GenericAgentClient(
             "clientRequestId" to UUID.randomUUID().toString()
         )
         params.putAll(extra)
-        val receipt=signalR.agentCall(method,params).asJsonObject
+        val receipt=signalR.agentCall(method,params,timeoutSeconds).asJsonObject
         val state = receipt.str("state") ?: "Unknown"
         if (state == "Failed") throw IllegalStateException(receipt.str("error") ?: "Provider rejected $action")
         // The remote mutation may have succeeded even when the follow-up
         // listing is unavailable (or the target was just closed). Never turn a
         // confirmed Control receipt into a failure that invites a duplicate.
-        if (action == "Control") {
-            try { refresh() } catch (_: Exception) { /* refresh on next poll */ }
-        } else refresh()
+        if (refreshAfter) {
+            if (action == "Control") {
+                try { refresh() } catch (_: Exception) { /* refresh on next poll */ }
+            } else refresh()
+        }
         if (action=="QueueEdit") fetchQueue(session)
         _status.value="Provider operation: $state"
         return state

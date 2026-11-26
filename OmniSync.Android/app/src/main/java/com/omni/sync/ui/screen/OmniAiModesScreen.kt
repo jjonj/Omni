@@ -35,6 +35,7 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.semantics.semantics
@@ -122,6 +123,17 @@ private fun preparePrepfileImage(context: Context, uri: Uri): ByteArray {
 private data class SessionCreatePreview(
     val requestId: String, val title: String, val providerId: String, val kind: String, val project: String,
     val instruction: String, val status: String, val sessionKey: String? = null
+)
+
+/** One rendered list row: depth 1 = subagent nested under the previous top-level row.
+ *  Top-level rows carry their visible subagent counts for the expand chip. */
+private data class SessionRow(
+    val session: AgentSessionUi,
+    val depth: Int,
+    val childCount: Int = 0,
+    val childWorking: Int = 0,
+    val expanded: Boolean = false,
+    val prevTop: AgentSessionUi? = null,
 )
 
 private data class PrepfileStatusUi(
@@ -482,27 +494,79 @@ fun OmniAiModesScreen(
     var prepfileJobs by remember { mutableStateOf<List<PrepfileStatusUi>>(emptyList()) }
     var prepfileId by rememberSaveable { mutableStateOf(UUID.randomUUID().toString()) }
     var prepfileRequestSent by rememberSaveable { mutableStateOf(false) }
+    var previousPrepfileIds by remember { mutableStateOf<List<String>>(emptyList()) }
     val prepfilePrefs = remember(context) {
         context.getSharedPreferences("omni-prepfile-request-v1", Context.MODE_PRIVATE)
     }
+    var prepfileReceipt by remember { mutableStateOf<String?>(null) }
+    fun restorePrepfile(snapshot: JsonObject) {
+        fun value(name: String) = snapshot.get(name)?.takeUnless { it.isJsonNull }?.asString
+        prepfileId = value("id") ?: prepfileId
+        prepfileRequest = value("request").orEmpty()
+        prepfileDepth = value("depth") ?: "medium"
+        prepfileGenerator = value("generator") ?: "chatgpt"
+        prepfileProjectId = value("projectId").orEmpty()
+        prepfileModelKey = value("modelKey").orEmpty()
+        prepfileEffort = value("effort").orEmpty()
+        prepfileHandoff = value("handoff")?.toBoolean() ?: false
+        prepfileTaskBoard = value("taskBoard")?.toBoolean() ?: false
+        prepfileImages = snapshot.get("images")?.takeIf { it.isJsonArray }?.asJsonArray
+            ?.map { Uri.parse(it.asString) }.orEmpty()
+        prepfileRequestSent = true
+        prepfileReceipt = prepfilePrefs.getString("receipt:$prepfileId", null)
+        prepfileError = null
+    }
     LaunchedEffect(Unit) {
-        val saved = prepfilePrefs.getString("pending", null)
-        if (saved != null) runCatching { Gson().fromJson(saved, JsonObject::class.java) }
-            .getOrNull()?.let { snapshot ->
-                fun value(name: String) = snapshot.get(name)?.takeUnless { it.isJsonNull }?.asString
-                prepfileId = value("id") ?: prepfileId
-                prepfileRequest = value("request").orEmpty()
-                prepfileDepth = value("depth") ?: "medium"
-                prepfileGenerator = value("generator") ?: "chatgpt"
-                prepfileProjectId = value("projectId").orEmpty()
-                prepfileModelKey = value("modelKey").orEmpty()
-                prepfileEffort = value("effort").orEmpty()
-                prepfileHandoff = value("handoff")?.toBoolean() ?: false
-                prepfileTaskBoard = value("taskBoard")?.toBoolean() ?: false
-                prepfileImages = snapshot.get("images")?.takeIf { it.isJsonArray }?.asJsonArray
-                    ?.map { Uri.parse(it.asString) }.orEmpty()
-                prepfileRequestSent = true
+        previousPrepfileIds = runCatching {
+            Gson().fromJson(prepfilePrefs.getString("previousIds", "[]"), Array<String>::class.java)
+                ?.toList().orEmpty()
+        }.getOrDefault(emptyList())
+        prepfilePrefs.getString("pending", null)?.let { saved ->
+            runCatching { Gson().fromJson(saved, JsonObject::class.java) }
+                .getOrNull()?.let(::restorePrepfile)
+        }
+    }
+    // A new request never destroys an unconfirmed receipt: retain its exact ID and
+    // payload locally, so it can be inspected/retried without creating a duplicate.
+    fun startAnotherPrepfile() {
+        if (prepfileBusy) return
+        val current = prepfilePrefs.getString("pending", null)
+        val history = if (current == null) previousPrepfileIds else
+            (previousPrepfileIds + prepfileId).distinct().takeLast(12)
+        val editor = prepfilePrefs.edit().remove("pending")
+            .putString("previousIds", Gson().toJson(history))
+        if (current != null) editor.putString("saved:$prepfileId", current)
+        if (!editor.commit()) {
+            prepfileError = "Could not preserve the previous request locally."
+            return
+        }
+        previousPrepfileIds = history
+        prepfileId = UUID.randomUUID().toString()
+        prepfileRequest = ""
+        prepfileImages = emptyList()
+        prepfileRequestSent = false
+        prepfileReceipt = null
+        prepfileError = null
+        prepfileProgress = ""
+    }
+    fun inspectPreviousPrepfile(id: String) {
+        if (prepfileBusy) return
+        val saved = prepfilePrefs.getString("saved:$id", null) ?: return
+        val snapshot = runCatching { Gson().fromJson(saved, JsonObject::class.java) }.getOrNull()
+            ?: return
+        val current = prepfilePrefs.getString("pending", null)
+        val editor = prepfilePrefs.edit().putString("pending", saved)
+        if (current != null && prepfileId != id)
+            editor.putString("saved:$prepfileId", current)
+        if (!editor.commit()) {
+            prepfileError = "Could not restore the previous request locally."
+            return
+        }
+        if (current != null && prepfileId != id)
+            previousPrepfileIds = (previousPrepfileIds + prepfileId).distinct().takeLast(12).also {
+                prepfilePrefs.edit().putString("previousIds", Gson().toJson(it)).apply()
             }
+        restorePrepfile(snapshot)
     }
     val prepfileImagePicker = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenMultipleDocuments()) { uris: List<Uri> ->
@@ -901,6 +965,29 @@ fun OmniAiModesScreen(
         }
     }
 
+    // Subagents nest under their visible parent instead of sitting on even footing.
+    // Collapsed by default; auto-expanded while a subagent works or needs attention,
+    // unless the user toggled it. Subagents whose parent isn't listed stay top-level.
+    var expandedParents by remember { mutableStateOf(mapOf<String, Boolean>()) }
+    val sessionRows = remember(visibleSessions, expandedParents) {
+        val ids = visibleSessions.mapTo(HashSet()) { it.id }
+        val nested = { s: AgentSessionUi -> s.parentId != null && s.parentId != s.id && s.parentId in ids }
+        val children = visibleSessions.filter(nested).groupBy { it.parentId!! }
+        val rows = ArrayList<SessionRow>(visibleSessions.size)
+        var prevTop: AgentSessionUi? = null
+        visibleSessions.forEach { s ->
+            if (nested(s)) return@forEach
+            val kids = children[s.id].orEmpty()
+            val busy = kids.any { it.isRunning() || it.needsAttention() }
+            val expanded = kids.isNotEmpty() && (expandedParents[s.key] ?: busy)
+            rows += SessionRow(s, 0, kids.size, kids.count { it.isRunning() }, expanded, prevTop)
+            if (expanded) kids.forEach { rows += SessionRow(it, 1) }
+            prevTop = s
+        }
+        rows
+    }
+    val nativeList = listProvider == "t3" && threadKind == "t3/thread"
+
     LaunchedEffect(initialSessionId, sessions) {
         if (!initialApplied && initialSessionId != null) {
             sessions.firstOrNull { it.id == initialSessionId || it.key == initialSessionId }?.let {
@@ -948,7 +1035,7 @@ fun OmniAiModesScreen(
         val carrier = schedulerCarrier() ?: return
         scope.launch {
             try {
-                val details = client.sessionControls(carrier)
+                val details = client.sessionControls(carrier, timeoutSeconds = 20L)
                 val rows = details.get("attentions")?.takeIf { it.isJsonArray }?.asJsonArray
                     ?.mapNotNull { raw -> raw.takeIf { it.isJsonObject }?.asJsonObject
                         ?.let(AndroidAttentionStore::fromStatus) }
@@ -1109,7 +1196,7 @@ fun OmniAiModesScreen(
         scope.launch {
             try {
                 // Reconcile before replaying any part. The desktop owns the durable job receipt.
-                val pc = client.sessionControls(carrier)
+                val pc = client.sessionControls(carrier, timeoutSeconds = 20L)
                 val reported = pc.get("prepfileJobs")?.takeIf { it.isJsonArray }?.asJsonArray
                     ?.mapNotNull { it.takeIf { value -> value.isJsonObject }?.asJsonObject
                         ?.let(::prepfileStatus) }
@@ -1140,7 +1227,8 @@ fun OmniAiModesScreen(
                             if (!done) {
                                 try {
                                     val result = client.sessionAction(carrier, "Control",
-                                        mapOf("command" to "prepfile_image_chunk", "options" to options))
+                                        mapOf("command" to "prepfile_image_chunk", "options" to options),
+                                        timeoutSeconds = 30L, refreshAfter = false)
                                     if (result !in listOf("Unknown", "Pending")) done = true
                                     else failure = IllegalStateException("Chunk outcome unconfirmed")
                                 } catch (error: Exception) { failure = error }
@@ -1165,7 +1253,12 @@ fun OmniAiModesScreen(
                 )
                 prepfileProgress = "Submitting the one-shot preparation job…"
                 val receipt = client.sessionAction(carrier, "Control",
-                    mapOf("command" to "prepfile_create", "options" to option))
+                    mapOf("command" to "prepfile_create", "options" to option),
+                    timeoutSeconds = 30L, refreshAfter = false)
+                if (receipt == "Delivered") {
+                    prepfileReceipt = receipt
+                    prepfilePrefs.edit().putString("receipt:$prepfileId", receipt).apply()
+                }
                 prepfileError = if (receipt == "Unknown" || receipt == "Pending")
                     "Creation outcome uncertain: refresh the PC journal before retrying this same request ID."
                     else null
@@ -1362,6 +1455,46 @@ fun OmniAiModesScreen(
                 if (prepfileBusy) LinearProgressIndicator(Modifier.fillMaxWidth())
                 if (prepfileProgress.isNotBlank()) Text(prepfileProgress, color = p.muted,
                     fontSize = 12.sp)
+                if (prepfileRequestSent) {
+                    val job = prepfileJobs.firstOrNull { it.id == prepfileId }
+                    Column(Modifier.fillMaxWidth().background(p.raised, RoundedCornerShape(12.dp))
+                        .padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(when {
+                            prepfileBusy -> "Submitting to PC…"
+                            job != null -> "PC confirmed · ${job.state.replace('_', ' ')}"
+                            prepfileReceipt == "Delivered" -> "PC accepted · fetching job status"
+                            else -> "Submission not yet confirmed"
+                        }, color = if (job == null && !prepfileBusy && prepfileReceipt != "Delivered") p.amber else p.accent,
+                            fontWeight = FontWeight.SemiBold)
+                        Text(when {
+                            job != null -> "The PC has this request. You can start another without interrupting it."
+                            prepfileReceipt == "Delivered" -> "Creation was accepted by the PC. The job list has not updated yet."
+                            else -> "The request is saved on this phone. It may already be running on the PC. Reconcile before retrying."
+                        },
+                            color = p.muted, fontSize = 12.sp)
+                        Text(prepfileRequest, color = p.text, maxLines = 4,
+                            overflow = TextOverflow.Ellipsis)
+                        Text("Request ID: $prepfileId", color = p.muted, fontSize = 11.sp)
+                        job?.outputPath?.let { Text("Output: $it", color = p.muted, fontSize = 12.sp) }
+                        job?.implementationThreadId?.let {
+                            Text("Implementation thread: $it", color = p.muted, fontSize = 12.sp)
+                        }
+                        job?.error?.let { Text(it, color = p.amber, fontSize = 12.sp) }
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedButton(onClick = { refreshAttentionRequests() },
+                                enabled = online && !prepfileBusy) { Text("Check PC status") }
+                            Button(onClick = { startAnotherPrepfile() }, enabled = !prepfileBusy) {
+                                Text("New request")
+                            }
+                        }
+                        if (job == null && !prepfileBusy) TextButton(onClick = {
+                            prepfileRequestSent = false
+                            submitPrepfile()
+                        }, enabled = online && schedulerCarrier() != null) {
+                            Text("Retry with same ID (checks PC first)")
+                        }
+                    }
+                } else {
                 OutlinedTextField(prepfileRequest, { prepfileRequest = it.take(30_000) },
                     Modifier.fillMaxWidth(), minLines = 3, maxLines = 8,
                     enabled = !prepfileRequestSent,
@@ -1458,41 +1591,32 @@ fun OmniAiModesScreen(
                         }
                     }
                 }
-                if (!prepfileRequestSent) {
-                    Button(onClick = { submitPrepfile() },
-                        enabled = !prepfileBusy && online && t3Connected &&
-                            schedulerCarrier() != null && prepfileRequest.isNotBlank() &&
-                            (!prepfileHandoff || nativeCatalog?.models?.any {
-                                it.key == prepfileModelKey } == true)) {
-                        Text("Start preparation")
+                Button(onClick = { submitPrepfile() },
+                    enabled = !prepfileBusy && online && t3Connected &&
+                        schedulerCarrier() != null && prepfileRequest.isNotBlank() &&
+                        (!prepfileHandoff || nativeCatalog?.models?.any {
+                            it.key == prepfileModelKey } == true)) {
+                    Text("Start preparation")
+                }
+                }
+                if (previousPrepfileIds.isNotEmpty()) {
+                    HorizontalDivider(color = p.border)
+                    Text("Previous phone requests", style = MaterialTheme.typography.labelLarge,
+                        color = p.text)
+                    previousPrepfileIds.asReversed().forEach { previousId ->
+                        val previous = prepfilePrefs.getString("saved:$previousId", null)
+                            ?.let { runCatching { Gson().fromJson(it, JsonObject::class.java) }.getOrNull() }
+                        if (previous != null && previousId != prepfileId) {
+                            val requestLabel = previous.get("request")?.asString.orEmpty()
+                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                Text(requestLabel, Modifier.weight(1f), maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis, color = p.muted, fontSize = 12.sp)
+                                TextButton(enabled = !prepfileBusy, onClick = {
+                                    inspectPreviousPrepfile(previousId)
+                                }) { Text("Inspect") }
+                            }
+                        }
                     }
-                } else {
-                    Text("Request ID: $prepfileId · Do not resubmit after an uncertain receipt.",
-                        color = p.muted, fontSize = 12.sp)
-                    val job = prepfileJobs.firstOrNull { it.id == prepfileId }
-                    Text(job?.let { "PC state: " + it.state } ?:
-                        "Awaiting PC acknowledgement. Refresh status; no automatic retry.",
-                        color = if (job?.state == "needs_review") p.amber else p.accent)
-                    job?.outputPath?.let { Text("Output: $it", color = p.muted, fontSize = 12.sp) }
-                    job?.implementationThreadId?.let {
-                        Text("Implementation thread: $it", color = p.muted, fontSize = 12.sp)
-                    }
-                    job?.error?.let { Text("Needs review: $it", color = p.amber) }
-                    TextButton(onClick = {
-                        refreshAttentionRequests()
-                    }) { Text("Reconcile with PC") }
-                    if (job == null) {
-                        TextButton(enabled = !prepfileBusy, onClick = {
-                            prepfileRequestSent = false
-                            submitPrepfile()
-                        }) { Text("Retry safely with the same request ID") }
-                    }
-                    TextButton(onClick = {
-                        prepfilePrefs.edit().remove("pending").commit()
-                        prepfileId = UUID.randomUUID().toString()
-                        prepfileRequest = ""; prepfileImages = emptyList()
-                        prepfileRequestSent = false; prepfileError = null
-                    }) { Text("Start a different request") }
                 }
                 HorizontalDivider(color = p.border)
                 Text("PC prepfile jobs", style = MaterialTheme.typography.labelLarge, color = p.text)
@@ -1871,8 +1995,9 @@ fun OmniAiModesScreen(
                 else {
                     // Thread header = title + one status line. Everything that used to
                     // live in stacked bars below (status, unloaded/retry) folds in here.
+                    // A chat with no conversation yet has nothing to load; it starts on first send.
                     val unloaded = online && selected?.kind == "t3/chatgpt" &&
-                        selected.reachability != "Reachable"
+                        selected.reachability != "Reachable" && !selected.conversation.isNullOrBlank()
                     Column(Modifier.weight(1f).clickable(enabled = unloaded && !historyLoading) {
                         selected?.let { openSession(it) }
                     }) {
@@ -2235,11 +2360,27 @@ fun OmniAiModesScreen(
                 LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(
                     start = 10.dp, end = 10.dp, top = 4.dp, bottom = 20.dp),
                     verticalArrangement = Arrangement.spacedBy(if (compactMode) 3.dp else 4.dp)) {
-                    itemsIndexed(visibleSessions, key = { _, session -> session.key }) { index, session ->
-                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            if (!compactMode && sessionSearch.isBlank() && sessionFilter == "All" &&
+                    itemsIndexed(sessionRows, key = { _, row -> row.session.key }) { _, row ->
+                        val session = row.session
+                        // Chip on a parent row: subagent count, toggles the nested list.
+                        val subagentChip: @Composable () -> Unit = {
+                            if (row.childCount > 0) Text(
+                                (if (row.expanded) "▾ " else "▸ ") + row.childCount +
+                                    (if (row.childCount == 1) " subagent" else " subagents") +
+                                    (if (row.childWorking > 0) " · ${row.childWorking} working" else ""),
+                                Modifier.padding(horizontal = 4.dp).clip(RoundedCornerShape(8.dp))
+                                    .background(p.raised)
+                                    .clickable { expandedParents = expandedParents + (session.key to !row.expanded) }
+                                    .padding(horizontal = 7.dp, vertical = 2.dp),
+                                color = if (row.childWorking > 0) p.accent else p.muted,
+                                fontSize = 10.sp, maxLines = 1)
+                        }
+                        Column(Modifier.padding(start = if (row.depth > 0) 22.dp else 0.dp)
+                            .alpha(if (row.depth > 0) 0.88f else 1f),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            if (row.depth == 0 && !compactMode && sessionSearch.isBlank() && sessionFilter == "All" &&
                                 (sortMode == "project" || threadKind != "t3/thread" || listProvider != "t3") &&
-                                (index == 0 || visibleSessions[index - 1].listGroup(sortMode) != session.listGroup(sortMode))) {
+                                (row.prevTop == null || row.prevTop.listGroup(sortMode) != session.listGroup(sortMode))) {
                                 Text(session.listGroup(sortMode),
                                     Modifier.fillMaxWidth().padding(start = 10.dp, top = 10.dp, bottom = 2.dp),
                                     color = p.muted, fontSize = 11.sp, letterSpacing = 1.1.sp,
@@ -2290,6 +2431,7 @@ fun OmniAiModesScreen(
                                         Text("VERIFY", color = p.amber, fontSize = 10.sp,
                                             fontWeight = FontWeight.Bold, modifier = Modifier.padding(end = 5.dp))
                                     }
+                                    subagentChip()
                                     if (cornerIndicators) {
                                         // Reserve only horizontal space so flags never obscure title.
                                         val badgeWidth = (if (snoozed) 13 else 0) +
@@ -2373,9 +2515,10 @@ fun OmniAiModesScreen(
                                         },
                                         if (sortMode != "project" && session.workspace?.isNotBlank() == true)
                                             session.projectName() else null
-                                    ).joinToString(" · "),
+                                    ).joinToString(" · "), Modifier.weight(1f, fill = false),
                                         color = p.muted, maxLines = 1, overflow = TextOverflow.Ellipsis,
                                         style = MaterialTheme.typography.labelSmall)
+                                    subagentChip()
                                 }
                             }
                             if (session.unread == true) Dot(p.accent)
@@ -2384,6 +2527,15 @@ fun OmniAiModesScreen(
                                     modifier = Modifier.size(18.dp))
                             }
                         }
+                        }
+                    }
+                    // Settled native threads stay out of the list until asked for.
+                    if (nativeList && sessionSearch.isBlank() &&
+                        (sessionFilter == "All" || sessionFilter == "Settled")) item(key = "settled-toggle") {
+                        TextButton(onClick = { sessionFilter = if (sessionFilter == "Settled") "All" else "Settled" },
+                            modifier = Modifier.fillMaxWidth().padding(top = 6.dp)) {
+                            Text(if (sessionFilter == "Settled") "Back to active threads" else "Show settled threads",
+                                color = p.muted, fontSize = 12.sp)
                         }
                     }
                     if (visibleSessions.isEmpty()) item {
@@ -3808,8 +3960,10 @@ fun OmniAiModesScreen(
                     } else null
                     if (native) viewPrefs.edit().putString("lastNativeProject", nativeProjectId)
                         .putString("lastNativeModel", nativeModelKey).putString("lastNativeEffort", nativeEffort).apply()
+                    // Title the PC session after the prompt's first line (blank -> client default).
                     val result = client.createSession(active, kind, project, firstMessage,
-                        createDeliveryMode, maxActiveWorkers, "", config)
+                        createDeliveryMode, maxActiveWorkers,
+                        if (firstMessage.isBlank()) "" else title, config)
                     val newKey = client.createdSessionKey.value
                     if (newKey == null) {
                         val rejected = result.contains("rejected", true) || result.contains("failed", true)
@@ -4090,7 +4244,8 @@ fun OmniAiModesScreen(
             Box(Modifier.widthIn(max = 320.dp).clip(RoundedCornerShape(18.dp, 18.dp, 4.dp, 18.dp))
                 .background(p.accentBg).padding(horizontal = 14.dp, vertical = 10.dp)) {
                 SelectionContainer {
-                    Text(item.text.ifBlank { "(empty)" }, color = p.text,
+                    // T3's delivery marker is plumbing, not part of what the user wrote.
+                    Text(item.text.replace(t3MsgStamp, "").trim().ifBlank { "(empty)" }, color = p.text,
                         style = MaterialTheme.typography.bodyMedium, lineHeight = 21.sp)
                 }
             }
