@@ -15,6 +15,7 @@ import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
 import java.security.MessageDigest
+import java.util.zip.ZipInputStream
 
 /**
  * Read-through disk cache behind the Wartribes WebViews (WDD + WAR).
@@ -167,6 +168,76 @@ class WartribesOfflineCache(context: Context) {
                 if (bytes > MAX_ENTRY_BYTES) return false
             }
         }
+    }
+
+    /**
+     * Cache the complete Atlas (including lazily loaded chapters and images) in one
+     * download. The Gateway serves only the static DevelopmentDashboard tree.
+     * Each ZIP member is stored under its normal page URL so WebView's existing
+     * offline request interceptor can read it without rewriting the Atlas UI.
+     */
+    fun prefetchAtlasArchive(archiveUrl: String, dashboardBase: String,
+                             progress: (Int) -> Unit): String = try {
+        val conn = URL(archiveUrl).openConnection() as HttpURLConnection
+        try {
+            conn.connectTimeout = 10_000
+            conn.readTimeout = 120_000
+            CookieManager.getInstance().getCookie(archiveUrl)?.let { conn.setRequestProperty("Cookie", it) }
+            if (conn.responseCode != 200) throw IOException("Atlas archive HTTP ${conn.responseCode}")
+            if (conn.contentLengthLong > MAX_TOTAL_BYTES) throw IOException("Atlas archive is too large")
+            var count = 0
+            var total = 0L
+            ZipInputStream(conn.inputStream.buffered()).use { zip ->
+                while (true) {
+                    val entry = zip.nextEntry ?: break
+                    val name = entry.name
+                    if (entry.isDirectory) { zip.closeEntry(); continue }
+                    if (name != "DevelopmentDashboard/index.html" &&
+                        !name.startsWith("DevelopmentDashboard/atlas/"))
+                        throw IOException("Unexpected Atlas archive entry")
+                    if (name.split('/').any { it == ".." || it == "." } || '\\' in name)
+                        throw IOException("Invalid Atlas archive path")
+                    val temp = File.createTempFile("atlas-", ".part", dir)
+                    try {
+                        if (!copyCachePrefix(zip, temp)) throw IOException("Oversized Atlas asset: $name")
+                        val bytes = temp.length()
+                        total += bytes
+                        if (total > MAX_TOTAL_BYTES) throw IOException("Atlas exceeds offline cache budget")
+                        val (mime, charset) = atlasMime(name)
+                        store(dashboardBase.trimEnd('/') + "/" + name, mime, charset, temp)
+                        count++
+                        if (count % 25 == 0) progress(count)
+                    } finally { temp.delete(); zip.closeEntry() }
+                }
+            }
+            if (count < 3) throw IOException("Atlas archive was empty")
+            "Saved Atlas offline: $count files (${total / (1024 * 1024)} MB)"
+        } finally { conn.disconnect() }
+    } catch (e: Exception) {
+        "Atlas offline save failed: ${e.message ?: e.javaClass.simpleName}"
+    }
+
+    private fun atlasMime(path: String): Pair<String, String?> {
+        val type = when (path.substringAfterLast('.', "").lowercase()) {
+            "html", "htm" -> "text/html"
+            "js", "mjs" -> "text/javascript"
+            "css" -> "text/css"
+            "json" -> "application/json"
+            "svg" -> "image/svg+xml"
+            "jpg", "jpeg" -> "image/jpeg"
+            "png" -> "image/png"
+            "gif" -> "image/gif"
+            "webp" -> "image/webp"
+            "woff" -> "font/woff"
+            "woff2" -> "font/woff2"
+            "ttf" -> "font/ttf"
+            "otf" -> "font/otf"
+            "wasm" -> "application/wasm"
+            "mp4" -> "video/mp4"
+            "webm" -> "video/webm"
+            else -> "application/octet-stream"
+        }
+        return type to (if (type.startsWith("text/") || type == "application/json") "utf-8" else null)
     }
 
     /** Download one URL into the cache (used by "Save for offline"). Returns bytes stored or -1. */

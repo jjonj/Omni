@@ -67,6 +67,7 @@ import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.text.DateFormat
 import java.util.Date
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Wartribes screen: Development Dashboard (WDD) and Asset Review (WAR) tabs.
@@ -127,6 +128,7 @@ fun WartribesScreen(parentPadding: PaddingValues = PaddingValues(), onExit: () -
     val current = remember(selected, hubBase, generation) { TabHost(WartribesTab.values()[selected]) }
     var pageError by remember(current) { mutableStateOf<String?>(null) }
     val opened = remember(hubBase) { mutableSetOf<WartribesTab>() }
+    val atlasCacheQueued = remember(hubBase) { AtomicBoolean(false) }
 
     fun reportFailure(error: Throwable) {
         android.util.Log.e("Wartribes", "WebView failure", error)
@@ -166,6 +168,29 @@ fun WartribesScreen(parentPadding: PaddingValues = PaddingValues(), onExit: () -
                     webViewClient = object : WebViewClient() {
                         override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
                             if (request.isForMainFrame) host.toolPrefix = toolPrefixOf(request.url)
+                            val path = request.url.path.orEmpty()
+                            // The Atlas is an iframe; onPageFinished on the host never sees its
+                            // navigation. Start one background snapshot when the reader opens.
+                            if (tab == WartribesTab.DASHBOARD &&
+                                (path.endsWith("/DevelopmentDashboard/atlas/magazine.html") ||
+                                 path.endsWith("/DevelopmentDashboard/atlas/map.html")) &&
+                                atlasCacheQueued.compareAndSet(false, true)) {
+                                mainHandler.post {
+                                    scope.launch {
+                                        saveStatus = "Caching Atlas for offline..."
+                                        val result = withContext(Dispatchers.IO) {
+                                            val uri = Uri.parse(hubBase)
+                                            val origin = "${uri.scheme}://${uri.encodedAuthority}"
+                                            val base = "$origin/gateway/tools/${tab.toolId}/"
+                                            cache.prefetchAtlasArchive(base + "dashboard/api/atlas-offline.zip", base) { count ->
+                                                mainHandler.post { saveStatus = "Caching Atlas: $count files..." }
+                                            }
+                                        }
+                                        saveStatus = result
+                                        if (result.startsWith("Atlas offline save failed")) atlasCacheQueued.set(false)
+                                    }
+                                }
+                            }
                             val hubHost = Uri.parse(hubBase).host ?: return null
                             return try {
                                 cache.intercept(request, hubHost, host.toolPrefix, lastToolUrl(tab))
@@ -183,7 +208,8 @@ fun WartribesScreen(parentPadding: PaddingValues = PaddingValues(), onExit: () -
 
                         override fun onPageFinished(view: WebView, url: String) {
                             // Remember the real tool page so offline starts can skip the launcher.
-                            if (toolPrefixOf(Uri.parse(url)) != null) prefs.edit().putString("last_${tab.name}", url).apply()
+                            if (toolPrefixOf(Uri.parse(url)) != null && cache.isCached(url))
+                                prefs.edit().putString("last_${tab.name}", url).apply()
                             runCatching { CookieManager.getInstance().flush() }.onFailure(::reportFailure)
                         }
 
@@ -241,7 +267,8 @@ fun WartribesScreen(parentPadding: PaddingValues = PaddingValues(), onExit: () -
                     DropdownMenuItem(
                         text = { Text("Save both for offline") },
                         leadingIcon = { Icon(Icons.Default.CloudDownload, null) },
-                        enabled = saveStatus == null || saveStatus!!.startsWith("Saved") || saveStatus!!.startsWith("Save failed"),
+                        enabled = saveStatus == null ||
+                            !(saveStatus!!.startsWith("Saving") || saveStatus!!.startsWith("Caching")),
                         onClick = {
                             menuOpen = false
                             scope.launch {
@@ -357,8 +384,14 @@ private fun saveForOffline(cache: WartribesOfflineCache, hubBase: String, progre
     val origin = Uri.parse(hubBase).let { "${it.scheme}://${it.encodedAuthority}" }
     val urls = LinkedHashSet<String>()
     try {
+        // Cache even the Atlas chapters and images that have not been opened yet.
+        val dashboardBase = "$origin/gateway/tools/${WartribesTab.DASHBOARD.toolId}/"
+        progress("Saving Atlas for offline...")
+        val atlasResult = cache.prefetchAtlasArchive(dashboardBase + "dashboard/api/atlas-offline.zip", dashboardBase) {
+            count -> progress("Saving Atlas: $count files...")
+        }
         // WDD
-        val wdd = "$origin/gateway/tools/${WartribesTab.DASHBOARD.toolId}/dashboard/"
+        val wdd = dashboardBase + "dashboard/"
         progress("Saving dashboard state…")
         if (cache.prefetch(wdd + "api/state") < 0) return "Save failed: can't reach the dashboard (open it once to log in / start it)"
         val state = JSONObject(cache.cachedText(wdd + "api/state") ?: "{}")
@@ -404,7 +437,8 @@ private fun saveForOffline(cache: WartribesOfflineCache, hubBase: String, progre
             }
             if (++done % 10 == 0) progress("Saving $done/${urls.size}…")
         }
-        return "Saved ${urls.size - failed}/${urls.size} items (${bytes / (1024 * 1024)} MB new)"
+        return "${if (atlasResult.startsWith("Saved")) "Atlas saved. " else "$atlasResult. "}" +
+            "Saved ${urls.size - failed}/${urls.size} other items (${bytes / (1024 * 1024)} MB new)"
     } catch (e: Exception) {
         return "Save failed: ${e.message}"
     }
