@@ -2,6 +2,8 @@ package com.omni.sync.data.taskboard
 
 import com.omni.sync.data.repository.SignalRClient
 import java.io.File
+import java.io.ByteArrayOutputStream
+import java.util.concurrent.TimeUnit
 import java.util.UUID
 import android.util.Log
 import kotlinx.coroutines.CancellationException
@@ -71,13 +73,89 @@ class TaskBoardPhoneClient(
             }
             MobileInboxItem(project, id, item.getString("title"), item.optString("created"),
                 historical, if (review != null) "review" else item.optString("type", "user"),
-                review, item.optJSONObject("question"))
+                review, item.optJSONObject("question"), item.optString("taskRevision").takeIf { it.isNotBlank() })
         }
         val warnings = data.optJSONArray("warnings")
         return MobileInboxSnapshot(result,
             if (warnings == null) emptyList() else (0 until warnings.length()).map { warnings.getString(it) },
             suppressedReviews)
     }
+    /**
+     * Answer the task directly from Inbox. Fetch only its current PC Markdown card
+     * instead of loading a whole board (which can take minutes over a remote link).
+     * The normal phone update journal provides durable retry and revision CAS.
+     */
+    suspend fun fetchInboxTask(item: MobileInboxItem): TaskBoardTask {
+        val board = boardIdentity(item.project.root)
+        require(Regex("^[A-Za-z][A-Za-z0-9]{1,11}-[0-9]+$").matches(item.taskId))
+        signalR.ensureAgentAuthentication()
+        require(signalR.hubAuthenticated.value) { "PC disconnected" }
+
+        // Only read this selected task, never the full board, even on mobile networks.
+        val pcPath = "B:\\GDrive\\SharedWithPhone\\Obsidian\\jjj\\" +
+            board.replace('/', '\\') + "\\Active\\" + item.taskId + ".md"
+        val text = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            val bytes = ByteArrayOutputStream()
+            val chunkSize = 128 * 1024
+            do {
+                val chunk = requireNotNull(signalR.getFileChunk(pcPath, bytes.size().toLong(), chunkSize)) {
+                    "PC disconnected"
+                }.timeout(20, TimeUnit.SECONDS).blockingGet()
+                bytes.write(chunk)
+                require(bytes.size() <= 2 * 1024 * 1024) { "Task source is unexpectedly large." }
+            } while (chunk.size == chunkSize)
+            bytes.toByteArray().toString(Charsets.UTF_8)
+        }
+        require(text.isNotBlank()) { "PC task is no longer available. Refresh Inbox." }
+        val source = TaskBoardStore(item.project.root).parseTask(
+            File(item.project.root, "Active/${item.taskId}.md"), text)
+        check(source.id == item.taskId && (item.taskRevision == null ||
+            source.revision == item.taskRevision)) {
+            "Question changed on PC. Refresh Inbox before responding."
+        }
+        check(source.question?.answer.isNullOrBlank()) { "Question already answered. Refresh Inbox." }
+        check(source.question?.prompt == item.question?.optString("prompt") ||
+            source.question == null && item.question == null) {
+            "Question changed on PC. Refresh Inbox before responding."
+        }
+        return source
+    }
+
+    suspend fun submitInboxResponse(
+        item: MobileInboxItem, answer: String, note: String,
+        finish: Boolean = false, reopen: Boolean = false
+    ): Submission {
+        require(answer.isNotBlank() || finish || reopen) { "Choose an answer or enter a response." }
+        val source = fetchInboxTask(item)
+        val isAiQuestion = source.kind == "task" &&
+            "question" in source.attention && source.question != null
+        val isApproval = isAiQuestion &&
+            (source.question?.requestType == "verification" || source.column == "done")
+        val waitingAnswer = isAiQuestion && !isApproval && !finish && !reopen
+        val needsChanges = reopen || (isApproval && answer.equals("Needs changes", true))
+        val attention = source.attention.filterNot {
+            it in setOf("question", "needs-user", "blocked")
+        }.toMutableList()
+        if ((waitingAnswer || needsChanges) && "user-note" !in attention) attention.add("user-note")
+        val updated = source.toDraft().copy(
+            column = when {
+                waitingAnswer || needsChanges -> "ai-ready"
+                finish -> "done"
+                else -> source.column
+            },
+            kind = when {
+                needsChanges || finish -> "task"
+                isAiQuestion -> source.kind
+                else -> "task"
+            },
+            attention = attention,
+            question = source.question?.copy(answer = answer),
+            userNotes = listOf(source.userNotes, note.trim()).filter { it.isNotBlank() }
+                .joinToString("\n\n")
+        )
+        return submitUpdate(item.project.root, source, updated)
+    }
+
     /** Keep JSON integer fields (e.g. review viewport_width) integral over
      * SignalR; Gson's raw Map deserialization coerces every number to Double. */
     private fun rpcJson(value: Any?): Any? = when (value) {

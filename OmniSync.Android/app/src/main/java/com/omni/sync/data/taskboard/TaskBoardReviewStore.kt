@@ -36,6 +36,7 @@ data class MobileInboxItem(
     val type: String,
     val review: MobileReview? = null,
     val question: JSONObject? = null,
+    val taskRevision: String? = null,
 ) {
     val key: String get() = project.root.path + "/" + taskId + "/" + type
 }

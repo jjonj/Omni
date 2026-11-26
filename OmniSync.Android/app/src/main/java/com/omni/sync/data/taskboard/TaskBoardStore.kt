@@ -887,7 +887,7 @@ class TaskBoardStore(
         return result
     }
 
-    private fun parseTask(file: File, text: String): TaskBoardTask {
+    internal fun parseTask(file: File, text: String): TaskBoardTask {
         val (frontmatter, body) = splitFrontmatter(text)
         val fields = parseTopLevelScalars(frontmatter)
         val id = fields["id"] ?: error("missing id")

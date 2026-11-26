@@ -87,6 +87,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.omni.sync.data.taskboard.MobileReview
 import com.omni.sync.data.taskboard.MobileInboxItem
+import com.omni.sync.data.taskboard.TaskBoardTask
 import kotlinx.coroutines.CancellationException
 import com.omni.sync.data.taskboard.MobileReviewDecision
 import com.omni.sync.data.taskboard.MobileReviewPin
@@ -123,6 +124,11 @@ fun TaskBoardReviewScreen(onClose: () -> Unit, phoneWriter: TaskBoardPhoneClient
     val ranking = remember { mutableStateListOf<String>() }
     val pins = remember { mutableStateListOf<MobileReviewPin>() }
     var note by remember { mutableStateOf("") }
+    var responseChoice by remember { mutableStateOf<String?>(null) }
+    var responseText by remember { mutableStateOf("") }
+    var taskDetails by remember { mutableStateOf<TaskBoardTask?>(null) }
+    var detailsError by remember { mutableStateOf<String?>(null) }
+    var contextExpanded by remember { mutableStateOf(false) }
     val reviewImages = remember { mutableStateListOf<MobileReviewAttachment>() }
     val context = LocalContext.current
     val gallery = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris ->
@@ -198,6 +204,26 @@ fun TaskBoardReviewScreen(onClose: () -> Unit, phoneWriter: TaskBoardPhoneClient
     }
     val selectedItem = queue.firstOrNull { it.key == selected }
     val review = selectedItem?.review
+    val questionOptions = selectedItem?.question?.optJSONArray("options")?.let { options ->
+        (0 until options.length()).map { options.optString(it) }.filter { it.isNotBlank() }
+    }.orEmpty()
+    val isVerification = selectedItem?.question?.optString("request_type") == "verification" ||
+        taskDetails?.takeIf { it.id == selectedItem?.taskId }?.column == "done"
+    LaunchedEffect(selectedItem?.key, selectedItem?.taskRevision, live) {
+        taskDetails = null
+        detailsError = null
+        contextExpanded = false
+        val item = selectedItem
+        if (item != null && !item.historical && item.review == null && live) {
+            try {
+                taskDetails = withContext(Dispatchers.IO) { phoneWriter.fetchInboxTask(item) }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                detailsError = failure.message ?: "Task details unavailable."
+            }
+        }
+    }
     val artifacts = remember(review?.manifestRevision) {
         review?.round?.optJSONArray("artifacts")?.let { ar ->
             (0 until ar.length()).map { ar.getJSONObject(it) }
@@ -205,6 +231,8 @@ fun TaskBoardReviewScreen(onClose: () -> Unit, phoneWriter: TaskBoardPhoneClient
     }
     LaunchedEffect(selected, review?.round?.optInt("number")) {
         error = null
+        responseChoice = null
+        responseText = ""
         choice = review?.round?.optJSONObject("result")?.optJSONArray("choices")?.optString(0)
         ranking.clear()
         pins.clear()
@@ -274,6 +302,44 @@ fun TaskBoardReviewScreen(onClose: () -> Unit, phoneWriter: TaskBoardPhoneClient
                     else -> { error = receipt.details ?: "Review ${receipt.status}; refresh the Inbox."; live = false }
                 }
             }.onFailure { error = "Review conflict or save error: ${it.message}. Refresh to retry." }
+            saving = false
+            refresh()
+        }
+    }
+
+    fun respondToQuestion(finish: Boolean = false, reopen: Boolean = false) {
+        val item = selectedItem ?: return
+        if (!live || item.historical || saving) return
+        val answer = when {
+            reopen -> "Needs changes"
+            finish -> if (isVerification) "Done" else "Keep current implementation"
+            responseChoice != null -> responseChoice!!
+            else -> responseText.trim()
+        }
+        if (answer.isBlank()) {
+            error = "Choose an option or enter your answer."
+            return
+        }
+        saving = true
+        scope.launch {
+            runCatching {
+                withContext(Dispatchers.IO) {
+                    phoneWriter.submitInboxResponse(item, answer, responseText, finish, reopen)
+                }
+            }.onSuccess { receipt ->
+                when (receipt.status) {
+                    "applied", "queued" -> {
+                        queue = queue.filterNot { it.key == item.key }
+                        openCount = (openCount - 1).coerceAtLeast(0)
+                        selected = queue.firstOrNull()?.key
+                        error = null
+                        reviewNotice = if (receipt.status == "queued")
+                            "Answer saved on phone; it will sync on reconnection."
+                        else "Response saved."
+                    }
+                    else -> error = receipt.details ?: "Response not saved. Refresh Inbox."
+                }
+            }.onFailure { error = "Could not save answer: ${it.message}" }
             saving = false
             refresh()
         }
@@ -381,8 +447,74 @@ fun TaskBoardReviewScreen(onClose: () -> Unit, phoneWriter: TaskBoardPhoneClient
                 selectedItem.question?.optString("answer")?.takeIf { it.isNotBlank() && it != "null" }?.let {
                     Text("Answer: $it", style = MaterialTheme.typography.bodyMedium)
                 }
-                if (!selectedItem.historical) Button(onClick = { onOpenTask(selectedItem) }, enabled = live) {
-                    Text("Open task to respond")
+                if (!selectedItem.historical) {
+                    if (selectedItem.question == null) {
+                        val details = taskDetails?.takeIf { it.id == selectedItem.taskId }
+                        val contextText = details?.description?.substringBefore("<!-- taskboard:update:")?.trim()
+                            ?.ifBlank { details.userNotes.ifBlank { details.notes } }
+                        when {
+                            !contextText.isNullOrBlank() ->
+                                Text(contextText, style = MaterialTheme.typography.bodyMedium)
+                            detailsError != null ->
+                                Text("Could not load task context: $detailsError",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.error)
+                            details == null ->
+                                Text("Loading the task question from PC…",
+                                    style = MaterialTheme.typography.bodyMedium)
+                            else ->
+                                Text("Your input is needed for this task.",
+                                    style = MaterialTheme.typography.bodyMedium)
+                        }
+                    }
+                    if (questionOptions.isNotEmpty() && !isVerification) {
+                        Text("Choose an answer", style = MaterialTheme.typography.labelLarge)
+                        questionOptions.forEach { option ->
+                            OutlinedButton(
+                                onClick = { responseChoice = option },
+                                enabled = live && !saving,
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = if (responseChoice == option)
+                                    ButtonDefaults.outlinedButtonColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
+                                else ButtonDefaults.outlinedButtonColors()
+                            ) { Text(option) }
+                        }
+                    }
+                    OutlinedTextField(
+                        value = responseText, onValueChange = { responseText = it },
+                        label = { Text(if (questionOptions.isNotEmpty() || isVerification)
+                            "Note to AI (optional)" else "Your answer") },
+                        minLines = 3, maxLines = 8, modifier = Modifier.fillMaxWidth(),
+                        enabled = live && !saving
+                    )
+                    if (isVerification) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Button(onClick = { respondToQuestion(finish = true) },
+                                enabled = live && !saving) { Text("Done") }
+                            OutlinedButton(onClick = { respondToQuestion(reopen = true) },
+                                enabled = live && !saving) { Text("Needs changes") }
+                        }
+                    } else {
+                        Button(onClick = { respondToQuestion() },
+                            enabled = live && !saving &&
+                                (responseChoice != null || responseText.isNotBlank())) {
+                            Text(if (saving) "Saving…" else "Submit answer")
+                        }
+                        OutlinedButton(onClick = { respondToQuestion(finish = true) },
+                            enabled = live && !saving) {
+                            Text(if (selectedItem.question != null) "Done · keep current" else "Mark done")
+                        }
+                    }
+                    val details = taskDetails?.takeIf { it.id == selectedItem.taskId }
+                    if (selectedItem.question != null && details != null &&
+                        details.description.isNotBlank()) {
+                        TextButton(onClick = { contextExpanded = !contextExpanded }) {
+                            Text(if (contextExpanded) "Hide task context" else "Show task context")
+                        }
+                        if (contextExpanded) Text(details.description,
+                            style = MaterialTheme.typography.bodySmall)
+                    }
+                    TextButton(onClick = { onOpenTask(selectedItem) }) { Text("Full task details") }
                 }
             }
             return@Column
@@ -676,6 +808,11 @@ private fun ReviewQueueCard(item: MobileInboxItem, isSelected: Boolean, onClick:
                 }
                 Text(item.title, fontWeight = FontWeight.SemiBold, maxLines = 2,
                     overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall)
+                item.question?.optString("prompt")?.takeIf { it.isNotBlank() }?.let { prompt ->
+                    Text(prompt, style = MaterialTheme.typography.bodySmall, maxLines = 4,
+                        overflow = TextOverflow.Ellipsis,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
                 Text(item.project.name + " · " + item.created, style = MaterialTheme.typography.labelSmall,
                     color = TaskBoardColors.muted, maxLines = 1)
             }
