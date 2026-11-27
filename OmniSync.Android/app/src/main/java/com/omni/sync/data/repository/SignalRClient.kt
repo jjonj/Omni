@@ -2826,7 +2826,13 @@ class SignalRClient(
     fun reportPhoneCommandCompleted(id: String, exitCode: Int) =
         reportPhoneCommand("ReportPhoneCommandCompleted", id, exitCode)
 
-    fun executeCommand(command: String) = submitReliable("ExecuteCommand", command)
+    // Existing notification/widget shortcuts can still contain the retired batch path.
+    fun executeCommand(command: String) = submitReliable(
+        "ExecuteCommand",
+        if (command.trim().trim('"').equals("B:\\GDrive\\Tools\\05 Automation\\shutdown.bat", ignoreCase = true))
+            "D:\\SSDProjects\\Omni\\Omni.Other\\OmniPower\\OmniShutdown.exe"
+        else command
+    )
 
     fun executeMacroScript(script: String) = submitReliable("ExecuteMacro", script)
 

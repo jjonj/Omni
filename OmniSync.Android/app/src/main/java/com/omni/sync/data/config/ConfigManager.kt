@@ -98,7 +98,7 @@ class ConfigManager(private val context: Context) {
 
     fun getPredefinedActions(): List<NotificationAction> {
         return listOf(
-            NotificationAction("pre-1", "Shutdown PC", "B:\\GDrive\\Tools\\05 Automation\\shutdown.bat"),
+            NotificationAction("pre-1", "Shutdown PC", "D:\\SSDProjects\\Omni\\Omni.Other\\OmniPower\\OmniShutdown.exe"),
             NotificationAction("pre-2", "Sleep PC", "B:\\GDrive\\Tools\\05 Automation\\sleep.bat"),
             NotificationAction("pre-3", "Toggle TV", "B:\\GDrive\\Tools\\05 Automation\\TVActive3\\tv_toggle.bat"),
             NotificationAction("pre-4", "WOL PC", "", isWol = true, macAddress = "10FFE0379DAC"),
@@ -133,7 +133,7 @@ class ConfigManager(private val context: Context) {
     }
 
     fun getDefaultNotificationActions(): List<NotificationAction> = listOf(
-        NotificationAction("1", "Shutdown", "B:\\GDrive\\Tools\\05 Automation\\shutdown.bat"),
+        NotificationAction("1", "Shutdown", "D:\\SSDProjects\\Omni\\Omni.Other\\OmniPower\\OmniShutdown.exe"),
         NotificationAction("2", "Sleep", "B:\\GDrive\\Tools\\05 Automation\\sleep.bat"),
         NotificationAction("3", "TV", "B:\\GDrive\\Tools\\05 Automation\\TVActive3\\tv_toggle.bat"),
         NotificationAction("4", "WOL", "", isWol = true, macAddress = "10FFE0379DAC")

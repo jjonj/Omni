@@ -145,7 +145,7 @@ fun SettingsScreen(
                     Spacer(Modifier.height(8.dp))
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Button(
-                            onClick = { signalRClient.executeCommand("B:\\GDrive\\Tools\\05 Automation\\shutdown.bat") },
+                            onClick = { signalRClient.executeCommand("D:\\SSDProjects\\Omni\\Omni.Other\\OmniPower\\OmniShutdown.exe") },
                             modifier = Modifier.weight(1f),
                             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
                         ) {

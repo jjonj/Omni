@@ -215,7 +215,7 @@ fun DashboardScreen(modifier: Modifier = Modifier, signalRClient: SignalRClient,
                             Button(
                                 onClick = {
                                     mainViewModel.addLog("Triggering Shutdown...", LogType.WARNING)
-                                    signalRClient.executeCommand("B:\\GDrive\\Tools\\05 Automation\\shutdown.bat")
+                                    signalRClient.executeCommand("D:\\SSDProjects\\Omni\\Omni.Other\\OmniPower\\OmniShutdown.exe")
                                 },
                                 modifier = Modifier.weight(1f).padding(end = 4.dp),
                                 colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
